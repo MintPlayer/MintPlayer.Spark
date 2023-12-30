@@ -3,9 +3,28 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.34330.188
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Demo", "Demo", "{97E17261-4F65-4B43-870B-2E3A4E63F5A8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Library", "Library", "{399B5492-6AF8-41D5-B7BA-02AC0D070B8B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DemoApp", "Demo\DemoApp\DemoApp\DemoApp.csproj", "{F1B4F450-AFFA-46DB-A03E-CD967952D22A}"
+EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F1B4F450-AFFA-46DB-A03E-CD967952D22A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1B4F450-AFFA-46DB-A03E-CD967952D22A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1B4F450-AFFA-46DB-A03E-CD967952D22A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1B4F450-AFFA-46DB-A03E-CD967952D22A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F1B4F450-AFFA-46DB-A03E-CD967952D22A} = {97E17261-4F65-4B43-870B-2E3A4E63F5A8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {5EEFAE3A-3131-4063-96E7-F227D0A00922}

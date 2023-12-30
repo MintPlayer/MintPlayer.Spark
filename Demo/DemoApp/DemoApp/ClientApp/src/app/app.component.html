@@ -1,0 +1,22 @@
+<bs-navbar [color]="colors.dark" #nav>
+	<bs-navbar-toggler *bsExpandButton="let state" [state]="state" [toggleOnClick]="false"></bs-navbar-toggler>
+	<bs-navbar-brand [routerLink]='["/"]'>
+		<span class="brand d-block px-3">
+			DemoApp
+		</span>
+	</bs-navbar-brand>
+	<bs-navbar-nav [collapse]="true">
+		<bs-navbar-item>
+			<a [routerLink]='["/"]'>Home</a>
+		</bs-navbar-item>
+		<bs-navbar-item>
+			<a [routerLink]='["/counter"]'>Counter</a>
+		</bs-navbar-item>
+		<bs-navbar-item>
+			<a [routerLink]='["/fetch-data"]'>Fetch data</a>
+		</bs-navbar-item>
+	</bs-navbar-nav>
+</bs-navbar>
+<div [bsNavbarContent]="nav" style="padding-top:10px">
+	<router-outlet></router-outlet>
+</div>
