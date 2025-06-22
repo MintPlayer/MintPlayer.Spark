@@ -2,8 +2,14 @@
 
 namespace MintPlayer.Spark;
 
-public static class SparkMiddlewareExtensions
+public static class SparkExtensions
 {
+    public static IServiceCollection AddSpark(this IServiceCollection services)
+    {
+        // Register the Spark services
+        return services;
+    }
+
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
         => app.UseMiddleware<SparkMiddleware>();
 
