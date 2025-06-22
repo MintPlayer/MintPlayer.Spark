@@ -10,10 +10,11 @@ public static class SparkMiddlewareExtensions
     public static IEndpointRouteBuilder MapSpark(this IEndpointRouteBuilder endpoints)
     {
         // Register the Spark middleware for all requests
-        endpoints.MapGet("/spark", async context =>
-        {
-            await context.Response.WriteAsync("Spark Middleware is active!");
-        });
+        endpoints.MapGroup("/spark")
+            .MapGet("/", async context =>
+            {
+                await context.Response.WriteAsync("Spark Middleware is active!");
+            });
 
         return endpoints;
     }
