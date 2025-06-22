@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36203.30 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark", "MintPlayer.Spark\MintPlayer.Spark.csproj", "{AC392092-7666-4FDE-8FBD-71C1A602CD7A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Demo", "Demo", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DemoApp", "Demo\DemoApp\DemoApp.csproj", "{F6CFB33F-1460-4826-B863-76C3E1A9EB2A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC392092-7666-4FDE-8FBD-71C1A602CD7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC392092-7666-4FDE-8FBD-71C1A602CD7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC392092-7666-4FDE-8FBD-71C1A602CD7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC392092-7666-4FDE-8FBD-71C1A602CD7A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BE3C450D-A8DE-4D9E-B4D4-3F32F348E7EA}
+	EndGlobalSection
+EndGlobal
