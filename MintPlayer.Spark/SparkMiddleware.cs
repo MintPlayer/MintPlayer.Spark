@@ -41,6 +41,8 @@ public static class SparkExtensions
             await action.HandleAsync(context, type));
         persistentObjectGroup.MapGet("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, GetPersistentObject action) =>
             await action.HandleAsync(context, type, id));
+        persistentObjectGroup.MapPost("/{type}", async (HttpContext context, string type, CreatePersistentObject action) =>
+            await action.HandleAsync(context, type));
 
         // Now visit: https://localhost:32781/spark/po/artist/d72cf934-39f7-4850-8a03-3cfa89a55234
 

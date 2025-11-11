@@ -14,4 +14,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         using var session = documentStore.OpenAsyncSession();
         return await session.LoadAsync<T>(id);
     }
+
+    public async Task<T> SaveDocumentAsync<T>(T document) where T : class
+    {
+        using var session = documentStore.OpenAsyncSession();
+        await session.StoreAsync(document);
+        await session.SaveChangesAsync();
+        return document;
+    }
 }
