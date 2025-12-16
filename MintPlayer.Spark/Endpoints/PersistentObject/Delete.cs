@@ -4,7 +4,7 @@ using MintPlayer.Spark.Abstractions;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [Register(ServiceLifetime.Scoped, "AddSparkServices")]
-public sealed partial class GetPersistentObject
+public sealed partial class DeletePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
 
@@ -20,6 +20,7 @@ public sealed partial class GetPersistentObject
             return;
         }
 
-        await httpContext.Response.WriteAsJsonAsync(obj);
+        await databaseAccess.DeleteDocumentAsync<Abstractions.PersistentObject>(documentId);
+        httpContext.Response.StatusCode = StatusCodes.Status204NoContent;
     }
 }

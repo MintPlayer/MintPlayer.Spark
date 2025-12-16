@@ -1,4 +1,4 @@
-﻿using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -10,6 +10,7 @@ public sealed partial class ListPersistentObjects
 
     public async Task HandleAsync(HttpContext httpContext, string type)
     {
-        await httpContext.Response.WriteAsync($"Get all {type}s!");
+        var objects = await databaseAccess.GetDocumentsByTypeAsync<Abstractions.PersistentObject>(type);
+        await httpContext.Response.WriteAsJsonAsync(objects);
     }
 }

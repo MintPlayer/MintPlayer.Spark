@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using Raven.Client.Documents;
 
@@ -7,22 +9,37 @@ namespace MintPlayer.Spark;
 
 public static class SparkExtensions
 {
-    public static IServiceCollection AddSpark(this IServiceCollection services)
+    public static IServiceCollection AddSpark(this IServiceCollection services, Action<SparkOptions>? configureOptions = null)
     {
+        var options = new SparkOptions();
+        configureOptions?.Invoke(options);
+
         // Register the Spark services
         return services
             .AddSparkServices()
-            .AddScoped<IDocumentStore, DocumentStore>((services) =>
+            .AddSingleton<IDocumentStore>(sp =>
             {
                 var store = new DocumentStore
                 {
-                    Urls = ["http://localhost:8080"],
-                    Database = "YourDatabaseName",
+                    Urls = options.RavenDb.Urls,
+                    Database = options.RavenDb.Database,
                 };
 
                 store.Initialize();
                 return store;
             });
+    }
+
+    public static IServiceCollection AddSpark(this IServiceCollection services, IConfiguration configuration)
+    {
+        var options = new SparkOptions();
+        configuration.GetSection("Spark").Bind(options);
+
+        return services.AddSpark(opt =>
+        {
+            opt.RavenDb.Urls = options.RavenDb.Urls;
+            opt.RavenDb.Database = options.RavenDb.Database;
+        });
     }
 
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
@@ -43,8 +60,10 @@ public static class SparkExtensions
             await action.HandleAsync(context, type, id));
         persistentObjectGroup.MapPost("/{type}", async (HttpContext context, string type, CreatePersistentObject action) =>
             await action.HandleAsync(context, type));
-
-        // Now visit: https://localhost:32781/spark/po/artist/d72cf934-39f7-4850-8a03-3cfa89a55234
+        persistentObjectGroup.MapPut("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, UpdatePersistentObject action) =>
+            await action.HandleAsync(context, type, id));
+        persistentObjectGroup.MapDelete("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, DeletePersistentObject action) =>
+            await action.HandleAsync(context, type, id));
 
         return endpoints;
     }

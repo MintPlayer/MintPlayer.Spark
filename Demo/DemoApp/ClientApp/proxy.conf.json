@@ -1,0 +1,10 @@
+{
+  "/spark": {
+    "target": "https://localhost:7171",
+    "secure": false
+  },
+  "/weatherforecast": {
+    "target": "https://localhost:7171",
+    "secure": false
+  }
+}
