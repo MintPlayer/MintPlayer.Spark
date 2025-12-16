@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 
@@ -33,7 +34,7 @@ app.UseSpaImproved(spa =>
 
     if (app.Environment.IsDevelopment())
     {
-        spa.UseAngularCliServer(npmScript: "start");
+        spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
     }
 });
 
