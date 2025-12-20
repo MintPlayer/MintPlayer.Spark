@@ -2,7 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.PersistentObject;
+using MintPlayer.Spark.Endpoints.ProgramUnits;
+using MintPlayer.Spark.Endpoints.Queries;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark;
@@ -53,6 +56,26 @@ public static class SparkExtensions
         {
             await context.Response.WriteAsync("Spark Middleware is active!");
         });
+
+        // Entity Types endpoints
+        var typesGroup = sparkGroup.MapGroup("/types");
+        typesGroup.MapGet("/", async (HttpContext context, ListEntityTypes action) =>
+            await action.HandleAsync(context));
+        typesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetEntityType action) =>
+            await action.HandleAsync(context, id));
+
+        // Queries endpoints
+        var queriesGroup = sparkGroup.MapGroup("/queries");
+        queriesGroup.MapGet("/", async (HttpContext context, ListQueries action) =>
+            await action.HandleAsync(context));
+        queriesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetQuery action) =>
+            await action.HandleAsync(context, id));
+
+        // Program Units endpoint
+        sparkGroup.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
+            await action.HandleAsync(context));
+
+        // Persistent Object endpoints
         var persistentObjectGroup = sparkGroup.MapGroup("/po");
         persistentObjectGroup.MapGet("/{type}", async (HttpContext context, string type, ListPersistentObjects action) =>
             await action.HandleAsync(context, type));

@@ -1,0 +1,27 @@
+<bs-shell [state]="shellState" [breakpoint]="'md'">
+  <nav *bsShellSidebar class="text-light p-2">
+    <h5 class="p-3 border-bottom">Spark Demo</h5>
+    <bs-accordion>
+      @for (group of programUnitGroups; track group.id) {
+        <bs-accordion-tab>
+          <bs-accordion-tab-header>
+            <i class="bi" [ngClass]="group.icon || 'bi-folder'"></i>
+            <span class="ms-2">{{ group.name }}</span>
+          </bs-accordion-tab-header>
+          @for (unit of group.programUnits; track unit.id) {
+            <a [routerLink]="getRouterLink(unit)"
+               routerLinkActive="active"
+               class="d-block p-3 text-light text-decoration-none nav-link">
+              <i class="bi" [ngClass]="unit.icon || 'bi-file'"></i>
+              <span class="ms-2">{{ unit.name }}</span>
+            </a>
+          }
+        </bs-accordion-tab>
+      }
+    </bs-accordion>
+  </nav>
+
+  <main class="p-4">
+    <router-outlet />
+  </main>
+</bs-shell>
