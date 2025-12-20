@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
@@ -11,7 +11,8 @@ import { switchMap, forkJoin, of } from 'rxjs';
   standalone: true,
   imports: [CommonModule, RouterModule, BsDatatableModule],
   templateUrl: './query-list.component.html',
-  styleUrl: './query-list.component.scss'
+  styleUrl: './query-list.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class QueryListComponent implements OnInit {
   query: SparkQuery | null = null;
@@ -27,7 +28,8 @@ export default class QueryListComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private sparkService: SparkService
+    private sparkService: SparkService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -54,6 +56,7 @@ export default class QueryListComponent implements OnInit {
     ).subscribe(result => {
       if (result?.entityType) {
         this.entityType = result.entityType;
+        this.cdr.markForCheck();
         this.loadItems();
       }
     });
@@ -63,6 +66,7 @@ export default class QueryListComponent implements OnInit {
     if (!this.entityType) return;
     this.sparkService.list(this.entityType.clrType).subscribe(items => {
       this.items = items;
+      this.cdr.markForCheck();
     });
   }
 

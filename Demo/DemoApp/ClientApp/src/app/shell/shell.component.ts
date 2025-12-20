@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellModule } from '@mintplayer/ng-bootstrap/shell';
@@ -11,17 +11,22 @@ import { ProgramUnitGroup } from '../core/models';
   standalone: true,
   imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule],
   templateUrl: './shell.component.html',
-  styleUrl: './shell.component.scss'
+  styleUrl: './shell.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent implements OnInit {
   programUnitGroups: ProgramUnitGroup[] = [];
   shellState: 'auto' | 'show' | 'hide' = 'auto';
 
-  constructor(private sparkService: SparkService) {}
+  constructor(
+    private sparkService: SparkService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     this.sparkService.getProgramUnits().subscribe(config => {
       this.programUnitGroups = config.programUnitGroups.sort((a, b) => a.order - b.order);
+      this.cdr.markForCheck();
     });
   }
 
