@@ -42,12 +42,16 @@ export default class QueryListComponent implements OnInit {
       switchMap(query => {
         if (!query) return of({ query: null, entityType: null });
         this.query = query;
+        const singularName = this.singularize(query.contextProperty);
         return forkJoin({
           query: of(query),
           entityType: this.sparkService.getEntityTypes().pipe(
             switchMap(types => {
-              const type = types.find(t => t.name === query.contextProperty ||
-                t.clrType.endsWith(query.contextProperty.replace(/s$/, '')));
+              const type = types.find(t =>
+                t.name === query.contextProperty ||
+                t.name === singularName ||
+                t.clrType.endsWith(singularName)
+              );
               return of(type || null);
             })
           )
@@ -56,10 +60,39 @@ export default class QueryListComponent implements OnInit {
     ).subscribe(result => {
       if (result?.entityType) {
         this.entityType = result.entityType;
+        this.settings = new DatatableSettings({
+          perPage: { values: [10, 25, 50], selected: 10 },
+          page: { values: [1], selected: 1 },
+          sortProperty: this.query?.sortBy || '',
+          sortDirection: this.query?.sortDirection === 'desc' ? 'descending' : 'ascending'
+        });
         this.cdr.markForCheck();
         this.loadItems();
       }
     });
+  }
+
+  private singularize(plural: string): string {
+    // Handle irregular plurals
+    const irregulars: { [key: string]: string } = {
+      'People': 'Person',
+      'Children': 'Child',
+      'Men': 'Men',
+      'Women': 'Woman'
+    };
+    if (irregulars[plural]) return irregulars[plural];
+
+    // Handle regular plurals
+    if (plural.endsWith('ies')) {
+      return plural.slice(0, -3) + 'y';
+    }
+    if (plural.endsWith('es')) {
+      return plural.slice(0, -2);
+    }
+    if (plural.endsWith('s')) {
+      return plural.slice(0, -1);
+    }
+    return plural;
   }
 
   loadItems(): void {
