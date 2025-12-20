@@ -25,8 +25,11 @@ app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
 
-app.MapControllers();
-app.MapSpark();
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+    endpoints.MapSpark();
+});
 
 app.UseSpaImproved(spa =>
 {
