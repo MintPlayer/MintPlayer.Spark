@@ -15,12 +15,7 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
 
-    private readonly Lazy<ProgramUnitsConfiguration> _programUnits;
-
-    public ProgramUnitsLoader()
-    {
-        _programUnits = new Lazy<ProgramUnitsConfiguration>(LoadProgramUnits);
-    }
+    private Lazy<ProgramUnitsConfiguration>? _programUnits;
 
     private ProgramUnitsConfiguration LoadProgramUnits()
     {
@@ -48,5 +43,8 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
     }
 
     public ProgramUnitsConfiguration GetProgramUnits()
-        => _programUnits.Value;
+    {
+        _programUnits ??= new Lazy<ProgramUnitsConfiguration>(LoadProgramUnits);
+        return _programUnits.Value;
+    }
 }

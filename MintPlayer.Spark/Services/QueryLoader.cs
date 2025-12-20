@@ -17,11 +17,15 @@ internal partial class QueryLoader : IQueryLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
 
-    private readonly Lazy<Dictionary<Guid, SparkQuery>> _queries;
+    private Lazy<Dictionary<Guid, SparkQuery>>? _queries;
 
-    public QueryLoader()
+    private Dictionary<Guid, SparkQuery> Queries
     {
-        _queries = new Lazy<Dictionary<Guid, SparkQuery>>(LoadQueries);
+        get
+        {
+            _queries ??= new Lazy<Dictionary<Guid, SparkQuery>>(LoadQueries);
+            return _queries.Value;
+        }
     }
 
     private Dictionary<Guid, SparkQuery> LoadQueries()
@@ -58,11 +62,11 @@ internal partial class QueryLoader : IQueryLoader
     }
 
     public IEnumerable<SparkQuery> GetQueries()
-        => _queries.Value.Values;
+        => Queries.Values;
 
     public SparkQuery? GetQuery(Guid id)
-        => _queries.Value.TryGetValue(id, out var query) ? query : null;
+        => Queries.TryGetValue(id, out var query) ? query : null;
 
     public SparkQuery? GetQueryByName(string name)
-        => _queries.Value.Values.FirstOrDefault(q => q.Name == name);
+        => Queries.Values.FirstOrDefault(q => q.Name == name);
 }

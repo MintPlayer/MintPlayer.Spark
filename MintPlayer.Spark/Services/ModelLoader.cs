@@ -17,11 +17,15 @@ internal partial class ModelLoader : IModelLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
 
-    private readonly Lazy<Dictionary<Guid, EntityTypeDefinition>> _entityTypes;
+    private Lazy<Dictionary<Guid, EntityTypeDefinition>>? _entityTypes;
 
-    public ModelLoader()
+    private Dictionary<Guid, EntityTypeDefinition> EntityTypes
     {
-        _entityTypes = new Lazy<Dictionary<Guid, EntityTypeDefinition>>(LoadEntityTypes);
+        get
+        {
+            _entityTypes ??= new Lazy<Dictionary<Guid, EntityTypeDefinition>>(LoadEntityTypes);
+            return _entityTypes.Value;
+        }
     }
 
     private Dictionary<Guid, EntityTypeDefinition> LoadEntityTypes()
@@ -58,11 +62,11 @@ internal partial class ModelLoader : IModelLoader
     }
 
     public IEnumerable<EntityTypeDefinition> GetEntityTypes()
-        => _entityTypes.Value.Values;
+        => EntityTypes.Values;
 
     public EntityTypeDefinition? GetEntityType(Guid id)
-        => _entityTypes.Value.TryGetValue(id, out var entityType) ? entityType : null;
+        => EntityTypes.TryGetValue(id, out var entityType) ? entityType : null;
 
     public EntityTypeDefinition? GetEntityTypeByClrType(string clrType)
-        => _entityTypes.Value.Values.FirstOrDefault(e => e.ClrType == clrType);
+        => EntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
 }
