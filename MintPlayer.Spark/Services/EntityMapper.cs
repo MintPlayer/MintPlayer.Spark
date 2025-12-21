@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 
@@ -101,6 +102,12 @@ internal partial class EntityMapper : IEntityMapper
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
+        // Handle JsonElement - extract the actual value first
+        if (value is JsonElement je)
+        {
+            value = ExtractJsonElementValue(je);
+        }
+
         if (value == null)
         {
             if (Nullable.GetUnderlyingType(property.PropertyType) != null || !property.PropertyType.IsValueType)
@@ -143,6 +150,22 @@ internal partial class EntityMapper : IEntityMapper
         {
             // Skip properties that can't be converted
         }
+    }
+
+    private static object? ExtractJsonElementValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+            JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+            JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            JsonValueKind.Undefined => null,
+            _ => element.ToString()
+        };
     }
 
     private string GetDataType(Type type)

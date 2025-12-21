@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -87,7 +88,9 @@ internal partial class ValidationService : IValidationService
 
     private ValidationError? ValidateMaxLength(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
     {
-        var maxLength = rule.Value is int max ? max : Convert.ToInt32(rule.Value);
+        if (!TryGetIntValue(rule.Value, out var maxLength))
+            return null;
+
         if (value.Length > maxLength)
         {
             return new ValidationError
@@ -102,7 +105,9 @@ internal partial class ValidationService : IValidationService
 
     private ValidationError? ValidateMinLength(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
     {
-        var minLength = rule.Value is int min ? min : Convert.ToInt32(rule.Value);
+        if (!TryGetIntValue(rule.Value, out var minLength))
+            return null;
+
         if (value.Length < minLength)
         {
             return new ValidationError
@@ -195,13 +200,53 @@ internal partial class ValidationService : IValidationService
 
     private static bool IsEmpty(object? value)
     {
-        return value == null || (value is string str && string.IsNullOrWhiteSpace(str));
+        if (value == null) return true;
+        if (value is string str) return string.IsNullOrWhiteSpace(str);
+        if (value is JsonElement je)
+        {
+            return je.ValueKind == JsonValueKind.Null ||
+                   je.ValueKind == JsonValueKind.Undefined ||
+                   (je.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(je.GetString()));
+        }
+        return false;
+    }
+
+    private static bool TryGetIntValue(object? value, out int result)
+    {
+        result = 0;
+        if (value == null) return false;
+
+        if (value is int i)
+        {
+            result = i;
+            return true;
+        }
+
+        if (value is JsonElement je)
+        {
+            if (je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out result))
+                return true;
+            if (je.ValueKind == JsonValueKind.String && int.TryParse(je.GetString(), out result))
+                return true;
+            return false;
+        }
+
+        return int.TryParse(value.ToString(), out result);
     }
 
     private static bool TryConvertToDecimal(object? value, out decimal result)
     {
         result = 0;
         if (value == null) return false;
+
+        if (value is JsonElement je)
+        {
+            if (je.ValueKind == JsonValueKind.Number && je.TryGetDecimal(out result))
+                return true;
+            if (je.ValueKind == JsonValueKind.String && decimal.TryParse(je.GetString(), out result))
+                return true;
+            return false;
+        }
 
         return value switch
         {
