@@ -13,6 +13,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
+    [Inject] private readonly IModelLoader modelLoader;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -26,11 +27,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return await session.Query<T>().ToListAsync();
     }
 
-    public async Task<IEnumerable<T>> GetDocumentsByTypeAsync<T>(string clrType) where T : class
+    public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdAsync<T>(Guid objectTypeId) where T : class
     {
         using var session = documentStore.OpenAsyncSession();
         return await session.Query<T>()
-            .Where(x => ((PersistentObject)(object)x).ClrType == clrType)
+            .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
             .ToListAsync();
     }
 
@@ -51,8 +52,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     // PersistentObject-specific methods that handle entity mapping
 
-    public async Task<PersistentObject?> GetPersistentObjectAsync(string clrType, string id)
+    public async Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id)
     {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return null;
+
+        var clrType = entityTypeDefinition.ClrType;
         var entityType = Type.GetType(clrType);
         if (entityType == null) return null;
 
@@ -64,18 +69,22 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (entity == null) return null;
 
-        return entityMapper.ToPersistentObject(entity, clrType);
+        return entityMapper.ToPersistentObject(entity, objectTypeId);
     }
 
-    public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(string clrType)
+    public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
     {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return [];
+
+        var clrType = entityTypeDefinition.ClrType;
         var entityType = Type.GetType(clrType);
         if (entityType == null) return [];
 
         using var session = documentStore.OpenAsyncSession();
         var entities = await QueryEntitiesAsync(session, entityType);
 
-        return entities.Select(e => entityMapper.ToPersistentObject(e, clrType));
+        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId));
     }
 
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
@@ -94,8 +103,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return persistentObject;
     }
 
-    public async Task DeletePersistentObjectAsync(string clrType, string id)
+    public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
     {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return;
+
+        var clrType = entityTypeDefinition.ClrType;
         var collectionName = CollectionHelper.GetCollectionName(clrType);
         var documentId = $"{collectionName}/{id}";
 

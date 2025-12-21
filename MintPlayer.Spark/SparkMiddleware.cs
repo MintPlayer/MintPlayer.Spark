@@ -92,16 +92,16 @@ public static class SparkExtensions
 
         // Persistent Object endpoints
         var persistentObjectGroup = sparkGroup.MapGroup("/po");
-        persistentObjectGroup.MapGet("/{type}", async (HttpContext context, string type, ListPersistentObjects action) =>
-            await action.HandleAsync(context, type));
-        persistentObjectGroup.MapGet("/{type}/{id}", async (HttpContext context, string type, string id, GetPersistentObject action) =>
-            await action.HandleAsync(context, type, id));
-        persistentObjectGroup.MapPost("/{type}", async (HttpContext context, string type, CreatePersistentObject action) =>
-            await action.HandleAsync(context, type));
-        persistentObjectGroup.MapPut("/{type}/{id}", async (HttpContext context, string type, string id, UpdatePersistentObject action) =>
-            await action.HandleAsync(context, type, id));
-        persistentObjectGroup.MapDelete("/{type}/{id}", async (HttpContext context, string type, string id, DeletePersistentObject action) =>
-            await action.HandleAsync(context, type, id));
+        persistentObjectGroup.MapGet("/{objectTypeId:guid}", async (HttpContext context, Guid objectTypeId, ListPersistentObjects action) =>
+            await action.HandleAsync(context, objectTypeId));
+        persistentObjectGroup.MapGet("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, GetPersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId, id));
+        persistentObjectGroup.MapPost("/{objectTypeId:guid}", async (HttpContext context, Guid objectTypeId, CreatePersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId));
+        persistentObjectGroup.MapPut("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, UpdatePersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId, id));
+        persistentObjectGroup.MapDelete("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, DeletePersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId, id));
 
         return endpoints;
     }

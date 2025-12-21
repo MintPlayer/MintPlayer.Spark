@@ -7,19 +7,24 @@ namespace MintPlayer.Spark.Services;
 public interface IEntityMapper
 {
     object ToEntity(PersistentObject persistentObject);
-    PersistentObject ToPersistentObject(object entity, string clrType);
+    PersistentObject ToPersistentObject(object entity, Guid objectTypeId);
 }
 
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped, "AddSparkServices")]
 internal partial class EntityMapper : IEntityMapper
 {
+    [Inject] private readonly IModelLoader modelLoader;
+
     public object ToEntity(PersistentObject persistentObject)
     {
-        var entityType = Type.GetType(persistentObject.ClrType)
-            ?? throw new InvalidOperationException($"Could not resolve type '{persistentObject.ClrType}'");
+        var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
+            ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
+
+        var entityType = Type.GetType(entityTypeDefinition.ClrType)
+            ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
         var entity = Activator.CreateInstance(entityType)
-            ?? throw new InvalidOperationException($"Could not create instance of type '{persistentObject.ClrType}'");
+            ?? throw new InvalidOperationException($"Could not create instance of type '{entityTypeDefinition.ClrType}'");
 
         // Set the Id if provided
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
@@ -41,7 +46,7 @@ internal partial class EntityMapper : IEntityMapper
         return entity;
     }
 
-    public PersistentObject ToPersistentObject(object entity, string clrType)
+    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId)
     {
         var entityType = entity.GetType();
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
@@ -65,7 +70,7 @@ internal partial class EntityMapper : IEntityMapper
         {
             Id = id,
             Name = GetEntityDisplayName(entity, entityType),
-            ClrType = clrType,
+            ObjectTypeId = objectTypeId,
             Attributes = attributes.ToArray(),
         };
     }

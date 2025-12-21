@@ -8,9 +8,9 @@ public sealed partial class ListPersistentObjects
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
 
-    public async Task HandleAsync(HttpContext httpContext, string type)
+    public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId)
     {
-        var objects = await databaseAccess.GetPersistentObjectsAsync(type);
+        var objects = await databaseAccess.GetPersistentObjectsAsync(objectTypeId);
         await httpContext.Response.WriteAsJsonAsync(objects);
     }
 }

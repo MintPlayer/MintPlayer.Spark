@@ -4,7 +4,7 @@ public sealed class PersistentObject
 {
     public string? Id { get; set; }
     public required string Name { get; set; }
-    public required string ClrType { get; set; }
+    public required Guid ObjectTypeId { get; set; }
     public string? Breadcrumb { get; set; }
     public PersistentObjectAttribute[] Attributes { get; set; } = [];
 }

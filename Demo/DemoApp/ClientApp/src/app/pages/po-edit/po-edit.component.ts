@@ -88,7 +88,7 @@ export default class PoEditComponent implements OnInit {
     const po: Partial<PersistentObject> = {
       id: this.item.id,
       name: this.formData['Name'] || this.item.name,
-      clrType: this.entityType.clrType,
+      objectTypeId: this.entityType.id,
       attributes
     };
 

@@ -88,7 +88,7 @@ export default class PoCreateComponent implements OnInit {
 
     const po: Partial<PersistentObject> = {
       name: this.formData['Name'] || 'New Item',
-      clrType: this.entityType.clrType,
+      objectTypeId: this.entityType.id,
       attributes
     };
 

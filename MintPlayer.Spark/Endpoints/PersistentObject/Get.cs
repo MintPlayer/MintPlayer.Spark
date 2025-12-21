@@ -8,14 +8,14 @@ public sealed partial class GetPersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
 
-    public async Task HandleAsync(HttpContext httpContext, string type, string id)
+    public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
-        var obj = await databaseAccess.GetPersistentObjectAsync(type, id);
+        var obj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, id);
 
         if (obj is null)
         {
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"{type} with ID {id} not found" });
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {id} not found" });
             return;
         }
 
