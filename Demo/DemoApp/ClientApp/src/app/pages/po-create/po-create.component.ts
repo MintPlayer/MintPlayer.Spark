@@ -6,6 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
+import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
 import { switchMap, of, forkJoin } from 'rxjs';
@@ -13,7 +14,7 @@ import { switchMap, of, forkJoin } from 'rxjs';
 @Component({
   selector: 'app-po-create',
   standalone: true,
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsSelectModule],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
@@ -49,7 +50,7 @@ export default class PoCreateComponent implements OnInit {
   initFormData(): void {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
-      this.formData[attr.name] = '';
+      this.formData[attr.name] = attr.dataType === 'reference' ? null : '';
     });
   }
 

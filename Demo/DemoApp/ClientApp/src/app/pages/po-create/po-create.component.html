@@ -25,17 +25,15 @@
                         [name]="attr.name">
                     </div>
                   } @else if (attr.dataType === 'reference') {
-                    <select
-                      class="form-select"
+                    <bs-select
                       [id]="attr.name"
                       [(ngModel)]="formData[attr.name]"
-                      [name]="attr.name"
-                      [required]="attr.isRequired">
-                      <option value="">-- Select --</option>
+                      [name]="attr.name">
+                      <option [ngValue]="null">-- Select --</option>
                       @for (option of getReferenceOptions(attr); track option.id) {
-                        <option [value]="option.id">{{ option.breadcrumb || option.name }}</option>
+                        <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
                       }
-                    </select>
+                    </bs-select>
                   } @else {
                     <input
                       [type]="getInputType(attr.dataType)"
