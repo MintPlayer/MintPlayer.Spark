@@ -20,7 +20,7 @@ internal partial class EntityMapper : IEntityMapper
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var entityType = Type.GetType(entityTypeDefinition.ClrType)
+        var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
         var entity = Activator.CreateInstance(entityType)
@@ -145,5 +145,21 @@ internal partial class EntityMapper : IEntityMapper
             ?? entityType.GetProperty("Title");
 
         return nameProperty?.GetValue(entity)?.ToString() ?? entityType.Name;
+    }
+
+    private static Type? ResolveType(string clrType)
+    {
+        // First try the standard Type.GetType which works for assembly-qualified names
+        var type = Type.GetType(clrType);
+        if (type != null) return type;
+
+        // Search through all loaded assemblies
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            type = assembly.GetType(clrType);
+            if (type != null) return type;
+        }
+
+        return null;
     }
 }

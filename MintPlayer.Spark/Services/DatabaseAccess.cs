@@ -58,7 +58,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (entityTypeDefinition == null) return null;
 
         var clrType = entityTypeDefinition.ClrType;
-        var entityType = Type.GetType(clrType);
+        var entityType = ResolveType(clrType);
         if (entityType == null) return null;
 
         var collectionName = CollectionHelper.GetCollectionName(clrType);
@@ -78,7 +78,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (entityTypeDefinition == null) return [];
 
         var clrType = entityTypeDefinition.ClrType;
-        var entityType = Type.GetType(clrType);
+        var entityType = ResolveType(clrType);
         if (entityType == null) return [];
 
         using var session = documentStore.OpenAsyncSession();
@@ -161,5 +161,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         return [];
+    }
+
+    private static Type? ResolveType(string clrType)
+    {
+        // First try the standard Type.GetType which works for assembly-qualified names
+        var type = Type.GetType(clrType);
+        if (type != null) return type;
+
+        // Search through all loaded assemblies
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            type = assembly.GetType(clrType);
+            if (type != null) return type;
+        }
+
+        return null;
     }
 }
