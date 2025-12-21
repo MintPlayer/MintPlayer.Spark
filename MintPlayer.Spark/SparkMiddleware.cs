@@ -30,10 +30,6 @@ public static class SparkExtensions
                     Database = options.RavenDb.Database,
                 };
 
-                store.Conventions.FindIdentityProperty = memberInfo => memberInfo.Name == "Id";
-                store.Conventions.RegisterAsyncIdConvention<Abstractions.PersistentObject>(
-                    (dbName, entity) => Task.FromResult(entity.Id.ToString()));
-
                 store.Initialize();
 
                 var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
@@ -98,13 +94,13 @@ public static class SparkExtensions
         var persistentObjectGroup = sparkGroup.MapGroup("/po");
         persistentObjectGroup.MapGet("/{type}", async (HttpContext context, string type, ListPersistentObjects action) =>
             await action.HandleAsync(context, type));
-        persistentObjectGroup.MapGet("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, GetPersistentObject action) =>
+        persistentObjectGroup.MapGet("/{type}/{id}", async (HttpContext context, string type, string id, GetPersistentObject action) =>
             await action.HandleAsync(context, type, id));
         persistentObjectGroup.MapPost("/{type}", async (HttpContext context, string type, CreatePersistentObject action) =>
             await action.HandleAsync(context, type));
-        persistentObjectGroup.MapPut("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, UpdatePersistentObject action) =>
+        persistentObjectGroup.MapPut("/{type}/{id}", async (HttpContext context, string type, string id, UpdatePersistentObject action) =>
             await action.HandleAsync(context, type, id));
-        persistentObjectGroup.MapDelete("/{type}/{id:guid}", async (HttpContext context, string type, Guid id, DeletePersistentObject action) =>
+        persistentObjectGroup.MapDelete("/{type}/{id}", async (HttpContext context, string type, string id, DeletePersistentObject action) =>
             await action.HandleAsync(context, type, id));
 
         return endpoints;

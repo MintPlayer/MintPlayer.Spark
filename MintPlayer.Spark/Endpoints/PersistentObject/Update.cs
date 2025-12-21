@@ -8,7 +8,7 @@ public sealed partial class UpdatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
 
-    public async Task HandleAsync(HttpContext httpContext, string type, Guid id)
+    public async Task HandleAsync(HttpContext httpContext, string type, string id)
     {
         var documentId = $"PersistentObjects/{id}";
         var existingObj = await databaseAccess.GetDocumentAsync<Abstractions.PersistentObject>(documentId);
@@ -24,7 +24,7 @@ public sealed partial class UpdatePersistentObject
             ?? throw new InvalidOperationException(type + " could not be deserialized from the request body.");
 
         // Ensure the ID and ClrType match the URL parameters
-        obj.Id = id;
+        obj.Id = $"PersistentObjects/{id}";
         obj.ClrType = type;
 
         var result = await databaseAccess.SaveDocumentAsync(obj);

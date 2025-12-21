@@ -17,9 +17,9 @@ public sealed partial class CreatePersistentObject
         obj.ClrType = type;
 
         // Generate a new ID if not provided
-        if (obj.Id == Guid.Empty)
+        if (string.IsNullOrEmpty(obj.Id))
         {
-            obj.Id = Guid.NewGuid();
+            obj.Id = $"PersistentObjects/{Guid.NewGuid()}";
         }
 
         var result = await databaseAccess.SaveDocumentAsync(obj);

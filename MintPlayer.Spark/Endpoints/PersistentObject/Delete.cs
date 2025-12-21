@@ -8,7 +8,7 @@ public sealed partial class DeletePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
 
-    public async Task HandleAsync(HttpContext httpContext, string type, Guid id)
+    public async Task HandleAsync(HttpContext httpContext, string type, string id)
     {
         var documentId = $"PersistentObjects/{id}";
         var obj = await databaseAccess.GetDocumentAsync<Abstractions.PersistentObject>(documentId);
