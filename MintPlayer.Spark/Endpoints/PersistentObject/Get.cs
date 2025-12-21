@@ -10,8 +10,7 @@ public sealed partial class GetPersistentObject
 
     public async Task HandleAsync(HttpContext httpContext, string type, string id)
     {
-        var documentId = $"PersistentObjects/{id}";
-        var obj = await databaseAccess.GetDocumentAsync<Abstractions.PersistentObject>(documentId);
+        var obj = await databaseAccess.GetPersistentObjectAsync(type, id);
 
         if (obj is null)
         {

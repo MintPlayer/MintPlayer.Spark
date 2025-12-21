@@ -10,7 +10,7 @@ public sealed partial class ListPersistentObjects
 
     public async Task HandleAsync(HttpContext httpContext, string type)
     {
-        var objects = await databaseAccess.GetDocumentsByTypeAsync<Abstractions.PersistentObject>(type);
+        var objects = await databaseAccess.GetPersistentObjectsAsync(type);
         await httpContext.Response.WriteAsJsonAsync(objects);
     }
 }

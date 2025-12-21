@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Helpers;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
@@ -10,8 +11,7 @@ public sealed partial class UpdatePersistentObject
 
     public async Task HandleAsync(HttpContext httpContext, string type, string id)
     {
-        var documentId = $"PersistentObjects/{id}";
-        var existingObj = await databaseAccess.GetDocumentAsync<Abstractions.PersistentObject>(documentId);
+        var existingObj = await databaseAccess.GetPersistentObjectAsync(type, id);
 
         if (existingObj is null)
         {
@@ -24,10 +24,11 @@ public sealed partial class UpdatePersistentObject
             ?? throw new InvalidOperationException(type + " could not be deserialized from the request body.");
 
         // Ensure the ID and ClrType match the URL parameters
-        obj.Id = $"PersistentObjects/{id}";
+        var collectionName = CollectionHelper.GetCollectionName(type);
+        obj.Id = $"{collectionName}/{id}";
         obj.ClrType = type;
 
-        var result = await databaseAccess.SaveDocumentAsync(obj);
+        var result = await databaseAccess.SavePersistentObjectAsync(obj);
         await httpContext.Response.WriteAsJsonAsync(result);
     }
 }
