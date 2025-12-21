@@ -5,56 +5,53 @@
     <div class="card">
       <div class="card-body">
         <bs-form (submit)="onSave()">
-          @for (attr of getEditableAttributes(); track attr.id) {
-            @if (attr.dataType === 'boolean') {
-              <div class="form-check mb-3">
-                <input
-                  type="checkbox"
-                  class="form-check-input"
-                  [id]="attr.name"
-                  [(ngModel)]="formData[attr.name]"
-                  [name]="attr.name">
-                <label class="form-check-label" [for]="attr.name">
+          <bs-grid>
+            @for (attr of getEditableAttributes(); track attr.id) {
+              <div bsRow class="mb-3">
+                <label [md]="4" bsColFormLabel [for]="attr.name">
                   {{ attr.label || attr.name }}
                   @if (attr.isRequired) {
                     <span class="text-danger">*</span>
                   }
                 </label>
+                <div [md]="8">
+                  @if (attr.dataType === 'boolean') {
+                    <div class="form-check pt-2">
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        [id]="attr.name"
+                        [(ngModel)]="formData[attr.name]"
+                        [name]="attr.name">
+                    </div>
+                  } @else if (attr.dataType === 'reference') {
+                    <input
+                      type="text"
+                      [id]="attr.name"
+                      [(ngModel)]="formData[attr.name]"
+                      [name]="attr.name"
+                      [required]="attr.isRequired">
+                  } @else {
+                    <input
+                      [type]="getInputType(attr.dataType)"
+                      [id]="attr.name"
+                      [(ngModel)]="formData[attr.name]"
+                      [name]="attr.name"
+                      [required]="attr.isRequired"
+                      [step]="attr.dataType === 'decimal' ? '0.01' : '1'">
+                  }
+                </div>
               </div>
-            } @else {
-              <bs-floating-label class="d-block mb-3">
-                @if (attr.dataType === 'reference') {
-                  <input
-                    type="text"
-                    [id]="attr.name"
-                    [(ngModel)]="formData[attr.name]"
-                    [name]="attr.name"
-                    [required]="attr.isRequired"
-                    placeholder=" ">
-                } @else {
-                  <input
-                    [type]="getInputType(attr.dataType)"
-                    [id]="attr.name"
-                    [(ngModel)]="formData[attr.name]"
-                    [name]="attr.name"
-                    [required]="attr.isRequired"
-                    [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
-                    placeholder=" ">
-                }
-                <label [for]="attr.name">
-                  {{ attr.label || attr.name }}
-                  @if (attr.isRequired) {
-                    <span class="text-danger">*</span>
-                  }
-                </label>
-              </bs-floating-label>
             }
-          }
 
-          <div class="d-flex justify-content-end gap-2 mt-4">
-            <button type="button" [color]="colors.secondary" (click)="onCancel()">Cancel</button>
-            <button type="submit" [color]="colors.primary">Save</button>
-          </div>
+            <div bsRow class="mt-4">
+              <div [md]="4"></div>
+              <div [md]="8" class="d-flex justify-content-end gap-2">
+                <button type="button" [color]="colors.secondary" (click)="onCancel()">Cancel</button>
+                <button type="submit" [color]="colors.primary">Save</button>
+              </div>
+            </div>
+          </bs-grid>
         </bs-form>
       </div>
     </div>

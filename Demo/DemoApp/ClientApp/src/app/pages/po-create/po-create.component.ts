@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
-import { BsFloatingLabelComponent } from '@mintplayer/ng-bootstrap/floating-labels';
+import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute } from '../../core/models';
@@ -13,7 +13,7 @@ import { switchMap, of } from 'rxjs';
 @Component({
   selector: 'app-po-create',
   standalone: true,
-  imports: [CommonModule, FormsModule, BsFormModule, BsFloatingLabelComponent, BsButtonTypeDirective],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
