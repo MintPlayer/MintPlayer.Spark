@@ -75,26 +75,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
     {
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
-        if (entityTypeDefinition == null)
-        {
-            Console.WriteLine($"[Spark] GetPersistentObjectsAsync: Entity type not found for {objectTypeId}");
-            return [];
-        }
+        if (entityTypeDefinition == null) return [];
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
-        if (entityType == null)
-        {
-            Console.WriteLine($"[Spark] GetPersistentObjectsAsync: Could not resolve CLR type '{clrType}'");
-            return [];
-        }
-
-        Console.WriteLine($"[Spark] GetPersistentObjectsAsync: Resolved type {entityType.FullName}");
+        if (entityType == null) return [];
 
         using var session = documentStore.OpenAsyncSession();
         var entities = await QueryEntitiesAsync(session, entityType);
-
-        Console.WriteLine($"[Spark] GetPersistentObjectsAsync: Query returned {entities.Count()} entities");
 
         return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId));
     }
@@ -156,23 +144,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 3);
 
-        if (queryMethod == null)
-        {
-            Console.WriteLine($"[Spark] QueryEntitiesAsync: Query method not found on session type {sessionType.Name}");
-            return [];
-        }
+        if (queryMethod == null) return [];
 
         var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
         // Pass null for indexName, null for collectionName, false for isMapReduce
         var query = genericQueryMethod.Invoke(session, [null, null, false]);
 
-        if (query == null)
-        {
-            Console.WriteLine($"[Spark] QueryEntitiesAsync: Query returned null");
-            return [];
-        }
-
-        Console.WriteLine($"[Spark] QueryEntitiesAsync: Query type = {query.GetType().FullName}");
+        if (query == null) return [];
 
         // Call ToListAsync on the IRavenQueryable<T>
         // ToListAsync is an extension method in Raven.Client.Documents.Linq.LinqExtensions
@@ -181,33 +159,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 2);
 
-        if (toListMethod == null)
-        {
-            Console.WriteLine($"[Spark] QueryEntitiesAsync: ToListAsync method not found");
-            return [];
-        }
+        if (toListMethod == null) return [];
 
         var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
         var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
 
-        if (task == null)
-        {
-            Console.WriteLine($"[Spark] QueryEntitiesAsync: ToListAsync did not return a Task");
-            return [];
-        }
+        if (task == null) return [];
 
         await task;
 
         var resultProperty = task.GetType().GetProperty("Result");
         var result = resultProperty?.GetValue(task);
 
-        Console.WriteLine($"[Spark] QueryEntitiesAsync: Result type = {result?.GetType().FullName ?? "null"}");
-
         if (result is System.Collections.IEnumerable enumerable)
         {
-            var list = enumerable.Cast<object>().ToList();
-            Console.WriteLine($"[Spark] QueryEntitiesAsync: Enumerable count = {list.Count}");
-            return list;
+            return enumerable.Cast<object>().ToList();
         }
 
         return [];

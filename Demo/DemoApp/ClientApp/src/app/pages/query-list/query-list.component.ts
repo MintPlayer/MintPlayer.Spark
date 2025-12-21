@@ -6,6 +6,13 @@ import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, SparkQuery } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
+interface PaginationData<T> {
+  data: T[];
+  count: number;
+  perPage: number;
+  page: number;
+}
+
 @Component({
   selector: 'app-query-list',
   standalone: true,
@@ -17,7 +24,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 export default class QueryListComponent implements OnInit {
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
-  items: PersistentObject[] = [];
+  paginationData: PaginationData<PersistentObject> | null = null;
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -98,7 +105,15 @@ export default class QueryListComponent implements OnInit {
   loadItems(): void {
     if (!this.entityType) return;
     this.sparkService.list(this.entityType.id).subscribe(items => {
-      this.items = items;
+      this.paginationData = {
+        data: items,
+        count: items.length,
+        perPage: this.settings.perPage.selected,
+        page: this.settings.page.selected
+      };
+      // Update page values for pagination
+      const totalPages = Math.ceil(items.length / this.settings.perPage.selected) || 1;
+      this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
       this.cdr.markForCheck();
     });
   }

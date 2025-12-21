@@ -14,7 +14,7 @@
         </div>
       }
 
-      <tr *bsRowTemplate="let item of items" (click)="onRowClick(item)" style="cursor: pointer;">
+      <tr *bsRowTemplate="let item of paginationData" (click)="onRowClick(item)" style="cursor: pointer;">
         @for (attr of getVisibleAttributes(); track attr.id) {
           <td>{{ getAttributeValue(item, attr.name) }}</td>
         }
