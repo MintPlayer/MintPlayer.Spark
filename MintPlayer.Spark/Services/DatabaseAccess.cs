@@ -1,7 +1,6 @@
 using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Helpers;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -14,7 +13,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly ICollectionHelper collectionHelper;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -62,15 +60,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
 
-        var collectionName = collectionHelper.GetCollectionName(clrType);
-        var documentId = $"{collectionName}/{id}";
-
         using var session = documentStore.OpenAsyncSession();
 
         // Get reference properties to include
         var referenceProperties = GetReferenceProperties(entityType);
 
-        var entity = await LoadEntityWithIncludesAsync(session, entityType, documentId, referenceProperties);
+        var entity = await LoadEntityWithIncludesAsync(session, entityType, id, referenceProperties);
 
         if (entity == null) return null;
 
@@ -113,15 +108,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
     {
-        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
-        if (entityTypeDefinition == null) return;
-
-        var clrType = entityTypeDefinition.ClrType;
-        var collectionName = collectionHelper.GetCollectionName(clrType);
-        var documentId = $"{collectionName}/{id}";
-
         using var session = documentStore.OpenAsyncSession();
-        session.Delete(documentId);
+        session.Delete(id);
         await session.SaveChangesAsync();
     }
 
