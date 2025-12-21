@@ -30,6 +30,10 @@ public static class SparkExtensions
                     Database = options.RavenDb.Database,
                 };
 
+                store.Conventions.FindIdentityProperty = memberInfo => memberInfo.Name == "Id";
+                store.Conventions.RegisterAsyncIdConvention<Abstractions.PersistentObject>(
+                    (dbName, entity) => Task.FromResult(entity.Id.ToString()));
+
                 store.Initialize();
 
                 var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
