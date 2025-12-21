@@ -140,13 +140,26 @@ public class PersistentObjectAttribute
     public Guid Id { get; set; }
     public string Name { get; set; }
     public object? Value { get; set; }
-    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, reference
+    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, guid, reference, embedded
     public bool IsRequired { get; set; }
     public string? Query { get; set; }          // SparkQuery name for reference lookups in edit mode
     public string? Breadcrumb { get; set; }     // Computed display value for references (read-only)
     public ValidationRule[] Rules { get; set; }
 }
 ```
+
+**Supported Data Types:**
+
+| DataType | Description | CLR Types |
+|----------|-------------|-----------|
+| `string` | Text values | `string` |
+| `number` | Integer values | `int`, `long` |
+| `decimal` | Floating-point values | `decimal`, `double`, `float` |
+| `boolean` | True/false values | `bool` |
+| `datetime` | Date and time values | `DateTime`, `DateTimeOffset` |
+| `guid` | Unique identifiers | `Guid` |
+| `reference` | Foreign key to another entity (stored as string ID) | `string` with `[Reference]` attribute |
+| `embedded` | Nested complex object stored within the parent document | Classes with an `Id` property |
 
 ### 6.3 Model Definition (JSON)
 
@@ -197,21 +210,34 @@ Not all PersistentObjects represent top-level database collections. The framewor
 | Category | Description | Example |
 |----------|-------------|---------|
 | **Collection Entity** | Maps directly to a RavenDB collection via `IRavenQueryable<T>` property on SparkContext | `Person`, `Company` |
-| **Nested Object** | Stored as a property within another document, not in its own collection | `Address` on a `Person` document |
+| **Embedded Object** | Stored as a property within another document (dataType: `embedded`), not in its own collection. JSON model file is auto-generated during synchronization. | `Address` on a `Person` document |
 | **Virtual** | Completely unrelated to the database; used for UI-only data | Modal dialog data, toast notifications, wizard state |
 
 **Examples:**
 
-Nested object (can be used on multiple parent types like `Person.Addresses` or `Company.Addresses`):
+Embedded object definition (auto-generated, can be used on multiple parent types like `Person.Address` or `Company.Address`):
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Address",
   "clrType": "Demo.Data.Address",
+  "displayAttribute": "Street",
   "attributes": [
-    { "name": "Street", "dataType": "string" },
-    { "name": "City", "dataType": "string" },
-    { "name": "PostalCode", "dataType": "string" }
+    { "id": "...", "name": "Street", "dataType": "string", "isVisible": true, "order": 1 },
+    { "id": "...", "name": "City", "dataType": "string", "isVisible": true, "order": 2 },
+    { "id": "...", "name": "State", "dataType": "string", "isVisible": true, "order": 3 }
+  ]
+}
+```
+
+Parent entity referencing an embedded object:
+```json
+{
+  "name": "Person",
+  "attributes": [
+    { "name": "FirstName", "dataType": "string" },
+    { "name": "LastName", "dataType": "string" },
+    { "name": "Address", "dataType": "embedded" }
   ]
 }
 ```
@@ -415,13 +441,24 @@ Actions classes are discovered via naming convention (`{TypeName}Actions`) or ex
 #### FR-BE-001: Model Synchronization
 - **Description**: System shall synchronize entity definitions between `SparkContext` and `App_Data/Model/*.json` when the application is started with the `--spark-synchronize-model` command-line parameter in Development mode
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 **Synchronization Process:**
 1. Reflect over `SparkContext` properties to find all `IRavenQueryable<T>` collections
 2. For each entity type `T`, generate or update the corresponding JSON model file. Do not remove any attributes. Only add/update attributes.
-3. JSON files remain static during normal runtime (no runtime discovery)
-4. Developers explicitly trigger synchronization during development
+3. **Embedded Type Discovery**: For each property on an entity that is a complex type (a class with an `Id` property), the synchronizer:
+   - Sets the attribute's `dataType` to `"embedded"`
+   - Queues the embedded type for processing
+   - Generates a separate JSON model file for the embedded type (e.g., `Address.json`)
+   - Recursively discovers nested embedded types within embedded types
+4. JSON files remain static during normal runtime (no runtime discovery)
+5. Developers explicitly trigger synchronization during development
+
+**Complex Type Detection:**
+A type is considered a complex/embedded type if:
+- It is a class (not a value type, enum, or primitive)
+- It is not `string`
+- It has a public `Id` property with both getter and setter
 
 #### FR-BE-002: CRUD Endpoints
 - **Description**: System shall expose REST endpoints for Create, Read, Update, Delete operations
@@ -1226,7 +1263,7 @@ public class Company
 | CRUD Endpoints | Complete | All 5 operations |
 | SparkMiddleware | Complete | Pre/post processing |
 | AddSpark/UseSpark/MapSpark | Complete | Extension methods |
-| Model Loading (JSON) | Not Started | FR-BE-001 |
+| Model Synchronization | Complete | FR-BE-001, includes embedded type discovery |
 | ISparkContext | Not Started | FR-BE-003 |
 | PopulateAttributeValues | Not Started | FR-BE-004 |
 | PopulateObjectValues | Not Started | FR-BE-004 |
@@ -1250,8 +1287,9 @@ Phase 1: Core Framework (Current)
 └── [x] Middleware setup
 
 Phase 2: Model-Driven Persistence
-├── [ ] Enhanced PersistentObjectAttribute with metadata
-├── [ ] JSON model file loading (App_Data/Model)
+├── [x] Enhanced PersistentObjectAttribute with metadata
+├── [x] JSON model file synchronization (App_Data/Model)
+├── [x] Embedded type discovery and generation
 ├── [ ] ISparkContext implementation
 ├── [ ] Entity type API endpoints
 ├── [ ] PopulateAttributeValues extension
