@@ -4,54 +4,58 @@
 
     <div class="card">
       <div class="card-body">
-        <form (ngSubmit)="onSave()">
-          @for (attr of getEditableAttributes(); track attr.id) {
-            <div class="mb-3">
-              <label [for]="attr.name" class="form-label">
-                {{ attr.label || attr.name }}
-                @if (attr.isRequired) {
-                  <span class="text-danger">*</span>
-                }
-              </label>
-              @if (attr.dataType === 'boolean') {
-                <div class="form-check">
-                  <input
-                    type="checkbox"
-                    class="form-check-input"
-                    [id]="attr.name"
-                    [(ngModel)]="formData[attr.name]"
-                    [name]="attr.name">
-                </div>
-              } @else if (attr.dataType === 'reference') {
-                <select
-                  class="form-select"
-                  [id]="attr.name"
-                  [(ngModel)]="formData[attr.name]"
-                  [name]="attr.name"
-                  [required]="attr.isRequired">
-                  <option value="">-- Select --</option>
-                  @for (option of getReferenceOptions(attr); track option.id) {
-                    <option [value]="option.id">{{ option.breadcrumb || option.name }}</option>
+        <bs-form (submit)="onSave()">
+          <bs-grid>
+            @for (attr of getEditableAttributes(); track attr.id) {
+              <div bsRow class="mb-3">
+                <label [md]="4" bsColFormLabel [for]="attr.name">
+                  {{ attr.label || attr.name }}
+                  @if (attr.isRequired) {
+                    <span class="text-danger">*</span>
                   }
-                </select>
-              } @else {
-                <input
-                  [type]="getInputType(attr.dataType)"
-                  class="form-control"
-                  [id]="attr.name"
-                  [(ngModel)]="formData[attr.name]"
-                  [name]="attr.name"
-                  [required]="attr.isRequired"
-                  [step]="attr.dataType === 'decimal' ? '0.01' : '1'">
-              }
-            </div>
-          }
+                </label>
+                <div [md]="8">
+                  @if (attr.dataType === 'boolean') {
+                    <div class="form-check pt-2">
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        [id]="attr.name"
+                        [(ngModel)]="formData[attr.name]"
+                        [name]="attr.name">
+                    </div>
+                  } @else if (attr.dataType === 'reference') {
+                    <bs-select
+                      [id]="attr.name"
+                      [(ngModel)]="formData[attr.name]"
+                      [name]="attr.name">
+                      <option [ngValue]="null">-- Select --</option>
+                      @for (option of getReferenceOptions(attr); track option.id) {
+                        <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
+                      }
+                    </bs-select>
+                  } @else {
+                    <input
+                      [type]="getInputType(attr.dataType)"
+                      [id]="attr.name"
+                      [(ngModel)]="formData[attr.name]"
+                      [name]="attr.name"
+                      [required]="attr.isRequired"
+                      [step]="attr.dataType === 'decimal' ? '0.01' : '1'">
+                  }
+                </div>
+              </div>
+            }
 
-          <div class="d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-secondary" (click)="onCancel()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save</button>
-          </div>
-        </form>
+            <div bsRow class="mt-4">
+              <div [md]="4"></div>
+              <div [md]="8" class="d-flex justify-content-end gap-2">
+                <button type="button" [color]="colors.secondary" (click)="onCancel()">Cancel</button>
+                <button type="submit" [color]="colors.primary">Save</button>
+              </div>
+            </div>
+          </bs-grid>
+        </bs-form>
       </div>
     </div>
   } @else {

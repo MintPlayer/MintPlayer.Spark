@@ -2,6 +2,11 @@ import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
+import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
+import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
@@ -9,10 +14,11 @@ import { switchMap, forkJoin, of } from 'rxjs';
 @Component({
   selector: 'app-po-edit',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsSelectModule],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {
+  colors = Color;
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;
   type: string = '';
@@ -52,7 +58,8 @@ export default class PoEditComponent implements OnInit {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
       const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
-      this.formData[attr.name] = itemAttr?.value || '';
+      const defaultValue = attr.dataType === 'reference' ? null : '';
+      this.formData[attr.name] = itemAttr?.value ?? defaultValue;
     });
   }
 
