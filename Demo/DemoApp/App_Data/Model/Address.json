@@ -1,0 +1,41 @@
+{
+  "id": "e9b59b38-ab69-4915-8e16-1acb8fcab7a3",
+  "name": "Address",
+  "clrType": "DemoApp.Data.Address",
+  "displayAttribute": "Street",
+  "attributes": [
+    {
+      "id": "6e4891d9-78ce-40b3-a99d-866886563181",
+      "name": "Street",
+      "label": "Street",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "rules": []
+    },
+    {
+      "id": "3ed09bf2-617f-4847-8b7a-ae2465821d8c",
+      "name": "City",
+      "label": "City",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "rules": []
+    },
+    {
+      "id": "7b146de0-2609-4b58-8418-a8304e6b93f2",
+      "name": "State",
+      "label": "State",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "rules": []
+    }
+  ]
+}

@@ -44,6 +44,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .Where(p => IsRavenQueryable(p.PropertyType))
             .ToList();
 
+        // Track types to process (including embedded types)
+        var processedTypes = new HashSet<string>();
+        var typesToProcess = new Queue<Type>();
+
         foreach (var property in queryableProperties)
         {
             var entityType = GetQueryableEntityType(property.PropertyType);
@@ -59,8 +63,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
             var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
             File.WriteAllText(fileName, json);
+            processedTypes.Add(clrType);
 
             Console.WriteLine($"Synchronized model: {entityType.Name} -> {fileName}");
+
+            // Collect embedded types from this entity
+            CollectEmbeddedTypes(entityType, typesToProcess, processedTypes);
 
             // Create default query for this entity type if it doesn't exist
             var queryName = $"Get{property.Name}";
@@ -80,6 +88,46 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 File.WriteAllText(queryFileName, queryJson);
 
                 Console.WriteLine($"Created query: {queryName} -> {queryFileName}");
+            }
+        }
+
+        // Process embedded types
+        while (typesToProcess.Count > 0)
+        {
+            var embeddedType = typesToProcess.Dequeue();
+            var clrType = embeddedType.FullName ?? embeddedType.Name;
+
+            if (processedTypes.Contains(clrType))
+                continue;
+
+            var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, existingDef);
+
+            var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
+            var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
+            File.WriteAllText(fileName, json);
+            processedTypes.Add(clrType);
+
+            Console.WriteLine($"Synchronized embedded model: {embeddedType.Name} -> {fileName}");
+
+            // Recursively collect embedded types from this type
+            CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
+        }
+    }
+
+    private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
+    {
+        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite);
+
+        foreach (var property in properties)
+        {
+            var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var clrType = propType.FullName ?? propType.Name;
+
+            if (IsComplexType(propType) && !processedTypes.Contains(clrType))
+            {
+                typesToProcess.Enqueue(propType);
             }
         }
     }
@@ -243,8 +291,20 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             _ when underlying == typeof(bool) => "boolean",
             _ when underlying == typeof(DateTime) || underlying == typeof(DateTimeOffset) => "datetime",
             _ when underlying == typeof(Guid) => "guid",
+            _ when IsComplexType(underlying) => "embedded",
             _ => "string"
         };
+    }
+
+    private bool IsComplexType(Type type)
+    {
+        // A complex type is a class (not string) that has its own properties with an Id property
+        if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
+            return false;
+
+        // Check if it's a class with public properties and has an Id property
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        return properties.Any(p => p.Name == "Id" && p.CanRead && p.CanWrite);
     }
 
     private bool IsNullable(Type type)

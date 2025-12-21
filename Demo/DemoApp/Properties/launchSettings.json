@@ -41,7 +41,7 @@
     },
     "Synchronize": {
       "commandName": "Project",
-      "commandLineArgs": "--spark-synchronize-schema",
+      "commandLineArgs": "--spark-synchronize-model",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },

@@ -24,7 +24,7 @@
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/Demo/DemoApp/bin/Debug/net10.0/DemoApp.dll",
-      "args": ["--spark-synchronize-schema"],
+      "args": ["--spark-synchronize-model"],
       "cwd": "${workspaceFolder}/Demo/DemoApp",
       "stopAtEntry": false,
       "env": {

@@ -14,7 +14,10 @@
       "isReadOnly": false,
       "order": 1,
       "rules": [
-        { "type": "maxLength", "value": 100 }
+        {
+          "type": "maxLength",
+          "value": 100
+        }
       ]
     },
     {
@@ -27,7 +30,10 @@
       "isReadOnly": false,
       "order": 2,
       "rules": [
-        { "type": "maxLength", "value": 100 }
+        {
+          "type": "maxLength",
+          "value": 100
+        }
       ]
     },
     {
@@ -40,8 +46,13 @@
       "isReadOnly": false,
       "order": 3,
       "rules": [
-        { "type": "email" },
-        { "type": "maxLength", "value": 255 }
+        {
+          "type": "email"
+        },
+        {
+          "type": "maxLength",
+          "value": 255
+        }
       ]
     },
     {
@@ -52,18 +63,31 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 4
+      "order": 4,
+      "rules": []
     },
     {
       "id": "550e8400-e29b-41d4-a716-446655440005",
       "name": "Company",
       "label": "Company",
       "dataType": "reference",
-      "query": "GetCompanies",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 5
+      "order": 5,
+      "query": "GetCompanies",
+      "rules": []
+    },
+    {
+      "id": "b537cf07-67e0-416d-9949-bf833c19133c",
+      "name": "Address",
+      "label": "Address",
+      "dataType": "embedded",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "rules": []
     }
   ]
 }
