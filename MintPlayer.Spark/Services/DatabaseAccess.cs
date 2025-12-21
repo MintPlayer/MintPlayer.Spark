@@ -66,11 +66,18 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var documentId = $"{collectionName}/{id}";
 
         using var session = documentStore.OpenAsyncSession();
-        var entity = await LoadEntityAsync(session, entityType, documentId);
+
+        // Get reference properties to include
+        var referenceProperties = GetReferenceProperties(entityType);
+
+        var entity = await LoadEntityWithIncludesAsync(session, entityType, documentId, referenceProperties);
 
         if (entity == null) return null;
 
-        return entityMapper.ToPersistentObject(entity, objectTypeId);
+        // Load included documents for breadcrumb resolution
+        var includedDocuments = await LoadIncludedDocumentsAsync(session, entity, referenceProperties);
+
+        return entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
     }
 
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
@@ -194,5 +201,49 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         return null;
+    }
+
+    private List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
+    {
+        return entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => (Property: p, Attribute: p.GetCustomAttribute<ReferenceAttribute>()))
+            .Where(x => x.Attribute != null)
+            .Select(x => (x.Property, x.Attribute!))
+            .ToList();
+    }
+
+    private async Task<object?> LoadEntityWithIncludesAsync(
+        IAsyncDocumentSession session,
+        Type entityType,
+        string documentId,
+        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    {
+        // For simplicity, just load the entity normally
+        // RavenDB will automatically track any subsequently loaded documents
+        return await LoadEntityAsync(session, entityType, documentId);
+    }
+
+    private async Task<Dictionary<string, object>> LoadIncludedDocumentsAsync(
+        IAsyncDocumentSession session,
+        object entity,
+        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    {
+        var includedDocuments = new Dictionary<string, object>();
+
+        foreach (var (property, refAttr) in referenceProperties)
+        {
+            var refId = property.GetValue(entity) as string;
+            if (string.IsNullOrEmpty(refId)) continue;
+
+            var targetType = refAttr.TargetType;
+            var referencedEntity = await LoadEntityAsync(session, targetType, refId);
+
+            if (referencedEntity != null)
+            {
+                includedDocuments[refId] = referencedEntity;
+            }
+        }
+
+        return includedDocuments;
     }
 }

@@ -11,6 +11,7 @@ public sealed partial class UpdatePersistentObject
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ICollectionHelper collectionHelper;
+    [Inject] private readonly IValidationService validationService;
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
@@ -32,6 +33,15 @@ public sealed partial class UpdatePersistentObject
         var collectionName = collectionHelper.GetCollectionName(entityType.ClrType);
         obj.Id = $"{collectionName}/{id}";
         obj.ObjectTypeId = objectTypeId;
+
+        // Validate the object
+        var validationResult = validationService.Validate(obj);
+        if (!validationResult.IsValid)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsJsonAsync(new { errors = validationResult.Errors });
+            return;
+        }
 
         var result = await databaseAccess.SavePersistentObjectAsync(obj);
         await httpContext.Response.WriteAsJsonAsync(result);

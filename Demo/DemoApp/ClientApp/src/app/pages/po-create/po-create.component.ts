@@ -7,8 +7,8 @@ import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, PersistentObjectAttribute } from '../../core/models';
-import { switchMap, of } from 'rxjs';
+import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
+import { switchMap, of, forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
@@ -21,6 +21,7 @@ export default class PoCreateComponent implements OnInit {
   entityType: EntityType | null = null;
   type: string = '';
   formData: Record<string, any> = {};
+  referenceOptions: Record<string, PersistentObject[]> = {};
 
   constructor(
     private route: ActivatedRoute,
@@ -40,6 +41,7 @@ export default class PoCreateComponent implements OnInit {
     ).subscribe(entityType => {
       this.entityType = entityType;
       this.initFormData();
+      this.loadReferenceOptions();
       this.cdr.detectChanges();
     });
   }
@@ -49,6 +51,28 @@ export default class PoCreateComponent implements OnInit {
     this.getEditableAttributes().forEach(attr => {
       this.formData[attr.name] = '';
     });
+  }
+
+  loadReferenceOptions(): void {
+    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'reference' && a.query);
+
+    if (refAttrs.length === 0) return;
+
+    const queries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
+    refAttrs.forEach(attr => {
+      if (attr.query) {
+        queries[attr.name] = this.sparkService.executeQueryByName(attr.query);
+      }
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.referenceOptions = results;
+      this.cdr.detectChanges();
+    });
+  }
+
+  getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
+    return this.referenceOptions[attr.name] || [];
   }
 
   getEditableAttributes() {

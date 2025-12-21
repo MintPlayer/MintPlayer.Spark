@@ -23,14 +23,17 @@
                     [name]="attr.name">
                 </div>
               } @else if (attr.dataType === 'reference') {
-                <input
-                  type="text"
-                  class="form-control"
+                <select
+                  class="form-select"
                   [id]="attr.name"
                   [(ngModel)]="formData[attr.name]"
                   [name]="attr.name"
-                  [required]="attr.isRequired"
-                  placeholder="Enter reference ID">
+                  [required]="attr.isRequired">
+                  <option value="">-- Select --</option>
+                  @for (option of getReferenceOptions(attr); track option.id) {
+                    <option [value]="option.id">{{ option.breadcrumb || option.name }}</option>
+                  }
+                </select>
               } @else {
                 <input
                   [type]="getInputType(attr.dataType)"

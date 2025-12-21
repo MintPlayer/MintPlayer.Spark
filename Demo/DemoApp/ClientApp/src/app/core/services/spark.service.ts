@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { EntityType, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -25,6 +26,22 @@ export class SparkService {
 
   getQuery(id: string): Observable<SparkQuery> {
     return this.http.get<SparkQuery>(`${this.baseUrl}/queries/${id}`);
+  }
+
+  getQueryByName(name: string): Observable<SparkQuery | undefined> {
+    return this.getQueries().pipe(
+      map(queries => queries.find(q => q.name === name))
+    );
+  }
+
+  executeQuery(queryId: string): Observable<PersistentObject[]> {
+    return this.http.get<PersistentObject[]>(`${this.baseUrl}/queries/${queryId}/execute`);
+  }
+
+  executeQueryByName(queryName: string): Observable<PersistentObject[]> {
+    return this.getQueryByName(queryName).pipe(
+      switchMap(query => query ? this.executeQuery(query.id) : of([]))
+    );
   }
 
   // Program Units

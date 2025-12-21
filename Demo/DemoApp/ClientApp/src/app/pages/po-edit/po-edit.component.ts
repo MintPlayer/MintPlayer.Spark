@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, PersistentObjectAttribute } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
@@ -18,6 +18,7 @@ export default class PoEditComponent implements OnInit {
   type: string = '';
   id: string = '';
   formData: Record<string, any> = {};
+  referenceOptions: Record<string, PersistentObject[]> = {};
 
   constructor(
     private route: ActivatedRoute,
@@ -42,6 +43,7 @@ export default class PoEditComponent implements OnInit {
       this.entityType = result.entityType;
       this.item = result.item;
       this.initFormData();
+      this.loadReferenceOptions();
       this.cdr.detectChanges();
     });
   }
@@ -52,6 +54,28 @@ export default class PoEditComponent implements OnInit {
       const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
       this.formData[attr.name] = itemAttr?.value || '';
     });
+  }
+
+  loadReferenceOptions(): void {
+    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'reference' && a.query);
+
+    if (refAttrs.length === 0) return;
+
+    const queries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
+    refAttrs.forEach(attr => {
+      if (attr.query) {
+        queries[attr.name] = this.sparkService.executeQueryByName(attr.query);
+      }
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.referenceOptions = results;
+      this.cdr.detectChanges();
+    });
+  }
+
+  getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
+    return this.referenceOptions[attr.name] || [];
   }
 
   getEditableAttributes() {

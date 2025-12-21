@@ -7,7 +7,9 @@ using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
+using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Raven.Client.ServerWide.Operations;
 
 namespace MintPlayer.Spark;
@@ -70,6 +72,56 @@ public static class SparkExtensions
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
         => app.UseMiddleware<SparkMiddleware>();
 
+    /// <summary>
+    /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.
+    /// Call this during development to generate or update model files based on your SparkContext properties.
+    /// </summary>
+    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
+    /// <param name="app">The application builder</param>
+    /// <returns>The application builder for chaining</returns>
+    public static IApplicationBuilder SynchronizeSparkModels<TContext>(this IApplicationBuilder app)
+        where TContext : SparkContext, new()
+    {
+        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
+
+        if (!hostEnvironment.IsDevelopment())
+        {
+            Console.WriteLine("Model synchronization is only available in Development mode.");
+            return app;
+        }
+
+        var synchronizer = app.ApplicationServices.GetRequiredService<IModelSynchronizer>();
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+
+        // Create a temporary context with a session to resolve queryable properties
+        using var session = documentStore.OpenAsyncSession();
+        var sparkContext = new TContext();
+        sparkContext.Session = session;
+
+        synchronizer.SynchronizeModels(sparkContext);
+
+        Console.WriteLine("Model synchronization completed.");
+
+        return app;
+    }
+
+    /// <summary>
+    /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
+    /// </summary>
+    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
+    /// <param name="app">The application builder</param>
+    /// <param name="args">Command-line arguments</param>
+    /// <returns>The application builder for chaining</returns>
+    public static IApplicationBuilder SynchronizeSparkModelsIfRequested<TContext>(this IApplicationBuilder app, string[] args)
+        where TContext : SparkContext, new()
+    {
+        if (args.Contains("--spark-synchronize-model"))
+        {
+            return app.SynchronizeSparkModels<TContext>();
+        }
+        return app;
+    }
+
     public static IEndpointRouteBuilder MapSpark(this IEndpointRouteBuilder endpoints)
     {
         // Register the Spark middleware for all requests
@@ -91,6 +143,8 @@ public static class SparkExtensions
         queriesGroup.MapGet("/", async (HttpContext context, ListQueries action) =>
             await action.HandleAsync(context));
         queriesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetQuery action) =>
+            await action.HandleAsync(context, id));
+        queriesGroup.MapGet("/{id:guid}/execute", async (HttpContext context, Guid id, ExecuteQuery action) =>
             await action.HandleAsync(context, id));
 
         // Program Units endpoint

@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Services;
 public interface IEntityMapper
 {
     object ToEntity(PersistentObject persistentObject);
-    PersistentObject ToPersistentObject(object entity, Guid objectTypeId);
+    PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
 }
 
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped, "AddSparkServices")]
@@ -46,11 +46,14 @@ internal partial class EntityMapper : IEntityMapper
         return entity;
     }
 
-    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId)
+    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null)
     {
         var entityType = entity.GetType();
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
         var id = idProperty?.GetValue(entity)?.ToString();
+
+        // Get the entity type definition for attribute metadata
+        var entityTypeDef = modelLoader.GetEntityType(objectTypeId);
 
         var attributes = new List<PersistentObjectAttribute>();
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -58,18 +61,39 @@ internal partial class EntityMapper : IEntityMapper
 
         foreach (var property in properties)
         {
-            attributes.Add(new PersistentObjectAttribute
+            var value = property.GetValue(entity);
+            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
+            var attrDef = entityTypeDef?.Attributes.FirstOrDefault(a => a.Name == property.Name);
+
+            var attribute = new PersistentObjectAttribute
             {
                 Name = property.Name,
-                Value = property.GetValue(entity),
-                DataType = GetDataType(property.PropertyType),
-            });
+                Value = value,
+                DataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType),
+            };
+
+            // Handle reference attributes - resolve breadcrumb from included documents
+            if (referenceAttr != null && value is string refId && !string.IsNullOrEmpty(refId) && includedDocuments != null)
+            {
+                if (includedDocuments.TryGetValue(refId, out var referencedEntity) && referencedEntity != null)
+                {
+                    attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntity.GetType());
+                }
+                attribute.Query = referenceAttr.Query ?? attrDef?.Query;
+            }
+            else if (attrDef?.DataType == "reference")
+            {
+                attribute.Query = attrDef.Query;
+            }
+
+            attributes.Add(attribute);
         }
 
         return new PersistentObject
         {
             Id = id,
             Name = GetEntityDisplayName(entity, entityType),
+            Breadcrumb = GetEntityDisplayName(entity, entityType),
             ObjectTypeId = objectTypeId,
             Attributes = attributes.ToArray(),
         };
