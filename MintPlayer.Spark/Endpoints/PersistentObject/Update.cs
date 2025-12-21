@@ -1,6 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Helpers;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -9,8 +8,6 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 public sealed partial class UpdatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly ICollectionHelper collectionHelper;
     [Inject] private readonly IValidationService validationService;
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
@@ -29,10 +26,7 @@ public sealed partial class UpdatePersistentObject
             ?? throw new InvalidOperationException("PersistentObject could not be deserialized from the request body.");
 
         // Ensure the ID and ObjectTypeId match the URL parameters
-        var entityType = modelLoader.GetEntityType(objectTypeId)
-            ?? throw new InvalidOperationException($"EntityType with ID {objectTypeId} not found");
-        var collectionName = collectionHelper.GetCollectionName(entityType.ClrType);
-        obj.Id = $"{collectionName}/{decodedId}";
+        obj.Id = existingObj.Id;
         obj.ObjectTypeId = objectTypeId;
 
         // Validate the object
