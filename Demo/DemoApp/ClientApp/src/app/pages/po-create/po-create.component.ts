@@ -28,7 +28,7 @@ export default class PoCreateComponent implements OnInit {
       switchMap(params => {
         this.type = params.get('type') || '';
         return this.sparkService.getEntityTypes().pipe(
-          switchMap(types => of(types.find(t => t.clrType === this.type) || null))
+          switchMap(types => of(types.find(t => t.id === this.type) || null))
         );
       })
     ).subscribe(entityType => {
@@ -81,7 +81,7 @@ export default class PoCreateComponent implements OnInit {
 
     const po: Partial<PersistentObject> = {
       name: this.formData['Name'] || 'New Item',
-      clrType: this.type,
+      clrType: this.entityType.clrType,
       attributes
     };
 

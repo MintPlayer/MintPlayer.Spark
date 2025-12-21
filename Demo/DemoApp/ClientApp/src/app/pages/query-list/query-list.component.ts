@@ -97,7 +97,7 @@ export default class QueryListComponent implements OnInit {
 
   loadItems(): void {
     if (!this.entityType) return;
-    this.sparkService.list(this.entityType.clrType).subscribe(items => {
+    this.sparkService.list(this.entityType.id).subscribe(items => {
       this.items = items;
       this.cdr.markForCheck();
     });
@@ -116,13 +116,13 @@ export default class QueryListComponent implements OnInit {
 
   onRowClick(item: PersistentObject): void {
     if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.clrType, item.id]);
+      this.router.navigate(['/po', this.entityType.id, item.id]);
     }
   }
 
   onCreate(): void {
     if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.clrType, 'new']);
+      this.router.navigate(['/po', this.entityType.id, 'new']);
     }
   }
 }

@@ -32,7 +32,7 @@ export default class PoEditComponent implements OnInit {
         this.id = params.get('id') || '';
         return forkJoin({
           entityType: this.sparkService.getEntityTypes().pipe(
-            switchMap(types => of(types.find(t => t.clrType === this.type) || null))
+            switchMap(types => of(types.find(t => t.id === this.type) || null))
           ),
           item: this.sparkService.get(this.type, this.id)
         });
@@ -86,7 +86,7 @@ export default class PoEditComponent implements OnInit {
     const po: Partial<PersistentObject> = {
       id: this.item.id,
       name: this.formData['Name'] || this.item.name,
-      clrType: this.type,
+      clrType: this.entityType.clrType,
       attributes
     };
 
