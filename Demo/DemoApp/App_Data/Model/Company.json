@@ -1,0 +1,47 @@
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "name": "Company",
+  "clrType": "DemoApp.Data.Company",
+  "displayAttribute": "Name",
+  "attributes": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440001",
+      "name": "Name",
+      "label": "Company Name",
+      "dataType": "string",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "rules": [
+        { "type": "maxLength", "value": 200 }
+      ]
+    },
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440002",
+      "name": "Website",
+      "label": "Website",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "rules": [
+        { "type": "url" }
+      ]
+    },
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440003",
+      "name": "EmployeeCount",
+      "label": "Number of Employees",
+      "dataType": "number",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "rules": [
+        { "type": "range", "min": 1, "max": 1000000 }
+      ]
+    }
+  ]
+}

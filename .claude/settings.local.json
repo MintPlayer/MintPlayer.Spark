@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "Bash(npx @angular/cli@latest new ClientApp --skip-git --style=scss --routing --ssr=false --skip-install)",
+      "Bash(npm install)",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet package search:*)",
+      "Bash(dotnet build:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__github__search_code",
+      "mcp__github__get_file_contents",
+      "Bash(dotnet restore:*)",
+      "WebFetch(domain:bootstrap.mintplayer.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:docs.ravendb.net)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "github"
+  ]
+}

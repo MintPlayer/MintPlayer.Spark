@@ -1,0 +1,48 @@
+::ng-deep bs-shell {
+  bs-accordion {
+    bs-accordion-tab {
+      .accordion-item {
+        background-color: transparent;
+        border: none;
+      }
+
+      .accordion-header {
+        .accordion-button {
+          background-color: transparent;
+          color: inherit;
+          box-shadow: none;
+
+          &:not(.collapsed) {
+            background-color: rgba(255, 255, 255, 0.1);
+          }
+        }
+      }
+
+      .accordion-body {
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 0;
+      }
+    }
+  }
+
+  .nav-link {
+    padding: 0.5rem 1rem;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &.active {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+}
+
+main {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+::ng-deep .sidebar {
+  background: #333;
+}
