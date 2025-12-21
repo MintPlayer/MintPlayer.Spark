@@ -2,6 +2,10 @@ import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsFloatingLabelComponent } from '@mintplayer/ng-bootstrap/floating-labels';
+import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute } from '../../core/models';
 import { switchMap, of } from 'rxjs';
@@ -9,10 +13,11 @@ import { switchMap, of } from 'rxjs';
 @Component({
   selector: 'app-po-create',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BsFormModule, BsFloatingLabelComponent, BsButtonTypeDirective],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
+  colors = Color;
   entityType: EntityType | null = null;
   type: string = '';
   formData: Record<string, any> = {};
