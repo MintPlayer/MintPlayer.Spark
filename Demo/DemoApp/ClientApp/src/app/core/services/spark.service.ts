@@ -16,7 +16,7 @@ export class SparkService {
   }
 
   getEntityType(id: string): Observable<EntityType> {
-    return this.http.get<EntityType>(`${this.baseUrl}/types/${id}`);
+    return this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}`);
   }
 
   // Queries
@@ -25,7 +25,7 @@ export class SparkService {
   }
 
   getQuery(id: string): Observable<SparkQuery> {
-    return this.http.get<SparkQuery>(`${this.baseUrl}/queries/${id}`);
+    return this.http.get<SparkQuery>(`${this.baseUrl}/queries/${encodeURIComponent(id)}`);
   }
 
   getQueryByName(name: string): Observable<SparkQuery | undefined> {
@@ -35,7 +35,7 @@ export class SparkService {
   }
 
   executeQuery(queryId: string): Observable<PersistentObject[]> {
-    return this.http.get<PersistentObject[]>(`${this.baseUrl}/queries/${queryId}/execute`);
+    return this.http.get<PersistentObject[]>(`${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`);
   }
 
   executeQueryByName(queryName: string): Observable<PersistentObject[]> {
@@ -51,22 +51,22 @@ export class SparkService {
 
   // Persistent Objects
   list(type: string): Observable<PersistentObject[]> {
-    return this.http.get<PersistentObject[]>(`${this.baseUrl}/po/${type}`);
+    return this.http.get<PersistentObject[]>(`${this.baseUrl}/po/${encodeURIComponent(type)}`);
   }
 
   get(type: string, id: string): Observable<PersistentObject> {
-    return this.http.get<PersistentObject>(`${this.baseUrl}/po/${type}/${id}`);
+    return this.http.get<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
   }
 
   create(type: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.post<PersistentObject>(`${this.baseUrl}/po/${type}`, data);
+    return this.http.post<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}`, data);
   }
 
   update(type: string, id: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.put<PersistentObject>(`${this.baseUrl}/po/${type}/${id}`, data);
+    return this.http.put<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, data);
   }
 
   delete(type: string, id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/po/${type}/${id}`);
+    return this.http.delete<void>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
   }
 }
