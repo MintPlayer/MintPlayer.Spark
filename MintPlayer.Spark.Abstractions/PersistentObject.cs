@@ -2,7 +2,7 @@
 
 public sealed class PersistentObject
 {
-    public required Guid Id { get; set; }
+    public Guid Id { get; set; }
     public required string Name { get; set; }
     public required string ClrType { get; set; }
     public string? Breadcrumb { get; set; }
@@ -11,7 +11,7 @@ public sealed class PersistentObject
 
 public sealed class PersistentObjectAttribute
 {
-    public required Guid Id { get; set; }
+    public Guid Id { get; set; }
     public required string Name { get; set; }
     public string? Label { get; set; }
     public object? Value { get; set; }
