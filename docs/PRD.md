@@ -543,6 +543,55 @@ public class Person
 - `OnAfterSave(entity)` - Hook after save
 - `OnBeforeDelete(entity)` - Hook before delete
 
+### 6.9 RavenDB Indexes
+
+RavenDB indexes allow projecting entity data into optimized query views. Spark supports custom indexes using RavenDB's `AbstractIndexCreationTask`.
+
+**Index Definition:**
+```csharp
+public class People_Overview : AbstractIndexCreationTask<Data.Person>
+{
+    public People_Overview() {
+        Map = people => from person in people
+                        select new Data.VPerson
+                        {
+                            Name = person.FirstName + ' ' + person.LastName,
+                            Age = person.Age,
+                            City = person.City
+                        };
+    }
+}
+```
+
+**Entity Class with QueryType Attribute:**
+```csharp
+[QueryType(typeof(Data.VPerson))]
+public class Person
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public int Age { get; set; }
+    public string City { get; set; }
+}
+```
+
+**Projection Class (View Model):**
+```csharp
+public class VPerson
+{
+    public string FullName { get; set; }
+    public int Age { get; set; }
+    public string City { get; set; }
+}
+```
+
+**QueryType Attribute:**
+
+The `[QueryType]` attribute is used to specify the type returned by the RavenDB index. This enables the framework to:
+- Know which projection type to use when querying via the index
+- Map index results to the appropriate view model
+- Support different shapes for stored documents vs. queried results
+
 ### 7.2 Frontend Requirements
 
 #### FR-FE-001: Shell Layout

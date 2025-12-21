@@ -75,7 +75,7 @@ internal partial class EntityMapper : IEntityMapper
         };
     }
 
-    private static void SetPropertyValue(PropertyInfo property, object entity, object? value)
+    private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         if (value == null)
         {
@@ -121,7 +121,7 @@ internal partial class EntityMapper : IEntityMapper
         }
     }
 
-    private static string GetDataType(Type type)
+    private string GetDataType(Type type)
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
 
@@ -137,7 +137,7 @@ internal partial class EntityMapper : IEntityMapper
         };
     }
 
-    private static string GetEntityDisplayName(object entity, Type entityType)
+    private string GetEntityDisplayName(object entity, Type entityType)
     {
         // Try common display name properties
         var nameProperty = entityType.GetProperty("Name")
@@ -147,7 +147,7 @@ internal partial class EntityMapper : IEntityMapper
         return nameProperty?.GetValue(entity)?.ToString() ?? entityType.Name;
     }
 
-    private static Type? ResolveType(string clrType)
+    private Type? ResolveType(string clrType)
     {
         // First try the standard Type.GetType which works for assembly-qualified names
         var type = Type.GetType(clrType);

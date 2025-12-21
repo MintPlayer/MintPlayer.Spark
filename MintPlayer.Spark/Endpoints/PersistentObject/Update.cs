@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Helpers;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -9,6 +10,7 @@ public sealed partial class UpdatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly ICollectionHelper collectionHelper;
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
@@ -27,7 +29,7 @@ public sealed partial class UpdatePersistentObject
         // Ensure the ID and ObjectTypeId match the URL parameters
         var entityType = modelLoader.GetEntityType(objectTypeId)
             ?? throw new InvalidOperationException($"EntityType with ID {objectTypeId} not found");
-        var collectionName = Helpers.CollectionHelper.GetCollectionName(entityType.ClrType);
+        var collectionName = collectionHelper.GetCollectionName(entityType.ClrType);
         obj.Id = $"{collectionName}/{id}";
         obj.ObjectTypeId = objectTypeId;
 

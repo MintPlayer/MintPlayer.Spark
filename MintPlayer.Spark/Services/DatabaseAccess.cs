@@ -14,6 +14,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly ICollectionHelper collectionHelper;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -61,7 +62,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
 
-        var collectionName = CollectionHelper.GetCollectionName(clrType);
+        var collectionName = collectionHelper.GetCollectionName(clrType);
         var documentId = $"{collectionName}/{id}";
 
         using var session = documentStore.OpenAsyncSession();
@@ -109,7 +110,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (entityTypeDefinition == null) return;
 
         var clrType = entityTypeDefinition.ClrType;
-        var collectionName = CollectionHelper.GetCollectionName(clrType);
+        var collectionName = collectionHelper.GetCollectionName(clrType);
         var documentId = $"{collectionName}/{id}";
 
         using var session = documentStore.OpenAsyncSession();
@@ -117,7 +118,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await session.SaveChangesAsync();
     }
 
-    private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         // Use reflection to call the generic LoadAsync<T> method
         var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
@@ -133,7 +134,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return resultProperty?.GetValue(task);
     }
 
-    private static async Task<IEnumerable<object>> QueryEntitiesAsync(IAsyncDocumentSession session, Type entityType)
+    private async Task<IEnumerable<object>> QueryEntitiesAsync(IAsyncDocumentSession session, Type entityType)
     {
         // Use Query<T> directly on the session (not via Advanced)
         // Query(string indexName, string collectionName, bool isMapReduce) with 1 generic param and 3 regular params
@@ -179,7 +180,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return [];
     }
 
-    private static Type? ResolveType(string clrType)
+    private Type? ResolveType(string clrType)
     {
         // First try the standard Type.GetType which works for assembly-qualified names
         var type = Type.GetType(clrType);
