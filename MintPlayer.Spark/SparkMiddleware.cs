@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.EntityTypes;
@@ -7,6 +8,7 @@ using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
 using Raven.Client.Documents;
+using Raven.Client.ServerWide.Operations;
 
 namespace MintPlayer.Spark;
 
@@ -29,6 +31,19 @@ public static class SparkExtensions
                 };
 
                 store.Initialize();
+
+                var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
+                if (hostEnvironment.IsDevelopment())
+                {
+                    var databaseNames = store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
+                    if (!databaseNames.Contains(options.RavenDb.Database))
+                    {
+                        store.Maintenance.Server.Send(new CreateDatabaseOperation(o =>
+                            o.Regular(options.RavenDb.Database).WithReplicationFactor(1)
+                        ));
+                    }
+                }
+
                 return store;
             });
     }
