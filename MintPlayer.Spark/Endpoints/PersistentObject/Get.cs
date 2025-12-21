@@ -10,12 +10,13 @@ public sealed partial class GetPersistentObject
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
-        var obj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, id);
+        var decodedId = Uri.UnescapeDataString(id);
+        var obj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, decodedId);
 
         if (obj is null)
         {
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {id} not found" });
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
             return;
         }
 

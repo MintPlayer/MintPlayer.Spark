@@ -15,12 +15,13 @@ public sealed partial class UpdatePersistentObject
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
-        var existingObj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, id);
+        var decodedId = Uri.UnescapeDataString(id);
+        var existingObj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, decodedId);
 
         if (existingObj is null)
         {
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {id} not found" });
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
             return;
         }
 
@@ -31,7 +32,7 @@ public sealed partial class UpdatePersistentObject
         var entityType = modelLoader.GetEntityType(objectTypeId)
             ?? throw new InvalidOperationException($"EntityType with ID {objectTypeId} not found");
         var collectionName = collectionHelper.GetCollectionName(entityType.ClrType);
-        obj.Id = $"{collectionName}/{id}";
+        obj.Id = $"{collectionName}/{decodedId}";
         obj.ObjectTypeId = objectTypeId;
 
         // Validate the object
