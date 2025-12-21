@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { SparkService } from '../../core/services/spark.service';
@@ -20,7 +20,8 @@ export default class PoDetailComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private sparkService: SparkService
+    private sparkService: SparkService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -38,6 +39,7 @@ export default class PoDetailComponent implements OnInit {
     ).subscribe(result => {
       this.entityType = result.entityType;
       this.item = result.item;
+      this.cdr.detectChanges();
     });
   }
 

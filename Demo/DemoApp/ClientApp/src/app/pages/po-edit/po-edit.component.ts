@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -22,7 +22,8 @@ export default class PoEditComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private sparkService: SparkService
+    private sparkService: SparkService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -41,6 +42,7 @@ export default class PoEditComponent implements OnInit {
       this.entityType = result.entityType;
       this.item = result.item;
       this.initFormData();
+      this.cdr.detectChanges();
     });
   }
 
