@@ -1,6 +1,7 @@
 using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Actions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -13,6 +14,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IActionsResolver actionsResolver;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -65,7 +67,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Get reference properties to include
         var referenceProperties = GetReferenceProperties(entityType);
 
-        var entity = await LoadEntityWithIncludesAsync(session, entityType, id, referenceProperties);
+        // Use actions for loading
+        var entity = await LoadEntityViaActionsAsync(session, entityType, id);
 
         if (entity == null) return null;
 
@@ -85,7 +88,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (entityType == null) return [];
 
         using var session = documentStore.OpenAsyncSession();
-        var entities = await QueryEntitiesAsync(session, entityType);
+
+        // Use actions for querying
+        var entities = await QueryEntitiesViaActionsAsync(session, entityType);
 
         return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId));
     }
@@ -93,14 +98,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
     {
         var entity = entityMapper.ToEntity(persistentObject);
+        var entityType = entity.GetType();
 
         using var session = documentStore.OpenAsyncSession();
-        await session.StoreAsync(entity);
-        await session.SaveChangesAsync();
+
+        // Use actions for saving (includes before/after hooks)
+        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, entity);
 
         // Get the generated ID from the entity
-        var idProperty = entity.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        var generatedId = idProperty?.GetValue(entity)?.ToString();
+        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        var generatedId = idProperty?.GetValue(savedEntity)?.ToString();
 
         persistentObject.Id = generatedId;
         return persistentObject;
@@ -108,9 +115,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
     {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return;
+
+        var clrType = entityTypeDefinition.ClrType;
+        var entityType = ResolveType(clrType);
+        if (entityType == null) return;
+
         using var session = documentStore.OpenAsyncSession();
-        session.Delete(id);
-        await session.SaveChangesAsync();
+
+        // Use actions for deleting (includes before hook)
+        await DeleteEntityViaActionsAsync(session, entityType, id);
     }
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
@@ -234,4 +249,50 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         return includedDocuments;
     }
+
+    #region Actions Helper Methods
+
+    private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onLoadMethod = actions.GetType().GetMethod("OnLoadAsync")!;
+        var task = (Task)onLoadMethod.Invoke(actions, [session, id])!;
+        await task;
+        return task.GetType().GetProperty("Result")!.GetValue(task);
+    }
+
+    private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(IAsyncDocumentSession session, Type entityType)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onQueryMethod = actions.GetType().GetMethod("OnQueryAsync")!;
+        var task = (Task)onQueryMethod.Invoke(actions, [session])!;
+        await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task);
+
+        if (result is System.Collections.IEnumerable enumerable)
+        {
+            return enumerable.Cast<object>().ToList();
+        }
+
+        return [];
+    }
+
+    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, object entity)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
+        var task = (Task)onSaveMethod.Invoke(actions, [session, entity])!;
+        await task;
+        return task.GetType().GetProperty("Result")!.GetValue(task)!;
+    }
+
+    private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onDeleteMethod = actions.GetType().GetMethod("OnDeleteAsync")!;
+        var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
+        await task;
+    }
+
+    #endregion
 }

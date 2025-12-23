@@ -10,6 +10,9 @@ builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration);
 builder.Services.AddScoped<SparkContext, DemoSparkContext>();
 
+// Register all Actions classes (auto-discovered by source generator)
+builder.Services.AddSparkActions();
+
 // Configure SPA static files
 builder.Services.AddSpaStaticFilesImproved(configuration =>
 {

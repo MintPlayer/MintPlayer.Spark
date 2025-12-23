@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.PersistentObject;
@@ -67,6 +68,23 @@ public static class SparkExtensions
             opt.RavenDb.Urls = options.RavenDb.Urls;
             opt.RavenDb.Database = options.RavenDb.Database;
         });
+    }
+
+    /// <summary>
+    /// Registers entity-specific Actions class for customizing CRUD behavior.
+    /// Consider using the generated AddSparkActions() extension method which auto-discovers Actions classes.
+    /// </summary>
+    /// <typeparam name="TActions">The Actions class type (must implement IPersistentObjectActions&lt;TEntity&gt;)</typeparam>
+    /// <typeparam name="TEntity">The entity type</typeparam>
+    /// <param name="services">The service collection</param>
+    /// <returns>The service collection for chaining</returns>
+    public static IServiceCollection AddSparkActions<TActions, TEntity>(this IServiceCollection services)
+        where TActions : class, IPersistentObjectActions<TEntity>
+        where TEntity : class
+    {
+        services.AddScoped<IPersistentObjectActions<TEntity>, TActions>();
+        services.AddScoped<TActions>();
+        return services;
     }
 
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)

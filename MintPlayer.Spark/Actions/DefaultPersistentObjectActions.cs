@@ -4,46 +4,49 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Actions;
 
-public class DefaultPersistentObjectActions<T> where T : class
+/// <summary>
+/// Default implementation of <see cref="IPersistentObjectActions{T}"/> providing standard CRUD behavior.
+/// Inherit from this class to customize specific operations while keeping default behavior for others.
+/// </summary>
+/// <typeparam name="T">The entity type</typeparam>
+public class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
 {
-    protected IAsyncDocumentSession Session { get; }
+    /// <inheritdoc />
+    public virtual async Task<IEnumerable<T>> OnQueryAsync(IAsyncDocumentSession session)
+        => await session.Query<T>().ToListAsync();
 
-    public DefaultPersistentObjectActions(IAsyncDocumentSession session)
-    {
-        Session = session;
-    }
+    /// <inheritdoc />
+    public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
+        => await session.LoadAsync<T>(id);
 
-    public virtual async Task<IEnumerable<T>> OnQuery()
+    /// <inheritdoc />
+    public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, T entity)
     {
-        return await Session.Query<T>().ToListAsync();
-    }
-
-    public virtual async Task<T?> OnLoad(string id)
-    {
-        return await Session.LoadAsync<T>(id);
-    }
-
-    public virtual async Task<T> OnSave(T entity)
-    {
-        await OnBeforeSave(entity);
-        await Session.StoreAsync(entity);
-        await Session.SaveChangesAsync();
-        await OnAfterSave(entity);
+        await OnBeforeSaveAsync(entity);
+        await session.StoreAsync(entity);
+        await session.SaveChangesAsync();
+        await OnAfterSaveAsync(entity);
         return entity;
     }
 
-    public virtual async Task OnDelete(string id)
+    /// <inheritdoc />
+    public virtual async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
     {
-        var entity = await Session.LoadAsync<T>(id);
+        var entity = await session.LoadAsync<T>(id);
         if (entity != null)
         {
-            await OnBeforeDelete(entity);
-            Session.Delete(id);
-            await Session.SaveChangesAsync();
+            await OnBeforeDeleteAsync(entity);
+            session.Delete(id);
+            await session.SaveChangesAsync();
         }
     }
 
-    public virtual Task OnBeforeSave(T entity) => Task.CompletedTask;
-    public virtual Task OnAfterSave(T entity) => Task.CompletedTask;
-    public virtual Task OnBeforeDelete(T entity) => Task.CompletedTask;
+    /// <inheritdoc />
+    public virtual Task OnBeforeSaveAsync(T entity) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public virtual Task OnAfterSaveAsync(T entity) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
 }
