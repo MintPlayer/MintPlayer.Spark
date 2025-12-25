@@ -59,7 +59,7 @@
       "id": "550e8400-e29b-41d4-a716-446655440004",
       "name": "DateOfBirth",
       "label": "Date of Birth",
-      "dataType": "datetime",
+      "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,

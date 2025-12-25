@@ -94,7 +94,7 @@
     </div>
 
     @if (editingAsDetailAttr) {
-      <bs-grid bsModalBody>
+      <bs-grid bsModalBody class="mt-3">
         @for (detailAttr of getAsDetailAttributes(editingAsDetailAttr); track detailAttr.id) {
           <div bsRow class="mb-3">
             <label [md]="4" bsColFormLabel [for]="'detail_' + detailAttr.name">
