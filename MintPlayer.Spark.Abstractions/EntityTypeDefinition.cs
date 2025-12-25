@@ -25,8 +25,8 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public string? ReferenceType { get; set; }
     /// <summary>
-    /// For embedded attributes, specifies the embedded entity type's CLR type name.
+    /// For AsDetail attributes, specifies the nested entity type's CLR type name.
     /// </summary>
-    public string? EmbeddedType { get; set; }
+    public string? AsDetailType { get; set; }
     public ValidationRule[] Rules { get; set; } = [];
 }

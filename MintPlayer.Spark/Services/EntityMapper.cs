@@ -70,7 +70,7 @@ internal partial class EntityMapper : IEntityMapper
             {
                 Name = property.Name,
                 Value = value,
-                DataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType),
+                DataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType),
             };
 
             // Handle reference attributes - resolve breadcrumb from included documents
@@ -82,7 +82,7 @@ internal partial class EntityMapper : IEntityMapper
                 }
                 attribute.Query = referenceAttr.Query ?? attrDef?.Query;
             }
-            else if (attrDef?.DataType == "reference")
+            else if (attrDef?.DataType == "Reference")
             {
                 attribute.Query = attrDef.Query;
             }
@@ -180,8 +180,20 @@ internal partial class EntityMapper : IEntityMapper
             _ when underlying == typeof(bool) => "boolean",
             _ when underlying == typeof(DateTime) => "datetime",
             _ when underlying == typeof(Guid) => "guid",
+            _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
+    }
+
+    private static bool IsComplexType(Type type)
+    {
+        // A complex type is a class (not string) that has its own properties
+        if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
+            return false;
+
+        // Check if it's a class with public properties
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        return properties.Length > 0;
     }
 
     private string GetEntityDisplayName(object entity, Type entityType)

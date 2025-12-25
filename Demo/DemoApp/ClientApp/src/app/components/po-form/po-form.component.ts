@@ -35,22 +35,22 @@ export class PoFormComponent implements OnChanges {
 
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
-  embeddedTypes: Record<string, EntityType> = {};
+  asDetailTypes: Record<string, EntityType> = {};
 
-  // Modal state for embedded object editing
-  editingEmbeddedAttr: EntityAttributeDefinition | null = null;
-  embeddedFormData: Record<string, any> = {};
-  showEmbeddedModal = false;
+  // Modal state for AsDetail object editing
+  editingAsDetailAttr: EntityAttributeDefinition | null = null;
+  asDetailFormData: Record<string, any> = {};
+  showAsDetailModal = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['entityType'] && this.entityType) {
       this.loadReferenceOptions();
-      this.loadEmbeddedTypes();
+      this.loadAsDetailTypes();
     }
   }
 
   loadReferenceOptions(): void {
-    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'reference' && a.query);
+    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'Reference' && a.query);
 
     if (refAttrs.length === 0) return;
 
@@ -67,16 +67,16 @@ export class PoFormComponent implements OnChanges {
     });
   }
 
-  loadEmbeddedTypes(): void {
-    const embeddedAttrs = this.getEditableAttributes().filter(a => a.dataType === 'embedded' && a.embeddedType);
+  loadAsDetailTypes(): void {
+    const asDetailAttrs = this.getEditableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType);
 
-    if (embeddedAttrs.length === 0) return;
+    if (asDetailAttrs.length === 0) return;
 
     this.sparkService.getEntityTypes().subscribe(types => {
-      embeddedAttrs.forEach(attr => {
-        const embeddedType = types.find(t => t.clrType === attr.embeddedType);
-        if (embeddedType) {
-          this.embeddedTypes[attr.name] = embeddedType;
+      asDetailAttrs.forEach(attr => {
+        const asDetailType = types.find(t => t.clrType === attr.asDetailType);
+        if (asDetailType) {
+          this.asDetailTypes[attr.name] = asDetailType;
         }
       });
       this.cdr.markForCheck();
@@ -93,8 +93,8 @@ export class PoFormComponent implements OnChanges {
     return this.referenceOptions[attr.name] || [];
   }
 
-  getEmbeddedType(attr: EntityAttributeDefinition): EntityType | null {
-    return this.embeddedTypes[attr.name] || null;
+  getAsDetailType(attr: EntityAttributeDefinition): EntityType | null {
+    return this.asDetailTypes[attr.name] || null;
   }
 
   getInputType(dataType: string): string {
@@ -132,14 +132,14 @@ export class PoFormComponent implements OnChanges {
     this.cancel.emit();
   }
 
-  // Embedded object modal methods
-  getEmbeddedDisplayValue(attr: EntityAttributeDefinition): string {
+  // AsDetail object modal methods
+  getAsDetailDisplayValue(attr: EntityAttributeDefinition): string {
     const value = this.formData[attr.name];
     if (!value) return '(not set)';
 
-    const embeddedType = this.getEmbeddedType(attr);
-    if (embeddedType?.displayAttribute && value[embeddedType.displayAttribute]) {
-      return value[embeddedType.displayAttribute];
+    const asDetailType = this.getAsDetailType(attr);
+    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
+      return value[asDetailType.displayAttribute];
     }
 
     // Try to find a reasonable display value
@@ -151,32 +151,32 @@ export class PoFormComponent implements OnChanges {
     return '(click to edit)';
   }
 
-  openEmbeddedEditor(attr: EntityAttributeDefinition): void {
-    this.editingEmbeddedAttr = attr;
-    // Copy current embedded data or initialize empty object
-    this.embeddedFormData = { ...(this.formData[attr.name] || {}) };
-    this.showEmbeddedModal = true;
+  openAsDetailEditor(attr: EntityAttributeDefinition): void {
+    this.editingAsDetailAttr = attr;
+    // Copy current AsDetail data or initialize empty object
+    this.asDetailFormData = { ...(this.formData[attr.name] || {}) };
+    this.showAsDetailModal = true;
     this.cdr.markForCheck();
   }
 
-  saveEmbeddedObject(): void {
-    if (this.editingEmbeddedAttr) {
-      this.formData[this.editingEmbeddedAttr.name] = { ...this.embeddedFormData };
+  saveAsDetailObject(): void {
+    if (this.editingAsDetailAttr) {
+      this.formData[this.editingAsDetailAttr.name] = { ...this.asDetailFormData };
       this.formDataChange.emit(this.formData);
     }
-    this.closeEmbeddedModal();
+    this.closeAsDetailModal();
   }
 
-  closeEmbeddedModal(): void {
-    this.showEmbeddedModal = false;
-    this.editingEmbeddedAttr = null;
-    this.embeddedFormData = {};
+  closeAsDetailModal(): void {
+    this.showAsDetailModal = false;
+    this.editingAsDetailAttr = null;
+    this.asDetailFormData = {};
     this.cdr.markForCheck();
   }
 
-  getEmbeddedAttributes(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
-    const embeddedType = this.getEmbeddedType(attr);
-    return embeddedType?.attributes
+  getAsDetailAttributes(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
+    const asDetailType = this.getAsDetailType(attr);
+    return asDetailType?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && a.name !== 'Id')
       .sort((a, b) => a.order - b.order) || [];
   }

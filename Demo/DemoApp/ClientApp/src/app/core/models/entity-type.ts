@@ -12,8 +12,8 @@ export interface EntityAttributeDefinition {
   query?: string;
   /** For reference attributes, specifies the target entity type's CLR type name */
   referenceType?: string;
-  /** For embedded attributes, specifies the embedded entity type's CLR type name */
-  embeddedType?: string;
+  /** For AsDetail attributes, specifies the nested entity type's CLR type name */
+  asDetailType?: string;
   rules: ValidationRule[];
 }
 

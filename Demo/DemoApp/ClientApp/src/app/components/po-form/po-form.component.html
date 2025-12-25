@@ -21,7 +21,7 @@
                 [class.is-invalid]="hasError(attr.name)"
                 (ngModelChange)="onFieldChange()">
             </div>
-          } @else if (attr.dataType === 'reference') {
+          } @else if (attr.dataType === 'Reference') {
             <bs-select
               [id]="attr.name"
               [(ngModel)]="formData[attr.name]"
@@ -33,19 +33,19 @@
                 <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
               }
             </bs-select>
-          } @else if (attr.dataType === 'embedded') {
+          } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input
                 type="text"
                 [id]="attr.name"
-                [value]="getEmbeddedDisplayValue(attr)"
+                [value]="getAsDetailDisplayValue(attr)"
                 readonly
                 [class.is-invalid]="hasError(attr.name)">
               <button
                 type="button"
                 bsInputGroupBtn
                 [color]="colors.secondary"
-                (click)="openEmbeddedEditor(attr)">
+                (click)="openAsDetailEditor(attr)">
                 <i class="bi bi-pencil"></i> Edit
               </button>
             </bs-input-group>
@@ -86,41 +86,41 @@
   </bs-grid>
 }
 
-<!-- Modal for editing embedded objects -->
-<bs-modal [(isOpen)]="showEmbeddedModal" (isOpenChange)="!$event && closeEmbeddedModal()">
+<!-- Modal for editing AsDetail objects -->
+<bs-modal [(isOpen)]="showAsDetailModal" (isOpenChange)="!$event && closeAsDetailModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">Edit {{ editingEmbeddedAttr?.label || editingEmbeddedAttr?.name }}</h5>
+      <h5 class="modal-title">Edit {{ editingAsDetailAttr?.label || editingAsDetailAttr?.name }}</h5>
     </div>
 
-    @if (editingEmbeddedAttr) {
+    @if (editingAsDetailAttr) {
       <bs-grid bsModalBody>
-        @for (embAttr of getEmbeddedAttributes(editingEmbeddedAttr); track embAttr.id) {
+        @for (detailAttr of getAsDetailAttributes(editingAsDetailAttr); track detailAttr.id) {
           <div bsRow class="mb-3">
-            <label [md]="4" bsColFormLabel [for]="'emb_' + embAttr.name">
-              {{ embAttr.label || embAttr.name }}
-              @if (embAttr.isRequired) {
+            <label [md]="4" bsColFormLabel [for]="'detail_' + detailAttr.name">
+              {{ detailAttr.label || detailAttr.name }}
+              @if (detailAttr.isRequired) {
                 <span class="text-danger">*</span>
               }
             </label>
             <div [md]="8">
-              @if (embAttr.dataType === 'boolean') {
+              @if (detailAttr.dataType === 'boolean') {
                 <div class="form-check pt-2">
                   <input
                     type="checkbox"
                     class="form-check-input"
-                    [id]="'emb_' + embAttr.name"
-                    [(ngModel)]="embeddedFormData[embAttr.name]"
-                    [name]="'emb_' + embAttr.name">
+                    [id]="'detail_' + detailAttr.name"
+                    [(ngModel)]="asDetailFormData[detailAttr.name]"
+                    [name]="'detail_' + detailAttr.name">
                 </div>
               } @else {
                 <input
-                  [type]="getInputType(embAttr.dataType)"
-                  [id]="'emb_' + embAttr.name"
-                  [(ngModel)]="embeddedFormData[embAttr.name]"
-                  [name]="'emb_' + embAttr.name"
-                  [required]="embAttr.isRequired"
-                  [step]="embAttr.dataType === 'decimal' ? '0.01' : '1'">
+                  [type]="getInputType(detailAttr.dataType)"
+                  [id]="'detail_' + detailAttr.name"
+                  [(ngModel)]="asDetailFormData[detailAttr.name]"
+                  [name]="'detail_' + detailAttr.name"
+                  [required]="detailAttr.isRequired"
+                  [step]="detailAttr.dataType === 'decimal' ? '0.01' : '1'">
               }
             </div>
           </div>
@@ -129,8 +129,8 @@
     }
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeEmbeddedModal()">Cancel</button>
-      <button type="button" [color]="colors.primary" (click)="saveEmbeddedObject()">Save</button>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">Cancel</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">Save</button>
     </div>
   </div>
 </bs-modal>

@@ -234,9 +234,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
 
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-            var dataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType);
+            var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
-            string? embeddedType = dataType == "embedded" ? (propType.FullName ?? propType.Name) : null;
+            string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
 
             if (existingAttrs.TryGetValue(property.Name, out var existingAttr))
             {
@@ -253,9 +253,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     }
                 }
 
-                if (dataType == "embedded")
+                if (dataType == "AsDetail")
                 {
-                    existingAttr.EmbeddedType = embeddedType;
+                    existingAttr.AsDetailType = asDetailType;
                 }
 
                 newAttributes.Add(existingAttr);
@@ -275,7 +275,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Order = order,
                     Query = referenceAttr?.Query,
                     ReferenceType = referenceType,
-                    EmbeddedType = embeddedType,
+                    AsDetailType = asDetailType,
                     Rules = []
                 };
                 newAttributes.Add(newAttr);
@@ -321,7 +321,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             _ when underlying == typeof(bool) => "boolean",
             _ when underlying == typeof(DateTime) || underlying == typeof(DateTimeOffset) => "datetime",
             _ when underlying == typeof(Guid) => "guid",
-            _ when IsComplexType(underlying) => "embedded",
+            _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
     }

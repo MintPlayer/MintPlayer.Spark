@@ -125,6 +125,7 @@ public static class SparkExtensions
 
     /// <summary>
     /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
+    /// Exits the application after synchronization completes.
     /// </summary>
     /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
     /// <param name="app">The application builder</param>
@@ -135,7 +136,8 @@ public static class SparkExtensions
     {
         if (args.Contains("--spark-synchronize-model"))
         {
-            return app.SynchronizeSparkModels<TContext>();
+            app.SynchronizeSparkModels<TContext>();
+            Environment.Exit(0);
         }
         return app;
     }

@@ -46,9 +46,9 @@ export default class PoCreateComponent implements OnInit {
   initFormData(): void {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
-      if (attr.dataType === 'reference') {
+      if (attr.dataType === 'Reference') {
         this.formData[attr.name] = null;
-      } else if (attr.dataType === 'embedded') {
+      } else if (attr.dataType === 'AsDetail') {
         this.formData[attr.name] = {};
       } else if (attr.dataType === 'boolean') {
         this.formData[attr.name] = false;

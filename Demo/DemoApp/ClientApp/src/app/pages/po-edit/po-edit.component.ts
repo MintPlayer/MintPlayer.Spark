@@ -54,9 +54,9 @@ export default class PoEditComponent implements OnInit {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
       const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
-      if (attr.dataType === 'reference') {
+      if (attr.dataType === 'Reference') {
         this.formData[attr.name] = itemAttr?.value ?? null;
-      } else if (attr.dataType === 'embedded') {
+      } else if (attr.dataType === 'AsDetail') {
         this.formData[attr.name] = itemAttr?.value ?? {};
       } else if (attr.dataType === 'boolean') {
         this.formData[attr.name] = itemAttr?.value ?? false;
