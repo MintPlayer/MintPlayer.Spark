@@ -39,16 +39,17 @@
 }
 
 nav.sidebar-inner {
-    padding-top: 54px !important;
+    padding-top: 3.375rem !important;
 }
 
 .top-bar {
   z-index: 1000;
-  height: 54px;
+  height: 3.375rem;
 }
 
 main {
   min-height: 100vh;
+  padding-top: 4rem !important; // 54px for top-bar
   background-color: #f8f9fa;
 }
 
