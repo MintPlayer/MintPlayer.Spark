@@ -3,16 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, SparkQuery } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
-
-interface PaginationData<T> {
-  data: T[];
-  count: number;
-  perPage: number;
-  page: number;
-}
 
 @Component({
   selector: 'app-query-list',
@@ -31,7 +25,7 @@ export default class QueryListComponent implements OnInit {
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
   allItems: PersistentObject[] = [];
-  paginationData: PaginationData<PersistentObject> | null = null;
+  paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
@@ -137,15 +131,16 @@ export default class QueryListComponent implements OnInit {
       });
     }
 
+    const totalPages = Math.ceil(filteredItems.length / this.settings.perPage.selected) || 1;
     this.paginationData = {
       data: filteredItems,
-      count: filteredItems.length,
+      totalRecords: filteredItems.length,
+      totalPages: totalPages,
       perPage: this.settings.perPage.selected,
       page: this.settings.page.selected
     };
 
     // Update page values for pagination
-    const totalPages = Math.ceil(filteredItems.length / this.settings.perPage.selected) || 1;
     this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
 
     // Ensure current page is valid

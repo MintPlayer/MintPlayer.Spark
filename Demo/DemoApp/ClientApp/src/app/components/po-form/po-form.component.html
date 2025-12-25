@@ -1,5 +1,6 @@
-@if (entityType) {
-  <bs-grid>
+<bs-form>
+  @if (entityType) {
+    <bs-grid>
     @for (attr of getEditableAttributes(); track attr.id) {
       <div bsRow class="mb-3">
         <label [md]="4" bsColFormLabel [for]="attr.name">
@@ -133,3 +134,4 @@
     <button type="button" [color]="colors.primary" (click)="saveEmbeddedObject()">Save</button>
   </ng-template>
 </bs-modal>
+</bs-form>
