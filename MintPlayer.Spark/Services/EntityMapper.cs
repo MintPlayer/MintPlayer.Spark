@@ -65,12 +65,20 @@ internal partial class EntityMapper : IEntityMapper
             var value = property.GetValue(entity);
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
             var attrDef = entityTypeDef?.Attributes.FirstOrDefault(a => a.Name == property.Name);
+            var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
+
+            // For complex types (AsDetail), convert to dictionary for proper JSON serialization
+            // System.Text.Json doesn't serialize object? properties based on runtime type
+            if (dataType == "AsDetail" && value != null)
+            {
+                value = ConvertToSerializableDictionary(value);
+            }
 
             var attribute = new PersistentObjectAttribute
             {
                 Name = property.Name,
                 Value = value,
-                DataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType),
+                DataType = dataType,
             };
 
             // Handle reference attributes - resolve breadcrumb from included documents
@@ -212,6 +220,28 @@ internal partial class EntityMapper : IEntityMapper
         // Check if it's a class with public properties
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
         return properties.Length > 0;
+    }
+
+    private static Dictionary<string, object?> ConvertToSerializableDictionary(object obj)
+    {
+        var result = new Dictionary<string, object?>();
+        var type = obj.GetType();
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var property in properties)
+        {
+            var value = property.GetValue(obj);
+
+            // Recursively convert nested complex types
+            if (value != null && IsComplexType(property.PropertyType))
+            {
+                value = ConvertToSerializableDictionary(value);
+            }
+
+            result[property.Name] = value;
+        }
+
+        return result;
     }
 
     private string GetEntityDisplayName(object entity, Type entityType)
