@@ -160,6 +160,10 @@ internal partial class EntityMapper : IEntityMapper
             {
                 convertedValue = value is DateTime dt ? dt : DateTime.Parse(value.ToString()!);
             }
+            else if (targetType == typeof(DateOnly))
+            {
+                convertedValue = value is DateOnly d ? d : DateOnly.Parse(value.ToString()!);
+            }
             else if (targetType.IsEnum)
             {
                 convertedValue = Enum.Parse(targetType, value.ToString()!);
