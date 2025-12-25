@@ -102,10 +102,29 @@ internal partial class EntityMapper : IEntityMapper
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
-        // Handle JsonElement - extract the actual value first
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        // Handle JsonElement - either extract simple value or deserialize complex types
         if (value is JsonElement je)
         {
-            value = ExtractJsonElementValue(je);
+            if (je.ValueKind == JsonValueKind.Object && IsComplexType(targetType))
+            {
+                // Deserialize complex objects (like Address) directly from JsonElement
+                try
+                {
+                    var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    property.SetValue(entity, deserializedValue);
+                }
+                catch
+                {
+                    // Skip properties that can't be deserialized
+                }
+                return;
+            }
+            else
+            {
+                value = ExtractJsonElementValue(je);
+            }
         }
 
         if (value == null)
@@ -116,8 +135,6 @@ internal partial class EntityMapper : IEntityMapper
             }
             return;
         }
-
-        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
         try
         {
