@@ -19,6 +19,7 @@
         @for (unit of group.programUnits; track unit.id) {
         <a [routerLink]="getRouterLink(unit)"
            routerLinkActive="active"
+           (click)="onMenuItemClick()"
            class="d-block px-3 py-2 text-light text-decoration-none nav-link">
           <i class="bi" [ngClass]="unit.icon || 'bi-file'"></i>
           <span class="ms-2">{{ unit.name }}</span>

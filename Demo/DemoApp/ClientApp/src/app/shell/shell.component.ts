@@ -55,6 +55,13 @@ export class ShellComponent implements OnInit {
     this.updateSidebarVisibility();
   }
 
+  onMenuItemClick() {
+    if (this.shellState() !== 'auto') {
+      this.shellState.set('hide');
+      this.updateSidebarVisibility();
+    }
+  }
+
   private setupResizeListener(): void {
     if (!isPlatformBrowser(this.platformId)) {
       return;
