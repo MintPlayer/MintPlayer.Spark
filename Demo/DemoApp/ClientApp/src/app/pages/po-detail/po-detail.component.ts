@@ -1,6 +1,7 @@
 import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
@@ -8,7 +9,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 @Component({
   selector: 'app-po-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, BsButtonGroupComponent],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
