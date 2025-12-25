@@ -187,6 +187,7 @@ public static class PersistentObjectExtensions
             _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "decimal",
             _ when underlying == typeof(bool) => "boolean",
             _ when underlying == typeof(DateTime) => "datetime",
+            _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"

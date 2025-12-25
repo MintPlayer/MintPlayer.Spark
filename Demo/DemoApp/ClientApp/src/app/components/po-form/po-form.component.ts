@@ -106,6 +106,8 @@ export class PoFormComponent implements OnChanges {
         return 'checkbox';
       case 'datetime':
         return 'datetime-local';
+      case 'date':
+        return 'date';
       default:
         return 'text';
     }
