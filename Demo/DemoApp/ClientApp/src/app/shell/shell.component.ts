@@ -1,15 +1,18 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellModule } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
+import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnitGroup } from '../core/models';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { fromEvent } from 'rxjs';
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule],
+  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -17,9 +20,19 @@ import { ProgramUnitGroup } from '../core/models';
 export class ShellComponent implements OnInit {
   private sparkService = inject(SparkService);
   private cdr = inject(ChangeDetectorRef);
+  private platformId = inject(PLATFORM_ID);
+  private destroyRef = inject(DestroyRef);
 
   programUnitGroups: ProgramUnitGroup[] = [];
-  shellState: 'auto' | 'show' | 'hide' = 'auto';
+  shellState = signal<'auto' | 'show' | 'hide'>('auto');
+  isSidebarVisible = signal<boolean>(false);
+
+  constructor() {
+    afterNextRender(() => {
+      this.setupResizeListener();
+      this.updateSidebarVisibility();
+    });
+  }
 
   ngOnInit(): void {
     this.sparkService.getProgramUnits().subscribe(config => {
@@ -35,5 +48,47 @@ export class ShellComponent implements OnInit {
       return ['/po', unit.persistentObjectId];
     }
     return ['/'];
+  }
+
+  toggleSidebar(open: boolean) {
+    this.shellState.set(open ? 'show' : 'hide');
+    this.updateSidebarVisibility();
+  }
+
+  private setupResizeListener(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+
+    fromEvent(window, 'resize')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.updateSidebarVisibility();
+      });
+  }
+
+  private updateSidebarVisibility(): void {
+    const state = this.shellState();
+    let isVisible: boolean;
+
+    if (state === 'show') {
+      isVisible = true;
+    } else if (state === 'hide') {
+      isVisible = false;
+    } else {
+      // 'auto' mode - check if above breakpoint
+      isVisible = this.isAboveBreakpoint();
+    }
+
+    this.isSidebarVisible.set(isVisible);
+    this.cdr.markForCheck();
+  }
+
+  private isAboveBreakpoint(): boolean {
+    if (!isPlatformBrowser(this.platformId)) {
+      return false;
+    }
+    // Bootstrap 'md' breakpoint is 768px
+    return window.innerWidth >= 768;
   }
 }
