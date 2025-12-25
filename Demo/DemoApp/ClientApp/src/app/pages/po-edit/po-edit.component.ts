@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -18,6 +18,11 @@ import { switchMap, forkJoin, of } from 'rxjs';
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
   colors = Color;
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;
@@ -25,13 +30,6 @@ export default class PoEditComponent implements OnInit {
   id: string = '';
   formData: Record<string, any> = {};
   referenceOptions: Record<string, PersistentObject[]> = {};
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.route.paramMap.pipe(

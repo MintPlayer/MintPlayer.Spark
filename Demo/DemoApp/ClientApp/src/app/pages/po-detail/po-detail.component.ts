@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { SparkService } from '../../core/services/spark.service';
@@ -12,17 +12,15 @@ import { switchMap, forkJoin, of } from 'rxjs';
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;
   type: string = '';
   id: string = '';
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.route.paramMap.pipe(

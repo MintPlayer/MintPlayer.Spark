@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellModule } from '@mintplayer/ng-bootstrap/shell';
@@ -15,13 +15,11 @@ import { ProgramUnitGroup } from '../core/models';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent implements OnInit {
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
   programUnitGroups: ProgramUnitGroup[] = [];
   shellState: 'auto' | 'show' | 'hide' = 'auto';
-
-  constructor(
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.sparkService.getProgramUnits().subscribe(config => {

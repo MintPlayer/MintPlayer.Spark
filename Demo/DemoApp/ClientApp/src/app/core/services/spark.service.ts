@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
@@ -7,8 +7,7 @@ import { EntityType, PersistentObject, ProgramUnitsConfiguration, SparkQuery } f
 @Injectable({ providedIn: 'root' })
 export class SparkService {
   private baseUrl = '/spark';
-
-  constructor(private http: HttpClient) {}
+  private http = inject(HttpClient);
 
   // Entity Types
   getEntityTypes(): Observable<EntityType[]> {

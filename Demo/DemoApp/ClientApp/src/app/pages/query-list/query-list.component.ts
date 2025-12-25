@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
@@ -22,6 +22,11 @@ interface PaginationData<T> {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class QueryListComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
   paginationData: PaginationData<PersistentObject> | null = null;
@@ -31,13 +36,6 @@ export default class QueryListComponent implements OnInit {
     sortProperty: '',
     sortDirection: 'ascending'
   });
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
