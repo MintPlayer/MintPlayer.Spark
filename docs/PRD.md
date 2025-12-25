@@ -1,7 +1,7 @@
 # Product Requirements Document: MintPlayer.Spark
 
-**Version:** 1.1
-**Date:** December 23, 2025
+**Version:** 1.2
+**Date:** December 25, 2025
 **Status:** Draft
 
 ---
@@ -159,7 +159,22 @@ public class PersistentObjectAttribute
 | `datetime` | Date and time values | `DateTime`, `DateTimeOffset` |
 | `guid` | Unique identifiers | `Guid` |
 | `reference` | Foreign key to another entity (stored as string ID) | `string` with `[Reference]` attribute |
-| `embedded` | Nested complex object stored within the parent document | Classes with an `Id` property |
+| `AsDetail` | Nested complex object displayed inline within the parent form | Class or record types (without `[Reference]` attribute) |
+
+**Data Type Detection During Synchronization:**
+
+The model synchronization process (`--spark-synchronize-model`) determines the `dataType` for each property based on the following rules:
+
+| Property Type | Detection Rule | Resulting DataType |
+|--------------|----------------|-------------------|
+| `string` | Simple type | `string` |
+| `int`, `long`, `short`, `byte` | Simple numeric type | `number` |
+| `decimal`, `double`, `float` | Floating-point type | `decimal` |
+| `bool` | Boolean type | `boolean` |
+| `DateTime`, `DateTimeOffset` | Date/time type | `datetime` |
+| `Guid` | GUID type | `guid` |
+| `string` with `[Reference]` attribute | Has `[Reference(typeof(T))]` attribute | `reference` |
+| Class or record type | Complex type without `[Reference]` | `AsDetail` |
 
 ### 6.3 Model Definition (JSON)
 
@@ -210,12 +225,12 @@ Not all PersistentObjects represent top-level database collections. The framewor
 | Category | Description | Example |
 |----------|-------------|---------|
 | **Collection Entity** | Maps directly to a RavenDB collection via `IRavenQueryable<T>` property on SparkContext | `Person`, `Company` |
-| **Embedded Object** | Stored as a property within another document (dataType: `embedded`), not in its own collection. JSON model file is auto-generated during synchronization. | `Address` on a `Person` document |
+| **AsDetail Object** | Stored as a property within another document (dataType: `AsDetail`), not in its own collection. JSON model file is auto-generated during synchronization. Displayed inline within the parent form. | `Address` on a `Person` document |
 | **Virtual** | Completely unrelated to the database; used for UI-only data | Modal dialog data, toast notifications, wizard state |
 
 **Examples:**
 
-Embedded object definition (auto-generated, can be used on multiple parent types like `Person.Address` or `Company.Address`):
+AsDetail object definition (auto-generated, can be used on multiple parent types like `Person.Address` or `Company.Address`):
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -230,14 +245,14 @@ Embedded object definition (auto-generated, can be used on multiple parent types
 }
 ```
 
-Parent entity referencing an embedded object:
+Parent entity with an AsDetail property:
 ```json
 {
   "name": "Person",
   "attributes": [
     { "name": "FirstName", "dataType": "string" },
     { "name": "LastName", "dataType": "string" },
-    { "name": "Address", "dataType": "embedded" }
+    { "name": "Address", "dataType": "AsDetail" }
   ]
 }
 ```
@@ -446,19 +461,29 @@ Actions classes are discovered via naming convention (`{TypeName}Actions`) or ex
 **Synchronization Process:**
 1. Reflect over `SparkContext` properties to find all `IRavenQueryable<T>` collections
 2. For each entity type `T`, generate or update the corresponding JSON model file. Do not remove any attributes. Only add/update attributes.
-3. **Embedded Type Discovery**: For each property on an entity that is a complex type (a class with an `Id` property), the synchronizer:
-   - Sets the attribute's `dataType` to `"embedded"`
-   - Queues the embedded type for processing
-   - Generates a separate JSON model file for the embedded type (e.g., `Address.json`)
-   - Recursively discovers nested embedded types within embedded types
-4. JSON files remain static during normal runtime (no runtime discovery)
-5. Developers explicitly trigger synchronization during development
+3. **Property Type Detection**: For each property on an entity, the synchronizer determines the `dataType`:
+   - **Simple types** (`string`, `int`, `bool`, `DateTime`, etc.): Mapped directly to corresponding dataType (see Data Type Detection table above)
+   - **Reference properties** (properties with `[Reference]` attribute): Sets `dataType` to `"Reference"` and populates the `Query` property for lookups
+   - **AsDetail properties** (class/record types without `[Reference]`): Sets `dataType` to `"AsDetail"`, queues the type for processing, and generates a separate JSON model file
+4. **AsDetail Type Discovery**: For each AsDetail property:
+   - Queues the AsDetail type for processing
+   - Generates a separate JSON model file for the AsDetail type (e.g., `Address.json`)
+   - Recursively discovers nested AsDetail types within AsDetail types
+5. JSON files remain static during normal runtime (no runtime discovery)
+6. Developers explicitly trigger synchronization during development
 
-**Complex Type Detection:**
-A type is considered a complex/embedded type if:
-- It is a class (not a value type, enum, or primitive)
+**Reference vs AsDetail Detection:**
+
+| Scenario | Detection Rule | DataType |
+|----------|---------------|----------|
+| `string` property with `[Reference(typeof(Company))]` | Has `[Reference]` attribute | `Reference` |
+| `Address` property (class type, no `[Reference]`) | Class/record type without `[Reference]` | `AsDetail` |
+
+**AsDetail Type Requirements:**
+A type is considered an AsDetail type if:
+- It is a class or record (not a value type, enum, or primitive)
 - It is not `string`
-- It has a public `Id` property with both getter and setter
+- It does NOT have a `[Reference]` attribute on the property
 
 #### FR-BE-002: CRUD Endpoints
 - **Description**: System shall expose REST endpoints for Create, Read, Update, Delete operations
@@ -1087,14 +1112,15 @@ export class ShellComponent {
 
 The create/edit pages shall dynamically generate form controls based on attribute definitions:
 
-| Data Type | Angular Control |
-|-----------|-----------------|
-| string | `<input type="text">` |
-| number | `<input type="number">` |
-| decimal | `<input type="number" step="0.01">` |
-| boolean | `<input type="checkbox">` |
-| datetime | `<input type="datetime-local">` |
-| reference | `<select>` or autocomplete |
+| Data Type | Angular Control | Notes |
+|-----------|-----------------|-------|
+| string | `<input type="text">` | |
+| number | `<input type="number">` | |
+| decimal | `<input type="number" step="0.01">` | |
+| boolean | `<input type="checkbox">` | |
+| datetime | `<input type="datetime-local">` | |
+| AsDetail | `<input type="text" readonly><button>...</button>` | Button opens a BsModal component showing the nested object in a po-edit-form |
+| Reference | `<select>` or autocomplete | |
 
 ---
 
@@ -1292,7 +1318,7 @@ public class Company
 | Entity Create Page | Complete | FR-FE-005, dynamic form generation |
 | Entity Edit Page | Complete | FR-FE-006, pre-populated forms |
 | Validation Error Display | Partial | Backend returns errors, frontend needs display |
-| Embedded Objects UI | Partial | Backend works, frontend needs nested form UI |
+| AsDetail Objects UI | Partial | Backend needs AsDetail type detection, frontend needs nested form UI |
 | Search/Filter | Not Started | List view filtering capability |
 
 ### 12.2 Implementation Roadmap
@@ -1308,7 +1334,7 @@ Phase 1: Core Framework ✅ COMPLETE
 Phase 2: Model-Driven Persistence ✅ COMPLETE
 ├── [x] Enhanced PersistentObjectAttribute with metadata
 ├── [x] JSON model file synchronization (App_Data/Model)
-├── [x] Embedded type discovery and generation
+├── [x] AsDetail type discovery and generation
 ├── [x] SparkContext implementation
 ├── [x] Entity type API endpoints (/spark/types)
 ├── [x] Spark Queries (/spark/queries)
@@ -1338,7 +1364,7 @@ Phase 5: Advanced Features (Current)
 ├── [ ] Search and filtering in list views
 ├── [x] Sorting and pagination
 ├── [x] Reference field lookups
-├── [ ] Embedded object editing UI
+├── [ ] AsDetail object editing UI
 ├── [ ] Validation error display in frontend
 ├── [x] Actions classes (FR-BE-009) - lifecycle hooks
 ├── [ ] Reference attribute ([Reference]) support
