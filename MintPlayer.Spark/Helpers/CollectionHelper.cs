@@ -1,8 +1,16 @@
+using MintPlayer.SourceGenerators.Attributes;
+
 namespace MintPlayer.Spark.Helpers;
 
-public static class CollectionHelper
+public interface ICollectionHelper
 {
-    public static string GetCollectionName(string clrType)
+    string GetCollectionName(string clrType);
+}
+
+[Register(typeof(ICollectionHelper), ServiceLifetime.Singleton, "AddSparkServices")]
+internal partial class CollectionHelper : ICollectionHelper
+{
+    public string GetCollectionName(string clrType)
     {
         var className = clrType.Split('.').Last();
         return Pluralize(className);

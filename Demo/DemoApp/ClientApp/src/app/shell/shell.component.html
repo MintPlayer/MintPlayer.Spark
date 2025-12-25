@@ -1,23 +1,31 @@
-<bs-shell [state]="shellState" [breakpoint]="'md'">
-  <nav *bsShellSidebar class="text-light p-2">
+<div class="position-fixed w-100 bg-dark top-bar">
+  <bs-navbar-toggler class="sidebar-toggle"
+                     [class.sidebar-open]="isSidebarVisible()"
+                     [state]="isSidebarVisible()"
+                     (stateChange)="toggleSidebar($event)">
+  </bs-navbar-toggler>
+</div>
+<bs-shell [state]="shellState()" [breakpoint]="'md'">
+  <nav *bsShellSidebar class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">
       @for (group of programUnitGroups; track group.id) {
-        <bs-accordion-tab>
-          <bs-accordion-tab-header>
-            <span class="triangle me-2"></span>
-            <i class="bi" [ngClass]="group.icon || 'bi-folder'"></i>
-            <span class="ms-2">{{ group.name }}</span>
-          </bs-accordion-tab-header>
-          @for (unit of group.programUnits; track unit.id) {
-            <a [routerLink]="getRouterLink(unit)"
-               routerLinkActive="active"
-               class="d-block px-3 py-2 text-light text-decoration-none nav-link">
-              <i class="bi" [ngClass]="unit.icon || 'bi-file'"></i>
-              <span class="ms-2">{{ unit.name }}</span>
-            </a>
-          }
-        </bs-accordion-tab>
+      <bs-accordion-tab>
+        <bs-accordion-tab-header>
+          <span class="triangle me-2"></span>
+          <i class="bi" [ngClass]="group.icon || 'bi-folder'"></i>
+          <span class="ms-2">{{ group.name }}</span>
+        </bs-accordion-tab-header>
+        @for (unit of group.programUnits; track unit.id) {
+        <a [routerLink]="getRouterLink(unit)"
+           routerLinkActive="active"
+           (click)="onMenuItemClick()"
+           class="d-block px-3 py-2 text-light text-decoration-none nav-link">
+          <i class="bi" [ngClass]="unit.icon || 'bi-file'"></i>
+          <span class="ms-2">{{ unit.name }}</span>
+        </a>
+        }
+      </bs-accordion-tab>
       }
     </bs-accordion>
   </nav>

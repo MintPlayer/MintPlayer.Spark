@@ -38,6 +38,14 @@
       },
       "publishAllPorts": true,
       "useSSL": true
+    },
+    "Synchronize": {
+      "commandName": "Project",
+      "commandLineArgs": "--spark-synchronize-model",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "dotnetRunMessages": true
     }
   },
   "$schema": "http://json.schemastore.org/launchsettings.json",

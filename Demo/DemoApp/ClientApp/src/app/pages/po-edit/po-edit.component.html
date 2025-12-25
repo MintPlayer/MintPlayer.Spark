@@ -2,53 +2,24 @@
   @if (entityType && item) {
     <h2 class="mb-4">Edit {{ entityType.name }}</h2>
 
+    <!-- General validation errors -->
+    @for (error of getGeneralErrors(); track error.errorMessage) {
+      <bs-alert [type]="colors.danger" class="mb-3">
+        {{ error.errorMessage }}
+      </bs-alert>
+    }
+
     <div class="card">
       <div class="card-body">
-        <form (ngSubmit)="onSave()">
-          @for (attr of getEditableAttributes(); track attr.id) {
-            <div class="mb-3">
-              <label [for]="attr.name" class="form-label">
-                {{ attr.label || attr.name }}
-                @if (attr.isRequired) {
-                  <span class="text-danger">*</span>
-                }
-              </label>
-              @if (attr.dataType === 'boolean') {
-                <div class="form-check">
-                  <input
-                    type="checkbox"
-                    class="form-check-input"
-                    [id]="attr.name"
-                    [(ngModel)]="formData[attr.name]"
-                    [name]="attr.name">
-                </div>
-              } @else if (attr.dataType === 'reference') {
-                <input
-                  type="text"
-                  class="form-control"
-                  [id]="attr.name"
-                  [(ngModel)]="formData[attr.name]"
-                  [name]="attr.name"
-                  [required]="attr.isRequired"
-                  placeholder="Enter reference ID">
-              } @else {
-                <input
-                  [type]="getInputType(attr.dataType)"
-                  class="form-control"
-                  [id]="attr.name"
-                  [(ngModel)]="formData[attr.name]"
-                  [name]="attr.name"
-                  [required]="attr.isRequired"
-                  [step]="attr.dataType === 'decimal' ? '0.01' : '1'">
-              }
-            </div>
-          }
-
-          <div class="d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-secondary" (click)="onCancel()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save</button>
-          </div>
-        </form>
+        <app-po-form
+          [entityType]="entityType"
+          [(formData)]="formData"
+          [validationErrors]="validationErrors"
+          [showButtons]="true"
+          [isSaving]="isSaving"
+          (save)="onSave()"
+          (cancel)="onCancel()">
+        </app-po-form>
       </div>
     </div>
   } @else {

@@ -1,43 +1,38 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, SparkQuery } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
-interface PaginationData<T> {
-  data: T[];
-  count: number;
-  perPage: number;
-  page: number;
-}
-
 @Component({
   selector: 'app-query-list',
   standalone: true,
-  imports: [CommonModule, RouterModule, BsDatatableModule],
+  imports: [CommonModule, FormsModule, RouterModule, BsDatatableModule],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class QueryListComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
-  paginationData: PaginationData<PersistentObject> | null = null;
+  allItems: PersistentObject[] = [];
+  paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
+  searchTerm: string = '';
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
     sortProperty: '',
     sortDirection: 'ascending'
   });
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -105,17 +100,60 @@ export default class QueryListComponent implements OnInit {
   loadItems(): void {
     if (!this.entityType) return;
     this.sparkService.list(this.entityType.id).subscribe(items => {
-      this.paginationData = {
-        data: items,
-        count: items.length,
-        perPage: this.settings.perPage.selected,
-        page: this.settings.page.selected
-      };
-      // Update page values for pagination
-      const totalPages = Math.ceil(items.length / this.settings.perPage.selected) || 1;
-      this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-      this.cdr.markForCheck();
+      this.allItems = items;
+      this.applyFilter();
     });
+  }
+
+  onSearchChange(): void {
+    // Reset to first page when searching
+    this.settings.page.selected = 1;
+    this.applyFilter();
+  }
+
+  applyFilter(): void {
+    let filteredItems = this.allItems;
+
+    // Apply search filter
+    if (this.searchTerm.trim()) {
+      const term = this.searchTerm.toLowerCase().trim();
+      filteredItems = this.allItems.filter(item => {
+        // Search in name
+        if (item.name?.toLowerCase().includes(term)) return true;
+        // Search in breadcrumb
+        if (item.breadcrumb?.toLowerCase().includes(term)) return true;
+        // Search in all attribute values
+        return item.attributes.some(attr => {
+          const value = attr.breadcrumb || attr.value;
+          if (value == null) return false;
+          return String(value).toLowerCase().includes(term);
+        });
+      });
+    }
+
+    const totalPages = Math.ceil(filteredItems.length / this.settings.perPage.selected) || 1;
+    this.paginationData = {
+      data: filteredItems,
+      totalRecords: filteredItems.length,
+      totalPages: totalPages,
+      perPage: this.settings.perPage.selected,
+      page: this.settings.page.selected
+    };
+
+    // Update page values for pagination
+    this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+
+    // Ensure current page is valid
+    if (this.settings.page.selected > totalPages) {
+      this.settings.page.selected = 1;
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.onSearchChange();
   }
 
   getVisibleAttributes() {

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using DemoApp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 
@@ -7,6 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration);
+builder.Services.AddScoped<SparkContext, DemoSparkContext>();
+
+// Register all Actions classes (auto-discovered by source generator)
+builder.Services.AddSparkActions();
 
 // Configure SPA static files
 builder.Services.AddSpaStaticFilesImproved(configuration =>
@@ -24,6 +29,7 @@ app.UseSpaStaticFilesImproved();
 app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
+app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
 
 app.UseEndpoints(endpoints =>
 {

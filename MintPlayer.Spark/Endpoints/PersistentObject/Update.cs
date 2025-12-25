@@ -8,16 +8,17 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 public sealed partial class UpdatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IValidationService validationService;
 
     public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
     {
-        var existingObj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, id);
+        var decodedId = Uri.UnescapeDataString(id);
+        var existingObj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, decodedId);
 
         if (existingObj is null)
         {
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {id} not found" });
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
             return;
         }
 
@@ -25,11 +26,17 @@ public sealed partial class UpdatePersistentObject
             ?? throw new InvalidOperationException("PersistentObject could not be deserialized from the request body.");
 
         // Ensure the ID and ObjectTypeId match the URL parameters
-        var entityType = modelLoader.GetEntityType(objectTypeId)
-            ?? throw new InvalidOperationException($"EntityType with ID {objectTypeId} not found");
-        var collectionName = Helpers.CollectionHelper.GetCollectionName(entityType.ClrType);
-        obj.Id = $"{collectionName}/{id}";
+        obj.Id = existingObj.Id;
         obj.ObjectTypeId = objectTypeId;
+
+        // Validate the object
+        var validationResult = validationService.Validate(obj);
+        if (!validationResult.IsValid)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsJsonAsync(new { errors = validationResult.Errors });
+            return;
+        }
 
         var result = await databaseAccess.SavePersistentObjectAsync(obj);
         await httpContext.Response.WriteAsJsonAsync(result);

@@ -14,7 +14,10 @@
       "isReadOnly": false,
       "order": 1,
       "rules": [
-        { "type": "maxLength", "value": 100 }
+        {
+          "type": "maxLength",
+          "value": 100
+        }
       ]
     },
     {
@@ -27,7 +30,10 @@
       "isReadOnly": false,
       "order": 2,
       "rules": [
-        { "type": "maxLength", "value": 100 }
+        {
+          "type": "maxLength",
+          "value": 100
+        }
       ]
     },
     {
@@ -40,30 +46,50 @@
       "isReadOnly": false,
       "order": 3,
       "rules": [
-        { "type": "email" },
-        { "type": "maxLength", "value": 255 }
+        {
+          "type": "email"
+        },
+        {
+          "type": "maxLength",
+          "value": 255
+        }
       ]
     },
     {
       "id": "550e8400-e29b-41d4-a716-446655440004",
       "name": "DateOfBirth",
       "label": "Date of Birth",
-      "dataType": "datetime",
+      "dataType": "date",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 4
+      "order": 4,
+      "rules": []
     },
     {
       "id": "550e8400-e29b-41d4-a716-446655440005",
       "name": "Company",
       "label": "Company",
-      "dataType": "reference",
-      "query": "GetCompanies",
+      "dataType": "Reference",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 5
+      "order": 5,
+      "query": "GetCompanies",
+      "referenceType": "DemoApp.Data.Company",
+      "rules": []
+    },
+    {
+      "id": "b537cf07-67e0-416d-9949-bf833c19133c",
+      "name": "Address",
+      "label": "Address",
+      "dataType": "AsDetail",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "asDetailType": "DemoApp.Data.Address",
+      "rules": []
     }
   ]
 }

@@ -20,5 +20,13 @@ public sealed class EntityAttributeDefinition
     public bool IsReadOnly { get; set; }
     public int Order { get; set; }
     public string? Query { get; set; }
+    /// <summary>
+    /// For reference attributes, specifies the target entity type's CLR type name.
+    /// </summary>
+    public string? ReferenceType { get; set; }
+    /// <summary>
+    /// For AsDetail attributes, specifies the nested entity type's CLR type name.
+    /// </summary>
+    public string? AsDetailType { get; set; }
     public ValidationRule[] Rules { get; set; } = [];
 }

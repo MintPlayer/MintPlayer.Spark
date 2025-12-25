@@ -1,0 +1,137 @@
+<bs-form>
+  @if (entityType) {
+    <bs-grid>
+    @for (attr of getEditableAttributes(); track attr.id) {
+      <div bsRow class="mb-3">
+        <label [md]="4" bsColFormLabel [for]="attr.name">
+          {{ attr.label || attr.name }}
+          @if (attr.isRequired) {
+            <span class="text-danger">*</span>
+          }
+        </label>
+        <div [md]="8">
+          @if (attr.dataType === 'boolean') {
+            <div class="form-check pt-2">
+              <input
+                type="checkbox"
+                class="form-check-input"
+                [id]="attr.name"
+                [(ngModel)]="formData[attr.name]"
+                [name]="attr.name"
+                [class.is-invalid]="hasError(attr.name)"
+                (ngModelChange)="onFieldChange()">
+            </div>
+          } @else if (attr.dataType === 'Reference') {
+            <bs-select
+              [id]="attr.name"
+              [(ngModel)]="formData[attr.name]"
+              [name]="attr.name"
+              [class.is-invalid]="hasError(attr.name)"
+              (ngModelChange)="onFieldChange()">
+              <option [ngValue]="null">-- Select --</option>
+              @for (option of getReferenceOptions(attr); track option.id) {
+                <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
+              }
+            </bs-select>
+          } @else if (attr.dataType === 'AsDetail') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getAsDetailDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openAsDetailEditor(attr)">
+                <i class="bi bi-pencil"></i> Edit
+              </button>
+            </bs-input-group>
+          } @else {
+            <input
+              [type]="getInputType(attr.dataType)"
+              [id]="attr.name"
+              [(ngModel)]="formData[attr.name]"
+              [name]="attr.name"
+              [required]="attr.isRequired"
+              [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
+              [class.is-invalid]="hasError(attr.name)"
+              (ngModelChange)="onFieldChange()">
+          }
+          @if (getErrorForAttribute(attr.name); as errorMsg) {
+            <div class="invalid-feedback d-block">
+              {{ errorMsg }}
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (showButtons) {
+      <div bsRow class="mt-4">
+        <div [md]="4"></div>
+        <div [md]="8" class="d-flex justify-content-end gap-2">
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+          <button type="submit" [color]="colors.primary" [disabled]="isSaving" (click)="onSave()">
+            @if (isSaving) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Save
+          </button>
+        </div>
+      </div>
+    }
+  </bs-grid>
+}
+
+<!-- Modal for editing AsDetail objects -->
+<bs-modal [(isOpen)]="showAsDetailModal" (isOpenChange)="!$event && closeAsDetailModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">Edit {{ editingAsDetailAttr?.label || editingAsDetailAttr?.name }}</h5>
+    </div>
+
+    @if (editingAsDetailAttr) {
+      <bs-grid bsModalBody class="mt-3">
+        @for (detailAttr of getAsDetailAttributes(editingAsDetailAttr); track detailAttr.id) {
+          <div bsRow class="mb-3">
+            <label [md]="4" bsColFormLabel [for]="'detail_' + detailAttr.name">
+              {{ detailAttr.label || detailAttr.name }}
+              @if (detailAttr.isRequired) {
+                <span class="text-danger">*</span>
+              }
+            </label>
+            <div [md]="8">
+              @if (detailAttr.dataType === 'boolean') {
+                <div class="form-check pt-2">
+                  <input
+                    type="checkbox"
+                    class="form-check-input"
+                    [id]="'detail_' + detailAttr.name"
+                    [(ngModel)]="asDetailFormData[detailAttr.name]"
+                    [name]="'detail_' + detailAttr.name">
+                </div>
+              } @else {
+                <input
+                  [type]="getInputType(detailAttr.dataType)"
+                  [id]="'detail_' + detailAttr.name"
+                  [(ngModel)]="asDetailFormData[detailAttr.name]"
+                  [name]="'detail_' + detailAttr.name"
+                  [required]="detailAttr.isRequired"
+                  [step]="detailAttr.dataType === 'decimal' ? '0.01' : '1'">
+              }
+            </div>
+          </div>
+        }
+      </bs-grid>
+    }
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">Cancel</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">Save</button>
+    </div>
+  </div>
+</bs-modal>
+</bs-form>

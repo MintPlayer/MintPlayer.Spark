@@ -1,7 +1,7 @@
 # Product Requirements Document: MintPlayer.Spark
 
-**Version:** 1.0
-**Date:** December 20, 2025
+**Version:** 1.2
+**Date:** December 25, 2025
 **Status:** Draft
 
 ---
@@ -140,13 +140,41 @@ public class PersistentObjectAttribute
     public Guid Id { get; set; }
     public string Name { get; set; }
     public object? Value { get; set; }
-    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, reference
+    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, guid, reference, embedded
     public bool IsRequired { get; set; }
     public string? Query { get; set; }          // SparkQuery name for reference lookups in edit mode
     public string? Breadcrumb { get; set; }     // Computed display value for references (read-only)
     public ValidationRule[] Rules { get; set; }
 }
 ```
+
+**Supported Data Types:**
+
+| DataType | Description | CLR Types |
+|----------|-------------|-----------|
+| `string` | Text values | `string` |
+| `number` | Integer values | `int`, `long` |
+| `decimal` | Floating-point values | `decimal`, `double`, `float` |
+| `boolean` | True/false values | `bool` |
+| `datetime` | Date and time values | `DateTime`, `DateTimeOffset` |
+| `guid` | Unique identifiers | `Guid` |
+| `reference` | Foreign key to another entity (stored as string ID) | `string` with `[Reference]` attribute |
+| `AsDetail` | Nested complex object displayed inline within the parent form | Class or record types (without `[Reference]` attribute) |
+
+**Data Type Detection During Synchronization:**
+
+The model synchronization process (`--spark-synchronize-model`) determines the `dataType` for each property based on the following rules:
+
+| Property Type | Detection Rule | Resulting DataType |
+|--------------|----------------|-------------------|
+| `string` | Simple type | `string` |
+| `int`, `long`, `short`, `byte` | Simple numeric type | `number` |
+| `decimal`, `double`, `float` | Floating-point type | `decimal` |
+| `bool` | Boolean type | `boolean` |
+| `DateTime`, `DateTimeOffset` | Date/time type | `datetime` |
+| `Guid` | GUID type | `guid` |
+| `string` with `[Reference]` attribute | Has `[Reference(typeof(T))]` attribute | `reference` |
+| Class or record type | Complex type without `[Reference]` | `AsDetail` |
 
 ### 6.3 Model Definition (JSON)
 
@@ -197,21 +225,34 @@ Not all PersistentObjects represent top-level database collections. The framewor
 | Category | Description | Example |
 |----------|-------------|---------|
 | **Collection Entity** | Maps directly to a RavenDB collection via `IRavenQueryable<T>` property on SparkContext | `Person`, `Company` |
-| **Nested Object** | Stored as a property within another document, not in its own collection | `Address` on a `Person` document |
+| **AsDetail Object** | Stored as a property within another document (dataType: `AsDetail`), not in its own collection. JSON model file is auto-generated during synchronization. Displayed inline within the parent form. | `Address` on a `Person` document |
 | **Virtual** | Completely unrelated to the database; used for UI-only data | Modal dialog data, toast notifications, wizard state |
 
 **Examples:**
 
-Nested object (can be used on multiple parent types like `Person.Addresses` or `Company.Addresses`):
+AsDetail object definition (auto-generated, can be used on multiple parent types like `Person.Address` or `Company.Address`):
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Address",
   "clrType": "Demo.Data.Address",
+  "displayAttribute": "Street",
   "attributes": [
-    { "name": "Street", "dataType": "string" },
-    { "name": "City", "dataType": "string" },
-    { "name": "PostalCode", "dataType": "string" }
+    { "id": "...", "name": "Street", "dataType": "string", "isVisible": true, "order": 1 },
+    { "id": "...", "name": "City", "dataType": "string", "isVisible": true, "order": 2 },
+    { "id": "...", "name": "State", "dataType": "string", "isVisible": true, "order": 3 }
+  ]
+}
+```
+
+Parent entity with an AsDetail property:
+```json
+{
+  "name": "Person",
+  "attributes": [
+    { "name": "FirstName", "dataType": "string" },
+    { "name": "LastName", "dataType": "string" },
+    { "name": "Address", "dataType": "AsDetail" }
   ]
 }
 ```
@@ -415,13 +456,34 @@ Actions classes are discovered via naming convention (`{TypeName}Actions`) or ex
 #### FR-BE-001: Model Synchronization
 - **Description**: System shall synchronize entity definitions between `SparkContext` and `App_Data/Model/*.json` when the application is started with the `--spark-synchronize-model` command-line parameter in Development mode
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 **Synchronization Process:**
 1. Reflect over `SparkContext` properties to find all `IRavenQueryable<T>` collections
 2. For each entity type `T`, generate or update the corresponding JSON model file. Do not remove any attributes. Only add/update attributes.
-3. JSON files remain static during normal runtime (no runtime discovery)
-4. Developers explicitly trigger synchronization during development
+3. **Property Type Detection**: For each property on an entity, the synchronizer determines the `dataType`:
+   - **Simple types** (`string`, `int`, `bool`, `DateTime`, etc.): Mapped directly to corresponding dataType (see Data Type Detection table above)
+   - **Reference properties** (properties with `[Reference]` attribute): Sets `dataType` to `"Reference"` and populates the `Query` property for lookups
+   - **AsDetail properties** (class/record types without `[Reference]`): Sets `dataType` to `"AsDetail"`, queues the type for processing, and generates a separate JSON model file
+4. **AsDetail Type Discovery**: For each AsDetail property:
+   - Queues the AsDetail type for processing
+   - Generates a separate JSON model file for the AsDetail type (e.g., `Address.json`)
+   - Recursively discovers nested AsDetail types within AsDetail types
+5. JSON files remain static during normal runtime (no runtime discovery)
+6. Developers explicitly trigger synchronization during development
+
+**Reference vs AsDetail Detection:**
+
+| Scenario | Detection Rule | DataType |
+|----------|---------------|----------|
+| `string` property with `[Reference(typeof(Company))]` | Has `[Reference]` attribute | `Reference` |
+| `Address` property (class type, no `[Reference]`) | Class/record type without `[Reference]` | `AsDetail` |
+
+**AsDetail Type Requirements:**
+A type is considered an AsDetail type if:
+- It is a class or record (not a value type, enum, or primitive)
+- It is not `string`
+- It does NOT have a `[Reference]` attribute on the property
 
 #### FR-BE-002: CRUD Endpoints
 - **Description**: System shall expose REST endpoints for Create, Read, Update, Delete operations
@@ -439,7 +501,7 @@ Actions classes are discovered via naming convention (`{TypeName}Actions`) or ex
 #### FR-BE-003: Entity Type Registry
 - **Description**: System shall provide an API to query available entity types
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -449,7 +511,7 @@ Actions classes are discovered via naming convention (`{TypeName}Actions`) or ex
 #### FR-BE-004: Attribute Mapping
 - **Description**: System shall provide extension methods for bidirectional mapping between entities and PersistentObjects
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Partial (EntityMapper service implemented, extension method helpers not yet added)
 
 ```csharp
 // Map entity properties to PersistentObject attributes
@@ -462,7 +524,7 @@ public static void PopulateObjectValues<T>(this PersistentObject po, T entity);
 #### FR-BE-005: Validation
 - **Description**: System shall validate PersistentObject data against model rules before persistence
 - **Priority**: Medium
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Supported validation rules:
 - `required`: Field must have a value
@@ -475,7 +537,7 @@ Supported validation rules:
 #### FR-BE-006: Reference Handling
 - **Description**: System shall support references between entity types
 - **Priority**: Medium
-- **Status**: Not Implemented
+- **Status**: Partial (breadcrumb resolution works, `[Reference]` attribute not yet implemented)
 
 **RavenDB Reference Constraint:**
 Reference properties on entity classes **must be of type `string`** (RavenDB restriction). The `[Reference]` attribute indicates the expected target type:
@@ -501,7 +563,7 @@ public class Person
 #### FR-BE-007: Spark Queries
 - **Description**: System shall support Spark Query definitions that specify which SparkContext property to use for retrieving entity lists
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 **Query Definition Location:** `App_Data/Queries/*.json`
 
@@ -515,7 +577,7 @@ public class Person
 #### FR-BE-008: Program Units
 - **Description**: System shall support Program Unit configuration for defining application navigation structure
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 **Configuration Location:** `App_Data/programUnits.json`
 
@@ -527,33 +589,93 @@ public class Person
 #### FR-BE-009: Actions Classes
 - **Description**: System shall support customizable Actions classes for entity-specific business logic
 - **Priority**: Medium
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 **Discovery Mechanism:**
-1. Look for `{TypeName}Actions` class in application assembly
-2. Fall back to application's `DefaultPersistentObjectActions<T>`
+1. Look for `{TypeName}Actions` class in any loaded assembly (e.g., `PersonActions` for `Person` entity)
+2. Fall back to application's registered `IPersistentObjectActions<T>` in DI container
 3. Fall back to library's `DefaultPersistentObjectActions<T>`
 
+**Fallback Behavior (Required):**
+- When a CRUD operation is performed on an entity type that has no custom Actions class registered, the system **MUST** automatically use `DefaultPersistentObjectActions<T>` to handle the operation
+- This ensures all entity types work out-of-the-box without requiring explicit Actions registration
+- The default implementation provides standard RavenDB CRUD operations with no custom business logic
+
 **Lifecycle Hooks:**
-- `OnQuery()` - Called when listing entities
-- `OnLoad(id)` - Called when loading a single entity
-- `OnSave(entity)` - Called when creating/updating
-- `OnDelete(id)` - Called when deleting
-- `OnBeforeSave(entity)` - Hook before save
-- `OnAfterSave(entity)` - Hook after save
-- `OnBeforeDelete(entity)` - Hook before delete
+- `OnQueryAsync(session)` - Called when listing entities
+- `OnLoadAsync(session, id)` - Called when loading a single entity
+- `OnSaveAsync(session, entity)` - Called when creating/updating (calls OnBeforeSaveAsync/OnAfterSaveAsync)
+- `OnDeleteAsync(session, id)` - Called when deleting (calls OnBeforeDeleteAsync)
+- `OnBeforeSaveAsync(entity)` - Hook before save (validation, transformation)
+- `OnAfterSaveAsync(entity)` - Hook after save (notifications, auditing)
+- `OnBeforeDeleteAsync(entity)` - Hook before delete (cleanup, cascade)
+
+**Registration:**
+```csharp
+// Register entity-specific Actions in Program.cs
+builder.Services.AddSparkActions<PersonActions, Person>();
+```
+
+### 6.9 RavenDB Indexes
+
+RavenDB indexes allow projecting entity data into optimized query views. Spark supports custom indexes using RavenDB's `AbstractIndexCreationTask`.
+
+**Index Definition:**
+```csharp
+public class People_Overview : AbstractIndexCreationTask<Data.Person>
+{
+    public People_Overview() {
+        Map = people => from person in people
+                        select new Data.VPerson
+                        {
+                            Name = person.FirstName + ' ' + person.LastName,
+                            Age = person.Age,
+                            City = person.City
+                        };
+    }
+}
+```
+
+**Entity Class with QueryType Attribute:**
+```csharp
+[QueryType(typeof(Data.VPerson))]
+public class Person
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public int Age { get; set; }
+    public string City { get; set; }
+}
+```
+
+**Projection Class (View Model):**
+```csharp
+public class VPerson
+{
+    public string FullName { get; set; }
+    public int Age { get; set; }
+    public string City { get; set; }
+}
+```
+
+**QueryType Attribute:**
+
+The `[QueryType]` attribute is used to specify the type returned by the RavenDB index. This enables the framework to:
+- Know which projection type to use when querying via the index
+- Map index results to the appropriate view model
+- Support different shapes for stored documents vs. queried results
 
 ### 7.2 Frontend Requirements
 
 #### FR-FE-001: Shell Layout
 - **Description**: Application shall use `@mintplayer/ng-bootstrap` BsShellComponent
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 #### FR-FE-002: Dynamic Sidebar (Program Units)
 - **Description**: Sidebar shall display navigation based on Program Units configuration
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Requirements:
 - Fetch program units from `/spark/program-units` on initialization
@@ -566,7 +688,7 @@ Requirements:
 #### FR-FE-003: Entity List Page
 - **Description**: Display paginated list of entities for a given type using `BsDatatableComponent` from `@mintplayer/ng-bootstrap`
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Features:
 - Use `BsDatatableComponent` for the data grid
@@ -580,7 +702,7 @@ Features:
 #### FR-FE-004: Entity Detail Page
 - **Description**: Display single entity with all attributes
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Features:
 - Read-only view of entity
@@ -591,7 +713,7 @@ Features:
 #### FR-FE-005: Entity Create Page
 - **Description**: Form to create new entity
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Features:
 - Dynamic form generation based on entity type definition
@@ -603,7 +725,7 @@ Features:
 #### FR-FE-006: Entity Edit Page
 - **Description**: Form to edit existing entity
 - **Priority**: High
-- **Status**: Not Implemented
+- **Status**: Implemented
 
 Features:
 - Pre-populated form with current values
@@ -990,14 +1112,15 @@ export class ShellComponent {
 
 The create/edit pages shall dynamically generate form controls based on attribute definitions:
 
-| Data Type | Angular Control |
-|-----------|-----------------|
-| string | `<input type="text">` |
-| number | `<input type="number">` |
-| decimal | `<input type="number" step="0.01">` |
-| boolean | `<input type="checkbox">` |
-| datetime | `<input type="datetime-local">` |
-| reference | `<select>` or autocomplete |
+| Data Type | Angular Control | Notes |
+|-----------|-----------------|-------|
+| string | `<input type="text">` | |
+| number | `<input type="number">` | |
+| decimal | `<input type="number" step="0.01">` | |
+| boolean | `<input type="checkbox">` | |
+| datetime | `<input type="datetime-local">` | |
+| AsDetail | `<input type="text" readonly><button>...</button>` | Button opens a BsModal component showing the nested object in a po-edit-form |
+| Reference | `<select>` or autocomplete | |
 
 ---
 
@@ -1170,66 +1293,83 @@ public class Company
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Solution Structure | Complete | 3 projects configured |
-| PersistentObject Model | Complete | Basic implementation |
-| PersistentObjectAttribute | Partial | Needs rules, dataType |
+| Solution Structure | Complete | 4 projects configured |
+| PersistentObject Model | Complete | Full implementation with metadata |
+| PersistentObjectAttribute | Complete | Includes rules, dataType, all metadata |
 | IDatabaseAccess | Complete | RavenDB implementation |
-| CRUD Endpoints | Complete | All 5 operations |
+| CRUD Endpoints | Complete | All 5 operations (FR-BE-002) |
 | SparkMiddleware | Complete | Pre/post processing |
 | AddSpark/UseSpark/MapSpark | Complete | Extension methods |
-| Model Loading (JSON) | Not Started | FR-BE-001 |
-| ISparkContext | Not Started | FR-BE-003 |
-| PopulateAttributeValues | Not Started | FR-BE-004 |
-| PopulateObjectValues | Not Started | FR-BE-004 |
-| Validation | Not Started | FR-BE-005 |
-| Reference Handling | Not Started | FR-BE-006 |
-| Angular Shell | Not Started | FR-FE-001 |
-| Dynamic Sidebar | Not Started | FR-FE-002 |
-| Entity List Page | Not Started | FR-FE-003 |
-| Entity Detail Page | Not Started | FR-FE-004 |
-| Entity Create Page | Not Started | FR-FE-005 |
-| Entity Edit Page | Not Started | FR-FE-006 |
+| Model Synchronization | Complete | FR-BE-001, includes embedded type discovery |
+| Entity Type Registry | Complete | FR-BE-003, `/spark/types` endpoints |
+| Spark Queries | Complete | FR-BE-007, query execution with sorting |
+| Program Units | Complete | FR-BE-008, hierarchical navigation |
+| Validation | Complete | FR-BE-005, all rules implemented |
+| Entity Mapper | Complete | Bidirectional Entity ↔ PersistentObject mapping |
+| PopulateAttributeValues | Not Started | FR-BE-004, extension method helpers |
+| PopulateObjectValues | Not Started | FR-BE-004, extension method helpers |
+| Reference Handling | Partial | FR-BE-006, breadcrumb resolution works, `[Reference]` attribute not implemented |
+| Actions Classes | Complete | FR-BE-009, lifecycle hooks |
+| RavenDB Indexes | Not Started | `[QueryType]` attribute support |
+| Angular Shell | Complete | FR-FE-001, BsShellComponent integration |
+| Dynamic Sidebar | Complete | FR-FE-002, program units menu |
+| Entity List Page | Complete | FR-FE-003, BsDatatableComponent with pagination/sorting |
+| Entity Detail Page | Complete | FR-FE-004, read-only view with edit/delete |
+| Entity Create Page | Complete | FR-FE-005, dynamic form generation |
+| Entity Edit Page | Complete | FR-FE-006, pre-populated forms |
+| Validation Error Display | Partial | Backend returns errors, frontend needs display |
+| AsDetail Objects UI | Partial | Backend needs AsDetail type detection, frontend needs nested form UI |
+| Search/Filter | Not Started | List view filtering capability |
 
 ### 12.2 Implementation Roadmap
 
 ```
-Phase 1: Core Framework (Current)
+Phase 1: Core Framework ✅ COMPLETE
 ├── [x] Solution structure
 ├── [x] PersistentObject abstractions
 ├── [x] RavenDB integration
 ├── [x] CRUD endpoints
 └── [x] Middleware setup
 
-Phase 2: Model-Driven Persistence
-├── [ ] Enhanced PersistentObjectAttribute with metadata
-├── [ ] JSON model file loading (App_Data/Model)
-├── [ ] ISparkContext implementation
-├── [ ] Entity type API endpoints
-├── [ ] PopulateAttributeValues extension
-└── [ ] PopulateObjectValues extension
+Phase 2: Model-Driven Persistence ✅ COMPLETE
+├── [x] Enhanced PersistentObjectAttribute with metadata
+├── [x] JSON model file synchronization (App_Data/Model)
+├── [x] AsDetail type discovery and generation
+├── [x] SparkContext implementation
+├── [x] Entity type API endpoints (/spark/types)
+├── [x] Spark Queries (/spark/queries)
+├── [x] Program Units (/spark/program-units)
+├── [x] Entity Mapper (bidirectional mapping)
+├── [ ] PopulateAttributeValues extension (helper methods)
+└── [ ] PopulateObjectValues extension (helper methods)
 
-Phase 3: Validation & Rules
-├── [ ] Validation rule definitions
-├── [ ] Server-side validation
-├── [ ] Validation error responses
-└── [ ] Reference validation
+Phase 3: Validation & Rules ✅ COMPLETE
+├── [x] Validation rule definitions (required, maxLength, minLength, range, regex, email, url)
+├── [x] Server-side validation
+├── [x] Validation error responses (400 BadRequest)
+└── [ ] Frontend validation error display
 
-Phase 4: Angular Frontend
-├── [ ] @mintplayer/ng-bootstrap integration
-├── [ ] SparkService implementation
-├── [ ] Shell component with sidebar
-├── [ ] Entity list page
-├── [ ] Entity detail page
-├── [ ] Entity create page
-├── [ ] Entity edit page
-└── [ ] Dynamic form generation
+Phase 4: Angular Frontend ✅ COMPLETE
+├── [x] @mintplayer/ng-bootstrap integration (BsShellComponent, BsDatatableComponent)
+├── [x] SparkService implementation (all HTTP methods)
+├── [x] Shell component with sidebar (program units menu)
+├── [x] Entity list page (QueryList with pagination/sorting)
+├── [x] Entity detail page (PoDetail with edit/delete)
+├── [x] Entity create page (PoCreate with dynamic forms)
+├── [x] Entity edit page (PoEdit with pre-populated forms)
+├── [x] Dynamic form generation (text, number, checkbox, datetime, select)
+└── [x] Reference field dropdowns (query execution for lookups)
 
-Phase 5: Advanced Features
-├── [ ] Search and filtering
-├── [ ] Sorting and pagination
-├── [ ] Reference field lookups
-├── [ ] Computed/derived attributes
-└── [ ] Custom actions/hooks
+Phase 5: Advanced Features (Current)
+├── [ ] Search and filtering in list views
+├── [x] Sorting and pagination
+├── [x] Reference field lookups
+├── [ ] AsDetail object editing UI
+├── [ ] Validation error display in frontend
+├── [x] Actions classes (FR-BE-009) - lifecycle hooks
+├── [ ] Reference attribute ([Reference]) support
+├── [ ] RavenDB index support ([QueryType])
+└── [ ] Computed/derived attributes
 ```
 
 ---

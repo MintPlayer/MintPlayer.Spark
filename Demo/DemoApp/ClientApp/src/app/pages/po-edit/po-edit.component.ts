@@ -1,30 +1,34 @@
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, PersistentObjectAttribute } from '../../core/models';
+import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, BsAlertModule, PoFormComponent],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private sparkService = inject(SparkService);
+  private cdr = inject(ChangeDetectorRef);
+
+  colors = Color;
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;
   type: string = '';
   id: string = '';
   formData: Record<string, any> = {};
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private sparkService: SparkService,
-    private cdr: ChangeDetectorRef
-  ) {}
+  validationErrors: ValidationError[] = [];
+  isSaving = false;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -50,7 +54,15 @@ export default class PoEditComponent implements OnInit {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
       const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
-      this.formData[attr.name] = itemAttr?.value || '';
+      if (attr.dataType === 'Reference') {
+        this.formData[attr.name] = itemAttr?.value ?? null;
+      } else if (attr.dataType === 'AsDetail') {
+        this.formData[attr.name] = itemAttr?.value ?? {};
+      } else if (attr.dataType === 'boolean') {
+        this.formData[attr.name] = itemAttr?.value ?? false;
+      } else {
+        this.formData[attr.name] = itemAttr?.value ?? '';
+      }
     });
   }
 
@@ -60,22 +72,12 @@ export default class PoEditComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  getInputType(dataType: string): string {
-    switch (dataType) {
-      case 'number':
-      case 'decimal':
-        return 'number';
-      case 'boolean':
-        return 'checkbox';
-      case 'datetime':
-        return 'datetime-local';
-      default:
-        return 'text';
-    }
-  }
-
   onSave(): void {
     if (!this.entityType || !this.item) return;
+
+    // Clear previous validation errors
+    this.validationErrors = [];
+    this.isSaving = true;
 
     const attributes: PersistentObjectAttribute[] = this.item.attributes.map(attr => {
       const editableAttr = this.getEditableAttributes().find(a => a.name === attr.name);
@@ -92,9 +94,29 @@ export default class PoEditComponent implements OnInit {
       attributes
     };
 
-    this.sparkService.update(this.type, this.id, po).subscribe(() => {
-      this.router.navigate(['/po', this.type, this.id]);
+    this.sparkService.update(this.type, this.id, po).subscribe({
+      next: () => {
+        this.isSaving = false;
+        this.router.navigate(['/po', this.type, this.id]);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isSaving = false;
+        if (error.status === 400 && error.error?.errors) {
+          this.validationErrors = error.error.errors;
+        } else {
+          this.validationErrors = [{
+            attributeName: '',
+            errorMessage: error.message || 'An unexpected error occurred',
+            ruleType: 'error'
+          }];
+        }
+        this.cdr.detectChanges();
+      }
     });
+  }
+
+  getGeneralErrors(): ValidationError[] {
+    return this.validationErrors.filter(e => !e.attributeName);
   }
 
   onCancel(): void {

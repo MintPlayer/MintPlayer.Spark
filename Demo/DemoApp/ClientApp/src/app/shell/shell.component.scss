@@ -38,11 +38,36 @@
   }
 }
 
+nav.sidebar-inner {
+    padding-top: 3.375rem !important;
+}
+
+.top-bar {
+  z-index: 1000;
+  height: 3.375rem;
+}
+
 main {
   min-height: 100vh;
+  padding-top: 4rem !important; // 54px for top-bar
   background-color: #f8f9fa;
 }
 
 ::ng-deep .sidebar {
   background: #333;
+}
+
+// Sidebar toggle button - slides with sidebar
+bs-navbar-toggler.sidebar-toggle {
+  left: 0;
+  transform: translateX(0);
+  transition: left 0.3s ease-in-out;
+  transition: transform 0.3s ease-in-out;
+}
+
+// When sidebar is open (state='show'), slide the toggle to the right
+bs-navbar-toggler.sidebar-toggle.sidebar-open {
+  left: 50%;
+  transform: translateX(-50%);
+  /*transform: translateX(var(--size, 15rem));*/
 }

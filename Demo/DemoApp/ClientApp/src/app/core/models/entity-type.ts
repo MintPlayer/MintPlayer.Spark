@@ -10,6 +10,10 @@ export interface EntityAttributeDefinition {
   isReadOnly: boolean;
   order: number;
   query?: string;
+  /** For reference attributes, specifies the target entity type's CLR type name */
+  referenceType?: string;
+  /** For AsDetail attributes, specifies the nested entity type's CLR type name */
+  asDetailType?: string;
   rules: ValidationRule[];
 }
 

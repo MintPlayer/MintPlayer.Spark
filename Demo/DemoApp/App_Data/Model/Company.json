@@ -14,7 +14,10 @@
       "isReadOnly": false,
       "order": 1,
       "rules": [
-        { "type": "maxLength", "value": 200 }
+        {
+          "type": "maxLength",
+          "value": 200
+        }
       ]
     },
     {
@@ -27,7 +30,9 @@
       "isReadOnly": false,
       "order": 2,
       "rules": [
-        { "type": "url" }
+        {
+          "type": "url"
+        }
       ]
     },
     {
@@ -40,7 +45,11 @@
       "isReadOnly": false,
       "order": 3,
       "rules": [
-        { "type": "range", "min": 1, "max": 1000000 }
+        {
+          "type": "range",
+          "min": 1,
+          "max": 1000000
+        }
       ]
     }
   ]

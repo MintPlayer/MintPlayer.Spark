@@ -2,12 +2,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
+using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Raven.Client.ServerWide.Operations;
 
 namespace MintPlayer.Spark;
@@ -67,8 +70,77 @@ public static class SparkExtensions
         });
     }
 
+    /// <summary>
+    /// Registers entity-specific Actions class for customizing CRUD behavior.
+    /// Consider using the generated AddSparkActions() extension method which auto-discovers Actions classes.
+    /// </summary>
+    /// <typeparam name="TActions">The Actions class type (must implement IPersistentObjectActions&lt;TEntity&gt;)</typeparam>
+    /// <typeparam name="TEntity">The entity type</typeparam>
+    /// <param name="services">The service collection</param>
+    /// <returns>The service collection for chaining</returns>
+    public static IServiceCollection AddSparkActions<TActions, TEntity>(this IServiceCollection services)
+        where TActions : class, IPersistentObjectActions<TEntity>
+        where TEntity : class
+    {
+        services.AddScoped<IPersistentObjectActions<TEntity>, TActions>();
+        services.AddScoped<TActions>();
+        return services;
+    }
+
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
         => app.UseMiddleware<SparkMiddleware>();
+
+    /// <summary>
+    /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.
+    /// Call this during development to generate or update model files based on your SparkContext properties.
+    /// </summary>
+    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
+    /// <param name="app">The application builder</param>
+    /// <returns>The application builder for chaining</returns>
+    public static IApplicationBuilder SynchronizeSparkModels<TContext>(this IApplicationBuilder app)
+        where TContext : SparkContext, new()
+    {
+        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
+
+        if (!hostEnvironment.IsDevelopment())
+        {
+            Console.WriteLine("Model synchronization is only available in Development mode.");
+            return app;
+        }
+
+        var synchronizer = app.ApplicationServices.GetRequiredService<IModelSynchronizer>();
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+
+        // Create a temporary context with a session to resolve queryable properties
+        using var session = documentStore.OpenAsyncSession();
+        var sparkContext = new TContext();
+        sparkContext.Session = session;
+
+        synchronizer.SynchronizeModels(sparkContext);
+
+        Console.WriteLine("Model synchronization completed.");
+
+        return app;
+    }
+
+    /// <summary>
+    /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
+    /// Exits the application after synchronization completes.
+    /// </summary>
+    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
+    /// <param name="app">The application builder</param>
+    /// <param name="args">Command-line arguments</param>
+    /// <returns>The application builder for chaining</returns>
+    public static IApplicationBuilder SynchronizeSparkModelsIfRequested<TContext>(this IApplicationBuilder app, string[] args)
+        where TContext : SparkContext, new()
+    {
+        if (args.Contains("--spark-synchronize-model"))
+        {
+            app.SynchronizeSparkModels<TContext>();
+            Environment.Exit(0);
+        }
+        return app;
+    }
 
     public static IEndpointRouteBuilder MapSpark(this IEndpointRouteBuilder endpoints)
     {
@@ -91,6 +163,8 @@ public static class SparkExtensions
         queriesGroup.MapGet("/", async (HttpContext context, ListQueries action) =>
             await action.HandleAsync(context));
         queriesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetQuery action) =>
+            await action.HandleAsync(context, id));
+        queriesGroup.MapGet("/{id:guid}/execute", async (HttpContext context, Guid id, ExecuteQuery action) =>
             await action.HandleAsync(context, id));
 
         // Program Units endpoint
