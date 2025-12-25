@@ -1,20 +1,18 @@
 import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
-import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
+import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
-import { switchMap, of, forkJoin } from 'rxjs';
+import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { PoFormComponent } from '../../components/po-form/po-form.component';
+import { switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
   standalone: true,
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsSelectModule],
+  imports: [CommonModule, BsAlertModule, PoFormComponent],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
@@ -27,7 +25,8 @@ export default class PoCreateComponent implements OnInit {
   entityType: EntityType | null = null;
   type: string = '';
   formData: Record<string, any> = {};
-  referenceOptions: Record<string, PersistentObject[]> = {};
+  validationErrors: ValidationError[] = [];
+  isSaving = false;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -40,7 +39,6 @@ export default class PoCreateComponent implements OnInit {
     ).subscribe(entityType => {
       this.entityType = entityType;
       this.initFormData();
-      this.loadReferenceOptions();
       this.cdr.detectChanges();
     });
   }
@@ -48,30 +46,16 @@ export default class PoCreateComponent implements OnInit {
   initFormData(): void {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
-      this.formData[attr.name] = attr.dataType === 'reference' ? null : '';
-    });
-  }
-
-  loadReferenceOptions(): void {
-    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'reference' && a.query);
-
-    if (refAttrs.length === 0) return;
-
-    const queries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
-    refAttrs.forEach(attr => {
-      if (attr.query) {
-        queries[attr.name] = this.sparkService.executeQueryByName(attr.query);
+      if (attr.dataType === 'reference') {
+        this.formData[attr.name] = null;
+      } else if (attr.dataType === 'embedded') {
+        this.formData[attr.name] = {};
+      } else if (attr.dataType === 'boolean') {
+        this.formData[attr.name] = false;
+      } else {
+        this.formData[attr.name] = '';
       }
     });
-
-    forkJoin(queries).subscribe(results => {
-      this.referenceOptions = results;
-      this.cdr.detectChanges();
-    });
-  }
-
-  getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
-    return this.referenceOptions[attr.name] || [];
   }
 
   getEditableAttributes() {
@@ -80,22 +64,12 @@ export default class PoCreateComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  getInputType(dataType: string): string {
-    switch (dataType) {
-      case 'number':
-      case 'decimal':
-        return 'number';
-      case 'boolean':
-        return 'checkbox';
-      case 'datetime':
-        return 'datetime-local';
-      default:
-        return 'text';
-    }
-  }
-
   onSave(): void {
     if (!this.entityType) return;
+
+    // Clear previous validation errors
+    this.validationErrors = [];
+    this.isSaving = true;
 
     const attributes: PersistentObjectAttribute[] = this.getEditableAttributes().map(attr => ({
       id: attr.id,
@@ -115,9 +89,29 @@ export default class PoCreateComponent implements OnInit {
       attributes
     };
 
-    this.sparkService.create(this.type, po).subscribe(result => {
-      this.router.navigate(['/po', this.type, result.id]);
+    this.sparkService.create(this.type, po).subscribe({
+      next: result => {
+        this.isSaving = false;
+        this.router.navigate(['/po', this.type, result.id]);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isSaving = false;
+        if (error.status === 400 && error.error?.errors) {
+          this.validationErrors = error.error.errors;
+        } else {
+          this.validationErrors = [{
+            attributeName: '',
+            errorMessage: error.message || 'An unexpected error occurred',
+            ruleType: 'error'
+          }];
+        }
+        this.cdr.detectChanges();
+      }
     });
+  }
+
+  getGeneralErrors(): ValidationError[] {
+    return this.validationErrors.filter(e => !e.attributeName);
   }
 
   onCancel(): void {

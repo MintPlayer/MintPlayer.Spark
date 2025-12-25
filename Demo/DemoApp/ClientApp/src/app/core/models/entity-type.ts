@@ -10,6 +10,10 @@ export interface EntityAttributeDefinition {
   isReadOnly: boolean;
   order: number;
   query?: string;
+  /** For reference attributes, specifies the target entity type's CLR type name */
+  referenceType?: string;
+  /** For embedded attributes, specifies the embedded entity type's CLR type name */
+  embeddedType?: string;
   rules: ValidationRule[];
 }
 

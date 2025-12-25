@@ -1,20 +1,18 @@
 import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
-import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
+import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute } from '../../core/models';
+import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
   standalone: true,
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsSelectModule],
+  imports: [CommonModule, BsAlertModule, PoFormComponent],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {
@@ -29,7 +27,8 @@ export default class PoEditComponent implements OnInit {
   type: string = '';
   id: string = '';
   formData: Record<string, any> = {};
-  referenceOptions: Record<string, PersistentObject[]> = {};
+  validationErrors: ValidationError[] = [];
+  isSaving = false;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -47,7 +46,6 @@ export default class PoEditComponent implements OnInit {
       this.entityType = result.entityType;
       this.item = result.item;
       this.initFormData();
-      this.loadReferenceOptions();
       this.cdr.detectChanges();
     });
   }
@@ -56,31 +54,16 @@ export default class PoEditComponent implements OnInit {
     this.formData = {};
     this.getEditableAttributes().forEach(attr => {
       const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
-      const defaultValue = attr.dataType === 'reference' ? null : '';
-      this.formData[attr.name] = itemAttr?.value ?? defaultValue;
-    });
-  }
-
-  loadReferenceOptions(): void {
-    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'reference' && a.query);
-
-    if (refAttrs.length === 0) return;
-
-    const queries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
-    refAttrs.forEach(attr => {
-      if (attr.query) {
-        queries[attr.name] = this.sparkService.executeQueryByName(attr.query);
+      if (attr.dataType === 'reference') {
+        this.formData[attr.name] = itemAttr?.value ?? null;
+      } else if (attr.dataType === 'embedded') {
+        this.formData[attr.name] = itemAttr?.value ?? {};
+      } else if (attr.dataType === 'boolean') {
+        this.formData[attr.name] = itemAttr?.value ?? false;
+      } else {
+        this.formData[attr.name] = itemAttr?.value ?? '';
       }
     });
-
-    forkJoin(queries).subscribe(results => {
-      this.referenceOptions = results;
-      this.cdr.detectChanges();
-    });
-  }
-
-  getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
-    return this.referenceOptions[attr.name] || [];
   }
 
   getEditableAttributes() {
@@ -89,22 +72,12 @@ export default class PoEditComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  getInputType(dataType: string): string {
-    switch (dataType) {
-      case 'number':
-      case 'decimal':
-        return 'number';
-      case 'boolean':
-        return 'checkbox';
-      case 'datetime':
-        return 'datetime-local';
-      default:
-        return 'text';
-    }
-  }
-
   onSave(): void {
     if (!this.entityType || !this.item) return;
+
+    // Clear previous validation errors
+    this.validationErrors = [];
+    this.isSaving = true;
 
     const attributes: PersistentObjectAttribute[] = this.item.attributes.map(attr => {
       const editableAttr = this.getEditableAttributes().find(a => a.name === attr.name);
@@ -121,9 +94,29 @@ export default class PoEditComponent implements OnInit {
       attributes
     };
 
-    this.sparkService.update(this.type, this.id, po).subscribe(() => {
-      this.router.navigate(['/po', this.type, this.id]);
+    this.sparkService.update(this.type, this.id, po).subscribe({
+      next: () => {
+        this.isSaving = false;
+        this.router.navigate(['/po', this.type, this.id]);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isSaving = false;
+        if (error.status === 400 && error.error?.errors) {
+          this.validationErrors = error.error.errors;
+        } else {
+          this.validationErrors = [{
+            attributeName: '',
+            errorMessage: error.message || 'An unexpected error occurred',
+            ruleType: 'error'
+          }];
+        }
+        this.cdr.detectChanges();
+      }
     });
+  }
+
+  getGeneralErrors(): ValidationError[] {
+    return this.validationErrors.filter(e => !e.attributeName);
   }
 
   onCancel(): void {

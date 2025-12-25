@@ -55,24 +55,77 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        // Find the entity type definition by CLR type
-        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-        if (entityTypeDefinition == null)
+        // Check for [QueryType] attribute if using projection
+        Type resultType = entityType;
+        EntityTypeDefinition? resultTypeDefinition = null;
+
+        if (query.UseProjection || !string.IsNullOrEmpty(query.IndexName))
+        {
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            if (queryTypeAttr != null)
+            {
+                resultType = queryTypeAttr.ProjectionType;
+                resultTypeDefinition = modelLoader.GetEntityTypeByClrType(resultType.FullName ?? resultType.Name);
+            }
+        }
+
+        // Fall back to entity type definition if no projection type found
+        resultTypeDefinition ??= modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
+        if (resultTypeDefinition == null)
         {
             return [];
+        }
+
+        // Apply index if specified
+        if (!string.IsNullOrEmpty(query.IndexName))
+        {
+            queryable = ApplyIndex(session, entityType, resultType, query.IndexName);
         }
 
         // Apply sorting if specified
         if (!string.IsNullOrEmpty(query.SortBy))
         {
-            queryable = ApplySorting(queryable, entityType, query.SortBy, query.SortDirection);
+            queryable = ApplySorting(queryable, resultType, query.SortBy, query.SortDirection);
         }
 
         // Execute the query
-        var entities = await ExecuteQueryableAsync(queryable, entityType);
+        var entities = await ExecuteQueryableAsync(queryable, resultType);
 
         // Convert to PersistentObjects
-        return entities.Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id));
+        return entities.Select(e => entityMapper.ToPersistentObject(e, resultTypeDefinition.Id));
+    }
+
+    private object ApplyIndex(IAsyncDocumentSession session, Type entityType, Type resultType, string indexName)
+    {
+        // Use session.Query<T>(indexName) to query with a specific index
+        // Find the extension method from LinqExtensions or use interface method
+        var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 1
+                && m.GetParameters()[0].ParameterType == typeof(string));
+
+        if (sessionQueryMethod != null)
+        {
+            var genericSessionQueryMethod = sessionQueryMethod.MakeGenericMethod(resultType);
+            return genericSessionQueryMethod.Invoke(session, [indexName])!;
+        }
+
+        // Fallback: use session.Query<T>() method directly (without index)
+        var noIndexQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 0);
+
+        if (noIndexQueryMethod != null)
+        {
+            var genericQueryMethod = noIndexQueryMethod.MakeGenericMethod(resultType);
+            return genericQueryMethod.Invoke(session, [])!;
+        }
+
+        throw new InvalidOperationException($"Could not apply index {indexName}");
     }
 
     private object ApplySorting(object queryable, Type entityType, string sortBy, string? sortDirection)

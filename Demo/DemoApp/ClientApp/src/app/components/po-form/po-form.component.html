@@ -1,0 +1,135 @@
+@if (entityType) {
+  <bs-grid>
+    @for (attr of getEditableAttributes(); track attr.id) {
+      <div bsRow class="mb-3">
+        <label [md]="4" bsColFormLabel [for]="attr.name">
+          {{ attr.label || attr.name }}
+          @if (attr.isRequired) {
+            <span class="text-danger">*</span>
+          }
+        </label>
+        <div [md]="8">
+          @if (attr.dataType === 'boolean') {
+            <div class="form-check pt-2">
+              <input
+                type="checkbox"
+                class="form-check-input"
+                [id]="attr.name"
+                [(ngModel)]="formData[attr.name]"
+                [name]="attr.name"
+                [class.is-invalid]="hasError(attr.name)"
+                (ngModelChange)="onFieldChange()">
+            </div>
+          } @else if (attr.dataType === 'reference') {
+            <bs-select
+              [id]="attr.name"
+              [(ngModel)]="formData[attr.name]"
+              [name]="attr.name"
+              [class.is-invalid]="hasError(attr.name)"
+              (ngModelChange)="onFieldChange()">
+              <option [ngValue]="null">-- Select --</option>
+              @for (option of getReferenceOptions(attr); track option.id) {
+                <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
+              }
+            </bs-select>
+          } @else if (attr.dataType === 'embedded') {
+            <div class="input-group">
+              <input
+                type="text"
+                class="form-control"
+                [id]="attr.name"
+                [value]="getEmbeddedDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                (click)="openEmbeddedEditor(attr)">
+                <i class="bi bi-pencil"></i> Edit
+              </button>
+            </div>
+          } @else {
+            <input
+              [type]="getInputType(attr.dataType)"
+              [id]="attr.name"
+              [(ngModel)]="formData[attr.name]"
+              [name]="attr.name"
+              [required]="attr.isRequired"
+              [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
+              [class.is-invalid]="hasError(attr.name)"
+              (ngModelChange)="onFieldChange()">
+          }
+          @if (getErrorForAttribute(attr.name); as errorMsg) {
+            <div class="invalid-feedback d-block">
+              {{ errorMsg }}
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (showButtons) {
+      <div bsRow class="mt-4">
+        <div [md]="4"></div>
+        <div [md]="8" class="d-flex justify-content-end gap-2">
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+          <button type="submit" [color]="colors.primary" [disabled]="isSaving" (click)="onSave()">
+            @if (isSaving) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Save
+          </button>
+        </div>
+      </div>
+    }
+  </bs-grid>
+}
+
+<!-- Modal for editing embedded objects -->
+<bs-modal [(isOpen)]="showEmbeddedModal" (isOpenChange)="!$event && closeEmbeddedModal()">
+  <ng-template #bsModalHeader>
+    <h5 class="modal-title">Edit {{ editingEmbeddedAttr?.label || editingEmbeddedAttr?.name }}</h5>
+  </ng-template>
+
+  <ng-template #bsModalBody>
+    @if (editingEmbeddedAttr) {
+      <bs-grid>
+        @for (embAttr of getEmbeddedAttributes(editingEmbeddedAttr); track embAttr.id) {
+          <div bsRow class="mb-3">
+            <label [md]="4" bsColFormLabel [for]="'emb_' + embAttr.name">
+              {{ embAttr.label || embAttr.name }}
+              @if (embAttr.isRequired) {
+                <span class="text-danger">*</span>
+              }
+            </label>
+            <div [md]="8">
+              @if (embAttr.dataType === 'boolean') {
+                <div class="form-check pt-2">
+                  <input
+                    type="checkbox"
+                    class="form-check-input"
+                    [id]="'emb_' + embAttr.name"
+                    [(ngModel)]="embeddedFormData[embAttr.name]"
+                    [name]="'emb_' + embAttr.name">
+                </div>
+              } @else {
+                <input
+                  [type]="getInputType(embAttr.dataType)"
+                  [id]="'emb_' + embAttr.name"
+                  [(ngModel)]="embeddedFormData[embAttr.name]"
+                  [name]="'emb_' + embAttr.name"
+                  [required]="embAttr.isRequired"
+                  [step]="embAttr.dataType === 'decimal' ? '0.01' : '1'">
+              }
+            </div>
+          </div>
+        }
+      </bs-grid>
+    }
+  </ng-template>
+
+  <ng-template #bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="closeEmbeddedModal()">Cancel</button>
+    <button type="button" [color]="colors.primary" (click)="saveEmbeddedObject()">Save</button>
+  </ng-template>
+</bs-modal>

@@ -70,6 +70,20 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // Collect embedded types from this entity
             CollectEmbeddedTypes(entityType, typesToProcess, processedTypes);
 
+            // Check for [QueryType] attribute and collect projection type
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            if (queryTypeAttr != null)
+            {
+                var projectionType = queryTypeAttr.ProjectionType;
+                var projectionClrType = projectionType.FullName ?? projectionType.Name;
+
+                if (!processedTypes.Contains(projectionClrType))
+                {
+                    typesToProcess.Enqueue(projectionType);
+                    Console.WriteLine($"Found projection type: {projectionType.Name} (from [QueryType] on {entityType.Name})");
+                }
+            }
+
             // Create default query for this entity type if it doesn't exist
             var queryName = $"Get{property.Name}";
             if (!existingQueries.Values.Any(q => q.Name == queryName))
@@ -108,7 +122,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             File.WriteAllText(fileName, json);
             processedTypes.Add(clrType);
 
-            Console.WriteLine($"Synchronized embedded model: {embeddedType.Name} -> {fileName}");
+            Console.WriteLine($"Synchronized model (embedded/projection): {embeddedType.Name} -> {fileName}");
 
             // Recursively collect embedded types from this type
             CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
@@ -219,15 +233,29 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         {
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
 
+            var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var dataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType);
+            string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
+            string? embeddedType = dataType == "embedded" ? (propType.FullName ?? propType.Name) : null;
+
             if (existingAttrs.TryGetValue(property.Name, out var existingAttr))
             {
                 // Update existing attribute, preserving custom settings
-                existingAttr.DataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType);
+                existingAttr.DataType = dataType;
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
-                if (referenceAttr != null && string.IsNullOrEmpty(existingAttr.Query))
+                if (referenceAttr != null)
                 {
-                    existingAttr.Query = referenceAttr.Query;
+                    existingAttr.ReferenceType = referenceType;
+                    if (string.IsNullOrEmpty(existingAttr.Query))
+                    {
+                        existingAttr.Query = referenceAttr.Query;
+                    }
+                }
+
+                if (dataType == "embedded")
+                {
+                    existingAttr.EmbeddedType = embeddedType;
                 }
 
                 newAttributes.Add(existingAttr);
@@ -240,12 +268,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Id = Guid.NewGuid(),
                     Name = property.Name,
                     Label = AddSpacesToCamelCase(property.Name),
-                    DataType = referenceAttr != null ? "reference" : GetDataType(property.PropertyType),
+                    DataType = dataType,
                     IsRequired = !IsNullable(property.PropertyType) && property.PropertyType != typeof(string),
                     IsVisible = true,
                     IsReadOnly = false,
                     Order = order,
                     Query = referenceAttr?.Query,
+                    ReferenceType = referenceType,
+                    EmbeddedType = embeddedType,
                     Rules = []
                 };
                 newAttributes.Add(newAttr);

@@ -18,6 +18,12 @@ export class SparkService {
     return this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}`);
   }
 
+  getEntityTypeByClrType(clrType: string): Observable<EntityType | undefined> {
+    return this.getEntityTypes().pipe(
+      map(types => types.find(t => t.clrType === clrType))
+    );
+  }
+
   // Queries
   getQueries(): Observable<SparkQuery[]> {
     return this.http.get<SparkQuery[]>(`${this.baseUrl}/queries`);

@@ -1,5 +1,6 @@
 import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SparkService } from '../../core/services/spark.service';
@@ -16,7 +17,7 @@ interface PaginationData<T> {
 @Component({
   selector: 'app-query-list',
   standalone: true,
-  imports: [CommonModule, RouterModule, BsDatatableModule],
+  imports: [CommonModule, FormsModule, RouterModule, BsDatatableModule],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -29,7 +30,9 @@ export default class QueryListComponent implements OnInit {
 
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
+  allItems: PersistentObject[] = [];
   paginationData: PaginationData<PersistentObject> | null = null;
+  searchTerm: string = '';
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -103,17 +106,59 @@ export default class QueryListComponent implements OnInit {
   loadItems(): void {
     if (!this.entityType) return;
     this.sparkService.list(this.entityType.id).subscribe(items => {
-      this.paginationData = {
-        data: items,
-        count: items.length,
-        perPage: this.settings.perPage.selected,
-        page: this.settings.page.selected
-      };
-      // Update page values for pagination
-      const totalPages = Math.ceil(items.length / this.settings.perPage.selected) || 1;
-      this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-      this.cdr.markForCheck();
+      this.allItems = items;
+      this.applyFilter();
     });
+  }
+
+  onSearchChange(): void {
+    // Reset to first page when searching
+    this.settings.page.selected = 1;
+    this.applyFilter();
+  }
+
+  applyFilter(): void {
+    let filteredItems = this.allItems;
+
+    // Apply search filter
+    if (this.searchTerm.trim()) {
+      const term = this.searchTerm.toLowerCase().trim();
+      filteredItems = this.allItems.filter(item => {
+        // Search in name
+        if (item.name?.toLowerCase().includes(term)) return true;
+        // Search in breadcrumb
+        if (item.breadcrumb?.toLowerCase().includes(term)) return true;
+        // Search in all attribute values
+        return item.attributes.some(attr => {
+          const value = attr.breadcrumb || attr.value;
+          if (value == null) return false;
+          return String(value).toLowerCase().includes(term);
+        });
+      });
+    }
+
+    this.paginationData = {
+      data: filteredItems,
+      count: filteredItems.length,
+      perPage: this.settings.perPage.selected,
+      page: this.settings.page.selected
+    };
+
+    // Update page values for pagination
+    const totalPages = Math.ceil(filteredItems.length / this.settings.perPage.selected) || 1;
+    this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+
+    // Ensure current page is valid
+    if (this.settings.page.selected > totalPages) {
+      this.settings.page.selected = 1;
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.onSearchChange();
   }
 
   getVisibleAttributes() {
