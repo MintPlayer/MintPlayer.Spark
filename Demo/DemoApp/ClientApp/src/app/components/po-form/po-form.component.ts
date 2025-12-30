@@ -14,14 +14,13 @@ import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-po-form',
-  standalone: true,
   imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PoFormComponent implements OnChanges {
-  private sparkService = inject(SparkService);
-  private cdr = inject(ChangeDetectorRef);
+  private readonly sparkService = inject(SparkService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   @Input() entityType: EntityType | null = null;
   @Input() formData: Record<string, any> = {};

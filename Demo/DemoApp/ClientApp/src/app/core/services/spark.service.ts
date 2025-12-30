@@ -6,8 +6,8 @@ import { EntityType, PersistentObject, ProgramUnitsConfiguration, SparkQuery } f
 
 @Injectable({ providedIn: 'root' })
 export class SparkService {
-  private baseUrl = '/spark';
-  private http = inject(HttpClient);
+  private readonly baseUrl = '/spark';
+  private readonly http = inject(HttpClient);
 
   // Entity Types
   getEntityTypes(): Observable<EntityType[]> {

@@ -8,15 +8,14 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  standalone: true,
   imports: [CommonModule, RouterModule, BsButtonGroupComponent],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
-  private route = inject(ActivatedRoute);
-  private router = inject(Router);
-  private sparkService = inject(SparkService);
-  private cdr = inject(ChangeDetectorRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly sparkService = inject(SparkService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;

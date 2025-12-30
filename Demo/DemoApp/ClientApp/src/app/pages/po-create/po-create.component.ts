@@ -11,15 +11,14 @@ import { switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
-  standalone: true,
   imports: [CommonModule, BsAlertModule, PoFormComponent],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
-  private route = inject(ActivatedRoute);
-  private router = inject(Router);
-  private sparkService = inject(SparkService);
-  private cdr = inject(ChangeDetectorRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly sparkService = inject(SparkService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   colors = Color;
   entityType: EntityType | null = null;
