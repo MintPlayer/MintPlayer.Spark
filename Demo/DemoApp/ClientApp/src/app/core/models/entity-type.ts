@@ -21,6 +21,14 @@ export interface EntityType {
   id: string;
   name: string;
   clrType: string;
+  /**
+   * Template string with {PropertyName} placeholders for building a formatted display value.
+   * Example: "{Street}, {PostalCode} {City}"
+   */
+  displayFormat?: string;
+  /**
+   * (Fallback) Single attribute name to use as display value when displayFormat is not specified.
+   */
   displayAttribute?: string;
   attributes: EntityAttributeDefinition[];
 }

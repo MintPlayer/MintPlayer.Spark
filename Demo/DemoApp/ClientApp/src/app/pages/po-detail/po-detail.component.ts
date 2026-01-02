@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, PersistentObject } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
@@ -18,6 +18,7 @@ export default class PoDetailComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   entityType: EntityType | null = null;
+  allEntityTypes: EntityType[] = [];
   item: PersistentObject | null = null;
   type: string = '';
   id: string = '';
@@ -28,14 +29,13 @@ export default class PoDetailComponent implements OnInit {
         this.type = params.get('type') || '';
         this.id = params.get('id') || '';
         return forkJoin({
-          entityType: this.sparkService.getEntityTypes().pipe(
-            switchMap(types => of(types.find(t => t.id === this.type) || null))
-          ),
+          entityTypes: this.sparkService.getEntityTypes(),
           item: this.sparkService.get(this.type, this.id)
         });
       })
     ).subscribe(result => {
-      this.entityType = result.entityType;
+      this.allEntityTypes = result.entityTypes;
+      this.entityType = result.entityTypes.find(t => t.id === this.type) || null;
       this.item = result.item;
       this.cdr.detectChanges();
     });
@@ -49,7 +49,49 @@ export default class PoDetailComponent implements OnInit {
 
   getAttributeValue(attrName: string): any {
     const attr = this.item?.attributes.find(a => a.name === attrName);
-    return attr?.breadcrumb || attr?.value || '';
+    if (!attr) return '';
+
+    // For Reference attributes, breadcrumb is resolved on backend
+    if (attr.breadcrumb) return attr.breadcrumb;
+
+    // For AsDetail attributes, format using displayFormat
+    const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
+    if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
+      return this.formatAsDetailValue(attrDef, attr.value);
+    }
+
+    return attr.value || '';
+  }
+
+  private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
+    // Find the AsDetail entity type
+    const asDetailType = this.allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
+
+    // 1. Try displayFormat (template with {PropertyName} placeholders)
+    if (asDetailType?.displayFormat) {
+      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+      if (result && result.trim()) return result;
+    }
+
+    // 2. Try displayAttribute (single property name)
+    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
+      return value[asDetailType.displayAttribute];
+    }
+
+    // 3. Fallback to common property names
+    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
+    for (const prop of displayProps) {
+      if (value[prop]) return value[prop];
+    }
+
+    return '(object)';
+  }
+
+  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
+    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
+      const value = data[propertyName];
+      return value != null ? String(value) : '';
+    });
   }
 
   onEdit(): void {

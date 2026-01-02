@@ -140,10 +140,10 @@ public class PersistentObjectAttribute
     public Guid Id { get; set; }
     public string Name { get; set; }
     public object? Value { get; set; }
-    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, guid, reference, embedded
+    public string DataType { get; set; }        // string, number, decimal, boolean, datetime, guid, reference, AsDetail
     public bool IsRequired { get; set; }
     public string? Query { get; set; }          // SparkQuery name for reference lookups in edit mode
-    public string? Breadcrumb { get; set; }     // Computed display value for references (read-only)
+    public string? Breadcrumb { get; set; }     // Computed display value for references/AsDetail (read-only, see Section 6.9)
     public ValidationRule[] Rules { get; set; }
 }
 ```
@@ -185,6 +185,7 @@ Entity types are defined in JSON files under `App_Data/Model/`:
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Person",
   "clrType": "Demo.Data.Person",
+  "displayFormat": "{FirstName} {LastName}",
   "attributes": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440001",
@@ -236,11 +237,12 @@ AsDetail object definition (auto-generated, can be used on multiple parent types
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Address",
   "clrType": "Demo.Data.Address",
-  "displayAttribute": "Street",
+  "displayFormat": "{Street}, {PostalCode} {City}",
   "attributes": [
     { "id": "...", "name": "Street", "dataType": "string", "isVisible": true, "order": 1 },
-    { "id": "...", "name": "City", "dataType": "string", "isVisible": true, "order": 2 },
-    { "id": "...", "name": "State", "dataType": "string", "isVisible": true, "order": 3 }
+    { "id": "...", "name": "PostalCode", "dataType": "string", "isVisible": true, "order": 2 },
+    { "id": "...", "name": "City", "dataType": "string", "isVisible": true, "order": 3 },
+    { "id": "...", "name": "State", "dataType": "string", "isVisible": true, "order": 4 }
   ]
 }
 ```
@@ -616,7 +618,59 @@ public class Person
 builder.Services.AddSparkActions<PersonActions, Person>();
 ```
 
-### 6.9 RavenDB Indexes
+### 6.9 Display Format and Breadcrumb Rendering
+
+When displaying `Reference` or `AsDetail` attributes in the Angular frontend, the framework needs to render a human-readable representation of the referenced/nested object. This is controlled by the `displayFormat` property on the entity type definition.
+
+**Display Properties:**
+
+| Property | Description | Example |
+|----------|-------------|---------|
+| `displayFormat` | Template string with `{PropertyName}` placeholders for building a formatted display value | `"{Street}, {PostalCode} {City}"` |
+| `displayAttribute` | (Fallback) Single attribute name to use as display value | `"Street"` |
+
+**Resolution Order:**
+
+The framework resolves the display value in this order:
+1. If `displayFormat` is specified, use template substitution (e.g., `"{Street}, {PostalCode} {City}"` → `"Deinzestraat, 9800 Deinze"`)
+2. If `displayAttribute` is specified, use that single attribute's value
+3. Fall back to common property names: `Name`, `Title`, `name`, `title`
+
+**Example Model Configuration:**
+
+```json
+{
+  "name": "Address",
+  "clrType": "DemoApp.Data.Address",
+  "displayFormat": "{Street}, {PostalCode} {City}",
+  "attributes": [
+    { "name": "Street", "dataType": "string" },
+    { "name": "PostalCode", "dataType": "string" },
+    { "name": "City", "dataType": "string" },
+    { "name": "State", "dataType": "string" }
+  ]
+}
+```
+
+**Rendering Behavior in Angular:**
+
+| Context | Where Displayed | Value Used |
+|---------|-----------------|------------|
+| Parent form (read-only input) | Person edit page, Address field | `displayFormat` or `displayAttribute` from Address.json |
+| Reference dropdown options | Company selection dropdown | `displayFormat` or `displayAttribute` from Company.json |
+| Detail page header | Person detail page `<h2>` | `displayFormat` or `displayAttribute` from Person.json |
+| List/table rows | Query results in BsDatatableComponent | `displayFormat` or `displayAttribute` for the breadcrumb column |
+
+**Backend Breadcrumb Resolution:**
+
+For `Reference` attributes, the backend resolves the `breadcrumb` property on the `PersistentObjectAttribute` by:
+1. Loading the referenced document using RavenDB's `.Include<T>()` method
+2. Applying the target entity's `displayFormat` (or `displayAttribute`) to generate the breadcrumb
+3. Returning the computed `breadcrumb` value in the API response
+
+This allows the frontend to display `"{Company}"` as `"Acme Corporation"` without needing to know the reference target type or make additional API calls.
+
+### 6.10 RavenDB Indexes
 
 RavenDB indexes allow projecting entity data into optimized query views. Spark supports custom indexes using RavenDB's `AbstractIndexCreationTask`.
 
@@ -1134,7 +1188,7 @@ The create/edit pages shall dynamically generate form controls based on attribut
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Person",
   "clrType": "Demo.Data.Person",
-  "displayAttribute": "FullName",
+  "displayFormat": "{FirstName} {LastName}",
   "attributes": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440001",
@@ -1319,6 +1373,7 @@ public class Company
 | Entity Edit Page | Complete | FR-FE-006, pre-populated forms |
 | Validation Error Display | Partial | Backend returns errors, frontend needs display |
 | AsDetail Objects UI | Partial | Backend needs AsDetail type detection, frontend needs nested form UI |
+| displayFormat Support | Not Started | Template-based display values (e.g., `"{Street}, {PostalCode} {City}"`) |
 | Search/Filter | Not Started | List view filtering capability |
 
 ### 12.2 Implementation Roadmap
@@ -1369,6 +1424,7 @@ Phase 5: Advanced Features (Current)
 ├── [x] Actions classes (FR-BE-009) - lifecycle hooks
 ├── [ ] Reference attribute ([Reference]) support
 ├── [ ] RavenDB index support ([QueryType])
+├── [ ] displayFormat support (template-based breadcrumbs, see Section 6.9)
 └── [ ] Computed/derived attributes
 ```
 
@@ -1449,6 +1505,8 @@ Phase 5: Advanced Features (Current)
 | Entity Type | A definition of a data structure (stored as JSON) |
 | ClrType | The .NET type name used for entity identification |
 | Reference | A relationship between two entity types |
+| displayFormat | Template string with `{PropertyName}` placeholders for rendering human-readable display values |
+| Breadcrumb | Computed display value for Reference/AsDetail attributes, resolved using `displayFormat` |
 
 ## Appendix B: Related Documents
 

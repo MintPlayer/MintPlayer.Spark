@@ -5,7 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, SparkQuery } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, PersistentObject, SparkQuery } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
@@ -23,6 +23,7 @@ export default class QueryListComponent implements OnInit {
 
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
+  allEntityTypes: EntityType[] = [];
   allItems: PersistentObject[] = [];
   paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
@@ -41,26 +42,31 @@ export default class QueryListComponent implements OnInit {
         return this.sparkService.getQuery(queryId);
       }),
       switchMap(query => {
-        if (!query) return of({ query: null, entityType: null });
+        if (!query) return of({ query: null, entityType: null, entityTypes: [] });
         this.query = query;
         const singularName = this.singularize(query.contextProperty);
         return forkJoin({
           query: of(query),
-          entityType: this.sparkService.getEntityTypes().pipe(
-            switchMap(types => {
-              const type = types.find(t =>
-                t.name === query.contextProperty ||
-                t.name === singularName ||
-                t.clrType.endsWith(singularName)
-              );
-              return of(type || null);
-            })
-          )
-        });
+          entityTypes: this.sparkService.getEntityTypes()
+        }).pipe(
+          switchMap(result => {
+            const type = result.entityTypes.find(t =>
+              t.name === query.contextProperty ||
+              t.name === singularName ||
+              t.clrType.endsWith(singularName)
+            );
+            return of({
+              query: result.query,
+              entityType: type || null,
+              entityTypes: result.entityTypes
+            });
+          })
+        );
       })
     ).subscribe(result => {
       if (result?.entityType) {
         this.entityType = result.entityType;
+        this.allEntityTypes = result.entityTypes;
         this.settings = new DatatableSettings({
           perPage: { values: [10, 25, 50], selected: 10 },
           page: { values: [1], selected: 1 },
@@ -163,7 +169,49 @@ export default class QueryListComponent implements OnInit {
 
   getAttributeValue(item: PersistentObject, attrName: string): any {
     const attr = item.attributes.find(a => a.name === attrName);
-    return attr?.breadcrumb || attr?.value || '';
+    if (!attr) return '';
+
+    // For Reference attributes, breadcrumb is resolved on backend
+    if (attr.breadcrumb) return attr.breadcrumb;
+
+    // For AsDetail attributes, format using displayFormat
+    const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
+    if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
+      return this.formatAsDetailValue(attrDef, attr.value);
+    }
+
+    return attr.value || '';
+  }
+
+  private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
+    // Find the AsDetail entity type
+    const asDetailType = this.allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
+
+    // 1. Try displayFormat (template with {PropertyName} placeholders)
+    if (asDetailType?.displayFormat) {
+      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+      if (result && result.trim()) return result;
+    }
+
+    // 2. Try displayAttribute (single property name)
+    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
+      return value[asDetailType.displayAttribute];
+    }
+
+    // 3. Fallback to common property names
+    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
+    for (const prop of displayProps) {
+      if (value[prop]) return value[prop];
+    }
+
+    return '(object)';
+  }
+
+  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
+    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
+      const value = data[propertyName];
+      return value != null ? String(value) : '';
+    });
   }
 
   onRowClick(item: PersistentObject): void {
