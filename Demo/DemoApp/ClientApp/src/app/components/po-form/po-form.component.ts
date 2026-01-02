@@ -139,17 +139,38 @@ export class PoFormComponent implements OnChanges {
     if (!value) return '(not set)';
 
     const asDetailType = this.getAsDetailType(attr);
+
+    // 1. Try displayFormat (template with {PropertyName} placeholders)
+    if (asDetailType?.displayFormat) {
+      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+      if (result && result.trim()) return result;
+    }
+
+    // 2. Try displayAttribute (single property name)
     if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
       return value[asDetailType.displayAttribute];
     }
 
-    // Try to find a reasonable display value
+    // 3. Fallback to common property names
     const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
     for (const prop of displayProps) {
       if (value[prop]) return value[prop];
     }
 
     return '(click to edit)';
+  }
+
+  /**
+   * Resolves a display format template by substituting {PropertyName} placeholders with actual values.
+   * @param format The format template string (e.g., "{Street}, {PostalCode} {City}")
+   * @param data The data object containing the property values
+   * @returns The resolved string with placeholders replaced by values
+   */
+  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
+    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
+      const value = data[propertyName];
+      return value != null ? String(value) : '';
+    });
   }
 
   openAsDetailEditor(attr: EntityAttributeDefinition): void {

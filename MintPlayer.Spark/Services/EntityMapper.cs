@@ -86,7 +86,10 @@ internal partial class EntityMapper : IEntityMapper
             {
                 if (includedDocuments.TryGetValue(refId, out var referencedEntity) && referencedEntity != null)
                 {
-                    attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntity.GetType());
+                    // Get the referenced entity's type definition for displayFormat resolution
+                    var referencedEntityType = referencedEntity.GetType();
+                    var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(referencedEntityType.FullName ?? referencedEntityType.Name);
+                    attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
                 }
                 attribute.Query = referenceAttr.Query ?? attrDef?.Query;
             }
@@ -101,8 +104,8 @@ internal partial class EntityMapper : IEntityMapper
         return new PersistentObject
         {
             Id = id,
-            Name = GetEntityDisplayName(entity, entityType),
-            Breadcrumb = GetEntityDisplayName(entity, entityType),
+            Name = GetEntityDisplayName(entity, entityType, entityTypeDef),
+            Breadcrumb = GetEntityDisplayName(entity, entityType, entityTypeDef),
             ObjectTypeId = objectTypeId,
             Attributes = attributes.ToArray(),
         };
@@ -248,14 +251,58 @@ internal partial class EntityMapper : IEntityMapper
         return result;
     }
 
-    private string GetEntityDisplayName(object entity, Type entityType)
+    private string GetEntityDisplayName(object entity, Type entityType, EntityTypeDefinition? entityTypeDef = null)
     {
-        // Try common display name properties
+        // If no entity type definition provided, try to find it
+        if (entityTypeDef == null)
+        {
+            entityTypeDef = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
+        }
+
+        // 1. Try DisplayFormat (template with {PropertyName} placeholders)
+        if (!string.IsNullOrEmpty(entityTypeDef?.DisplayFormat))
+        {
+            return ResolveDisplayFormat(entity, entityType, entityTypeDef.DisplayFormat);
+        }
+
+        // 2. Try DisplayAttribute (single property name)
+        if (!string.IsNullOrEmpty(entityTypeDef?.DisplayAttribute))
+        {
+            var displayProperty = entityType.GetProperty(entityTypeDef.DisplayAttribute, BindingFlags.Public | BindingFlags.Instance);
+            if (displayProperty != null)
+            {
+                var value = displayProperty.GetValue(entity);
+                if (value != null)
+                {
+                    return value.ToString() ?? entityType.Name;
+                }
+            }
+        }
+
+        // 3. Fallback to common display name properties
         var nameProperty = entityType.GetProperty("Name")
             ?? entityType.GetProperty("FullName")
             ?? entityType.GetProperty("Title");
 
         return nameProperty?.GetValue(entity)?.ToString() ?? entityType.Name;
+    }
+
+    private static string ResolveDisplayFormat(object entity, Type entityType, string displayFormat)
+    {
+        var result = displayFormat;
+        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var property in properties)
+        {
+            var placeholder = $"{{{property.Name}}}";
+            if (result.Contains(placeholder))
+            {
+                var value = property.GetValue(entity)?.ToString() ?? string.Empty;
+                result = result.Replace(placeholder, value);
+            }
+        }
+
+        return result;
     }
 
     private Type? ResolveType(string clrType)

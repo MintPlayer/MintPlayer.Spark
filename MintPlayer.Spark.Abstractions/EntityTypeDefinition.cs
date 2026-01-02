@@ -5,6 +5,14 @@ public sealed class EntityTypeDefinition
     public required Guid Id { get; set; }
     public required string Name { get; set; }
     public required string ClrType { get; set; }
+    /// <summary>
+    /// Template string with {PropertyName} placeholders for building a formatted display value.
+    /// Example: "{Street}, {PostalCode} {City}"
+    /// </summary>
+    public string? DisplayFormat { get; set; }
+    /// <summary>
+    /// (Fallback) Single attribute name to use as display value when DisplayFormat is not specified.
+    /// </summary>
     public string? DisplayAttribute { get; set; }
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
 }
