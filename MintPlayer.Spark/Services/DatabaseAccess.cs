@@ -89,10 +89,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         using var session = documentStore.OpenAsyncSession();
 
-        // Use actions for querying
-        var entities = await QueryEntitiesViaActionsAsync(session, entityType);
+        // Get reference properties to include for breadcrumb resolution
+        var referenceProperties = GetReferenceProperties(entityType);
 
-        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId));
+        // Query entities with .Include() for all reference properties (single database call)
+        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, referenceProperties)).ToList();
+
+        // Referenced documents are now in session cache - extract them
+        var includedDocuments = await ExtractIncludedDocumentsFromSessionAsync(session, entities, referenceProperties);
+
+        // Convert each entity to PersistentObject with breadcrumb resolution
+        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, includedDocuments));
     }
 
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
@@ -244,6 +251,129 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (referencedEntity != null)
             {
                 includedDocuments[refId] = referencedEntity;
+            }
+        }
+
+        return includedDocuments;
+    }
+
+    /// <summary>
+    /// Queries entities and uses .Include() for all reference properties so that
+    /// referenced documents are loaded in a single database call.
+    /// </summary>
+    private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
+        IAsyncDocumentSession session,
+        Type entityType,
+        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    {
+        // Build query: session.Query<T>()
+        var sessionType = session.GetType();
+        var queryMethod = sessionType.GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 3);
+
+        if (queryMethod == null)
+            return [];
+
+        var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
+        var query = genericQueryMethod.Invoke(session, [null, null, false]);
+
+        if (query == null)
+            return [];
+
+        // Chain .Include(propertyName) for each reference property
+        // RavenDB's IRavenQueryable<T> has Include(string path) method
+        foreach (var (property, _) in referenceProperties)
+        {
+            if (query == null) break;
+
+            var queryType = query.GetType();
+
+            // Look for Include method that takes a string path
+            var includeMethod = queryType.GetMethods()
+                .FirstOrDefault(m => m.Name == "Include"
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(string));
+
+            if (includeMethod != null)
+            {
+                query = includeMethod.Invoke(query, [property.Name]);
+            }
+        }
+
+        // Call ToListAsync on the query
+        var toListMethod = typeof(LinqExtensions).GetMethods()
+            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 2);
+
+        if (toListMethod == null)
+            return [];
+
+        var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
+        var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
+
+        if (task == null)
+            return [];
+
+        await task;
+
+        var resultProperty = task.GetType().GetProperty("Result");
+        var result = resultProperty?.GetValue(task);
+
+        if (result is System.Collections.IEnumerable enumerable)
+        {
+            return enumerable.Cast<object>().ToList();
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// Extracts referenced documents from the session cache (they were loaded via .Include()).
+    /// Since they're already in the session, LoadAsync returns immediately without a database call.
+    /// </summary>
+    private async Task<Dictionary<string, object>> ExtractIncludedDocumentsFromSessionAsync(
+        IAsyncDocumentSession session,
+        IEnumerable<object> entities,
+        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    {
+        var includedDocuments = new Dictionary<string, object>();
+
+        if (!referenceProperties.Any())
+            return includedDocuments;
+
+        // Collect all unique reference IDs
+        var refIdsByType = new Dictionary<Type, HashSet<string>>();
+
+        foreach (var entity in entities)
+        {
+            foreach (var (property, refAttr) in referenceProperties)
+            {
+                var refId = property.GetValue(entity) as string;
+                if (string.IsNullOrEmpty(refId)) continue;
+
+                var targetType = refAttr.TargetType;
+                if (!refIdsByType.ContainsKey(targetType))
+                {
+                    refIdsByType[targetType] = [];
+                }
+                refIdsByType[targetType].Add(refId);
+            }
+        }
+
+        // Load from session cache (no database calls - documents were included in the query)
+        foreach (var (targetType, refIds) in refIdsByType)
+        {
+            foreach (var refId in refIds)
+            {
+                // This LoadAsync returns from session cache, not from database
+                var referencedEntity = await LoadEntityAsync(session, targetType, refId);
+                if (referencedEntity != null)
+                {
+                    includedDocuments[refId] = referencedEntity;
+                }
             }
         }
 
