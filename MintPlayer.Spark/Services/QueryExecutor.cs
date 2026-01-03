@@ -128,7 +128,25 @@ internal partial class QueryExecutor : IQueryExecutor
             var genericSessionQueryMethod = sessionQueryMethod.MakeGenericMethod(resultType);
             // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
             var ravenIndexName = indexName.Replace("_", "/");
-            return genericSessionQueryMethod.Invoke(session, [ravenIndexName])!;
+            var query = genericSessionQueryMethod.Invoke(session, [ravenIndexName])!;
+
+            // Use ProjectInto<T>() to project from stored fields in the index
+            // This ensures computed/stored fields like FullName are populated from the index
+            // ProjectInto is an extension method on IQueryable (non-generic) in LinqExtensions
+            var projectIntoMethod = typeof(LinqExtensions).GetMethods()
+                .FirstOrDefault(m => m.Name == "ProjectInto"
+                    && m.IsGenericMethod
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(IQueryable));
+
+            if (projectIntoMethod != null)
+            {
+                var genericProjectIntoMethod = projectIntoMethod.MakeGenericMethod(resultType);
+                query = genericProjectIntoMethod.Invoke(null, [query])!;
+            }
+
+            return query;
         }
 
         // Fallback: use session.Query<T>() method directly (without index)

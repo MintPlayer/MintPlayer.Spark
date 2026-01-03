@@ -309,6 +309,25 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (query == null)
             return [];
 
+        // When querying an index, use ProjectInto<T>() to project from stored fields
+        // This ensures computed/stored fields like FullName are populated from the index
+        // ProjectInto is an extension method on IQueryable (non-generic) in LinqExtensions
+        if (!string.IsNullOrEmpty(indexName))
+        {
+            var projectIntoMethod = typeof(LinqExtensions).GetMethods()
+                .FirstOrDefault(m => m.Name == "ProjectInto"
+                    && m.IsGenericMethod
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(IQueryable));
+
+            if (projectIntoMethod != null)
+            {
+                var genericProjectIntoMethod = projectIntoMethod.MakeGenericMethod(entityType);
+                query = genericProjectIntoMethod.Invoke(null, [query])!;
+            }
+        }
+
         // Chain .Include(propertyName) for each reference property
         // RavenDB's IRavenQueryable<T> has Include(string path) method
         foreach (var (property, _) in referenceProperties)

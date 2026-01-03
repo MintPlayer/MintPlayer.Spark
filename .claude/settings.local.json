@@ -17,7 +17,9 @@
       "WebFetch(domain:bootstrap.mintplayer.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:api.github.com)",
-      "WebFetch(domain:docs.ravendb.net)"
+      "WebFetch(domain:docs.ravendb.net)",
+      "WebFetch(domain:ravendb.net)",
+      "WebFetch(domain:searchcode.com)"
     ]
   },
   "enableAllProjectMcpServers": true,
