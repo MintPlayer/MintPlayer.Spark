@@ -8,13 +8,17 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
 import { BsModalModule } from '@mintplayer/ng-bootstrap/modal';
+import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
+import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsToggleButtonModule, IconComponent],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -40,6 +44,20 @@ export class PoFormComponent implements OnChanges {
   editingAsDetailAttr: EntityAttributeDefinition | null = null;
   asDetailFormData: Record<string, any> = {};
   showAsDetailModal = false;
+
+  // Modal state for Reference selection
+  editingReferenceAttr: EntityAttributeDefinition | null = null;
+  showReferenceModal = false;
+  referenceModalItems: PersistentObject[] = [];
+  referenceModalEntityType: EntityType | null = null;
+  referenceModalPagination: PaginationResponse<PersistentObject> | undefined = undefined;
+  referenceModalSettings: DatatableSettings = new DatatableSettings({
+    perPage: { values: [10, 25, 50], selected: 10 },
+    page: { values: [1], selected: 1 },
+    sortProperty: '',
+    sortDirection: 'ascending'
+  });
+  referenceSearchTerm: string = '';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['entityType'] && this.entityType) {
@@ -201,5 +219,110 @@ export class PoFormComponent implements OnChanges {
     return asDetailType?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && a.name !== 'Id')
       .sort((a, b) => a.order - b.order) || [];
+  }
+
+  // Reference modal methods
+  getReferenceDisplayValue(attr: EntityAttributeDefinition): string {
+    const selectedId = this.formData[attr.name];
+    if (!selectedId) return '(not selected)';
+
+    const options = this.getReferenceOptions(attr);
+    const selected = options.find(o => o.id === selectedId);
+    return selected?.breadcrumb || selected?.name || selectedId;
+  }
+
+  openReferenceSelector(attr: EntityAttributeDefinition): void {
+    this.editingReferenceAttr = attr;
+    this.referenceSearchTerm = '';
+    this.referenceModalItems = this.getReferenceOptions(attr);
+
+    // Find the entity type for the reference
+    this.sparkService.getEntityTypes().subscribe(types => {
+      this.referenceModalEntityType = types.find(t => t.clrType === attr.referenceType) || null;
+      this.referenceModalSettings = new DatatableSettings({
+        perPage: { values: [10, 25, 50], selected: 10 },
+        page: { values: [1], selected: 1 },
+        sortProperty: '',
+        sortDirection: 'ascending'
+      });
+      this.applyReferenceFilter();
+      this.showReferenceModal = true;
+      this.cdr.markForCheck();
+    });
+  }
+
+  onReferenceSearchChange(): void {
+    this.referenceModalSettings.page.selected = 1;
+    this.applyReferenceFilter();
+  }
+
+  applyReferenceFilter(): void {
+    let filteredItems = this.referenceModalItems;
+
+    // Apply search filter
+    if (this.referenceSearchTerm.trim()) {
+      const term = this.referenceSearchTerm.toLowerCase().trim();
+      filteredItems = this.referenceModalItems.filter(item => {
+        if (item.name?.toLowerCase().includes(term)) return true;
+        if (item.breadcrumb?.toLowerCase().includes(term)) return true;
+        return item.attributes.some(attr => {
+          const value = attr.breadcrumb || attr.value;
+          if (value == null) return false;
+          return String(value).toLowerCase().includes(term);
+        });
+      });
+    }
+
+    const totalPages = Math.ceil(filteredItems.length / this.referenceModalSettings.perPage.selected) || 1;
+    this.referenceModalPagination = {
+      data: filteredItems,
+      totalRecords: filteredItems.length,
+      totalPages: totalPages,
+      perPage: this.referenceModalSettings.perPage.selected,
+      page: this.referenceModalSettings.page.selected
+    };
+
+    this.referenceModalSettings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+
+    if (this.referenceModalSettings.page.selected > totalPages) {
+      this.referenceModalSettings.page.selected = 1;
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  clearReferenceSearch(): void {
+    this.referenceSearchTerm = '';
+    this.onReferenceSearchChange();
+  }
+
+  getReferenceVisibleAttributes(): EntityAttributeDefinition[] {
+    return this.referenceModalEntityType?.attributes
+      .filter(a => a.isVisible)
+      .sort((a, b) => a.order - b.order) || [];
+  }
+
+  getReferenceAttributeValue(item: PersistentObject, attrName: string): any {
+    const attr = item.attributes.find(a => a.name === attrName);
+    if (!attr) return '';
+    if (attr.breadcrumb) return attr.breadcrumb;
+    return attr.value || '';
+  }
+
+  selectReferenceItem(item: PersistentObject): void {
+    if (this.editingReferenceAttr) {
+      this.formData[this.editingReferenceAttr.name] = item.id;
+      this.formDataChange.emit(this.formData);
+    }
+    this.closeReferenceModal();
+  }
+
+  closeReferenceModal(): void {
+    this.showReferenceModal = false;
+    this.editingReferenceAttr = null;
+    this.referenceModalItems = [];
+    this.referenceModalEntityType = null;
+    this.referenceSearchTerm = '';
+    this.cdr.markForCheck();
   }
 }

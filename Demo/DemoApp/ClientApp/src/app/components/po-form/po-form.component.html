@@ -11,28 +11,26 @@
         </label>
         <div [md]="8">
           @if (attr.dataType === 'boolean') {
-            <div class="form-check pt-2">
-              <input
-                type="checkbox"
-                class="form-check-input"
-                [id]="attr.name"
-                [(ngModel)]="formData[attr.name]"
-                [name]="attr.name"
-                [class.is-invalid]="hasError(attr.name)"
-                (ngModelChange)="onFieldChange()">
-            </div>
+            <bs-toggle-button
+              [(isToggled)]="formData[attr.name]"
+              (isToggledChange)="onFieldChange()">
+            </bs-toggle-button>
           } @else if (attr.dataType === 'Reference') {
-            <bs-select
-              [id]="attr.name"
-              [(ngModel)]="formData[attr.name]"
-              [name]="attr.name"
-              [class.is-invalid]="hasError(attr.name)"
-              (ngModelChange)="onFieldChange()">
-              <option [ngValue]="null">-- Select --</option>
-              @for (option of getReferenceOptions(attr); track option.id) {
-                <option [ngValue]="option.id">{{ option.breadcrumb || option.name }}</option>
-              }
-            </bs-select>
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getReferenceDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openReferenceSelector(attr)">
+                ...
+              </button>
+            </bs-input-group>
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input
@@ -46,7 +44,7 @@
                 bsInputGroupBtn
                 [color]="colors.secondary"
                 (click)="openAsDetailEditor(attr)">
-                <i class="bi bi-pencil"></i> Edit
+                <app-icon name="pencil" />
               </button>
             </bs-input-group>
           } @else {
@@ -105,14 +103,9 @@
             </label>
             <div [md]="8">
               @if (detailAttr.dataType === 'boolean') {
-                <div class="form-check pt-2">
-                  <input
-                    type="checkbox"
-                    class="form-check-input"
-                    [id]="'detail_' + detailAttr.name"
-                    [(ngModel)]="asDetailFormData[detailAttr.name]"
-                    [name]="'detail_' + detailAttr.name">
-                </div>
+                <bs-toggle-button
+                  [(isToggled)]="asDetailFormData[detailAttr.name]">
+                </bs-toggle-button>
               } @else {
                 <input
                   [type]="getInputType(detailAttr.dataType)"
@@ -131,6 +124,74 @@
     <div bsModalFooter>
       <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">Cancel</button>
       <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">Save</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting Reference items -->
+<bs-modal [(isOpen)]="showReferenceModal" (isOpenChange)="!$event && closeReferenceModal()">
+  <div *bsModal class="reference-modal">
+    <div bsModalHeader>
+      <h5 class="modal-title">Select {{ editingReferenceAttr?.label || editingReferenceAttr?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      @if (referenceModalEntityType) {
+        <!-- Search box -->
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <bs-input-group>
+              <span class="input-group-text">
+                <app-icon name="search" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search..."
+                [(ngModel)]="referenceSearchTerm"
+                (ngModelChange)="onReferenceSearchChange()">
+              @if (referenceSearchTerm) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="clearReferenceSearch()">
+                  <app-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
+          <div class="col-md-6 text-end">
+            @if (referenceSearchTerm && referenceModalPagination) {
+              <span class="text-muted">
+                {{ referenceModalPagination.totalRecords }} result{{ referenceModalPagination.totalRecords !== 1 ? 's' : '' }} found
+              </span>
+            }
+          </div>
+        </div>
+
+        <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
+          @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ attr.label || attr.name }}
+            </div>
+          }
+
+          <tr *bsRowTemplate="let item of referenceModalPagination" (click)="selectReferenceItem(item)" style="cursor: pointer;">
+            @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+              <td>{{ getReferenceAttributeValue(item, attr.name) }}</td>
+            }
+          </tr>
+        </bs-datatable>
+      } @else {
+        <div class="text-center p-3">
+          <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">Cancel</button>
     </div>
   </div>
 </bs-modal>

@@ -3,14 +3,17 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
+import { IconComponent } from '../../components/icon/icon.component';
 import { EntityType, EntityAttributeDefinition, PersistentObject, SparkQuery } from '../../core/models';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsDatatableModule],
+  imports: [CommonModule, FormsModule, RouterModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

@@ -90,6 +90,17 @@
       "order": 6,
       "asDetailType": "DemoApp.Data.Address",
       "rules": []
+    },
+    {
+      "id": "65cf3b91-01bd-4b10-a5e9-a81b549bc69e",
+      "name": "IsActive",
+      "label": "Is Active",
+      "dataType": "boolean",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 7,
+      "rules": []
     }
   ]
 }

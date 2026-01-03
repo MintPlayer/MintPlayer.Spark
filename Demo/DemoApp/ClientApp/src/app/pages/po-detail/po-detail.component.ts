@@ -4,11 +4,12 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject } from '../../core/models';
+import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsButtonGroupComponent],
+  imports: [CommonModule, RouterModule, BsButtonGroupComponent, IconComponent],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {

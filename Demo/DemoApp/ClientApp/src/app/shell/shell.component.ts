@@ -6,12 +6,13 @@ import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnitGroup } from '../core/models';
+import { IconComponent } from '../components/icon/icon.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent],
+  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -96,5 +97,11 @@ export class ShellComponent implements OnInit {
     }
     // Bootstrap 'md' breakpoint is 768px
     return window.innerWidth >= 768;
+  }
+
+  getIconName(icon: string | undefined, fallback: string): string {
+    const iconClass = icon || fallback;
+    // Strip 'bi-' prefix if present
+    return iconClass.startsWith('bi-') ? iconClass.substring(3) : iconClass;
   }
 }
