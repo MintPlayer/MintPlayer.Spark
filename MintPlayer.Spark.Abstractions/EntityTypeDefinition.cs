@@ -6,6 +6,17 @@ public sealed class EntityTypeDefinition
     public required string Name { get; set; }
     public required string ClrType { get; set; }
     /// <summary>
+    /// The CLR type name of the projection type used for RavenDB index queries.
+    /// Set when the entity class has [QueryType(typeof(V))] attribute.
+    /// Example: "Demo.Data.VCar"
+    /// </summary>
+    public string? QueryType { get; set; }
+    /// <summary>
+    /// The name of the RavenDB index to use for list queries when QueryType is set.
+    /// Example: "Cars_Overview"
+    /// </summary>
+    public string? IndexName { get; set; }
+    /// <summary>
     /// Template string with {PropertyName} placeholders for building a formatted display value.
     /// Example: "{Street}, {PostalCode} {City}"
     /// </summary>
@@ -36,5 +47,15 @@ public sealed class EntityAttributeDefinition
     /// For AsDetail attributes, specifies the nested entity type's CLR type name.
     /// </summary>
     public string? AsDetailType { get; set; }
+    /// <summary>
+    /// When false, this attribute exists only in the projection type (e.g., computed by index).
+    /// Not present in the collection entity. Used for list views only.
+    /// </summary>
+    public bool? InCollectionType { get; set; }
+    /// <summary>
+    /// When false, this attribute exists only in the collection type (not projected by the index).
+    /// Used for detail/edit views only.
+    /// </summary>
+    public bool? InQueryType { get; set; }
     public ValidationRule[] Rules { get; set; } = [];
 }

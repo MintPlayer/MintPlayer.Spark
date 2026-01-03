@@ -55,9 +55,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var clrType = entityType.FullName ?? entityType.Name;
 
-            // Find or create entity type definition
+            // Check for [QueryType] attribute
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            Type? projectionType = queryTypeAttr?.ProjectionType;
+
+            // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, existingDef);
 
             // Save the entity type definition
             var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
@@ -65,23 +69,25 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             File.WriteAllText(fileName, json);
             processedTypes.Add(clrType);
 
-            Console.WriteLine($"Synchronized model: {entityType.Name} -> {fileName}");
+            // Also mark projection type as processed (no separate JSON file)
+            if (projectionType != null)
+            {
+                var projectionClrType = projectionType.FullName ?? projectionType.Name;
+                processedTypes.Add(projectionClrType);
+                Console.WriteLine($"Synchronized model: {entityType.Name} (merged with {projectionType.Name}) -> {fileName}");
+            }
+            else
+            {
+                Console.WriteLine($"Synchronized model: {entityType.Name} -> {fileName}");
+            }
 
             // Collect embedded types from this entity
             CollectEmbeddedTypes(entityType, typesToProcess, processedTypes);
 
-            // Check for [QueryType] attribute and collect projection type
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            if (queryTypeAttr != null)
+            // Also collect embedded types from projection type (if any)
+            if (projectionType != null)
             {
-                var projectionType = queryTypeAttr.ProjectionType;
-                var projectionClrType = projectionType.FullName ?? projectionType.Name;
-
-                if (!processedTypes.Contains(projectionClrType))
-                {
-                    typesToProcess.Enqueue(projectionType);
-                    Console.WriteLine($"Found projection type: {projectionType.Name} (from [QueryType] on {entityType.Name})");
-                }
+                CollectEmbeddedTypes(projectionType, typesToProcess, processedTypes);
             }
 
             // Create default query for this entity type if it doesn't exist
@@ -115,14 +121,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 continue;
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, existingDef);
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
             File.WriteAllText(fileName, json);
             processedTypes.Add(clrType);
 
-            Console.WriteLine($"Synchronized model (embedded/projection): {embeddedType.Name} -> {fileName}");
+            Console.WriteLine($"Synchronized model (embedded): {embeddedType.Name} -> {fileName}");
 
             // Recursively collect embedded types from this type
             CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
@@ -206,7 +212,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return result;
     }
 
-    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, EntityTypeDefinition? existing)
+    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, EntityTypeDefinition? existing)
     {
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
@@ -219,26 +225,70 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.Name = entityType.Name;
         entityTypeDef.ClrType = entityType.FullName ?? entityType.Name;
 
+        // Set QueryType and IndexName if projection type is provided
+        if (projectionType != null)
+        {
+            entityTypeDef.QueryType = projectionType.FullName ?? projectionType.Name;
+
+            // Get IndexName from the QueryTypeAttribute if specified
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            entityTypeDef.IndexName = queryTypeAttr?.IndexName;
+        }
+
         // Get existing attributes as a dictionary for quick lookup
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
 
-        // Build new attributes list, preserving existing IDs and custom settings
-        var newAttributes = new List<EntityAttributeDefinition>();
-        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        // Get properties from collection type
+        var collectionProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
+            .ToDictionary(p => p.Name, p => p);
+
+        // Get properties from projection type (if any)
+        var projectionProperties = projectionType?.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
+            .ToDictionary(p => p.Name, p => p)
+            ?? new Dictionary<string, PropertyInfo>();
+
+        // Merge property names from both types
+        var allPropertyNames = collectionProperties.Keys
+            .Union(projectionProperties.Keys)
+            .Distinct()
             .ToList();
 
+        // Build new attributes list, preserving existing IDs and custom settings
+        var newAttributes = new List<EntityAttributeDefinition>();
         var order = 1;
-        foreach (var property in properties)
-        {
-            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
 
+        foreach (var propertyName in allPropertyNames)
+        {
+            var inCollectionType = collectionProperties.TryGetValue(propertyName, out var collectionProp);
+            var inQueryType = projectionProperties.TryGetValue(propertyName, out var projectionProp);
+
+            // Use collection property if available, otherwise use projection property
+            var property = collectionProp ?? projectionProp!;
+
+            // Validate type compatibility if property exists in both
+            if (inCollectionType && inQueryType)
+            {
+                var collectionDataType = GetDataType(collectionProp!.PropertyType);
+                var projectionDataType = GetDataType(projectionProp!.PropertyType);
+
+                if (!AreDataTypesCompatible(collectionDataType, projectionDataType))
+                {
+                    throw new InvalidOperationException(
+                        $"Type mismatch for property '{propertyName}' between collection type '{entityType.Name}' " +
+                        $"({collectionProp!.PropertyType.Name} -> {collectionDataType}) and projection type '{projectionType!.Name}' " +
+                        $"({projectionProp!.PropertyType.Name} -> {projectionDataType}). Property types must be convertible.");
+                }
+            }
+
+            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
 
-            if (existingAttrs.TryGetValue(property.Name, out var existingAttr))
+            if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
                 // Update existing attribute, preserving custom settings
                 existingAttr.DataType = dataType;
@@ -258,6 +308,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.AsDetailType = asDetailType;
                 }
 
+                // Set InCollectionType/InQueryType flags only when projection type exists
+                if (projectionType != null)
+                {
+                    existingAttr.InCollectionType = inCollectionType ? null : false;
+                    existingAttr.InQueryType = inQueryType ? null : false;
+                }
+                else
+                {
+                    existingAttr.InCollectionType = null;
+                    existingAttr.InQueryType = null;
+                }
+
                 newAttributes.Add(existingAttr);
             }
             else
@@ -266,8 +328,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 var newAttr = new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(),
-                    Name = property.Name,
-                    Label = AddSpacesToCamelCase(property.Name),
+                    Name = propertyName,
+                    Label = AddSpacesToCamelCase(propertyName),
                     DataType = dataType,
                     IsRequired = !IsNullable(property.PropertyType) && property.PropertyType != typeof(string),
                     IsVisible = true,
@@ -276,6 +338,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Query = referenceAttr?.Query,
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
+                    // Set InCollectionType/InQueryType flags only when projection type exists
+                    InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,
+                    InQueryType = projectionType != null ? (inQueryType ? null : false) : null,
                     Rules = []
                 };
                 newAttributes.Add(newAttr);
@@ -294,6 +359,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
 
         return entityTypeDef;
+    }
+
+    private bool AreDataTypesCompatible(string type1, string type2)
+    {
+        // Same types are always compatible
+        if (type1 == type2) return true;
+
+        // Number and decimal are compatible (both are numeric)
+        var numericTypes = new HashSet<string> { "number", "decimal" };
+        if (numericTypes.Contains(type1) && numericTypes.Contains(type2)) return true;
+
+        return false;
     }
 
     private bool IsRavenQueryable(Type type)

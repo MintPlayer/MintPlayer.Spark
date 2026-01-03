@@ -55,31 +55,48 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        // Check for [QueryType] attribute if using projection
-        Type resultType = entityType;
-        EntityTypeDefinition? resultTypeDefinition = null;
-
-        if (query.UseProjection || !string.IsNullOrEmpty(query.IndexName))
-        {
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            if (queryTypeAttr != null)
-            {
-                resultType = queryTypeAttr.ProjectionType;
-                resultTypeDefinition = modelLoader.GetEntityTypeByClrType(resultType.FullName ?? resultType.Name);
-            }
-        }
-
-        // Fall back to entity type definition if no projection type found
-        resultTypeDefinition ??= modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-        if (resultTypeDefinition == null)
+        // Get entity type definition
+        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
+        if (entityTypeDefinition == null)
         {
             return [];
         }
 
-        // Apply index if specified
-        if (!string.IsNullOrEmpty(query.IndexName))
+        // Determine result type and index to use
+        Type resultType = entityType;
+        string? indexName = query.IndexName; // Use query-specified index first
+
+        // Check if entity has QueryType configured (either from attribute or model)
+        // When QueryType is present, ALWAYS use the index for list queries
+        if (!string.IsNullOrEmpty(entityTypeDefinition.QueryType))
         {
-            queryable = ApplyIndex(session, entityType, resultType, query.IndexName);
+            // Get projection type from attribute
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            if (queryTypeAttr != null)
+            {
+                resultType = queryTypeAttr.ProjectionType;
+            }
+
+            // Use index from entity definition if not specified in query
+            if (string.IsNullOrEmpty(indexName))
+            {
+                indexName = entityTypeDefinition.IndexName;
+            }
+        }
+        else if (query.UseProjection || !string.IsNullOrEmpty(query.IndexName))
+        {
+            // Legacy behavior: check attribute only when explicitly requested
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            if (queryTypeAttr != null)
+            {
+                resultType = queryTypeAttr.ProjectionType;
+            }
+        }
+
+        // Apply index if we have one (either from QueryType or explicitly specified)
+        if (!string.IsNullOrEmpty(indexName))
+        {
+            queryable = ApplyIndex(session, entityType, resultType, indexName);
         }
 
         // Apply sorting if specified
@@ -91,8 +108,8 @@ internal partial class QueryExecutor : IQueryExecutor
         // Execute the query
         var entities = await ExecuteQueryableAsync(queryable, resultType);
 
-        // Convert to PersistentObjects
-        return entities.Select(e => entityMapper.ToPersistentObject(e, resultTypeDefinition.Id));
+        // Convert to PersistentObjects using the entity type definition (which includes merged attributes)
+        return entities.Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id));
     }
 
     private object ApplyIndex(IAsyncDocumentSession session, Type entityType, Type resultType, string indexName)

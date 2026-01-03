@@ -618,6 +618,57 @@ public class Person
 builder.Services.AddSparkActions<PersonActions, Person>();
 ```
 
+#### FR-BE-010: QueryType Attribute and Index-Based Queries
+- **Description**: System shall support the `[QueryType]` attribute to route list queries through RavenDB indexes instead of collections
+- **Priority**: Medium
+- **Status**: Implemented
+
+**Requirements:**
+1. Define `QueryTypeAttribute` in `MintPlayer.Spark.Abstractions`
+2. At application startup, call `IndexCreation.CreateIndexesAsync()` to deploy all indexes from the application assembly
+3. When executing a Spark Query for an entity type that has `[QueryType(typeof(V))]`:
+   - Query the corresponding RavenDB index instead of the collection
+   - Return results as PersistentObjects using the projection type `V` for attribute mapping
+4. When `[QueryType]` is not present, continue querying the collection directly
+5. Detail/Edit views always use the full collection entity, not the projection type
+
+**Model Synchronization Impact:**
+
+When `--spark-synchronize-model` runs and an entity has `[QueryType(typeof(V))]`:
+- Do **NOT** create a separate JSON model file for the projection type
+- Merge both classes (`Car` and `VCar`) into a **single** persistent-object JSON file (`Car.json`)
+- Attributes from both classes are merged by `name`:
+  - If a property exists in both classes, use the merged definition
+  - If the property-type on the collection-type is not convertible to the property-type on the index property, throw an error.
+    Example: string <> int
+- Store the projection type CLR name in the model: `"queryType": "Demo.Data.VCar"`
+- Store the index name from the attribute in the model: `"indexName": "Cars_Overview"`
+
+**Example Merged Model (`Car.json`):**
+```json
+{
+  "id": "...",
+  "name": "Car",
+  "clrType": "Demo.Data.Car",
+  "queryType": "Demo.Data.VCar",
+  "indexName": "Cars_Overview",
+  "attributes": [
+    { "name": "Id", "dataType": "guid" },
+    { "name": "Brand", "dataType": "string" },
+    { "name": "Model", "dataType": "string" },
+    { "name": "Year", "dataType": "number" },
+    { "name": "FullName", "dataType": "string", "inCollectionType": false },
+    { "name": "Color", "dataType": "string", "inQueryType": false },
+    { "name": "Price", "dataType": "decimal", "inQueryType": false }
+  ]
+}
+```
+
+In this example:
+- `FullName` exists only in `VCar` (computed by the index) → `inCollectionType: false`
+- `Color` and `Price` exist only in `Car` (not projected) → `inQueryType: false`
+- `Id`, `Brand`, `Model`, `Year` exist in both → no flags needed
+
 ### 6.9 Display Format and Breadcrumb Rendering
 
 When displaying `Reference` or `AsDetail` attributes in the Angular frontend, the framework needs to render a human-readable representation of the referenced/nested object. This is controlled by the `displayFormat` property on the entity type definition.
@@ -670,54 +721,104 @@ For `Reference` attributes, the backend resolves the `breadcrumb` property on th
 
 This allows the frontend to display `"{Company}"` as `"Acme Corporation"` without needing to know the reference target type or make additional API calls.
 
-### 6.10 RavenDB Indexes
+### 6.10 RavenDB Indexes and QueryType Attribute
 
-RavenDB indexes allow projecting entity data into optimized query views. Spark supports custom indexes using RavenDB's `AbstractIndexCreationTask`.
+RavenDB indexes allow projecting entity data into optimized query views. Spark supports custom indexes using RavenDB's `AbstractIndexCreationTask` combined with the `[QueryType]` attribute to automatically route list queries through indexes.
+
+**Overview:**
+
+| Concept | Description |
+|---------|-------------|
+| Collection Entity | The class stored in RavenDB (e.g., `Car`, `Person`) |
+| Projection Type | The class returned by a RavenDB index (e.g., `VCar`, `VPerson`) |
+| `[QueryType]` Attribute | Applied to the collection entity to specify its projection type |
+
+**How It Works:**
+
+1. Developer creates a RavenDB index that projects the collection entity to a view model
+2. Developer applies `[QueryType(typeof(VCar))]` to the collection entity class
+3. At application startup, Spark calls `IndexCreation.CreateIndexesAsync()` to deploy all indexes
+4. When the Angular query-list page requests entities, Spark queries the RavenDB **index** instead of the collection
+5. The index projection type (`VCar`) is used for list views, while the full entity (`Car`) is used for detail/edit views
 
 **Index Definition:**
 ```csharp
-public class People_Overview : AbstractIndexCreationTask<Data.Person>
+public class Cars_Overview : AbstractIndexCreationTask<Data.Car>
 {
-    public People_Overview() {
-        Map = people => from person in people
-                        select new Data.VPerson
-                        {
-                            Name = person.FirstName + ' ' + person.LastName,
-                            Age = person.Age,
-                            City = person.City
-                        };
+    public Cars_Overview()
+    {
+        Map = cars => from car in cars
+                      select new Data.VCar
+                      {
+                          Id = car.Id,
+                          Brand = car.Brand,
+                          Model = car.Model,
+                          FullName = car.Brand + " " + car.Model,
+                          Year = car.Year
+                      };
     }
 }
 ```
 
 **Entity Class with QueryType Attribute:**
 ```csharp
-[QueryType(typeof(Data.VPerson))]
-public class Person
+[QueryType(typeof(Data.VCar), IndexName = "Cars_Overview")]
+public class Car
 {
-    public string FirstName { get; set; }
-    public string LastName { get; set; }
-    public int Age { get; set; }
-    public string City { get; set; }
+    public Guid Id { get; set; }
+    public string Brand { get; set; }
+    public string Model { get; set; }
+    public int Year { get; set; }
+    public string Color { get; set; }
+    public decimal Price { get; set; }
+    // ... additional properties not needed in list views
 }
 ```
+
+**QueryTypeAttribute Properties:**
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `ProjectionType` | `Type` | Yes | The type returned by the RavenDB index (constructor parameter) |
+| `IndexName` | `string?` | No | The name of the RavenDB index to use for list queries |
 
 **Projection Class (View Model):**
 ```csharp
-public class VPerson
+public class VCar
 {
-    public string FullName { get; set; }
-    public int Age { get; set; }
-    public string City { get; set; }
+    public Guid Id { get; set; }
+    public string Brand { get; set; }
+    public string Model { get; set; }
+    public string FullName { get; set; }  // Computed: "Toyota Camry"
+    public int Year { get; set; }
+    // Subset of properties optimized for list display
 }
 ```
 
-**QueryType Attribute:**
+**QueryType Attribute Behavior:**
 
-The `[QueryType]` attribute is used to specify the type returned by the RavenDB index. This enables the framework to:
-- Know which projection type to use when querying via the index
-- Map index results to the appropriate view model
-- Support different shapes for stored documents vs. queried results
+| Scenario | Query Target | Type Used |
+|----------|--------------|-----------|
+| Entity has `[QueryType(typeof(V))]` | RavenDB Index | Projection type `V` |
+| Entity has no `[QueryType]` | RavenDB Collection | Collection entity type |
+
+**Startup Index Creation:**
+
+Spark automatically creates/updates RavenDB indexes at application startup:
+
+```csharp
+// Called internally by Spark during startup
+await IndexCreation.CreateIndexesAsync(
+    documentStore,
+    typeof(SparkContext).Assembly  // Scans for AbstractIndexCreationTask implementations
+);
+```
+
+**Benefits:**
+- **Performance**: Indexes are pre-computed, making list queries faster
+- **Reduced Payload**: Projection types contain only fields needed for list views
+- **Computed Fields**: Indexes can compute/combine fields (e.g., `FullName` from `Brand` + `Model`)
+- **Separation of Concerns**: List view shape (`VCar`) differs from storage shape (`Car`)
 
 ### 7.2 Frontend Requirements
 
@@ -1364,7 +1465,7 @@ public class Company
 | PopulateObjectValues | Not Started | FR-BE-004, extension method helpers |
 | Reference Handling | Partial | FR-BE-006, breadcrumb resolution works, `[Reference]` attribute not implemented |
 | Actions Classes | Complete | FR-BE-009, lifecycle hooks |
-| RavenDB Indexes | Not Started | `[QueryType]` attribute support |
+| QueryType Attribute | Complete | FR-BE-010, `[QueryType]` attribute and index-based queries |
 | Angular Shell | Complete | FR-FE-001, BsShellComponent integration |
 | Dynamic Sidebar | Complete | FR-FE-002, program units menu |
 | Entity List Page | Complete | FR-FE-003, BsDatatableComponent with pagination/sorting |
@@ -1423,7 +1524,7 @@ Phase 5: Advanced Features (Current)
 ├── [ ] Validation error display in frontend
 ├── [x] Actions classes (FR-BE-009) - lifecycle hooks
 ├── [ ] Reference attribute ([Reference]) support
-├── [ ] RavenDB index support ([QueryType])
+├── [x] QueryType attribute for index-based queries (FR-BE-010)
 ├── [ ] displayFormat support (template-based breadcrumbs, see Section 6.9)
 └── [ ] Computed/derived attributes
 ```
@@ -1507,6 +1608,8 @@ Phase 5: Advanced Features (Current)
 | Reference | A relationship between two entity types |
 | displayFormat | Template string with `{PropertyName}` placeholders for rendering human-readable display values |
 | Breadcrumb | Computed display value for Reference/AsDetail attributes, resolved using `displayFormat` |
+| QueryType | Attribute applied to collection entities to specify the projection type used for index-based list queries |
+| Projection Type | A view model class returned by a RavenDB index, typically a subset/transformation of the collection entity |
 
 ## Appendix B: Related Documents
 
