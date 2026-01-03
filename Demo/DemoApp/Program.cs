@@ -30,6 +30,7 @@ app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
 app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
+app.CreateSparkIndexes();
 
 app.UseEndpoints(endpoints =>
 {

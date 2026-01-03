@@ -33,7 +33,7 @@ public class PersonActions : DefaultPersistentObjectActions<Person>
     /// </summary>
     public override Task OnAfterSaveAsync(Person entity)
     {
-        Console.WriteLine($"[PersonActions] Person saved: {entity.FullName} (ID: {entity.Id})");
+        Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         return Task.CompletedTask;
     }
 
@@ -43,7 +43,7 @@ public class PersonActions : DefaultPersistentObjectActions<Person>
     /// </summary>
     public override Task OnBeforeDeleteAsync(Person entity)
     {
-        Console.WriteLine($"[PersonActions] Person being deleted: {entity.FullName} (ID: {entity.Id})");
+        Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         return Task.CompletedTask;
     }
 }

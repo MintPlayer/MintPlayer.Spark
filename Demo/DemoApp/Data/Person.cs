@@ -2,6 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Data;
 
+[QueryType(typeof(VPerson), IndexName = "People_Overview")]
 public class Person
 {
     public string? Id { get; set; }
@@ -13,10 +14,7 @@ public class Person
     [Reference(typeof(Company), "GetCompanies")]
     public string? Company { get; set; }
 
-    
     public Address? Address { get; set; }
 
     public bool IsActive { get; set; }
-
-    public string FullName => $"{FirstName} {LastName}";
 }
