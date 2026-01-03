@@ -7,7 +7,7 @@ namespace DemoApp.Indexes;
 /// RavenDB index that projects Person documents to VPerson view models.
 /// Computes the FullName property from FirstName and LastName.
 /// </summary>
-public class People_Overview : AbstractIndexCreationTask<Person, VPerson>
+public class People_Overview : AbstractIndexCreationTask<Person> // , VPerson
 {
     public People_Overview()
     {

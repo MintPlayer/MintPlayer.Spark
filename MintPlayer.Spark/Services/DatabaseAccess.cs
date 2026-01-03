@@ -89,14 +89,33 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         using var session = documentStore.OpenAsyncSession();
 
-        // Get reference properties to include for breadcrumb resolution
-        var referenceProperties = GetReferenceProperties(entityType);
+        // Check if entity has QueryType configured - if so, query the index instead of the collection
+        Type queryType = entityType;
+        string? indexName = null;
 
-        // Query entities with .Include() for all reference properties (single database call)
-        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, referenceProperties)).ToList();
+        if (!string.IsNullOrEmpty(entityTypeDefinition.QueryType))
+        {
+            // Get the projection type from the [QueryType] attribute
+            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
+            if (queryTypeAttr != null)
+            {
+                queryType = queryTypeAttr.ProjectionType;
+                indexName = entityTypeDefinition.IndexName ?? queryTypeAttr.IndexName;
+            }
+        }
+
+        // Get reference properties from the type being queried (queryType, not entityType)
+        // When querying an index, the projection type (e.g., VPerson) may not have the same reference properties
+        var referenceProperties = GetReferenceProperties(queryType);
+
+        // Query entities - use index if QueryType is configured, otherwise query collection
+        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
 
         // Referenced documents are now in session cache - extract them
-        var includedDocuments = await ExtractIncludedDocumentsFromSessionAsync(session, entities, referenceProperties);
+        // Only do this if we have reference properties on the queried type
+        var includedDocuments = referenceProperties.Count > 0
+            ? await ExtractIncludedDocumentsFromSessionAsync(session, entities, referenceProperties)
+            : new Dictionary<string, object>();
 
         // Convert each entity to PersistentObject with breadcrumb resolution
         return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, includedDocuments));
@@ -260,13 +279,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// <summary>
     /// Queries entities and uses .Include() for all reference properties so that
     /// referenced documents are loaded in a single database call.
+    /// When indexName is provided, queries the RavenDB index instead of the collection.
     /// </summary>
     private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
         IAsyncDocumentSession session,
         Type entityType,
+        string? indexName,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
     {
-        // Build query: session.Query<T>()
+        object? query;
+
+        // Query method signature: Query<T>(string indexName, string collectionName, bool isMapReduce)
         var sessionType = session.GetType();
         var queryMethod = sessionType.GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
@@ -277,7 +300,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
             return [];
 
         var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
-        var query = genericQueryMethod.Invoke(session, [null, null, false]);
+
+        // Pass indexName if querying an index, null for collection query
+        // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
+        var ravenIndexName = indexName?.Replace("_", "/");
+        query = genericQueryMethod.Invoke(session, [ravenIndexName, null, false]);
 
         if (query == null)
             return [];

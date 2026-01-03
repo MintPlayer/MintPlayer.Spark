@@ -126,7 +126,9 @@ internal partial class QueryExecutor : IQueryExecutor
         if (sessionQueryMethod != null)
         {
             var genericSessionQueryMethod = sessionQueryMethod.MakeGenericMethod(resultType);
-            return genericSessionQueryMethod.Invoke(session, [indexName])!;
+            // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
+            var ravenIndexName = indexName.Replace("_", "/");
+            return genericSessionQueryMethod.Invoke(session, [ravenIndexName])!;
         }
 
         // Fallback: use session.Query<T>() method directly (without index)
