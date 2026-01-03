@@ -50,7 +50,7 @@
                 bsInputGroupBtn
                 [color]="colors.secondary"
                 (click)="openAsDetailEditor(attr)">
-                <i class="bi bi-pencil"></i>
+                <app-icon name="pencil" />
               </button>
             </bs-input-group>
           } @else {
@@ -151,9 +151,9 @@
         <!-- Search box -->
         <div class="row mb-3">
           <div class="col-md-6">
-            <div class="input-group">
+            <bs-input-group>
               <span class="input-group-text">
-                <i class="bi bi-search"></i>
+                <app-icon name="search" />
               </span>
               <input
                 type="text"
@@ -166,10 +166,10 @@
                   type="button"
                   class="btn btn-outline-secondary"
                   (click)="clearReferenceSearch()">
-                  <i class="bi bi-x-lg"></i>
+                  <app-icon name="x-lg" />
                 </button>
               }
-            </div>
+            </bs-input-group>
           </div>
           <div class="col-md-6 text-end">
             @if (referenceSearchTerm && referenceModalPagination) {

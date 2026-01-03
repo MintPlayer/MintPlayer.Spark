@@ -12,11 +12,12 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, IconComponent],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

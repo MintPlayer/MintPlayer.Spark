@@ -4,13 +4,13 @@
       <h2>{{ item.breadcrumb || item.name }}</h2>
       <bs-button-group>
         <button class="btn btn-outline-secondary" (click)="onBack()">
-          <i class="bi bi-arrow-left"></i> Back
+          <app-icon name="arrow-left" /> Back
         </button>
         <button class="btn btn-primary" (click)="onEdit()">
-          <i class="bi bi-pencil"></i> Edit
+          <app-icon name="pencil" /> Edit
         </button>
         <button class="btn btn-danger" (click)="onDelete()">
-          <i class="bi bi-trash"></i> Delete
+          <app-icon name="trash" /> Delete
         </button>
       </bs-button-group>
     </div>
