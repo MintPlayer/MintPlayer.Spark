@@ -16,5 +16,7 @@ public class Person
     
     public Address? Address { get; set; }
 
+    public bool IsActive { get; set; }
+
     public string FullName => $"{FirstName} {LastName}";
 }

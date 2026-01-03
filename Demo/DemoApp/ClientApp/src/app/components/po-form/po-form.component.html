@@ -11,16 +11,10 @@
         </label>
         <div [md]="8">
           @if (attr.dataType === 'boolean') {
-            <div class="form-check pt-2">
-              <input
-                type="checkbox"
-                class="form-check-input"
-                [id]="attr.name"
-                [(ngModel)]="formData[attr.name]"
-                [name]="attr.name"
-                [class.is-invalid]="hasError(attr.name)"
-                (ngModelChange)="onFieldChange()">
-            </div>
+            <bs-toggle-button
+              [(isToggled)]="formData[attr.name]"
+              (isToggledChange)="onFieldChange()">
+            </bs-toggle-button>
           } @else if (attr.dataType === 'Reference') {
             <bs-input-group>
               <input
@@ -109,14 +103,9 @@
             </label>
             <div [md]="8">
               @if (detailAttr.dataType === 'boolean') {
-                <div class="form-check pt-2">
-                  <input
-                    type="checkbox"
-                    class="form-check-input"
-                    [id]="'detail_' + detailAttr.name"
-                    [(ngModel)]="asDetailFormData[detailAttr.name]"
-                    [name]="'detail_' + detailAttr.name">
-                </div>
+                <bs-toggle-button
+                  [(isToggled)]="asDetailFormData[detailAttr.name]">
+                </bs-toggle-button>
               } @else {
                 <input
                   [type]="getInputType(detailAttr.dataType)"
@@ -157,7 +146,6 @@
               </span>
               <input
                 type="text"
-                class="form-control"
                 placeholder="Search..."
                 [(ngModel)]="referenceSearchTerm"
                 (ngModelChange)="onReferenceSearchChange()">
