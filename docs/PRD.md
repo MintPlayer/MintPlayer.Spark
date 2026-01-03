@@ -1173,8 +1173,8 @@ The create/edit pages shall dynamically generate form controls based on attribut
 | decimal | `<input type="number" step="0.01">` | |
 | boolean | `<input type="checkbox">` | |
 | datetime | `<input type="datetime-local">` | |
-| AsDetail | `<input type="text" readonly><button>...</button>` | Button opens a BsModal component showing the nested object in a po-edit-form |
-| Reference | `<select>` or autocomplete | |
+| AsDetail | `<bs-input-group><input type="text" readonly><button [color]="colors.secondary"><i class="bi bi-pencil"></i></button></bs-input-group>` | Readonly input displays the displayFormat value. Button opens a BsModal component showing the nested object in a po-edit-form. |
+| Reference | `<bs-input-group><input type="text" readonly><button [color]="colors.secondary">...</button></bs-input-group>` | Readonly input displays the breadcrumb value. Button opens a BsModal containing a BsDatatableComponent showing items from the attribute's Query. User selects a row to set the reference value. |
 
 ---
 
