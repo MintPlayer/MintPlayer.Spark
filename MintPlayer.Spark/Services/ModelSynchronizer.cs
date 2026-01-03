@@ -288,6 +288,24 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
 
+            // Determine ShowedOn based on inQueryType/inCollectionType
+            // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages
+            // If property doesn't exist in collection type (inCollectionType=false), only show on Query pages
+            EShowedOn showedOn = EShowedOn.Query | EShowedOn.PersistentObject;
+            if (projectionType != null)
+            {
+                if (!inQueryType && inCollectionType)
+                {
+                    // Property only in collection type - show only on detail/edit pages
+                    showedOn = EShowedOn.PersistentObject;
+                }
+                else if (inQueryType && !inCollectionType)
+                {
+                    // Property only in projection type - show only on query/list pages
+                    showedOn = EShowedOn.Query;
+                }
+            }
+
             if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
                 // Update existing attribute, preserving custom settings
@@ -313,6 +331,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     existingAttr.InCollectionType = inCollectionType ? null : false;
                     existingAttr.InQueryType = inQueryType ? null : false;
+                    // Update ShowedOn based on type availability
+                    existingAttr.ShowedOn = showedOn;
                 }
                 else
                 {
@@ -341,6 +361,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // Set InCollectionType/InQueryType flags only when projection type exists
                     InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,
                     InQueryType = projectionType != null ? (inQueryType ? null : false) : null,
+                    ShowedOn = showedOn,
                     Rules = []
                 };
                 newAttributes.Add(newAttr);

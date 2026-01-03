@@ -62,7 +62,7 @@ export default class PoDetailComponent implements OnInit {
       return this.formatAsDetailValue(attrDef, attr.value);
     }
 
-    return attr.value || '';
+    return attr.value ?? '';
   }
 
   private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {

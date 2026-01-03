@@ -306,7 +306,7 @@ export class PoFormComponent implements OnChanges {
     const attr = item.attributes.find(a => a.name === attrName);
     if (!attr) return '';
     if (attr.breadcrumb) return attr.breadcrumb;
-    return attr.value || '';
+    return attr.value ?? '';
   }
 
   selectReferenceItem(item: PersistentObject): void {

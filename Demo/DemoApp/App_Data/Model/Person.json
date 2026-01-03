@@ -70,7 +70,7 @@
       "isReadOnly": false,
       "order": 4,
       "inQueryType": false,
-      "showedOn": "Query, PersistentObject",
+      "showedOn": "PersistentObject",
       "rules": []
     },
     {
@@ -85,7 +85,7 @@
       "query": "GetCompanies",
       "referenceType": "DemoApp.Data.Company",
       "inQueryType": false,
-      "showedOn": "Query, PersistentObject",
+      "showedOn": "PersistentObject",
       "rules": []
     },
     {
@@ -99,7 +99,7 @@
       "order": 6,
       "asDetailType": "DemoApp.Data.Address",
       "inQueryType": false,
-      "showedOn": "Query, PersistentObject",
+      "showedOn": "PersistentObject",
       "rules": []
     },
     {
