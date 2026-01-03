@@ -9,6 +9,7 @@ import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { EntityType, EntityAttributeDefinition, PersistentObject, SparkQuery } from '../../core/models';
+import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
@@ -166,7 +167,7 @@ export default class QueryListComponent implements OnInit {
 
   getVisibleAttributes() {
     return this.entityType?.attributes
-      .filter(a => a.isVisible)
+      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
   }
 

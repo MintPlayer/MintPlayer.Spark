@@ -77,8 +77,15 @@ internal partial class EntityMapper : IEntityMapper
             var attribute = new PersistentObjectAttribute
             {
                 Name = property.Name,
+                Label = attrDef?.Label,
                 Value = value,
                 DataType = dataType,
+                IsRequired = attrDef?.IsRequired ?? false,
+                IsVisible = attrDef?.IsVisible ?? true,
+                IsReadOnly = attrDef?.IsReadOnly ?? false,
+                Order = attrDef?.Order ?? 0,
+                ShowedOn = attrDef?.ShowedOn ?? (EShowedOn.Query | EShowedOn.PersistentObject),
+                Rules = attrDef?.Rules ?? [],
             };
 
             // Handle reference attributes - resolve breadcrumb from included documents

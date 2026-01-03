@@ -144,6 +144,7 @@ public class PersistentObjectAttribute
     public bool IsRequired { get; set; }
     public string? Query { get; set; }          // SparkQuery name for reference lookups in edit mode
     public string? Breadcrumb { get; set; }     // Computed display value for references/AsDetail (read-only, see Section 6.9)
+    public EShowedOn ShowedOn { get; set; }     // Controls visibility on Query (list) and PersistentObject (detail) pages
     public ValidationRule[] Rules { get; set; }
 }
 ```
@@ -160,6 +161,39 @@ public class PersistentObjectAttribute
 | `guid` | Unique identifiers | `Guid` |
 | `reference` | Foreign key to another entity (stored as string ID) | `string` with `[Reference]` attribute |
 | `AsDetail` | Nested complex object displayed inline within the parent form | Class or record types (without `[Reference]` attribute) |
+
+**ShowedOn Enum:**
+
+The `EShowedOn` enum controls on which pages an attribute should be displayed:
+
+```csharp
+[Flags]
+public enum EShowedOn
+{
+    Query = 1,              // Attribute visible in query/list views
+    PersistentObject = 2    // Attribute visible in detail/edit views
+}
+```
+
+| Value | Description |
+|-------|-------------|
+| `Query` | Attribute is shown as a column in query list pages (BsDatatableComponent) |
+| `PersistentObject` | Attribute is shown in detail and edit forms |
+| `Query \| PersistentObject` | Attribute is shown in both list views and detail/edit pages (default behavior) |
+
+**Usage in JSON Model:**
+```json
+{
+  "name": "InternalCode",
+  "dataType": "string",
+  "showedOn": "PersistentObject"
+}
+```
+
+This allows developers to:
+- Hide verbose/internal attributes from list views while showing them in detail pages
+- Create lightweight list views with only essential columns
+- Show computed/summary fields only in list views (e.g., index projections)
 
 **Data Type Detection During Synchronization:**
 
@@ -192,6 +226,7 @@ Entity types are defined in JSON files under `App_Data/Model/`:
       "name": "FirstName",
       "dataType": "string",
       "isRequired": true,
+      "showedOn": "Query, PersistentObject",
       "rules": [
         { "type": "maxLength", "value": 100 }
       ]
@@ -200,20 +235,23 @@ Entity types are defined in JSON files under `App_Data/Model/`:
       "id": "550e8400-e29b-41d4-a716-446655440002",
       "name": "LastName",
       "dataType": "string",
-      "isRequired": true
+      "isRequired": true,
+      "showedOn": "Query, PersistentObject"
     },
     {
       "id": "550e8400-e29b-41d4-a716-446655440003",
       "name": "DateOfBirth",
       "dataType": "datetime",
-      "isRequired": false
+      "isRequired": false,
+      "showedOn": "PersistentObject"
     },
     {
       "id": "550e8400-e29b-41d4-a716-446655440004",
       "name": "Company",
       "dataType": "reference",
       "referenceType": "Demo.Data.Company",
-      "isRequired": false
+      "isRequired": false,
+      "showedOn": "Query, PersistentObject"
     }
   ]
 }
@@ -1475,6 +1513,7 @@ public class Company
 | Validation Error Display | Partial | Backend returns errors, frontend needs display |
 | AsDetail Objects UI | Partial | Backend needs AsDetail type detection, frontend needs nested form UI |
 | displayFormat Support | Not Started | Template-based display values (e.g., `"{Street}, {PostalCode} {City}"`) |
+| ShowedOn Support | Complete | `EShowedOn` enum to control attribute visibility on Query vs PersistentObject pages |
 | Search/Filter | Not Started | List view filtering capability |
 
 ### 12.2 Implementation Roadmap
@@ -1526,6 +1565,7 @@ Phase 5: Advanced Features (Current)
 ├── [ ] Reference attribute ([Reference]) support
 ├── [x] QueryType attribute for index-based queries (FR-BE-010)
 ├── [ ] displayFormat support (template-based breadcrumbs, see Section 6.9)
+├── [x] ShowedOn support (EShowedOn enum for Query/PersistentObject visibility)
 └── [ ] Computed/derived attributes
 ```
 
@@ -1610,6 +1650,7 @@ Phase 5: Advanced Features (Current)
 | Breadcrumb | Computed display value for Reference/AsDetail attributes, resolved using `displayFormat` |
 | QueryType | Attribute applied to collection entities to specify the projection type used for index-based list queries |
 | Projection Type | A view model class returned by a RavenDB index, typically a subset/transformation of the collection entity |
+| ShowedOn | Flag enum (`EShowedOn`) controlling attribute visibility on Query (list) and PersistentObject (detail/edit) pages |
 
 ## Appendix B: Related Documents
 

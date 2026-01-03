@@ -1,5 +1,6 @@
 export * from './validation-rule';
 export * from './validation-error';
+export * from './showed-on';
 export * from './persistent-object-attribute';
 export * from './persistent-object';
 export * from './entity-type';

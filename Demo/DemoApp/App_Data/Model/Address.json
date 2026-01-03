@@ -14,6 +14,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
+      "showedOn": "Query, PersistentObject",
       "rules": []
     },
     {
@@ -25,6 +26,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
+      "showedOn": "Query, PersistentObject",
       "rules": []
     },
     {
@@ -36,6 +38,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 3,
+      "showedOn": "Query, PersistentObject",
       "rules": []
     }
   ]

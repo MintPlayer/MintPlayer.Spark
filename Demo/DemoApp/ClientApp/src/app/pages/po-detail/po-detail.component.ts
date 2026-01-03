@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject } from '../../core/models';
+import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
@@ -44,7 +45,7 @@ export default class PoDetailComponent implements OnInit {
 
   getVisibleAttributes() {
     return this.entityType?.attributes
-      .filter(a => a.isVisible)
+      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
 

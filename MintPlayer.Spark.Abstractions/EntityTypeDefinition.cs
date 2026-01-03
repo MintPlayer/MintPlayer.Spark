@@ -57,5 +57,11 @@ public sealed class EntityAttributeDefinition
     /// Used for detail/edit views only.
     /// </summary>
     public bool? InQueryType { get; set; }
+    /// <summary>
+    /// Controls on which pages the attribute should be displayed.
+    /// Query = shown in list views, PersistentObject = shown in detail/edit views.
+    /// Default is both (Query | PersistentObject).
+    /// </summary>
+    public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
 }
