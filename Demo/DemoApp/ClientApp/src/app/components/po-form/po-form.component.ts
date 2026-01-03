@@ -13,6 +13,7 @@ import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
 
@@ -102,7 +103,7 @@ export class PoFormComponent implements OnChanges {
 
   getEditableAttributes(): EntityAttributeDefinition[] {
     return this.entityType?.attributes
-      .filter(a => a.isVisible && !a.isReadOnly)
+      .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
 
