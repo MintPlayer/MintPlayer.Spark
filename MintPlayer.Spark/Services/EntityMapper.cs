@@ -57,48 +57,60 @@ internal partial class EntityMapper : IEntityMapper
         var entityTypeDef = modelLoader.GetEntityType(objectTypeId);
 
         var attributes = new List<PersistentObjectAttribute>();
-        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.Name != "Id" && p.CanRead);
 
-        foreach (var property in properties)
+        // Iterate over the entity type definition's attributes (merged from collection + projection types)
+        // This ensures all attributes are included even if the entity doesn't have all properties
+        if (entityTypeDef?.Attributes != null)
         {
-            var value = property.GetValue(entity);
-            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
-            var attrDef = entityTypeDef?.Attributes.FirstOrDefault(a => a.Name == property.Name);
-            var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
-
-            // For complex types (AsDetail), convert to dictionary for proper JSON serialization
-            // System.Text.Json doesn't serialize object? properties based on runtime type
-            if (dataType == "AsDetail" && value != null)
+            foreach (var attrDef in entityTypeDef.Attributes)
             {
-                value = ConvertToSerializableDictionary(value);
-            }
+                // Try to get the property from the entity (may not exist if entity is a projection type)
+                var property = entityType.GetProperty(attrDef.Name, BindingFlags.Public | BindingFlags.Instance);
+                object? value = null;
 
-            var attribute = new PersistentObjectAttribute
-            {
-                Name = property.Name,
-                Value = value,
-                DataType = dataType,
-            };
-
-            // Handle reference attributes - resolve breadcrumb from included documents
-            if (referenceAttr != null && value is string refId && !string.IsNullOrEmpty(refId) && includedDocuments != null)
-            {
-                if (includedDocuments.TryGetValue(refId, out var referencedEntity) && referencedEntity != null)
+                if (property != null && property.CanRead)
                 {
-                    // Get the referenced entity's type definition for displayFormat resolution
-                    var referencedEntityType = referencedEntity.GetType();
-                    var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(referencedEntityType.FullName ?? referencedEntityType.Name);
-                    attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
-                }
-                attribute.Query = referenceAttr.Query ?? attrDef?.Query;
-            }
-            else if (attrDef?.DataType == "Reference")
-            {
-                attribute.Query = attrDef.Query;
-            }
+                    value = property.GetValue(entity);
 
-            attributes.Add(attribute);
+                    // For complex types (AsDetail), convert to dictionary for proper JSON serialization
+                    if (attrDef.DataType == "AsDetail" && value != null)
+                    {
+                        value = ConvertToSerializableDictionary(value);
+                    }
+                }
+
+                var attribute = new PersistentObjectAttribute
+                {
+                    Name = attrDef.Name,
+                    Label = attrDef.Label,
+                    Value = value,
+                    DataType = attrDef.DataType,
+                    IsRequired = attrDef.IsRequired,
+                    IsVisible = attrDef.IsVisible,
+                    IsReadOnly = attrDef.IsReadOnly,
+                    Order = attrDef.Order,
+                    ShowedOn = attrDef.ShowedOn,
+                    Rules = attrDef.Rules ?? [],
+                };
+
+                // Handle reference attributes - resolve breadcrumb from included documents
+                if (attrDef.DataType == "Reference" && value is string refId && !string.IsNullOrEmpty(refId) && includedDocuments != null)
+                {
+                    if (includedDocuments.TryGetValue(refId, out var referencedEntity) && referencedEntity != null)
+                    {
+                        var referencedEntityType = referencedEntity.GetType();
+                        var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(referencedEntityType.FullName ?? referencedEntityType.Name);
+                        attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
+                    }
+                    attribute.Query = attrDef.Query;
+                }
+                else if (attrDef.DataType == "Reference")
+                {
+                    attribute.Query = attrDef.Query;
+                }
+
+                attributes.Add(attribute);
+            }
         }
 
         return new PersistentObject

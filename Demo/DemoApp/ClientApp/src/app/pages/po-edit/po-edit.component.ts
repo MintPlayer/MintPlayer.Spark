@@ -6,6 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
@@ -67,7 +68,7 @@ export default class PoEditComponent implements OnInit {
 
   getEditableAttributes() {
     return this.entityType?.attributes
-      .filter(a => a.isVisible && !a.isReadOnly)
+      .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
 

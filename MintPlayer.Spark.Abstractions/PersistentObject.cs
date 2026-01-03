@@ -22,6 +22,7 @@ public sealed class PersistentObjectAttribute
     public int Order { get; set; }
     public string? Query { get; set; }
     public string? Breadcrumb { get; set; }
+    public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
 
     public T? GetValue<T>()

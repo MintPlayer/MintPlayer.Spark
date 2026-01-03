@@ -13,6 +13,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
+      "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "maxLength",
@@ -29,6 +30,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
+      "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "url"
@@ -44,6 +46,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 3,
+      "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "range",

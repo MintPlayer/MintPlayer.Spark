@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +11,7 @@ using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Session;
 using Raven.Client.ServerWide.Operations;
 
@@ -140,6 +142,68 @@ public static class SparkExtensions
             Environment.Exit(0);
         }
         return app;
+    }
+
+    /// <summary>
+    /// Creates or updates all RavenDB indexes defined in the specified assembly.
+    /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
+    /// Call this at application startup to ensure indexes are available for queries.
+    /// </summary>
+    /// <param name="app">The application builder</param>
+    /// <param name="assembly">The assembly to scan for index definitions. If null, scans the entry assembly.</param>
+    /// <returns>The application builder for chaining</returns>
+    public static IApplicationBuilder CreateSparkIndexes(this IApplicationBuilder app, Assembly? assembly = null)
+    {
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
+
+        if (targetAssembly == null)
+        {
+            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
+            return app;
+        }
+
+        try
+        {
+            IndexCreation.CreateIndexes(targetAssembly, documentStore);
+            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
+        }
+
+        return app;
+    }
+
+    /// <summary>
+    /// Asynchronously creates or updates all RavenDB indexes defined in the specified assembly.
+    /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
+    /// Call this at application startup to ensure indexes are available for queries.
+    /// </summary>
+    /// <param name="app">The application builder</param>
+    /// <param name="assembly">The assembly to scan for index definitions. If null, scans the entry assembly.</param>
+    /// <returns>A task representing the async operation</returns>
+    public static async Task CreateSparkIndexesAsync(this IApplicationBuilder app, Assembly? assembly = null)
+    {
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
+
+        if (targetAssembly == null)
+        {
+            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
+            return;
+        }
+
+        try
+        {
+            await IndexCreation.CreateIndexesAsync(targetAssembly, documentStore);
+            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
+        }
     }
 
     public static IEndpointRouteBuilder MapSpark(this IEndpointRouteBuilder endpoints)
