@@ -15,6 +15,35 @@
               [(ngModel)]="formData[attr.name]"
               (ngModelChange)="onFieldChange()">
             </bs-toggle-button>
+          } @else if (attr.lookupReferenceType && getLookupDisplayType(attr) === ELookupDisplayType.Dropdown) {
+            <bs-select
+              [(ngModel)]="formData[attr.name]"
+              (ngModelChange)="onFieldChange()"
+              [id]="attr.name"
+              [class.is-invalid]="hasError(attr.name)">
+              <option [ngValue]="null">-- Select --</option>
+              @for (option of getLookupOptions(attr); track option.key) {
+                <option [ngValue]="option.key">
+                  {{ option.translations['en'] || option.key }}
+                </option>
+              }
+            </bs-select>
+          } @else if (attr.lookupReferenceType && getLookupDisplayType(attr) === ELookupDisplayType.Modal) {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getLookupDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openLookupSelector(attr)">
+                ...
+              </button>
+            </bs-input-group>
           } @else if (attr.dataType === 'Reference') {
             <bs-input-group>
               <input
@@ -192,6 +221,61 @@
 
     <div bsModalFooter>
       <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">Cancel</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting LookupReference items -->
+<bs-modal [(isOpen)]="showLookupModal" (isOpenChange)="!$event && closeLookupModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">Select {{ editingLookupAttr?.label || editingLookupAttr?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <!-- Search box -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <bs-input-group>
+            <span class="input-group-text">
+              <app-icon name="search" />
+            </span>
+            <input
+              type="text"
+              placeholder="Search..."
+              [(ngModel)]="lookupSearchTerm">
+            @if (lookupSearchTerm) {
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                (click)="lookupSearchTerm = ''">
+                <app-icon name="x-lg" />
+              </button>
+            }
+          </bs-input-group>
+        </div>
+      </div>
+
+      <!-- List of items -->
+      <div class="list-group">
+        @for (item of getFilteredLookupItems(); track item.key) {
+          <button
+            type="button"
+            class="list-group-item list-group-item-action"
+            [class.active]="formData[editingLookupAttr?.name ?? ''] === item.key"
+            (click)="selectLookupItem(item)">
+            {{ item.translations['en'] || item.key }}
+          </button>
+        } @empty {
+          <div class="text-center text-muted p-3">
+            No items found
+          </div>
+        }
+      </div>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">Cancel</button>
     </div>
   </div>
 </bs-modal>

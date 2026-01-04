@@ -1,0 +1,96 @@
+{
+  "id": "27768be5-2ff5-4782-8b22-c0e8d163050e",
+  "name": "Car",
+  "clrType": "DemoApp.Data.Car",
+  "displayAttribute": "LicensePlate",
+  "attributes": [
+    {
+      "id": "daf84692-3fd6-4437-a688-963c7c05c6ad",
+      "name": "LicensePlate",
+      "label": "License Plate",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "8bb19c9f-5e5d-4b2c-847c-7e0d359f40b0",
+      "name": "Model",
+      "label": "Model",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "39f84a54-c1e1-42d6-ad7a-edbc9fb73d95",
+      "name": "Year",
+      "label": "Year",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "2b5612d9-0c87-4063-88cf-eeb872cedb55",
+      "name": "Color",
+      "label": "Color",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "14bb5945-d4ba-4412-a686-4346291eea9f",
+      "name": "Status",
+      "label": "Status",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "lookupReferenceType": "CarStatus",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "c93edac8-ace9-4a23-8383-c735ea8437ff",
+      "name": "Brand",
+      "label": "Brand",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "lookupReferenceType": "CarBrand",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "a5a8ee72-fb33-464e-b766-7543808141f7",
+      "name": "Owner",
+      "label": "Owner",
+      "dataType": "Reference",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 7,
+      "query": "GetCompanies",
+      "referenceType": "DemoApp.Data.Company",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}

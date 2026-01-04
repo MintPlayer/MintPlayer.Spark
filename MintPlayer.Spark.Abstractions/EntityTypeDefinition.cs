@@ -48,6 +48,11 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public string? AsDetailType { get; set; }
     /// <summary>
+    /// For LookupReference attributes, specifies the lookup reference type name.
+    /// Example: "CarStatus", "CarBrand"
+    /// </summary>
+    public string? LookupReferenceType { get; set; }
+    /// <summary>
     /// When false, this attribute exists only in the projection type (e.g., computed by index).
     /// Not present in the collection entity. Used for list views only.
     /// </summary>

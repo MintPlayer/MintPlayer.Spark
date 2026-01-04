@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
-import { EntityType, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
+import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class SparkService {
@@ -73,5 +73,31 @@ export class SparkService {
 
   delete(type: string, id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+  }
+
+  // LookupReferences
+  getLookupReferences(): Observable<LookupReferenceListItem[]> {
+    return this.http.get<LookupReferenceListItem[]>(`${this.baseUrl}/lookupref`);
+  }
+
+  getLookupReference(name: string): Observable<LookupReference> {
+    return this.http.get<LookupReference>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`);
+  }
+
+  addLookupReferenceValue(name: string, value: LookupReferenceValue): Observable<LookupReferenceValue> {
+    return this.http.post<LookupReferenceValue>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`, value);
+  }
+
+  updateLookupReferenceValue(name: string, key: string, value: LookupReferenceValue): Observable<LookupReferenceValue> {
+    return this.http.put<LookupReferenceValue>(
+      `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`,
+      value
+    );
+  }
+
+  deleteLookupReferenceValue(name: string, key: string): Observable<void> {
+    return this.http.delete<void>(
+      `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`
+    );
   }
 }

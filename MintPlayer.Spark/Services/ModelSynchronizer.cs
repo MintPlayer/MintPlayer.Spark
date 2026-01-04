@@ -283,10 +283,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
 
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
+            var lookupRefAttr = property.GetCustomAttribute<LookupReferenceAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
+            string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
             // Determine ShowedOn based on inQueryType/inCollectionType
             // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages
@@ -326,6 +328,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.AsDetailType = asDetailType;
                 }
 
+                if (lookupRefAttr != null)
+                {
+                    existingAttr.LookupReferenceType = lookupReferenceType;
+                }
+
                 // Set InCollectionType/InQueryType flags only when projection type exists
                 if (projectionType != null)
                 {
@@ -358,6 +365,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Query = referenceAttr?.Query,
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
+                    LookupReferenceType = lookupReferenceType,
                     // Set InCollectionType/InQueryType flags only when projection type exists
                     InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,
                     InQueryType = projectionType != null ? (inQueryType ? null : false) : null,
