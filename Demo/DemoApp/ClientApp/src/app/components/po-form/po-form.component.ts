@@ -12,14 +12,15 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsToggleButtonModule, IconComponent],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -40,6 +41,7 @@ export class PoFormComponent implements OnChanges {
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
   asDetailTypes: Record<string, EntityType> = {};
+  lookupReferenceOptions: Record<string, LookupReference> = {};
 
   // Modal state for AsDetail object editing
   editingAsDetailAttr: EntityAttributeDefinition | null = null;
@@ -60,10 +62,18 @@ export class PoFormComponent implements OnChanges {
   });
   referenceSearchTerm: string = '';
 
+  // Modal state for LookupReference selection (Modal display type)
+  editingLookupAttr: EntityAttributeDefinition | null = null;
+  showLookupModal = false;
+  lookupModalItems: LookupReferenceValue[] = [];
+  lookupSearchTerm: string = '';
+  ELookupDisplayType = ELookupDisplayType;
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['entityType'] && this.entityType) {
       this.loadReferenceOptions();
       this.loadAsDetailTypes();
+      this.loadLookupReferenceOptions();
     }
   }
 
@@ -101,6 +111,24 @@ export class PoFormComponent implements OnChanges {
     });
   }
 
+  loadLookupReferenceOptions(): void {
+    const lookupAttrs = this.getEditableAttributes().filter(a => a.lookupReferenceType);
+
+    if (lookupAttrs.length === 0) return;
+
+    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
+    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
+
+    lookupNames.forEach(name => {
+      queries[name] = this.sparkService.getLookupReference(name);
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.lookupReferenceOptions = results;
+      this.cdr.markForCheck();
+    });
+  }
+
   getEditableAttributes(): EntityAttributeDefinition[] {
     return this.entityType?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
@@ -109,6 +137,72 @@ export class PoFormComponent implements OnChanges {
 
   getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
     return this.referenceOptions[attr.name] || [];
+  }
+
+  getLookupOptions(attr: EntityAttributeDefinition): LookupReferenceValue[] {
+    const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions[attr.lookupReferenceType] : null;
+    return lookupRef?.values.filter(v => v.isActive) || [];
+  }
+
+  getLookupDisplayValue(attr: EntityAttributeDefinition): string {
+    const currentValue = this.formData[attr.name];
+    if (currentValue == null || currentValue === '') return '';
+
+    const options = this.getLookupOptions(attr);
+    const selected = options.find(o => o.key === String(currentValue));
+    if (!selected) return String(currentValue);
+
+    // Get translation for current language (defaulting to 'en')
+    const lang = this.getCurrentLanguage();
+    return selected.translations[lang] || selected.translations['en'] || Object.values(selected.translations)[0] || selected.key;
+  }
+
+  private getCurrentLanguage(): string {
+    // Get browser language, fallback to 'en'
+    const browserLang = navigator.language?.split('-')[0];
+    return browserLang || 'en';
+  }
+
+  getLookupDisplayType(attr: EntityAttributeDefinition): ELookupDisplayType {
+    const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions[attr.lookupReferenceType] : null;
+    return lookupRef?.displayType ?? ELookupDisplayType.Dropdown;
+  }
+
+  // LookupReference modal methods
+  openLookupSelector(attr: EntityAttributeDefinition): void {
+    this.editingLookupAttr = attr;
+    this.lookupSearchTerm = '';
+    this.lookupModalItems = this.getLookupOptions(attr);
+    this.showLookupModal = true;
+    this.cdr.markForCheck();
+  }
+
+  getFilteredLookupItems(): LookupReferenceValue[] {
+    if (!this.lookupSearchTerm.trim()) {
+      return this.lookupModalItems;
+    }
+    const term = this.lookupSearchTerm.toLowerCase().trim();
+    const lang = this.getCurrentLanguage();
+    return this.lookupModalItems.filter(item => {
+      const translation = item.translations[lang] || item.translations['en'] || Object.values(item.translations)[0] || '';
+      return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
+    });
+  }
+
+  selectLookupItem(item: LookupReferenceValue): void {
+    if (this.editingLookupAttr) {
+      this.formData[this.editingLookupAttr.name] = item.key;
+      this.formDataChange.emit(this.formData);
+    }
+    this.closeLookupModal();
+  }
+
+  closeLookupModal(): void {
+    this.showLookupModal = false;
+    this.editingLookupAttr = null;
+    this.lookupModalItems = [];
+    this.lookupSearchTerm = '';
+    this.cdr.markForCheck();
   }
 
   getAsDetailType(attr: EntityAttributeDefinition): EntityType | null {

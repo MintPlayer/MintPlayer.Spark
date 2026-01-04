@@ -15,6 +15,8 @@ export interface EntityAttributeDefinition {
   referenceType?: string;
   /** For AsDetail attributes, specifies the nested entity type's CLR type name */
   asDetailType?: string;
+  /** For LookupReference attributes, specifies the lookup reference type name */
+  lookupReferenceType?: string;
   /**
    * Controls on which pages the attribute should be displayed.
    * Query = shown in list views, PersistentObject = shown in detail/edit views.

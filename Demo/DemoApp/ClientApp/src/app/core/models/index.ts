@@ -6,3 +6,4 @@ export * from './persistent-object';
 export * from './entity-type';
 export * from './spark-query';
 export * from './program-unit';
+export * from './lookup-reference';

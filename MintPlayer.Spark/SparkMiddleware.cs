@@ -6,6 +6,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.EntityTypes;
+using MintPlayer.Spark.Endpoints.LookupReferences;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
@@ -247,6 +248,19 @@ public static class SparkExtensions
             await action.HandleAsync(context, objectTypeId, id));
         persistentObjectGroup.MapDelete("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, DeletePersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id));
+
+        // LookupReferences endpoints
+        var lookupRefGroup = sparkGroup.MapGroup("/lookupref");
+        lookupRefGroup.MapGet("/", async (HttpContext context, ListLookupReferences action) =>
+            await action.HandleAsync(context));
+        lookupRefGroup.MapGet("/{name}", async (HttpContext context, string name, GetLookupReference action) =>
+            await action.HandleAsync(context, name));
+        lookupRefGroup.MapPost("/{name}", async (HttpContext context, string name, AddLookupReferenceValue action) =>
+            await action.HandleAsync(context, name));
+        lookupRefGroup.MapPut("/{name}/{key}", async (HttpContext context, string name, string key, UpdateLookupReferenceValue action) =>
+            await action.HandleAsync(context, name, key));
+        lookupRefGroup.MapDelete("/{name}/{key}", async (HttpContext context, string name, string key, DeleteLookupReferenceValue action) =>
+            await action.HandleAsync(context, name, key));
 
         return endpoints;
     }

@@ -38,14 +38,19 @@ app.UseEndpoints(endpoints =>
     endpoints.MapSpark();
 });
 
-app.UseSpaImproved(spa =>
-{
-    spa.Options.SourcePath = "ClientApp";
-
-    if (app.Environment.IsDevelopment())
+app.MapWhen(
+    context => !context.Request.Path.StartsWithSegments("/spark"),
+    appBuilder =>
     {
-        spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
-    }
-});
+        appBuilder.UseSpaImproved(spa =>
+        {
+            spa.Options.SourcePath = "ClientApp";
+
+            if (app.Environment.IsDevelopment())
+            {
+                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
+            }
+        });
+    });
 
 app.Run();
