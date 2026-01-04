@@ -15,35 +15,37 @@
               [(ngModel)]="formData[attr.name]"
               (ngModelChange)="onFieldChange()">
             </bs-toggle-button>
-          } @else if (attr.lookupReferenceType && getLookupDisplayType(attr) === ELookupDisplayType.Dropdown) {
-            <bs-select
-              [(ngModel)]="formData[attr.name]"
-              (ngModelChange)="onFieldChange()"
-              [id]="attr.name"
-              [class.is-invalid]="hasError(attr.name)">
-              <option [ngValue]="null">-- Select --</option>
-              @for (option of getLookupOptions(attr); track option.key) {
-                <option [ngValue]="option.key">
-                  {{ option.translations['en'] || option.key }}
-                </option>
-              }
-            </bs-select>
-          } @else if (attr.lookupReferenceType && getLookupDisplayType(attr) === ELookupDisplayType.Modal) {
-            <bs-input-group>
-              <input
-                type="text"
+          } @else if (attr.lookupReferenceType) {
+            @if (getLookupDisplayType(attr) === ELookupDisplayType.Modal) {
+              <bs-input-group>
+                <input
+                  type="text"
+                  [id]="attr.name"
+                  [value]="getLookupDisplayValue(attr)"
+                  readonly
+                  [class.is-invalid]="hasError(attr.name)">
+                <button
+                  type="button"
+                  bsInputGroupBtn
+                  [color]="colors.secondary"
+                  (click)="openLookupSelector(attr)">
+                  ...
+                </button>
+              </bs-input-group>
+            } @else {
+              <bs-select
+                [(ngModel)]="formData[attr.name]"
+                (ngModelChange)="onFieldChange()"
                 [id]="attr.name"
-                [value]="getLookupDisplayValue(attr)"
-                readonly
                 [class.is-invalid]="hasError(attr.name)">
-              <button
-                type="button"
-                bsInputGroupBtn
-                [color]="colors.secondary"
-                (click)="openLookupSelector(attr)">
-                ...
-              </button>
-            </bs-input-group>
+                <option [ngValue]="null">-- Select --</option>
+                @for (option of getLookupOptions(attr); track option.key) {
+                  <option [ngValue]="option.key">
+                    {{ option.translations['en'] || option.key }}
+                  </option>
+                }
+              </bs-select>
+            }
           } @else if (attr.dataType === 'Reference') {
             <bs-input-group>
               <input
@@ -257,21 +259,22 @@
       </div>
 
       <!-- List of items -->
-      <div class="list-group">
-        @for (item of getFilteredLookupItems(); track item.key) {
-          <button
-            type="button"
-            class="list-group-item list-group-item-action"
-            [class.active]="formData[editingLookupAttr?.name ?? ''] === item.key"
-            (click)="selectLookupItem(item)">
-            {{ item.translations['en'] || item.key }}
-          </button>
-        } @empty {
-          <div class="text-center text-muted p-3">
-            No items found
-          </div>
-        }
-      </div>
+      <bs-table [striped]="true" [hover]="true">
+        <tbody>
+          @for (item of getFilteredLookupItems(); track item.key) {
+            <tr
+              [class.table-primary]="formData[editingLookupAttr?.name ?? ''] === item.key"
+              (click)="selectLookupItem(item)"
+              style="cursor: pointer;">
+              <td>{{ item.translations['en'] || item.key }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="text-center text-muted">No items found</td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
     </div>
 
     <div bsModalFooter>
