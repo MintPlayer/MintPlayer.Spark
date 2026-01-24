@@ -122,7 +122,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 8,
+      "order": 1,
       "inCollectionType": false,
       "showedOn": "Query",
       "rules": []
