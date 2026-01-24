@@ -1,7 +1,7 @@
 {
   "id": "e9b59b38-ab69-4915-8e16-1acb8fcab7a3",
   "name": "Address",
-  "clrType": "DemoApp.Data.Address",
+  "clrType": "DemoApp.Library.Entities.Address",
   "displayFormat": "{Street}, {City} {State}",
   "displayAttribute": "Street",
   "attributes": [

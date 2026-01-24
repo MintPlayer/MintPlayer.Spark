@@ -1,7 +1,7 @@
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Person",
-  "clrType": "DemoApp.Data.Person",
+  "clrType": "DemoApp.Library.Entities.Person",
   "queryType": "DemoApp.Data.VPerson",
   "indexName": "People_Overview",
   "displayAttribute": "FullName",
@@ -83,7 +83,7 @@
       "isReadOnly": false,
       "order": 5,
       "query": "GetCompanies",
-      "referenceType": "DemoApp.Data.Company",
+      "referenceType": "DemoApp.Library.Entities.Company",
       "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": []
@@ -97,7 +97,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 6,
-      "asDetailType": "DemoApp.Data.Address",
+      "asDetailType": "DemoApp.Library.Entities.Address",
       "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": []

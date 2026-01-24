@@ -12,13 +12,14 @@ public interface IQueryExecutor
     Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query);
 }
 
-[Register(typeof(IQueryExecutor), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
 internal partial class QueryExecutor : IQueryExecutor
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
+    [Inject] private readonly IIndexRegistry indexRegistry;
 
     public async Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query)
     {
@@ -66,34 +67,18 @@ internal partial class QueryExecutor : IQueryExecutor
         Type resultType = entityType;
         string? indexName = query.IndexName; // Use query-specified index first
 
-        // Check if entity has QueryType configured (either from attribute or model)
-        // When QueryType is present, ALWAYS use the index for list queries
-        if (!string.IsNullOrEmpty(entityTypeDefinition.QueryType))
+        // Check IndexRegistry for projection type (from FromIndexAttribute on projections)
+        var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
+        if (registration?.ProjectionType != null)
         {
-            // Get projection type from attribute
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            if (queryTypeAttr != null)
-            {
-                resultType = queryTypeAttr.ProjectionType;
-            }
-
-            // Use index from entity definition if not specified in query
+            resultType = registration.ProjectionType;
             if (string.IsNullOrEmpty(indexName))
             {
-                indexName = entityTypeDefinition.IndexName;
-            }
-        }
-        else if (query.UseProjection || !string.IsNullOrEmpty(query.IndexName))
-        {
-            // Legacy behavior: check attribute only when explicitly requested
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            if (queryTypeAttr != null)
-            {
-                resultType = queryTypeAttr.ProjectionType;
+                indexName = registration.IndexName;
             }
         }
 
-        // Apply index if we have one (either from QueryType or explicitly specified)
+        // Apply index if we have one (either from IndexRegistry or explicitly specified)
         if (!string.IsNullOrEmpty(indexName))
         {
             queryable = ApplyIndex(session, entityType, resultType, indexName);

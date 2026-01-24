@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class DeletePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;

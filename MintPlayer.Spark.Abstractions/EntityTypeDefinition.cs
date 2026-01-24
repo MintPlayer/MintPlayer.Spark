@@ -7,12 +7,13 @@ public sealed class EntityTypeDefinition
     public required string ClrType { get; set; }
     /// <summary>
     /// The CLR type name of the projection type used for RavenDB index queries.
-    /// Set when the entity class has [QueryType(typeof(V))] attribute.
+    /// Set when a projection class has [FromIndex] attribute linking to an index for this entity.
     /// Example: "Demo.Data.VCar"
     /// </summary>
     public string? QueryType { get; set; }
     /// <summary>
     /// The name of the RavenDB index to use for list queries when QueryType is set.
+    /// Derived from the IndexRegistry based on the index class name.
     /// Example: "Cars_Overview"
     /// </summary>
     public string? IndexName { get; set; }

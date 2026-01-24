@@ -13,10 +13,11 @@ public interface IModelSynchronizer
     void SynchronizeModels(SparkContext sparkContext);
 }
 
-[Register(typeof(IModelSynchronizer), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(IModelSynchronizer), ServiceLifetime.Singleton)]
 internal partial class ModelSynchronizer : IModelSynchronizer
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly IIndexRegistry indexRegistry;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -55,13 +56,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var clrType = entityType.FullName ?? entityType.Name;
 
-            // Check for [QueryType] attribute
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            Type? projectionType = queryTypeAttr?.ProjectionType;
+            // Get projection type from IndexRegistry (populated from FromIndexAttribute on projections)
+            var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
+            Type? projectionType = registration?.ProjectionType;
+            string? indexName = registration?.IndexName;
 
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef);
 
             // Save the entity type definition
             var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
@@ -121,7 +123,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 continue;
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef);
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
@@ -212,7 +214,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return result;
     }
 
-    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, EntityTypeDefinition? existing)
+    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing)
     {
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
@@ -229,10 +231,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         if (projectionType != null)
         {
             entityTypeDef.QueryType = projectionType.FullName ?? projectionType.Name;
-
-            // Get IndexName from the QueryTypeAttribute if specified
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            entityTypeDef.IndexName = queryTypeAttr?.IndexName;
+            entityTypeDef.IndexName = indexName;
         }
 
         // Get existing attributes as a dictionary for quick lookup
@@ -284,11 +283,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
             var lookupRefAttr = property.GetCustomAttribute<LookupReferenceAttribute>();
+            var lookupRefNameAttr = property.GetCustomAttribute<LookupReferenceNameAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
-            string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
+            // Support both type-based and name-based lookup references
+            string? lookupReferenceType = lookupRefAttr?.LookupType.Name ?? lookupRefNameAttr?.Name;
 
             // Determine ShowedOn based on inQueryType/inCollectionType
             // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages

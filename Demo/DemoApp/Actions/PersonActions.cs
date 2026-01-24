@@ -1,4 +1,4 @@
-using DemoApp.Data;
+using DemoApp.Library.Entities;
 using MintPlayer.Spark.Actions;
 
 namespace DemoApp.Actions;

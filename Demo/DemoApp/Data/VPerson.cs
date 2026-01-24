@@ -1,9 +1,13 @@
+using DemoApp.Indexes;
+using MintPlayer.Spark.Abstractions;
+
 namespace DemoApp.Data;
 
 /// <summary>
 /// View model for Person used by the People_Overview RavenDB index.
 /// Contains computed/projected properties optimized for list views.
 /// </summary>
+[FromIndex(typeof(People_Overview))]
 public class VPerson
 {
     public string? Id { get; set; }

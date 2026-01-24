@@ -1,4 +1,5 @@
 using DemoApp.Data;
+using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
 
 namespace DemoApp.Indexes;

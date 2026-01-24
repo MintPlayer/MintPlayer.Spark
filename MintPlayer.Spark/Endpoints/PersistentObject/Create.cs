@@ -4,7 +4,7 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class CreatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;

@@ -7,7 +7,7 @@ public interface ICollectionHelper
     string GetCollectionName(string clrType);
 }
 
-[Register(typeof(ICollectionHelper), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(ICollectionHelper), ServiceLifetime.Singleton)]
 internal partial class CollectionHelper : ICollectionHelper
 {
     public string GetCollectionName(string clrType)

@@ -3,7 +3,7 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class ListLookupReferences
 {
     [Inject] private readonly ILookupReferenceService lookupReferenceService;

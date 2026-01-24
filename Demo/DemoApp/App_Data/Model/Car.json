@@ -1,7 +1,7 @@
 {
   "id": "27768be5-2ff5-4782-8b22-c0e8d163050e",
   "name": "Car",
-  "clrType": "DemoApp.Data.Car",
+  "clrType": "DemoApp.Library.Entities.Car",
   "displayAttribute": "LicensePlate",
   "attributes": [
     {
@@ -88,7 +88,7 @@
       "isReadOnly": false,
       "order": 7,
       "query": "GetCompanies",
-      "referenceType": "DemoApp.Data.Company",
+      "referenceType": "DemoApp.Library.Entities.Company",
       "showedOn": "Query, PersistentObject",
       "rules": []
     }

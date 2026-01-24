@@ -8,13 +8,14 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Services;
 
-[Register(typeof(IDatabaseAccess), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(IDatabaseAccess), ServiceLifetime.Scoped)]
 internal partial class DatabaseAccess : IDatabaseAccess
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly IIndexRegistry indexRegistry;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -89,26 +90,22 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         using var session = documentStore.OpenAsyncSession();
 
-        // Check if entity has QueryType configured - if so, query the index instead of the collection
+        // Check IndexRegistry for projection type - if so, query the index instead of the collection
         Type queryType = entityType;
         string? indexName = null;
 
-        if (!string.IsNullOrEmpty(entityTypeDefinition.QueryType))
+        var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
+        if (registration?.ProjectionType != null)
         {
-            // Get the projection type from the [QueryType] attribute
-            var queryTypeAttr = entityType.GetCustomAttribute<QueryTypeAttribute>();
-            if (queryTypeAttr != null)
-            {
-                queryType = queryTypeAttr.ProjectionType;
-                indexName = entityTypeDefinition.IndexName ?? queryTypeAttr.IndexName;
-            }
+            queryType = registration.ProjectionType;
+            indexName = registration.IndexName;
         }
 
         // Get reference properties from the type being queried (queryType, not entityType)
         // When querying an index, the projection type (e.g., VPerson) may not have the same reference properties
         var referenceProperties = GetReferenceProperties(queryType);
 
-        // Query entities - use index if QueryType is configured, otherwise query collection
+        // Query entities - use index if projection is registered, otherwise query collection
         var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
 
         // Referenced documents are now in session cache - extract them

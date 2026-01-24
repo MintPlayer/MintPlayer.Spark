@@ -4,7 +4,7 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class ExecuteQuery
 {
     [Inject] private readonly IQueryLoader queryLoader;
