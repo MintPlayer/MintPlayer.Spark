@@ -12,7 +12,7 @@ public interface IQueryLoader
     SparkQuery? GetQueryByName(string name);
 }
 
-[Register(typeof(IQueryLoader), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(IQueryLoader), ServiceLifetime.Singleton)]
 internal partial class QueryLoader : IQueryLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;

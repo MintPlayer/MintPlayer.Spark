@@ -39,7 +39,7 @@ public class LookupReferenceValueDto
     public Dictionary<string, object>? Extra { get; set; }
 }
 
-[Register(typeof(ILookupReferenceService), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(ILookupReferenceService), ServiceLifetime.Scoped)]
 internal partial class LookupReferenceService : ILookupReferenceService
 {
     [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;

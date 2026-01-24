@@ -10,12 +10,12 @@ public sealed class SparkQuery
 
     /// <summary>
     /// Optional RavenDB index name. When specified, the query will use this index
-    /// and return the projection type defined by the [QueryType] attribute on the entity.
+    /// and return the projection type registered in the IndexRegistry.
     /// </summary>
     public string? IndexName { get; set; }
 
     /// <summary>
-    /// When true, indicates this query uses a projection type (from [QueryType] attribute)
+    /// When true, indicates this query uses a projection type (from IndexRegistry)
     /// rather than the full entity type.
     /// </summary>
     public bool UseProjection { get; set; }

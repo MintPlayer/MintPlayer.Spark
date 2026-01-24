@@ -10,7 +10,7 @@ public interface IProgramUnitsLoader
     ProgramUnitsConfiguration GetProgramUnits();
 }
 
-[Register(typeof(IProgramUnitsLoader), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(IProgramUnitsLoader), ServiceLifetime.Singleton)]
 internal partial class ProgramUnitsLoader : IProgramUnitsLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;

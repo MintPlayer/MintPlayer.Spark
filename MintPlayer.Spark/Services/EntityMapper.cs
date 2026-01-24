@@ -11,7 +11,7 @@ public interface IEntityMapper
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
 }
 
-[Register(typeof(IEntityMapper), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(IEntityMapper), ServiceLifetime.Scoped)]
 internal partial class EntityMapper : IEntityMapper
 {
     [Inject] private readonly IModelLoader modelLoader;

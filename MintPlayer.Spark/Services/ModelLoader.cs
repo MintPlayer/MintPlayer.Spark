@@ -12,7 +12,7 @@ public interface IModelLoader
     EntityTypeDefinition? GetEntityTypeByClrType(string clrType);
 }
 
-[Register(typeof(IModelLoader), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
 internal partial class ModelLoader : IModelLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;

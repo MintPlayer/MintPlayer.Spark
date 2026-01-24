@@ -8,7 +8,7 @@ public interface ISparkContextResolver
     SparkContext? ResolveContext(IAsyncDocumentSession session);
 }
 
-[Register(typeof(ISparkContextResolver), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(ISparkContextResolver), ServiceLifetime.Scoped)]
 internal partial class SparkContextResolver : ISparkContextResolver
 {
     [Inject] private readonly IServiceProvider serviceProvider;

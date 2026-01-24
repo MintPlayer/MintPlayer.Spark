@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.EntityTypes;
@@ -148,6 +149,7 @@ public static class SparkExtensions
     /// <summary>
     /// Creates or updates all RavenDB indexes defined in the specified assembly.
     /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
+    /// Also registers indexes and projections with the IndexRegistry for automatic projection type resolution.
     /// Call this at application startup to ensure indexes are available for queries.
     /// </summary>
     /// <param name="app">The application builder</param>
@@ -156,6 +158,7 @@ public static class SparkExtensions
     public static IApplicationBuilder CreateSparkIndexes(this IApplicationBuilder app, Assembly? assembly = null)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
         var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
 
         if (targetAssembly == null)
@@ -166,6 +169,28 @@ public static class SparkExtensions
 
         try
         {
+            // Find and register all index types
+            var indexTypes = targetAssembly.GetTypes()
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToList();
+
+            foreach (var indexType in indexTypes)
+            {
+                indexRegistry.RegisterIndex(indexType);
+            }
+
+            // Find and register all projection types with FromIndexAttribute
+            var projectionTypes = targetAssembly.GetTypes()
+                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
+                .ToList();
+
+            foreach (var projectionType in projectionTypes)
+            {
+                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
+                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+            }
+
+            // Create indexes in RavenDB
             IndexCreation.CreateIndexes(targetAssembly, documentStore);
             Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
         }
@@ -177,9 +202,29 @@ public static class SparkExtensions
         return app;
     }
 
+    private static bool IsAbstractIndexCreationTask(Type type)
+    {
+        var current = type;
+        while (current != null && current != typeof(object))
+        {
+            if (current.IsGenericType)
+            {
+                var genericDef = current.GetGenericTypeDefinition();
+                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
+                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
+                {
+                    return true;
+                }
+            }
+            current = current.BaseType;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Asynchronously creates or updates all RavenDB indexes defined in the specified assembly.
     /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
+    /// Also registers indexes and projections with the IndexRegistry for automatic projection type resolution.
     /// Call this at application startup to ensure indexes are available for queries.
     /// </summary>
     /// <param name="app">The application builder</param>
@@ -188,6 +233,7 @@ public static class SparkExtensions
     public static async Task CreateSparkIndexesAsync(this IApplicationBuilder app, Assembly? assembly = null)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
         var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
 
         if (targetAssembly == null)
@@ -198,6 +244,28 @@ public static class SparkExtensions
 
         try
         {
+            // Find and register all index types
+            var indexTypes = targetAssembly.GetTypes()
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToList();
+
+            foreach (var indexType in indexTypes)
+            {
+                indexRegistry.RegisterIndex(indexType);
+            }
+
+            // Find and register all projection types with FromIndexAttribute
+            var projectionTypes = targetAssembly.GetTypes()
+                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
+                .ToList();
+
+            foreach (var projectionType in projectionTypes)
+            {
+                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
+                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+            }
+
+            // Create indexes in RavenDB
             await IndexCreation.CreateIndexesAsync(targetAssembly, documentStore);
             Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
         }

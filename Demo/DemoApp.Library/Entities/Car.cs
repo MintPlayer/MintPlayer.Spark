@@ -1,7 +1,6 @@
-using DemoApp.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
-namespace DemoApp.Data;
+namespace DemoApp.Library.Entities;
 
 public class Car
 {
@@ -11,10 +10,10 @@ public class Car
     public int Year { get; set; }
     public string? Color { get; set; }
 
-    [LookupReference(typeof(CarStatus))]
+    [LookupReferenceName("CarStatus")]
     public string? Status { get; set; }
 
-    [LookupReference(typeof(CarBrand))]
+    [LookupReferenceName("CarBrand")]
     public string? Brand { get; set; }
 
     [Reference(typeof(Company), "GetCompanies")]

@@ -10,7 +10,7 @@ public interface IValidationService
     ValidationResult Validate(PersistentObject persistentObject);
 }
 
-[Register(typeof(IValidationService), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(IValidationService), ServiceLifetime.Scoped)]
 internal partial class ValidationService : IValidationService
 {
     [Inject] private readonly IModelLoader modelLoader;

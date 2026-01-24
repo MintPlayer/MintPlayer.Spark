@@ -3,7 +3,7 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class GetProgramUnits
 {
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;

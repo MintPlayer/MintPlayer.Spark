@@ -8,14 +8,31 @@
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <IsRoslynComponent>true</IsRoslynComponent>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+        <!-- NuGet Package Metadata -->
+        <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>MintPlayer</Authors>
+        <Company>MintPlayer</Company>
+        <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
+        <PackageTags>low-code;framework;source-generator;roslyn</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.7.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.14.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>
         <!-- Package the generator DLL as analyzer -->
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Update="Microsoft.CodeAnalysis" Version="5.0.0" />
+      <PackageReference Update="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     </ItemGroup>
 </Project>

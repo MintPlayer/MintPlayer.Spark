@@ -21,7 +21,7 @@ public class LookupReferenceInfo
     public ELookupDisplayType DisplayType { get; init; } = ELookupDisplayType.Dropdown;
 }
 
-[Register(typeof(ILookupReferenceDiscoveryService), ServiceLifetime.Singleton, "AddSparkServices")]
+[Register(typeof(ILookupReferenceDiscoveryService), ServiceLifetime.Singleton)]
 internal partial class LookupReferenceDiscoveryService : ILookupReferenceDiscoveryService
 {
     private readonly Dictionary<string, LookupReferenceInfo> _lookupReferences = new(StringComparer.OrdinalIgnoreCase);

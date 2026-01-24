@@ -3,7 +3,7 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
 
-[Register(ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(ServiceLifetime.Scoped)]
 public sealed partial class ListEntityTypes
 {
     [Inject] private readonly IModelLoader modelLoader;

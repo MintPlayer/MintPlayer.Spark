@@ -1,4 +1,4 @@
-namespace DemoApp.Data;
+namespace DemoApp.Library.Entities;
 
 public class Company
 {

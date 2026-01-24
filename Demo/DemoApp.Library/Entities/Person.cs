@@ -1,8 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 
-namespace DemoApp.Data;
+namespace DemoApp.Library.Entities;
 
-[QueryType(typeof(VPerson), IndexName = "People_Overview")]
 public class Person
 {
     public string? Id { get; set; }

@@ -24,7 +24,7 @@ public interface IActionsResolver
     object ResolveForType(Type entityType);
 }
 
-[Register(typeof(IActionsResolver), ServiceLifetime.Scoped, "AddSparkServices")]
+[Register(typeof(IActionsResolver), ServiceLifetime.Scoped)]
 internal partial class ActionsResolver : IActionsResolver
 {
     [Inject] private readonly IServiceProvider serviceProvider;

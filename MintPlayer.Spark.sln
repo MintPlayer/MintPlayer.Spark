@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Abstractio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators", "MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj", "{BE8DB20B-024B-4104-A4CE-615A048825D8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DemoApp.Library", "Demo\DemoApp.Library\DemoApp.Library.csproj", "{7D4B3D56-2631-49DA-BD93-C186E4632D48}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -71,12 +73,25 @@ Global
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x64.Build.0 = Release|Any CPU
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x86.ActiveCfg = Release|Any CPU
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x86.Build.0 = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|x64.Build.0 = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Debug|x86.Build.0 = Debug|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|x64.ActiveCfg = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|x64.Build.0 = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|x86.ActiveCfg = Release|Any CPU
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F6CFB33F-1460-4826-B863-76C3E1A9EB2A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{7D4B3D56-2631-49DA-BD93-C186E4632D48} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BE3C450D-A8DE-4D9E-B4D4-3F32F348E7EA}
