@@ -8,6 +8,18 @@
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <IsRoslynComponent>true</IsRoslynComponent>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+        <!-- NuGet Package Metadata -->
+        <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>MintPlayer</Authors>
+        <Company>MintPlayer</Company>
+        <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
+        <PackageTags>low-code;framework;source-generator;roslyn</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <ItemGroup>
