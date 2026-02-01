@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Abstractio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators", "MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj", "{BE8DB20B-024B-4104-A4CE-615A048825D8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Authorization", "MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj", "{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging.Abstractions", "MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj", "{8FA8E1EE-63B3-4908-A25B-191399829400}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging", "MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj", "{2DF03B88-B4CE-41CC-BB47-8ABD0B424046}"
@@ -83,6 +85,18 @@ Global
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x64.Build.0 = Release|Any CPU
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x86.ActiveCfg = Release|Any CPU
 		{BE8DB20B-024B-4104-A4CE-615A048825D8}.Release|x86.Build.0 = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|x64.Build.0 = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Debug|x86.Build.0 = Debug|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|x64.ActiveCfg = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|x64.Build.0 = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|x86.ActiveCfg = Release|Any CPU
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}.Release|x86.Build.0 = Release|Any CPU
 		{8FA8E1EE-63B3-4908-A25B-191399829400}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8FA8E1EE-63B3-4908-A25B-191399829400}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8FA8E1EE-63B3-4908-A25B-191399829400}.Debug|x64.ActiveCfg = Debug|Any CPU

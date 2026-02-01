@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
@@ -19,6 +20,18 @@ public sealed partial class ExecuteQuery
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
             await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' not found" });
             return;
+        }
+
+        // Authorization check (only when IAccessControl is registered)
+        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
+        if (accessControl is not null)
+        {
+            if (!await accessControl.IsAllowedAsync($"Execute/{query.Name}"))
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return;
+            }
         }
 
         // Read optional sort overrides from query string

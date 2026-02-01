@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -18,6 +19,18 @@ public sealed partial class ListPersistentObjects
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
             await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
             return;
+        }
+
+        // Authorization check (only when IAccessControl is registered)
+        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
+        if (accessControl is not null)
+        {
+            if (!await accessControl.IsAllowedAsync($"Read/{entityType.ClrType}"))
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return;
+            }
         }
 
         var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);

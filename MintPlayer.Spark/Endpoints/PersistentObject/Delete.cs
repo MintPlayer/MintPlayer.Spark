@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -21,6 +22,18 @@ public sealed partial class DeletePersistentObject
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
             await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
             return;
+        }
+
+        // Authorization check (only when IAccessControl is registered)
+        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
+        if (accessControl is not null)
+        {
+            if (!await accessControl.IsAllowedAsync($"Delete/{entityType.ClrType}"))
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return;
+            }
         }
 
         var decodedId = Uri.UnescapeDataString(id);
