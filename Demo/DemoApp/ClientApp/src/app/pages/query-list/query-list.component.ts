@@ -37,6 +37,8 @@ export default class QueryListComponent implements OnInit {
     sortProperty: '',
     sortDirection: 'ascending'
   });
+  private currentSortProperty = '';
+  private currentSortDirection = '';
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -107,11 +109,31 @@ export default class QueryListComponent implements OnInit {
   }
 
   loadItems(): void {
-    if (!this.entityType) return;
-    this.sparkService.list(this.entityType.id).subscribe(items => {
+    if (!this.query) return;
+    const sortDirection = this.settings.sortDirection === 'descending' ? 'desc' : 'asc';
+    this.sparkService.executeQuery(
+      this.query.id,
+      this.settings.sortProperty || undefined,
+      this.settings.sortProperty ? sortDirection : undefined
+    ).subscribe(items => {
       this.allItems = items;
+      this.currentSortProperty = this.settings.sortProperty;
+      this.currentSortDirection = this.settings.sortDirection;
       this.applyFilter();
     });
+  }
+
+  onSettingsChange(): void {
+    const sortChanged =
+      this.settings.sortProperty !== this.currentSortProperty ||
+      this.settings.sortDirection !== this.currentSortDirection;
+
+    if (sortChanged) {
+      this.settings.page.selected = 1;
+      this.loadItems();
+    } else {
+      this.applyFilter();
+    }
   }
 
   onSearchChange(): void {

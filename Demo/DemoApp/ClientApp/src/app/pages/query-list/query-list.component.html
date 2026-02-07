@@ -41,7 +41,7 @@
       </div>
     </bs-form>
 
-    <bs-datatable [(settings)]="settings" (settingsChange)="applyFilter()">
+    <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
       @for (attr of getVisibleAttributes(); track attr.id) {
         <div *bsDatatableColumn="attr.name; sortable: true">
           {{ attr.label || attr.name }}

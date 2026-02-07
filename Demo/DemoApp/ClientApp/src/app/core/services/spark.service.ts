@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
@@ -39,8 +39,14 @@ export class SparkService {
     );
   }
 
-  executeQuery(queryId: string): Observable<PersistentObject[]> {
-    return this.http.get<PersistentObject[]>(`${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`);
+  executeQuery(queryId: string, sortBy?: string, sortDirection?: string): Observable<PersistentObject[]> {
+    let params = new HttpParams();
+    if (sortBy) params = params.set('sortBy', sortBy);
+    if (sortDirection) params = params.set('sortDirection', sortDirection);
+    return this.http.get<PersistentObject[]>(
+      `${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`,
+      { params }
+    );
   }
 
   executeQueryByName(queryName: string): Observable<PersistentObject[]> {

@@ -21,7 +21,23 @@ public sealed partial class ExecuteQuery
             return;
         }
 
-        var results = await queryExecutor.ExecuteQueryAsync(query);
+        // Read optional sort overrides from query string
+        var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
+        var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
+
+        // Clone query with sort overrides if provided
+        var effectiveQuery = new SparkQuery
+        {
+            Id = query.Id,
+            Name = query.Name,
+            ContextProperty = query.ContextProperty,
+            SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
+            SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
+            IndexName = query.IndexName,
+            UseProjection = query.UseProjection,
+        };
+
+        var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery);
         await httpContext.Response.WriteAsJsonAsync(results);
     }
 }

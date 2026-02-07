@@ -13,7 +13,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.2.1" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.3.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -23,9 +23,9 @@
 	</ItemGroup>
 
 	<!-- Angular build during publish -->
-	<Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
+	<!-- <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
 		<Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
-		<Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --configuration production" />
+		<Exec WorkingDirectory="$(SpaRoot)" Command="npm run build - -configuration production" />
 
 		<ItemGroup>
 			<DistFiles Include="$(SpaRoot)dist\ClientApp\browser\**" />
@@ -35,6 +35,6 @@
 				<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 			</ResolvedFileToPublish>
 		</ItemGroup>
-	</Target>
+	</Target> -->
 
 </Project>

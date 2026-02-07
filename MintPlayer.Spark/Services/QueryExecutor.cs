@@ -79,15 +79,29 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Apply index if we have one (either from IndexRegistry or explicitly specified)
-        if (!string.IsNullOrEmpty(indexName))
+        Type? indexType = registration?.IndexType;
+        if (!string.IsNullOrEmpty(indexName) && indexType != null)
         {
-            queryable = ApplyIndex(session, entityType, resultType, indexName);
+            // Use session.Query<TResult, TIndexCreator>() for proper index querying
+            queryable = ApplyIndexWithType(session, resultType, indexType);
+        }
+        else if (!string.IsNullOrEmpty(indexName))
+        {
+            // Fallback: use string-based index name, queries as entityType
+            queryable = ApplyIndexByName(session, entityType, indexName);
         }
 
-        // Apply sorting if specified
+        // Apply sorting if specified (sort before projection so it operates on index fields)
+        var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (!string.IsNullOrEmpty(query.SortBy))
         {
-            queryable = ApplySorting(queryable, resultType, query.SortBy, query.SortDirection);
+            queryable = ApplySorting(queryable, sortType, query.SortBy, query.SortDirection);
+        }
+
+        // Apply ProjectInto to populate computed/stored fields from the index
+        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
+        {
+            queryable = ApplyProjection(queryable, resultType);
         }
 
         // Execute the query
@@ -97,57 +111,62 @@ internal partial class QueryExecutor : IQueryExecutor
         return entities.Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id));
     }
 
-    private object ApplyIndex(IAsyncDocumentSession session, Type entityType, Type resultType, string indexName)
+    private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
     {
-        // Use session.Query<T>(indexName) to query with a specific index
-        // Find the extension method from LinqExtensions or use interface method
+        // Use session.Query<TResult, TIndexCreator>() - the 2-generic-parameter, 0-regular-parameter overload
+        var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 2
+                && m.GetParameters().Length == 0);
+
+        if (sessionQueryMethod == null)
+        {
+            throw new InvalidOperationException("Could not find Query<T, TIndexCreator> method on IAsyncDocumentSession");
+        }
+
+        var genericMethod = sessionQueryMethod.MakeGenericMethod(resultType, indexType);
+        return genericMethod.Invoke(session, [])!;
+    }
+
+    private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
+    {
+        // Fallback: session.Query<T>(indexName, collectionName, isMapReduce) - string-based
         var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
                 && m.IsGenericMethod
                 && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 1
-                && m.GetParameters()[0].ParameterType == typeof(string));
+                && m.GetParameters().Length == 3
+                && m.GetParameters()[0].ParameterType == typeof(string)
+                && m.GetParameters()[1].ParameterType == typeof(string)
+                && m.GetParameters()[2].ParameterType == typeof(bool));
 
-        if (sessionQueryMethod != null)
+        if (sessionQueryMethod == null)
         {
-            var genericSessionQueryMethod = sessionQueryMethod.MakeGenericMethod(resultType);
-            // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
-            var ravenIndexName = indexName.Replace("_", "/");
-            var query = genericSessionQueryMethod.Invoke(session, [ravenIndexName])!;
-
-            // Use ProjectInto<T>() to project from stored fields in the index
-            // This ensures computed/stored fields like FullName are populated from the index
-            // ProjectInto is an extension method on IQueryable (non-generic) in LinqExtensions
-            var projectIntoMethod = typeof(LinqExtensions).GetMethods()
-                .FirstOrDefault(m => m.Name == "ProjectInto"
-                    && m.IsGenericMethod
-                    && m.GetGenericArguments().Length == 1
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(IQueryable));
-
-            if (projectIntoMethod != null)
-            {
-                var genericProjectIntoMethod = projectIntoMethod.MakeGenericMethod(resultType);
-                query = genericProjectIntoMethod.Invoke(null, [query])!;
-            }
-
-            return query;
+            throw new InvalidOperationException("Could not find Query<T>(string, string, bool) method on IAsyncDocumentSession");
         }
 
-        // Fallback: use session.Query<T>() method directly (without index)
-        var noIndexQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
+        var genericMethod = sessionQueryMethod.MakeGenericMethod(entityType);
+        var ravenIndexName = indexName.Replace("_", "/");
+        return genericMethod.Invoke(session, [ravenIndexName, null, false])!;
+    }
+
+    private object ApplyProjection(object queryable, Type resultType)
+    {
+        var projectIntoMethod = typeof(LinqExtensions).GetMethods()
+            .FirstOrDefault(m => m.Name == "ProjectInto"
                 && m.IsGenericMethod
                 && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 0);
+                && m.GetParameters().Length == 1
+                && m.GetParameters()[0].ParameterType == typeof(IQueryable));
 
-        if (noIndexQueryMethod != null)
+        if (projectIntoMethod == null)
         {
-            var genericQueryMethod = noIndexQueryMethod.MakeGenericMethod(resultType);
-            return genericQueryMethod.Invoke(session, [])!;
+            return queryable;
         }
 
-        throw new InvalidOperationException($"Could not apply index {indexName}");
+        var genericMethod = projectIntoMethod.MakeGenericMethod(resultType);
+        return genericMethod.Invoke(null, [queryable])!;
     }
 
     private object ApplySorting(object queryable, Type entityType, string sortBy, string? sortDirection)
