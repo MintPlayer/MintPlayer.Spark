@@ -1,5 +1,7 @@
 using DemoApp.Library.Entities;
+using DemoApp.Library.Messages;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace DemoApp.Actions;
 
@@ -8,6 +10,13 @@ namespace DemoApp.Actions;
 /// </summary>
 public class PersonActions : DefaultPersistentObjectActions<Person>
 {
+    private readonly IMessageBus _messageBus;
+
+    public PersonActions(IMessageBus messageBus)
+    {
+        _messageBus = messageBus;
+    }
+
     /// <summary>
     /// Called before saving a Person entity.
     /// Normalizes email to lowercase and trims whitespace from names.
@@ -29,21 +38,21 @@ public class PersonActions : DefaultPersistentObjectActions<Person>
 
     /// <summary>
     /// Called after saving a Person entity.
-    /// Logs the save operation for demonstration purposes.
+    /// Logs the save operation and broadcasts a PersonCreatedMessage.
     /// </summary>
-    public override Task OnAfterSaveAsync(Person entity)
+    public override async Task OnAfterSaveAsync(Person entity)
     {
         Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        return Task.CompletedTask;
+        await _messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
     }
 
     /// <summary>
     /// Called before deleting a Person entity.
-    /// Logs the delete operation for demonstration purposes.
+    /// Logs the delete operation and broadcasts a PersonDeletedMessage.
     /// </summary>
-    public override Task OnBeforeDeleteAsync(Person entity)
+    public override async Task OnBeforeDeleteAsync(Person entity)
     {
         Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        return Task.CompletedTask;
+        await _messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
     }
 }

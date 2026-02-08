@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using DemoApp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +13,10 @@ builder.Services.AddScoped<SparkContext, DemoSparkContext>();
 
 // Register all Actions classes (auto-discovered by source generator)
 builder.Services.AddSparkActions();
+
+// Register messaging infrastructure and recipients
+builder.Services.AddSparkMessaging();
+builder.Services.AddSparkRecipients();
 
 // Configure SPA static files
 builder.Services.AddSpaStaticFilesImproved(configuration =>
@@ -30,6 +35,7 @@ app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
 app.CreateSparkIndexes();
+app.CreateSparkMessagingIndexes();
 app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
 
 app.UseEndpoints(endpoints =>
