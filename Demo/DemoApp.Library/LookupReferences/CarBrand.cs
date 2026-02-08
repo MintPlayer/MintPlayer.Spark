@@ -1,6 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 
-namespace DemoApp.LookupReferences;
+namespace DemoApp.Library.LookupReferences;
 
 // Dynamic lookup reference - values are stored in RavenDB LookupReferences collection
 // Users can add/edit/remove brands through the application UI

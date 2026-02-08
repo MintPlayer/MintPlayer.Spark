@@ -1,4 +1,5 @@
 using DemoApp.Indexes;
+using DemoApp.Library.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Data;
@@ -11,4 +12,7 @@ public class VCar
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
     public string? OwnerFullName { get; set; }
+
+    [LookupReference(typeof(CarStatus))]
+    public string? Status { get; set; }
 }

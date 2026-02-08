@@ -1,6 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 
-namespace DemoApp.LookupReferences;
+namespace DemoApp.Library.LookupReferences;
 
 public sealed class CarStatus : TransientLookupReference
 {

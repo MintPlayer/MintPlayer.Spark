@@ -16,7 +16,8 @@ public class Cars_Overview : AbstractIndexCreationTask<Car>
                           LicensePlate = car.LicensePlate,
                           Model = car.Model,
                           Year = car.Year,
-                          OwnerFullName = owner != null ? owner.Name : null
+                          OwnerFullName = owner != null ? owner.Name : null,
+                          Status = car.Status
                       };
 
         Index(nameof(VCar.LicensePlate), FieldIndexing.Search);
