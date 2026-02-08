@@ -82,8 +82,12 @@ internal partial class QueryExecutor : IQueryExecutor
         Type? indexType = registration?.IndexType;
         if (!string.IsNullOrEmpty(indexName) && indexType != null)
         {
-            // Use session.Query<TResult, TIndexCreator>() for proper index querying
-            queryable = ApplyIndexWithType(session, resultType, indexType);
+            // Use session.Query<TEntity, TIndexCreator>() with the entity type, then
+            // ProjectInto to get stored/computed fields from the index.
+            // Important: we query with entityType (not resultType) so that ProjectInto
+            // is the single projection step — using resultType here would create a
+            // double projection that causes duplicate results when combined with OrderBy.
+            queryable = ApplyIndexWithType(session, entityType, indexType);
         }
         else if (!string.IsNullOrEmpty(indexName))
         {
@@ -91,24 +95,28 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplyIndexByName(session, entityType, indexName);
         }
 
-        // Apply sorting if specified (sort before projection so it operates on index fields)
+        // Apply ProjectInto to get computed/stored fields from the index (e.g. FullName)
+        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
+        {
+            queryable = ApplyProjection(queryable, resultType);
+        }
+
+        // Apply sorting after projection so it can operate on projected fields (e.g. FullName)
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (!string.IsNullOrEmpty(query.SortBy))
         {
             queryable = ApplySorting(queryable, sortType, query.SortBy, query.SortDirection);
         }
 
-        // Apply ProjectInto to populate computed/stored fields from the index
-        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
-        {
-            queryable = ApplyProjection(queryable, resultType);
-        }
-
         // Execute the query
         var entities = await ExecuteQueryableAsync(queryable, resultType);
 
         // Convert to PersistentObjects using the entity type definition (which includes merged attributes)
-        return entities.Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id));
+        // Deduplicate by ID: ProjectInto on indexes with FieldIndexing.Search can return
+        // one result per search token for the same document. DistinctBy preserves sort order.
+        return entities
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .DistinctBy(po => po.Id);
     }
 
     private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
@@ -165,8 +173,8 @@ internal partial class QueryExecutor : IQueryExecutor
             return queryable;
         }
 
-        var genericMethod = projectIntoMethod.MakeGenericMethod(resultType);
-        return genericMethod.Invoke(null, [queryable])!;
+        var genericProjectMethod = projectIntoMethod.MakeGenericMethod(resultType);
+        return genericProjectMethod.Invoke(null, [queryable])!;
     }
 
     private object ApplySorting(object queryable, Type entityType, string sortBy, string? sortDirection)
