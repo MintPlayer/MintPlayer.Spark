@@ -29,8 +29,8 @@ app.UseSpaStaticFilesImproved();
 app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
 app.CreateSparkIndexes();
+app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
 
 app.UseEndpoints(endpoints =>
 {

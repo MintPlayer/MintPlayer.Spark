@@ -15,6 +15,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
+      "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": [
         {
@@ -32,6 +33,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
+      "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": [
         {
@@ -48,7 +50,7 @@
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 3,
+      "order": 4,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
@@ -68,7 +70,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 4,
+      "order": 5,
       "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": []
@@ -81,7 +83,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 5,
+      "order": 6,
       "query": "GetCompanies",
       "referenceType": "DemoApp.Library.Entities.Company",
       "inQueryType": false,
@@ -96,7 +98,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 6,
+      "order": 7,
       "asDetailType": "DemoApp.Library.Entities.Address",
       "inQueryType": false,
       "showedOn": "PersistentObject",
@@ -110,19 +112,19 @@
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 7,
+      "order": 8,
       "showedOn": "Query, PersistentObject",
       "rules": []
     },
     {
-      "id": "14659f51-daa8-4f5b-b102-ab7df492e21c",
+      "id": "566e4dad-f60c-464d-b2f6-18fb9a5e0ac4",
       "name": "FullName",
       "label": "Full Name",
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 1,
+      "order": 3,
       "inCollectionType": false,
       "showedOn": "Query",
       "rules": []
