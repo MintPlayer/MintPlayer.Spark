@@ -1,10 +1,11 @@
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
+using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Changes;
 using Raven.Client.Documents.Linq;
@@ -15,95 +16,129 @@ internal class MessageProcessor : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IDocumentStore _documentStore;
-    private readonly RecipientRegistry _recipientRegistry;
     private readonly SparkMessagingOptions _options;
     private readonly ILogger<MessageProcessor> _logger;
     private readonly SemaphoreSlim _signal = new(0);
+    private volatile bool _needsReconnect;
 
     public MessageProcessor(
         IServiceProvider serviceProvider,
         IDocumentStore documentStore,
-        RecipientRegistry recipientRegistry,
         IOptions<SparkMessagingOptions> options,
         ILogger<MessageProcessor> logger)
     {
         _serviceProvider = serviceProvider;
         _documentStore = documentStore;
-        _recipientRegistry = recipientRegistry;
         _options = options.Value;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var changes = _documentStore.Changes();
-        await changes.EnsureConnectedNow();
+        IDisposable? subscription = null;
 
-        var observable = changes.ForDocumentsInCollection<SparkMessage>();
-        using var subscription = observable.Subscribe(new DocumentChangeObserver(_signal));
-
-        _logger.LogInformation("MessageProcessor started, listening for SparkMessage changes");
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
-            {
-                await _signal.WaitAsync(_options.FallbackPollInterval, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
+            subscription = await SubscribeToChangesAsync();
+            _logger.LogInformation("MessageProcessor started, listening for SparkMessage changes");
 
-            // Drain any extra signals so we don't loop redundantly
-            while (_signal.CurrentCount > 0)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                _signal.Wait(0);
-            }
+                try
+                {
+                    await _signal.WaitAsync(_options.FallbackPollInterval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
 
-            try
-            {
-                await ProcessMessagesAsync(stoppingToken);
+                // Drain any extra signals so we don't loop redundantly
+                while (_signal.CurrentCount > 0)
+                {
+                    _signal.Wait(0);
+                }
+
+                // Reconnect to Changes API if the connection was lost
+                if (_needsReconnect)
+                {
+                    _needsReconnect = false;
+                    subscription?.Dispose();
+                    try
+                    {
+                        subscription = await SubscribeToChangesAsync();
+                        _logger.LogInformation("Reconnected to RavenDB Changes API");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to reconnect to Changes API, will retry next cycle");
+                    }
+                }
+
+                try
+                {
+                    await ProcessMessagesAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during message processing cycle");
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during message processing cycle");
-            }
+        }
+        finally
+        {
+            subscription?.Dispose();
         }
 
         _logger.LogInformation("MessageProcessor stopping");
     }
 
+    private async Task<IDisposable> SubscribeToChangesAsync()
+    {
+        var changes = _documentStore.Changes();
+        await changes.EnsureConnectedNow();
+        var observable = changes.ForDocumentsInCollection<SparkMessage>();
+        return observable.Subscribe(new DocumentChangeObserver(_signal, _logger, () => _needsReconnect = true));
+    }
+
+    /// <summary>
+    /// Drain loop: keep processing until all queues are empty, then return to the wait loop.
+    /// </summary>
     private async Task ProcessMessagesAsync(CancellationToken stoppingToken)
     {
-        using var session = _documentStore.OpenAsyncSession();
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            using var session = _documentStore.OpenAsyncSession();
 
-        var now = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
 
-        var actionableMessages = await session
-            .Query<SparkMessage, Indexes.SparkMessages_ByQueue>()
-            .Where(m =>
-                (m.Status == EMessageStatus.Pending && (m.NextAttemptAtUtc == null || m.NextAttemptAtUtc <= now)) ||
-                (m.Status == EMessageStatus.Failed && m.NextAttemptAtUtc != null && m.NextAttemptAtUtc <= now))
-            .OrderBy(m => m.CreatedAtUtc)
-            .ToListAsync(stoppingToken);
+            var actionableMessages = await session
+                .Query<SparkMessage, Indexes.SparkMessages_ByQueue>()
+                .Customize(x => x.WaitForNonStaleResults(TimeSpan.FromSeconds(5)))
+                .Where(m =>
+                    (m.Status == EMessageStatus.Pending && (m.NextAttemptAtUtc == null || m.NextAttemptAtUtc <= now)) ||
+                    (m.Status == EMessageStatus.Failed && m.NextAttemptAtUtc != null && m.NextAttemptAtUtc <= now))
+                .OrderBy(m => m.CreatedAtUtc)
+                .Take(128)
+                .ToListAsync(stoppingToken);
 
-        if (actionableMessages.Count == 0)
-            return;
+            if (actionableMessages.Count == 0)
+                break;
 
-        _logger.LogDebug("Found {Count} actionable messages", actionableMessages.Count);
+            _logger.LogDebug("Found {Count} actionable messages", actionableMessages.Count);
 
-        // Group by queue, take the oldest per queue
-        var queues = actionableMessages
-            .GroupBy(m => m.QueueName)
-            .Select(g => g.First())
-            .ToList();
+            // Group by queue, take the oldest per queue
+            var queues = actionableMessages
+                .GroupBy(m => m.QueueName)
+                .Select(g => g.First())
+                .ToList();
 
-        await Task.WhenAll(queues.Select(msg => ProcessSingleMessageAsync(msg, stoppingToken)));
+            await Task.WhenAll(queues.Select(msg => ProcessSingleMessageAsync(msg, stoppingToken)));
+        }
     }
 
     private async Task ProcessSingleMessageAsync(SparkMessage sparkMessage, CancellationToken stoppingToken)
@@ -137,32 +172,26 @@ internal class MessageProcessor : BackgroundService
                 return;
             }
 
-            var recipientTypes = _recipientRegistry.GetRecipientTypes(clrType);
-            if (recipientTypes.Count == 0)
-            {
-                _logger.LogWarning("No recipients registered for message type {MessageType}, marking completed", clrType.FullName);
-            }
-
-            // Create DI scope and invoke all recipients
+            // Resolve recipients from DI as IRecipient<TMessage>
+            var recipientInterfaceType = typeof(IRecipient<>).MakeGenericType(clrType);
             using (var scope = _serviceProvider.CreateScope())
             {
-                foreach (var recipientType in recipientTypes)
+                var recipients = scope.ServiceProvider.GetServices(recipientInterfaceType).ToList();
+                if (recipients.Count == 0)
                 {
-                    var recipient = ActivatorUtilities.CreateInstance(scope.ServiceProvider, recipientType);
-                    var handleMethod = recipientType.GetMethod("HandleAsync", BindingFlags.Public | BindingFlags.Instance);
+                    _logger.LogWarning("No recipients registered for message type {MessageType}, marking completed", clrType.FullName);
+                }
 
-                    if (handleMethod == null)
-                    {
-                        _logger.LogError("HandleAsync method not found on {RecipientType}", recipientType.FullName);
-                        continue;
-                    }
+                var handleMethod = recipientInterfaceType.GetMethod(nameof(IRecipient<object>.HandleAsync));
 
-                    _logger.LogDebug("Invoking {RecipientType}.HandleAsync for message {MessageId}", recipientType.Name, sparkMessage.Id);
-                    await (Task)handleMethod.Invoke(recipient, new[] { payload, stoppingToken })!;
+                foreach (var recipient in recipients)
+                {
+                    _logger.LogDebug("Invoking {RecipientType}.HandleAsync for message {MessageId}", recipient!.GetType().Name, sparkMessage.Id);
+                    await (Task)handleMethod!.Invoke(recipient, [payload, stoppingToken])!;
                 }
             }
 
-            // Mark completed
+            // Mark completed with expiration
             using (var session = _documentStore.OpenAsyncSession())
             {
                 var msg = await session.LoadAsync<SparkMessage>(sparkMessage.Id, stoppingToken);
@@ -170,6 +199,7 @@ internal class MessageProcessor : BackgroundService
 
                 msg.Status = EMessageStatus.Completed;
                 msg.CompletedAtUtc = DateTime.UtcNow;
+                SetExpiration(session, msg);
                 await session.SaveChangesAsync(stoppingToken);
             }
 
@@ -196,6 +226,7 @@ internal class MessageProcessor : BackgroundService
             if (msg.AttemptCount >= msg.MaxAttempts)
             {
                 msg.Status = EMessageStatus.DeadLettered;
+                SetExpiration(session, msg);
                 _logger.LogWarning("Message {MessageId} dead-lettered after {AttemptCount} attempts", messageId, msg.AttemptCount);
             }
             else
@@ -225,6 +256,7 @@ internal class MessageProcessor : BackgroundService
 
             msg.Status = EMessageStatus.DeadLettered;
             msg.LastError = error;
+            SetExpiration(session, msg);
             await session.SaveChangesAsync(stoppingToken);
         }
         catch (Exception ex)
@@ -233,14 +265,36 @@ internal class MessageProcessor : BackgroundService
         }
     }
 
+    private void SetExpiration(Raven.Client.Documents.Session.IAsyncDocumentSession session, SparkMessage msg)
+    {
+        if (_options.RetentionDays <= 0) return;
+
+        var metadata = session.Advanced.GetMetadataFor(msg);
+        metadata[Constants.Documents.Metadata.Expires] = DateTime.UtcNow.AddDays(_options.RetentionDays);
+    }
+
     private sealed class DocumentChangeObserver : IObserver<DocumentChange>
     {
         private readonly SemaphoreSlim _signal;
+        private readonly ILogger _logger;
+        private readonly Action _onError;
 
-        public DocumentChangeObserver(SemaphoreSlim signal) => _signal = signal;
+        public DocumentChangeObserver(SemaphoreSlim signal, ILogger logger, Action onError)
+        {
+            _signal = signal;
+            _logger = logger;
+            _onError = onError;
+        }
 
         public void OnNext(DocumentChange value) => _signal.Release();
-        public void OnError(Exception error) { }
+
+        public void OnError(Exception error)
+        {
+            _logger.LogWarning(error, "RavenDB Changes API connection lost, will reconnect");
+            _onError();
+            _signal.Release();
+        }
+
         public void OnCompleted() { }
     }
 }

@@ -1,58 +1,37 @@
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace DemoApp.Actions;
 
-/// <summary>
-/// Custom Actions class for Person entity demonstrating lifecycle hooks.
-/// </summary>
-public class PersonActions : DefaultPersistentObjectActions<Person>
+public partial class PersonActions : DefaultPersistentObjectActions<Person>
 {
-    private readonly IMessageBus _messageBus;
+    [Inject] private readonly IMessageBus messageBus;
 
-    public PersonActions(IMessageBus messageBus)
-    {
-        _messageBus = messageBus;
-    }
-
-    /// <summary>
-    /// Called before saving a Person entity.
-    /// Normalizes email to lowercase and trims whitespace from names.
-    /// </summary>
     public override Task OnBeforeSaveAsync(Person entity)
     {
-        // Normalize email to lowercase
         if (!string.IsNullOrEmpty(entity.Email))
         {
             entity.Email = entity.Email.Trim().ToLowerInvariant();
         }
 
-        // Trim whitespace from names
         entity.FirstName = entity.FirstName?.Trim() ?? string.Empty;
         entity.LastName = entity.LastName?.Trim() ?? string.Empty;
 
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Called after saving a Person entity.
-    /// Logs the save operation and broadcasts a PersonCreatedMessage.
-    /// </summary>
     public override async Task OnAfterSaveAsync(Person entity)
     {
         Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await _messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
+        await messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
     }
 
-    /// <summary>
-    /// Called before deleting a Person entity.
-    /// Logs the delete operation and broadcasts a PersonDeletedMessage.
-    /// </summary>
     public override async Task OnBeforeDeleteAsync(Person entity)
     {
         Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await _messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
+        await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
     }
 }

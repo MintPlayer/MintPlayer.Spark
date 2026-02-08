@@ -41,7 +41,7 @@ public class RecipientRegistrationProducer : Producer
                     foreach (var recipientClass in recipientList)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        writer.WriteLine($"global::MintPlayer.Spark.Messaging.SparkMessagingExtensions.AddRecipient<{recipientClass.MessageTypeName}, {recipientClass.RecipientTypeName}>(services);");
+                        writer.WriteLine($"services.AddScoped<global::MintPlayer.Spark.Messaging.Abstractions.IRecipient<{recipientClass.MessageTypeName}>, {recipientClass.RecipientTypeName}>();");
                     }
                     writer.WriteLine("return services;");
                 }

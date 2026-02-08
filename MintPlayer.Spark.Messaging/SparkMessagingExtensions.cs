@@ -4,7 +4,7 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Services;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Indexes;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging;
 
@@ -19,7 +19,8 @@ public static class SparkMessagingExtensions
             services.Configure(configure);
         }
 
-        services.AddSingleton<RecipientRegistry>();
+        services.AddScoped<IAsyncDocumentSession>(sp =>
+            sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
         services.AddScoped<IMessageBus, MessageBus>();
         services.AddHostedService<MessageProcessor>();
 
@@ -34,37 +35,5 @@ public static class SparkMessagingExtensions
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         new SparkMessages_ByQueue().Execute(documentStore);
         return app;
-    }
-
-    public static IServiceCollection AddRecipient<TMessage, TRecipient>(
-        this IServiceCollection services)
-        where TRecipient : class, IRecipient<TMessage>
-    {
-        var registry = GetOrCreateRegistry(services);
-        registry.Register(typeof(TMessage), typeof(TRecipient));
-        return services;
-    }
-
-    private static RecipientRegistry GetOrCreateRegistry(IServiceCollection services)
-    {
-        var descriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(RecipientRegistry) &&
-            d.Lifetime == ServiceLifetime.Singleton);
-
-        if (descriptor?.ImplementationInstance is RecipientRegistry existing)
-        {
-            return existing;
-        }
-
-        var registry = new RecipientRegistry();
-        for (var i = services.Count - 1; i >= 0; i--)
-        {
-            if (services[i].ServiceType == typeof(RecipientRegistry))
-            {
-                services.RemoveAt(i);
-            }
-        }
-        services.AddSingleton(registry);
-        return registry;
     }
 }

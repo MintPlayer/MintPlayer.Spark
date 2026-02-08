@@ -12,4 +12,5 @@ public class SparkMessagingOptions
         TimeSpan.FromMinutes(10),
         TimeSpan.FromHours(1),
     ];
+    public int RetentionDays { get; set; } = 7;
 }

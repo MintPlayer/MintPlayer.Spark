@@ -1,17 +1,12 @@
 using DemoApp.Library.Messages;
-using Microsoft.Extensions.Logging;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace DemoApp.Recipients;
 
-public class LogPersonCreated : IRecipient<PersonCreatedMessage>
+public partial class LogPersonCreated : IRecipient<PersonCreatedMessage>
 {
-    private readonly ILogger<LogPersonCreated> _logger;
-
-    public LogPersonCreated(ILogger<LogPersonCreated> logger)
-    {
-        _logger = logger;
-    }
+    [Inject] private readonly ILogger<LogPersonCreated> _logger;
 
     public Task HandleAsync(PersonCreatedMessage message, CancellationToken cancellationToken)
     {

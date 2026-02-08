@@ -55,10 +55,10 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
             .SelectMany(static (x, ct) => x!)
             .Collect();
 
-        // Check if project references MintPlayer.Spark.Messaging
+        // Check if project references MintPlayer.Spark.Messaging.Abstractions
         var knowsMessagingProvider = context.CompilationProvider
             .Select((compilation, ct) =>
-                compilation.GetTypeByMetadataName("MintPlayer.Spark.Messaging.SparkMessagingExtensions") != null);
+                compilation.GetTypeByMetadataName("MintPlayer.Spark.Messaging.Abstractions.IRecipient`1") != null);
 
         // Combine and produce the source
         var sourceProvider = recipientClassesProvider
