@@ -4,6 +4,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 // Static imports for all icons used in the app
 import arrowLeft from 'bootstrap-icons/icons/arrow-left.svg';
 import building from 'bootstrap-icons/icons/building.svg';
+import carFrontFill from 'bootstrap-icons/icons/car-front-fill.svg';
 import database from 'bootstrap-icons/icons/database.svg';
 import file from 'bootstrap-icons/icons/file.svg';
 import folder from 'bootstrap-icons/icons/folder.svg';
@@ -22,6 +23,7 @@ export class IconRegistry {
   constructor() {
     this.register('arrow-left', arrowLeft);
     this.register('building', building);
+    this.register('car-front-fill', carFrontFill);
     this.register('database', database);
     this.register('file', file);
     this.register('folder', folder);

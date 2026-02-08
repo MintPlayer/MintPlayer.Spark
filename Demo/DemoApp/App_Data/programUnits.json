@@ -25,7 +25,7 @@
         {
           "id": "990e8400-e29b-41d4-a716-446655440003",
           "name": "Cars",
-          "icon": "bi-car-front",
+          "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "bc696815-2abb-4e7c-98a1-ac86b4352105",
           "order": 3
