@@ -20,7 +20,18 @@
         <dl class="row">
           @for (attr of getVisibleAttributes(); track attr.id) {
             <dt class="col-sm-3">{{ attr.label || attr.name }}</dt>
-            <dd class="col-sm-9">{{ getAttributeValue(attr.name) || '-' }}</dd>
+            <dd class="col-sm-9">
+              @if (attr.dataType === 'boolean') {
+                <input type="checkbox"
+                  [checked]="getAttributeValue(attr.name) === true"
+                  [indeterminate]="getAttributeValue(attr.name) == null"
+                  disabled
+                  onclick="return false;"
+                  style="opacity: 1;">
+              } @else {
+                {{ getAttributeValue(attr.name) || '-' }}
+              }
+            </dd>
           }
         </dl>
       </div>

@@ -50,7 +50,17 @@
 
       <tr *bsRowTemplate="let item of paginationData" (click)="onRowClick(item)" style="cursor: pointer;">
         @for (attr of getVisibleAttributes(); track attr.id) {
-          <td>{{ getAttributeValue(item, attr.name) }}</td>
+          <td>
+            @if (attr.dataType === 'boolean') {
+              <input type="checkbox"
+                [checked]="getAttributeValue(item, attr.name) === true"
+                [indeterminate]="getAttributeValue(item, attr.name) == null"
+                disabled
+                onclick="return false;">
+            } @else {
+              {{ getAttributeValue(item, attr.name) }}
+            }
+          </td>
         }
       </tr>
     </bs-datatable>

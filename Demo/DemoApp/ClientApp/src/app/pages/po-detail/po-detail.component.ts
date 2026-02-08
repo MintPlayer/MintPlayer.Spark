@@ -76,6 +76,11 @@ export default class PoDetailComponent implements OnInit {
       }
     }
 
+    // For boolean attributes, preserve null for indeterminate state
+    if (attrDef?.dataType === 'boolean') {
+      return attr.value ?? null;
+    }
+
     return attr.value ?? '';
   }
 
