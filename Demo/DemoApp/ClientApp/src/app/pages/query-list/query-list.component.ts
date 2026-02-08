@@ -8,7 +8,7 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { IconComponent } from '../../components/icon/icon.component';
-import { EntityType, EntityAttributeDefinition, PersistentObject, SparkQuery } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { switchMap, forkJoin, of } from 'rxjs';
 
@@ -29,6 +29,7 @@ export default class QueryListComponent implements OnInit {
   entityType: EntityType | null = null;
   allEntityTypes: EntityType[] = [];
   allItems: PersistentObject[] = [];
+  lookupReferenceOptions: Record<string, LookupReference> = {};
   paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
   settings: DatatableSettings = new DatatableSettings({
@@ -79,6 +80,7 @@ export default class QueryListComponent implements OnInit {
           sortProperty: this.query?.sortBy || '',
           sortDirection: this.query?.sortDirection === 'desc' ? 'descending' : 'ascending'
         });
+        this.loadLookupReferenceOptions();
         this.cdr.markForCheck();
         this.loadItems();
       }
@@ -193,6 +195,22 @@ export default class QueryListComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   }
 
+  private loadLookupReferenceOptions(): void {
+    const lookupAttrs = this.getVisibleAttributes().filter(a => a.lookupReferenceType);
+    if (lookupAttrs.length === 0) return;
+
+    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
+    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
+    lookupNames.forEach(name => {
+      queries[name] = this.sparkService.getLookupReference(name);
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.lookupReferenceOptions = results;
+      this.cdr.markForCheck();
+    });
+  }
+
   getAttributeValue(item: PersistentObject, attrName: string): any {
     const attr = item.attributes.find(a => a.name === attrName);
     if (!attr) return '';
@@ -204,6 +222,18 @@ export default class QueryListComponent implements OnInit {
     const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
     if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
       return this.formatAsDetailValue(attrDef, attr.value);
+    }
+
+    // For LookupReference attributes, resolve to translated display name
+    if (attrDef?.lookupReferenceType && attr.value != null && attr.value !== '') {
+      const lookupRef = this.lookupReferenceOptions[attrDef.lookupReferenceType];
+      if (lookupRef) {
+        const option = lookupRef.values.find(v => v.key === String(attr.value));
+        if (option) {
+          const lang = navigator.language?.split('-')[0] || 'en';
+          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+        }
+      }
     }
 
     return attr.value ?? '';

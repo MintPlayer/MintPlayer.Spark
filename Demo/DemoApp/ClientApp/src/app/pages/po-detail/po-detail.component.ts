@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, PersistentObject } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
@@ -22,6 +22,7 @@ export default class PoDetailComponent implements OnInit {
   entityType: EntityType | null = null;
   allEntityTypes: EntityType[] = [];
   item: PersistentObject | null = null;
+  lookupReferenceOptions: Record<string, LookupReference> = {};
   type: string = '';
   id: string = '';
 
@@ -39,6 +40,7 @@ export default class PoDetailComponent implements OnInit {
       this.allEntityTypes = result.entityTypes;
       this.entityType = result.entityTypes.find(t => t.id === this.type) || null;
       this.item = result.item;
+      this.loadLookupReferenceOptions();
       this.cdr.detectChanges();
     });
   }
@@ -62,7 +64,35 @@ export default class PoDetailComponent implements OnInit {
       return this.formatAsDetailValue(attrDef, attr.value);
     }
 
+    // For LookupReference attributes, resolve to translated display name
+    if (attrDef?.lookupReferenceType && attr.value != null && attr.value !== '') {
+      const lookupRef = this.lookupReferenceOptions[attrDef.lookupReferenceType];
+      if (lookupRef) {
+        const option = lookupRef.values.find(v => v.key === String(attr.value));
+        if (option) {
+          const lang = navigator.language?.split('-')[0] || 'en';
+          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+        }
+      }
+    }
+
     return attr.value ?? '';
+  }
+
+  private loadLookupReferenceOptions(): void {
+    const lookupAttrs = this.getVisibleAttributes().filter(a => a.lookupReferenceType);
+    if (lookupAttrs.length === 0) return;
+
+    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
+    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
+    lookupNames.forEach(name => {
+      queries[name] = this.sparkService.getLookupReference(name);
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.lookupReferenceOptions = results;
+      this.cdr.detectChanges();
+    });
   }
 
   private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
