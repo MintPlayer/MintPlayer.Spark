@@ -283,13 +283,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
             var lookupRefAttr = property.GetCustomAttribute<LookupReferenceAttribute>();
-            var lookupRefNameAttr = property.GetCustomAttribute<LookupReferenceNameAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
-            // Support both type-based and name-based lookup references
-            string? lookupReferenceType = lookupRefAttr?.LookupType.Name ?? lookupRefNameAttr?.Name;
+            string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
             // Determine ShowedOn based on inQueryType/inCollectionType
             // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages

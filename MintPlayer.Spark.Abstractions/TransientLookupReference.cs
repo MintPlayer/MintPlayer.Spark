@@ -2,7 +2,6 @@ namespace MintPlayer.Spark.Abstractions;
 
 public abstract class TransientLookupReference
 {
-    public required string Key { get; init; }
     public string? Description { get; init; }
     public required TranslatedString Values { get; init; }
 
@@ -16,4 +15,9 @@ public abstract class TransientLookupReference
     /// </summary>
     protected static TranslatedString _TS(string en, string? fr = null, string? nl = null)
         => TranslatedString.Create(en, fr, nl);
+}
+
+public abstract class TransientLookupReference<TKey> : TransientLookupReference
+{
+    public required TKey Key { get; init; }
 }

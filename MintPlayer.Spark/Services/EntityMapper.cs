@@ -72,6 +72,13 @@ internal partial class EntityMapper : IEntityMapper
                 {
                     value = property.GetValue(entity);
 
+                    // Convert enum values to their string name for proper serialization
+                    var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                    if (propType.IsEnum && value != null)
+                    {
+                        value = value.ToString();
+                    }
+
                     // For complex types (AsDetail), convert to dictionary for proper JSON serialization
                     if (attrDef.DataType == "AsDetail" && value != null)
                     {

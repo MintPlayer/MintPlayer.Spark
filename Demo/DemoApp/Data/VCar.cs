@@ -1,22 +1,18 @@
+using DemoApp.Indexes;
 using DemoApp.Library.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
-namespace DemoApp.Library.Entities;
+namespace DemoApp.Data;
 
-public class Car
+[FromIndex(typeof(Cars_Overview))]
+public class VCar
 {
     public string? Id { get; set; }
     public string LicensePlate { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
-    public string? Color { get; set; }
+    public string? OwnerFullName { get; set; }
 
     [LookupReference(typeof(CarStatus))]
     public ECarStatus? Status { get; set; }
-
-    [LookupReference(typeof(CarBrand))]
-    public string? Brand { get; set; }
-
-    [Reference(typeof(Company), "GetCompanies")]
-    public string? Owner { get; set; }
 }

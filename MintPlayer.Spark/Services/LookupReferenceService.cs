@@ -248,10 +248,15 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (transientItem is not TransientLookupReference item)
             return null;
 
-        // Get extra properties (properties beyond Key, Description, Values)
+        // Get the Key value via reflection (could be string, enum, or other TKey type)
+        var keyProp = transientItem.GetType().GetProperty("Key");
+        var keyValue = keyProp?.GetValue(transientItem);
+        var key = keyValue?.ToString() ?? string.Empty;
+
+        // Get extra properties (properties beyond Key, Description, Values, DisplayType)
         var extraProps = new Dictionary<string, object>();
         var itemType = transientItem.GetType();
-        var baseProps = new HashSet<string> { "Key", "Description", "Values" };
+        var baseProps = new HashSet<string> { "Key", "Description", "Values", "DisplayType" };
 
         foreach (var prop in itemType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -267,7 +272,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
         return new LookupReferenceValueDto
         {
-            Key = item.Key,
+            Key = key,
             Translations = item.Values.Translations,
             IsActive = true,
             Extra = extraProps.Count > 0 ? extraProps : null

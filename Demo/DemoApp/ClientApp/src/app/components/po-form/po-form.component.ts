@@ -157,7 +157,7 @@ export class PoFormComponent implements OnChanges {
     return selected.translations[lang] || selected.translations['en'] || Object.values(selected.translations)[0] || selected.key;
   }
 
-  private getCurrentLanguage(): string {
+  getCurrentLanguage(): string {
     // Get browser language, fallback to 'en'
     const browserLang = navigator.language?.split('-')[0];
     return browserLang || 'en';

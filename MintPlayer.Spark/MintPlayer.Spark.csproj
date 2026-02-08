@@ -30,11 +30,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.15.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.16.1">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.15.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.16.1" GeneratePathProperty="true" />
 		<PackageReference Include="RavenDB.Client" Version="7.1.5" />
 	</ItemGroup>
 

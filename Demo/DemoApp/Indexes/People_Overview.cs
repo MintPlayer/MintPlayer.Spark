@@ -16,8 +16,6 @@ public class People_Overview : AbstractIndexCreationTask<Person> // , VPerson
                         select new VPerson
                         {
                             Id = person.Id,
-                            FirstName = person.FirstName,
-                            LastName = person.LastName,
                             FullName = person.FirstName + " " + person.LastName,
                             Email = person.Email,
                             IsActive = person.IsActive

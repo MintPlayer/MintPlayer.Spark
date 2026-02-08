@@ -2,6 +2,8 @@
   "id": "27768be5-2ff5-4782-8b22-c0e8d163050e",
   "name": "Car",
   "clrType": "DemoApp.Library.Entities.Car",
+  "queryType": "DemoApp.Data.VCar",
+  "indexName": "Cars_Overview",
   "displayAttribute": "LicensePlate",
   "attributes": [
     {
@@ -49,7 +51,8 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 4,
-      "showedOn": "Query, PersistentObject",
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
       "rules": []
     },
     {
@@ -62,6 +65,7 @@
       "isReadOnly": false,
       "order": 5,
       "lookupReferenceType": "CarStatus",
+      "inQueryType": false,
       "showedOn": "Query, PersistentObject",
       "rules": []
     },
@@ -75,7 +79,8 @@
       "isReadOnly": false,
       "order": 6,
       "lookupReferenceType": "CarBrand",
-      "showedOn": "Query, PersistentObject",
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
       "rules": []
     },
     {
@@ -89,7 +94,21 @@
       "order": 7,
       "query": "GetCompanies",
       "referenceType": "DemoApp.Library.Entities.Company",
-      "showedOn": "Query, PersistentObject",
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "7446aa9c-fbc9-4339-88f3-2e66f593fc35",
+      "name": "OwnerFullName",
+      "label": "Owner Full Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 8,
+      "inCollectionType": false,
+      "showedOn": "Query",
       "rules": []
     }
   ]
