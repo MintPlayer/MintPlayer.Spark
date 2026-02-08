@@ -2,13 +2,16 @@ using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Library.LookupReferences;
 
-public sealed class CarStatus : TransientLookupReference
+public enum ECarStatus
 {
-    public const string InUse = nameof(InUse);
-    public const string OnParking = nameof(OnParking);
-    public const string InMaintenance = nameof(InMaintenance);
-    public const string Stolen = nameof(Stolen);
+    InUse,
+    OnParking,
+    InMaintenance,
+    Stolen
+}
 
+public sealed class CarStatus : TransientLookupReference<ECarStatus>
+{
     private CarStatus() { }
 
     public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
@@ -20,28 +23,28 @@ public sealed class CarStatus : TransientLookupReference
     [
         new CarStatus()
         {
-            Key = InUse,
+            Key = ECarStatus.InUse,
             Description = "Car is in use",
             Values = _TS("In use", "En usage", "In gebruik"),
             AllowOnCarNotes = true,
         },
         new CarStatus()
         {
-            Key = OnParking,
+            Key = ECarStatus.OnParking,
             Description = "Car is parked",
             Values = _TS("In parking lot", "Dans le parking", "Op parking"),
             AllowOnCarNotes = false,
         },
         new CarStatus()
         {
-            Key = InMaintenance,
+            Key = ECarStatus.InMaintenance,
             Description = "Car is being maintained",
             Values = _TS("In maintenance", "En maintenance", "In onderhoud"),
             AllowOnCarNotes = true,
         },
         new CarStatus()
         {
-            Key = Stolen,
+            Key = ECarStatus.Stolen,
             Description = "Car is stolen",
             Values = _TS("Stolen", "Vole", "Gestolen"),
             AllowOnCarNotes = true,

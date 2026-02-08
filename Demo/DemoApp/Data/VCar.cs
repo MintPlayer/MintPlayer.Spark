@@ -14,5 +14,5 @@ public class VCar
     public string? OwnerFullName { get; set; }
 
     [LookupReference(typeof(CarStatus))]
-    public string? Status { get; set; }
+    public ECarStatus? Status { get; set; }
 }

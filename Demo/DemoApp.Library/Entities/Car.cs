@@ -12,7 +12,7 @@ public class Car
     public string? Color { get; set; }
 
     [LookupReference(typeof(CarStatus))]
-    public string? Status { get; set; }
+    public ECarStatus? Status { get; set; }
 
     [LookupReference(typeof(CarBrand))]
     public string? Brand { get; set; }

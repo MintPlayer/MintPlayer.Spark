@@ -17,6 +17,7 @@ public class LookupReferenceInfo
     public required string Name { get; init; }
     public required Type Type { get; init; }
     public required bool IsTransient { get; init; }
+    public Type? KeyType { get; init; }    // For transient: the TKey type
     public Type? ValueType { get; init; }  // For dynamic: the TValue type
     public ELookupDisplayType DisplayType { get; init; } = ELookupDisplayType.Dropdown;
 }
@@ -56,14 +57,16 @@ internal partial class LookupReferenceDiscoveryService : ILookupReferenceDiscove
 
         foreach (var type in types.Where(t => !t.IsAbstract && t.IsClass))
         {
-            // Check for TransientLookupReference
+            // Check for TransientLookupReference<TKey>
             if (typeof(TransientLookupReference).IsAssignableFrom(type) && type != typeof(TransientLookupReference))
             {
+                var keyType = GetGenericArgument(type, typeof(TransientLookupReference<>));
                 _lookupReferences[type.Name] = new LookupReferenceInfo
                 {
                     Name = type.Name,
                     Type = type,
                     IsTransient = true,
+                    KeyType = keyType,
                     DisplayType = GetDisplayType(type)
                 };
             }
