@@ -51,18 +51,21 @@ dotnet run --spark-synchronize-model
 
 ```
 MintPlayer.Spark/
-├── MintPlayer.Spark/                    # Core framework library
-├── MintPlayer.Spark.Abstractions/       # Shared interfaces and models
-├── MintPlayer.Spark.SourceGenerators/   # Compile-time DI code generation
+├── MintPlayer.Spark/                            # Core framework library (CRUD)
+├── MintPlayer.Spark.Abstractions/               # Shared interfaces and models
+├── MintPlayer.Spark.Messaging.Abstractions/     # Messaging interfaces (IMessageBus, IRecipient<T>)
+├── MintPlayer.Spark.Messaging/                  # Durable message bus with RavenDB persistence
+├── MintPlayer.Spark.SourceGenerators/           # Compile-time DI code generation
 ├── Demo/
-│   ├── DemoApp/                         # Sample ASP.NET Core + Angular application
-│   └── DemoApp.Library/                 # Shared entity definitions
-└── docs/                                # Documentation
+│   ├── DemoApp/                                 # Sample ASP.NET Core + Angular application
+│   └── DemoApp.Library/                         # Shared entity definitions
+└── docs/                                        # Documentation
 ```
 
 ## Documentation
 
 - **[Spark Library Documentation](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
+- **[Messaging Documentation](MintPlayer.Spark.Messaging/README.md)** - Durable message bus with RavenDB persistence, scoped recipients, and retry logic
 - **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
 
 ## Contributing
