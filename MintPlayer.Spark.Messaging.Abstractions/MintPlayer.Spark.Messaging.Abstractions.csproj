@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -6,12 +6,12 @@
 		<Nullable>enable</Nullable>
 
 		<!-- NuGet Package Metadata -->
-		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
+		<PackageId>MintPlayer.Spark.Messaging.Abstractions</PackageId>
 		<Version>10.0.0-preview.1</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
-		<PackageTags>low-code;framework;ravendb;abstractions</PackageTags>
+		<Description>Abstractions for MintPlayer.Spark.Messaging: IMessageBus, IRecipient, and MessageQueueAttribute.</Description>
+		<PackageTags>messaging;message-bus;abstractions</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>

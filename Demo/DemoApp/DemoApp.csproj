@@ -14,11 +14,16 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.3.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.16.1">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\DemoApp.Library\DemoApp.Library.csproj" />
 		<ProjectReference Include="..\..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
