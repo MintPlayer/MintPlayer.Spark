@@ -1,11 +1,11 @@
 {
-  "id": "2212bc72-1006-41b2-812b-86b052b5bb43",
+  "id": "14b0c69f-64fc-4737-90b0-bdbf26b995e0",
   "name": "VCar",
   "clrType": "Fleet.Indexes.VCar",
   "displayAttribute": "LicensePlate",
   "attributes": [
     {
-      "id": "d23d1493-2630-4089-ba53-88de5412dc99",
+      "id": "759f99bc-a284-47af-bc16-3e44828d3094",
       "name": "LicensePlate",
       "label": "License Plate",
       "dataType": "string",
@@ -17,7 +17,7 @@
       "rules": []
     },
     {
-      "id": "b3ba8ab1-da03-4cea-bb2e-867ab0736207",
+      "id": "0da4fc92-a865-4aef-babe-f5e7efd510c0",
       "name": "Model",
       "label": "Model",
       "dataType": "string",
@@ -29,7 +29,7 @@
       "rules": []
     },
     {
-      "id": "8321c3ce-dc48-476b-bb61-60c6bac4b6f1",
+      "id": "7aa44995-8e49-45bc-8ffe-a0d2e4279fd2",
       "name": "Year",
       "label": "Year",
       "dataType": "number",
@@ -41,7 +41,7 @@
       "rules": []
     },
     {
-      "id": "82ed8d6b-464d-4285-ba37-d213c4efa190",
+      "id": "4b2b23e8-d6cd-4d48-97ac-31b93c3ebfcd",
       "name": "Color",
       "label": "Color",
       "dataType": "string",
@@ -53,7 +53,7 @@
       "rules": []
     },
     {
-      "id": "3b3e166f-6a05-40a8-b48a-47414f1c817c",
+      "id": "5761b17a-389a-4dfd-ac9e-bc30caca2052",
       "name": "Status",
       "label": "Status",
       "dataType": "string",
@@ -65,7 +65,7 @@
       "rules": []
     },
     {
-      "id": "ed7429a1-bdb0-4b33-a7ea-519beb204bdf",
+      "id": "9cbe24ba-5356-4375-be5a-e0249dbb077c",
       "name": "Brand",
       "label": "Brand",
       "dataType": "string",

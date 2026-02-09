@@ -1,11 +1,11 @@
 {
-  "id": "3d2e110d-8a38-486e-a133-0218011ad519",
+  "id": "04707aa2-c17d-4b26-8e6b-bc7071e359bf",
   "name": "VPerson",
   "clrType": "HR.Indexes.VPerson",
   "displayAttribute": "FullName",
   "attributes": [
     {
-      "id": "99dba725-2a44-48f5-b571-ffb9b0152e39",
+      "id": "eda41fee-446a-4d7c-89aa-aabd14064ae3",
       "name": "FullName",
       "label": "Full Name",
       "dataType": "string",
@@ -17,7 +17,7 @@
       "rules": []
     },
     {
-      "id": "16e59abb-11cc-4061-8b37-f37ea117a16d",
+      "id": "b2bdac28-6e8b-40d7-9f0f-5feb5d605511",
       "name": "Email",
       "label": "Email",
       "dataType": "string",

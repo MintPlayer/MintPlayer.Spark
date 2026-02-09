@@ -1,0 +1,44 @@
+{
+  "id": "f0f91878-bc14-4f33-bb42-2e4c6eabe88c",
+  "name": "Company",
+  "clrType": "Fleet.Replicated.Company",
+  "displayAttribute": "Name",
+  "attributes": [
+    {
+      "id": "1a5c89ab-f7ee-4193-8e52-d64e25645be6",
+      "name": "Name",
+      "label": "Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "4ac8ea4e-5599-40d5-b50d-ddedddd4eece",
+      "name": "Website",
+      "label": "Website",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "fe523875-8393-4e7e-aaaf-fe0c8e089eba",
+      "name": "EmployeeCount",
+      "label": "Employee Count",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}
