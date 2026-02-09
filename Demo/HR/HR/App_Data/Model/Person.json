@@ -1,0 +1,101 @@
+{
+  "id": "2a34a658-1768-4c82-8724-884b2f99f4e0",
+  "name": "Person",
+  "clrType": "HR.Entities.Person",
+  "queryType": "HR.Indexes.VPerson",
+  "indexName": "People_Overview",
+  "displayAttribute": "FullName",
+  "attributes": [
+    {
+      "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
+      "name": "FirstName",
+      "label": "First Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
+      "name": "LastName",
+      "label": "Last Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
+      "name": "Email",
+      "label": "Email",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
+      "name": "DateOfBirth",
+      "label": "Date Of Birth",
+      "dataType": "datetime",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
+      "name": "Company",
+      "label": "Company",
+      "dataType": "Reference",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "referenceType": "HR.Entities.Company",
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
+      "name": "Address",
+      "label": "Address",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
+      "name": "FullName",
+      "label": "Full Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 7,
+      "inCollectionType": false,
+      "showedOn": "Query",
+      "rules": []
+    }
+  ]
+}

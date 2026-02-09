@@ -1,0 +1,84 @@
+{
+  "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
+  "name": "Car",
+  "clrType": "Fleet.Entities.Car",
+  "queryType": "Fleet.Indexes.VCar",
+  "indexName": "Cars_Overview",
+  "displayAttribute": "LicensePlate",
+  "attributes": [
+    {
+      "id": "cb321818-3574-44ee-9488-2b2567b56605",
+      "name": "LicensePlate",
+      "label": "License Plate",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "260f5024-5dff-4b2d-b233-9933d16dc4a7",
+      "name": "Model",
+      "label": "Model",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "ee84192a-dd42-4224-9bbb-9a4328083ef0",
+      "name": "Year",
+      "label": "Year",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
+      "name": "Color",
+      "label": "Color",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
+      "name": "Status",
+      "label": "Status",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "lookupReferenceType": "CarStatus",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "50b7dffd-aff1-4568-b4b0-4dfa7048ff31",
+      "name": "Brand",
+      "label": "Brand",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "lookupReferenceType": "CarBrand",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}

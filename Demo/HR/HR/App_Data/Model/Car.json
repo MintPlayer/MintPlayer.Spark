@@ -1,0 +1,56 @@
+{
+  "id": "8317d070-b79e-40c6-825e-1e245142daf9",
+  "name": "Car",
+  "clrType": "HR.Replicated.Car",
+  "displayAttribute": "LicensePlate",
+  "attributes": [
+    {
+      "id": "3ee949c5-cc99-4fb0-98ca-e3a4599bdae5",
+      "name": "LicensePlate",
+      "label": "License Plate",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "1e53363b-0154-4a9c-a262-0fd83c119a99",
+      "name": "Model",
+      "label": "Model",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "70d1cc89-5e2f-4163-b84c-d2c15666daf7",
+      "name": "Year",
+      "label": "Year",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "2eafd132-af25-4d18-9f48-370eb748f16e",
+      "name": "Color",
+      "label": "Color",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}

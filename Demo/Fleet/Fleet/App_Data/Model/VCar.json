@@ -1,0 +1,80 @@
+{
+  "id": "2212bc72-1006-41b2-812b-86b052b5bb43",
+  "name": "VCar",
+  "clrType": "Fleet.Indexes.VCar",
+  "displayAttribute": "LicensePlate",
+  "attributes": [
+    {
+      "id": "d23d1493-2630-4089-ba53-88de5412dc99",
+      "name": "LicensePlate",
+      "label": "License Plate",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "b3ba8ab1-da03-4cea-bb2e-867ab0736207",
+      "name": "Model",
+      "label": "Model",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "8321c3ce-dc48-476b-bb61-60c6bac4b6f1",
+      "name": "Year",
+      "label": "Year",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "82ed8d6b-464d-4285-ba37-d213c4efa190",
+      "name": "Color",
+      "label": "Color",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "3b3e166f-6a05-40a8-b48a-47414f1c817c",
+      "name": "Status",
+      "label": "Status",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "ed7429a1-bdb0-4b33-a7ea-519beb204bdf",
+      "name": "Brand",
+      "label": "Brand",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 6,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "b1f0b5fe-8fab-41f2-850c-65c11c291bab",
+  "name": "GetVCars",
+  "contextProperty": "VCars",
+  "sortBy": "LicensePlate",
+  "sortDirection": "asc",
+  "useProjection": false
+}

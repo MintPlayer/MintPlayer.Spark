@@ -1,0 +1,44 @@
+{
+  "id": "5a990917-387b-4f1e-8434-befc64da1958",
+  "name": "Company",
+  "clrType": "HR.Entities.Company",
+  "displayAttribute": "Name",
+  "attributes": [
+    {
+      "id": "a1784ded-7fec-468d-b181-2aa24b5d34b0",
+      "name": "Name",
+      "label": "Name",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "fbe3da33-f8db-4eb2-9307-eaf38f59ef71",
+      "name": "Website",
+      "label": "Website",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
+      "name": "EmployeeCount",
+      "label": "Employee Count",
+      "dataType": "number",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}
