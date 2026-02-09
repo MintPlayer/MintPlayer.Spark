@@ -5,9 +5,11 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<IsPackable>false</IsPackable>
+		<SpaRoot>ClientApp\</SpaRoot>
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.3.0" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.16.1">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

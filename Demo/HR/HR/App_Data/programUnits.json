@@ -1,0 +1,36 @@
+{
+  "programUnitGroups": [
+    {
+      "id": "b10e8400-e29b-41d4-a716-446655440000",
+      "name": "HR",
+      "icon": "bi-people-fill",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "b10e8400-e29b-41d4-a716-446655440001",
+          "name": "People",
+          "icon": "bi-people",
+          "type": "query",
+          "queryId": "b20e8400-e29b-41d4-a716-446655440001",
+          "order": 1
+        },
+        {
+          "id": "b10e8400-e29b-41d4-a716-446655440002",
+          "name": "Companies",
+          "icon": "bi-building",
+          "type": "query",
+          "queryId": "b20e8400-e29b-41d4-a716-446655440002",
+          "order": 2
+        },
+        {
+          "id": "b10e8400-e29b-41d4-a716-446655440003",
+          "name": "Cars",
+          "icon": "bi-car-front-fill",
+          "type": "query",
+          "queryId": "b20e8400-e29b-41d4-a716-446655440003",
+          "order": 3
+        }
+      ]
+    }
+  ]
+}

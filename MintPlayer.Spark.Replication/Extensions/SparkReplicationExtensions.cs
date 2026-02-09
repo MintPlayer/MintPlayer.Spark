@@ -45,13 +45,15 @@ public static class SparkReplicationExtensions
         var registrationService = app.Services.GetRequiredService<ModuleRegistrationService>();
         var collector = app.Services.GetRequiredService<EtlScriptCollector>();
         var appStore = app.Services.GetRequiredService<IDocumentStore>();
-        var messageBus = app.Services.GetRequiredService<IMessageBus>();
 
         // Run registration and ETL deployment asynchronously to not block startup
         _ = Task.Run(async () =>
         {
             try
             {
+                // IMessageBus is scoped, so create a scope to resolve it
+                using var scope = app.Services.CreateScope();
+                var messageBus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
                 // Step 1: Register this module in the shared SparkModules database
                 using var modulesStore = registrationService.CreateModulesStore();
                 await registrationService.RegisterAsync(modulesStore);
