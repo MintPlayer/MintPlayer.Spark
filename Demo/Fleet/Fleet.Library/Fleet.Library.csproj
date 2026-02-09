@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\..\..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

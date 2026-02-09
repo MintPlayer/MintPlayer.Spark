@@ -54,6 +54,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityType = GetQueryableEntityType(property.PropertyType);
             if (entityType == null) continue;
 
+            // Skip projection types - they are merged into their collection type's JSON file
+            if (indexRegistry.IsProjectionType(entityType))
+            {
+                Console.WriteLine($"Skipping projection type: {entityType.Name} (merged into collection type)");
+                continue;
+            }
+
             var clrType = entityType.FullName ?? entityType.Name;
 
             // Get projection type from IndexRegistry (populated from FromIndexAttribute on projections)
@@ -134,6 +141,34 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             // Recursively collect embedded types from this type
             CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
+        }
+
+        // Clean up stale projection type files
+        foreach (var registration in indexRegistry.GetAllRegistrations())
+        {
+            if (registration.ProjectionType != null)
+            {
+                var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
+                if (File.Exists(staleModelFile))
+                {
+                    File.Delete(staleModelFile);
+                    Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
+                }
+
+                var projectionPropertyName = queryableProperties
+                    .FirstOrDefault(p => GetQueryableEntityType(p.PropertyType) == registration.ProjectionType)
+                    ?.Name;
+
+                if (projectionPropertyName != null)
+                {
+                    var staleQueryFile = Path.Combine(queriesPath, $"Get{projectionPropertyName}.json");
+                    if (File.Exists(staleQueryFile))
+                    {
+                        File.Delete(staleQueryFile);
+                        Console.WriteLine($"Removed stale projection query file: Get{projectionPropertyName}.json");
+                    }
+                }
+            }
         }
     }
 

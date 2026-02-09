@@ -34,6 +34,11 @@ public interface IIndexRegistry
     /// Gets all registered indexes.
     /// </summary>
     IEnumerable<IndexRegistration> GetAllRegistrations();
+
+    /// <summary>
+    /// Checks whether the given type is a projection type for any registered index.
+    /// </summary>
+    bool IsProjectionType(Type type);
 }
 
 /// <summary>
@@ -126,6 +131,14 @@ internal partial class IndexRegistry : IIndexRegistry
         lock (_lock)
         {
             return _byIndexName.Values.ToList();
+        }
+    }
+
+    public bool IsProjectionType(Type type)
+    {
+        lock (_lock)
+        {
+            return _byCollectionType.Values.Any(r => r.ProjectionType == type);
         }
     }
 

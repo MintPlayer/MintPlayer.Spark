@@ -1,0 +1,285 @@
+<bs-form>
+  @if (entityType) {
+    <bs-grid>
+    @for (attr of getEditableAttributes(); track attr.id) {
+      <div bsRow class="mb-3">
+        <label [md]="4" bsColFormLabel [for]="attr.name">
+          {{ attr.label || attr.name }}
+          @if (attr.isRequired) {
+            <span class="text-danger">*</span>
+          }
+        </label>
+        <div [md]="8">
+          @if (attr.dataType === 'boolean') {
+            <bs-toggle-button
+              [(ngModel)]="formData[attr.name]"
+              (ngModelChange)="onFieldChange()">
+            </bs-toggle-button>
+          } @else if (attr.lookupReferenceType) {
+            @if (getLookupDisplayType(attr) === ELookupDisplayType.Modal) {
+              <bs-input-group>
+                <input
+                  type="text"
+                  [id]="attr.name"
+                  [value]="getLookupDisplayValue(attr)"
+                  readonly
+                  [class.is-invalid]="hasError(attr.name)">
+                <button
+                  type="button"
+                  bsInputGroupBtn
+                  [color]="colors.secondary"
+                  (click)="openLookupSelector(attr)">
+                  ...
+                </button>
+              </bs-input-group>
+            } @else {
+              <bs-select
+                [(ngModel)]="formData[attr.name]"
+                (ngModelChange)="onFieldChange()"
+                [id]="attr.name"
+                [class.is-invalid]="hasError(attr.name)">
+                <option [ngValue]="null">-- Select --</option>
+                @for (option of getLookupOptions(attr); track option.key) {
+                  <option [ngValue]="option.key">
+                    {{ option.translations[getCurrentLanguage()] || option.translations['en'] || option.key }}
+                  </option>
+                }
+              </bs-select>
+            }
+          } @else if (attr.dataType === 'Reference') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getReferenceDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openReferenceSelector(attr)">
+                ...
+              </button>
+            </bs-input-group>
+          } @else if (attr.dataType === 'AsDetail') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getAsDetailDisplayValue(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openAsDetailEditor(attr)">
+                <app-icon name="pencil" />
+              </button>
+            </bs-input-group>
+          } @else {
+            <input
+              [type]="getInputType(attr.dataType)"
+              [id]="attr.name"
+              [(ngModel)]="formData[attr.name]"
+              [name]="attr.name"
+              [required]="attr.isRequired"
+              [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
+              [class.is-invalid]="hasError(attr.name)"
+              (ngModelChange)="onFieldChange()">
+          }
+          @if (getErrorForAttribute(attr.name); as errorMsg) {
+            <div class="invalid-feedback d-block">
+              {{ errorMsg }}
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (showButtons) {
+      <div bsRow class="mt-4">
+        <div [md]="4"></div>
+        <div [md]="8" class="d-flex justify-content-end gap-2">
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+          <button type="submit" [color]="colors.primary" [disabled]="isSaving" (click)="onSave()">
+            @if (isSaving) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Save
+          </button>
+        </div>
+      </div>
+    }
+  </bs-grid>
+}
+
+<!-- Modal for editing AsDetail objects -->
+<bs-modal [(isOpen)]="showAsDetailModal" (isOpenChange)="!$event && closeAsDetailModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">Edit {{ editingAsDetailAttr?.label || editingAsDetailAttr?.name }}</h5>
+    </div>
+
+    @if (editingAsDetailAttr) {
+      <bs-grid bsModalBody class="mt-3">
+        @for (detailAttr of getAsDetailAttributes(editingAsDetailAttr); track detailAttr.id) {
+          <div bsRow class="mb-3">
+            <label [md]="4" bsColFormLabel [for]="'detail_' + detailAttr.name">
+              {{ detailAttr.label || detailAttr.name }}
+              @if (detailAttr.isRequired) {
+                <span class="text-danger">*</span>
+              }
+            </label>
+            <div [md]="8">
+              @if (detailAttr.dataType === 'boolean') {
+                <bs-toggle-button
+                  [(ngModel)]="asDetailFormData[detailAttr.name]">
+                </bs-toggle-button>
+              } @else {
+                <input
+                  [type]="getInputType(detailAttr.dataType)"
+                  [id]="'detail_' + detailAttr.name"
+                  [(ngModel)]="asDetailFormData[detailAttr.name]"
+                  [name]="'detail_' + detailAttr.name"
+                  [required]="detailAttr.isRequired"
+                  [step]="detailAttr.dataType === 'decimal' ? '0.01' : '1'">
+              }
+            </div>
+          </div>
+        }
+      </bs-grid>
+    }
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">Cancel</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">Save</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting Reference items -->
+<bs-modal [(isOpen)]="showReferenceModal" (isOpenChange)="!$event && closeReferenceModal()">
+  <div *bsModal class="reference-modal">
+    <div bsModalHeader>
+      <h5 class="modal-title">Select {{ editingReferenceAttr?.label || editingReferenceAttr?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      @if (referenceModalEntityType) {
+        <!-- Search box -->
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <bs-input-group>
+              <span class="input-group-text">
+                <app-icon name="search" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search..."
+                [(ngModel)]="referenceSearchTerm"
+                (ngModelChange)="onReferenceSearchChange()">
+              @if (referenceSearchTerm) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="clearReferenceSearch()">
+                  <app-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
+          <div class="col-md-6 text-end">
+            @if (referenceSearchTerm && referenceModalPagination) {
+              <span class="text-muted">
+                {{ referenceModalPagination.totalRecords }} result{{ referenceModalPagination.totalRecords !== 1 ? 's' : '' }} found
+              </span>
+            }
+          </div>
+        </div>
+
+        <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
+          @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ attr.label || attr.name }}
+            </div>
+          }
+
+          <tr *bsRowTemplate="let item of referenceModalPagination" (click)="selectReferenceItem(item)" style="cursor: pointer;">
+            @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+              <td>{{ getReferenceAttributeValue(item, attr.name) }}</td>
+            }
+          </tr>
+        </bs-datatable>
+      } @else {
+        <div class="text-center p-3">
+          <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">Cancel</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting LookupReference items -->
+<bs-modal [(isOpen)]="showLookupModal" (isOpenChange)="!$event && closeLookupModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">Select {{ editingLookupAttr?.label || editingLookupAttr?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <!-- Search box -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <bs-input-group>
+            <span class="input-group-text">
+              <app-icon name="search" />
+            </span>
+            <input
+              type="text"
+              placeholder="Search..."
+              [(ngModel)]="lookupSearchTerm">
+            @if (lookupSearchTerm) {
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                (click)="lookupSearchTerm = ''">
+                <app-icon name="x-lg" />
+              </button>
+            }
+          </bs-input-group>
+        </div>
+      </div>
+
+      <!-- List of items -->
+      <bs-table [striped]="true" [hover]="true">
+        <tbody>
+          @for (item of getFilteredLookupItems(); track item.key) {
+            <tr
+              [class.table-primary]="formData[editingLookupAttr?.name ?? ''] === item.key"
+              (click)="selectLookupItem(item)"
+              style="cursor: pointer;">
+              <td>{{ item.translations[getCurrentLanguage()] || item.translations['en'] || item.key }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="text-center text-muted">No items found</td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">Cancel</button>
+    </div>
+  </div>
+</bs-modal>
+</bs-form>
