@@ -45,6 +45,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .Where(p => IsRavenQueryable(p.PropertyType))
             .ToList();
 
+        // Build mapping from entity CLR type → query name for auto-resolving reference queries
+        // e.g. "HR.Entities.Company" → "GetCompanies"
+        var entityTypeToQueryName = new Dictionary<string, string>();
+        foreach (var prop in queryableProperties)
+        {
+            var et = GetQueryableEntityType(prop.PropertyType);
+            if (et == null) continue;
+            if (indexRegistry.IsProjectionType(et)) continue;
+            var clrTypeName = et.FullName ?? et.Name;
+            entityTypeToQueryName[clrTypeName] = $"Get{prop.Name}";
+        }
+
         // Track types to process (including embedded types)
         var processedTypes = new HashSet<string>();
         var typesToProcess = new Queue<Type>();
@@ -70,7 +82,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
 
             // Save the entity type definition
             var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
@@ -130,7 +142,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 continue;
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
@@ -249,7 +261,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return result;
     }
 
-    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing)
+    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null)
     {
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
@@ -324,6 +336,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
+            // Auto-resolve query name for reference attributes when not explicitly specified
+            string? resolvedQuery = referenceAttr?.Query;
+            if (resolvedQuery == null && referenceAttr != null && entityTypeToQueryName != null)
+            {
+                var targetClrType = referenceAttr.TargetType.FullName ?? referenceAttr.TargetType.Name;
+                entityTypeToQueryName.TryGetValue(targetClrType, out resolvedQuery);
+            }
+
             // Determine ShowedOn based on inQueryType/inCollectionType
             // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages
             // If property doesn't exist in collection type (inCollectionType=false), only show on Query pages
@@ -351,10 +371,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 if (referenceAttr != null)
                 {
                     existingAttr.ReferenceType = referenceType;
-                    if (string.IsNullOrEmpty(existingAttr.Query))
-                    {
-                        existingAttr.Query = referenceAttr.Query;
-                    }
+                    existingAttr.Query = resolvedQuery;
                 }
 
                 if (dataType == "AsDetail")
@@ -396,7 +413,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     IsVisible = true,
                     IsReadOnly = false,
                     Order = order,
-                    Query = referenceAttr?.Query,
+                    Query = resolvedQuery,
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
                     LookupReferenceType = lookupReferenceType,

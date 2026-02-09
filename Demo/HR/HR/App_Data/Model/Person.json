@@ -66,6 +66,7 @@
       "isVisible": true,
       "isReadOnly": false,
       "order": 5,
+      "query": "GetCompanies",
       "referenceType": "HR.Entities.Company",
       "inQueryType": false,
       "showedOn": "PersistentObject",
