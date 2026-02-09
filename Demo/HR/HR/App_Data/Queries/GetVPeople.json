@@ -1,8 +1,0 @@
-{
-  "id": "a2373d1e-7776-4032-8c23-ed2dbc98c0c6",
-  "name": "GetVPeople",
-  "contextProperty": "VPeople",
-  "sortBy": "FullName",
-  "sortDirection": "asc",
-  "useProjection": false
-}
