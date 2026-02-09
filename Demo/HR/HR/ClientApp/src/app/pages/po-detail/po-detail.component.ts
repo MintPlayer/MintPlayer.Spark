@@ -1,0 +1,149 @@
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
+import { SparkService } from '../../core/services/spark.service';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
+import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
+import { IconComponent } from '../../components/icon/icon.component';
+import { switchMap, forkJoin, of } from 'rxjs';
+
+@Component({
+  selector: 'app-po-detail',
+  imports: [CommonModule, RouterModule, BsButtonGroupComponent, IconComponent],
+  templateUrl: './po-detail.component.html'
+})
+export default class PoDetailComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly sparkService = inject(SparkService);
+  private readonly cdr = inject(ChangeDetectorRef);
+
+  entityType: EntityType | null = null;
+  allEntityTypes: EntityType[] = [];
+  item: PersistentObject | null = null;
+  lookupReferenceOptions: Record<string, LookupReference> = {};
+  type: string = '';
+  id: string = '';
+
+  ngOnInit(): void {
+    this.route.paramMap.pipe(
+      switchMap(params => {
+        this.type = params.get('type') || '';
+        this.id = params.get('id') || '';
+        return forkJoin({
+          entityTypes: this.sparkService.getEntityTypes(),
+          item: this.sparkService.get(this.type, this.id)
+        });
+      })
+    ).subscribe(result => {
+      this.allEntityTypes = result.entityTypes;
+      this.entityType = result.entityTypes.find(t => t.id === this.type) || null;
+      this.item = result.item;
+      this.loadLookupReferenceOptions();
+      this.cdr.detectChanges();
+    });
+  }
+
+  getVisibleAttributes() {
+    return this.entityType?.attributes
+      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .sort((a, b) => a.order - b.order) || [];
+  }
+
+  getAttributeValue(attrName: string): any {
+    const attr = this.item?.attributes.find(a => a.name === attrName);
+    if (!attr) return '';
+
+    // For Reference attributes, breadcrumb is resolved on backend
+    if (attr.breadcrumb) return attr.breadcrumb;
+
+    // For AsDetail attributes, format using displayFormat
+    const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
+    if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
+      return this.formatAsDetailValue(attrDef, attr.value);
+    }
+
+    // For LookupReference attributes, resolve to translated display name
+    if (attrDef?.lookupReferenceType && attr.value != null && attr.value !== '') {
+      const lookupRef = this.lookupReferenceOptions[attrDef.lookupReferenceType];
+      if (lookupRef) {
+        const option = lookupRef.values.find(v => v.key === String(attr.value));
+        if (option) {
+          const lang = navigator.language?.split('-')[0] || 'en';
+          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+        }
+      }
+    }
+
+    // For boolean attributes, preserve null for indeterminate state
+    if (attrDef?.dataType === 'boolean') {
+      return attr.value ?? null;
+    }
+
+    return attr.value ?? '';
+  }
+
+  private loadLookupReferenceOptions(): void {
+    const lookupAttrs = this.getVisibleAttributes().filter(a => a.lookupReferenceType);
+    if (lookupAttrs.length === 0) return;
+
+    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
+    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
+    lookupNames.forEach(name => {
+      queries[name] = this.sparkService.getLookupReference(name);
+    });
+
+    forkJoin(queries).subscribe(results => {
+      this.lookupReferenceOptions = results;
+      this.cdr.detectChanges();
+    });
+  }
+
+  private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
+    // Find the AsDetail entity type
+    const asDetailType = this.allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
+
+    // 1. Try displayFormat (template with {PropertyName} placeholders)
+    if (asDetailType?.displayFormat) {
+      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+      if (result && result.trim()) return result;
+    }
+
+    // 2. Try displayAttribute (single property name)
+    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
+      return value[asDetailType.displayAttribute];
+    }
+
+    // 3. Fallback to common property names
+    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
+    for (const prop of displayProps) {
+      if (value[prop]) return value[prop];
+    }
+
+    return '(object)';
+  }
+
+  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
+    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
+      const value = data[propertyName];
+      return value != null ? String(value) : '';
+    });
+  }
+
+  onEdit(): void {
+    this.router.navigate(['/po', this.type, this.id, 'edit']);
+  }
+
+  onDelete(): void {
+    if (confirm('Are you sure you want to delete this item?')) {
+      this.sparkService.delete(this.type, this.id).subscribe(() => {
+        this.router.navigate(['/']);
+      });
+    }
+  }
+
+  onBack(): void {
+    window.history.back();
+  }
+}
