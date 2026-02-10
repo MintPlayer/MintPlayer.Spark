@@ -55,6 +55,19 @@
       "rules": []
     },
     {
+      "id": "ed465dac-ffad-4d1c-b09a-60e61f907c5a",
+      "name": "VinNumber",
+      "label": "Vin Number",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "inQueryType": false,
+      "showedOn": "PersistentObject",
+      "rules": []
+    },
+    {
       "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
       "name": "Status",
       "label": "Status",

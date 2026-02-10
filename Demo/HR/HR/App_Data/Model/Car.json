@@ -51,6 +51,18 @@
       "order": 4,
       "showedOn": "Query, PersistentObject",
       "rules": []
+    },
+    {
+      "id": "6fda605e-c337-49ad-9257-086a8fe5dedd",
+      "name": "VinNumber",
+      "label": "Vin Number",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
     }
   ]
 }
