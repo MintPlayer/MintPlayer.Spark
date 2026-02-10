@@ -9,6 +9,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\..\..\MintPlayer.Spark.Encryption.Abstractions\MintPlayer.Spark.Encryption.Abstractions.csproj" />
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 	</ItemGroup>
 

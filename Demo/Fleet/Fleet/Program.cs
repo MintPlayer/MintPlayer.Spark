@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Fleet;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Encryption;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
@@ -12,6 +13,13 @@ builder.Services.AddSpark(builder.Configuration);
 builder.Services.AddScoped<SparkContext, FleetContext>();
 
 builder.Services.AddSparkMessaging();
+
+builder.Services.AddSparkEncryption(opt =>
+{
+    var section = builder.Configuration.GetSection("SparkEncryption");
+    opt.OwnKey = section["OwnKey"];
+    section.GetSection("ModuleKeys").Bind(opt.ModuleKeys);
+});
 
 builder.Services.AddSparkReplication(opt =>
 {
@@ -37,6 +45,7 @@ app.UseSpaStaticFilesImproved();
 app.UseRouting();
 app.UseAuthorization();
 app.UseSpark();
+app.UseSparkEncryption();
 app.CreateSparkIndexes();
 app.CreateSparkMessagingIndexes();
 app.UseSparkReplication();

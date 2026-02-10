@@ -19,6 +19,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Fleet.Library\Fleet.Library.csproj" />
 		<ProjectReference Include="..\..\..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\MintPlayer.Spark.Encryption\MintPlayer.Spark.Encryption.csproj" />
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

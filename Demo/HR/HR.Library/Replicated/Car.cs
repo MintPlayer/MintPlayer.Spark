@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Encryption.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 
 namespace HR.Replicated;
@@ -15,6 +16,7 @@ namespace HR.Replicated;
             Model: this.Model,
             Year: this.Year,
             Color: this.Color,
+            VinNumber: this.VinNumber,
             '@metadata': {
                 '@collection': 'Cars'
             }
@@ -27,4 +29,7 @@ public class Car
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
     public string? Color { get; set; }
+
+    [Encrypted]
+    public string? VinNumber { get; set; }
 }
