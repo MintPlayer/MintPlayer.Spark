@@ -632,34 +632,34 @@ These are the RavenDB maintenance operations used by `EtlTaskManager`:
 ## Implementation Steps
 
 ### Phase 1: Abstractions
-1. [ ] Create `MintPlayer.Spark.Replication.Abstractions` project
-2. [ ] Implement `ReplicatedAttribute`
-3. [ ] Implement `ModuleInformation` model
-4. [ ] Implement `EtlScriptRequest` / `EtlScriptItem` / `EtlDeploymentResult` models
-5. [ ] Implement `SparkReplicationOptions`
+1. [x] Create `MintPlayer.Spark.Replication.Abstractions` project
+2. [x] Implement `ReplicatedAttribute`
+3. [x] Implement `ModuleInformation` model
+4. [x] Implement `EtlScriptRequest` / `EtlScriptItem` / `EtlDeploymentResult` models
+5. [x] Implement `SparkReplicationOptions`
 
 ### Phase 2: Core Replication Library
-6. [ ] Create `MintPlayer.Spark.Replication` project
-7. [ ] Implement `ModuleRegistrationService` (register in SparkModules DB on startup)
-8. [ ] Implement `EtlScriptCollector` (scan assemblies for `[Replicated]`)
-9. [ ] Implement `EtlScriptDeploymentMessage` and `EtlScriptDeploymentRecipient` (message bus integration)
-10. [ ] Implement `EtlTaskManager` (create/update/remove RavenDB ETL tasks)
-11. [ ] Implement ETL endpoint (`POST /spark/etl/deploy`)
-12. [ ] Implement `SparkReplicationExtensions` (`AddSparkReplication`, `UseSparkReplication`, `MapSparkReplication`)
+6. [x] Create `MintPlayer.Spark.Replication` project
+7. [x] Implement `ModuleRegistrationService` (register in SparkModules DB on startup)
+8. [x] Implement `EtlScriptCollector` (scan assemblies for `[Replicated]`)
+9. [x] Implement `EtlScriptDeploymentMessage` and `EtlScriptDeploymentRecipient` (message bus integration)
+10. [x] Implement `EtlTaskManager` (create/update/remove RavenDB ETL tasks)
+11. [x] Implement ETL endpoint (`POST /spark/etl/deploy`)
+12. [x] Implement `SparkReplicationExtensions` (`AddSparkReplication`, `UseSparkReplication`, `MapSparkReplication`)
 
 ### Phase 3: Demo Applications
-13. [ ] Remove or rename existing DemoApp
-14. [ ] Create Fleet demo app with Car, CarBrand, CarStatus entities
-15. [ ] Create HR demo app with Person, Company, Address entities
-16. [ ] Add `[Replicated]` Car entity in HR
-17. [ ] Configure both apps with replication options
-18. [ ] Test end-to-end: Fleet running → HR starts → ETL created → Cars replicated
+13. [x] Remove or rename existing DemoApp
+14. [x] Create Fleet demo app with Car, CarBrand, CarStatus entities
+15. [x] Create HR demo app with Person, Company, Address entities
+16. [x] Add `[Replicated]` Car entity in HR
+17. [x] Configure both apps with replication options
+18. [x] Test end-to-end: Fleet running → HR starts → ETL created → Cars replicated
 
 ### Phase 4: Polish
-19. [ ] Add logging throughout the replication pipeline
-20. [ ] Handle edge cases: module not yet registered, connection refused, stale ETL tasks
-21. [ ] Ensure SparkModules database is auto-created in development mode
-22. [ ] Add XML documentation comments on public API
+19. [x] Add logging throughout the replication pipeline
+20. [x] Handle edge cases: module not yet registered, connection refused, stale ETL tasks
+21. [x] Ensure SparkModules database is auto-created in development mode
+22. [x] Add XML documentation comments on public API
 
 ---
 
