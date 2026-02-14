@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
@@ -30,6 +31,12 @@ public static class SparkReplicationExtensions
         services.AddSingleton<EtlTaskManager>();
         services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
         services.AddHttpClient("spark-etl");
+
+        // Sync action services
+        services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
+        services.AddScoped<IRecipient<SyncActionDeploymentMessage>, SyncActionDeploymentRecipient>();
+        services.AddHttpClient("spark-sync");
+
         return services;
     }
 
@@ -132,6 +139,7 @@ public static class SparkReplicationExtensions
     public static IEndpointRouteBuilder MapSparkReplication(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/spark/etl/deploy", (Delegate)EtlEndpoints.HandleDeployAsync);
+        endpoints.MapPost("/spark/sync/apply", (Delegate)SyncEndpoints.HandleApplyAsync);
         return endpoints;
     }
 }

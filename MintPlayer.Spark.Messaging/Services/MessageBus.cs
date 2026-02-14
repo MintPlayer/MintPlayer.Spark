@@ -19,17 +19,24 @@ internal class MessageBus : IMessageBus
     }
 
     public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
-        => StoreMessageAsync(message, delay: null, cancellationToken);
+        => StoreMessageAsync(message, delay: null, queueNameOverride: null, cancellationToken);
+
+    public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+        => StoreMessageAsync(message, delay: null, queueNameOverride: queueName, cancellationToken);
 
     public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
-        => StoreMessageAsync(message, delay, cancellationToken);
+        => StoreMessageAsync(message, delay, queueNameOverride: null, cancellationToken);
 
-    private async Task StoreMessageAsync<TMessage>(TMessage message, TimeSpan? delay, CancellationToken cancellationToken)
+    private async Task StoreMessageAsync<TMessage>(TMessage message, TimeSpan? delay, string? queueNameOverride, CancellationToken cancellationToken)
     {
         var messageType = typeof(TMessage);
 
-        var queueAttribute = messageType.GetCustomAttribute<MessageQueueAttribute>();
-        var queueName = queueAttribute?.QueueName ?? messageType.FullName!;
+        var queueName = queueNameOverride;
+        if (queueName == null)
+        {
+            var queueAttribute = messageType.GetCustomAttribute<MessageQueueAttribute>();
+            queueName = queueAttribute?.QueueName ?? messageType.FullName!;
+        }
 
         var payloadJson = JsonSerializer.Serialize(message);
 

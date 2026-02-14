@@ -16,6 +16,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IIndexRegistry indexRegistry;
+    [Inject] private readonly IServiceProvider serviceProvider;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -39,6 +40,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentAsync<T>(T document) where T : class
     {
+        // Check if this is a replicated entity — if so, forward to the owner module
+        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
+        {
+            var idProperty = typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+            var documentId = idProperty?.GetValue(document)?.ToString();
+            await interceptor.HandleSaveAsync(document, documentId);
+            return document;
+        }
+
         using var session = documentStore.OpenAsyncSession();
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
@@ -47,6 +58,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeleteDocumentAsync<T>(string id) where T : class
     {
+        // Check if this is a replicated entity — if so, forward to the owner module
+        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
+        {
+            await interceptor.HandleDeleteAsync(typeof(T), id);
+            return;
+        }
+
         using var session = documentStore.OpenAsyncSession();
         session.Delete(id);
         await session.SaveChangesAsync();
@@ -123,6 +142,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entity = entityMapper.ToEntity(persistentObject);
         var entityType = entity.GetType();
 
+        // Check if this is a replicated entity — if so, forward to the owner module
+        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        if (interceptor != null && interceptor.IsReplicated(entityType))
+        {
+            await interceptor.HandleSaveAsync(entity, persistentObject.Id);
+            return persistentObject;
+        }
+
         using var session = documentStore.OpenAsyncSession();
 
         // Use actions for saving (includes before/after hooks)
@@ -144,6 +171,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return;
+
+        // Check if this is a replicated entity — if so, forward to the owner module
+        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        if (interceptor != null && interceptor.IsReplicated(entityType))
+        {
+            await interceptor.HandleDeleteAsync(entityType, id);
+            return;
+        }
 
         using var session = documentStore.OpenAsyncSession();
 
