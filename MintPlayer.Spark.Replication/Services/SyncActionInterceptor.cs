@@ -43,6 +43,53 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         return GetReplicatedAttribute(entityType) != null;
     }
 
+    public async Task HandleSaveAsync(Type entityType, PersistentObject obj)
+    {
+        var attr = GetReplicatedAttribute(entityType)
+            ?? throw new InvalidOperationException($"Type {entityType.Name} is not a replicated entity.");
+
+        var collection = attr.SourceCollection ?? InferCollectionName(attr.OriginalType ?? entityType);
+        var actionType = obj.Id == null ? SyncActionType.Insert : SyncActionType.Update;
+
+        // Use IsValueChanged from PO attributes to determine which properties changed
+        var changedProperties = obj.Attributes
+            .Where(a => a.IsValueChanged)
+            .Select(a => a.Name)
+            .ToArray();
+
+        // If no attributes are marked as changed, fall back to all replicated properties
+        if (changedProperties.Length == 0)
+        {
+            changedProperties = GetPropertyNames(entityType);
+        }
+
+        // Build data from PO attributes
+        var data = new Dictionary<string, object?>();
+        foreach (var attribute in obj.Attributes)
+        {
+            data[attribute.Name] = attribute.Value;
+        }
+        if (obj.Id != null)
+        {
+            data["Id"] = obj.Id;
+        }
+
+        var syncAction = new SyncAction
+        {
+            ActionType = actionType,
+            Collection = collection,
+            DocumentId = obj.Id,
+            Data = JsonSerializer.SerializeToElement(data),
+            Properties = changedProperties,
+        };
+
+        await DispatchAsync(attr.SourceModule, collection, syncAction);
+
+        _logger.LogInformation(
+            "Dispatched {ActionType} sync action for {Collection} (ID: {DocumentId}, {PropertyCount} changed properties) to owner module '{OwnerModule}'",
+            actionType, collection, obj.Id ?? "(new)", changedProperties.Length, attr.SourceModule);
+    }
+
     public async Task HandleSaveAsync(object entity, string? documentId)
     {
         var entityType = entity.GetType();
@@ -52,10 +99,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         var collection = attr.SourceCollection ?? InferCollectionName(attr.OriginalType ?? entityType);
         var actionType = documentId == null ? SyncActionType.Insert : SyncActionType.Update;
 
-        // Auto-populate Properties from the replicated entity type.
-        // The replicated type only has a subset of properties (the ones in the ETL script),
-        // so we only send those back — preventing overwrite of properties the owner has
-        // but the non-owner doesn't replicate.
+        // Auto-populate Properties from the replicated entity type (all properties, no change tracking)
         var properties = GetPropertyNames(entityType);
 
         var syncAction = new SyncAction

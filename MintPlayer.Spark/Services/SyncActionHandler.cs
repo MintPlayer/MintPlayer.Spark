@@ -13,7 +13,8 @@ namespace MintPlayer.Spark.Services;
 /// Processes incoming sync actions on the owner module.
 /// Resolves the CLR entity type from the collection name and runs the operation
 /// through the IPersistentObjectActions pipeline (preserving lifecycle hooks).
-/// When Properties is set, performs a partial merge instead of full replacement.
+/// Constructs a PersistentObject from the incoming JSON data with IsValueChanged
+/// metadata so the actions pipeline has full change tracking context.
 /// </summary>
 [Register(typeof(ISyncActionHandler), ServiceLifetime.Scoped)]
 internal partial class SyncActionHandler : ISyncActionHandler
@@ -31,32 +32,12 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
 
-        object entity;
+        // Build a PersistentObject from the sync action data
+        var po = BuildPersistentObject(entityType, documentId, data, properties);
 
-        if (documentId != null && properties != null && properties.Length > 0)
-        {
-            // Partial update: load existing entity, merge only the specified properties
-            entity = await LoadAndMergeAsync(entityType, documentId, data, properties);
-        }
-        else
-        {
-            // Full save (insert or full replacement)
-            entity = JsonSerializer.Deserialize(data.GetRawText(), entityType, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            }) ?? throw new InvalidOperationException($"Failed to deserialize data for collection '{collection}'.");
-
-            // Set the document ID if updating
-            if (documentId != null)
-            {
-                var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-                idProperty?.SetValue(entity, documentId);
-            }
-        }
-
-        // Run through the actions pipeline
+        // Run through the actions pipeline (which now receives PO and does entity mapping inside)
         using var session = documentStore.OpenAsyncSession();
-        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, entity);
+        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, po);
 
         // Extract the generated/existing ID
         var resultIdProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
@@ -80,35 +61,126 @@ internal partial class SyncActionHandler : ISyncActionHandler
     }
 
     /// <summary>
-    /// Loads the existing entity from the database and merges only the specified properties
-    /// from the incoming JSON data. This preserves owner-only properties that aren't replicated.
+    /// Builds a PersistentObject from the incoming sync action JSON data.
+    /// Marks attributes as IsValueChanged based on the Properties array.
+    /// Uses the EntityTypeDefinition to construct proper attribute metadata.
     /// </summary>
-    private async Task<object> LoadAndMergeAsync(Type entityType, string documentId, JsonElement data, string[] properties)
+    private PersistentObject BuildPersistentObject(Type entityType, string? documentId, JsonElement data, string[]? properties)
     {
-        using var session = documentStore.OpenAsyncSession();
-        var existing = await LoadEntityAsync(session, entityType, documentId)
-            ?? throw new InvalidOperationException($"Document '{documentId}' not found for partial update.");
+        // Find the entity type definition for attribute metadata
+        var entityTypeDef = FindEntityTypeDefinition(entityType);
+        var propertySet = properties != null
+            ? new HashSet<string>(properties, StringComparer.OrdinalIgnoreCase)
+            : null;
 
-        // Deserialize incoming data to a temporary object of the same type
-        var incoming = JsonSerializer.Deserialize(data.GetRawText(), entityType, new JsonSerializerOptions
+        var attributes = new List<PersistentObjectAttribute>();
+
+        if (entityTypeDef?.Attributes != null)
         {
-            PropertyNameCaseInsensitive = true
-        }) ?? throw new InvalidOperationException($"Failed to deserialize incoming data for partial update.");
+            foreach (var attrDef in entityTypeDef.Attributes)
+            {
+                var hasValue = data.TryGetProperty(attrDef.Name, out var jsonValue);
 
-        // Copy only the specified properties from incoming to existing
-        var propertySet = new HashSet<string>(properties, StringComparer.OrdinalIgnoreCase);
-        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                // Also try case-insensitive match
+                if (!hasValue)
+                {
+                    foreach (var prop in data.EnumerateObject())
+                    {
+                        if (string.Equals(prop.Name, attrDef.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            jsonValue = prop.Value;
+                            hasValue = true;
+                            break;
+                        }
+                    }
+                }
+
+                var isChanged = propertySet != null
+                    ? propertySet.Contains(attrDef.Name)
+                    : hasValue;
+
+                attributes.Add(new PersistentObjectAttribute
+                {
+                    Name = attrDef.Name,
+                    Label = attrDef.Label,
+                    Value = hasValue ? ExtractJsonValue(jsonValue) : null,
+                    IsValueChanged = isChanged,
+                    DataType = attrDef.DataType,
+                    IsRequired = attrDef.IsRequired,
+                    IsVisible = attrDef.IsVisible,
+                    IsReadOnly = attrDef.IsReadOnly,
+                    Order = attrDef.Order,
+                    ShowedOn = attrDef.ShowedOn,
+                    Rules = attrDef.Rules ?? [],
+                });
+            }
+        }
+        else
         {
-            if (!propertySet.Contains(prop.Name)) continue;
-            if (!prop.CanRead || !prop.CanWrite) continue;
+            // Fallback: build attributes from entity type's CLR properties
+            foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
+                if (!prop.CanRead || !prop.CanWrite) continue;
 
-            var value = prop.GetValue(incoming);
-            prop.SetValue(existing, value);
+                var hasValue = data.TryGetProperty(prop.Name, out var jsonValue);
+                if (!hasValue)
+                {
+                    foreach (var dataProp in data.EnumerateObject())
+                    {
+                        if (string.Equals(dataProp.Name, prop.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            jsonValue = dataProp.Value;
+                            hasValue = true;
+                            break;
+                        }
+                    }
+                }
+
+                var isChanged = propertySet != null
+                    ? propertySet.Contains(prop.Name)
+                    : hasValue;
+
+                attributes.Add(new PersistentObjectAttribute
+                {
+                    Name = prop.Name,
+                    Value = hasValue ? ExtractJsonValue(jsonValue) : null,
+                    IsValueChanged = isChanged,
+                });
+            }
         }
 
-        // Detach from session — the actions pipeline will use its own session
-        session.Advanced.Evict(existing);
-        return existing;
+        return new PersistentObject
+        {
+            Id = documentId,
+            ObjectTypeId = entityTypeDef?.Id ?? Guid.Empty,
+            Name = entityTypeDef?.Name ?? entityType.Name,
+            Attributes = attributes.ToArray(),
+        };
+    }
+
+    private EntityTypeDefinition? FindEntityTypeDefinition(Type entityType)
+    {
+        var clrTypeName = entityType.FullName ?? entityType.Name;
+        return modelLoader.GetEntityTypeByClrType(clrTypeName);
+    }
+
+    private static object? ExtractJsonValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+            JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+            JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            JsonValueKind.Undefined => null,
+            JsonValueKind.Object => element, // Keep as JsonElement for complex types
+            JsonValueKind.Array => element,  // Keep as JsonElement for array types
+            _ => element.ToString()
+        };
     }
 
     private Type? ResolveEntityType(string collection)
@@ -145,25 +217,11 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return null;
     }
 
-    private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
-        var genericMethod = method?.MakeGenericMethod(entityType);
-        var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
-
-        if (task == null) return null;
-
-        await task;
-
-        var resultProperty = task.GetType().GetProperty("Result");
-        return resultProperty?.GetValue(task);
-    }
-
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, object entity)
+    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
-        var task = (Task)onSaveMethod.Invoke(actions, [session, entity])!;
+        var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
         await task;
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }

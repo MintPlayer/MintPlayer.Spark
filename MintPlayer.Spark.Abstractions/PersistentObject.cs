@@ -19,6 +19,7 @@ public sealed class PersistentObjectAttribute
     public bool IsRequired { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsReadOnly { get; set; }
+    public bool IsValueChanged { get; set; }
     public int Order { get; set; }
     public string? Query { get; set; }
     public string? Breadcrumb { get; set; }

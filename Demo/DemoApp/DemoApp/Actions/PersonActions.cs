@@ -1,6 +1,7 @@
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 
@@ -10,7 +11,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
 {
     [Inject] private readonly IMessageBus messageBus;
 
-    public override Task OnBeforeSaveAsync(Person entity)
+    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
     {
         if (!string.IsNullOrEmpty(entity.Email))
         {
@@ -23,7 +24,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
         return Task.CompletedTask;
     }
 
-    public override async Task OnAfterSaveAsync(Person entity)
+    public override async Task OnAfterSaveAsync(PersistentObject obj, Person entity)
     {
         Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         await messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));

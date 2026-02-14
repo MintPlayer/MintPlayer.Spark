@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
@@ -40,35 +41,34 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentAsync<T>(T document) where T : class
     {
-        // Check if this is a replicated entity — if so, forward to the owner module
-        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        using var session = documentStore.OpenAsyncSession();
+        await session.StoreAsync(document);
+        await session.SaveChangesAsync();
+
+        // If this is a replicated entity, also broadcast the changes to the owner module
+        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         if (interceptor != null && interceptor.IsReplicated(typeof(T)))
         {
             var idProperty = typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
             var documentId = idProperty?.GetValue(document)?.ToString();
             await interceptor.HandleSaveAsync(document, documentId);
-            return document;
         }
 
-        using var session = documentStore.OpenAsyncSession();
-        await session.StoreAsync(document);
-        await session.SaveChangesAsync();
         return document;
     }
 
     public async Task DeleteDocumentAsync<T>(string id) where T : class
     {
-        // Check if this is a replicated entity — if so, forward to the owner module
-        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
-        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
-        {
-            await interceptor.HandleDeleteAsync(typeof(T), id);
-            return;
-        }
-
         using var session = documentStore.OpenAsyncSession();
         session.Delete(id);
         await session.SaveChangesAsync();
+
+        // If this is a replicated entity, also notify the owner module
+        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
+        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
+        {
+            await interceptor.HandleDeleteAsync(typeof(T), id);
+        }
     }
 
     // PersistentObject-specific methods that handle entity mapping
@@ -139,27 +139,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
     {
-        var entity = entityMapper.ToEntity(persistentObject);
-        var entityType = entity.GetType();
-
-        // Check if this is a replicated entity — if so, forward to the owner module
-        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
-        if (interceptor != null && interceptor.IsReplicated(entityType))
-        {
-            await interceptor.HandleSaveAsync(entity, persistentObject.Id);
-            return persistentObject;
-        }
+        var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
+            ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
+        var entityType = ResolveType(entityTypeDefinition.ClrType)
+            ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
         using var session = documentStore.OpenAsyncSession();
 
-        // Use actions for saving (includes before/after hooks)
-        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, entity);
+        // Pass PO directly to actions — entity mapping happens inside the actions pipeline
+        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
 
         // Get the generated ID from the entity
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
         var generatedId = idProperty?.GetValue(savedEntity)?.ToString();
 
         persistentObject.Id = generatedId;
+
+        // If this is a replicated entity, also broadcast the changes to the owner module
+        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
+        if (interceptor != null && interceptor.IsReplicated(entityType))
+        {
+            await interceptor.HandleSaveAsync(entityType, persistentObject);
+        }
+
         return persistentObject;
     }
 
@@ -172,18 +174,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return;
 
-        // Check if this is a replicated entity — if so, forward to the owner module
-        var interceptor = serviceProvider.GetService(typeof(ISyncActionInterceptor)) as ISyncActionInterceptor;
+        using var session = documentStore.OpenAsyncSession();
+
+        // Delete locally first (includes before hook)
+        await DeleteEntityViaActionsAsync(session, entityType, id);
+
+        // If this is a replicated entity, also notify the owner module
+        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         if (interceptor != null && interceptor.IsReplicated(entityType))
         {
             await interceptor.HandleDeleteAsync(entityType, id);
-            return;
         }
-
-        using var session = documentStore.OpenAsyncSession();
-
-        // Use actions for deleting (includes before hook)
-        await DeleteEntityViaActionsAsync(session, entityType, id);
     }
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
@@ -485,11 +486,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return [];
     }
 
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, object entity)
+    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
-        var task = (Task)onSaveMethod.Invoke(actions, [session, entity])!;
+        var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
         await task;
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }

@@ -14,6 +14,17 @@ public interface ISyncActionInterceptor
 
     /// <summary>
     /// Forwards a save (insert or update) operation to the owner module via the message bus.
+    /// Uses the PersistentObject with IsValueChanged metadata to determine which properties changed.
+    /// Called from the PersistentObject save path (frontend-driven saves).
+    /// </summary>
+    /// <param name="entityType">The resolved CLR entity type</param>
+    /// <param name="obj">The PersistentObject with attribute metadata</param>
+    Task HandleSaveAsync(Type entityType, PersistentObject obj);
+
+    /// <summary>
+    /// Forwards a save (insert or update) operation to the owner module via the message bus.
+    /// Called from the typed entity save path (programmatic saves).
+    /// All writable properties are sent since change tracking is not available.
     /// </summary>
     /// <param name="entity">The entity to save</param>
     /// <param name="documentId">The document ID (null for inserts)</param>
