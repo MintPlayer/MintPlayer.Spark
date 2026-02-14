@@ -81,9 +81,11 @@ export default class PoEditComponent implements OnInit {
 
     const attributes: PersistentObjectAttribute[] = this.item.attributes.map(attr => {
       const editableAttr = this.getEditableAttributes().find(a => a.name === attr.name);
+      const newValue = editableAttr ? this.formData[attr.name] : attr.value;
       return {
         ...attr,
-        value: editableAttr ? this.formData[attr.name] : attr.value
+        value: newValue,
+        isValueChanged: editableAttr ? newValue !== attr.value : false
       };
     });
 

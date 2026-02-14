@@ -19,5 +19,6 @@ export interface PersistentObjectAttribute {
    * Can be a numeric flag value or a string like "Query, PersistentObject".
    */
   showedOn?: ShowedOn | string;
+  isValueChanged?: boolean;
   rules: ValidationRule[];
 }
