@@ -79,6 +79,7 @@ export default class PoCreateComponent implements OnInit {
       isRequired: attr.isRequired,
       isVisible: attr.isVisible,
       isReadOnly: attr.isReadOnly,
+      isValueChanged: true,
       order: attr.order,
       rules: attr.rules
     }));

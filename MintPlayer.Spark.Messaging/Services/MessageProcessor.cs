@@ -205,6 +205,12 @@ internal class MessageProcessor : BackgroundService
 
             _logger.LogInformation("Message {MessageId} (queue: {QueueName}) processed successfully", sparkMessage.Id, sparkMessage.QueueName);
         }
+        catch (Exception ex) when (IsNonRetryable(ex))
+        {
+            _logger.LogWarning(ex, "Non-retryable error for message {MessageId} (queue: {QueueName}), dead-lettering immediately",
+                sparkMessage.Id, sparkMessage.QueueName);
+            await MarkDeadLetteredAsync(sparkMessage.Id!, ex.Message, stoppingToken);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing message {MessageId} (queue: {QueueName})", sparkMessage.Id, sparkMessage.QueueName);
@@ -263,6 +269,13 @@ internal class MessageProcessor : BackgroundService
         {
             _logger.LogError(ex, "Failed to dead-letter message {MessageId}", messageId);
         }
+    }
+
+    private static bool IsNonRetryable(Exception ex)
+    {
+        // Check the exception itself and any inner exceptions
+        return ex is NonRetryableException
+            || ex.InnerException is NonRetryableException;
     }
 
     private void SetExpiration(Raven.Client.Documents.Session.IAsyncDocumentSession session, SparkMessage msg)

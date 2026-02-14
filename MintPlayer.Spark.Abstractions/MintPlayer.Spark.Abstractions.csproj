@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
-		<Version>10.0.0-preview.2</Version>
+		<Version>10.0.0-preview.3</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>

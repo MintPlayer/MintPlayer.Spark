@@ -8,6 +8,7 @@ namespace MintPlayer.Spark.Services;
 public interface IEntityMapper
 {
     object ToEntity(PersistentObject persistentObject);
+    T ToEntity<T>(PersistentObject persistentObject) where T : class;
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
 }
 
@@ -15,6 +16,9 @@ public interface IEntityMapper
 internal partial class EntityMapper : IEntityMapper
 {
     [Inject] private readonly IModelLoader modelLoader;
+
+    public T ToEntity<T>(PersistentObject persistentObject) where T : class
+        => (T)ToEntity(persistentObject);
 
     public object ToEntity(PersistentObject persistentObject)
     {

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 
@@ -37,7 +38,8 @@ internal partial class ActionsResolver : IActionsResolver
         var actionsType = FindActionsType($"{typeName}Actions");
         if (actionsType != null)
         {
-            var actions = serviceProvider.GetService(actionsType);
+            var actions = serviceProvider.GetService(actionsType)
+                ?? ActivatorUtilities.CreateInstance(serviceProvider, actionsType);
             if (actions is IPersistentObjectActions<T> typedActions)
                 return typedActions;
         }
@@ -48,7 +50,7 @@ internal partial class ActionsResolver : IActionsResolver
             return appDefault;
 
         // 3. Fall back to library's DefaultPersistentObjectActions<T>
-        return new DefaultPersistentObjectActions<T>();
+        return ActivatorUtilities.CreateInstance<DefaultPersistentObjectActions<T>>(serviceProvider);
     }
 
     public object ResolveForType(Type entityType)

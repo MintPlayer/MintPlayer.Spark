@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Replication</PackageId>
-		<Version>10.0.0-preview.2</Version>
+		<Version>10.0.0-preview.3</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Cross-module ETL replication for MintPlayer.Spark using RavenDB ETL tasks and the durable message bus.</Description>
@@ -23,6 +23,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
 	</ItemGroup>
