@@ -112,12 +112,12 @@ internal partial class AccessControlService : IAccessControl
         return result;
     }
 
-    private static bool MatchesResource(string rightResource, string requestedResource)
+    private bool MatchesResource(string rightResource, string requestedResource)
     {
         return string.Equals(rightResource, requestedResource, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (string Action, string Target) ParseResource(string resource)
+    private (string Action, string Target) ParseResource(string resource)
     {
         var slashIndex = resource.IndexOf('/');
         if (slashIndex < 0)
@@ -128,7 +128,7 @@ internal partial class AccessControlService : IAccessControl
         return (resource[..slashIndex], resource[(slashIndex + 1)..]);
     }
 
-    private static bool IsCombinedActionMatch(string rightResource, string requestedAction, string requestedTarget)
+    private bool IsCombinedActionMatch(string rightResource, string requestedAction, string requestedTarget)
     {
         var (rightAction, rightTarget) = ParseResource(rightResource);
 
