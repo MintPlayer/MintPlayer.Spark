@@ -16,16 +16,16 @@ import { RetryActionPayload } from '../../core/models/retry-action';
         <div bsModalHeader>
           <h5 class="modal-title">{{ payload?.title }}</h5>
         </div>
-        @if (payload?.message) {
+        @if (payload?.message; as message) {
           <div bsModalBody>
-            <p>{{ payload.message }}</p>
+            <p>{{ message }}</p>
           </div>
         }
         <div bsModalFooter>
           @for (option of payload?.options; track option) {
             <button
               type="button"
-              [color]="option === payload?.defaultOption ? colors.primary : option === 'Cancel' ? colors.secondary : colors.outline_primary"
+              [color]="option === 'Cancel' ? colors.secondary : colors.primary"
               (click)="onOption(option)">
               {{ option }}
             </button>
