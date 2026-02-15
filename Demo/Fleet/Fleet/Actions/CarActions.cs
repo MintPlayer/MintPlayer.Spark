@@ -22,7 +22,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
             );
 
             if (manager.Retry.Result!.Option == "Cancel")
-                throw new InvalidOperationException("Operation cancelled by user.");
+                return;
         }
 
         await base.OnBeforeSaveAsync(obj, entity);
