@@ -34,15 +34,12 @@ public sealed partial class DeletePersistentObject
         }
 
         // Read retry state from body if present (body is normally empty for DELETE)
-        if (httpContext.Request.ContentLength > 0)
+        var retryResult = await PersistentObjectRequest.ReadRetryResultAsync(httpContext.Request);
+        if (retryResult is not null)
         {
-            var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
-            if (request?.RetryResult is { } retryResult)
-            {
-                var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredStep = retryResult.Step;
-                accessor.AnsweredResult = retryResult;
-            }
+            var accessor = (RetryAccessor)retryAccessor;
+            accessor.AnsweredStep = retryResult.Step;
+            accessor.AnsweredResult = retryResult;
         }
 
         try
