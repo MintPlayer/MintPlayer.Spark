@@ -17,7 +17,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IServiceProvider serviceProvider;
-    [Inject] private readonly IAccessControl? accessControl;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -78,7 +78,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return null;
 
-        await EnsureAuthorizedAsync("Read", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.ClrType);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -105,7 +105,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return [];
 
-        await EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -147,7 +147,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
         var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
-        await EnsureAuthorizedAsync(action, entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.ClrType);
 
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
@@ -178,7 +178,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return;
 
-        await EnsureAuthorizedAsync("Delete", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Delete", entityTypeDefinition.ClrType);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -468,20 +468,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         return includedDocuments;
     }
-
-    #region Authorization
-
-    private async Task EnsureAuthorizedAsync(string action, string clrType)
-    {
-        if (accessControl is null)
-            return;
-
-        var resource = $"{action}/{clrType}";
-        if (!await accessControl.IsAllowedAsync(resource))
-            throw new SparkAccessDeniedException(resource);
-    }
-
-    #endregion
 
     #region Actions Helper Methods
 

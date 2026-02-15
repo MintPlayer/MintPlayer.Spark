@@ -10,7 +10,7 @@ public sealed partial class ExecuteQuery
 {
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
-    [Inject] private readonly IAccessControl? accessControl;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task HandleAsync(HttpContext httpContext, string id)
     {
@@ -23,35 +23,34 @@ public sealed partial class ExecuteQuery
             return;
         }
 
-        // Authorization check (only when IAccessControl is registered)
-        if (accessControl is not null)
+        try
         {
-            if (!await accessControl.IsAllowedAsync($"Execute/{query.Name}"))
+            await permissionService.EnsureAuthorizedAsync("Execute", query.Name);
+
+            // Read optional sort overrides from query string
+            var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
+            var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
+
+            // Clone query with sort overrides if provided
+            var effectiveQuery = new SparkQuery
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
-                return;
-            }
+                Id = query.Id,
+                Name = query.Name,
+                ContextProperty = query.ContextProperty,
+                Alias = query.Alias,
+                SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
+                SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
+                IndexName = query.IndexName,
+                UseProjection = query.UseProjection,
+            };
+
+            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery);
+            await httpContext.Response.WriteAsJsonAsync(results);
         }
-
-        // Read optional sort overrides from query string
-        var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
-        var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
-
-        // Clone query with sort overrides if provided
-        var effectiveQuery = new SparkQuery
+        catch (SparkAccessDeniedException)
         {
-            Id = query.Id,
-            Name = query.Name,
-            ContextProperty = query.ContextProperty,
-            Alias = query.Alias,
-            SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
-            SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
-            IndexName = query.IndexName,
-            UseProjection = query.UseProjection,
-        };
-
-        var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery);
-        await httpContext.Response.WriteAsJsonAsync(results);
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+        }
     }
 }
