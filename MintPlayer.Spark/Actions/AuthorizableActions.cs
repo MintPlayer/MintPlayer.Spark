@@ -1,5 +1,5 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Actions;
 
@@ -11,10 +11,8 @@ namespace MintPlayer.Spark.Actions;
 /// <typeparam name="T">The entity type</typeparam>
 /// <example>
 /// <code>
-/// public class PersonActions : AuthorizableActions&lt;Person&gt;
+/// public partial class PersonActions : AuthorizableActions&lt;Person&gt;
 /// {
-///     public PersonActions(IServiceProvider serviceProvider) : base(serviceProvider) { }
-///
 ///     public async Task&lt;bool&gt; ApproveAsync(IAsyncDocumentSession session, string id)
 ///     {
 ///         await EnsureAllowedAsync("Approve");
@@ -27,25 +25,9 @@ namespace MintPlayer.Spark.Actions;
 /// }
 /// </code>
 /// </example>
-public abstract class AuthorizableActions<T> : DefaultPersistentObjectActions<T> where T : class
+public abstract partial class AuthorizableActions<T> : DefaultPersistentObjectActions<T> where T : class
 {
-    private readonly IServiceProvider? serviceProvider;
-
-    /// <summary>
-    /// Default constructor for when no authorization is needed.
-    /// </summary>
-    protected AuthorizableActions()
-    {
-    }
-
-    /// <summary>
-    /// Constructor that accepts a service provider for authorization checks.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider to resolve IAccessControl</param>
-    protected AuthorizableActions(IServiceProvider serviceProvider)
-    {
-        this.serviceProvider = serviceProvider;
-    }
+    [Inject] private readonly IServiceProvider? serviceProvider;
 
     /// <summary>
     /// Gets the entity type name used in resource strings.

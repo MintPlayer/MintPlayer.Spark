@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
-using MintPlayer.Spark.Authorization.Services;
 
 namespace MintPlayer.Spark.Authorization;
 
@@ -48,9 +46,7 @@ public static class SparkAuthorizationExtensions
         services.AddHttpContextAccessor();
 
         // Register core services
-        services.TryAddSingleton<ISecurityConfigurationLoader, SecurityConfigurationLoader>();
-        services.TryAddScoped<IAccessControl, AccessControlService>();
-        services.TryAddScoped<IGroupMembershipProvider, ClaimsGroupMembershipProvider>();
+        services.AddSparkAuthorizationServices();
 
         return services;
     }

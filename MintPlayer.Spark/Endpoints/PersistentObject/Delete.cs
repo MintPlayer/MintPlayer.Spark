@@ -13,6 +13,7 @@ public sealed partial class DeletePersistentObject
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
     {
@@ -25,7 +26,6 @@ public sealed partial class DeletePersistentObject
         }
 
         // Authorization check (only when IAccessControl is registered)
-        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
         if (accessControl is not null)
         {
             if (!await accessControl.IsAllowedAsync($"Delete/{entityType.ClrType}"))

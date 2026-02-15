@@ -14,6 +14,7 @@ public sealed partial class CreatePersistentObject
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
     {
@@ -26,7 +27,6 @@ public sealed partial class CreatePersistentObject
         }
 
         // Authorization check (only when IAccessControl is registered)
-        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
         if (accessControl is not null)
         {
             if (!await accessControl.IsAllowedAsync($"New/{entityType.ClrType}"))

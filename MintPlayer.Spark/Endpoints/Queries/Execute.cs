@@ -10,6 +10,7 @@ public sealed partial class ExecuteQuery
 {
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
+    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task HandleAsync(HttpContext httpContext, string id)
     {
@@ -23,7 +24,6 @@ public sealed partial class ExecuteQuery
         }
 
         // Authorization check (only when IAccessControl is registered)
-        var accessControl = httpContext.RequestServices.GetService<IAccessControl>();
         if (accessControl is not null)
         {
             if (!await accessControl.IsAllowedAsync($"Execute/{query.Name}"))

@@ -20,11 +20,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.15.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.17.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.15.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.17.0" />
 	</ItemGroup>
 
 	<ItemGroup>
