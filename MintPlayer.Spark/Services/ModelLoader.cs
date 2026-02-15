@@ -10,6 +10,8 @@ public interface IModelLoader
     IEnumerable<EntityTypeDefinition> GetEntityTypes();
     EntityTypeDefinition? GetEntityType(Guid id);
     EntityTypeDefinition? GetEntityTypeByClrType(string clrType);
+    EntityTypeDefinition? GetEntityTypeByAlias(string alias);
+    EntityTypeDefinition? ResolveEntityType(string idOrAlias);
 }
 
 [Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
@@ -17,24 +19,25 @@ internal partial class ModelLoader : IModelLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
 
-    private Lazy<Dictionary<Guid, EntityTypeDefinition>>? _entityTypes;
+    private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias)>? _entityTypes;
 
-    private Dictionary<Guid, EntityTypeDefinition> EntityTypes
+    private (Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias) EntityTypes
     {
         get
         {
-            _entityTypes ??= new Lazy<Dictionary<Guid, EntityTypeDefinition>>(LoadEntityTypes);
+            _entityTypes ??= new Lazy<(Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>)>(LoadEntityTypes);
             return _entityTypes.Value;
         }
     }
 
-    private Dictionary<Guid, EntityTypeDefinition> LoadEntityTypes()
+    private (Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>) LoadEntityTypes()
     {
-        var result = new Dictionary<Guid, EntityTypeDefinition>();
+        var byId = new Dictionary<Guid, EntityTypeDefinition>();
+        var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
 
         if (!Directory.Exists(modelPath))
-            return result;
+            return (byId, byAlias);
 
         var jsonOptions = new JsonSerializerOptions
         {
@@ -49,7 +52,19 @@ internal partial class ModelLoader : IModelLoader
                 var entityType = JsonSerializer.Deserialize<EntityTypeDefinition>(json, jsonOptions);
                 if (entityType != null)
                 {
-                    result[entityType.Id] = entityType;
+                    // Auto-generate alias from Name if not explicitly set
+                    entityType.Alias ??= entityType.Name.ToLowerInvariant();
+
+                    byId[entityType.Id] = entityType;
+
+                    if (byAlias.ContainsKey(entityType.Alias))
+                    {
+                        Console.WriteLine($"Warning: Duplicate entity type alias '{entityType.Alias}' in {file}. Alias must be unique.");
+                    }
+                    else
+                    {
+                        byAlias[entityType.Alias] = entityType;
+                    }
                 }
             }
             catch (Exception ex)
@@ -58,15 +73,25 @@ internal partial class ModelLoader : IModelLoader
             }
         }
 
-        return result;
+        return (byId, byAlias);
     }
 
     public IEnumerable<EntityTypeDefinition> GetEntityTypes()
-        => EntityTypes.Values;
+        => EntityTypes.ById.Values;
 
     public EntityTypeDefinition? GetEntityType(Guid id)
-        => EntityTypes.TryGetValue(id, out var entityType) ? entityType : null;
+        => EntityTypes.ById.TryGetValue(id, out var entityType) ? entityType : null;
 
     public EntityTypeDefinition? GetEntityTypeByClrType(string clrType)
-        => EntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
+        => EntityTypes.ById.Values.FirstOrDefault(e => e.ClrType == clrType);
+
+    public EntityTypeDefinition? GetEntityTypeByAlias(string alias)
+        => EntityTypes.ByAlias.TryGetValue(alias, out var entityType) ? entityType : null;
+
+    public EntityTypeDefinition? ResolveEntityType(string idOrAlias)
+    {
+        if (Guid.TryParse(idOrAlias, out var guid))
+            return GetEntityType(guid);
+        return GetEntityTypeByAlias(idOrAlias);
+    }
 }

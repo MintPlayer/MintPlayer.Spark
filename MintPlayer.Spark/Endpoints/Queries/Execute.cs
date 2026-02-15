@@ -10,14 +10,14 @@ public sealed partial class ExecuteQuery
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
 
-    public async Task HandleAsync(HttpContext httpContext, Guid id)
+    public async Task HandleAsync(HttpContext httpContext, string id)
     {
-        var query = queryLoader.GetQuery(id);
+        var query = queryLoader.ResolveQuery(id);
 
         if (query is null)
         {
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query with ID {id} not found" });
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' not found" });
             return;
         }
 
@@ -31,6 +31,7 @@ public sealed partial class ExecuteQuery
             Id = query.Id,
             Name = query.Name,
             ContextProperty = query.ContextProperty,
+            Alias = query.Alias,
             SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
             SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
             IndexName = query.IndexName,

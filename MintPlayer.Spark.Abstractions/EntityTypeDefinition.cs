@@ -6,6 +6,12 @@ public sealed class EntityTypeDefinition
     public required string Name { get; set; }
     public required string ClrType { get; set; }
     /// <summary>
+    /// Optional URL-friendly alias for this entity type.
+    /// Used as an alternative to the GUID in URLs (e.g., /po/car instead of /po/{guid}).
+    /// If not set, auto-generated from Name by lowercasing.
+    /// </summary>
+    public string? Alias { get; set; }
+    /// <summary>
     /// The CLR type name of the projection type used for RavenDB index queries.
     /// Set when a projection class has [FromIndex] attribute linking to an index for this entity.
     /// Example: "Demo.Data.VCar"

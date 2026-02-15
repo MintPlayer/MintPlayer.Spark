@@ -45,30 +45,45 @@ export default class QueryListComponent implements OnInit {
     this.route.paramMap.pipe(
       switchMap(params => {
         const queryId = params.get('queryId');
-        if (!queryId) return of(null);
-        return this.sparkService.getQuery(queryId);
-      }),
-      switchMap(query => {
-        if (!query) return of({ query: null, entityType: null, entityTypes: [] });
-        this.query = query;
-        const singularName = this.singularize(query.contextProperty);
-        return forkJoin({
-          query: of(query),
-          entityTypes: this.sparkService.getEntityTypes()
-        }).pipe(
-          switchMap(result => {
-            const type = result.entityTypes.find(t =>
-              t.name === query.contextProperty ||
-              t.name === singularName ||
-              t.clrType.endsWith(singularName)
-            );
-            return of({
-              query: result.query,
-              entityType: type || null,
-              entityTypes: result.entityTypes
-            });
-          })
-        );
+        const typeParam = params.get('type');
+
+        if (queryId) {
+          // Entry via /query/:queryId route
+          return this.sparkService.getQuery(queryId).pipe(
+            switchMap(query => {
+              if (!query) return of({ query: null, entityType: null, entityTypes: [] });
+              this.query = query;
+              return this.resolveEntityTypeForQuery(query);
+            })
+          );
+        } else if (typeParam) {
+          // Entry via /po/:type route - resolve entity type, then find associated query
+          return this.sparkService.getEntityTypes().pipe(
+            switchMap(entityTypes => {
+              const entityType = entityTypes.find(t =>
+                t.id === typeParam || t.alias === typeParam
+              );
+              if (!entityType) return of({ query: null, entityType: null, entityTypes });
+
+              // Find a query whose contextProperty matches this entity type
+              return this.sparkService.getQueries().pipe(
+                switchMap(queries => {
+                  const singularName = entityType.name;
+                  const query = queries.find(q => {
+                    const contextSingular = this.singularize(q.contextProperty);
+                    return q.contextProperty === singularName ||
+                      contextSingular === singularName ||
+                      q.contextProperty === singularName + 's';
+                  });
+                  if (query) this.query = query;
+                  return of({ query: query || null, entityType, entityTypes });
+                })
+              );
+            })
+          );
+        }
+
+        return of({ query: null, entityType: null, entityTypes: [] });
       })
     ).subscribe(result => {
       if (result?.entityType) {
@@ -85,6 +100,24 @@ export default class QueryListComponent implements OnInit {
         this.loadItems();
       }
     });
+  }
+
+  private resolveEntityTypeForQuery(query: SparkQuery) {
+    const singularName = this.singularize(query.contextProperty);
+    return this.sparkService.getEntityTypes().pipe(
+      switchMap(entityTypes => {
+        const type = entityTypes.find(t =>
+          t.name === query.contextProperty ||
+          t.name === singularName ||
+          t.clrType.endsWith(singularName)
+        );
+        return of({
+          query,
+          entityType: type || null,
+          entityTypes
+        });
+      })
+    );
   }
 
   private singularize(plural: string): string {
@@ -277,13 +310,13 @@ export default class QueryListComponent implements OnInit {
 
   onRowClick(item: PersistentObject): void {
     if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.id, item.id]);
+      this.router.navigate(['/po', this.entityType.alias || this.entityType.id, item.id]);
     }
   }
 
   onCreate(): void {
     if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.id, 'new']);
+      this.router.navigate(['/po', this.entityType.alias || this.entityType.id, 'new']);
     }
   }
 }

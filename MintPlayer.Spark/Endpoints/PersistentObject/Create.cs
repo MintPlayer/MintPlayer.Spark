@@ -9,14 +9,23 @@ public sealed partial class CreatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId)
+    public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
     {
+        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        if (entityType is null)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
+            return;
+        }
+
         var obj = await httpContext.Request.ReadFromJsonAsync<Abstractions.PersistentObject>()
             ?? throw new InvalidOperationException("PersistentObject could not be deserialized from the request body.");
 
-        // Ensure the ObjectTypeId matches the URL parameter
-        obj.ObjectTypeId = objectTypeId;
+        // Ensure the ObjectTypeId matches the resolved entity type
+        obj.ObjectTypeId = entityType.Id;
 
         // Validate the object
         var validationResult = validationService.Validate(obj);

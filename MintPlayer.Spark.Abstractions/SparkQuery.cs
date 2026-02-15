@@ -5,6 +5,12 @@ public sealed class SparkQuery
     public required Guid Id { get; set; }
     public required string Name { get; set; }
     public required string ContextProperty { get; set; }
+    /// <summary>
+    /// Optional URL-friendly alias for this query.
+    /// Used as an alternative to the GUID in URLs (e.g., /query/cars instead of /query/{guid}).
+    /// If not set, auto-generated from Name by stripping "Get" prefix and lowercasing.
+    /// </summary>
+    public string? Alias { get; set; }
     public string? SortBy { get; set; }
     public string SortDirection { get; set; } = "asc";
 

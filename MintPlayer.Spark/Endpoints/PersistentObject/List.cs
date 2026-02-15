@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
@@ -7,10 +8,19 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 public sealed partial class ListPersistentObjects
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId)
+    public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
     {
-        var objects = await databaseAccess.GetPersistentObjectsAsync(objectTypeId);
+        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        if (entityType is null)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
+            return;
+        }
+
+        var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);
         await httpContext.Response.WriteAsJsonAsync(objects);
     }
 }

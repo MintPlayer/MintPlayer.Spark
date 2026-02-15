@@ -5,7 +5,7 @@ import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { SparkService } from '../core/services/spark.service';
-import { ProgramUnitGroup } from '../core/models';
+import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
@@ -41,11 +41,11 @@ export class ShellComponent implements OnInit {
     });
   }
 
-  getRouterLink(unit: any): string[] {
+  getRouterLink(unit: ProgramUnit): string[] {
     if (unit.type === 'query') {
-      return ['/query', unit.queryId];
+      return ['/query', unit.alias || unit.queryId!];
     } else if (unit.type === 'persistentObject') {
-      return ['/po', unit.persistentObjectId];
+      return ['/po', unit.alias || unit.persistentObjectId!];
     }
     return ['/'];
   }

@@ -9,11 +9,20 @@ public sealed partial class UpdatePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, Guid objectTypeId, string id)
+    public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
     {
+        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        if (entityType is null)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
+            return;
+        }
+
         var decodedId = Uri.UnescapeDataString(id);
-        var existingObj = await databaseAccess.GetPersistentObjectAsync(objectTypeId, decodedId);
+        var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
 
         if (existingObj is null)
         {
@@ -27,7 +36,7 @@ public sealed partial class UpdatePersistentObject
 
         // Ensure the ID and ObjectTypeId match the URL parameters
         obj.Id = existingObj.Id;
-        obj.ObjectTypeId = objectTypeId;
+        obj.ObjectTypeId = entityType.Id;
 
         // Validate the object
         var validationResult = validationService.Validate(obj);
