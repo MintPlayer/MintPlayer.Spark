@@ -21,8 +21,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
                 message: $"Are you sure you want to mark {entity.LicensePlate} as stolen? This will notify all fleet managers and lock the vehicle record."
             );
 
-            if (manager.Retry.Result!.Option == "Cancel")
-                throw new InvalidOperationException("Operation cancelled by user.");
+            // If we reach here, the user confirmed (Cancel is handled client-side)
         }
 
         await base.OnBeforeSaveAsync(obj, entity);
