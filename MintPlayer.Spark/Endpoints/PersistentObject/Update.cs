@@ -1,5 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -10,6 +12,7 @@ public sealed partial class UpdatePersistentObject
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IRetryAccessor retryAccessor;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
     {
@@ -31,8 +34,19 @@ public sealed partial class UpdatePersistentObject
             return;
         }
 
-        var obj = await httpContext.Request.ReadFromJsonAsync<Abstractions.PersistentObject>()
-            ?? throw new InvalidOperationException("PersistentObject could not be deserialized from the request body.");
+        var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
+            ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
+
+        var obj = request.PersistentObject
+            ?? throw new InvalidOperationException("PersistentObject is required.");
+
+        // Set up retry state if this is a re-invocation
+        if (request.RetryResult is { } retryResult)
+        {
+            var accessor = (RetryAccessor)retryAccessor;
+            accessor.AnsweredStep = retryResult.Step;
+            accessor.AnsweredResult = retryResult;
+        }
 
         // Ensure the ID and ObjectTypeId match the URL parameters
         obj.Id = existingObj.Id;
@@ -47,7 +61,24 @@ public sealed partial class UpdatePersistentObject
             return;
         }
 
-        var result = await databaseAccess.SavePersistentObjectAsync(obj);
-        await httpContext.Response.WriteAsJsonAsync(result);
+        try
+        {
+            var result = await databaseAccess.SavePersistentObjectAsync(obj);
+            await httpContext.Response.WriteAsJsonAsync(result);
+        }
+        catch (SparkRetryActionException ex)
+        {
+            httpContext.Response.StatusCode = 449;
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                type = "retry-action",
+                step = ex.Step,
+                title = ex.Title,
+                message = ex.RetryMessage,
+                options = ex.Options,
+                defaultOption = ex.DefaultOption,
+                persistentObject = ex.PersistentObject,
+            });
+        }
     }
 }
