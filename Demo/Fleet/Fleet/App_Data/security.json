@@ -1,0 +1,63 @@
+{
+  "groups": {
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "a1b2c3d4-0000-0000-0000-000000000002": "Fleet managers",
+    "a1b2c3d4-0000-0000-0000-000000000003": "Viewers"
+  },
+  "rights": [
+    {
+      "id": "f0000001-0000-0000-0000-000000000001",
+      "resource": "QueryReadEditNewDelete/Fleet.Entities.Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000002",
+      "resource": "QueryReadEditNewDelete/Fleet.LookupReferences.CarBrand",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000003",
+      "resource": "QueryReadEditNewDelete/Fleet.LookupReferences.CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "f0000002-0000-0000-0000-000000000001",
+      "resource": "QueryReadEditNew/Fleet.Entities.Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "f0000002-0000-0000-0000-000000000002",
+      "resource": "QueryRead/Fleet.LookupReferences.CarBrand",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "f0000002-0000-0000-0000-000000000003",
+      "resource": "QueryRead/Fleet.LookupReferences.CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "f0000003-0000-0000-0000-000000000001",
+      "resource": "QueryRead/Fleet.Entities.Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "f0000003-0000-0000-0000-000000000002",
+      "resource": "QueryRead/Fleet.LookupReferences.CarBrand",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "f0000003-0000-0000-0000-000000000003",
+      "resource": "QueryRead/Fleet.LookupReferences.CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    }
+  ]
+}
