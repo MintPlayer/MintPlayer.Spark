@@ -14,7 +14,6 @@ public sealed partial class CreatePersistentObject
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
-    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
     {
@@ -24,17 +23,6 @@ public sealed partial class CreatePersistentObject
             httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
             await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
             return;
-        }
-
-        // Authorization check (only when IAccessControl is registered)
-        if (accessControl is not null)
-        {
-            if (!await accessControl.IsAllowedAsync($"New/{entityType.ClrType}"))
-            {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
-                return;
-            }
         }
 
         var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -82,6 +70,11 @@ public sealed partial class CreatePersistentObject
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
             });
+        }
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
         }
     }
 }

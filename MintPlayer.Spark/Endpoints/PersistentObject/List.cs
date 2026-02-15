@@ -10,7 +10,6 @@ public sealed partial class ListPersistentObjects
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
     {
@@ -22,18 +21,15 @@ public sealed partial class ListPersistentObjects
             return;
         }
 
-        // Authorization check (only when IAccessControl is registered)
-        if (accessControl is not null)
+        try
         {
-            if (!await accessControl.IsAllowedAsync($"Read/{entityType.ClrType}"))
-            {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
-                return;
-            }
+            var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);
+            await httpContext.Response.WriteAsJsonAsync(objects);
         }
-
-        var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);
-        await httpContext.Response.WriteAsJsonAsync(objects);
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+        }
     }
 }

@@ -23,9 +23,14 @@ internal partial class AccessControlService : IAccessControl
     {
         ["EditNew"] = ["Edit", "New"],
         ["EditNewDelete"] = ["Edit", "New", "Delete"],
+        ["NewDelete"] = ["New", "Delete"],
+        ["QueryRead"] = ["Query", "Read"],
+        ["QueryReadEdit"] = ["Query", "Read", "Edit"],
+        ["QueryReadEditNew"] = ["Query", "Read", "Edit", "New"],
+        ["QueryReadEditNewDelete"] = ["Query", "Read", "Edit", "New", "Delete"],
         ["ReadEdit"] = ["Read", "Edit"],
         ["ReadEditNew"] = ["Read", "Edit", "New"],
-        ["ReadEditNewDelete"] = ["Read", "Edit", "New", "Delete"]
+        ["ReadEditNewDelete"] = ["Read", "Edit", "New", "Delete"],
     };
 
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)

@@ -1,11 +1,10 @@
-using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
+using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
 
@@ -18,6 +17,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IServiceProvider serviceProvider;
+    [Inject] private readonly IAccessControl? accessControl;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -78,6 +78,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return null;
 
+        await EnsureAuthorizedAsync("Read", entityTypeDefinition.ClrType);
+
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
@@ -102,6 +104,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return [];
+
+        await EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -141,6 +145,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
+
+        var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
+        await EnsureAuthorizedAsync(action, entityTypeDefinition.ClrType);
+
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
@@ -169,6 +177,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return;
+
+        await EnsureAuthorizedAsync("Delete", entityTypeDefinition.ClrType);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -458,6 +468,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         return includedDocuments;
     }
+
+    #region Authorization
+
+    private async Task EnsureAuthorizedAsync(string action, string clrType)
+    {
+        if (accessControl is null)
+            return;
+
+        var resource = $"{action}/{clrType}";
+        if (!await accessControl.IsAllowedAsync(resource))
+            throw new SparkAccessDeniedException(resource);
+    }
+
+    #endregion
 
     #region Actions Helper Methods
 
