@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { EMPTY, Observable, of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
@@ -142,9 +142,6 @@ export class SparkService {
     const payload = error.error as RetryActionPayload;
     return this.retryActionService.show(payload).pipe(
       switchMap(result => {
-        if (result.option === 'Cancel') {
-          return EMPTY;
-        }
         body.retryResult = result;
         return retryFn();
       })
