@@ -38,7 +38,7 @@ export default class PoDetailComponent implements OnInit {
       })
     ).subscribe(result => {
       this.allEntityTypes = result.entityTypes;
-      this.entityType = result.entityTypes.find(t => t.id === this.type) || null;
+      this.entityType = result.entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
       this.item = result.item;
       this.loadLookupReferenceOptions();
       this.cdr.detectChanges();

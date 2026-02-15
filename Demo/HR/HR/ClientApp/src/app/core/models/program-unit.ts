@@ -6,6 +6,7 @@ export interface ProgramUnit {
   queryId?: string;
   persistentObjectId?: string;
   order: number;
+  alias?: string;
 }
 
 export interface ProgramUnitGroup {

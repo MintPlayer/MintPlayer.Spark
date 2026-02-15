@@ -12,6 +12,7 @@
           "icon": "bi-people",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440001",
+          "alias": "people",
           "order": 1
         },
         {
@@ -20,6 +21,7 @@
           "icon": "bi-building",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440002",
+          "alias": "companies",
           "order": 2
         },
         {
@@ -28,6 +30,7 @@
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440003",
+          "alias": "cars",
           "order": 3
         }
       ]

@@ -30,6 +30,7 @@ export interface EntityType {
   id: string;
   name: string;
   clrType: string;
+  alias?: string;
   /**
    * Template string with {PropertyName} placeholders for building a formatted display value.
    * Example: "{Street}, {PostalCode} {City}"

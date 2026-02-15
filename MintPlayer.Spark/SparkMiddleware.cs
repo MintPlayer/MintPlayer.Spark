@@ -6,6 +6,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Endpoints.Aliases;
 using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.LookupReferences;
 using MintPlayer.Spark.Endpoints.PersistentObject;
@@ -288,33 +289,37 @@ public static class SparkExtensions
         var typesGroup = sparkGroup.MapGroup("/types");
         typesGroup.MapGet("/", async (HttpContext context, ListEntityTypes action) =>
             await action.HandleAsync(context));
-        typesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetEntityType action) =>
+        typesGroup.MapGet("/{id}", async (HttpContext context, string id, GetEntityType action) =>
             await action.HandleAsync(context, id));
 
         // Queries endpoints
         var queriesGroup = sparkGroup.MapGroup("/queries");
         queriesGroup.MapGet("/", async (HttpContext context, ListQueries action) =>
             await action.HandleAsync(context));
-        queriesGroup.MapGet("/{id:guid}", async (HttpContext context, Guid id, GetQuery action) =>
+        queriesGroup.MapGet("/{id}", async (HttpContext context, string id, GetQuery action) =>
             await action.HandleAsync(context, id));
-        queriesGroup.MapGet("/{id:guid}/execute", async (HttpContext context, Guid id, ExecuteQuery action) =>
+        queriesGroup.MapGet("/{id}/execute", async (HttpContext context, string id, ExecuteQuery action) =>
             await action.HandleAsync(context, id));
 
         // Program Units endpoint
         sparkGroup.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
             await action.HandleAsync(context));
 
+        // Aliases endpoint
+        sparkGroup.MapGet("/aliases", async (HttpContext context, GetAliases action) =>
+            await action.HandleAsync(context));
+
         // Persistent Object endpoints
         var persistentObjectGroup = sparkGroup.MapGroup("/po");
-        persistentObjectGroup.MapGet("/{objectTypeId:guid}", async (HttpContext context, Guid objectTypeId, ListPersistentObjects action) =>
+        persistentObjectGroup.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId, ListPersistentObjects action) =>
             await action.HandleAsync(context, objectTypeId));
-        persistentObjectGroup.MapGet("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, GetPersistentObject action) =>
+        persistentObjectGroup.MapGet("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, GetPersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id));
-        persistentObjectGroup.MapPost("/{objectTypeId:guid}", async (HttpContext context, Guid objectTypeId, CreatePersistentObject action) =>
+        persistentObjectGroup.MapPost("/{objectTypeId}", async (HttpContext context, string objectTypeId, CreatePersistentObject action) =>
             await action.HandleAsync(context, objectTypeId));
-        persistentObjectGroup.MapPut("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, UpdatePersistentObject action) =>
+        persistentObjectGroup.MapPut("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, UpdatePersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id));
-        persistentObjectGroup.MapDelete("/{objectTypeId:guid}/{id}", async (HttpContext context, Guid objectTypeId, string id, DeletePersistentObject action) =>
+        persistentObjectGroup.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id));
 
         // LookupReferences endpoints
