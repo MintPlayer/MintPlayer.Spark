@@ -70,11 +70,11 @@ export class SparkService {
   }
 
   create(type: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.post<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}`, data);
+    return this.http.post<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}`, { persistentObject: data });
   }
 
   update(type: string, id: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.put<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, data);
+    return this.http.put<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { persistentObject: data });
   }
 
   delete(type: string, id: string): Observable<void> {

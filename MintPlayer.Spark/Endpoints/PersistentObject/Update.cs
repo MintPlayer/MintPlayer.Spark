@@ -34,10 +34,14 @@ public sealed partial class UpdatePersistentObject
             return;
         }
 
-        var (obj, retryResult) = await PersistentObjectRequest.ReadAsync(httpContext.Request);
+        var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
+            ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
+
+        var obj = request.PersistentObject
+            ?? throw new InvalidOperationException("PersistentObject is required.");
 
         // Set up retry state if this is a re-invocation
-        if (retryResult is not null)
+        if (request.RetryResult is { } retryResult)
         {
             var accessor = (RetryAccessor)retryAccessor;
             accessor.AnsweredStep = retryResult.Step;
