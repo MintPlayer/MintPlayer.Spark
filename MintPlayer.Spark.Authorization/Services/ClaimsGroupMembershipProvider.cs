@@ -22,6 +22,7 @@ internal partial class ClaimsGroupMembershipProvider : IGroupMembershipProvider
     [
         "group",
         "groups",
+        "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
         "http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid",
         "http://schemas.xmlsoap.org/claims/Group"
     ];
