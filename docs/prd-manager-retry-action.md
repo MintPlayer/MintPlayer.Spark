@@ -47,8 +47,7 @@ Developer's Actions Class (CRUD hooks or future Custom Actions)
     │       │       → Returns a virtual PersistentObject (no DB backing)
     │       │
     │       └── .Retry
-    │               ├── .Result  → RetryResult? (null on first invocation,
-    │               │               pre-populated on re-invocation)
+    │               ├── .Result  → RetryResult? (null until Action() replays an answered step)
     │               └── .Action(title, options[], ...)
     │                       → Options sent to frontend exactly as specified
     │                       → On unanswered step: throws SparkRetryActionException
@@ -58,7 +57,7 @@ Developer's Actions Class (CRUD hooks or future Custom Actions)
 Endpoint (Create/Update/Delete + future Custom Actions)
     │
     ├── Deserialize retryResults[] from request (if present)
-    ├── Build AnsweredResults dictionary, pre-populate Result
+    ├── Build AnsweredResults dictionary
     ├── try { actions.OnSaveAsync(...) }
     │   catch (SparkRetryActionException ex)
     │       → Return 449 with { step, title, message, options[], persistentObject }
@@ -103,14 +102,9 @@ public interface IManager
 public interface IRetryAccessor
 {
     /// <summary>
-    /// The result from the user's previous retry response.
-    /// Null on the first invocation. Pre-populated on re-invocation with the
-    /// latest answered step's result, so developers can use a guard pattern:
-    /// <code>
-    /// if (manager.Retry.Result == null)
-    ///     manager.Retry.Action(...);
-    /// </code>
-    /// Also set by each Action() call for the matching answered step.
+    /// The result from the user's previous retry response for the current step.
+    /// Null on the first invocation. Set by each Action() call
+    /// when replaying an already-answered step.
     /// </summary>
     RetryResult? Result { get; }
 
@@ -204,7 +198,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
     /// </summary>
     private int currentStep;
 
-    public RetryResult? Result { get; internal set; }
+    public RetryResult? Result { get; private set; }
 
     public void Action(
         string title,
@@ -228,7 +222,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
 }
 ```
 
-> **Result pre-population:** On re-invocation, the endpoint pre-populates `Result` with the latest answered step's result *before* the action hook runs. This enables the guard pattern (`if (Result == null) Action(...)`). When `Action()` is called for a specific answered step, it overwrites `Result` with that step's result, enabling correct per-step reads in chained scenarios.
+> **Replay behavior:** On re-invocation, `Action()` checks the `AnsweredResults` dictionary for each step. If the step was already answered, it sets `Result` and returns normally. If not, it throws to prompt the user. This enables both single-step and chained multi-step flows with the same consistent pattern.
 
 ### 6. Internal SparkRetryActionException
 
@@ -274,7 +268,6 @@ if (request.RetryResults is { Length: > 0 } retryResults)
 {
     var accessor = (RetryAccessor)retryAccessor;
     accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-    accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
 }
 ```
 
@@ -338,23 +331,19 @@ The endpoint builds a dictionary from `retryResults` keyed by step index, enabli
 ```
 1st invocation:  step 0 throws → frontend shows modal A
 2nd invocation:  retryResults=[{step:0, option:"Continue"}]
-                 Result pre-populated with step 0 answer
-                 step 0 Action() returns → Result = { Option: "Continue" }
-                 step 1 throws → frontend shows modal B
+                 step 0 Action() → answered, returns → Result = { Option: "Continue" }
+                 step 1 Action() → unanswered, throws → frontend shows modal B
 3rd invocation:  retryResults=[{step:0, option:"Continue"}, {step:1, option:"Yes"}]
-                 Result pre-populated with step 1 answer
-                 step 0 Action() returns → Result = { Option: "Continue" }
-                 step 1 Action() returns → Result = { Option: "Yes" }
+                 step 0 Action() → answered, returns → Result = { Option: "Continue" }
+                 step 1 Action() → answered, returns → Result = { Option: "Yes" }
                  action completes normally
 ```
 
-## Developer Usage Patterns
+## Developer Usage Examples
 
-There are two patterns for using the retry system. Both are fully supported.
+Call `Action()` for each step. It either returns (answered step) or throws (unanswered step). The framework tracks step indices automatically. After `Action()` returns, read `Result` to see what the user chose.
 
-### Pattern A: Guard Pattern (single-step, recommended for simple confirmations)
-
-Check `Result == null` before calling `Action()`. On the first invocation, `Result` is null, so `Action()` is called and throws. On re-invocation, `Result` is pre-populated, so `Action()` is skipped and the developer reads the result directly.
+### Example 1: Simple Confirmation on Delete
 
 ```csharp
 public partial class CarActions : DefaultPersistentObjectActions<Car>
@@ -363,33 +352,25 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
     public override async Task OnBeforeDeleteAsync(Car entity)
     {
-        // Guard pattern: only call Action() on first invocation
-        if (manager.Retry.Result == null)
-        {
-            // Options sent to frontend: ["Delete"]
-            // "Cancel" is NOT auto-appended, but closing the modal sends "Cancel"
-            manager.Retry.Action(
-                title: "Confirm deletion",
-                options: ["Delete"],
-                message: $"Are you sure you want to delete {entity.LicensePlate}?"
-            );
-        }
+        // Options sent to frontend: ["Delete"]
+        // "Cancel" is NOT auto-appended, but closing the modal sends "Cancel"
+        manager.Retry.Action(
+            title: "Confirm deletion",
+            options: ["Delete"],
+            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+        );
 
-        // After re-invocation, Result is always non-null
         if (manager.Retry.Result!.Option == "Cancel")
-        {
-            // User closed modal or clicked Cancel — clean up and return
             return;
-        }
 
         await base.OnBeforeDeleteAsync(entity);
     }
 }
 ```
 
-### Pattern B: Direct Call Pattern (multi-step, for chained confirmations)
+### Example 2: Chained Confirmations (Automatic Step Tracking)
 
-Call `Action()` for each step. It either returns (answered step) or throws (unanswered step). The framework tracks step indices automatically.
+Multiple `Action()` calls are chained naturally. The framework replays answered steps and throws on the next unanswered one:
 
 ```csharp
 public partial class CarActions : DefaultPersistentObjectActions<Car>
@@ -485,8 +466,6 @@ The `RetryAccessor` maintains an internal `currentStep` counter that increments 
 3. otherwise:
      → New unanswered step — throw SparkRetryActionException
 ```
-
-**Result pre-population:** Before the action hook runs, the endpoint pre-populates `Result` with the latest answered step's result (highest step index from `retryResults`). This enables the guard pattern where developers check `if (Result == null)` before calling `Action()`.
 
 **Key invariant:** Each `Retry.Action()` call in the developer's code corresponds to a deterministic step index. As long as the developer's code is deterministic (same conditions → same `Action()` calls), the replay is safe.
 
@@ -611,8 +590,6 @@ private deleteWithRetry<T>(url: string, body: { retryResults?: RetryActionResult
 
 3. **No "Cancel" auto-append** — The `options[]` sent to the frontend are exactly what the developer specified. "Cancel" is never auto-appended. When the user closes the modal (X button), the frontend sends `"Cancel"` as the chosen option. This gives developers full control over button rendering while still supporting cancellation via modal close.
 
-4. **Result pre-population** — On re-invocation, the endpoint pre-populates `Result` with the latest answered step's result before the action hook runs. This enables the guard pattern (`if (Result == null)`) for single-step scenarios without requiring `Action()` to be called.
+4. **Single consistent developer pattern** — Developers always call `Action()` and read `Result` afterwards. The same pattern works for single-step and chained multi-step flows. `Action()` either throws (unanswered step) or returns and sets `Result` (answered step).
 
-5. **Two developer patterns** — The guard pattern (`if (Result == null) Action(...)`) is recommended for single-step confirmations. The direct call pattern (always calling `Action()`) is required for chained/multi-step flows where each step needs its own result.
-
-6. **Custom Actions** — The retry flow is designed generically so it works in CRUD endpoints today and in future custom action endpoints. Any endpoint that calls an actions hook can wrap it with the `SparkRetryActionException` try-catch pattern.
+5. **Custom Actions** — The retry flow is designed generically so it works in CRUD endpoints today and in future custom action endpoints. Any endpoint that calls an actions hook can wrap it with the `SparkRetryActionException` try-catch pattern.

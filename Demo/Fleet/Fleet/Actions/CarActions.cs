@@ -41,20 +41,14 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
     public override async Task OnBeforeDeleteAsync(Car entity)
     {
-        // Guard pattern: only call Action() on first invocation
-        if (manager.Retry.Result == null)
-        {
-            manager.Retry.Action(
-                title: "Confirm deletion",
-                options: ["Delete"],
-                message: $"Are you sure you want to delete {entity.LicensePlate}?"
-            );
-        }
+        manager.Retry.Action(
+            title: "Confirm deletion",
+            options: ["Delete"],
+            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+        );
 
         if (manager.Retry.Result!.Option == "Cancel")
-        {
             return;
-        }
 
         await base.OnBeforeDeleteAsync(entity);
     }

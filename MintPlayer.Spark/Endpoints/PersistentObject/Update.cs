@@ -45,7 +45,6 @@ public sealed partial class UpdatePersistentObject
         {
             var accessor = (RetryAccessor)retryAccessor;
             accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
         }
 
         // Ensure the ID and ObjectTypeId match the URL parameters

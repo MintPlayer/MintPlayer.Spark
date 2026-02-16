@@ -3,14 +3,9 @@ namespace MintPlayer.Spark.Abstractions.Retry;
 public interface IRetryAccessor
 {
     /// <summary>
-    /// The result from the user's previous retry response.
-    /// Null on the first invocation. Pre-populated on re-invocation with the
-    /// latest answered step's result, so developers can use a guard pattern:
-    /// <code>
-    /// if (manager.Retry.Result == null)
-    ///     manager.Retry.Action(...);
-    /// </code>
-    /// Also set by each <see cref="Action"/> call for the matching answered step.
+    /// The result from the user's previous retry response for the current step.
+    /// Null on the first invocation. Set by each <see cref="Action"/> call
+    /// when replaying an already-answered step.
     /// </summary>
     RetryResult? Result { get; }
 

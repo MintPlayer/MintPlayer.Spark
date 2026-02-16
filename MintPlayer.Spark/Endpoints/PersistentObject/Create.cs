@@ -35,7 +35,6 @@ public sealed partial class CreatePersistentObject
         {
             var accessor = (RetryAccessor)retryAccessor;
             accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
         }
 
         // Ensure the ObjectTypeId matches the resolved entity type

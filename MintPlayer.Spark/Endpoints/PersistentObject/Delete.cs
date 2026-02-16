@@ -41,7 +41,6 @@ public sealed partial class DeletePersistentObject
             {
                 var accessor = (RetryAccessor)retryAccessor;
                 accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-                accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
             }
         }
 

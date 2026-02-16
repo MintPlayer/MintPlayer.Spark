@@ -20,7 +20,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
     /// </summary>
     private int currentStep;
 
-    public RetryResult? Result { get; internal set; }
+    public RetryResult? Result { get; private set; }
 
     public void Action(
         string title,
