@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { Observable, of, throwError } from 'rxjs';
+import { EMPTY, Observable, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
@@ -155,6 +155,10 @@ export class SparkService {
     const payload = error.error as RetryActionPayload;
     return this.retryActionService.show(payload).pipe(
       switchMap(result => {
+        // Modal dismissed (Escape/X) — Cancel was not an explicit developer option
+        if (result.option === 'Cancel' && !payload.options.includes('Cancel')) {
+          return EMPTY;
+        }
         body.retryResults = [...(body.retryResults || []), result];
         return retryFn();
       })
