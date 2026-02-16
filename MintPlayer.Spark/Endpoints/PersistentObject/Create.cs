@@ -31,11 +31,11 @@ public sealed partial class CreatePersistentObject
             ?? throw new InvalidOperationException("PersistentObject is required.");
 
         // Set up retry state if this is a re-invocation
-        if (request.RetryResult is { } retryResult)
+        if (request.RetryResults is { Length: > 0 } retryResults)
         {
             var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredStep = retryResult.Step;
-            accessor.AnsweredResult = retryResult;
+            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
+            accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
         }
 
         // Ensure the ObjectTypeId matches the resolved entity type

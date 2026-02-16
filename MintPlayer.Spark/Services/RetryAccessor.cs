@@ -9,16 +9,10 @@ namespace MintPlayer.Spark.Services;
 internal sealed partial class RetryAccessor : IRetryAccessor
 {
     /// <summary>
-    /// The step index of the retry that was answered by the user.
-    /// Set by the endpoint from the incoming request's retryResult.step value.
+    /// All answered retry results, keyed by step index.
+    /// Set by the endpoint from the incoming request's retryResults array.
     /// </summary>
-    internal int? AnsweredStep { get; set; }
-
-    /// <summary>
-    /// The full result payload from the user's response.
-    /// Set by the endpoint from the incoming request's retryResult value.
-    /// </summary>
-    internal RetryResult? AnsweredResult { get; set; }
+    internal Dictionary<int, RetryResult>? AnsweredResults { get; set; }
 
     /// <summary>
     /// Tracks the current step index during action execution.
@@ -26,7 +20,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
     /// </summary>
     private int currentStep;
 
-    public RetryResult? Result { get; private set; }
+    public RetryResult? Result { get; internal set; }
 
     public void Action(
         string title,
@@ -38,21 +32,10 @@ internal sealed partial class RetryAccessor : IRetryAccessor
         var step = currentStep++;
 
         // If this step was already answered, expose the result and continue
-        if (AnsweredStep.HasValue && step <= AnsweredStep.Value)
+        if (AnsweredResults?.TryGetValue(step, out var result) == true)
         {
-            if (step == AnsweredStep.Value)
-            {
-                Result = AnsweredResult;
-                return;
-            }
-            // step < AnsweredStep: a previously-answered step, skip it
+            Result = result;
             return;
-        }
-
-        // Auto-append "Cancel" if not present (case-insensitive)
-        if (!options.Any(o => o.Equals("Cancel", StringComparison.OrdinalIgnoreCase)))
-        {
-            options = [.. options, "Cancel"];
         }
 
         // New unanswered step — throw to interrupt and prompt the user

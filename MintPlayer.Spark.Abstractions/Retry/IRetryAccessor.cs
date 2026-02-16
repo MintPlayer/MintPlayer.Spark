@@ -3,19 +3,25 @@ namespace MintPlayer.Spark.Abstractions.Retry;
 public interface IRetryAccessor
 {
     /// <summary>
-    /// The result from the user's previous retry response for the current step.
-    /// Null on the first invocation, or when a new (not-yet-answered) step is reached.
+    /// The result from the user's previous retry response.
+    /// Null on the first invocation. Pre-populated on re-invocation with the
+    /// latest answered step's result, so developers can use a guard pattern:
+    /// <code>
+    /// if (manager.Retry.Result == null)
+    ///     manager.Retry.Action(...);
+    /// </code>
+    /// Also set by each <see cref="Action"/> call for the matching answered step.
     /// </summary>
     RetryResult? Result { get; }
 
     /// <summary>
-    /// Interrupts the current action and requests the frontend to display
-    /// a confirmation/dialog modal. On the first pass this method does not return
-    /// (it throws internally). On replay of an already-answered step it returns
-    /// normally and populates <see cref="Result"/>.
+    /// Requests the frontend to display a confirmation/dialog modal.
+    /// On the first pass (unanswered step) this method throws internally and never returns.
+    /// On replay of an already-answered step it returns normally and populates <see cref="Result"/>.
     ///
-    /// If <paramref name="options"/> does not contain "Cancel", the framework auto-appends it.
-    /// The frontend always re-invokes with the result (including cancellation).
+    /// The <paramref name="options"/> are sent to the frontend exactly as specified.
+    /// "Cancel" is NOT auto-appended. However, when the user closes the modal
+    /// (e.g. via the X button), the frontend sends "Cancel" as the chosen option.
     /// </summary>
     void Action(
         string title,

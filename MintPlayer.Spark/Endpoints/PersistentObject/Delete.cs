@@ -37,11 +37,11 @@ public sealed partial class DeletePersistentObject
         if (httpContext.Request.ContentLength > 0)
         {
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
-            if (request?.RetryResult is { } retryResult)
+            if (request?.RetryResults is { Length: > 0 } retryResults)
             {
                 var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredStep = retryResult.Step;
-                accessor.AnsweredResult = retryResult;
+                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
+                accessor.Result = retryResults.OrderByDescending(r => r.Step).First();
             }
         }
 

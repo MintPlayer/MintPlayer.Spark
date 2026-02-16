@@ -87,7 +87,10 @@ export class SparkService {
   }
 
   delete(type: string, id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+    return this.deleteWithRetry<void>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
+      {}
+    );
   }
 
   // LookupReferences
@@ -118,22 +121,32 @@ export class SparkService {
 
   // Retry Action helpers
 
-  private postWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
+  private postWithRetry<T>(url: string, body: { persistentObject: any; retryResults?: RetryActionResult[] }): Observable<T> {
     return this.http.post<T>(url, body).pipe(
       catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.postWithRetry<T>(url, body), body))
     );
   }
 
-  private putWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
+  private putWithRetry<T>(url: string, body: { persistentObject: any; retryResults?: RetryActionResult[] }): Observable<T> {
     return this.http.put<T>(url, body).pipe(
       catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.putWithRetry<T>(url, body), body))
+    );
+  }
+
+  private deleteWithRetry<T>(url: string, body: { retryResults?: RetryActionResult[] }): Observable<T> {
+    const hasRetry = body.retryResults && body.retryResults.length > 0;
+    return (hasRetry
+      ? this.http.delete<T>(url, { body })
+      : this.http.delete<T>(url)
+    ).pipe(
+      catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.deleteWithRetry<T>(url, body), body))
     );
   }
 
   private handleRetryError<T>(
     error: HttpErrorResponse,
     retryFn: () => Observable<T>,
-    body: { persistentObject: any; retryResult?: RetryActionResult }
+    body: { retryResults?: RetryActionResult[] }
   ): Observable<T> {
     if (error.status !== 449 || error.error?.type !== 'retry-action') {
       return throwError(() => error);
@@ -142,7 +155,7 @@ export class SparkService {
     const payload = error.error as RetryActionPayload;
     return this.retryActionService.show(payload).pipe(
       switchMap(result => {
-        body.retryResult = result;
+        body.retryResults = [...(body.retryResults || []), result];
         return retryFn();
       })
     );
