@@ -113,6 +113,10 @@ export default class PoEditComponent implements OnInit {
           }];
         }
         this.cdr.detectChanges();
+      },
+      complete: () => {
+        this.isSaving = false;
+        this.cdr.detectChanges();
       }
     });
   }

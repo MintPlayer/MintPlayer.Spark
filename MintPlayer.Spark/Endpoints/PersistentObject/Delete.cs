@@ -1,5 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -9,6 +11,7 @@ public sealed partial class DeletePersistentObject
 {
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IRetryAccessor retryAccessor;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
     {
@@ -30,7 +33,35 @@ public sealed partial class DeletePersistentObject
             return;
         }
 
-        await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
-        httpContext.Response.StatusCode = StatusCodes.Status204NoContent;
+        // Read retry state from body if present (body is normally empty for DELETE)
+        if (httpContext.Request.ContentLength > 0)
+        {
+            var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
+            if (request?.RetryResults is { Length: > 0 } retryResults)
+            {
+                var accessor = (RetryAccessor)retryAccessor;
+                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
+            }
+        }
+
+        try
+        {
+            await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
+            httpContext.Response.StatusCode = StatusCodes.Status204NoContent;
+        }
+        catch (SparkRetryActionException ex)
+        {
+            httpContext.Response.StatusCode = 449;
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                type = "retry-action",
+                step = ex.Step,
+                title = ex.Title,
+                message = ex.RetryMessage,
+                options = ex.Options,
+                defaultOption = ex.DefaultOption,
+                persistentObject = ex.PersistentObject,
+            });
+        }
     }
 }

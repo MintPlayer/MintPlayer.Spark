@@ -1,13 +1,16 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { Observable, of, throwError } from 'rxjs';
+import { catchError, map, switchMap } from 'rxjs/operators';
 import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
+import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
+import { RetryActionService } from './retry-action.service';
 
 @Injectable({ providedIn: 'root' })
 export class SparkService {
   private readonly baseUrl = '/spark';
   private readonly http = inject(HttpClient);
+  private readonly retryActionService = inject(RetryActionService);
 
   // Entity Types
   getEntityTypes(): Observable<EntityType[]> {
@@ -70,11 +73,17 @@ export class SparkService {
   }
 
   create(type: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.post<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}`, data);
+    return this.postWithRetry<PersistentObject>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}`,
+      { persistentObject: data }
+    );
   }
 
   update(type: string, id: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
-    return this.http.put<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, data);
+    return this.putWithRetry<PersistentObject>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
+      { persistentObject: data }
+    );
   }
 
   delete(type: string, id: string): Observable<void> {
@@ -104,6 +113,38 @@ export class SparkService {
   deleteLookupReferenceValue(name: string, key: string): Observable<void> {
     return this.http.delete<void>(
       `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`
+    );
+  }
+
+  // Retry Action helpers
+
+  private postWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
+    return this.http.post<T>(url, body).pipe(
+      catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.postWithRetry<T>(url, body), body))
+    );
+  }
+
+  private putWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
+    return this.http.put<T>(url, body).pipe(
+      catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.putWithRetry<T>(url, body), body))
+    );
+  }
+
+  private handleRetryError<T>(
+    error: HttpErrorResponse,
+    retryFn: () => Observable<T>,
+    body: { persistentObject: any; retryResult?: RetryActionResult }
+  ): Observable<T> {
+    if (error.status !== 449 || error.error?.type !== 'retry-action') {
+      return throwError(() => error);
+    }
+
+    const payload = error.error as RetryActionPayload;
+    return this.retryActionService.show(payload).pipe(
+      switchMap(result => {
+        body.retryResult = result;
+        return retryFn();
+      })
     );
   }
 }

@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Replication.Abstractions</PackageId>
-		<Version>10.0.0-preview.2</Version>
+		<Version>10.0.0-preview.4</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions for MintPlayer.Spark.Replication: ReplicatedAttribute, ModuleInformation, and ETL script models.</Description>
