@@ -1,16 +1,14 @@
-import { Type } from '@angular/core';
-import { Routes } from '@angular/router';
 import { SPARK_AUTH_ROUTE_PATHS, SparkAuthRouteConfig, SparkAuthRouteEntry, SparkAuthRoutePaths } from '../models';
 
 interface ResolvedEntry {
   path: string;
-  loadComponent: () => Promise<Type<unknown>>;
+  loadComponent: () => Promise<any>;
 }
 
 function resolveEntry(
   entry: SparkAuthRouteEntry | undefined,
   defaultPath: string,
-  defaultLoader: () => Promise<Type<unknown>>,
+  defaultLoader: () => Promise<any>,
 ): ResolvedEntry {
   if (entry === undefined || typeof entry === 'string') {
     return {
@@ -26,7 +24,7 @@ function resolveEntry(
   };
 }
 
-export function sparkAuthRoutes(config?: SparkAuthRouteConfig): Routes {
+export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
   const login = resolveEntry(config?.login, 'login',
     () => import('../components/login/spark-login.component').then(m => m.SparkLoginComponent));
   const twoFactor = resolveEntry(config?.twoFactor, 'login/two-factor',

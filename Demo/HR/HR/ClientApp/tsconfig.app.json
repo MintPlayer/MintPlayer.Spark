@@ -7,8 +7,7 @@
     "types": []
   },
   "include": [
-    "src/**/*.ts",
-    "../../../../packages/ng-spark-auth/src/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "src/**/*.spec.ts"

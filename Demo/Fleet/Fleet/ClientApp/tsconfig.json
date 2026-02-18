@@ -15,7 +15,14 @@
     "target": "ES2022",
     "module": "preserve",
     "paths": {
-      "@mintplayer/ng-spark-auth": ["../../../../packages/ng-spark-auth/src/public-api"]
+      "@mintplayer/ng-spark-auth": ["../../../../packages/ng-spark-auth/src/public-api"],
+      "@angular/core": ["./node_modules/@angular/core"],
+      "@angular/common": ["./node_modules/@angular/common"],
+      "@angular/common/http": ["./node_modules/@angular/common/types/http"],
+      "@angular/router": ["./node_modules/@angular/router"],
+      "@angular/forms": ["./node_modules/@angular/forms"],
+      "rxjs": ["./node_modules/rxjs"],
+      "tslib": ["./node_modules/tslib"]
     }
   },
   "angularCompilerOptions": {
