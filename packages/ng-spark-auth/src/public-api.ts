@@ -1,16 +1,20 @@
 // Models
-export {
+export type {
   AuthUser,
 } from './lib/models/auth-user';
-export {
+export type {
   SparkAuthConfig,
+} from './lib/models/auth-config';
+export {
   SPARK_AUTH_CONFIG,
   defaultSparkAuthConfig,
 } from './lib/models/auth-config';
-export {
+export type {
   SparkAuthRouteEntry,
   SparkAuthRouteConfig,
   SparkAuthRoutePaths,
+} from './lib/models/auth-route-config';
+export {
   SPARK_AUTH_ROUTE_PATHS,
 } from './lib/models/auth-route-config';
 

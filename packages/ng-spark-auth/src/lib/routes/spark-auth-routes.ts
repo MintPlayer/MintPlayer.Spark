@@ -1,28 +1,42 @@
+import { Type } from '@angular/core';
 import { Routes } from '@angular/router';
 import { SPARK_AUTH_ROUTE_PATHS, SparkAuthRouteConfig, SparkAuthRouteEntry, SparkAuthRoutePaths } from '../models';
+
+interface ResolvedEntry {
+  path: string;
+  loadComponent: () => Promise<Type<unknown>>;
+}
 
 function resolveEntry(
   entry: SparkAuthRouteEntry | undefined,
   defaultPath: string,
-): { path: string; component?: () => Promise<unknown> } {
-  if (entry === undefined) {
-    return { path: defaultPath };
-  }
-  if (typeof entry === 'string') {
-    return { path: entry };
+  defaultLoader: () => Promise<Type<unknown>>,
+): ResolvedEntry {
+  if (entry === undefined || typeof entry === 'string') {
+    return {
+      path: typeof entry === 'string' ? entry : defaultPath,
+      loadComponent: defaultLoader,
+    };
   }
   return {
     path: entry.path,
-    component: entry.component ? () => Promise.resolve(entry.component) : undefined,
+    loadComponent: entry.component
+      ? () => Promise.resolve(entry.component!)
+      : defaultLoader,
   };
 }
 
 export function sparkAuthRoutes(config?: SparkAuthRouteConfig): Routes {
-  const login = resolveEntry(config?.login, 'login');
-  const twoFactor = resolveEntry(config?.twoFactor, 'login/two-factor');
-  const register = resolveEntry(config?.register, 'register');
-  const forgotPassword = resolveEntry(config?.forgotPassword, 'forgot-password');
-  const resetPassword = resolveEntry(config?.resetPassword, 'reset-password');
+  const login = resolveEntry(config?.login, 'login',
+    () => import('../components/login/spark-login.component').then(m => m.SparkLoginComponent));
+  const twoFactor = resolveEntry(config?.twoFactor, 'login/two-factor',
+    () => import('../components/two-factor/spark-two-factor.component').then(m => m.SparkTwoFactorComponent));
+  const register = resolveEntry(config?.register, 'register',
+    () => import('../components/register/spark-register.component').then(m => m.SparkRegisterComponent));
+  const forgotPassword = resolveEntry(config?.forgotPassword, 'forgot-password',
+    () => import('../components/forgot-password/spark-forgot-password.component').then(m => m.SparkForgotPasswordComponent));
+  const resetPassword = resolveEntry(config?.resetPassword, 'reset-password',
+    () => import('../components/reset-password/spark-reset-password.component').then(m => m.SparkResetPasswordComponent));
 
   const paths: SparkAuthRoutePaths = {
     login: '/' + login.path,
@@ -39,31 +53,11 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): Routes {
         { provide: SPARK_AUTH_ROUTE_PATHS, useValue: paths },
       ],
       children: [
-        {
-          path: login.path,
-          loadComponent: login.component
-            ?? (() => import('../components/login/spark-login.component').then(m => m.SparkLoginComponent)),
-        },
-        {
-          path: twoFactor.path,
-          loadComponent: twoFactor.component
-            ?? (() => import('../components/two-factor/spark-two-factor.component').then(m => m.SparkTwoFactorComponent)),
-        },
-        {
-          path: register.path,
-          loadComponent: register.component
-            ?? (() => import('../components/register/spark-register.component').then(m => m.SparkRegisterComponent)),
-        },
-        {
-          path: forgotPassword.path,
-          loadComponent: forgotPassword.component
-            ?? (() => import('../components/forgot-password/spark-forgot-password.component').then(m => m.SparkForgotPasswordComponent)),
-        },
-        {
-          path: resetPassword.path,
-          loadComponent: resetPassword.component
-            ?? (() => import('../components/reset-password/spark-reset-password.component').then(m => m.SparkResetPasswordComponent)),
-        },
+        { path: login.path, loadComponent: login.loadComponent },
+        { path: twoFactor.path, loadComponent: twoFactor.loadComponent },
+        { path: register.path, loadComponent: register.loadComponent },
+        { path: forgotPassword.path, loadComponent: forgotPassword.loadComponent },
+        { path: resetPassword.path, loadComponent: resetPassword.loadComponent },
       ],
     },
   ];
