@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 
@@ -17,7 +18,7 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
 @Component({
   selector: 'spark-reset-password',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
@@ -38,43 +39,43 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
           }
 
           @if (!successMessage()) {
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              <div class="mb-3">
-                <label for="newPassword" class="form-label">New Password</label>
-                <input
-                  type="password"
-                  id="newPassword"
-                  class="form-control"
-                  formControlName="newPassword"
-                  autocomplete="new-password"
-                />
-              </div>
+            <bs-form>
+              <form [formGroup]="form" (ngSubmit)="onSubmit()">
+                <div class="mb-3">
+                  <label for="newPassword" class="form-label">New Password</label>
+                  <input
+                    type="password"
+                    id="newPassword"
+                    formControlName="newPassword"
+                    autocomplete="new-password"
+                  />
+                </div>
 
-              <div class="mb-3">
-                <label for="confirmPassword" class="form-label">Confirm Password</label>
-                <input
-                  type="password"
-                  id="confirmPassword"
-                  class="form-control"
-                  formControlName="confirmPassword"
-                  autocomplete="new-password"
-                />
-                @if (form.touched && form.hasError('passwordMismatch')) {
-                  <div class="text-danger mt-1">Passwords do not match.</div>
-                }
-              </div>
+                <div class="mb-3">
+                  <label for="confirmPassword" class="form-label">Confirm Password</label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    formControlName="confirmPassword"
+                    autocomplete="new-password"
+                  />
+                  @if (form.touched && form.hasError('passwordMismatch')) {
+                    <div class="text-danger mt-1">Passwords do not match.</div>
+                  }
+                </div>
 
-              <button
-                type="submit"
-                class="btn btn-primary w-100"
-                [disabled]="loading()"
-              >
-                @if (loading()) {
-                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                Reset Password
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  class="btn btn-primary w-100"
+                  [disabled]="loading()"
+                >
+                  @if (loading()) {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                  }
+                  Reset Password
+                </button>
+              </form>
+            </bs-form>
 
             <div class="mt-3 text-center">
               <a [routerLink]="routePaths.login">Back to login</a>

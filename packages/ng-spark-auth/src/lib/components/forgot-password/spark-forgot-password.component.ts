@@ -1,13 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 
 @Component({
   selector: 'spark-forgot-password',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
@@ -27,29 +28,30 @@ import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
               Enter your email address and we will send you a link to reset your password.
             </p>
 
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              <div class="mb-3">
-                <label for="email" class="form-label">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  class="form-control"
-                  formControlName="email"
-                  autocomplete="email"
-                />
-              </div>
+            <bs-form>
+              <form [formGroup]="form" (ngSubmit)="onSubmit()">
+                <div class="mb-3">
+                  <label for="email" class="form-label">Email</label>
+                  <input
+                    type="email"
+                    id="email"
+                    formControlName="email"
+                    autocomplete="email"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                class="btn btn-primary w-100"
-                [disabled]="loading()"
-              >
-                @if (loading()) {
-                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                Send Reset Link
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  class="btn btn-primary w-100"
+                  [disabled]="loading()"
+                >
+                  @if (loading()) {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                  }
+                  Send Reset Link
+                </button>
+              </form>
+            </bs-form>
           }
 
           <div class="mt-3 text-center">

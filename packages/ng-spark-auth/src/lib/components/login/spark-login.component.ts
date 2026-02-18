@@ -2,13 +2,15 @@ import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
 
 @Component({
   selector: 'spark-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule, BsToggleButtonModule],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
@@ -19,50 +21,44 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
             <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
           }
 
-          <form [formGroup]="form" (ngSubmit)="onSubmit()">
-            <div class="mb-3">
-              <label for="email" class="form-label">Email</label>
-              <input
-                type="text"
-                id="email"
-                class="form-control"
-                formControlName="email"
-                autocomplete="username"
-              />
-            </div>
+          <bs-form>
+            <form [formGroup]="form" (ngSubmit)="onSubmit()">
+              <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input
+                  type="text"
+                  id="email"
+                  formControlName="email"
+                  autocomplete="username"
+                />
+              </div>
 
-            <div class="mb-3">
-              <label for="password" class="form-label">Password</label>
-              <input
-                type="password"
-                id="password"
-                class="form-control"
-                formControlName="password"
-                autocomplete="current-password"
-              />
-            </div>
+              <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  formControlName="password"
+                  autocomplete="current-password"
+                />
+              </div>
 
-            <div class="mb-3 form-check">
-              <input
-                type="checkbox"
-                id="rememberMe"
-                class="form-check-input"
-                formControlName="rememberMe"
-              />
-              <label for="rememberMe" class="form-check-label">Remember me</label>
-            </div>
+              <div class="mb-3">
+                <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">Remember me</bs-toggle-button>
+              </div>
 
-            <button
-              type="submit"
-              class="btn btn-primary w-100"
-              [disabled]="loading()"
-            >
-              @if (loading()) {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-              }
-              Login
-            </button>
-          </form>
+              <button
+                type="submit"
+                class="btn btn-primary w-100"
+                [disabled]="loading()"
+              >
+                @if (loading()) {
+                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                Login
+              </button>
+            </form>
+          </bs-form>
 
           <div class="mt-3 text-center">
             <a [routerLink]="routePaths.register">Create an account</a>

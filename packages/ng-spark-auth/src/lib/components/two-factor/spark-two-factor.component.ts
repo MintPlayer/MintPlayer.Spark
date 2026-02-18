@@ -1,13 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
+import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
 
 @Component({
   selector: 'spark-two-factor',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
@@ -18,45 +19,45 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
             <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
           }
 
-          <form [formGroup]="form" (ngSubmit)="onSubmit()">
-            @if (!useRecoveryCode()) {
-              <div class="mb-3">
-                <label for="code" class="form-label">Authentication Code</label>
-                <input
-                  type="text"
-                  id="code"
-                  class="form-control"
-                  formControlName="code"
-                  autocomplete="one-time-code"
-                  maxlength="6"
-                  placeholder="Enter 6-digit code"
-                />
-              </div>
-            } @else {
-              <div class="mb-3">
-                <label for="recoveryCode" class="form-label">Recovery Code</label>
-                <input
-                  type="text"
-                  id="recoveryCode"
-                  class="form-control"
-                  formControlName="recoveryCode"
-                  autocomplete="off"
-                  placeholder="Enter recovery code"
-                />
-              </div>
-            }
-
-            <button
-              type="submit"
-              class="btn btn-primary w-100"
-              [disabled]="loading()"
-            >
-              @if (loading()) {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+          <bs-form>
+            <form [formGroup]="form" (ngSubmit)="onSubmit()">
+              @if (!useRecoveryCode()) {
+                <div class="mb-3">
+                  <label for="code" class="form-label">Authentication Code</label>
+                  <input
+                    type="text"
+                    id="code"
+                    formControlName="code"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    placeholder="Enter 6-digit code"
+                  />
+                </div>
+              } @else {
+                <div class="mb-3">
+                  <label for="recoveryCode" class="form-label">Recovery Code</label>
+                  <input
+                    type="text"
+                    id="recoveryCode"
+                    formControlName="recoveryCode"
+                    autocomplete="off"
+                    placeholder="Enter recovery code"
+                  />
+                </div>
               }
-              Verify
-            </button>
-          </form>
+
+              <button
+                type="submit"
+                class="btn btn-primary w-100"
+                [disabled]="loading()"
+              >
+                @if (loading()) {
+                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                Verify
+              </button>
+            </form>
+          </bs-form>
 
           <div class="mt-3 text-center">
             <button class="btn btn-link" (click)="toggleRecoveryCode()">

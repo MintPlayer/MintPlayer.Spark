@@ -21,6 +21,9 @@
       "@angular/common/http": ["./node_modules/@angular/common/types/http"],
       "@angular/router": ["./node_modules/@angular/router"],
       "@angular/forms": ["./node_modules/@angular/forms"],
+      "@mintplayer/ng-bootstrap/form": ["./node_modules/@mintplayer/ng-bootstrap/types/mintplayer-ng-bootstrap-form"],
+      "@mintplayer/ng-bootstrap/grid": ["./node_modules/@mintplayer/ng-bootstrap/types/mintplayer-ng-bootstrap-grid"],
+      "@mintplayer/ng-bootstrap/toggle-button": ["./node_modules/@mintplayer/ng-bootstrap/types/mintplayer-ng-bootstrap-toggle-button"],
       "rxjs": ["./node_modules/rxjs"],
       "tslib": ["./node_modules/tslib"]
     }
