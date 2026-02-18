@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Authorization.Endpoints;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
@@ -54,15 +57,21 @@ public static class SparkAuthenticationExtensions
     }
 
     /// <summary>
-    /// Maps the ASP.NET Core Identity API endpoints for Spark authentication.
-    /// Provides: POST /register, POST /login, POST /refresh, GET /confirmEmail,
-    /// POST /forgotPassword, POST /resetPassword, POST /manage/2fa, GET /manage/info, POST /manage/info.
+    /// Maps the ASP.NET Core Identity API endpoints for Spark authentication
+    /// under the <c>/spark/auth</c> route prefix.
+    /// Provides: POST /spark/auth/register, POST /spark/auth/login, POST /spark/auth/refresh,
+    /// GET /spark/auth/confirmEmail, POST /spark/auth/forgotPassword, POST /spark/auth/resetPassword,
+    /// POST /spark/auth/manage/2fa, GET /spark/auth/manage/info, POST /spark/auth/manage/info,
+    /// GET /spark/auth/me, POST /spark/auth/logout.
     /// </summary>
     public static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(
         this IEndpointRouteBuilder endpoints)
         where TUser : SparkUser, new()
     {
-        endpoints.MapIdentityApi<TUser>();
+        var authGroup = endpoints.MapGroup("/spark/auth");
+        authGroup.MapIdentityApi<TUser>();
+        authGroup.MapGet("/me", GetCurrentUser.Handle);
+        authGroup.MapPost("/logout", (Delegate)Logout.Handle);
         return endpoints;
     }
 }

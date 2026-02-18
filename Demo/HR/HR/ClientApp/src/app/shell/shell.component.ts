@@ -7,12 +7,13 @@ import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggle
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent, SparkAuthBarComponent],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

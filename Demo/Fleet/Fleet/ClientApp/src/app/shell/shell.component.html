@@ -1,9 +1,12 @@
-<div class="position-fixed w-100 bg-dark top-bar">
+<div class="position-fixed w-100 bg-dark top-bar d-flex align-items-center">
   <bs-navbar-toggler class="sidebar-toggle"
                      [class.sidebar-open]="isSidebarVisible()"
                      [state]="isSidebarVisible()"
                      (stateChange)="toggleSidebar($event)">
   </bs-navbar-toggler>
+  <div class="ms-auto me-3">
+    <spark-auth-bar />
+  </div>
 </div>
 <bs-shell [state]="shellState()" [breakpoint]="'md'">
   <nav *bsShellSidebar class="sidebar-inner text-light p-2">
