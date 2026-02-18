@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { sparkAuthRoutes } from '@mintplayer/ng-spark-auth';
 import { ShellComponent } from './shell/shell.component';
 
 export const routes: Routes = [
@@ -6,6 +7,7 @@ export const routes: Routes = [
     path: '',
     component: ShellComponent,
     children: [
+      ...sparkAuthRoutes(),
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
       { path: 'query/:queryId', loadComponent: () => import('./pages/query-list/query-list.component') },

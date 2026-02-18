@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -20,7 +21,15 @@ public sealed partial class ListPersistentObjects
             return;
         }
 
-        var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);
-        await httpContext.Response.WriteAsJsonAsync(objects);
+        try
+        {
+            var objects = await databaseAccess.GetPersistentObjectsAsync(entityType.Id);
+            await httpContext.Response.WriteAsJsonAsync(objects);
+        }
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+        }
     }
 }

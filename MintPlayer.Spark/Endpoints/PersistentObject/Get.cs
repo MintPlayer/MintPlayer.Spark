@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
@@ -20,16 +21,24 @@ public sealed partial class GetPersistentObject
             return;
         }
 
-        var decodedId = Uri.UnescapeDataString(id);
-        var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
-
-        if (obj is null)
+        try
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
-            return;
-        }
+            var decodedId = Uri.UnescapeDataString(id);
+            var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
 
-        await httpContext.Response.WriteAsJsonAsync(obj);
+            if (obj is null)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+                await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
+                return;
+            }
+
+            await httpContext.Response.WriteAsJsonAsync(obj);
+        }
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+        }
     }
 }

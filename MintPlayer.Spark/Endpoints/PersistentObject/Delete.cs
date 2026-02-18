@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -23,16 +24,6 @@ public sealed partial class DeletePersistentObject
             return;
         }
 
-        var decodedId = Uri.UnescapeDataString(id);
-        var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
-
-        if (obj is null)
-        {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
-            return;
-        }
-
         // Read retry state from body if present (body is normally empty for DELETE)
         if (httpContext.Request.ContentLength > 0)
         {
@@ -46,6 +37,16 @@ public sealed partial class DeletePersistentObject
 
         try
         {
+            var decodedId = Uri.UnescapeDataString(id);
+            var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
+
+            if (obj is null)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+                await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
+                return;
+            }
+
             await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
             httpContext.Response.StatusCode = StatusCodes.Status204NoContent;
         }
@@ -62,6 +63,11 @@ public sealed partial class DeletePersistentObject
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
             });
+        }
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
         }
     }
 }
