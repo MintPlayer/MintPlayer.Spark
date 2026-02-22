@@ -1,10 +1,17 @@
 {
   "groups": {
+    "00000000-0000-0000-0000-000000000000": "Everyone",
     "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
     "a1b2c3d4-0000-0000-0000-000000000002": "Fleet managers",
     "a1b2c3d4-0000-0000-0000-000000000003": "Viewers"
   },
   "rights": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "resource": "QueryRead/Fleet.Replicated.Company",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
     {
       "id": "f0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/Fleet.Entities.Car",

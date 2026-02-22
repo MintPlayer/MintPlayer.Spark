@@ -1,10 +1,17 @@
 {
   "groups": {
+    "00000000-0000-0000-0000-000000000000": "Everyone",
     "b1b2c3d4-0000-0000-0000-000000000001": "Administrators",
     "b1b2c3d4-0000-0000-0000-000000000002": "HR managers",
     "b1b2c3d4-0000-0000-0000-000000000003": "Viewers"
   },
   "rights": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "resource": "QueryRead/HR.Entities.Company",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
     {
       "id": "a0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/HR.Entities.Person",

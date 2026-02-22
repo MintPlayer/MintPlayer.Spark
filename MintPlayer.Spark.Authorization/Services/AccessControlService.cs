@@ -33,27 +33,33 @@ internal partial class AccessControlService : IAccessControl
         ["ReadEditNewDelete"] = ["Read", "Edit", "New", "Delete"],
     };
 
+    /// <summary>
+    /// Well-known group name that applies to all users, including anonymous/unauthenticated users.
+    /// </summary>
+    private const string EveryoneGroupName = "Everyone";
+
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
     {
         var config = configLoader.GetConfiguration();
         var groupNames = await groupMembershipProvider.GetCurrentUserGroupsAsync(cancellationToken);
         var groupNamesList = groupNames.ToList();
 
-        // No groups = no access (unless default allows)
-        if (groupNamesList.Count == 0)
-        {
-            var defaultResult = options.Value.DefaultBehavior == DefaultAccessBehavior.AllowAll;
-            LogAuthorizationDecision(resource, groupNamesList, defaultResult, "no groups (default behavior)");
-            return defaultResult;
-        }
-
         // Resolve group names to IDs
         var groupIds = ResolveGroupIds(config, groupNamesList);
 
+        // Always include the "Everyone" group if it exists in the configuration
+        var everyoneGroup = config.Groups
+            .FirstOrDefault(g => string.Equals(g.Value, EveryoneGroupName, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(everyoneGroup.Key) && Guid.TryParse(everyoneGroup.Key, out var everyoneGroupId))
+        {
+            groupIds.Add(everyoneGroupId);
+        }
+
+        // No groups (not even Everyone) = no access (unless default allows)
         if (groupIds.Count == 0)
         {
             var defaultResult = options.Value.DefaultBehavior == DefaultAccessBehavior.AllowAll;
-            LogAuthorizationDecision(resource, groupNamesList, defaultResult, "no matching group IDs found (default behavior)");
+            LogAuthorizationDecision(resource, groupNamesList, defaultResult, "no groups (default behavior)");
             return defaultResult;
         }
 
