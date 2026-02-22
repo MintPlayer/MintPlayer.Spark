@@ -73,8 +73,16 @@ public sealed partial class CreatePersistentObject
         }
         catch (SparkAccessDeniedException)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+            if (httpContext.User.Identity?.IsAuthenticated != true)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+            }
+            else
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+            }
         }
     }
 }

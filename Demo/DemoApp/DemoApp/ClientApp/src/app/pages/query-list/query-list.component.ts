@@ -150,11 +150,17 @@ export default class QueryListComponent implements OnInit {
       this.query.id,
       this.settings.sortProperty || undefined,
       this.settings.sortProperty ? sortDirection : undefined
-    ).subscribe(items => {
-      this.allItems = items;
-      this.currentSortProperty = this.settings.sortProperty;
-      this.currentSortDirection = this.settings.sortDirection;
-      this.applyFilter();
+    ).subscribe({
+      next: items => {
+        this.allItems = items;
+        this.currentSortProperty = this.settings.sortProperty;
+        this.currentSortDirection = this.settings.sortDirection;
+        this.applyFilter();
+      },
+      error: () => {
+        this.allItems = [];
+        this.applyFilter();
+      }
     });
   }
 
