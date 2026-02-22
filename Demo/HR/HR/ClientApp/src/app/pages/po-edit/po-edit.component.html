@@ -1,13 +1,12 @@
 <div class="container">
+  @for (error of getGeneralErrors(); track error.errorMessage) {
+    <bs-alert [type]="colors.danger" class="mb-3">
+      {{ error.errorMessage }}
+    </bs-alert>
+  }
+
   @if (entityType && item) {
     <h2 class="mb-4">Edit {{ entityType.name }}</h2>
-
-    <!-- General validation errors -->
-    @for (error of getGeneralErrors(); track error.errorMessage) {
-      <bs-alert [type]="colors.danger" class="mb-3">
-        {{ error.errorMessage }}
-      </bs-alert>
-    }
 
     <div class="card">
       <div class="card-body">

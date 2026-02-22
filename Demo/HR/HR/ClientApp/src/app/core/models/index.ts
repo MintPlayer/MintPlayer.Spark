@@ -8,3 +8,4 @@ export * from './spark-query';
 export * from './program-unit';
 export * from './lookup-reference';
 export * from './retry-action';
+export * from './entity-permissions';

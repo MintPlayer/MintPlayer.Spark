@@ -2,6 +2,9 @@ import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject }
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
@@ -14,7 +17,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -25,6 +28,8 @@ export default class QueryListComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  colors = Color;
+  errorMessage: string | null = null;
   query: SparkQuery | null = null;
   entityType: EntityType | null = null;
   allEntityTypes: EntityType[] = [];
@@ -32,6 +37,7 @@ export default class QueryListComponent implements OnInit {
   lookupReferenceOptions: Record<string, LookupReference> = {};
   paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
+  canCreate = false;
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -97,6 +103,10 @@ export default class QueryListComponent implements OnInit {
         });
         this.loadLookupReferenceOptions();
         this.cdr.markForCheck();
+        this.sparkService.getPermissions(this.entityType!.id).subscribe(p => {
+          this.canCreate = p.canCreate;
+          this.cdr.markForCheck();
+        });
         this.loadItems();
       }
     });
@@ -150,11 +160,19 @@ export default class QueryListComponent implements OnInit {
       this.query.id,
       this.settings.sortProperty || undefined,
       this.settings.sortProperty ? sortDirection : undefined
-    ).subscribe(items => {
-      this.allItems = items;
-      this.currentSortProperty = this.settings.sortProperty;
-      this.currentSortDirection = this.settings.sortDirection;
-      this.applyFilter();
+    ).subscribe({
+      next: items => {
+        this.errorMessage = null;
+        this.allItems = items;
+        this.currentSortProperty = this.settings.sortProperty;
+        this.currentSortDirection = this.settings.sortDirection;
+        this.applyFilter();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred';
+        this.allItems = [];
+        this.applyFilter();
+      }
     });
   }
 

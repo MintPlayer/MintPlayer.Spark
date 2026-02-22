@@ -10,6 +10,7 @@ using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.Aliases;
 using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.LookupReferences;
+using MintPlayer.Spark.Endpoints.Permissions;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.ProgramUnits;
 using MintPlayer.Spark.Endpoints.Queries;
@@ -305,6 +306,10 @@ public static class SparkExtensions
         // Program Units endpoint
         sparkGroup.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
             await action.HandleAsync(context));
+
+        // Permissions endpoint
+        sparkGroup.MapGet("/permissions/{entityTypeId}", async (HttpContext context, string entityTypeId, GetPermissions action) =>
+            await action.HandleAsync(context, entityTypeId));
 
         // Aliases endpoint
         sparkGroup.MapGet("/aliases", async (HttpContext context, GetAliases action) =>

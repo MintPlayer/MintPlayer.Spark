@@ -1,6 +1,9 @@
 import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
@@ -10,7 +13,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsButtonGroupComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
@@ -19,12 +22,16 @@ export default class PoDetailComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  colors = Color;
+  errorMessage: string | null = null;
   entityType: EntityType | null = null;
   allEntityTypes: EntityType[] = [];
   item: PersistentObject | null = null;
   lookupReferenceOptions: Record<string, LookupReference> = {};
   type: string = '';
   id: string = '';
+  canEdit = false;
+  canDelete = false;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -36,12 +43,25 @@ export default class PoDetailComponent implements OnInit {
           item: this.sparkService.get(this.type, this.id)
         });
       })
-    ).subscribe(result => {
-      this.allEntityTypes = result.entityTypes;
-      this.entityType = result.entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
-      this.item = result.item;
-      this.loadLookupReferenceOptions();
-      this.cdr.detectChanges();
+    ).subscribe({
+      next: result => {
+        this.allEntityTypes = result.entityTypes;
+        this.entityType = result.entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
+        this.item = result.item;
+        this.loadLookupReferenceOptions();
+        this.cdr.detectChanges();
+        if (this.entityType) {
+          this.sparkService.getPermissions(this.entityType.id).subscribe(p => {
+            this.canEdit = p.canEdit;
+            this.canDelete = p.canDelete;
+            this.cdr.detectChanges();
+          });
+        }
+      },
+      error: (error: HttpErrorResponse) => {
+        this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred';
+        this.cdr.detectChanges();
+      }
     });
   }
 

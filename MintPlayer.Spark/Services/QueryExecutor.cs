@@ -65,7 +65,7 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         // Determine result type and index to use
         Type resultType = entityType;

@@ -1,61 +1,86 @@
 {
   "groups": {
+    "00000000-0000-0000-0000-000000000000": "Everyone",
     "b1b2c3d4-0000-0000-0000-000000000001": "Administrators",
     "b1b2c3d4-0000-0000-0000-000000000002": "HR managers",
     "b1b2c3d4-0000-0000-0000-000000000003": "Viewers"
   },
   "rights": [
     {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "resource": "QueryRead/Company",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
       "id": "a0000001-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNewDelete/HR.Entities.Person",
+      "resource": "QueryReadEditNewDelete/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "a0000001-0000-0000-0000-000000000002",
-      "resource": "QueryReadEditNewDelete/HR.Entities.Company",
+      "resource": "QueryReadEditNewDelete/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "a0000001-0000-0000-0000-000000000003",
-      "resource": "QueryReadEditNewDelete/HR.Entities.Address",
+      "resource": "QueryReadEditNewDelete/Address",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "a0000001-0000-0000-0000-000000000004",
+      "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "b0000002-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNew/HR.Entities.Person",
+      "resource": "QueryReadEditNew/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "b0000002-0000-0000-0000-000000000002",
-      "resource": "QueryReadEditNew/HR.Entities.Company",
+      "resource": "QueryReadEditNew/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "b0000002-0000-0000-0000-000000000003",
-      "resource": "QueryReadEditNew/HR.Entities.Address",
+      "resource": "QueryReadEditNew/Address",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000004",
+      "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "c0000003-0000-0000-0000-000000000001",
-      "resource": "QueryRead/HR.Entities.Person",
+      "resource": "QueryRead/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
       "id": "c0000003-0000-0000-0000-000000000002",
-      "resource": "QueryRead/HR.Entities.Company",
+      "resource": "QueryRead/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
       "id": "c0000003-0000-0000-0000-000000000003",
-      "resource": "QueryRead/HR.Entities.Address",
+      "resource": "QueryRead/Address",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "c0000003-0000-0000-0000-000000000004",
+      "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     }

@@ -1,7 +1,5 @@
 <div class="position-fixed w-100 bg-dark top-bar d-flex align-items-center">
-  <bs-navbar-toggler class="sidebar-toggle"
-                     [class.sidebar-open]="isSidebarVisible()"
-                     [state]="isSidebarVisible()"
+  <bs-navbar-toggler [state]="isSidebarVisible()"
                      (stateChange)="toggleSidebar($event)">
   </bs-navbar-toggler>
   <div class="ms-auto me-3">

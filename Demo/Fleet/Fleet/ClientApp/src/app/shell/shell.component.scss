@@ -57,17 +57,3 @@ main {
   background: #333;
 }
 
-// Sidebar toggle button - slides with sidebar
-bs-navbar-toggler.sidebar-toggle {
-  left: 0;
-  transform: translateX(0);
-  transition: left 0.3s ease-in-out;
-  transition: transform 0.3s ease-in-out;
-}
-
-// When sidebar is open (state='show'), slide the toggle to the right
-bs-navbar-toggler.sidebar-toggle.sidebar-open {
-  left: 50%;
-  transform: translateX(-50%);
-  /*transform: translateX(var(--size, 15rem));*/
-}
