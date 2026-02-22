@@ -12,6 +12,8 @@ concurrency:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -30,6 +32,15 @@ jobs:
         source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       env:
         NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install npm dependencies (ng-spark-auth)
+      run: npm ci
+      working-directory: packages/ng-spark-auth
 
     - name: Install dependencies
       run: dotnet restore
@@ -52,3 +63,21 @@ jobs:
       run: dotnet nuget push **/*.nupkg --no-symbols --skip-duplicate
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    - name: Push ng-spark-auth to NPM
+      uses: JS-DevTools/npm-publish@v3
+      with:
+        package: 'packages/ng-spark-auth/dist/package.json'
+        registry: 'https://registry.npmjs.org'
+        token: ${{ secrets.PUBLISH_TO_NPMJS }}
+        access: 'public'
+        provenance: true
+
+    - name: Push ng-spark-auth to Github
+      uses: JS-DevTools/npm-publish@v3
+      with:
+        package: 'packages/ng-spark-auth/dist/package.json'
+        registry: 'https://npm.pkg.github.com'
+        token: ${{ github.token }}
+        access: 'public'
+        provenance: true

@@ -125,7 +125,7 @@ export class SparkRegisterComponent {
       error: (err: HttpErrorResponse) => {
         this.loading.set(false);
         if (err.status === 400 && err.error?.errors) {
-          const messages = Object.values(err.error.errors).flat();
+          const messages = ([] as string[]).concat(...Object.values(err.error.errors) as string[][]);
           this.errorMessage.set(messages.join(' '));
         } else if (err.error?.detail) {
           this.errorMessage.set(err.error.detail);

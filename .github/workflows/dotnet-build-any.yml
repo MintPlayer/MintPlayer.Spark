@@ -29,6 +29,15 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install npm dependencies (ng-spark-auth)
+      run: npm ci
+      working-directory: packages/ng-spark-auth
+
     - name: Install dependencies
       run: dotnet restore
       env:
