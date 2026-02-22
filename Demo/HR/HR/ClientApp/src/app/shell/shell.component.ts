@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
@@ -7,7 +7,7 @@ import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggle
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
-import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth';
+import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
 
@@ -20,6 +20,7 @@ import { fromEvent } from 'rxjs';
 })
 export class ShellComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
+  private readonly authService = inject(SparkAuthService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
@@ -33,9 +34,18 @@ export class ShellComponent implements OnInit {
       this.setupResizeListener();
       this.updateSidebarVisibility();
     });
+
+    // Re-fetch program units whenever auth state changes (login/logout)
+    effect(() => {
+      this.authService.user(); // track the signal
+      this.loadProgramUnits();
+    });
   }
 
   ngOnInit(): void {
+  }
+
+  private loadProgramUnits(): void {
     this.sparkService.getProgramUnits().subscribe(config => {
       this.programUnitGroups = config.programUnitGroups.sort((a, b) => a.order - b.order);
       this.cdr.markForCheck();
