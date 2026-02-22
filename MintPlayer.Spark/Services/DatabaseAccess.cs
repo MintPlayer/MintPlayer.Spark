@@ -78,7 +78,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return null;
 
-        await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -105,7 +105,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return [];
 
-        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
@@ -147,7 +147,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
         var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
-        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
 
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
@@ -178,7 +178,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return;
 
-        await permissionService.EnsureAuthorizedAsync("Delete", entityTypeDefinition.ClrType);
+        await permissionService.EnsureAuthorizedAsync("Delete", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);

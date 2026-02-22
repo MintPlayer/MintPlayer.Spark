@@ -8,79 +8,79 @@
   "rights": [
     {
       "id": "00000000-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Fleet.Replicated.Company",
+      "resource": "QueryRead/Company",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
       "id": "f0000001-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNewDelete/Fleet.Entities.Car",
+      "resource": "QueryReadEditNewDelete/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "f0000001-0000-0000-0000-000000000002",
-      "resource": "QueryReadEditNewDelete/Fleet.LookupReferences.CarBrand",
+      "resource": "QueryReadEditNewDelete/CarBrand",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "f0000001-0000-0000-0000-000000000003",
-      "resource": "QueryReadEditNewDelete/Fleet.LookupReferences.CarStatus",
+      "resource": "QueryReadEditNewDelete/CarStatus",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "f0000001-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Fleet.Replicated.Person",
+      "resource": "QueryRead/Person",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
       "id": "f0000002-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNew/Fleet.Entities.Car",
+      "resource": "QueryReadEditNew/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "f0000002-0000-0000-0000-000000000002",
-      "resource": "QueryRead/Fleet.LookupReferences.CarBrand",
+      "resource": "QueryRead/CarBrand",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "f0000002-0000-0000-0000-000000000003",
-      "resource": "QueryRead/Fleet.LookupReferences.CarStatus",
+      "resource": "QueryRead/CarStatus",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "f0000002-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Fleet.Replicated.Person",
+      "resource": "QueryRead/Person",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
       "id": "f0000003-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Fleet.Entities.Car",
+      "resource": "QueryRead/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
       "id": "f0000003-0000-0000-0000-000000000002",
-      "resource": "QueryRead/Fleet.LookupReferences.CarBrand",
+      "resource": "QueryRead/CarBrand",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
       "id": "f0000003-0000-0000-0000-000000000003",
-      "resource": "QueryRead/Fleet.LookupReferences.CarStatus",
+      "resource": "QueryRead/CarStatus",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
       "id": "f0000003-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Fleet.Replicated.Person",
+      "resource": "QueryRead/Person",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     }

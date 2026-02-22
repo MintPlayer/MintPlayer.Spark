@@ -20,7 +20,7 @@ public sealed partial class GetPermissions
             return;
         }
 
-        var target = entityType.ClrType;
+        var target = entityType.Name;
         var canCreate = await permissionService.IsAllowedAsync("New", target);
         var canEdit = await permissionService.IsAllowedAsync("Edit", target);
         var canDelete = await permissionService.IsAllowedAsync("Delete", target);

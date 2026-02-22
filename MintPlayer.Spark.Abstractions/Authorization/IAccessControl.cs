@@ -11,9 +11,9 @@ public interface IAccessControl
     /// </summary>
     /// <param name="resource">The resource identifier. Format examples:
     /// <list type="bullet">
-    /// <item><description>"Read/DemoApp.Person" - Read access to Person entity</description></item>
-    /// <item><description>"Edit/DemoApp.Person/Salary" - Edit access to Salary property</description></item>
-    /// <item><description>"Execute/GetActiveEmployees" - Execute query permission</description></item>
+    /// <item><description>"Read/Person" - Read access to Person PersistentObject</description></item>
+    /// <item><description>"Edit/Person" - Edit access to Person PersistentObject</description></item>
+    /// <item><description>"Query/Person" - Query/list access to Person PersistentObject</description></item>
     /// </list>
     /// </param>
     /// <param name="cancellationToken">Cancellation token</param>

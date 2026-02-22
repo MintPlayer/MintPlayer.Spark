@@ -79,7 +79,7 @@ public sealed partial class GetProgramUnits
                 var entityTypeDef = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
                 if (entityTypeDef is not null)
                 {
-                    map[property.Name] = entityTypeDef.ClrType;
+                    map[property.Name] = entityTypeDef.Name;
                 }
             }
         }
@@ -96,7 +96,7 @@ public sealed partial class GetProgramUnits
         if (string.Equals(unit.Type, "persistentObject", StringComparison.OrdinalIgnoreCase)
             && unit.PersistentObjectId.HasValue)
         {
-            return modelLoader.GetEntityType(unit.PersistentObjectId.Value)?.ClrType;
+            return modelLoader.GetEntityType(unit.PersistentObjectId.Value)?.Name;
         }
 
         if (string.Equals(unit.Type, "query", StringComparison.OrdinalIgnoreCase)
