@@ -1,0 +1,74 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  Target: SparkAuthEnsureNpmPackage
+	  Installs @mintplayer/ng-spark-auth via npm if:
+	    - EnableSparkAuthSpa is true
+	    - A package.json exists in $(SpaRoot) (project has a SPA)
+	    - The package is not already in node_modules
+	    - No stamp file from a previous attempt exists (delete obj/ or run dotnet clean to retry)
+	  Runs BeforeTargets="Build", AfterTargets="DebugEnsureNodeEnv" to ensure
+	  base npm install has run first (if NodeServices is present).
+	  AfterTargets silently ignored if DebugEnsureNodeEnv does not exist.
+	-->
+	<Target Name="SparkAuthEnsureNpmPackage"
+	        BeforeTargets="Build"
+	        AfterTargets="DebugEnsureNodeEnv"
+	        Condition=" '$(EnableSparkAuthSpa)' == 'true'
+	                    And Exists('$(SpaRoot)package.json')
+	                    And !Exists('$(SpaRoot)node_modules\$(SparkAuthNpmPackage)')
+	                    And !Exists('$(SparkAuthNpmStampFile)') ">
+
+		<!-- Check if Node.js is available -->
+		<Exec Command="node --version" ContinueOnError="true">
+			<Output TaskParameter="ExitCode" PropertyName="_SparkAuthNodeExitCode" />
+		</Exec>
+
+		<!-- If Node.js is not installed, warn and skip -->
+		<Warning Condition="'$(_SparkAuthNodeExitCode)' != '0'"
+		         Text="[MintPlayer.Spark.Authorization] Node.js is not installed. Skipping npm install of $(SparkAuthNpmPackage). Install Node.js from https://nodejs.org/ to enable automatic setup." />
+
+		<!-- Run npm install (ContinueOnError in case package is not yet published to npm) -->
+		<Message Importance="high"
+		         Text="[MintPlayer.Spark.Authorization] Installing $(SparkAuthNpmPackage)..."
+		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
+
+		<Exec WorkingDirectory="$(SpaRoot)"
+		      Command="npm install $(SparkAuthNpmPackage) --save"
+		      ContinueOnError="WarnAndContinue"
+		      Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
+
+		<!-- Write stamp file after install attempt -->
+		<MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SparkAuthNpmStampFile)'))"
+		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
+		<WriteLinesToFile File="$(SparkAuthNpmStampFile)"
+		                  Lines="$(SparkAuthNpmPackage) installed at $([System.DateTime]::Now.ToString('o'))"
+		                  Overwrite="true"
+		                  Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
+	</Target>
+
+	<!--
+	  Target: SparkAuthGenerateSetupFile
+	  Generates a TypeScript setup/scaffolding file if it doesn't already exist.
+	  The file is generated ONCE and never overwritten, so developers can customize it.
+	-->
+	<Target Name="SparkAuthGenerateSetupFile"
+	        BeforeTargets="Build"
+	        DependsOnTargets="SparkAuthEnsureNpmPackage"
+	        Condition=" '$(EnableSparkAuthSpa)' == 'true'
+	                    And Exists('$(SpaRoot)package.json')
+	                    And !Exists('$(SparkAuthSetupFile)') ">
+
+		<Message Importance="high"
+		         Text="[MintPlayer.Spark.Authorization] Generating $(SparkAuthSetupFile)..." />
+
+		<MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SparkAuthSetupFile)'))" />
+
+		<Copy SourceFiles="$(MSBuildThisFileDirectory)spark-auth.setup.template.ts"
+		      DestinationFiles="$(SparkAuthSetupFile)" />
+
+		<Message Importance="high"
+		         Text="[MintPlayer.Spark.Authorization] Generated $(SparkAuthSetupFile). You can customize this file - it will not be overwritten." />
+	</Target>
+
+</Project>

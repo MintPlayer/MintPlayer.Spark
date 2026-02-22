@@ -36,4 +36,18 @@
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!--
+		These targets apply when the package is installed via NuGet.
+		buildTransitive makes them flow to transitive consumers as well.
+		-->
+		<None Include="Targets\spark-authorization.props" Pack="true"
+		      PackagePath="buildTransitive/$(PackageId).props" />
+		<None Include="Targets\spark-authorization.targets" Pack="true"
+		      PackagePath="buildTransitive/$(PackageId).targets" />
+		<!-- Template file for generated setup TypeScript -->
+		<None Include="Targets\spark-auth.setup.template.ts" Pack="true"
+		      PackagePath="buildTransitive/" />
+	</ItemGroup>
+
 </Project>
