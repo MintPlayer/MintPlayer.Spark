@@ -19,8 +19,13 @@
       "showedOn": "PersistentObject",
       "rules": [
         {
+          "type": "minLength",
+          "value": 2,
+          "message": "First Name must be at least 2 characters."
+        },
+        {
           "type": "maxLength",
-          "value": 100
+          "value": 50
         }
       ]
     },
@@ -37,8 +42,13 @@
       "showedOn": "PersistentObject",
       "rules": [
         {
+          "type": "minLength",
+          "value": 2,
+          "message": "Last Name must be at least 2 characters."
+        },
+        {
           "type": "maxLength",
-          "value": 100
+          "value": 50
         }
       ]
     },

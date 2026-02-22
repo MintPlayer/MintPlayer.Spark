@@ -18,6 +18,11 @@
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
+          "type": "minLength",
+          "value": 2,
+          "message": "Company Name must be at least 2 characters."
+        },
+        {
           "type": "maxLength",
           "value": 200
         }
