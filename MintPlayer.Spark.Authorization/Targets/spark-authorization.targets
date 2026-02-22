@@ -34,7 +34,7 @@
 		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
 
 		<Exec WorkingDirectory="$(SpaRoot)"
-		      Command="npm install $(SparkAuthNpmPackage) --save"
+		      Command="npm i $(SparkAuthNpmPackage)"
 		      ContinueOnError="WarnAndContinue"
 		      Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
 
