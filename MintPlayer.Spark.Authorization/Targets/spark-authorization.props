@@ -7,6 +7,9 @@
 		     Default to ClientApp\ if not already defined. -->
 		<SpaRoot Condition=" '$(SpaRoot)' == '' ">ClientApp\</SpaRoot>
 
+		<!-- Set to false to skip generating the TypeScript setup file -->
+		<GenerateSparkAuthSetupFile Condition=" '$(GenerateSparkAuthSetupFile)' == '' ">true</GenerateSparkAuthSetupFile>
+
 		<!-- Path where the generated setup file will be placed -->
 		<SparkAuthSetupFile Condition=" '$(SparkAuthSetupFile)' == '' ">$(SpaRoot)src\spark-auth.setup.ts</SparkAuthSetupFile>
 

@@ -158,6 +158,7 @@ Customize the build targets by setting these properties in your `.csproj`:
 | Property | Default | Description |
 |----------|---------|-------------|
 | `EnableSparkAuthSpa` | `true` | Master switch for all SPA-related targets |
+| `GenerateSparkAuthSetupFile` | `true` | Set to `false` to skip generating the TypeScript setup file |
 | `SpaRoot` | `ClientApp\` | Path to the SPA source directory |
 | `SparkAuthSetupFile` | `$(SpaRoot)src\spark-auth.setup.ts` | Path for the generated TypeScript file |
 | `SparkAuthNpmPackage` | `@mintplayer/ng-spark-auth` | npm package to install |
