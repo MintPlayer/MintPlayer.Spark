@@ -2,6 +2,9 @@ using System.Text.RegularExpressions;
 using Fleet;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Authorization;
+using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
@@ -10,6 +13,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration);
 builder.Services.AddScoped<SparkContext, FleetContext>();
+
+builder.Services.AddSparkAuthorization();
+builder.Services.AddSparkAuthentication<SparkUser>();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = ".SparkAuth.Fleet";
+});
 
 builder.Services.AddSparkMessaging();
 
@@ -35,7 +45,9 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
+app.UseAuthentication();
 app.UseAuthorization();
+app.UseSparkAntiforgery();
 app.UseSpark();
 app.CreateSparkIndexes();
 app.CreateSparkMessagingIndexes();
@@ -47,6 +59,7 @@ app.UseEndpoints(endpoints =>
     endpoints.MapControllers();
     endpoints.MapSpark();
     endpoints.MapSparkReplication();
+    endpoints.MapSparkIdentityApi<SparkUser>();
 });
 
 app.MapWhen(

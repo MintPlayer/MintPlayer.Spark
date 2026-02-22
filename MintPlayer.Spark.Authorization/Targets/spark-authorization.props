@@ -1,0 +1,22 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<PropertyGroup>
+		<!-- Master switch to enable/disable all Spark Authorization SPA targets -->
+		<EnableSparkAuthSpa Condition=" '$(EnableSparkAuthSpa)' == '' ">true</EnableSparkAuthSpa>
+
+		<!-- SpaRoot is expected to be set by the project or NodeServices.
+		     Default to ClientApp\ if not already defined. -->
+		<SpaRoot Condition=" '$(SpaRoot)' == '' ">ClientApp\</SpaRoot>
+
+		<!-- Set to false to skip generating the TypeScript setup file -->
+		<GenerateSparkAuthSetupFile Condition=" '$(GenerateSparkAuthSetupFile)' == '' ">true</GenerateSparkAuthSetupFile>
+
+		<!-- Path where the generated setup file will be placed -->
+		<SparkAuthSetupFile Condition=" '$(SparkAuthSetupFile)' == '' ">$(SpaRoot)src\spark-auth.setup.ts</SparkAuthSetupFile>
+
+		<!-- npm package name to install -->
+		<SparkAuthNpmPackage Condition=" '$(SparkAuthNpmPackage)' == '' ">@mintplayer/ng-spark-auth</SparkAuthNpmPackage>
+
+		<!-- Stamp file to avoid running npm install on every build -->
+		<SparkAuthNpmStampFile Condition=" '$(SparkAuthNpmStampFile)' == '' ">$(BaseIntermediateOutputPath)spark-auth-npm.stamp</SparkAuthNpmStampFile>
+	</PropertyGroup>
+</Project>

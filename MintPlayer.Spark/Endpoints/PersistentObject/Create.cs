@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -69,6 +70,11 @@ public sealed partial class CreatePersistentObject
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
             });
+        }
+        catch (SparkAccessDeniedException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
         }
     }
 }

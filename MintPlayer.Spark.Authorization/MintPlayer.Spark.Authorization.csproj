@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Authorization</PackageId>
+		<Version>10.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
+		<PackageTags>low-code;framework;authorization;security;access-control</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.17.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.17.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="10.2.1" />
+		<PackageReference Include="RavenDB.Client" Version="7.1.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		These targets apply when the package is installed via NuGet.
+		buildTransitive makes them flow to transitive consumers as well.
+		-->
+		<None Include="Targets\spark-authorization.props" Pack="true"
+		      PackagePath="buildTransitive/$(PackageId).props" />
+		<None Include="Targets\spark-authorization.targets" Pack="true"
+		      PackagePath="buildTransitive/$(PackageId).targets" />
+		<!-- Template file for generated setup TypeScript -->
+		<None Include="Targets\spark-auth.setup.template.ts" Pack="true"
+		      PackagePath="buildTransitive/" />
+	</ItemGroup>
+
+</Project>
