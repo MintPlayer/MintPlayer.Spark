@@ -11,26 +11,46 @@
       "name": "FirstName",
       "label": "First Name",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
       "inQueryType": false,
       "showedOn": "PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "First Name must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 50
+        }
+      ]
     },
     {
       "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
       "name": "LastName",
       "label": "Last Name",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
       "inQueryType": false,
       "showedOn": "PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "Last Name must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 50
+        }
+      ]
     },
     {
       "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
@@ -42,7 +62,15 @@
       "isReadOnly": false,
       "order": 3,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "email"
+        },
+        {
+          "type": "maxLength",
+          "value": 255
+        }
+      ]
     },
     {
       "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
@@ -83,7 +111,12 @@
       "order": 6,
       "inQueryType": false,
       "showedOn": "PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "maxLength",
+          "value": 200
+        }
+      ]
     },
     {
       "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",

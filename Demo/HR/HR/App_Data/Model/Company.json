@@ -9,12 +9,22 @@
       "name": "Name",
       "label": "Name",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "Company Name must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 200
+        }
+      ]
     },
     {
       "id": "fbe3da33-f8db-4eb2-9307-eaf38f59ef71",
@@ -26,7 +36,11 @@
       "isReadOnly": false,
       "order": 2,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "url"
+        }
+      ]
     },
     {
       "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
@@ -38,7 +52,13 @@
       "isReadOnly": false,
       "order": 3,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "range",
+          "min": 1,
+          "max": 1000000
+        }
+      ]
     }
   ]
 }
