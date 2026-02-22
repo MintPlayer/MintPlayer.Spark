@@ -38,6 +38,9 @@ jobs:
       run: npm ci
       working-directory: packages/ng-spark-auth
 
+    - name: Build ng-spark-auth
+      run: dotnet build packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
+
     - name: Install dependencies
       run: dotnet restore
       env:
