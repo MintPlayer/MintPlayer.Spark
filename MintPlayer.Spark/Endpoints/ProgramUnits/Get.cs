@@ -21,13 +21,16 @@ public sealed partial class GetProgramUnits
     {
         var config = programUnitsLoader.GetProgramUnits();
 
+        // Build a ContextProperty → ClrType lookup from the SparkContext (pure reflection, no DB queries)
+        var contextPropertyMap = BuildContextPropertyMap();
+
         var filteredGroups = new List<ProgramUnitGroup>();
         foreach (var group in config.ProgramUnitGroups)
         {
             var filteredUnits = new List<ProgramUnit>();
             foreach (var unit in group.ProgramUnits)
             {
-                var clrType = ResolveClrType(unit);
+                var clrType = ResolveClrType(unit, contextPropertyMap);
                 if (clrType is null || await permissionService.IsAllowedAsync("Query", clrType))
                 {
                     filteredUnits.Add(unit);
@@ -55,7 +58,40 @@ public sealed partial class GetProgramUnits
         await httpContext.Response.WriteAsJsonAsync(result);
     }
 
-    private string? ResolveClrType(ProgramUnit unit)
+    private Dictionary<string, string> BuildContextPropertyMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var session = documentStore.OpenAsyncSession();
+            var sparkContext = sparkContextResolver.ResolveContext(session);
+            if (sparkContext is null) return map;
+
+            foreach (var property in sparkContext.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var propertyType = property.PropertyType;
+                if (!propertyType.IsGenericType) continue;
+
+                var entityType = propertyType.GetGenericArguments().FirstOrDefault();
+                if (entityType is null) continue;
+
+                var entityTypeDef = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
+                if (entityTypeDef is not null)
+                {
+                    map[property.Name] = entityTypeDef.ClrType;
+                }
+            }
+        }
+        catch
+        {
+            // If SparkContext resolution fails, return empty map (fail-open: all items shown)
+        }
+
+        return map;
+    }
+
+    private string? ResolveClrType(ProgramUnit unit, Dictionary<string, string> contextPropertyMap)
     {
         if (string.Equals(unit.Type, "persistentObject", StringComparison.OrdinalIgnoreCase)
             && unit.PersistentObjectId.HasValue)
@@ -69,25 +105,9 @@ public sealed partial class GetProgramUnits
             var query = queryLoader.GetQuery(unit.QueryId.Value);
             if (query is null) return null;
 
-            return ResolveClrTypeFromContextProperty(query.ContextProperty);
+            return contextPropertyMap.TryGetValue(query.ContextProperty, out var clrType) ? clrType : null;
         }
 
         return null;
-    }
-
-    private string? ResolveClrTypeFromContextProperty(string contextProperty)
-    {
-        using var session = documentStore.OpenAsyncSession();
-        var sparkContext = sparkContextResolver.ResolveContext(session);
-        if (sparkContext is null) return null;
-
-        var property = sparkContext.GetType()
-            .GetProperty(contextProperty, BindingFlags.Public | BindingFlags.Instance);
-        if (property is null) return null;
-
-        var entityType = property.PropertyType.GetGenericArguments().FirstOrDefault();
-        if (entityType is null) return null;
-
-        return modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)?.ClrType;
     }
 }

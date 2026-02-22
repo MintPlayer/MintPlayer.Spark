@@ -13,6 +13,12 @@
       "isDenied": false
     },
     {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "resource": "QueryRead/Fleet.Replicated.Person",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
       "id": "f0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/Fleet.Entities.Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
