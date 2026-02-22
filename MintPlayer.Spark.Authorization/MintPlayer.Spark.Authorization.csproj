@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Authorization</PackageId>
-		<Version>1.0.0</Version>
+		<Version>10.0.0-preview.1</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
