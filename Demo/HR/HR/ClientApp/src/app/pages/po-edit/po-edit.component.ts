@@ -42,11 +42,21 @@ export default class PoEditComponent implements OnInit {
           item: this.sparkService.get(this.type, this.id)
         });
       })
-    ).subscribe(result => {
-      this.entityType = result.entityType;
-      this.item = result.item;
-      this.initFormData();
-      this.cdr.detectChanges();
+    ).subscribe({
+      next: result => {
+        this.entityType = result.entityType;
+        this.item = result.item;
+        this.initFormData();
+        this.cdr.detectChanges();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.validationErrors = [{
+          attributeName: '',
+          errorMessage: error.error?.error || error.message || 'An unexpected error occurred',
+          ruleType: 'error'
+        }];
+        this.cdr.detectChanges();
+      }
     });
   }
 

@@ -40,6 +40,12 @@
       </div>
     </bs-form>
 
+    @if (errorMessage) {
+      <bs-alert [type]="colors.danger" class="mb-3">
+        {{ errorMessage }}
+      </bs-alert>
+    }
+
     <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
       @for (attr of getVisibleAttributes(); track attr.id) {
         <div *bsDatatableColumn="attr.name; sortable: true">
