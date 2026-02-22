@@ -29,6 +29,9 @@ public static class SparkExtensions
         var options = new SparkOptions();
         configureOptions?.Invoke(options);
 
+        // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
+        services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
+
         // Register the Spark services
         return services
             .AddSparkServices()
@@ -95,7 +98,27 @@ public static class SparkExtensions
     }
 
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
-        => app.UseMiddleware<SparkMiddleware>();
+    {
+        // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
+        app.Use(async (context, next) =>
+        {
+            var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+            var tokens = antiforgery.GetAndStoreTokens(context);
+            if (tokens.RequestToken != null)
+            {
+                context.Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken, new CookieOptions
+                {
+                    HttpOnly = false,
+                    SameSite = SameSiteMode.Strict,
+                    Path = "/"
+                });
+            }
+            await next(context);
+        });
+
+        app.UseMiddleware<SparkMiddleware>();
+        return app;
+    }
 
     /// <summary>
     /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.

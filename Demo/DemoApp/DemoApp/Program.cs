@@ -33,6 +33,7 @@ app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
 app.UseAuthorization();
+app.UseAntiforgery();
 app.UseSpark();
 app.CreateSparkIndexes();
 app.CreateSparkMessagingIndexes();

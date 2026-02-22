@@ -25,7 +25,6 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.17.0" GeneratePathProperty="true" />
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="10.2.1" />
 		<PackageReference Include="RavenDB.Client" Version="7.1.5" />
 	</ItemGroup>
 

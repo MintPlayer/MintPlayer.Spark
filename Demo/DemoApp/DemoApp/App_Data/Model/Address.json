@@ -10,36 +10,66 @@
       "name": "Street",
       "label": "Street",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 3,
+          "message": "Street must be at least 3 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 200
+        }
+      ]
     },
     {
       "id": "3ed09bf2-617f-4847-8b7a-ae2465821d8c",
       "name": "City",
       "label": "City",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "City must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 100
+        }
+      ]
     },
     {
       "id": "7b146de0-2609-4b58-8418-a8304e6b93f2",
       "name": "State",
       "label": "State",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 3,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "State must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 50
+        }
+      ]
     }
   ]
 }

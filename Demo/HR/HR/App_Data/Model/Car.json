@@ -9,24 +9,49 @@
       "name": "LicensePlate",
       "label": "License Plate",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "License Plate must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 15
+        },
+        {
+          "type": "regex",
+          "value": "^[A-Z0-9 -]+$",
+          "message": "License Plate must contain only uppercase letters, digits, spaces and hyphens."
+        }
+      ]
     },
     {
       "id": "1e53363b-0154-4a9c-a262-0fd83c119a99",
       "name": "Model",
       "label": "Model",
       "dataType": "string",
-      "isRequired": false,
+      "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "minLength",
+          "value": 2,
+          "message": "Model must be at least 2 characters."
+        },
+        {
+          "type": "maxLength",
+          "value": 100
+        }
+      ]
     },
     {
       "id": "70d1cc89-5e2f-4163-b84c-d2c15666daf7",
@@ -38,7 +63,13 @@
       "isReadOnly": false,
       "order": 3,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "range",
+          "min": 1900,
+          "max": 2026
+        }
+      ]
     },
     {
       "id": "2eafd132-af25-4d18-9f48-370eb748f16e",
@@ -50,7 +81,12 @@
       "isReadOnly": false,
       "order": 4,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [
+        {
+          "type": "maxLength",
+          "value": 30
+        }
+      ]
     }
   ]
 }
