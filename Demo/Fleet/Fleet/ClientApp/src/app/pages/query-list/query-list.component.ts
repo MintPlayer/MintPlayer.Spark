@@ -37,6 +37,7 @@ export default class QueryListComponent implements OnInit {
   lookupReferenceOptions: Record<string, LookupReference> = {};
   paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
+  canCreate = false;
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -102,6 +103,10 @@ export default class QueryListComponent implements OnInit {
         });
         this.loadLookupReferenceOptions();
         this.cdr.markForCheck();
+        this.sparkService.getPermissions(this.entityType!.id).subscribe(p => {
+          this.canCreate = p.canCreate;
+          this.cdr.markForCheck();
+        });
         this.loadItems();
       }
     });

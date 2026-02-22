@@ -10,12 +10,16 @@
         <button class="btn btn-outline-secondary" (click)="onBack()">
           <app-icon name="arrow-left" /> Back
         </button>
-        <button class="btn btn-primary" (click)="onEdit()">
-          <app-icon name="pencil" /> Edit
-        </button>
-        <button class="btn btn-danger" (click)="onDelete()">
-          <app-icon name="trash" /> Delete
-        </button>
+        @if (canEdit) {
+          <button class="btn btn-primary" (click)="onEdit()">
+            <app-icon name="pencil" /> Edit
+          </button>
+        }
+        @if (canDelete) {
+          <button class="btn btn-danger" (click)="onDelete()">
+            <app-icon name="trash" /> Delete
+          </button>
+        }
       </bs-button-group>
     </div>
 

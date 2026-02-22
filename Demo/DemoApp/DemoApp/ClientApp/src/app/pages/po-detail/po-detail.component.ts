@@ -30,6 +30,8 @@ export default class PoDetailComponent implements OnInit {
   lookupReferenceOptions: Record<string, LookupReference> = {};
   type: string = '';
   id: string = '';
+  canEdit = false;
+  canDelete = false;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -48,6 +50,13 @@ export default class PoDetailComponent implements OnInit {
         this.item = result.item;
         this.loadLookupReferenceOptions();
         this.cdr.detectChanges();
+        if (this.entityType) {
+          this.sparkService.getPermissions(this.entityType.id).subscribe(p => {
+            this.canEdit = p.canEdit;
+            this.canDelete = p.canDelete;
+            this.cdr.detectChanges();
+          });
+        }
       },
       error: (error: HttpErrorResponse) => {
         this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred';

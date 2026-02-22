@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { EMPTY, Observable, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
-import { EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
+import { EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
 import { RetryActionService } from './retry-action.service';
 
@@ -25,6 +25,11 @@ export class SparkService {
     return this.getEntityTypes().pipe(
       map(types => types.find(t => t.clrType === clrType))
     );
+  }
+
+  // Permissions
+  getPermissions(entityTypeId: string): Observable<EntityPermissions> {
+    return this.http.get<EntityPermissions>(`${this.baseUrl}/permissions/${encodeURIComponent(entityTypeId)}`);
   }
 
   // Queries
