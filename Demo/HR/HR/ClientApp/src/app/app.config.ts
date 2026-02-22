@@ -10,7 +10,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withSparkAuth()),
+    provideHttpClient(...withSparkAuth()),
     provideAnimations(),
     provideSparkAuth(),
   ]

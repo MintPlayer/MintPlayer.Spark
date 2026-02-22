@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, switchMap, tap } from 'rxjs';
 import { AuthUser, SPARK_AUTH_CONFIG } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -20,7 +20,10 @@ export class SparkAuthService {
   login(email: string, password: string): Observable<void> {
     return this.http
       .post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password })
-      .pipe(tap(() => { this.checkAuth().subscribe(); }));
+      .pipe(
+        switchMap(() => this.csrfRefresh()),
+        tap(() => { this.checkAuth().subscribe(); }),
+      );
   }
 
   loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Observable<void> {
@@ -29,7 +32,10 @@ export class SparkAuthService {
         twoFactorCode,
         twoFactorRecoveryCode,
       })
-      .pipe(tap(() => { this.checkAuth().subscribe(); }));
+      .pipe(
+        switchMap(() => this.csrfRefresh()),
+        tap(() => { this.checkAuth().subscribe(); }),
+      );
   }
 
   register(email: string, password: string): Observable<void> {
@@ -39,7 +45,14 @@ export class SparkAuthService {
   logout(): Observable<void> {
     return this.http
       .post<void>(`${this.config.apiBasePath}/logout`, {})
-      .pipe(tap(() => { this.currentUser.set(null); }));
+      .pipe(
+        switchMap(() => this.csrfRefresh()),
+        tap(() => { this.currentUser.set(null); }),
+      );
+  }
+
+  csrfRefresh(): Observable<void> {
+    return this.http.post<void>(`${this.config.apiBasePath}/csrf-refresh`, {});
   }
 
   checkAuth(): Observable<AuthUser | null> {

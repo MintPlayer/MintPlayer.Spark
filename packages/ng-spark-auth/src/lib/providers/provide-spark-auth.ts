@@ -1,5 +1,5 @@
 import { EnvironmentProviders, makeEnvironmentProviders } from '@angular/core';
-import { HttpFeature, HttpFeatureKind, withInterceptors } from '@angular/common/http';
+import { HttpFeature, HttpFeatureKind, withInterceptors, withXsrfConfiguration } from '@angular/common/http';
 import {
   defaultSparkAuthConfig,
   SPARK_AUTH_CONFIG,
@@ -18,6 +18,9 @@ export function provideSparkAuth(
   ]);
 }
 
-export function withSparkAuth(): HttpFeature<HttpFeatureKind> {
-  return withInterceptors([sparkAuthInterceptor]);
+export function withSparkAuth(): HttpFeature<HttpFeatureKind>[] {
+  return [
+    withInterceptors([sparkAuthInterceptor]),
+    withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }),
+  ];
 }

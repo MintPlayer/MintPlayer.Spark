@@ -16,6 +16,10 @@ builder.Services.AddScoped<SparkContext, HRContext>();
 
 builder.Services.AddSparkAuthorization();
 builder.Services.AddSparkAuthentication<SparkUser>();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = ".SparkAuth.HR";
+});
 
 builder.Services.AddSparkMessaging();
 
@@ -43,6 +47,7 @@ app.UseSpaStaticFilesImproved();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseSparkAntiforgery();
 app.UseSpark();
 app.CreateSparkIndexes();
 app.CreateSparkMessagingIndexes();

@@ -1,6 +1,7 @@
 using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -20,6 +21,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
     [Inject] private readonly IIndexRegistry indexRegistry;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query)
     {
@@ -62,6 +64,8 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             return [];
         }
+
+        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.ClrType);
 
         // Determine result type and index to use
         Type resultType = entityType;

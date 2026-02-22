@@ -22,7 +22,7 @@ import type { SparkAuthConfig, SparkAuthRouteConfig } from '@mintplayer/ng-spark
  *
  * export const appConfig: ApplicationConfig = {
  *   providers: [
- *     provideHttpClient(setupSparkAuthHttp()),
+ *     provideHttpClient(...setupSparkAuthHttp()),
  *     ...setupSparkAuthProviders(),
  *   ]
  * };
@@ -33,9 +33,9 @@ export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
 }
 
 /**
- * Returns an HttpFeature that attaches the Spark auth interceptor.
+ * Returns HttpFeatures that attach the Spark auth interceptor and XSRF protection.
  *
- * Usage: `provideHttpClient(setupSparkAuthHttp())`
+ * Usage: `provideHttpClient(...setupSparkAuthHttp())`
  */
 export function setupSparkAuthHttp() {
   return withSparkAuth();

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -316,11 +317,11 @@ public static class SparkExtensions
         persistentObjectGroup.MapGet("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, GetPersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id));
         persistentObjectGroup.MapPost("/{objectTypeId}", async (HttpContext context, string objectTypeId, CreatePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId));
+            await action.HandleAsync(context, objectTypeId)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
         persistentObjectGroup.MapPut("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, UpdatePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id));
+            await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
         persistentObjectGroup.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id));
+            await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
         // LookupReferences endpoints
         var lookupRefGroup = sparkGroup.MapGroup("/lookupref");
@@ -329,11 +330,11 @@ public static class SparkExtensions
         lookupRefGroup.MapGet("/{name}", async (HttpContext context, string name, GetLookupReference action) =>
             await action.HandleAsync(context, name));
         lookupRefGroup.MapPost("/{name}", async (HttpContext context, string name, AddLookupReferenceValue action) =>
-            await action.HandleAsync(context, name));
+            await action.HandleAsync(context, name)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
         lookupRefGroup.MapPut("/{name}/{key}", async (HttpContext context, string name, string key, UpdateLookupReferenceValue action) =>
-            await action.HandleAsync(context, name, key));
+            await action.HandleAsync(context, name, key)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
         lookupRefGroup.MapDelete("/{name}/{key}", async (HttpContext context, string name, string key, DeleteLookupReferenceValue action) =>
-            await action.HandleAsync(context, name, key));
+            await action.HandleAsync(context, name, key)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
         return endpoints;
     }

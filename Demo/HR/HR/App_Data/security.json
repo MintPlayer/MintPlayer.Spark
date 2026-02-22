@@ -6,55 +6,55 @@
   },
   "rights": [
     {
-      "id": "h0000001-0000-0000-0000-000000000001",
+      "id": "a0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/HR.Entities.Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "h0000001-0000-0000-0000-000000000002",
+      "id": "a0000001-0000-0000-0000-000000000002",
       "resource": "QueryReadEditNewDelete/HR.Entities.Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "h0000001-0000-0000-0000-000000000003",
+      "id": "a0000001-0000-0000-0000-000000000003",
       "resource": "QueryReadEditNewDelete/HR.Entities.Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "h0000002-0000-0000-0000-000000000001",
+      "id": "b0000002-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNew/HR.Entities.Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "h0000002-0000-0000-0000-000000000002",
+      "id": "b0000002-0000-0000-0000-000000000002",
       "resource": "QueryReadEditNew/HR.Entities.Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "h0000002-0000-0000-0000-000000000003",
+      "id": "b0000002-0000-0000-0000-000000000003",
       "resource": "QueryReadEditNew/HR.Entities.Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "h0000003-0000-0000-0000-000000000001",
+      "id": "c0000003-0000-0000-0000-000000000001",
       "resource": "QueryRead/HR.Entities.Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "h0000003-0000-0000-0000-000000000002",
+      "id": "c0000003-0000-0000-0000-000000000002",
       "resource": "QueryRead/HR.Entities.Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "h0000003-0000-0000-0000-000000000003",
+      "id": "c0000003-0000-0000-0000-000000000003",
       "resource": "QueryRead/HR.Entities.Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false

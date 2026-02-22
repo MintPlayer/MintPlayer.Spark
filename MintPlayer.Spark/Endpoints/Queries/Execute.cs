@@ -10,7 +10,6 @@ public sealed partial class ExecuteQuery
 {
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
-    [Inject] private readonly IPermissionService permissionService;
 
     public async Task HandleAsync(HttpContext httpContext, string id)
     {
@@ -25,8 +24,6 @@ public sealed partial class ExecuteQuery
 
         try
         {
-            await permissionService.EnsureAuthorizedAsync("Execute", query.Name);
-
             // Read optional sort overrides from query string
             var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
             var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
