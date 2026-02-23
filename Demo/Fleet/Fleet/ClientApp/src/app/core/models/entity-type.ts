@@ -1,10 +1,11 @@
 import { ShowedOn } from './showed-on';
+import { TranslatedString } from './translated-string';
 import { ValidationRule } from './validation-rule';
 
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
-  label?: string;
+  label?: TranslatedString;
   dataType: string;
   isRequired: boolean;
   isVisible: boolean;
@@ -29,6 +30,7 @@ export interface EntityAttributeDefinition {
 export interface EntityType {
   id: string;
   name: string;
+  description?: TranslatedString;
   clrType: string;
   alias?: string;
   /**

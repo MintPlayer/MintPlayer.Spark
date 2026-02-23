@@ -6,7 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
@@ -22,6 +22,7 @@ export default class PoDetailComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  resolveTranslation = resolveTranslation;
   colors = Color;
   errorMessage: string | null = null;
   entityType: EntityType | null = null;
@@ -90,8 +91,7 @@ export default class PoDetailComponent implements OnInit {
       if (lookupRef) {
         const option = lookupRef.values.find(v => v.key === String(attr.value));
         if (option) {
-          const lang = navigator.language?.split('-')[0] || 'en';
-          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+          return resolveTranslation(option.values) || option.key;
         }
       }
     }

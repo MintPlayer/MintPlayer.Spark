@@ -1,10 +1,11 @@
 import { ShowedOn } from './showed-on';
+import { TranslatedString } from './translated-string';
 import { ValidationRule } from './validation-rule';
 
 export interface PersistentObjectAttribute {
   id: string;
   name: string;
-  label?: string;
+  label?: TranslatedString;
   value?: any;
   dataType: string;
   isRequired: boolean;

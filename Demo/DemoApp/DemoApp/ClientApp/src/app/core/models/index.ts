@@ -1,3 +1,4 @@
+export * from './translated-string';
 export * from './validation-rule';
 export * from './validation-error';
 export * from './showed-on';

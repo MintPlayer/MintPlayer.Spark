@@ -49,7 +49,7 @@ internal partial class AccessControlService : IAccessControl
 
         // Always include the "Everyone" group if it exists in the configuration
         var everyoneGroup = config.Groups
-            .FirstOrDefault(g => string.Equals(g.Value, EveryoneGroupName, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(g => string.Equals(g.Value.GetDefaultValue(), EveryoneGroupName, StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(everyoneGroup.Key) && Guid.TryParse(everyoneGroup.Key, out var everyoneGroupId))
         {
             groupIds.Add(everyoneGroupId);
@@ -105,9 +105,10 @@ internal partial class AccessControlService : IAccessControl
 
         foreach (var groupName in groupNames)
         {
-            // Find group by name (case-insensitive)
+            // Find group by name (case-insensitive, matches against any translation)
             var matchingGroup = config.Groups
-                .FirstOrDefault(g => string.Equals(g.Value, groupName, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(g => g.Value.Translations.Values
+                    .Any(v => string.Equals(v, groupName, StringComparison.OrdinalIgnoreCase)));
 
             if (!string.IsNullOrEmpty(matchingGroup.Key) && Guid.TryParse(matchingGroup.Key, out var groupId))
             {

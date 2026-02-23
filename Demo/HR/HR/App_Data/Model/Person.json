@@ -1,6 +1,7 @@
 {
   "id": "2a34a658-1768-4c82-8724-884b2f99f4e0",
   "name": "Person",
+  "description": { "en": "Person" },
   "clrType": "HR.Entities.Person",
   "queryType": "HR.Indexes.VPerson",
   "indexName": "People_Overview",
@@ -9,7 +10,7 @@
     {
       "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
       "name": "FirstName",
-      "label": "First Name",
+      "label": { "en": "First Name" },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -21,7 +22,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "First Name must be at least 2 characters."
+          "message": { "en": "First Name must be at least 2 characters." }
         },
         {
           "type": "maxLength",
@@ -32,7 +33,7 @@
     {
       "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
       "name": "LastName",
-      "label": "Last Name",
+      "label": { "en": "Last Name" },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -44,7 +45,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "Last Name must be at least 2 characters."
+          "message": { "en": "Last Name must be at least 2 characters." }
         },
         {
           "type": "maxLength",
@@ -55,7 +56,7 @@
     {
       "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
       "name": "Email",
-      "label": "Email",
+      "label": { "en": "Email" },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -75,7 +76,7 @@
     {
       "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
       "name": "DateOfBirth",
-      "label": "Date Of Birth",
+      "label": { "en": "Date Of Birth" },
       "dataType": "date",
       "isRequired": false,
       "isVisible": true,
@@ -88,7 +89,7 @@
     {
       "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
       "name": "Company",
-      "label": "Company",
+      "label": { "en": "Company" },
       "dataType": "Reference",
       "isRequired": false,
       "isVisible": true,
@@ -103,7 +104,7 @@
     {
       "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
       "name": "Address",
-      "label": "Address",
+      "label": { "en": "Address" },
       "dataType": "AsDetail",
       "isRequired": false,
       "isVisible": true,
@@ -117,7 +118,7 @@
     {
       "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
       "name": "FullName",
-      "label": "Full Name",
+      "label": { "en": "Full Name" },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

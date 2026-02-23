@@ -8,6 +8,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.Aliases;
+using MintPlayer.Spark.Endpoints.Culture;
 using MintPlayer.Spark.Endpoints.EntityTypes;
 using MintPlayer.Spark.Endpoints.LookupReferences;
 using MintPlayer.Spark.Endpoints.Permissions;
@@ -325,6 +326,10 @@ public static class SparkExtensions
             await action.HandleAsync(context, id));
         queriesGroup.MapGet("/{id}/execute", async (HttpContext context, string id, ExecuteQuery action) =>
             await action.HandleAsync(context, id));
+
+        // Culture endpoint
+        sparkGroup.MapGet("/culture", async (HttpContext context, GetCulture action) =>
+            await action.HandleAsync(context));
 
         // Program Units endpoint
         sparkGroup.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>

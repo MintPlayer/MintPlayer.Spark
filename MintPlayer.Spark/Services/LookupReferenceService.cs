@@ -34,7 +34,7 @@ public class LookupReferenceDto
 public class LookupReferenceValueDto
 {
     public required string Key { get; set; }
-    public required Dictionary<string, string> Translations { get; set; }
+    public required TranslatedString Values { get; set; }
     public bool IsActive { get; set; } = true;
     public Dictionary<string, object>? Extra { get; set; }
 }
@@ -177,7 +177,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             throw new InvalidOperationException($"Value with key '{key}' not found");
 
         // Update the value
-        existingValue.Translations = value.Translations;
+        existingValue.Values = value.Values;
         existingValue.IsActive = value.IsActive;
         existingValue.Extra = value.Extra;
 
@@ -273,7 +273,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         return new LookupReferenceValueDto
         {
             Key = key,
-            Translations = item.Values.Translations,
+            Values = item.Values,
             IsActive = true,
             Extra = extraProps.Count > 0 ? extraProps : null
         };

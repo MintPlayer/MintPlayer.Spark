@@ -45,7 +45,7 @@ internal partial class ValidationService : IValidationService
                 {
                     AttributeName = attrDef.Name,
                     RuleType = "required",
-                    ErrorMessage = $"{attrDef.Label ?? attrDef.Name} is required."
+                    ErrorMessage = $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} is required."
                 });
                 continue; // Skip other validations if required field is empty
             }
@@ -97,7 +97,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "maxLength",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be at most {maxLength} characters."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at most {maxLength} characters."
             };
         }
         return null;
@@ -114,7 +114,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "minLength",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be at least {minLength} characters."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at least {minLength} characters."
             };
         }
         return null;
@@ -133,7 +133,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be at least {rule.Min}."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at least {rule.Min}."
             };
         }
 
@@ -143,7 +143,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be at most {rule.Max}."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at most {rule.Max}."
             };
         }
 
@@ -164,7 +164,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "regex",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} has an invalid format."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} has an invalid format."
             };
         }
         return null;
@@ -178,7 +178,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "email",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be a valid email address."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be a valid email address."
             };
         }
         return null;
@@ -192,7 +192,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "url",
-                ErrorMessage = rule.Message ?? $"{attrDef.Label ?? attrDef.Name} must be a valid URL."
+                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be a valid URL."
             };
         }
         return null;

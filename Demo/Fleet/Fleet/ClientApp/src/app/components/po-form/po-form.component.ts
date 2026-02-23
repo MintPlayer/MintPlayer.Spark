@@ -12,7 +12,7 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
@@ -38,6 +38,7 @@ export class PoFormComponent implements OnChanges {
   @Output() save = new EventEmitter<void>();
   @Output() cancel = new EventEmitter<void>();
 
+  resolveTranslation = resolveTranslation;
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
   asDetailTypes: Record<string, EntityType> = {};
@@ -152,15 +153,7 @@ export class PoFormComponent implements OnChanges {
     const selected = options.find(o => o.key === String(currentValue));
     if (!selected) return String(currentValue);
 
-    // Get translation for current language (defaulting to 'en')
-    const lang = this.getCurrentLanguage();
-    return selected.translations[lang] || selected.translations['en'] || Object.values(selected.translations)[0] || selected.key;
-  }
-
-  getCurrentLanguage(): string {
-    // Get browser language, fallback to 'en'
-    const browserLang = navigator.language?.split('-')[0];
-    return browserLang || 'en';
+    return resolveTranslation(selected.values) || selected.key;
   }
 
   getLookupDisplayType(attr: EntityAttributeDefinition): ELookupDisplayType {
@@ -182,9 +175,8 @@ export class PoFormComponent implements OnChanges {
       return this.lookupModalItems;
     }
     const term = this.lookupSearchTerm.toLowerCase().trim();
-    const lang = this.getCurrentLanguage();
     return this.lookupModalItems.filter(item => {
-      const translation = item.translations[lang] || item.translations['en'] || Object.values(item.translations)[0] || '';
+      const translation = resolveTranslation(item.values);
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   }

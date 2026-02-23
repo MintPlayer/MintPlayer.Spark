@@ -1,13 +1,14 @@
 {
   "id": "f0f91878-bc14-4f33-bb42-2e4c6eabe88c",
   "name": "Company",
+  "description": {"en": "Company"},
   "clrType": "Fleet.Replicated.Company",
   "displayAttribute": "Name",
   "attributes": [
     {
       "id": "1a5c89ab-f7ee-4193-8e52-d64e25645be6",
       "name": "Name",
-      "label": "Name",
+      "label": {"en": "Name"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -18,7 +19,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "Company Name must be at least 2 characters."
+          "message": {"en": "Company Name must be at least 2 characters."}
         },
         {
           "type": "maxLength",
@@ -29,7 +30,7 @@
     {
       "id": "4ac8ea4e-5599-40d5-b50d-ddedddd4eece",
       "name": "Website",
-      "label": "Website",
+      "label": {"en": "Website"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -45,7 +46,7 @@
     {
       "id": "fe523875-8393-4e7e-aaaf-fe0c8e089eba",
       "name": "EmployeeCount",
-      "label": "Employee Count",
+      "label": {"en": "Employee Count"},
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,

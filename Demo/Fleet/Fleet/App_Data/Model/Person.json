@@ -1,13 +1,14 @@
 {
   "id": "ff87918c-1e9f-4467-a47e-831d49c81f25",
   "name": "Person",
+  "description": {"en": "Person"},
   "clrType": "Fleet.Replicated.Person",
   "displayAttribute": "FirstName",
   "attributes": [
     {
       "id": "bb4cd209-a07a-4464-886a-a511606a18bd",
       "name": "FirstName",
-      "label": "First Name",
+      "label": {"en": "First Name"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -18,7 +19,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "First Name must be at least 2 characters."
+          "message": {"en": "First Name must be at least 2 characters."}
         },
         {
           "type": "maxLength",
@@ -29,7 +30,7 @@
     {
       "id": "3513e68d-8b8f-4bc3-95d2-3d3b78f4f1cd",
       "name": "LastName",
-      "label": "Last Name",
+      "label": {"en": "Last Name"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -40,7 +41,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "Last Name must be at least 2 characters."
+          "message": {"en": "Last Name must be at least 2 characters."}
         },
         {
           "type": "maxLength",
@@ -51,7 +52,7 @@
     {
       "id": "ad032070-86e7-4ed1-8b71-166010bc0ee8",
       "name": "Email",
-      "label": "Email",
+      "label": {"en": "Email"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

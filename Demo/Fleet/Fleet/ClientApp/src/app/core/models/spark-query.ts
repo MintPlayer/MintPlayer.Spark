@@ -1,6 +1,9 @@
+import { TranslatedString } from './translated-string';
+
 export interface SparkQuery {
   id: string;
   name: string;
+  description?: TranslatedString;
   contextProperty: string;
   alias?: string;
   sortBy?: string;

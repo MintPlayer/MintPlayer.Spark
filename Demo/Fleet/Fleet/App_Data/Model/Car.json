@@ -1,6 +1,7 @@
 {
   "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
   "name": "Car",
+  "description": {"en": "Car"},
   "clrType": "Fleet.Entities.Car",
   "queryType": "Fleet.Indexes.VCar",
   "indexName": "Cars_Overview",
@@ -9,7 +10,7 @@
     {
       "id": "cb321818-3574-44ee-9488-2b2567b56605",
       "name": "LicensePlate",
-      "label": "License Plate",
+      "label": {"en": "License Plate"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -20,7 +21,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "License Plate must be at least 2 characters."
+          "message": {"en": "License Plate must be at least 2 characters."}
         },
         {
           "type": "maxLength",
@@ -29,14 +30,14 @@
         {
           "type": "regex",
           "value": "^[A-Z0-9 -]+$",
-          "message": "License Plate must contain only uppercase letters, digits, spaces and hyphens."
+          "message": {"en": "License Plate must contain only uppercase letters, digits, spaces and hyphens."}
         }
       ]
     },
     {
       "id": "260f5024-5dff-4b2d-b233-9933d16dc4a7",
       "name": "Model",
-      "label": "Model",
+      "label": {"en": "Model"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -47,7 +48,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "Model must be at least 2 characters."
+          "message": {"en": "Model must be at least 2 characters."}
         },
         {
           "type": "maxLength",
@@ -58,7 +59,7 @@
     {
       "id": "ee84192a-dd42-4224-9bbb-9a4328083ef0",
       "name": "Year",
-      "label": "Year",
+      "label": {"en": "Year"},
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,
@@ -76,7 +77,7 @@
     {
       "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
       "name": "Color",
-      "label": "Color",
+      "label": {"en": "Color"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -93,7 +94,7 @@
     {
       "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
       "name": "Status",
-      "label": "Status",
+      "label": {"en": "Status"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -106,7 +107,7 @@
     {
       "id": "50b7dffd-aff1-4568-b4b0-4dfa7048ff31",
       "name": "Brand",
-      "label": "Brand",
+      "label": {"en": "Brand"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

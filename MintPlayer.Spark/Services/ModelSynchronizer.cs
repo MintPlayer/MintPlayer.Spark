@@ -409,7 +409,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     Id = Guid.NewGuid(),
                     Name = propertyName,
-                    Label = AddSpacesToCamelCase(propertyName),
+                    Label = TranslatedString.Create(AddSpacesToCamelCase(propertyName)),
                     DataType = dataType,
                     IsRequired = !IsNullable(property.PropertyType) && property.PropertyType != typeof(string),
                     IsVisible = true,

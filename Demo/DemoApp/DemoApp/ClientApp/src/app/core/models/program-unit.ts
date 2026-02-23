@@ -1,6 +1,8 @@
+import { TranslatedString } from './translated-string';
+
 export interface ProgramUnit {
   id: string;
-  name: string;
+  name: TranslatedString;
   icon?: string;
   type: string;
   queryId?: string;
@@ -11,7 +13,7 @@ export interface ProgramUnit {
 
 export interface ProgramUnitGroup {
   id: string;
-  name: string;
+  name: TranslatedString;
   icon?: string;
   order: number;
   programUnits: ProgramUnit[];

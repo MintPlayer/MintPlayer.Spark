@@ -13,7 +13,7 @@ public sealed class PersistentObjectAttribute
 {
     public string? Id { get; set; }
     public required string Name { get; set; }
-    public string? Label { get; set; }
+    public TranslatedString? Label { get; set; }
     public object? Value { get; set; }
     public string DataType { get; set; } = "string";
     public bool IsRequired { get; set; }
