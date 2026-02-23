@@ -486,13 +486,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
     private bool IsComplexType(Type type)
     {
-        // A complex type is a class (not string) that has its own properties with an Id property
+        // A complex type is a class (not string) that has its own properties
         if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
             return false;
 
-        // Check if it's a class with public properties and has an Id property
+        // Check if it's a class with public properties
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        return properties.Any(p => p.Name == "Id" && p.CanRead && p.CanWrite);
+        return properties.Length > 0;
     }
 
     private bool IsNullable(Type type)
