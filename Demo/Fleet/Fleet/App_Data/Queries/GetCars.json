@@ -1,7 +1,7 @@
 {
   "id": "a20e8400-e29b-41d4-a716-446655440001",
   "name": "GetCars",
-  "description": {"en": "GetCars", "fr": "Voitures", "nl": "Auto's"},
+  "description": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
   "contextProperty": "Cars",
   "sortBy": "LicensePlate",
   "sortDirection": "asc"

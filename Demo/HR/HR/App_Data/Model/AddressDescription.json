@@ -1,7 +1,7 @@
 {
   "id": "5a4c2d4c-ce91-41bd-af40-15e4a0ff3a2b",
   "name": "AddressDescription",
-  "description": { "en": "AddressDescription", "fr": "Description d'adresse", "nl": "Adresbeschrijving" },
+  "description": { "en": "Address Description", "fr": "Description d'adresse", "nl": "Adresbeschrijving" },
   "clrType": "HR.Entities.AddressDescription",
   "displayAttribute": "Title",
   "attributes": [

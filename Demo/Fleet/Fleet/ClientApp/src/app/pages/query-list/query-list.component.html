@@ -1,6 +1,6 @@
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>{{ query?.name || 'Loading...' }}</h2>
+    <h2>{{ (query?.description | translate) || query?.name || 'Loading...' }}</h2>
     @if (canCreate) {
       <button class="btn btn-primary" (click)="onCreate()">
         <app-icon name="plus-lg" /> New
