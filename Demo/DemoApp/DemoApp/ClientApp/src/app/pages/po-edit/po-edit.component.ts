@@ -54,7 +54,7 @@ export default class PoEditComponent implements OnInit {
       error: (error: HttpErrorResponse) => {
         this.validationErrors = [{
           attributeName: '',
-          errorMessage: error.error?.error || error.message || 'An unexpected error occurred',
+          errorMessage: { en: error.error?.error || error.message || 'An unexpected error occurred' },
           ruleType: 'error'
         }];
         this.cdr.detectChanges();
@@ -120,7 +120,7 @@ export default class PoEditComponent implements OnInit {
         } else {
           this.validationErrors = [{
             attributeName: '',
-            errorMessage: error.message || 'An unexpected error occurred',
+            errorMessage: { en: error.message || 'An unexpected error occurred' },
             ruleType: 'error'
           }];
         }

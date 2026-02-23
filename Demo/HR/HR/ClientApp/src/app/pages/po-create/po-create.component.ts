@@ -104,7 +104,7 @@ export default class PoCreateComponent implements OnInit {
         } else {
           this.validationErrors = [{
             attributeName: '',
-            errorMessage: error.message || 'An unexpected error occurred',
+            errorMessage: { en: error.message || 'An unexpected error occurred' },
             ruleType: 'error'
           }];
         }
