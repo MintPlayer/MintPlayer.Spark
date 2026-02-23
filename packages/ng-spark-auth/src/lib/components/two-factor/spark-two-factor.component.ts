@@ -4,16 +4,18 @@ import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { SparkAuthTranslationService } from '../../services/spark-auth-translation.service';
 
 @Component({
   selector: 'spark-two-factor',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
         <div class="card-body">
-          <h3 class="card-title text-center mb-4">Two-Factor Authentication</h3>
+          <h3 class="card-title text-center mb-4">{{ 'authTwoFactorTitle' | t }}</h3>
 
           @if (errorMessage()) {
             <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
@@ -23,25 +25,25 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
             <form [formGroup]="form" (ngSubmit)="onSubmit()">
               @if (!useRecoveryCode()) {
                 <div class="mb-3">
-                  <label for="code" class="form-label">Authentication Code</label>
+                  <label for="code" class="form-label">{{ 'authCode' | t }}</label>
                   <input
                     type="text"
                     id="code"
                     formControlName="code"
                     autocomplete="one-time-code"
                     maxlength="6"
-                    placeholder="Enter 6-digit code"
+                    [placeholder]="'authEnterCode' | t"
                   />
                 </div>
               } @else {
                 <div class="mb-3">
-                  <label for="recoveryCode" class="form-label">Recovery Code</label>
+                  <label for="recoveryCode" class="form-label">{{ 'authRecoveryCode' | t }}</label>
                   <input
                     type="text"
                     id="recoveryCode"
                     formControlName="recoveryCode"
                     autocomplete="off"
-                    placeholder="Enter recovery code"
+                    [placeholder]="'authEnterRecoveryCode' | t"
                   />
                 </div>
               }
@@ -54,7 +56,7 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
                 @if (loading()) {
                   <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                 }
-                Verify
+                {{ 'authVerify' | t }}
               </button>
             </form>
           </bs-form>
@@ -62,14 +64,14 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
           <div class="mt-3 text-center">
             <button class="btn btn-link" (click)="toggleRecoveryCode()">
               @if (useRecoveryCode()) {
-                Use authentication code instead
+                {{ 'authUseAuthCode' | t }}
               } @else {
-                Use a recovery code instead
+                {{ 'authUseRecoveryCode' | t }}
               }
             </button>
           </div>
           <div class="mt-2 text-center">
-            <a [routerLink]="routePaths.login">Back to login</a>
+            <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
           </div>
         </div>
       </div>
@@ -82,6 +84,7 @@ export class SparkTwoFactorComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly config = inject(SPARK_AUTH_CONFIG);
+  private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
   readonly loading = signal(false);
@@ -103,7 +106,9 @@ export class SparkTwoFactorComponent {
     const code = isRecovery ? this.form.value.recoveryCode : this.form.value.code;
 
     if (!code?.trim()) {
-      this.errorMessage.set(isRecovery ? 'Please enter a recovery code.' : 'Please enter the 6-digit code.');
+      this.errorMessage.set(isRecovery
+        ? this.translation.t('authEnterRecoveryCodeError')
+        : this.translation.t('authEnterCodeError'));
       return;
     }
 
@@ -121,7 +126,7 @@ export class SparkTwoFactorComponent {
       },
       error: () => {
         this.loading.set(false);
-        this.errorMessage.set('Invalid code. Please try again.');
+        this.errorMessage.set(this.translation.t('authInvalidCode'));
       },
     });
   }

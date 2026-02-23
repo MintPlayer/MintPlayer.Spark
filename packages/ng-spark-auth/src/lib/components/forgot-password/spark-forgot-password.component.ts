@@ -4,16 +4,18 @@ import { RouterLink } from '@angular/router';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { SparkAuthTranslationService } from '../../services/spark-auth-translation.service';
 
 @Component({
   selector: 'spark-forgot-password',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
         <div class="card-body">
-          <h3 class="card-title text-center mb-4">Forgot Password</h3>
+          <h3 class="card-title text-center mb-4">{{ 'authForgotPasswordTitle' | t }}</h3>
 
           @if (successMessage()) {
             <div class="alert alert-success" role="alert">{{ successMessage() }}</div>
@@ -25,13 +27,13 @@ import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 
           @if (!successMessage()) {
             <p class="text-muted mb-3">
-              Enter your email address and we will send you a link to reset your password.
+              {{ 'authForgotPasswordDescription' | t }}
             </p>
 
             <bs-form>
               <form [formGroup]="form" (ngSubmit)="onSubmit()">
                 <div class="mb-3">
-                  <label for="email" class="form-label">Email</label>
+                  <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
                   <input
                     type="email"
                     id="email"
@@ -48,14 +50,14 @@ import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
                   @if (loading()) {
                     <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                   }
-                  Send Reset Link
+                  {{ 'authSendResetLink' | t }}
                 </button>
               </form>
             </bs-form>
           }
 
           <div class="mt-3 text-center">
-            <a [routerLink]="routePaths.login">Back to login</a>
+            <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
           </div>
         </div>
       </div>
@@ -65,6 +67,7 @@ import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 export class SparkForgotPasswordComponent {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(SparkAuthService);
+  private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
   readonly loading = signal(false);
@@ -90,16 +93,12 @@ export class SparkForgotPasswordComponent {
     this.authService.forgotPassword(email!).subscribe({
       next: () => {
         this.loading.set(false);
-        this.successMessage.set(
-          'If an account with that email exists, we\'ve sent a password reset link.',
-        );
+        this.successMessage.set(this.translation.t('authForgotPasswordSuccess'));
       },
       error: () => {
         this.loading.set(false);
         // Don't reveal whether the email exists
-        this.successMessage.set(
-          'If an account with that email exists, we\'ve sent a password reset link.',
-        );
+        this.successMessage.set(this.translation.t('authForgotPasswordSuccess'));
       },
     });
   }
