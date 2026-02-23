@@ -32,7 +32,7 @@
     },
     {
       "id": "f0000001-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Person",
+      "resource": "QueryReadEditNewDelete/Person",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
