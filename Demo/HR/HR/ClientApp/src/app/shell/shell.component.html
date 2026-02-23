@@ -5,14 +5,12 @@
   <div class="ms-auto me-3 d-flex align-items-center gap-2">
     @if (lang.languages() | keyvalue; as langs) {
       @if (langs.length > 1) {
-        <select class="form-select form-select-sm bg-dark text-light border-secondary"
-                style="width: auto;"
-                [ngModel]="lang.language()"
-                (ngModelChange)="lang.setLanguage($event)">
+        <bs-select [ngModel]="lang.language()"
+                   (ngModelChange)="lang.setLanguage($event)">
           @for (l of langs; track l.key) {
-            <option [value]="l.key">{{ l.value | translate }}</option>
+            <option [ngValue]="l.key">{{ l.value | translate }}</option>
           }
-        </select>
+        </bs-select>
       }
     }
     <spark-auth-bar />
