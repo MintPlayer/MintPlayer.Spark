@@ -123,33 +123,12 @@
     </div>
 
     @if (editingAsDetailAttr) {
-      <bs-grid bsModalBody class="mt-3">
-        @for (detailAttr of getAsDetailAttributes(editingAsDetailAttr); track detailAttr.id) {
-          <div bsRow class="mb-3">
-            <label [md]="4" bsColFormLabel [for]="'detail_' + detailAttr.name">
-              {{ detailAttr.label || detailAttr.name }}
-              @if (detailAttr.isRequired) {
-                <span class="text-danger">*</span>
-              }
-            </label>
-            <div [md]="8">
-              @if (detailAttr.dataType === 'boolean') {
-                <bs-toggle-button
-                  [(ngModel)]="asDetailFormData[detailAttr.name]">
-                </bs-toggle-button>
-              } @else {
-                <input
-                  [type]="getInputType(detailAttr.dataType)"
-                  [id]="'detail_' + detailAttr.name"
-                  [(ngModel)]="asDetailFormData[detailAttr.name]"
-                  [name]="'detail_' + detailAttr.name"
-                  [required]="detailAttr.isRequired"
-                  [step]="detailAttr.dataType === 'decimal' ? '0.01' : '1'">
-              }
-            </div>
-          </div>
-        }
-      </bs-grid>
+      <div bsModalBody>
+        <app-po-form
+          [entityType]="getAsDetailType(editingAsDetailAttr)"
+          [(formData)]="asDetailFormData">
+        </app-po-form>
+      </div>
     }
 
     <div bsModalFooter>

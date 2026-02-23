@@ -76,7 +76,7 @@
       "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
       "name": "DateOfBirth",
       "label": "Date Of Birth",
-      "dataType": "datetime",
+      "dataType": "date",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
@@ -104,19 +104,15 @@
       "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
       "name": "Address",
       "label": "Address",
-      "dataType": "string",
+      "dataType": "AsDetail",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 6,
+      "asDetailType": "HR.Entities.Address",
       "inQueryType": false,
       "showedOn": "PersistentObject",
-      "rules": [
-        {
-          "type": "maxLength",
-          "value": 200
-        }
-      ]
+      "rules": []
     },
     {
       "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
