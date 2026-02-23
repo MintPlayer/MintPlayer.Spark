@@ -20,7 +20,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -307,13 +307,6 @@ export class PoFormComponent implements OnChanges {
     this.editingAsDetailAttr = null;
     this.asDetailFormData = {};
     this.cdr.markForCheck();
-  }
-
-  getAsDetailAttributes(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
-    const asDetailType = this.getAsDetailType(attr);
-    return asDetailType?.attributes
-      .filter(a => a.isVisible && !a.isReadOnly && a.name !== 'Id')
-      .sort((a, b) => a.order - b.order) || [];
   }
 
   // Reference modal methods

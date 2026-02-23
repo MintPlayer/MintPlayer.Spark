@@ -70,6 +70,19 @@
           "value": 100
         }
       ]
+    },
+    {
+      "id": "e1858faa-b516-4043-ad7d-3b3ab822e810",
+      "name": "Description",
+      "label": "Description",
+      "dataType": "AsDetail",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "asDetailType": "HR.Entities.AddressDescription",
+      "showedOn": "Query, PersistentObject",
+      "rules": []
     }
   ]
 }

@@ -1,0 +1,32 @@
+{
+  "id": "5a4c2d4c-ce91-41bd-af40-15e4a0ff3a2b",
+  "name": "AddressDescription",
+  "clrType": "HR.Entities.AddressDescription",
+  "displayAttribute": "Title",
+  "attributes": [
+    {
+      "id": "1eaf31a0-7e8a-416c-b1aa-6e980ac3c0d7",
+      "name": "Title",
+      "label": "Title",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "89ac0f90-990c-4f0b-a5f8-57917759f6b3",
+      "name": "Notes",
+      "label": "Notes",
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}
