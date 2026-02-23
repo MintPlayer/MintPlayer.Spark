@@ -12,10 +12,11 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent, TranslatePipe],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
@@ -143,7 +144,7 @@ export default class PoDetailComponent implements OnInit {
       if (value[prop]) return value[prop];
     }
 
-    return '(object)';
+    return this.lang.t('notSet');
   }
 
   private resolveDisplayFormat(format: string, data: Record<string, any>): string {
@@ -158,7 +159,7 @@ export default class PoDetailComponent implements OnInit {
   }
 
   onDelete(): void {
-    if (confirm('Are you sure you want to delete this item?')) {
+    if (confirm(this.lang.t('confirmDelete'))) {
       this.sparkService.delete(this.type, this.id).subscribe(() => {
         this.router.navigate(['/']);
       });

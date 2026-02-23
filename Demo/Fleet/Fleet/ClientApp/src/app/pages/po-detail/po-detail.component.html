@@ -8,16 +8,16 @@
       <h2>{{ item.breadcrumb || item.name }}</h2>
       <bs-button-group>
         <button class="btn btn-outline-secondary" (click)="onBack()">
-          <app-icon name="arrow-left" /> Back
+          <app-icon name="arrow-left" /> {{ 'back' | t }}
         </button>
         @if (canEdit) {
           <button class="btn btn-primary" (click)="onEdit()">
-            <app-icon name="pencil" /> Edit
+            <app-icon name="pencil" /> {{ 'edit' | t }}
           </button>
         }
         @if (canDelete) {
           <button class="btn btn-danger" (click)="onDelete()">
-            <app-icon name="trash" /> Delete
+            <app-icon name="trash" /> {{ 'delete' | t }}
           </button>
         }
       </bs-button-group>
@@ -47,7 +47,7 @@
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
-        <span class="visually-hidden">Loading...</span>
+        <span class="visually-hidden">{{ 'loading' | t }}</span>
       </div>
     </div>
   }

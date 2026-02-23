@@ -6,7 +6,7 @@
   }
 
   @if (entityType && item) {
-    <h2 class="mb-4">Edit {{ entityType.name }}</h2>
+    <h2 class="mb-4">{{ 'edit' | t }} {{ (entityType.description | translate) || entityType.name }}</h2>
 
     <div class="card">
       <div class="card-body">
@@ -24,7 +24,7 @@
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
-        <span class="visually-hidden">Loading...</span>
+        <span class="visually-hidden">{{ 'loading' | t }}</span>
       </div>
     </div>
   }

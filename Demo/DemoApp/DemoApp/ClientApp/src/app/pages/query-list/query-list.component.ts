@@ -10,6 +10,7 @@ import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { IconComponent } from '../../components/icon/icon.component';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
@@ -17,7 +18,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslateKeyPipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

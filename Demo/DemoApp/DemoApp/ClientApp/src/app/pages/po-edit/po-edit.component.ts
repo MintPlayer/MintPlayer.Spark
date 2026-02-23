@@ -5,14 +5,15 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
+import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
-  imports: [CommonModule, BsAlertModule, PoFormComponent],
+  imports: [CommonModule, BsAlertModule, PoFormComponent, TranslateKeyPipe],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {
@@ -21,6 +22,7 @@ export default class PoEditComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  resolveTranslation = resolveTranslation;
   colors = Color;
   entityType: EntityType | null = null;
   item: PersistentObject | null = null;

@@ -9,10 +9,12 @@ import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationErro
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { switchMap, forkJoin, of } from 'rxjs';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-edit',
-  imports: [CommonModule, BsAlertModule, PoFormComponent],
+  imports: [CommonModule, BsAlertModule, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {

@@ -11,6 +11,7 @@ interface CultureConfiguration {
 export class LanguageService {
   private readonly http = inject(HttpClient);
   private readonly currentLang = signal('en');
+  private readonly translationsMap = signal<Record<string, TranslatedString>>({});
 
   readonly language = this.currentLang.asReadonly();
   readonly languages = signal<Record<string, TranslatedString>>({});
@@ -20,6 +21,9 @@ export class LanguageService {
       this.languages.set(config.languages);
       const saved = localStorage.getItem('spark-lang');
       this.currentLang.set(saved ?? config.defaultLanguage);
+    });
+    this.http.get<Record<string, TranslatedString>>('/spark/translations').subscribe(t => {
+      this.translationsMap.set(t);
     });
   }
 
@@ -32,5 +36,10 @@ export class LanguageService {
     if (!ts) return '';
     const lang = this.currentLang();
     return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? '';
+  }
+
+  t(key: string): string {
+    const ts = this.translationsMap()[key];
+    return this.resolve(ts) || key;
   }
 }

@@ -12,6 +12,8 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
+import { TranslationsService } from '../../core/services/translations.service';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
@@ -20,13 +22,14 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslateKeyPipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PoFormComponent implements OnChanges {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly translations = inject(TranslationsService);
 
   @Input() entityType: EntityType | null = null;
   @Input() formData: Record<string, any> = {};
@@ -241,7 +244,7 @@ export class PoFormComponent implements OnChanges {
   // AsDetail object modal methods
   getAsDetailDisplayValue(attr: EntityAttributeDefinition): string {
     const value = this.formData[attr.name];
-    if (!value) return '(not set)';
+    if (!value) return this.translations.t('notSet');
 
     const asDetailType = this.getAsDetailType(attr);
 
@@ -262,7 +265,7 @@ export class PoFormComponent implements OnChanges {
       if (value[prop]) return value[prop];
     }
 
-    return '(click to edit)';
+    return this.translations.t('clickToEdit');
   }
 
   /**
@@ -304,7 +307,7 @@ export class PoFormComponent implements OnChanges {
   // Reference modal methods
   getReferenceDisplayValue(attr: EntityAttributeDefinition): string {
     const selectedId = this.formData[attr.name];
-    if (!selectedId) return '(not selected)';
+    if (!selectedId) return this.translations.t('notSelected');
 
     const options = this.getReferenceOptions(attr);
     const selected = options.find(o => o.id === selectedId);

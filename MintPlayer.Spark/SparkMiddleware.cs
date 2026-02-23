@@ -10,6 +10,7 @@ using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Endpoints.Aliases;
 using MintPlayer.Spark.Endpoints.Culture;
 using MintPlayer.Spark.Endpoints.EntityTypes;
+using MintPlayer.Spark.Endpoints.Translations;
 using MintPlayer.Spark.Endpoints.LookupReferences;
 using MintPlayer.Spark.Endpoints.Permissions;
 using MintPlayer.Spark.Endpoints.PersistentObject;
@@ -329,6 +330,10 @@ public static class SparkExtensions
 
         // Culture endpoint
         sparkGroup.MapGet("/culture", async (HttpContext context, GetCulture action) =>
+            await action.HandleAsync(context));
+
+        // Translations endpoint
+        sparkGroup.MapGet("/translations", async (HttpContext context, GetTranslations action) =>
             await action.HandleAsync(context));
 
         // Program Units endpoint

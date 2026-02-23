@@ -1,0 +1,107 @@
+{
+  "save": {
+    "en": "Save",
+    "fr": "Enregistrer",
+    "nl": "Opslaan"
+  },
+  "cancel": {
+    "en": "Cancel",
+    "fr": "Annuler",
+    "nl": "Annuleren"
+  },
+  "edit": {
+    "en": "Edit",
+    "fr": "Modifier",
+    "nl": "Bewerken"
+  },
+  "delete": {
+    "en": "Delete",
+    "fr": "Supprimer",
+    "nl": "Verwijderen"
+  },
+  "new": {
+    "en": "New",
+    "fr": "Nouveau",
+    "nl": "Nieuw"
+  },
+  "create": {
+    "en": "Create",
+    "fr": "Créer",
+    "nl": "Aanmaken"
+  },
+  "back": {
+    "en": "Back",
+    "fr": "Retour",
+    "nl": "Terug"
+  },
+  "select": {
+    "en": "Select",
+    "fr": "Sélectionner",
+    "nl": "Selecteer"
+  },
+  "search": {
+    "en": "Search...",
+    "fr": "Rechercher...",
+    "nl": "Zoeken..."
+  },
+  "loading": {
+    "en": "Loading...",
+    "fr": "Chargement...",
+    "nl": "Laden..."
+  },
+  "selectPlaceholder": {
+    "en": "-- Select --",
+    "fr": "-- Sélectionner --",
+    "nl": "-- Selecteer --"
+  },
+  "noItemsFound": {
+    "en": "No items found",
+    "fr": "Aucun élément trouvé",
+    "nl": "Geen items gevonden"
+  },
+  "notSet": {
+    "en": "(not set)",
+    "fr": "(non défini)",
+    "nl": "(niet ingesteld)"
+  },
+  "notSelected": {
+    "en": "(not selected)",
+    "fr": "(non sélectionné)",
+    "nl": "(niet geselecteerd)"
+  },
+  "clickToEdit": {
+    "en": "(click to edit)",
+    "fr": "(cliquer pour modifier)",
+    "nl": "(klik om te bewerken)"
+  },
+  "resultFound": {
+    "en": "result found",
+    "fr": "résultat trouvé",
+    "nl": "resultaat gevonden"
+  },
+  "resultsFound": {
+    "en": "results found",
+    "fr": "résultats trouvés",
+    "nl": "resultaten gevonden"
+  },
+  "confirmDelete": {
+    "en": "Are you sure you want to delete this item?",
+    "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?",
+    "nl": "Weet u zeker dat u dit item wilt verwijderen?"
+  },
+  "welcomeTitle": {
+    "en": "Welcome to Spark",
+    "fr": "Bienvenue dans Spark",
+    "nl": "Welkom bij Spark"
+  },
+  "welcomeSubtitle": {
+    "en": "A low-code framework for building data-driven web applications.",
+    "fr": "Un framework low-code pour créer des applications web pilotées par les données.",
+    "nl": "Een low-code framework voor het bouwen van datagestuurde webapplicaties."
+  },
+  "selectMenuItem": {
+    "en": "Select a menu item from the sidebar to get started.",
+    "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+    "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+  }
+}

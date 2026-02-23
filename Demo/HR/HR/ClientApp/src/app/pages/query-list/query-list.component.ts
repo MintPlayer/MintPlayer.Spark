@@ -15,11 +15,12 @@ import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObjec
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslatePipe],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

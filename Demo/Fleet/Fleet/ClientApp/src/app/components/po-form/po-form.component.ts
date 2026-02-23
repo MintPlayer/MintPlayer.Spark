@@ -19,10 +19,11 @@ import { forkJoin } from 'rxjs';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslatePipe],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -243,7 +244,7 @@ export class PoFormComponent implements OnChanges {
   // AsDetail object modal methods
   getAsDetailDisplayValue(attr: EntityAttributeDefinition): string {
     const value = this.formData[attr.name];
-    if (!value) return '(not set)';
+    if (!value) return this.lang.t('notSet');
 
     const asDetailType = this.getAsDetailType(attr);
 
@@ -264,7 +265,7 @@ export class PoFormComponent implements OnChanges {
       if (value[prop]) return value[prop];
     }
 
-    return '(click to edit)';
+    return this.lang.t('clickToEdit');
   }
 
   /**
@@ -306,7 +307,7 @@ export class PoFormComponent implements OnChanges {
   // Reference modal methods
   getReferenceDisplayValue(attr: EntityAttributeDefinition): string {
     const selectedId = this.formData[attr.name];
-    if (!selectedId) return '(not selected)';
+    if (!selectedId) return this.lang.t('notSelected');
 
     const options = this.getReferenceOptions(attr);
     const selected = options.find(o => o.id === selectedId);
