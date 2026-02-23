@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Messaging.Abstractions</PackageId>
-		<Version>10.0.0-preview.4</Version>
+		<Version>10.0.0-preview.6</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions for MintPlayer.Spark.Messaging: IMessageBus, IRecipient, and MessageQueueAttribute.</Description>
