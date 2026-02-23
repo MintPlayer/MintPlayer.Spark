@@ -1,3 +1,5 @@
+import { TranslatedString } from './translated-string';
+
 export enum ELookupDisplayType {
   Dropdown = 0,
   Modal = 1
@@ -19,7 +21,7 @@ export interface LookupReference {
 
 export interface LookupReferenceValue {
   key: string;
-  translations: Record<string, string>;
+  values: TranslatedString;
   isActive: boolean;
   extra?: Record<string, unknown>;
 }

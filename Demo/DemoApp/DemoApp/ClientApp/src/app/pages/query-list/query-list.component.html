@@ -1,9 +1,9 @@
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>{{ query?.name || 'Loading...' }}</h2>
+    <h2>{{ query ? (resolveTranslation(query.description) || query.name) : ('loading' | t) }}</h2>
     @if (canCreate) {
       <button class="btn btn-primary" (click)="onCreate()">
-        <app-icon name="plus-lg" /> New
+        <app-icon name="plus-lg" /> {{ 'new' | t }}
       </button>
     }
   </div>
@@ -19,7 +19,7 @@
             </span>
             <input
               type="text"
-              placeholder="Search..."
+              [placeholder]="'search' | t"
               [(ngModel)]="searchTerm"
               (ngModelChange)="onSearchChange()">
             @if (searchTerm) {
@@ -35,7 +35,7 @@
         <div class="col-md-8 text-end">
           @if (searchTerm && paginationData) {
             <span class="text-muted">
-              {{ paginationData.totalRecords }} result{{ paginationData.totalRecords !== 1 ? 's' : '' }} found
+              {{ paginationData.totalRecords }} {{ paginationData.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
             </span>
           }
         </div>
@@ -51,7 +51,7 @@
     <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
       @for (attr of getVisibleAttributes(); track attr.id) {
         <div *bsDatatableColumn="attr.name; sortable: true">
-          {{ attr.label || attr.name }}
+          {{ resolveTranslation(attr.label) || attr.name }}
         </div>
       }
 
@@ -74,7 +74,7 @@
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
-        <span class="visually-hidden">Loading...</span>
+        <span class="visually-hidden">{{ 'loading' | t }}</span>
       </div>
     </div>
   }

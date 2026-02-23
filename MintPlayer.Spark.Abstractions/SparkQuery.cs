@@ -4,6 +4,7 @@ public sealed class SparkQuery
 {
     public required Guid Id { get; set; }
     public required string Name { get; set; }
+    public TranslatedString? Description { get; set; }
     public required string ContextProperty { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this query.

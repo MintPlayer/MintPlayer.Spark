@@ -1,6 +1,7 @@
 {
   "id": "e9b59b38-ab69-4915-8e16-1acb8fcab7a3",
   "name": "Address",
+  "description": {"en": "Address", "fr": "Adresse", "nl": "Adres"},
   "clrType": "DemoApp.Library.Entities.Address",
   "displayFormat": "{Street}, {City} {State}",
   "displayAttribute": "Street",
@@ -8,7 +9,7 @@
     {
       "id": "6e4891d9-78ce-40b3-a99d-866886563181",
       "name": "Street",
-      "label": "Street",
+      "label": {"en": "Street", "fr": "Rue", "nl": "Straat"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -19,7 +20,7 @@
         {
           "type": "minLength",
           "value": 3,
-          "message": "Street must be at least 3 characters."
+          "message": {"en": "Street must be at least 3 characters.", "fr": "La rue doit contenir au moins 3 caractères.", "nl": "Straat moet minstens 3 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -30,7 +31,7 @@
     {
       "id": "3ed09bf2-617f-4847-8b7a-ae2465821d8c",
       "name": "City",
-      "label": "City",
+      "label": {"en": "City", "fr": "Ville", "nl": "Stad"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -41,7 +42,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "City must be at least 2 characters."
+          "message": {"en": "City must be at least 2 characters.", "fr": "La ville doit contenir au moins 2 caractères.", "nl": "Stad moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -52,7 +53,7 @@
     {
       "id": "7b146de0-2609-4b58-8418-a8304e6b93f2",
       "name": "State",
-      "label": "State",
+      "label": {"en": "State", "fr": "État", "nl": "Staat"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -63,7 +64,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "State must be at least 2 characters."
+          "message": {"en": "State must be at least 2 characters.", "fr": "L'état doit contenir au moins 2 caractères.", "nl": "Staat moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",

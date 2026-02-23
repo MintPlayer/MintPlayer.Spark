@@ -2,13 +2,13 @@
   "programUnitGroups": [
     {
       "id": "a10e8400-e29b-41d4-a716-446655440000",
-      "name": "Fleet Management",
+      "name": {"en": "Fleet Management", "fr": "Gestion de flotte", "nl": "Wagenparkbeheer"},
       "icon": "bi-truck",
       "order": 1,
       "programUnits": [
         {
           "id": "a10e8400-e29b-41d4-a716-446655440001",
-          "name": "Cars",
+          "name": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440001",
@@ -17,7 +17,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440002",
-          "name": "People",
+          "name": {"en": "People", "fr": "Personnes", "nl": "Personen"},
           "icon": "bi-people",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440002",
@@ -26,7 +26,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440003",
-          "name": "Companies",
+          "name": {"en": "Companies", "fr": "Entreprises", "nl": "Bedrijven"},
           "icon": "bi-building",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440003",

@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>10.0.0-preview.6</Version>
+		<Version>10.0.0-preview.7</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>

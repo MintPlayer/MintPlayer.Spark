@@ -1,0 +1,327 @@
+{
+  "save": {
+    "en": "Save",
+    "fr": "Enregistrer",
+    "nl": "Opslaan"
+  },
+  "cancel": {
+    "en": "Cancel",
+    "fr": "Annuler",
+    "nl": "Annuleren"
+  },
+  "edit": {
+    "en": "Edit",
+    "fr": "Modifier",
+    "nl": "Bewerken"
+  },
+  "delete": {
+    "en": "Delete",
+    "fr": "Supprimer",
+    "nl": "Verwijderen"
+  },
+  "new": {
+    "en": "New",
+    "fr": "Nouveau",
+    "nl": "Nieuw"
+  },
+  "create": {
+    "en": "Create",
+    "fr": "Créer",
+    "nl": "Aanmaken"
+  },
+  "back": {
+    "en": "Back",
+    "fr": "Retour",
+    "nl": "Terug"
+  },
+  "select": {
+    "en": "Select",
+    "fr": "Sélectionner",
+    "nl": "Selecteer"
+  },
+  "search": {
+    "en": "Search...",
+    "fr": "Rechercher...",
+    "nl": "Zoeken..."
+  },
+  "loading": {
+    "en": "Loading...",
+    "fr": "Chargement...",
+    "nl": "Laden..."
+  },
+  "selectPlaceholder": {
+    "en": "-- Select --",
+    "fr": "-- Sélectionner --",
+    "nl": "-- Selecteer --"
+  },
+  "noItemsFound": {
+    "en": "No items found",
+    "fr": "Aucun élément trouvé",
+    "nl": "Geen items gevonden"
+  },
+  "notSet": {
+    "en": "(not set)",
+    "fr": "(non défini)",
+    "nl": "(niet ingesteld)"
+  },
+  "notSelected": {
+    "en": "(not selected)",
+    "fr": "(non sélectionné)",
+    "nl": "(niet geselecteerd)"
+  },
+  "clickToEdit": {
+    "en": "(click to edit)",
+    "fr": "(cliquer pour modifier)",
+    "nl": "(klik om te bewerken)"
+  },
+  "resultFound": {
+    "en": "result found",
+    "fr": "résultat trouvé",
+    "nl": "resultaat gevonden"
+  },
+  "resultsFound": {
+    "en": "results found",
+    "fr": "résultats trouvés",
+    "nl": "resultaten gevonden"
+  },
+  "confirmDelete": {
+    "en": "Are you sure you want to delete this item?",
+    "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?",
+    "nl": "Weet u zeker dat u dit item wilt verwijderen?"
+  },
+  "welcomeTitle": {
+    "en": "Welcome to Spark",
+    "fr": "Bienvenue dans Spark",
+    "nl": "Welkom bij Spark"
+  },
+  "welcomeSubtitle": {
+    "en": "A low-code framework for building data-driven web applications.",
+    "fr": "Un framework low-code pour créer des applications web pilotées par les données.",
+    "nl": "Een low-code framework voor het bouwen van datagestuurde webapplicaties."
+  },
+  "selectMenuItem": {
+    "en": "Select a menu item from the sidebar to get started.",
+    "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+    "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+  },
+  "authLogin": {
+    "en": "Login",
+    "fr": "Connexion",
+    "nl": "Inloggen"
+  },
+  "authLogout": {
+    "en": "Logout",
+    "fr": "Déconnexion",
+    "nl": "Uitloggen"
+  },
+  "authEmail": {
+    "en": "Email",
+    "fr": "E-mail",
+    "nl": "E-mail"
+  },
+  "authPassword": {
+    "en": "Password",
+    "fr": "Mot de passe",
+    "nl": "Wachtwoord"
+  },
+  "authRememberMe": {
+    "en": "Remember me",
+    "fr": "Se souvenir de moi",
+    "nl": "Onthoud mij"
+  },
+  "authCreateAccount": {
+    "en": "Create an account",
+    "fr": "Créer un compte",
+    "nl": "Account aanmaken"
+  },
+  "authForgotPassword": {
+    "en": "Forgot password?",
+    "fr": "Mot de passe oublié ?",
+    "nl": "Wachtwoord vergeten?"
+  },
+  "authInvalidCredentials": {
+    "en": "Invalid email or password.",
+    "fr": "E-mail ou mot de passe invalide.",
+    "nl": "Ongeldig e-mailadres of wachtwoord."
+  },
+  "authRegister": {
+    "en": "Register",
+    "fr": "S'inscrire",
+    "nl": "Registreren"
+  },
+  "authConfirmPassword": {
+    "en": "Confirm Password",
+    "fr": "Confirmer le mot de passe",
+    "nl": "Wachtwoord bevestigen"
+  },
+  "authInvalidEmail": {
+    "en": "Please enter a valid email address.",
+    "fr": "Veuillez entrer une adresse e-mail valide.",
+    "nl": "Voer een geldig e-mailadres in."
+  },
+  "authPasswordMismatch": {
+    "en": "Passwords do not match.",
+    "fr": "Les mots de passe ne correspondent pas.",
+    "nl": "Wachtwoorden komen niet overeen."
+  },
+  "authAlreadyHaveAccount": {
+    "en": "Already have an account?",
+    "fr": "Vous avez déjà un compte ?",
+    "nl": "Heb je al een account?"
+  },
+  "authRegistrationFailed": {
+    "en": "Registration failed. Please try again.",
+    "fr": "L'inscription a échoué. Veuillez réessayer.",
+    "nl": "Registratie mislukt. Probeer het opnieuw."
+  },
+  "authForgotPasswordTitle": {
+    "en": "Forgot Password",
+    "fr": "Mot de passe oublié",
+    "nl": "Wachtwoord vergeten"
+  },
+  "authForgotPasswordDescription": {
+    "en": "Enter your email address and we will send you a link to reset your password.",
+    "fr": "Entrez votre adresse e-mail et nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+    "nl": "Voer uw e-mailadres in en we sturen u een link om uw wachtwoord opnieuw in te stellen."
+  },
+  "authSendResetLink": {
+    "en": "Send Reset Link",
+    "fr": "Envoyer le lien de réinitialisation",
+    "nl": "Resetlink verzenden"
+  },
+  "authBackToLogin": {
+    "en": "Back to login",
+    "fr": "Retour à la connexion",
+    "nl": "Terug naar inloggen"
+  },
+  "authForgotPasswordSuccess": {
+    "en": "If an account with that email exists, we've sent a password reset link.",
+    "fr": "Si un compte avec cette adresse e-mail existe, nous avons envoyé un lien de réinitialisation.",
+    "nl": "Als er een account met dat e-mailadres bestaat, hebben we een resetlink gestuurd."
+  },
+  "authResetPassword": {
+    "en": "Reset Password",
+    "fr": "Réinitialiser le mot de passe",
+    "nl": "Wachtwoord resetten"
+  },
+  "authNewPassword": {
+    "en": "New Password",
+    "fr": "Nouveau mot de passe",
+    "nl": "Nieuw wachtwoord"
+  },
+  "authGoToLogin": {
+    "en": "Go to login",
+    "fr": "Aller à la connexion",
+    "nl": "Ga naar inloggen"
+  },
+  "authInvalidResetLink": {
+    "en": "Invalid password reset link. Please request a new one.",
+    "fr": "Lien de réinitialisation invalide. Veuillez en demander un nouveau.",
+    "nl": "Ongeldige resetlink. Vraag een nieuwe aan."
+  },
+  "authResetSuccess": {
+    "en": "Your password has been reset successfully.",
+    "fr": "Votre mot de passe a été réinitialisé avec succès.",
+    "nl": "Uw wachtwoord is succesvol gereset."
+  },
+  "authResetFailed": {
+    "en": "Failed to reset password. The link may have expired.",
+    "fr": "Échec de la réinitialisation du mot de passe. Le lien a peut-être expiré.",
+    "nl": "Wachtwoord resetten mislukt. De link is mogelijk verlopen."
+  },
+  "authTwoFactorTitle": {
+    "en": "Two-Factor Authentication",
+    "fr": "Authentification à deux facteurs",
+    "nl": "Tweefactorauthenticatie"
+  },
+  "authCode": {
+    "en": "Authentication Code",
+    "fr": "Code d'authentification",
+    "nl": "Authenticatiecode"
+  },
+  "authRecoveryCode": {
+    "en": "Recovery Code",
+    "fr": "Code de récupération",
+    "nl": "Herstelcode"
+  },
+  "authEnterCode": {
+    "en": "Enter 6-digit code",
+    "fr": "Entrez le code à 6 chiffres",
+    "nl": "Voer de 6-cijferige code in"
+  },
+  "authEnterRecoveryCode": {
+    "en": "Enter recovery code",
+    "fr": "Entrez le code de récupération",
+    "nl": "Voer de herstelcode in"
+  },
+  "authVerify": {
+    "en": "Verify",
+    "fr": "Vérifier",
+    "nl": "Verifiëren"
+  },
+  "authUseAuthCode": {
+    "en": "Use authentication code instead",
+    "fr": "Utiliser le code d'authentification",
+    "nl": "Gebruik authenticatiecode"
+  },
+  "authUseRecoveryCode": {
+    "en": "Use a recovery code instead",
+    "fr": "Utiliser un code de récupération",
+    "nl": "Gebruik een herstelcode"
+  },
+  "authEnterRecoveryCodeError": {
+    "en": "Please enter a recovery code.",
+    "fr": "Veuillez entrer un code de récupération.",
+    "nl": "Voer een herstelcode in."
+  },
+  "authEnterCodeError": {
+    "en": "Please enter the 6-digit code.",
+    "fr": "Veuillez entrer le code à 6 chiffres.",
+    "nl": "Voer de 6-cijferige code in."
+  },
+  "authInvalidCode": {
+    "en": "Invalid code. Please try again.",
+    "fr": "Code invalide. Veuillez réessayer.",
+    "nl": "Ongeldige code. Probeer het opnieuw."
+  },
+  "validationRequired": {
+    "en": "{0} is required.",
+    "fr": "{0} est obligatoire.",
+    "nl": "{0} is verplicht."
+  },
+  "validationMinLength": {
+    "en": "{0} must be at least {1} characters.",
+    "fr": "{0} doit contenir au moins {1} caractères.",
+    "nl": "{0} moet minstens {1} tekens bevatten."
+  },
+  "validationMaxLength": {
+    "en": "{0} must be at most {1} characters.",
+    "fr": "{0} doit contenir au plus {1} caractères.",
+    "nl": "{0} mag maximaal {1} tekens bevatten."
+  },
+  "validationRangeMin": {
+    "en": "{0} must be at least {1}.",
+    "fr": "{0} doit être au moins {1}.",
+    "nl": "{0} moet minstens {1} zijn."
+  },
+  "validationRangeMax": {
+    "en": "{0} must be at most {1}.",
+    "fr": "{0} doit être au plus {1}.",
+    "nl": "{0} mag maximaal {1} zijn."
+  },
+  "validationInvalidFormat": {
+    "en": "{0} has an invalid format.",
+    "fr": "{0} a un format invalide.",
+    "nl": "{0} heeft een ongeldig formaat."
+  },
+  "validationInvalidEmail": {
+    "en": "{0} must be a valid email address.",
+    "fr": "{0} doit être une adresse e-mail valide.",
+    "nl": "{0} moet een geldig e-mailadres zijn."
+  },
+  "validationInvalidUrl": {
+    "en": "{0} must be a valid URL.",
+    "fr": "{0} doit être une URL valide.",
+    "nl": "{0} moet een geldige URL zijn."
+  }
+}

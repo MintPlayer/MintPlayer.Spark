@@ -1,9 +1,9 @@
 {
   "groups": {
-    "00000000-0000-0000-0000-000000000000": "Everyone",
-    "b1b2c3d4-0000-0000-0000-000000000001": "Administrators",
-    "b1b2c3d4-0000-0000-0000-000000000002": "HR managers",
-    "b1b2c3d4-0000-0000-0000-000000000003": "Viewers"
+    "00000000-0000-0000-0000-000000000000": { "en": "Everyone", "fr": "Tout le monde", "nl": "Iedereen" },
+    "b1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators", "fr": "Administrateurs", "nl": "Beheerders" },
+    "b1b2c3d4-0000-0000-0000-000000000002": { "en": "HR managers", "fr": "Responsables RH", "nl": "HR-managers" },
+    "b1b2c3d4-0000-0000-0000-000000000003": { "en": "Viewers", "fr": "Lecteurs", "nl": "Lezers" }
   },
   "rights": [
     {

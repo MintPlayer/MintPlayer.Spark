@@ -1,6 +1,8 @@
+import { TranslatedString } from './translated-string';
+
 export interface ValidationError {
   attributeName: string;
-  errorMessage: string;
+  errorMessage: TranslatedString;
   ruleType: string;
 }
 

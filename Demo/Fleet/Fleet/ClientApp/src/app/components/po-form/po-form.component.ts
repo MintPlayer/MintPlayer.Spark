@@ -12,15 +12,18 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { LanguageService } from '../../core/services/language.service';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -38,6 +41,7 @@ export class PoFormComponent implements OnChanges {
   @Output() save = new EventEmitter<void>();
   @Output() cancel = new EventEmitter<void>();
 
+  private readonly lang = inject(LanguageService);
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
   asDetailTypes: Record<string, EntityType> = {};
@@ -152,15 +156,7 @@ export class PoFormComponent implements OnChanges {
     const selected = options.find(o => o.key === String(currentValue));
     if (!selected) return String(currentValue);
 
-    // Get translation for current language (defaulting to 'en')
-    const lang = this.getCurrentLanguage();
-    return selected.translations[lang] || selected.translations['en'] || Object.values(selected.translations)[0] || selected.key;
-  }
-
-  getCurrentLanguage(): string {
-    // Get browser language, fallback to 'en'
-    const browserLang = navigator.language?.split('-')[0];
-    return browserLang || 'en';
+    return this.lang.resolve(selected.values) || selected.key;
   }
 
   getLookupDisplayType(attr: EntityAttributeDefinition): ELookupDisplayType {
@@ -182,9 +178,8 @@ export class PoFormComponent implements OnChanges {
       return this.lookupModalItems;
     }
     const term = this.lookupSearchTerm.toLowerCase().trim();
-    const lang = this.getCurrentLanguage();
     return this.lookupModalItems.filter(item => {
-      const translation = item.translations[lang] || item.translations['en'] || Object.values(item.translations)[0] || '';
+      const translation = this.lang.resolve(item.values);
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   }
@@ -227,7 +222,7 @@ export class PoFormComponent implements OnChanges {
 
   getErrorForAttribute(attrName: string): string | null {
     const error = this.validationErrors.find(e => e.attributeName === attrName);
-    return error?.errorMessage || null;
+    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   hasError(attrName: string): boolean {
@@ -249,7 +244,7 @@ export class PoFormComponent implements OnChanges {
   // AsDetail object modal methods
   getAsDetailDisplayValue(attr: EntityAttributeDefinition): string {
     const value = this.formData[attr.name];
-    if (!value) return '(not set)';
+    if (!value) return this.lang.t('notSet');
 
     const asDetailType = this.getAsDetailType(attr);
 
@@ -270,7 +265,7 @@ export class PoFormComponent implements OnChanges {
       if (value[prop]) return value[prop];
     }
 
-    return '(click to edit)';
+    return this.lang.t('clickToEdit');
   }
 
   /**
@@ -312,7 +307,7 @@ export class PoFormComponent implements OnChanges {
   // Reference modal methods
   getReferenceDisplayValue(attr: EntityAttributeDefinition): string {
     const selectedId = this.formData[attr.name];
-    if (!selectedId) return '(not selected)';
+    if (!selectedId) return this.lang.t('notSelected');
 
     const options = this.getReferenceOptions(attr);
     const selected = options.find(o => o.id === selectedId);

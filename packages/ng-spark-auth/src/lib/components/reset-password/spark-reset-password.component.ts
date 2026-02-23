@@ -5,6 +5,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { SparkAuthTranslationService } from '../../services/spark-auth-translation.service';
 
 function passwordMatchValidator(control: AbstractControl): ValidationErrors | null {
   const password = control.get('newPassword');
@@ -18,18 +20,18 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
 @Component({
   selector: 'spark-reset-password',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
         <div class="card-body">
-          <h3 class="card-title text-center mb-4">Reset Password</h3>
+          <h3 class="card-title text-center mb-4">{{ 'authResetPassword' | t }}</h3>
 
           @if (successMessage()) {
             <div class="alert alert-success" role="alert">
               {{ successMessage() }}
               <div class="mt-2">
-                <a [routerLink]="routePaths.login">Go to login</a>
+                <a [routerLink]="routePaths.login">{{ 'authGoToLogin' | t }}</a>
               </div>
             </div>
           }
@@ -42,7 +44,7 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
             <bs-form>
               <form [formGroup]="form" (ngSubmit)="onSubmit()">
                 <div class="mb-3">
-                  <label for="newPassword" class="form-label">New Password</label>
+                  <label for="newPassword" class="form-label">{{ 'authNewPassword' | t }}</label>
                   <input
                     type="password"
                     id="newPassword"
@@ -52,7 +54,7 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
                 </div>
 
                 <div class="mb-3">
-                  <label for="confirmPassword" class="form-label">Confirm Password</label>
+                  <label for="confirmPassword" class="form-label">{{ 'authConfirmPassword' | t }}</label>
                   <input
                     type="password"
                     id="confirmPassword"
@@ -60,7 +62,7 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
                     autocomplete="new-password"
                   />
                   @if (form.touched && form.hasError('passwordMismatch')) {
-                    <div class="text-danger mt-1">Passwords do not match.</div>
+                    <div class="text-danger mt-1">{{ 'authPasswordMismatch' | t }}</div>
                   }
                 </div>
 
@@ -72,13 +74,13 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
                   @if (loading()) {
                     <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                   }
-                  Reset Password
+                  {{ 'authResetPassword' | t }}
                 </button>
               </form>
             </bs-form>
 
             <div class="mt-3 text-center">
-              <a [routerLink]="routePaths.login">Back to login</a>
+              <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
             </div>
           }
         </div>
@@ -91,6 +93,7 @@ export class SparkResetPasswordComponent implements OnInit {
   private readonly authService = inject(SparkAuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
   readonly loading = signal(false);
@@ -110,7 +113,7 @@ export class SparkResetPasswordComponent implements OnInit {
     this.code = this.route.snapshot.queryParamMap.get('code') ?? '';
 
     if (!this.email || !this.code) {
-      this.errorMessage.set('Invalid password reset link. Please request a new one.');
+      this.errorMessage.set(this.translation.t('authInvalidResetLink'));
     }
   }
 
@@ -121,7 +124,7 @@ export class SparkResetPasswordComponent implements OnInit {
     }
 
     if (!this.email || !this.code) {
-      this.errorMessage.set('Invalid password reset link. Please request a new one.');
+      this.errorMessage.set(this.translation.t('authInvalidResetLink'));
       return;
     }
 
@@ -134,14 +137,14 @@ export class SparkResetPasswordComponent implements OnInit {
     this.authService.resetPassword(this.email, this.code, newPassword!).subscribe({
       next: () => {
         this.loading.set(false);
-        this.successMessage.set('Your password has been reset successfully.');
+        this.successMessage.set(this.translation.t('authResetSuccess'));
       },
       error: (err: HttpErrorResponse) => {
         this.loading.set(false);
         if (err.error?.detail) {
           this.errorMessage.set(err.error.detail);
         } else {
-          this.errorMessage.set('Failed to reset password. The link may have expired.');
+          this.errorMessage.set(this.translation.t('authResetFailed'));
         }
       },
     });

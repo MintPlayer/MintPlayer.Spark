@@ -8,12 +8,15 @@ import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
+import { LanguageService } from '../../core/services/language.service';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
@@ -22,6 +25,7 @@ export default class PoDetailComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  private readonly lang = inject(LanguageService);
   colors = Color;
   errorMessage: string | null = null;
   entityType: EntityType | null = null;
@@ -90,8 +94,7 @@ export default class PoDetailComponent implements OnInit {
       if (lookupRef) {
         const option = lookupRef.values.find(v => v.key === String(attr.value));
         if (option) {
-          const lang = navigator.language?.split('-')[0] || 'en';
-          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+          return this.lang.resolve(option.values) || option.key;
         }
       }
     }
@@ -141,7 +144,7 @@ export default class PoDetailComponent implements OnInit {
       if (value[prop]) return value[prop];
     }
 
-    return '(object)';
+    return this.lang.t('notSet');
   }
 
   private resolveDisplayFormat(format: string, data: Record<string, any>): string {
@@ -156,7 +159,7 @@ export default class PoDetailComponent implements OnInit {
   }
 
   onDelete(): void {
-    if (confirm('Are you sure you want to delete this item?')) {
+    if (confirm(this.lang.t('confirmDelete'))) {
       this.sparkService.delete(this.type, this.id).subscribe(() => {
         this.router.navigate(['/']);
       });

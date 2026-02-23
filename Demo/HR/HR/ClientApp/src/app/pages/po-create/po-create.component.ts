@@ -8,11 +8,13 @@ import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
-  imports: [CommonModule, BsAlertModule, PoFormComponent],
+  imports: [CommonModule, BsAlertModule, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {
@@ -102,7 +104,7 @@ export default class PoCreateComponent implements OnInit {
         } else {
           this.validationErrors = [{
             attributeName: '',
-            errorMessage: error.message || 'An unexpected error occurred',
+            errorMessage: { en: error.message || 'An unexpected error occurred' },
             ruleType: 'error'
           }];
         }

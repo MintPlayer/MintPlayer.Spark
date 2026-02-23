@@ -6,5 +6,5 @@ public sealed class ValidationRule
     public object? Value { get; set; }
     public int? Min { get; set; }
     public int? Max { get; set; }
-    public string? Message { get; set; }
+    public TranslatedString? Message { get; set; }
 }

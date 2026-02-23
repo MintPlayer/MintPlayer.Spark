@@ -4,6 +4,7 @@ public sealed class EntityTypeDefinition
 {
     public required Guid Id { get; set; }
     public required string Name { get; set; }
+    public TranslatedString? Description { get; set; }
     public required string ClrType { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this entity type.
@@ -39,7 +40,7 @@ public sealed class EntityAttributeDefinition
 {
     public required Guid Id { get; set; }
     public required string Name { get; set; }
-    public string? Label { get; set; }
+    public TranslatedString? Label { get; set; }
     public string DataType { get; set; } = "string";
     public bool IsRequired { get; set; }
     public bool IsVisible { get; set; } = true;

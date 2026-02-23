@@ -4,7 +4,7 @@
     @for (attr of getEditableAttributes(); track attr.id) {
       <div bsRow class="mb-3">
         <label [md]="4" bsColFormLabel [for]="attr.name">
-          {{ attr.label || attr.name }}
+          {{ resolveTranslation(attr.label) || attr.name }}
           @if (attr.isRequired) {
             <span class="text-danger">*</span>
           }
@@ -38,10 +38,10 @@
                 (ngModelChange)="onFieldChange()"
                 [id]="attr.name"
                 [class.is-invalid]="hasError(attr.name)">
-                <option [ngValue]="null">-- Select --</option>
+                <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
                 @for (option of getLookupOptions(attr); track option.key) {
                   <option [ngValue]="option.key">
-                    {{ option.translations[getCurrentLanguage()] || option.translations['en'] || option.key }}
+                    {{ resolveTranslation(option.values) || option.key }}
                   </option>
                 }
               </bs-select>
@@ -102,12 +102,12 @@
       <div bsRow class="mt-4">
         <div [md]="4"></div>
         <div [md]="8" class="d-flex justify-content-end gap-2">
-          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving">{{ 'cancel' | t }}</button>
           <button type="submit" [color]="colors.primary" [disabled]="isSaving" (click)="onSave()">
             @if (isSaving) {
               <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
             }
-            Save
+            {{ 'save' | t }}
           </button>
         </div>
       </div>
@@ -119,7 +119,7 @@
 <bs-modal [(isOpen)]="showAsDetailModal" (isOpenChange)="!$event && closeAsDetailModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">Edit {{ editingAsDetailAttr?.label || editingAsDetailAttr?.name }}</h5>
+      <h5 class="modal-title">{{ 'edit' | t }} {{ resolveTranslation(editingAsDetailAttr?.label) || editingAsDetailAttr?.name }}</h5>
     </div>
 
     @if (editingAsDetailAttr) {
@@ -132,8 +132,8 @@
     }
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">Cancel</button>
-      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">Save</button>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'cancel' | t }}</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'save' | t }}</button>
     </div>
   </div>
 </bs-modal>
@@ -142,7 +142,7 @@
 <bs-modal [(isOpen)]="showReferenceModal" (isOpenChange)="!$event && closeReferenceModal()">
   <div *bsModal class="reference-modal">
     <div bsModalHeader>
-      <h5 class="modal-title">Select {{ editingReferenceAttr?.label || editingReferenceAttr?.name }}</h5>
+      <h5 class="modal-title">{{ 'select' | t }} {{ resolveTranslation(editingReferenceAttr?.label) || editingReferenceAttr?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -156,7 +156,7 @@
               </span>
               <input
                 type="text"
-                placeholder="Search..."
+                [placeholder]="'search' | t"
                 [(ngModel)]="referenceSearchTerm"
                 (ngModelChange)="onReferenceSearchChange()">
               @if (referenceSearchTerm) {
@@ -172,7 +172,7 @@
           <div class="col-md-6 text-end">
             @if (referenceSearchTerm && referenceModalPagination) {
               <span class="text-muted">
-                {{ referenceModalPagination.totalRecords }} result{{ referenceModalPagination.totalRecords !== 1 ? 's' : '' }} found
+                {{ referenceModalPagination.totalRecords }} {{ referenceModalPagination.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
               </span>
             }
           </div>
@@ -181,7 +181,7 @@
         <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
           @for (attr of getReferenceVisibleAttributes(); track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">
-              {{ attr.label || attr.name }}
+              {{ resolveTranslation(attr.label) || attr.name }}
             </div>
           }
 
@@ -194,14 +194,14 @@
       } @else {
         <div class="text-center p-3">
           <div class="spinner-border spinner-border-sm" role="status">
-            <span class="visually-hidden">Loading...</span>
+            <span class="visually-hidden">{{ 'loading' | t }}</span>
           </div>
         </div>
       }
     </div>
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">Cancel</button>
+      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">{{ 'cancel' | t }}</button>
     </div>
   </div>
 </bs-modal>
@@ -210,7 +210,7 @@
 <bs-modal [(isOpen)]="showLookupModal" (isOpenChange)="!$event && closeLookupModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">Select {{ editingLookupAttr?.label || editingLookupAttr?.name }}</h5>
+      <h5 class="modal-title">{{ 'select' | t }} {{ resolveTranslation(editingLookupAttr?.label) || editingLookupAttr?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -223,7 +223,7 @@
             </span>
             <input
               type="text"
-              placeholder="Search..."
+              [placeholder]="'search' | t"
               [(ngModel)]="lookupSearchTerm">
             @if (lookupSearchTerm) {
               <button
@@ -245,11 +245,11 @@
               [class.table-primary]="formData[editingLookupAttr?.name ?? ''] === item.key"
               (click)="selectLookupItem(item)"
               style="cursor: pointer;">
-              <td>{{ item.translations[getCurrentLanguage()] || item.translations['en'] || item.key }}</td>
+              <td>{{ resolveTranslation(item.values) || item.key }}</td>
             </tr>
           } @empty {
             <tr>
-              <td class="text-center text-muted">No items found</td>
+              <td class="text-center text-muted">{{ 'noItemsFound' | t }}</td>
             </tr>
           }
         </tbody>
@@ -257,7 +257,7 @@
     </div>
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">Cancel</button>
+      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'cancel' | t }}</button>
     </div>
   </div>
 </bs-modal>

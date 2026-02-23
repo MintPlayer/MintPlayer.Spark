@@ -10,14 +10,15 @@ import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
+import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { IconComponent } from '../../components/icon/icon.component';
-import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslateKeyPipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -28,6 +29,7 @@ export default class QueryListComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  resolveTranslation = resolveTranslation;
   colors = Color;
   errorMessage: string | null = null;
   query: SparkQuery | null = null;
@@ -281,8 +283,7 @@ export default class QueryListComponent implements OnInit {
       if (lookupRef) {
         const option = lookupRef.values.find(v => v.key === String(attr.value));
         if (option) {
-          const lang = navigator.language?.split('-')[0] || 'en';
-          return option.translations[lang] || option.translations['en'] || Object.values(option.translations)[0] || option.key;
+          return resolveTranslation(option.values) || option.key;
         }
       }
     }

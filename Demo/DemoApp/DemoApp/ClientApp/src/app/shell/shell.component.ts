@@ -5,7 +5,7 @@ import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { SparkService } from '../core/services/spark.service';
-import { ProgramUnit, ProgramUnitGroup } from '../core/models';
+import { ProgramUnit, ProgramUnitGroup, resolveTranslation } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
@@ -23,6 +23,7 @@ export class ShellComponent implements OnInit {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
+  resolveTranslation = resolveTranslation;
   programUnitGroups: ProgramUnitGroup[] = [];
   shellState = signal<BsShellState>('auto');
   isSidebarVisible = signal<boolean>(false);

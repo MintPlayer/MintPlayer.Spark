@@ -12,7 +12,7 @@
         <bs-accordion-tab-header>
           <span class="triangle me-2"></span>
           <app-icon [name]="getIconName(group.icon, 'bi-folder')" />
-          <span class="ms-2">{{ group.name }}</span>
+          <span class="ms-2">{{ resolveTranslation(group.name) }}</span>
         </bs-accordion-tab-header>
         @for (unit of group.programUnits; track unit.id) {
         <a [routerLink]="getRouterLink(unit)"
@@ -20,7 +20,7 @@
            (click)="onMenuItemClick()"
            class="d-block px-3 py-2 text-light text-decoration-none nav-link">
           <app-icon [name]="getIconName(unit.icon, 'bi-file')" />
-          <span class="ms-2">{{ unit.name }}</span>
+          <span class="ms-2">{{ resolveTranslation(unit.name) }}</span>
         </a>
         }
       </bs-accordion-tab>

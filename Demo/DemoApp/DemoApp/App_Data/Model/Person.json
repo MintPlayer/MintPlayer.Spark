@@ -1,6 +1,7 @@
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Person",
+  "description": {"en": "Person", "fr": "Personne", "nl": "Persoon"},
   "clrType": "DemoApp.Library.Entities.Person",
   "queryType": "DemoApp.Data.VPerson",
   "indexName": "People_Overview",
@@ -9,7 +10,7 @@
     {
       "id": "550e8400-e29b-41d4-a716-446655440001",
       "name": "FirstName",
-      "label": "First Name",
+      "label": {"en": "First Name", "fr": "Prénom", "nl": "Voornaam"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -21,7 +22,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "First Name must be at least 2 characters."
+          "message": {"en": "First Name must be at least 2 characters.", "fr": "Le prénom doit contenir au moins 2 caractères.", "nl": "Voornaam moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -32,7 +33,7 @@
     {
       "id": "550e8400-e29b-41d4-a716-446655440002",
       "name": "LastName",
-      "label": "Last Name",
+      "label": {"en": "Last Name", "fr": "Nom de famille", "nl": "Achternaam"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -44,7 +45,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": "Last Name must be at least 2 characters."
+          "message": {"en": "Last Name must be at least 2 characters.", "fr": "Le nom de famille doit contenir au moins 2 caractères.", "nl": "Achternaam moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -55,7 +56,7 @@
     {
       "id": "550e8400-e29b-41d4-a716-446655440003",
       "name": "Email",
-      "label": "Email Address",
+      "label": {"en": "Email Address", "fr": "Adresse e-mail", "nl": "E-mailadres"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -75,7 +76,7 @@
     {
       "id": "550e8400-e29b-41d4-a716-446655440004",
       "name": "DateOfBirth",
-      "label": "Date of Birth",
+      "label": {"en": "Date of Birth", "fr": "Date de naissance", "nl": "Geboortedatum"},
       "dataType": "date",
       "isRequired": false,
       "isVisible": true,
@@ -88,7 +89,7 @@
     {
       "id": "550e8400-e29b-41d4-a716-446655440005",
       "name": "Company",
-      "label": "Company",
+      "label": {"en": "Company", "fr": "Entreprise", "nl": "Bedrijf"},
       "dataType": "Reference",
       "isRequired": false,
       "isVisible": true,
@@ -103,7 +104,7 @@
     {
       "id": "b537cf07-67e0-416d-9949-bf833c19133c",
       "name": "Address",
-      "label": "Address",
+      "label": {"en": "Address", "fr": "Adresse", "nl": "Adres"},
       "dataType": "AsDetail",
       "isRequired": false,
       "isVisible": true,
@@ -117,7 +118,7 @@
     {
       "id": "65cf3b91-01bd-4b10-a5e9-a81b549bc69e",
       "name": "IsActive",
-      "label": "Is Active",
+      "label": {"en": "Is Active", "fr": "Actif", "nl": "Actief"},
       "dataType": "boolean",
       "isRequired": true,
       "isVisible": true,
@@ -129,7 +130,7 @@
     {
       "id": "566e4dad-f60c-464d-b2f6-18fb9a5e0ac4",
       "name": "FullName",
-      "label": "Full Name",
+      "label": {"en": "Full Name", "fr": "Nom complet", "nl": "Volledige naam"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

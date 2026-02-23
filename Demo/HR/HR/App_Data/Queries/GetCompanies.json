@@ -1,6 +1,7 @@
 {
   "id": "b20e8400-e29b-41d4-a716-446655440002",
   "name": "GetCompanies",
+  "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
   "contextProperty": "Companies",
   "sortBy": "Name",
   "sortDirection": "asc"

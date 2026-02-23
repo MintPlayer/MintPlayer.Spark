@@ -6,16 +6,18 @@ import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { SparkAuthTranslationService } from '../../services/spark-auth-translation.service';
 
 @Component({
   selector: 'spark-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule, BsToggleButtonModule],
+  imports: [ReactiveFormsModule, RouterLink, BsFormModule, BsToggleButtonModule, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">
         <div class="card-body">
-          <h3 class="card-title text-center mb-4">Login</h3>
+          <h3 class="card-title text-center mb-4">{{ 'authLogin' | t }}</h3>
 
           @if (errorMessage()) {
             <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
@@ -24,7 +26,7 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
           <bs-form>
             <form [formGroup]="form" (ngSubmit)="onSubmit()">
               <div class="mb-3">
-                <label for="email" class="form-label">Email</label>
+                <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
                 <input
                   type="text"
                   id="email"
@@ -34,7 +36,7 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
               </div>
 
               <div class="mb-3">
-                <label for="password" class="form-label">Password</label>
+                <label for="password" class="form-label">{{ 'authPassword' | t }}</label>
                 <input
                   type="password"
                   id="password"
@@ -44,7 +46,7 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
               </div>
 
               <div class="mb-3">
-                <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">Remember me</bs-toggle-button>
+                <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">{{ 'authRememberMe' | t }}</bs-toggle-button>
               </div>
 
               <button
@@ -55,16 +57,16 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
                 @if (loading()) {
                   <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                 }
-                Login
+                {{ 'authLogin' | t }}
               </button>
             </form>
           </bs-form>
 
           <div class="mt-3 text-center">
-            <a [routerLink]="routePaths.register">Create an account</a>
+            <a [routerLink]="routePaths.register">{{ 'authCreateAccount' | t }}</a>
           </div>
           <div class="mt-2 text-center">
-            <a [routerLink]="routePaths.forgotPassword">Forgot password?</a>
+            <a [routerLink]="routePaths.forgotPassword">{{ 'authForgotPassword' | t }}</a>
           </div>
         </div>
       </div>
@@ -77,6 +79,7 @@ export class SparkLoginComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly config = inject(SPARK_AUTH_CONFIG);
+  private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
   readonly loading = signal(false);
@@ -110,7 +113,7 @@ export class SparkLoginComponent {
             queryParams: returnUrl ? { returnUrl } : undefined,
           });
         } else {
-          this.errorMessage.set('Invalid email or password.');
+          this.errorMessage.set(this.translation.t('authInvalidCredentials'));
         }
       },
     });

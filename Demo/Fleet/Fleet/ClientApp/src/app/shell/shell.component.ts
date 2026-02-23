@@ -4,16 +4,21 @@ import { RouterModule } from '@angular/router';
 import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
+import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
 import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { fromEvent } from 'rxjs';
+import { LanguageService } from '../core/services/language.service';
+import { TranslatePipe } from '../core/pipes/translate.pipe';
+import { FormsModule } from '@angular/forms';
+import { KeyValuePipe } from '@angular/common';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent, SparkAuthBarComponent],
+  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, BsSelectModule, IconComponent, SparkAuthBarComponent, TranslatePipe, FormsModule, KeyValuePipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -25,6 +30,7 @@ export class ShellComponent implements OnInit {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
+  readonly lang = inject(LanguageService);
   programUnitGroups: ProgramUnitGroup[] = [];
   shellState = signal<BsShellState>('auto');
   isSidebarVisible = signal<boolean>(false);

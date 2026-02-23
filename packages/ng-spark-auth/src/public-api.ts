@@ -20,6 +20,10 @@ export {
 
 // Services
 export { SparkAuthService } from './lib/services/spark-auth.service';
+export { SparkAuthTranslationService } from './lib/services/spark-auth-translation.service';
+
+// Pipes
+export { TranslateKeyPipe } from './lib/pipes/translate-key.pipe';
 
 // Interceptors
 export { sparkAuthInterceptor } from './lib/interceptors/spark-auth.interceptor';
