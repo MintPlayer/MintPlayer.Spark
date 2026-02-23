@@ -222,7 +222,7 @@ export class PoFormComponent implements OnChanges {
 
   getErrorForAttribute(attrName: string): string | null {
     const error = this.validationErrors.find(e => e.attributeName === attrName);
-    return error?.errorMessage || null;
+    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   hasError(attrName: string): boolean {

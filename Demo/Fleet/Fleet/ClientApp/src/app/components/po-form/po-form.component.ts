@@ -12,7 +12,7 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
+import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
@@ -222,7 +222,7 @@ export class PoFormComponent implements OnChanges {
 
   getErrorForAttribute(attrName: string): string | null {
     const error = this.validationErrors.find(e => e.attributeName === attrName);
-    return error?.errorMessage || null;
+    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   hasError(attrName: string): boolean {
