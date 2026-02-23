@@ -2,7 +2,19 @@
   <bs-navbar-toggler [state]="isSidebarVisible()"
                      (stateChange)="toggleSidebar($event)">
   </bs-navbar-toggler>
-  <div class="ms-auto me-3">
+  <div class="ms-auto me-3 d-flex align-items-center gap-2">
+    @if (lang.languages() | keyvalue; as langs) {
+      @if (langs.length > 1) {
+        <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                style="width: auto;"
+                [ngModel]="lang.language()"
+                (ngModelChange)="lang.setLanguage($event)">
+          @for (l of langs; track l.key) {
+            <option [value]="l.key">{{ l.value | translate }}</option>
+          }
+        </select>
+      }
+    }
     <spark-auth-bar />
   </div>
 </div>
@@ -15,7 +27,7 @@
         <bs-accordion-tab-header>
           <span class="triangle me-2"></span>
           <app-icon [name]="getIconName(group.icon, 'bi-folder')" />
-          <span class="ms-2">{{ resolveTranslation(group.name) }}</span>
+          <span class="ms-2">{{ group.name | translate }}</span>
         </bs-accordion-tab-header>
         @for (unit of group.programUnits; track unit.id) {
         <a [routerLink]="getRouterLink(unit)"
@@ -23,7 +35,7 @@
            (click)="onMenuItemClick()"
            class="d-block px-3 py-2 text-light text-decoration-none nav-link">
           <app-icon [name]="getIconName(unit.icon, 'bi-file')" />
-          <span class="ms-2">{{ resolveTranslation(unit.name) }}</span>
+          <span class="ms-2">{{ unit.name | translate }}</span>
         </a>
         }
       </bs-accordion-tab>

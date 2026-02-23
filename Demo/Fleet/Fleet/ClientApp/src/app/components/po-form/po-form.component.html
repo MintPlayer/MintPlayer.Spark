@@ -4,7 +4,7 @@
     @for (attr of getEditableAttributes(); track attr.id) {
       <div bsRow class="mb-3">
         <label [md]="4" bsColFormLabel [for]="attr.name">
-          {{ resolveTranslation(attr.label) || attr.name }}
+          {{ (attr.label | translate) || attr.name }}
           @if (attr.isRequired) {
             <span class="text-danger">*</span>
           }
@@ -41,7 +41,7 @@
                 <option [ngValue]="null">-- Select --</option>
                 @for (option of getLookupOptions(attr); track option.key) {
                   <option [ngValue]="option.key">
-                    {{ resolveTranslation(option.values) || option.key }}
+                    {{ (option.values | translate) || option.key }}
                   </option>
                 }
               </bs-select>
@@ -119,7 +119,7 @@
 <bs-modal [(isOpen)]="showAsDetailModal" (isOpenChange)="!$event && closeAsDetailModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">Edit {{ resolveTranslation(editingAsDetailAttr?.label) || editingAsDetailAttr?.name }}</h5>
+      <h5 class="modal-title">Edit {{ (editingAsDetailAttr?.label | translate) || editingAsDetailAttr?.name }}</h5>
     </div>
 
     @if (editingAsDetailAttr) {
@@ -142,7 +142,7 @@
 <bs-modal [(isOpen)]="showReferenceModal" (isOpenChange)="!$event && closeReferenceModal()">
   <div *bsModal class="reference-modal">
     <div bsModalHeader>
-      <h5 class="modal-title">Select {{ resolveTranslation(editingReferenceAttr?.label) || editingReferenceAttr?.name }}</h5>
+      <h5 class="modal-title">Select {{ (editingReferenceAttr?.label | translate) || editingReferenceAttr?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -181,7 +181,7 @@
         <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
           @for (attr of getReferenceVisibleAttributes(); track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">
-              {{ resolveTranslation(attr.label) || attr.name }}
+              {{ (attr.label | translate) || attr.name }}
             </div>
           }
 
@@ -210,7 +210,7 @@
 <bs-modal [(isOpen)]="showLookupModal" (isOpenChange)="!$event && closeLookupModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">Select {{ resolveTranslation(editingLookupAttr?.label) || editingLookupAttr?.name }}</h5>
+      <h5 class="modal-title">Select {{ (editingLookupAttr?.label | translate) || editingLookupAttr?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -245,7 +245,7 @@
               [class.table-primary]="formData[editingLookupAttr?.name ?? ''] === item.key"
               (click)="selectLookupItem(item)"
               style="cursor: pointer;">
-              <td>{{ resolveTranslation(item.values) || item.key }}</td>
+              <td>{{ (item.values | translate) || item.key }}</td>
             </tr>
           } @empty {
             <tr>

@@ -11,13 +11,15 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { IconComponent } from '../../components/icon/icon.component';
-import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery, resolveTranslation } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { switchMap, forkJoin, of } from 'rxjs';
+import { LanguageService } from '../../core/services/language.service';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslatePipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -28,7 +30,7 @@ export default class QueryListComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
-  resolveTranslation = resolveTranslation;
+  private readonly lang = inject(LanguageService);
   colors = Color;
   errorMessage: string | null = null;
   query: SparkQuery | null = null;
@@ -282,7 +284,7 @@ export default class QueryListComponent implements OnInit {
       if (lookupRef) {
         const option = lookupRef.values.find(v => v.key === String(attr.value));
         if (option) {
-          return resolveTranslation(option.values) || option.key;
+          return this.lang.resolve(option.values) || option.key;
         }
       }
     }

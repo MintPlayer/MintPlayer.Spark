@@ -6,14 +6,16 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, resolveTranslation } from '../../core/models';
+import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
 import { switchMap, forkJoin, of } from 'rxjs';
+import { LanguageService } from '../../core/services/language.service';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent, TranslatePipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
@@ -22,7 +24,7 @@ export default class PoDetailComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
-  resolveTranslation = resolveTranslation;
+  private readonly lang = inject(LanguageService);
   colors = Color;
   errorMessage: string | null = null;
   entityType: EntityType | null = null;
@@ -91,7 +93,7 @@ export default class PoDetailComponent implements OnInit {
       if (lookupRef) {
         const option = lookupRef.values.find(v => v.key === String(attr.value));
         if (option) {
-          return resolveTranslation(option.values) || option.key;
+          return this.lang.resolve(option.values) || option.key;
         }
       }
     }

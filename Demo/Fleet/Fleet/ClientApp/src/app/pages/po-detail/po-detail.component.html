@@ -27,7 +27,7 @@
       <div class="card-body">
         <dl class="row">
           @for (attr of getVisibleAttributes(); track attr.id) {
-            <dt class="col-sm-3">{{ resolveTranslation(attr.label) || attr.name }}</dt>
+            <dt class="col-sm-3">{{ (attr.label | translate) || attr.name }}</dt>
             <dd class="col-sm-9">
               @if (attr.dataType === 'boolean') {
                 <input type="checkbox"

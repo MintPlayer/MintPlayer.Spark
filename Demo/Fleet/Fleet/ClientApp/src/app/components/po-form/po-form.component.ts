@@ -12,15 +12,17 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
+import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
 import { forkJoin } from 'rxjs';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { LanguageService } from '../../core/services/language.service';
+import { TranslatePipe } from '../../core/pipes/translate.pipe';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent],
+  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslatePipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -38,7 +40,7 @@ export class PoFormComponent implements OnChanges {
   @Output() save = new EventEmitter<void>();
   @Output() cancel = new EventEmitter<void>();
 
-  resolveTranslation = resolveTranslation;
+  private readonly lang = inject(LanguageService);
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
   asDetailTypes: Record<string, EntityType> = {};
@@ -153,7 +155,7 @@ export class PoFormComponent implements OnChanges {
     const selected = options.find(o => o.key === String(currentValue));
     if (!selected) return String(currentValue);
 
-    return resolveTranslation(selected.values) || selected.key;
+    return this.lang.resolve(selected.values) || selected.key;
   }
 
   getLookupDisplayType(attr: EntityAttributeDefinition): ELookupDisplayType {
@@ -176,7 +178,7 @@ export class PoFormComponent implements OnChanges {
     }
     const term = this.lookupSearchTerm.toLowerCase().trim();
     return this.lookupModalItems.filter(item => {
-      const translation = resolveTranslation(item.values);
+      const translation = this.lang.resolve(item.values);
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   }
