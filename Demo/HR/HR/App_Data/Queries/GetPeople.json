@@ -1,7 +1,7 @@
 {
   "id": "b20e8400-e29b-41d4-a716-446655440001",
   "name": "GetPeople",
-  "description": { "en": "GetPeople" },
+  "description": { "en": "GetPeople", "fr": "Personnes", "nl": "Personen" },
   "contextProperty": "People",
   "sortBy": "LastName",
   "sortDirection": "asc"

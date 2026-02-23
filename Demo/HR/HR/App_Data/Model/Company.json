@@ -1,14 +1,14 @@
 {
   "id": "5a990917-387b-4f1e-8434-befc64da1958",
   "name": "Company",
-  "description": { "en": "Company" },
+  "description": { "en": "Company", "fr": "Entreprise", "nl": "Bedrijf" },
   "clrType": "HR.Entities.Company",
   "displayAttribute": "Name",
   "attributes": [
     {
       "id": "a1784ded-7fec-468d-b181-2aa24b5d34b0",
       "name": "Name",
-      "label": { "en": "Name" },
+      "label": { "en": "Name", "fr": "Nom", "nl": "Naam" },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -19,7 +19,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": { "en": "Company Name must be at least 2 characters." }
+          "message": { "en": "Company Name must be at least 2 characters.", "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.", "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten." }
         },
         {
           "type": "maxLength",
@@ -30,7 +30,7 @@
     {
       "id": "fbe3da33-f8db-4eb2-9307-eaf38f59ef71",
       "name": "Website",
-      "label": { "en": "Website" },
+      "label": { "en": "Website", "fr": "Site web", "nl": "Website" },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -46,7 +46,7 @@
     {
       "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
       "name": "EmployeeCount",
-      "label": { "en": "Employee Count" },
+      "label": { "en": "Employee Count", "fr": "Nombre d'employés", "nl": "Aantal werknemers" },
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,

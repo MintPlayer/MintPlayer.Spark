@@ -1,7 +1,7 @@
 {
   "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
   "name": "Car",
-  "description": {"en": "Car"},
+  "description": {"en": "Car", "fr": "Voiture", "nl": "Auto"},
   "clrType": "Fleet.Entities.Car",
   "queryType": "Fleet.Indexes.VCar",
   "indexName": "Cars_Overview",
@@ -10,7 +10,7 @@
     {
       "id": "cb321818-3574-44ee-9488-2b2567b56605",
       "name": "LicensePlate",
-      "label": {"en": "License Plate"},
+      "label": {"en": "License Plate", "fr": "Plaque d'immatriculation", "nl": "Nummerplaat"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -21,7 +21,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": {"en": "License Plate must be at least 2 characters."}
+          "message": {"en": "License Plate must be at least 2 characters.", "fr": "La plaque d'immatriculation doit contenir au moins 2 caract\u00e8res.", "nl": "Nummerplaat moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -30,14 +30,14 @@
         {
           "type": "regex",
           "value": "^[A-Z0-9 -]+$",
-          "message": {"en": "License Plate must contain only uppercase letters, digits, spaces and hyphens."}
+          "message": {"en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.", "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.", "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."}
         }
       ]
     },
     {
       "id": "260f5024-5dff-4b2d-b233-9933d16dc4a7",
       "name": "Model",
-      "label": {"en": "Model"},
+      "label": {"en": "Model", "fr": "Mod\u00e8le", "nl": "Model"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -48,7 +48,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": {"en": "Model must be at least 2 characters."}
+          "message": {"en": "Model must be at least 2 characters.", "fr": "Le mod\u00e8le doit contenir au moins 2 caract\u00e8res.", "nl": "Model moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -59,7 +59,7 @@
     {
       "id": "ee84192a-dd42-4224-9bbb-9a4328083ef0",
       "name": "Year",
-      "label": {"en": "Year"},
+      "label": {"en": "Year", "fr": "Ann\u00e9e", "nl": "Jaar"},
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,
@@ -77,7 +77,7 @@
     {
       "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
       "name": "Color",
-      "label": {"en": "Color"},
+      "label": {"en": "Color", "fr": "Couleur", "nl": "Kleur"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -94,7 +94,7 @@
     {
       "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
       "name": "Status",
-      "label": {"en": "Status"},
+      "label": {"en": "Status", "fr": "Statut", "nl": "Status"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -107,7 +107,7 @@
     {
       "id": "50b7dffd-aff1-4568-b4b0-4dfa7048ff31",
       "name": "Brand",
-      "label": {"en": "Brand"},
+      "label": {"en": "Brand", "fr": "Marque", "nl": "Merk"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

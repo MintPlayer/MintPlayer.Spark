@@ -1,14 +1,14 @@
 {
   "id": "5a4c2d4c-ce91-41bd-af40-15e4a0ff3a2b",
   "name": "AddressDescription",
-  "description": { "en": "AddressDescription" },
+  "description": { "en": "AddressDescription", "fr": "Description d'adresse", "nl": "Adresbeschrijving" },
   "clrType": "HR.Entities.AddressDescription",
   "displayAttribute": "Title",
   "attributes": [
     {
       "id": "1eaf31a0-7e8a-416c-b1aa-6e980ac3c0d7",
       "name": "Title",
-      "label": { "en": "Title" },
+      "label": { "en": "Title", "fr": "Titre", "nl": "Titel" },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -20,7 +20,7 @@
     {
       "id": "89ac0f90-990c-4f0b-a5f8-57917759f6b3",
       "name": "Notes",
-      "label": { "en": "Notes" },
+      "label": { "en": "Notes", "fr": "Notes", "nl": "Notities" },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,

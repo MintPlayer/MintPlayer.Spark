@@ -1,7 +1,7 @@
 {
   "id": "660e8400-e29b-41d4-a716-446655440000",
   "name": "Company",
-  "description": {"en": "Company"},
+  "description": {"en": "Company", "fr": "Entreprise", "nl": "Bedrijf"},
   "clrType": "DemoApp.Library.Entities.Company",
   "queryType": "DemoApp.Data.VCompany",
   "indexName": "Companies_Overview",
@@ -10,7 +10,7 @@
     {
       "id": "660e8400-e29b-41d4-a716-446655440001",
       "name": "Name",
-      "label": {"en": "Company Name"},
+      "label": {"en": "Company Name", "fr": "Nom de l'entreprise", "nl": "Bedrijfsnaam"},
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -21,7 +21,7 @@
         {
           "type": "minLength",
           "value": 2,
-          "message": {"en": "Company Name must be at least 2 characters."}
+          "message": {"en": "Company Name must be at least 2 characters.", "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.", "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten."}
         },
         {
           "type": "maxLength",
@@ -32,7 +32,7 @@
     {
       "id": "660e8400-e29b-41d4-a716-446655440002",
       "name": "Website",
-      "label": {"en": "Website"},
+      "label": {"en": "Website", "fr": "Site web", "nl": "Website"},
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
@@ -48,7 +48,7 @@
     {
       "id": "660e8400-e29b-41d4-a716-446655440003",
       "name": "EmployeeCount",
-      "label": {"en": "Number of Employees"},
+      "label": {"en": "Number of Employees", "fr": "Nombre d'employés", "nl": "Aantal werknemers"},
       "dataType": "number",
       "isRequired": false,
       "isVisible": true,
