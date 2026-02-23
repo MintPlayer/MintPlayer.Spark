@@ -1,8 +1,8 @@
 <bs-form>
   @if (entityType) {
     <bs-grid>
-    @for (attr of getEditableAttributes(); track attr.id) {
-      <div bsRow class="mb-3">
+    @for (attr of getEditableAttributes(); track attr.id; let last = $last) {
+      <div bsRow [class.mb-3]="!last">
         <label [md]="4" bsColFormLabel [for]="attr.name">
           {{ attr.label || attr.name }}
           @if (attr.isRequired) {
