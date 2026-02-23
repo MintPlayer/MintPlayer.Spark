@@ -34,6 +34,9 @@ public static class SparkExtensions
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
 
+        // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
+        services.AddHttpContextAccessor();
+
         // Register the Spark services
         return services
             .AddSparkServices()

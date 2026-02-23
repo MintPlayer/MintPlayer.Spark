@@ -283,5 +283,45 @@
     "en": "Invalid code. Please try again.",
     "fr": "Code invalide. Veuillez réessayer.",
     "nl": "Ongeldige code. Probeer het opnieuw."
+  },
+  "validationRequired": {
+    "en": "{0} is required.",
+    "fr": "{0} est obligatoire.",
+    "nl": "{0} is verplicht."
+  },
+  "validationMinLength": {
+    "en": "{0} must be at least {1} characters.",
+    "fr": "{0} doit contenir au moins {1} caractères.",
+    "nl": "{0} moet minstens {1} tekens bevatten."
+  },
+  "validationMaxLength": {
+    "en": "{0} must be at most {1} characters.",
+    "fr": "{0} doit contenir au plus {1} caractères.",
+    "nl": "{0} mag maximaal {1} tekens bevatten."
+  },
+  "validationRangeMin": {
+    "en": "{0} must be at least {1}.",
+    "fr": "{0} doit être au moins {1}.",
+    "nl": "{0} moet minstens {1} zijn."
+  },
+  "validationRangeMax": {
+    "en": "{0} must be at most {1}.",
+    "fr": "{0} doit être au plus {1}.",
+    "nl": "{0} mag maximaal {1} zijn."
+  },
+  "validationInvalidFormat": {
+    "en": "{0} has an invalid format.",
+    "fr": "{0} a un format invalide.",
+    "nl": "{0} heeft een ongeldig formaat."
+  },
+  "validationInvalidEmail": {
+    "en": "{0} must be a valid email address.",
+    "fr": "{0} doit être une adresse e-mail valide.",
+    "nl": "{0} moet een geldig e-mailadres zijn."
+  },
+  "validationInvalidUrl": {
+    "en": "{0} must be a valid URL.",
+    "fr": "{0} doit être une URL valide.",
+    "nl": "{0} moet een geldige URL zijn."
   }
 }

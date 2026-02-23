@@ -14,4 +14,16 @@ public interface IManager
     /// Access to the Retry Action subsystem.
     /// </summary>
     IRetryAccessor Retry { get; }
+
+    /// <summary>
+    /// Gets a translated message for the current request culture, with placeholder substitution.
+    /// Looks up the key in translations.json and calls string.Format with the provided parameters.
+    /// </summary>
+    string GetTranslatedMessage(string key, params object[] parameters);
+
+    /// <summary>
+    /// Gets a translated message for a specific language, with placeholder substitution.
+    /// Looks up the key in translations.json and calls string.Format with the provided parameters.
+    /// </summary>
+    string GetMessage(string key, string language, params object[] parameters);
 }

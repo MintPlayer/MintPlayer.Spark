@@ -3,7 +3,7 @@ namespace MintPlayer.Spark.Abstractions;
 public sealed class ValidationError
 {
     public required string AttributeName { get; set; }
-    public required string ErrorMessage { get; set; }
+    public required TranslatedString ErrorMessage { get; set; }
     public required string RuleType { get; set; }
 }
 

@@ -14,14 +14,13 @@ public interface IValidationService
 internal partial class ValidationService : IValidationService
 {
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
-    private static readonly Regex EmailRegex = new(
-        @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase)]
+    private static partial Regex EmailRegex();
 
-    private static readonly Regex UrlRegex = new(
-        @"^https?:\/\/[^\s]+$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"^https?:\/\/[^\s]+$", RegexOptions.IgnoreCase)]
+    private static partial Regex UrlRegex();
 
     public ValidationResult Validate(PersistentObject persistentObject)
     {
@@ -45,7 +44,7 @@ internal partial class ValidationService : IValidationService
                 {
                     AttributeName = attrDef.Name,
                     RuleType = "required",
-                    ErrorMessage = $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} is required."
+                    ErrorMessage = FormatTranslatedMessage("validationRequired", attrDef.Label, attrDef.Name)
                 });
                 continue; // Skip other validations if required field is empty
             }
@@ -97,7 +96,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "maxLength",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at most {maxLength} characters."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationMaxLength", attrDef.Label, attrDef.Name, maxLength)
             };
         }
         return null;
@@ -114,7 +113,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "minLength",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at least {minLength} characters."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationMinLength", attrDef.Label, attrDef.Name, minLength)
             };
         }
         return null;
@@ -133,7 +132,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at least {rule.Min}."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationRangeMin", attrDef.Label, attrDef.Name, rule.Min.Value)
             };
         }
 
@@ -143,7 +142,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be at most {rule.Max}."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationRangeMax", attrDef.Label, attrDef.Name, rule.Max.Value)
             };
         }
 
@@ -164,7 +163,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "regex",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} has an invalid format."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidFormat", attrDef.Label, attrDef.Name)
             };
         }
         return null;
@@ -172,13 +171,13 @@ internal partial class ValidationService : IValidationService
 
     private ValidationError? ValidateEmail(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
     {
-        if (!EmailRegex.IsMatch(value))
+        if (!EmailRegex().IsMatch(value))
         {
             return new ValidationError
             {
                 AttributeName = attrDef.Name,
                 RuleType = "email",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be a valid email address."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidEmail", attrDef.Label, attrDef.Name)
             };
         }
         return null;
@@ -186,16 +185,43 @@ internal partial class ValidationService : IValidationService
 
     private ValidationError? ValidateUrl(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
     {
-        if (!UrlRegex.IsMatch(value))
+        if (!UrlRegex().IsMatch(value))
         {
             return new ValidationError
             {
                 AttributeName = attrDef.Name,
                 RuleType = "url",
-                ErrorMessage = rule.Message?.GetDefaultValue() ?? $"{attrDef.Label?.GetDefaultValue() ?? attrDef.Name} must be a valid URL."
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidUrl", attrDef.Label, attrDef.Name)
             };
         }
         return null;
+    }
+
+    /// <summary>
+    /// Builds a TranslatedString by looking up a translation key and formatting each language
+    /// with the attribute label (in that language) and any additional parameters.
+    /// </summary>
+    private TranslatedString FormatTranslatedMessage(string translationKey, TranslatedString? label, string attributeName, params object[] extraParams)
+    {
+        var translations = translationsLoader.GetTranslations();
+
+        if (translations.TryGetValue(translationKey, out var templateString))
+        {
+            var result = new TranslatedString();
+            foreach (var (language, template) in templateString.Translations)
+            {
+                var fieldName = label?.GetValue(language) ?? attributeName;
+                var formatArgs = new object[1 + extraParams.Length];
+                formatArgs[0] = fieldName;
+                Array.Copy(extraParams, 0, formatArgs, 1, extraParams.Length);
+                result.Translations[language] = string.Format(template, formatArgs);
+            }
+            return result;
+        }
+
+        // Fallback: English-only message using attribute name
+        var fallbackLabel = label?.GetDefaultValue() ?? attributeName;
+        return TranslatedString.Create($"{fallbackLabel}: validation failed ({translationKey})");
     }
 
     private static bool IsEmpty(object? value)
