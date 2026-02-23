@@ -113,7 +113,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             var dynamicLookup = await LoadDynamicLookupAsync(name);
             if (dynamicLookup != null)
             {
-                dto.Values = dynamicLookup.Values;
+                dto.Values = dynamicLookup.Values.Select(v => v.ToDto()).ToList();
             }
         }
 
@@ -140,7 +140,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             {
                 Id = documentId,
                 Name = name,
-                Values = new List<LookupReferenceValueDto>()
+                Values = new List<DynamicLookupReferenceValue>()
             };
         }
 
@@ -148,7 +148,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (document.Values.Any(v => v.Key == value.Key))
             throw new InvalidOperationException($"A value with key '{value.Key}' already exists");
 
-        document.Values.Add(value);
+        document.Values.Add(DynamicLookupReferenceValue.FromDto(value));
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
 
@@ -177,7 +177,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             throw new InvalidOperationException($"Value with key '{key}' not found");
 
         // Update the value
-        existingValue.Values = value.Values;
+        existingValue.Translations = value.Values.Translations;
         existingValue.IsActive = value.IsActive;
         existingValue.Extra = value.Extra;
 
@@ -191,7 +191,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
         await session.SaveChangesAsync();
 
-        return existingValue;
+        return existingValue.ToDto();
     }
 
     public async Task DeleteValueAsync(string name, string key)
@@ -287,11 +287,42 @@ internal partial class LookupReferenceService : ILookupReferenceService
 }
 
 /// <summary>
-/// RavenDB document for storing dynamic lookup reference values
+/// RavenDB document for storing dynamic lookup reference values.
+/// Uses its own value type to match the stored format in RavenDB (Newtonsoft.Json).
 /// </summary>
 internal class DynamicLookupReferenceDocument
 {
     public string? Id { get; set; }
     public required string Name { get; set; }
-    public List<LookupReferenceValueDto> Values { get; set; } = new();
+    public List<DynamicLookupReferenceValue> Values { get; set; } = new();
+}
+
+internal class DynamicLookupReferenceValue
+{
+    public required string Key { get; set; }
+    public Dictionary<string, string> Translations { get; set; } = new();
+    public bool IsActive { get; set; } = true;
+    public Dictionary<string, object>? Extra { get; set; }
+
+    public LookupReferenceValueDto ToDto()
+    {
+        return new LookupReferenceValueDto
+        {
+            Key = Key,
+            Values = new TranslatedString { Translations = Translations },
+            IsActive = IsActive,
+            Extra = Extra
+        };
+    }
+
+    public static DynamicLookupReferenceValue FromDto(LookupReferenceValueDto dto)
+    {
+        return new DynamicLookupReferenceValue
+        {
+            Key = dto.Key,
+            Translations = dto.Values.Translations,
+            IsActive = dto.IsActive,
+            Extra = dto.Extra
+        };
+    }
 }
