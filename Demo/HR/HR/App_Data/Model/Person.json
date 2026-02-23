@@ -76,7 +76,7 @@
       "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
       "name": "DateOfBirth",
       "label": "Date Of Birth",
-      "dataType": "datetime",
+      "dataType": "date",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,

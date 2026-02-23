@@ -8,7 +8,7 @@ public class Person
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string? Email { get; set; }
-    public DateTime? DateOfBirth { get; set; }
+    public DateOnly? DateOfBirth { get; set; }
 
     [Reference(typeof(Company))]
     public string? Company { get; set; }
