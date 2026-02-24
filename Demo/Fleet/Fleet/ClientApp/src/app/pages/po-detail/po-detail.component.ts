@@ -6,7 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
 import { SparkService } from '../../core/services/spark.service';
-import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
+import { CustomActionDefinition, EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
@@ -39,6 +39,7 @@ export default class PoDetailComponent implements OnInit {
   id: string = '';
   canEdit = false;
   canDelete = false;
+  customActions: CustomActionDefinition[] = [];
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -62,6 +63,10 @@ export default class PoDetailComponent implements OnInit {
           this.sparkService.getPermissions(this.entityType.id).subscribe(p => {
             this.canEdit = p.canEdit;
             this.canDelete = p.canDelete;
+            this.cdr.detectChanges();
+          });
+          this.sparkService.getCustomActions(this.entityType.id).subscribe(actions => {
+            this.customActions = actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both');
             this.cdr.detectChanges();
           });
         }
@@ -217,6 +222,27 @@ export default class PoDetailComponent implements OnInit {
     return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
       const value = data[propertyName];
       return value != null ? String(value) : '';
+    });
+  }
+
+  onCustomAction(action: CustomActionDefinition): void {
+    if (action.confirmationMessageKey) {
+      const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
+      if (!confirm(message)) return;
+    }
+    this.sparkService.executeCustomAction(this.type, action.name, this.item || undefined).subscribe({
+      next: () => {
+        if (action.refreshOnCompleted) {
+          this.sparkService.get(this.type, this.id).subscribe(item => {
+            this.item = item;
+            this.cdr.detectChanges();
+          });
+        }
+      },
+      error: (err) => {
+        this.errorMessage = err.error?.error || err.message || 'Action failed';
+        this.cdr.detectChanges();
+      }
     });
   }
 

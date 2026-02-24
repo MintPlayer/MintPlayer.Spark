@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { EMPTY, Observable, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
-import { EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
+import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
 import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
 import { RetryActionService } from './retry-action.service';
 
@@ -95,6 +95,19 @@ export class SparkService {
     return this.deleteWithRetry<void>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       {}
+    );
+  }
+
+  // Custom Actions
+  getCustomActions(objectTypeId: string): Observable<CustomActionDefinition[]> {
+    return this.http.get<CustomActionDefinition[]>(`${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}`);
+  }
+
+  executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItems?: PersistentObject[]): Observable<void> {
+    const body: { parent?: PersistentObject; selectedItems?: PersistentObject[]; retryResults?: RetryActionResult[] } = { parent, selectedItems };
+    return this.postWithRetry<void>(
+      `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
+      body as any
     );
   }
 
