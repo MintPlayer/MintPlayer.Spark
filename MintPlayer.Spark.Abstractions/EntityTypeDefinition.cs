@@ -56,6 +56,11 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public string? AsDetailType { get; set; }
     /// <summary>
+    /// When true, the attribute represents an array/collection of AsDetail objects (e.g., CarreerJob[]).
+    /// When false (default), the attribute represents a single AsDetail object (e.g., Address?).
+    /// </summary>
+    public bool IsArray { get; set; }
+    /// <summary>
     /// For LookupReference attributes, specifies the lookup reference type name.
     /// Example: "CarStatus", "CarBrand"
     /// </summary>

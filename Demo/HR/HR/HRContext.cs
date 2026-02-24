@@ -11,5 +11,6 @@ public class HRContext : SparkContext
     public IRavenQueryable<Person> People => Session.Query<Person>();
     public IRavenQueryable<VPerson> VPeople => Session.Query<VPerson, People_Overview>();
     public IRavenQueryable<Company> Companies => Session.Query<Company>();
+    public IRavenQueryable<Profession> Professions => Session.Query<Profession>();
     public IRavenQueryable<Car> Cars => Session.Query<Car>();
 }

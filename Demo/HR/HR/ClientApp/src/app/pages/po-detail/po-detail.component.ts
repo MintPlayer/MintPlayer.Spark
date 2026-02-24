@@ -84,8 +84,13 @@ export default class PoDetailComponent implements OnInit {
 
     // For AsDetail attributes, format using displayFormat
     const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
-    if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
-      return this.formatAsDetailValue(attrDef, attr.value);
+    if (attrDef?.dataType === 'AsDetail' && attr.value) {
+      if (Array.isArray(attr.value)) {
+        return `${attr.value.length} item${attr.value.length !== 1 ? 's' : ''}`;
+      }
+      if (typeof attr.value === 'object') {
+        return this.formatAsDetailValue(attrDef, attr.value);
+      }
     }
 
     // For LookupReference attributes, resolve to translated display name

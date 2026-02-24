@@ -51,7 +51,7 @@ export default class PoCreateComponent implements OnInit {
       if (attr.dataType === 'Reference') {
         this.formData[attr.name] = null;
       } else if (attr.dataType === 'AsDetail') {
-        this.formData[attr.name] = {};
+        this.formData[attr.name] = attr.isArray ? [] : {};
       } else if (attr.dataType === 'boolean') {
         this.formData[attr.name] = false;
       } else {

@@ -194,6 +194,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         foreach (var property in properties)
         {
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+            // Unwrap array/collection element type
+            var elementType = GetCollectionElementType(propType);
+            if (elementType != null)
+            {
+                propType = elementType;
+            }
+
             var clrType = propType.FullName ?? propType.Name;
 
             if (IsComplexType(propType) && !processedTypes.Contains(clrType))
@@ -335,7 +343,24 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
-            string? asDetailType = dataType == "AsDetail" ? (propType.FullName ?? propType.Name) : null;
+
+            // For AsDetail, resolve the actual element type (unwrap arrays/collections)
+            var isArray = false;
+            string? asDetailType = null;
+            if (dataType == "AsDetail")
+            {
+                var elementType = GetCollectionElementType(propType);
+                if (elementType != null)
+                {
+                    isArray = true;
+                    asDetailType = elementType.FullName ?? elementType.Name;
+                }
+                else
+                {
+                    asDetailType = propType.FullName ?? propType.Name;
+                }
+            }
+
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
             // Auto-resolve query name for reference attributes when not explicitly specified
@@ -379,6 +404,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 if (dataType == "AsDetail")
                 {
                     existingAttr.AsDetailType = asDetailType;
+                    existingAttr.IsArray = isArray;
                 }
 
                 if (lookupRefAttr != null)
@@ -418,6 +444,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Query = resolvedQuery,
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
+                    IsArray = isArray,
                     LookupReferenceType = lookupReferenceType,
                     // Set InCollectionType/InQueryType flags only when projection type exists
                     InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,
@@ -472,6 +499,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
 
+        // Check for array/collection of complex types
+        var elementType = GetCollectionElementType(underlying);
+        if (elementType != null && IsComplexType(elementType))
+        {
+            return "AsDetail";
+        }
+
         return underlying switch
         {
             _ when underlying == typeof(string) => "string",
@@ -484,6 +518,56 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
+    }
+
+    private bool IsCollectionOfComplexType(Type type)
+    {
+        var elementType = GetCollectionElementType(type);
+        return elementType != null && IsComplexType(elementType);
+    }
+
+    /// <summary>
+    /// Returns the element type if the given type is an array or generic collection (List&lt;T&gt;, IEnumerable&lt;T&gt;, etc.).
+    /// Returns null if the type is not a collection.
+    /// </summary>
+    private static Type? GetCollectionElementType(Type type)
+    {
+        // Handle arrays: T[]
+        if (type.IsArray)
+        {
+            return type.GetElementType();
+        }
+
+        // Handle generic collections: List<T>, IEnumerable<T>, ICollection<T>, etc.
+        if (type.IsGenericType)
+        {
+            var genericDef = type.GetGenericTypeDefinition();
+            if (genericDef == typeof(List<>) ||
+                genericDef == typeof(IList<>) ||
+                genericDef == typeof(ICollection<>) ||
+                genericDef == typeof(IEnumerable<>) ||
+                genericDef == typeof(IReadOnlyList<>) ||
+                genericDef == typeof(IReadOnlyCollection<>))
+            {
+                return type.GetGenericArguments()[0];
+            }
+        }
+
+        // Check implemented interfaces for IEnumerable<T>
+        foreach (var iface in type.GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var elementType = iface.GetGenericArguments()[0];
+                // Avoid matching string (which implements IEnumerable<char>)
+                if (elementType != typeof(char))
+                {
+                    return elementType;
+                }
+            }
+        }
+
+        return null;
     }
 
     private bool IsComplexType(Type type)

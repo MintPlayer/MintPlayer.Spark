@@ -14,4 +14,5 @@ public class Person
     public string? Company { get; set; }
 
     public Address? Address { get; set; }
+    public CarreerJob[] Jobs { get; set; } = [];
 }

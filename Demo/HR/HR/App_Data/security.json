@@ -37,6 +37,18 @@
       "isDenied": false
     },
     {
+      "id": "a0000001-0000-0000-0000-000000000005",
+      "resource": "QueryReadEditNewDelete/Profession",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "a0000001-0000-0000-0000-000000000006",
+      "resource": "QueryReadEditNewDelete/CarreerJob",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "id": "b0000002-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNew/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
@@ -61,6 +73,18 @@
       "isDenied": false
     },
     {
+      "id": "b0000002-0000-0000-0000-000000000005",
+      "resource": "QueryReadEditNew/Profession",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000006",
+      "resource": "QueryReadEditNew/CarreerJob",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
       "id": "c0000003-0000-0000-0000-000000000001",
       "resource": "QueryRead/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
@@ -81,6 +105,18 @@
     {
       "id": "c0000003-0000-0000-0000-000000000004",
       "resource": "QueryRead/Car",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "c0000003-0000-0000-0000-000000000005",
+      "resource": "QueryRead/Profession",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "c0000003-0000-0000-0000-000000000006",
+      "resource": "QueryRead/CarreerJob",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     }

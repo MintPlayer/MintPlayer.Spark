@@ -69,7 +69,7 @@ export default class PoEditComponent implements OnInit {
       if (attr.dataType === 'Reference') {
         this.formData[attr.name] = itemAttr?.value ?? null;
       } else if (attr.dataType === 'AsDetail') {
-        this.formData[attr.name] = itemAttr?.value ?? {};
+        this.formData[attr.name] = itemAttr?.value ?? (attr.isArray ? [] : {});
       } else if (attr.dataType === 'boolean') {
         this.formData[attr.name] = itemAttr?.value ?? false;
       } else {

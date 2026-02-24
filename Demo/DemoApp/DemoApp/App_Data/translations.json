@@ -84,6 +84,11 @@
     "fr": "résultats trouvés",
     "nl": "resultaten gevonden"
   },
+  "add": {
+    "en": "Add",
+    "fr": "Ajouter",
+    "nl": "Toevoegen"
+  },
   "confirmDelete": {
     "en": "Are you sure you want to delete this item?",
     "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?",
