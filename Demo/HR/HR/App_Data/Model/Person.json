@@ -170,6 +170,7 @@
       "order": 7,
       "asDetailType": "HR.Entities.CarreerJob",
       "isArray": true,
+      "editMode": "inline",
       "inQueryType": false,
       "showedOn": "PersistentObject",
       "rules": []

@@ -61,6 +61,11 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public bool IsArray { get; set; }
     /// <summary>
+    /// For array AsDetail attributes, controls how items are edited.
+    /// "modal" (default) opens a dialog; "inline" edits directly in the table row.
+    /// </summary>
+    public string? EditMode { get; set; }
+    /// <summary>
     /// For LookupReference attributes, specifies the lookup reference type name.
     /// Example: "CarStatus", "CarBrand"
     /// </summary>

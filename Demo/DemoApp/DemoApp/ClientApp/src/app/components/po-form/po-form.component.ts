@@ -348,6 +348,19 @@ export class PoFormComponent implements OnChanges {
     this.cdr.markForCheck();
   }
 
+  // Inline AsDetail methods
+  addInlineRow(attr: EntityAttributeDefinition): void {
+    const arr = this.formData[attr.name] || [];
+    arr.push({});
+    this.formData[attr.name] = arr;
+    this.formDataChange.emit(this.formData);
+    this.cdr.markForCheck();
+  }
+
+  getInlineReferenceOptions(parentAttr: EntityAttributeDefinition, col: EntityAttributeDefinition): PersistentObject[] {
+    return this.asDetailReferenceOptions[parentAttr.name]?.[col.name] || [];
+  }
+
   // Array AsDetail methods
   addArrayItem(attr: EntityAttributeDefinition): void {
     this.editingAsDetailAttr = attr;
