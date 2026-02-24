@@ -162,7 +162,7 @@
               </tbody>
             </bs-table>
             @if (canCreateDetailRow(attr)) {
-              <button type="button" class="btn btn-sm btn-outline-primary" (click)="addArrayItem(attr)">
+              <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
                 <app-icon name="plus" /> {{ 'add' | t }}
               </button>
             }
