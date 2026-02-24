@@ -16,6 +16,10 @@ export interface EntityAttributeDefinition {
   referenceType?: string;
   /** For AsDetail attributes, specifies the nested entity type's CLR type name */
   asDetailType?: string;
+  /** When true, the attribute represents an array/collection of AsDetail objects */
+  isArray?: boolean;
+  /** For array AsDetail attributes: "modal" (default) or "inline" */
+  editMode?: 'inline' | 'modal';
   /** For LookupReference attributes, specifies the lookup reference type name */
   lookupReferenceType?: string;
   /**

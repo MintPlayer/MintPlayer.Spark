@@ -16,6 +16,7 @@ public sealed class PersistentObjectAttribute
     public TranslatedString? Label { get; set; }
     public object? Value { get; set; }
     public string DataType { get; set; } = "string";
+    public bool IsArray { get; set; }
     public bool IsRequired { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsReadOnly { get; set; }

@@ -180,6 +180,13 @@ public static class PersistentObjectExtensions
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
 
+        // Check for array/collection of complex types
+        var elementType = GetCollectionElementType(underlying);
+        if (elementType != null && IsComplexType(elementType))
+        {
+            return "AsDetail";
+        }
+
         return underlying switch
         {
             _ when underlying == typeof(string) => "string",
@@ -192,6 +199,38 @@ public static class PersistentObjectExtensions
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
+    }
+
+    private static Type? GetCollectionElementType(Type type)
+    {
+        if (type.IsArray)
+            return type.GetElementType();
+
+        if (type.IsGenericType)
+        {
+            var genericDef = type.GetGenericTypeDefinition();
+            if (genericDef == typeof(List<>) ||
+                genericDef == typeof(IList<>) ||
+                genericDef == typeof(ICollection<>) ||
+                genericDef == typeof(IEnumerable<>) ||
+                genericDef == typeof(IReadOnlyList<>) ||
+                genericDef == typeof(IReadOnlyCollection<>))
+            {
+                return type.GetGenericArguments()[0];
+            }
+        }
+
+        foreach (var iface in type.GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var elType = iface.GetGenericArguments()[0];
+                if (elType != typeof(char))
+                    return elType;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsComplexType(Type type)

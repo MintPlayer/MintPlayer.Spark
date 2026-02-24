@@ -86,7 +86,19 @@ internal partial class EntityMapper : IEntityMapper
                     // For complex types (AsDetail), convert to dictionary for proper JSON serialization
                     if (attrDef.DataType == "AsDetail" && value != null)
                     {
-                        value = ConvertToSerializableDictionary(value);
+                        if (attrDef.IsArray && value is System.Collections.IEnumerable enumerable && value is not string)
+                        {
+                            var list = new List<Dictionary<string, object?>>();
+                            foreach (var item in enumerable)
+                            {
+                                list.Add(ConvertToSerializableDictionary(item));
+                            }
+                            value = list;
+                        }
+                        else if (!attrDef.IsArray)
+                        {
+                            value = ConvertToSerializableDictionary(value);
+                        }
                     }
                 }
 
@@ -96,6 +108,7 @@ internal partial class EntityMapper : IEntityMapper
                     Label = attrDef.Label,
                     Value = value,
                     DataType = attrDef.DataType,
+                    IsArray = attrDef.IsArray,
                     IsRequired = attrDef.IsRequired,
                     IsVisible = attrDef.IsVisible,
                     IsReadOnly = attrDef.IsReadOnly,
@@ -141,6 +154,20 @@ internal partial class EntityMapper : IEntityMapper
         // Handle JsonElement - either extract simple value or deserialize complex types
         if (value is JsonElement je)
         {
+            if (je.ValueKind == JsonValueKind.Array)
+            {
+                // Deserialize array/collection of complex objects (e.g., CarreerJob[], List<CarreerJob>)
+                try
+                {
+                    var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    property.SetValue(entity, deserializedValue);
+                }
+                catch
+                {
+                    // Skip properties that can't be deserialized
+                }
+                return;
+            }
             if (je.ValueKind == JsonValueKind.Object && IsComplexType(targetType))
             {
                 // Deserialize complex objects (like Address) directly from JsonElement

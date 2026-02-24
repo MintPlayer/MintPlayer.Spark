@@ -8,6 +8,7 @@ export interface PersistentObjectAttribute {
   label?: TranslatedString;
   value?: any;
   dataType: string;
+  isArray?: boolean;
   isRequired: boolean;
   isVisible: boolean;
   isReadOnly: boolean;

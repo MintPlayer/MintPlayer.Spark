@@ -12,7 +12,7 @@ import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/d
 import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
+import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
@@ -51,6 +51,13 @@ export class PoFormComponent implements OnChanges {
   editingAsDetailAttr: EntityAttributeDefinition | null = null;
   asDetailFormData: Record<string, any> = {};
   showAsDetailModal = false;
+  editingArrayIndex: number | null = null;
+
+  // Permissions for array AsDetail entity types
+  asDetailPermissions: Record<string, EntityPermissions> = {};
+
+  // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
+  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
 
   // Modal state for Reference selection
   editingReferenceAttr: EntityAttributeDefinition | null = null;
@@ -109,6 +116,29 @@ export class PoFormComponent implements OnChanges {
         const asDetailType = types.find(t => t.clrType === attr.asDetailType);
         if (asDetailType) {
           this.asDetailTypes[attr.name] = asDetailType;
+
+          // Fetch permissions and reference options for array AsDetail entity types
+          if (attr.isArray) {
+            this.sparkService.getPermissions(asDetailType.id).subscribe(p => {
+              this.asDetailPermissions[attr.name] = p;
+              this.cdr.markForCheck();
+            });
+
+            // Load reference options for Reference columns within this AsDetail type
+            const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
+            if (refCols.length > 0) {
+              const refQueries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
+              refCols.forEach(col => {
+                if (col.query) {
+                  refQueries[col.name] = this.sparkService.executeQueryByName(col.query);
+                }
+              });
+              forkJoin(refQueries).subscribe(results => {
+                this.asDetailReferenceOptions[attr.name] = results;
+                this.cdr.markForCheck();
+              });
+            }
+          }
         }
       });
       this.cdr.markForCheck();
@@ -283,6 +313,7 @@ export class PoFormComponent implements OnChanges {
 
   openAsDetailEditor(attr: EntityAttributeDefinition): void {
     this.editingAsDetailAttr = attr;
+    this.editingArrayIndex = null;
     // Copy current AsDetail data or initialize empty object
     this.asDetailFormData = { ...(this.formData[attr.name] || {}) };
     this.showAsDetailModal = true;
@@ -291,7 +322,19 @@ export class PoFormComponent implements OnChanges {
 
   saveAsDetailObject(): void {
     if (this.editingAsDetailAttr) {
-      this.formData[this.editingAsDetailAttr.name] = { ...this.asDetailFormData };
+      if (this.editingAsDetailAttr.isArray) {
+        // Array AsDetail: add or update item in array
+        const arr = [...(this.formData[this.editingAsDetailAttr.name] || [])];
+        if (this.editingArrayIndex !== null) {
+          arr[this.editingArrayIndex] = { ...this.asDetailFormData };
+        } else {
+          arr.push({ ...this.asDetailFormData });
+        }
+        this.formData[this.editingAsDetailAttr.name] = arr;
+      } else {
+        // Single object AsDetail
+        this.formData[this.editingAsDetailAttr.name] = { ...this.asDetailFormData };
+      }
       this.formDataChange.emit(this.formData);
     }
     this.closeAsDetailModal();
@@ -300,8 +343,85 @@ export class PoFormComponent implements OnChanges {
   closeAsDetailModal(): void {
     this.showAsDetailModal = false;
     this.editingAsDetailAttr = null;
+    this.editingArrayIndex = null;
     this.asDetailFormData = {};
     this.cdr.markForCheck();
+  }
+
+  // Inline AsDetail methods
+  addInlineRow(attr: EntityAttributeDefinition): void {
+    const arr = this.formData[attr.name] || [];
+    arr.push({});
+    this.formData[attr.name] = arr;
+    this.formDataChange.emit(this.formData);
+    this.cdr.markForCheck();
+  }
+
+  getInlineReferenceOptions(parentAttr: EntityAttributeDefinition, col: EntityAttributeDefinition): PersistentObject[] {
+    return this.asDetailReferenceOptions[parentAttr.name]?.[col.name] || [];
+  }
+
+  // Array AsDetail methods
+  addArrayItem(attr: EntityAttributeDefinition): void {
+    this.editingAsDetailAttr = attr;
+    this.editingArrayIndex = null;
+    this.asDetailFormData = {};
+    this.showAsDetailModal = true;
+    this.cdr.markForCheck();
+  }
+
+  editArrayItem(attr: EntityAttributeDefinition, index: number): void {
+    this.editingAsDetailAttr = attr;
+    this.editingArrayIndex = index;
+    const arr = this.formData[attr.name] || [];
+    this.asDetailFormData = { ...(arr[index] || {}) };
+    this.showAsDetailModal = true;
+    this.cdr.markForCheck();
+  }
+
+  removeArrayItem(attr: EntityAttributeDefinition, index: number): void {
+    const arr = [...(this.formData[attr.name] || [])];
+    arr.splice(index, 1);
+    this.formData[attr.name] = arr;
+    this.formDataChange.emit(this.formData);
+    this.cdr.markForCheck();
+  }
+
+  getAsDetailColumns(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
+    const type = this.getAsDetailType(attr);
+    if (!type) return [];
+    return type.attributes
+      .filter(a => a.isVisible)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  getAsDetailCellValue(parentAttr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): string {
+    const value = row[col.name];
+    if (value == null) return '';
+
+    // For Reference columns, resolve breadcrumb from AsDetail reference options
+    if (col.dataType === 'Reference' && col.query) {
+      const parentOptions = this.asDetailReferenceOptions[parentAttr.name];
+      if (parentOptions) {
+        const options = parentOptions[col.name];
+        if (options) {
+          const match = options.find(o => o.id === value);
+          if (match) return match.breadcrumb || match.name || String(value);
+        }
+      }
+    }
+
+    return String(value);
+  }
+
+  canCreateDetailRow(attr: EntityAttributeDefinition): boolean {
+    const perms = this.asDetailPermissions[attr.name];
+    return perms ? perms.canCreate : true;
+  }
+
+  canDeleteDetailRow(attr: EntityAttributeDefinition): boolean {
+    const perms = this.asDetailPermissions[attr.name];
+    return perms ? perms.canDelete : true;
   }
 
   // Reference modal methods

@@ -1,0 +1,8 @@
+{
+  "id": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",
+  "name": "GetProfessions",
+  "contextProperty": "Professions",
+  "sortBy": "Description",
+  "sortDirection": "asc",
+  "useProjection": false
+}

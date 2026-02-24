@@ -29,7 +29,32 @@
           @for (attr of getVisibleAttributes(); track attr.id) {
             <dt class="col-sm-3">{{ resolveTranslation(attr.label) || attr.name }}</dt>
             <dd class="col-sm-9">
-              @if (attr.dataType === 'boolean') {
+              @if (attr.dataType === 'AsDetail' && attr.isArray) {
+                <bs-table [isResponsive]="true">
+                  <thead>
+                    <tr>
+                      @for (col of getAsDetailColumns(attr); track col.name) {
+                        <th>{{ resolveTranslation(col.label) || col.name }}</th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of getArrayValue(attr.name); track $index) {
+                      <tr>
+                        @for (col of getAsDetailColumns(attr); track col.name) {
+                          <td>{{ getAsDetailCellValue(attr, row, col) }}</td>
+                        }
+                      </tr>
+                    } @empty {
+                      <tr>
+                        <td [attr.colspan]="getAsDetailColumns(attr).length" class="text-center text-muted">
+                          {{ 'noItemsFound' | t }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </bs-table>
+              } @else if (attr.dataType === 'boolean') {
                 <input type="checkbox"
                   [checked]="getAttributeValue(attr.name) === true"
                   [indeterminate]="getAttributeValue(attr.name) == null"

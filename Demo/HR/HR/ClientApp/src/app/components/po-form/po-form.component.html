@@ -62,6 +62,110 @@
                 ...
               </button>
             </bs-input-group>
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+            <bs-table [isResponsive]="true" class="mb-1">
+              <thead>
+                <tr>
+                  @for (col of getAsDetailColumns(attr); track col.name) {
+                    <th>{{ (col.label | translate) || col.name }}</th>
+                  }
+                  <th style="width: 50px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of formData[attr.name] || []; track $index) {
+                  <tr>
+                    @for (col of getAsDetailColumns(attr); track col.name) {
+                      <td>
+                        @if (col.dataType === 'boolean') {
+                          <bs-toggle-button
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                          </bs-toggle-button>
+                        } @else if (col.dataType === 'Reference' && col.query) {
+                          <bs-select
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            @for (option of getInlineReferenceOptions(attr, col); track option.id) {
+                              <option [ngValue]="option.id">
+                                {{ option.breadcrumb || option.name || option.id }}
+                              </option>
+                            }
+                          </bs-select>
+                        } @else {
+                          <input
+                            [type]="getInputType(col.dataType)"
+                            [(ngModel)]="row[col.name]"
+                            [required]="col.isRequired"
+                            [step]="col.dataType === 'decimal' ? '0.01' : '1'"
+                            (ngModelChange)="onFieldChange()">
+                        }
+                      </td>
+                    }
+                    <td class="text-nowrap">
+                      @if (canDeleteDetailRow(attr)) {
+                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, $index)">
+                          <app-icon name="trash" />
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="getAsDetailColumns(attr).length + 1" class="text-center text-muted">
+                      {{ 'noItemsFound' | t }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            @if (canCreateDetailRow(attr)) {
+              <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addInlineRow(attr)">
+                <app-icon name="plus" /> {{ 'add' | t }}
+              </button>
+            }
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            <bs-table [isResponsive]="true" class="mb-1">
+              <thead>
+                <tr>
+                  @for (col of getAsDetailColumns(attr); track col.name) {
+                    <th>{{ (col.label | translate) || col.name }}</th>
+                  }
+                  <th style="width: 80px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of formData[attr.name] || []; track $index) {
+                  <tr>
+                    @for (col of getAsDetailColumns(attr); track col.name) {
+                      <td>{{ getAsDetailCellValue(attr, row, col) }}</td>
+                    }
+                    <td class="text-nowrap">
+                      <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
+                        <app-icon name="pencil" />
+                      </button>
+                      @if (canDeleteDetailRow(attr)) {
+                        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
+                          <app-icon name="trash" />
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="getAsDetailColumns(attr).length + 1" class="text-center text-muted">
+                      {{ 'noItemsFound' | t }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            @if (canCreateDetailRow(attr)) {
+              <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
+                <app-icon name="plus" /> {{ 'add' | t }}
+              </button>
+            }
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input
