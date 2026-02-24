@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Messaging</PackageId>
-		<Version>10.0.0-preview.7</Version>
+		<Version>10.0.0-preview.8</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue isolation, and retry logic.</Description>
