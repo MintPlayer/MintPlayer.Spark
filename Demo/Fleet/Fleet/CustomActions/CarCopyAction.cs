@@ -12,10 +12,12 @@ public partial class CarCopyAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
-        var selectedItem = args.SelectedItems.FirstOrDefault()
-            ?? throw new InvalidOperationException("No item selected");
+        // Support both detail view (parent) and query view (selectedItems)
+        var source = args.Parent ?? args.SelectedItems.FirstOrDefault();
+        if (source is null)
+            throw new InvalidOperationException("No item selected");
 
-        var carId = selectedItem.Id
+        var carId = source.Id
             ?? throw new InvalidOperationException("Selected item has no ID");
 
         var car = await dbAccess.GetDocumentAsync<Car>(carId);

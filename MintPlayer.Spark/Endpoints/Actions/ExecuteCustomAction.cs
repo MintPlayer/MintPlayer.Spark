@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -14,6 +15,7 @@ internal sealed partial class ExecuteCustomAction
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly ILogger<ExecuteCustomAction> logger;
 
     public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string actionName)
     {
@@ -91,6 +93,25 @@ internal sealed partial class ExecuteCustomAction
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
             });
+        }
+        catch (SparkAccessDeniedException)
+        {
+            if (httpContext.User.Identity?.IsAuthenticated != true)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+            }
+            else
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
+            httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await httpContext.Response.WriteAsJsonAsync(new { error = ex.Message });
         }
     }
 }
