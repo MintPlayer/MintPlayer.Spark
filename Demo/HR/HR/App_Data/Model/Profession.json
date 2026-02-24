@@ -1,0 +1,38 @@
+{
+  "id": "1efb3727-d67a-43f2-a457-5b8ede02bc2f",
+  "name": "Profession",
+  "clrType": "HR.Entities.Profession",
+  "displayAttribute": "Description",
+  "attributes": [
+    {
+      "id": "fc9b1e2a-4450-4411-9261-92a06109666d",
+      "name": "Description",
+      "label": {
+        "en": "Description"
+      },
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "d6ef20fd-91c3-4e23-beb2-c1a0e08e33a2",
+      "name": "Regime",
+      "label": {
+        "en": "Regime"
+      },
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}

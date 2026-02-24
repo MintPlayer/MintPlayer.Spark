@@ -1,25 +1,38 @@
 {
   "id": "8317d070-b79e-40c6-825e-1e245142daf9",
   "name": "Car",
-  "description": { "en": "Car", "fr": "Voiture", "nl": "Auto" },
+  "description": {
+    "en": "Car",
+    "fr": "Voiture",
+    "nl": "Auto"
+  },
   "clrType": "HR.Replicated.Car",
   "displayAttribute": "LicensePlate",
   "attributes": [
     {
       "id": "3ee949c5-cc99-4fb0-98ca-e3a4599bdae5",
       "name": "LicensePlate",
-      "label": { "en": "License Plate", "fr": "Plaque d'immatriculation", "nl": "Nummerplaat" },
+      "label": {
+        "en": "License Plate",
+        "fr": "Plaque d'immatriculation",
+        "nl": "Nummerplaat"
+      },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "minLength",
           "value": 2,
-          "message": { "en": "License Plate must be at least 2 characters.", "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.", "nl": "Nummerplaat moet minstens 2 tekens bevatten." }
+          "message": {
+            "en": "License Plate must be at least 2 characters.",
+            "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
+            "nl": "Nummerplaat moet minstens 2 tekens bevatten."
+          }
         },
         {
           "type": "maxLength",
@@ -28,25 +41,38 @@
         {
           "type": "regex",
           "value": "^[A-Z0-9 -]+$",
-          "message": { "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.", "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.", "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten." }
+          "message": {
+            "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
+            "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
+            "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
+          }
         }
       ]
     },
     {
       "id": "1e53363b-0154-4a9c-a262-0fd83c119a99",
       "name": "Model",
-      "label": { "en": "Model", "fr": "Modèle", "nl": "Model" },
+      "label": {
+        "en": "Model",
+        "fr": "Modèle",
+        "nl": "Model"
+      },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "minLength",
           "value": 2,
-          "message": { "en": "Model must be at least 2 characters.", "fr": "Le modèle doit contenir au moins 2 caractères.", "nl": "Model moet minstens 2 tekens bevatten." }
+          "message": {
+            "en": "Model must be at least 2 characters.",
+            "fr": "Le modèle doit contenir au moins 2 caractères.",
+            "nl": "Model moet minstens 2 tekens bevatten."
+          }
         },
         {
           "type": "maxLength",
@@ -57,12 +83,17 @@
     {
       "id": "70d1cc89-5e2f-4163-b84c-d2c15666daf7",
       "name": "Year",
-      "label": { "en": "Year", "fr": "Année", "nl": "Jaar" },
+      "label": {
+        "en": "Year",
+        "fr": "Année",
+        "nl": "Jaar"
+      },
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 3,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
@@ -75,12 +106,17 @@
     {
       "id": "2eafd132-af25-4d18-9f48-370eb748f16e",
       "name": "Color",
-      "label": { "en": "Color", "fr": "Couleur", "nl": "Kleur" },
+      "label": {
+        "en": "Color",
+        "fr": "Couleur",
+        "nl": "Kleur"
+      },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 4,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {

@@ -32,6 +32,15 @@
           "queryId": "b20e8400-e29b-41d4-a716-446655440003",
           "alias": "cars",
           "order": 3
+        },
+        {
+          "id": "b10e8400-e29b-41d4-a716-446655440004",
+          "name": { "en": "Professions", "fr": "Professions", "nl": "Beroepen" },
+          "icon": "bi-briefcase",
+          "type": "query",
+          "queryId": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",
+          "alias": "professions",
+          "order": 4
         }
       ]
     }

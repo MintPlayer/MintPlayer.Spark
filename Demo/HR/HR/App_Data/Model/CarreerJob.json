@@ -1,0 +1,55 @@
+{
+  "id": "dcbc8be1-049f-40ba-acb5-09af16af2d57",
+  "name": "CarreerJob",
+  "clrType": "HR.Entities.CarreerJob",
+  "displayAttribute": "ProfessionId",
+  "attributes": [
+    {
+      "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",
+      "name": "ProfessionId",
+      "label": {
+        "en": "Profession Id"
+      },
+      "dataType": "Reference",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 1,
+      "query": "GetProfessions",
+      "referenceType": "HR.Entities.Profession",
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "e2e2fcd5-09b6-4693-b9c1-dc28e8126236",
+      "name": "ContractStart",
+      "label": {
+        "en": "Contract Start"
+      },
+      "dataType": "date",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 2,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "9299aff7-47c4-4fd9-9ea1-7ceabca0f1e9",
+      "name": "ContractEnd",
+      "label": {
+        "en": "Contract End"
+      },
+      "dataType": "date",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 3,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    }
+  ]
+}
