@@ -56,6 +56,9 @@ export class PoFormComponent implements OnChanges {
   // Permissions for array AsDetail entity types
   asDetailPermissions: Record<string, EntityPermissions> = {};
 
+  // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
+  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
+
   // Modal state for Reference selection
   editingReferenceAttr: EntityAttributeDefinition | null = null;
   showReferenceModal = false;
@@ -114,12 +117,27 @@ export class PoFormComponent implements OnChanges {
         if (asDetailType) {
           this.asDetailTypes[attr.name] = asDetailType;
 
-          // Fetch permissions for array AsDetail entity types
+          // Fetch permissions and reference options for array AsDetail entity types
           if (attr.isArray) {
             this.sparkService.getPermissions(asDetailType.id).subscribe(p => {
               this.asDetailPermissions[attr.name] = p;
               this.cdr.markForCheck();
             });
+
+            // Load reference options for Reference columns within this AsDetail type
+            const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
+            if (refCols.length > 0) {
+              const refQueries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
+              refCols.forEach(col => {
+                if (col.query) {
+                  refQueries[col.name] = this.sparkService.executeQueryByName(col.query);
+                }
+              });
+              forkJoin(refQueries).subscribe(results => {
+                this.asDetailReferenceOptions[attr.name] = results;
+                this.cdr.markForCheck();
+              });
+            }
           }
         }
       });
@@ -364,16 +382,19 @@ export class PoFormComponent implements OnChanges {
       .sort((a, b) => a.order - b.order);
   }
 
-  getAsDetailCellValue(row: Record<string, any>, col: EntityAttributeDefinition): string {
+  getAsDetailCellValue(parentAttr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): string {
     const value = row[col.name];
     if (value == null) return '';
 
-    // For Reference columns, try to resolve breadcrumb from loaded reference options
+    // For Reference columns, resolve breadcrumb from AsDetail reference options
     if (col.dataType === 'Reference' && col.query) {
-      const options = this.referenceOptions[col.name];
-      if (options) {
-        const match = options.find(o => o.id === value);
-        if (match) return match.breadcrumb || match.name || String(value);
+      const parentOptions = this.asDetailReferenceOptions[parentAttr.name];
+      if (parentOptions) {
+        const options = parentOptions[col.name];
+        if (options) {
+          const match = options.find(o => o.id === value);
+          if (match) return match.breadcrumb || match.name || String(value);
+        }
       }
     }
 
