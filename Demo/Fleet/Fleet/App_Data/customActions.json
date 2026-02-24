@@ -1,0 +1,11 @@
+{
+  "CarCopy": {
+    "displayName": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
+    "icon": "Copy",
+    "description": "Creates a copy of the selected car",
+    "showedOn": "both",
+    "selectionRule": "=1",
+    "refreshOnCompleted": true,
+    "confirmationMessageKey": "AreYouSure"
+  }
+}

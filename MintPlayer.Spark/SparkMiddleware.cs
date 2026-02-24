@@ -7,6 +7,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Endpoints.Actions;
 using MintPlayer.Spark.Endpoints.Aliases;
 using MintPlayer.Spark.Endpoints.Culture;
 using MintPlayer.Spark.Endpoints.EntityTypes;
@@ -363,6 +364,13 @@ public static class SparkExtensions
             await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
         persistentObjectGroup.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
             await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+        // Custom Actions endpoints
+        var actionsGroup = sparkGroup.MapGroup("/actions");
+        actionsGroup.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId, ListCustomActions action) =>
+            await action.HandleAsync(context, objectTypeId));
+        actionsGroup.MapPost("/{objectTypeId}/{actionName}", async (HttpContext context, string objectTypeId, string actionName, ExecuteCustomAction action) =>
+            await action.HandleAsync(context, objectTypeId, actionName)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
         // LookupReferences endpoints
         var lookupRefGroup = sparkGroup.MapGroup("/lookupref");

@@ -15,6 +15,11 @@
             <app-icon name="pencil" /> {{ 'edit' | t }}
           </button>
         }
+        @for (action of customActions; track action.name) {
+          <button class="btn btn-outline-primary" (click)="onCustomAction(action)">
+            {{ action.displayName | translate }}
+          </button>
+        }
         @if (canDelete) {
           <button class="btn btn-danger" (click)="onDelete()">
             <app-icon name="trash" /> {{ 'delete' | t }}
