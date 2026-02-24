@@ -11,11 +11,12 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, IconComponent, TranslateKeyPipe],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, BsTableComponent, IconComponent, TranslateKeyPipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {
@@ -32,6 +33,8 @@ export default class PoDetailComponent implements OnInit {
   allEntityTypes: EntityType[] = [];
   item: PersistentObject | null = null;
   lookupReferenceOptions: Record<string, LookupReference> = {};
+  asDetailTypes: Record<string, EntityType> = {};
+  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
   type: string = '';
   id: string = '';
   canEdit = false;
@@ -53,6 +56,7 @@ export default class PoDetailComponent implements OnInit {
         this.entityType = result.entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
         this.item = result.item;
         this.loadLookupReferenceOptions();
+        this.loadAsDetailTypes();
         this.cdr.detectChanges();
         if (this.entityType) {
           this.sparkService.getPermissions(this.entityType.id).subscribe(p => {
@@ -126,6 +130,63 @@ export default class PoDetailComponent implements OnInit {
       this.lookupReferenceOptions = results;
       this.cdr.detectChanges();
     });
+  }
+
+  private loadAsDetailTypes(): void {
+    const asDetailAttrs = this.getVisibleAttributes().filter(a => a.dataType === 'AsDetail' && a.isArray && a.asDetailType);
+    if (asDetailAttrs.length === 0) return;
+
+    asDetailAttrs.forEach(attr => {
+      const asDetailType = this.allEntityTypes.find(t => t.clrType === attr.asDetailType);
+      if (asDetailType) {
+        this.asDetailTypes[attr.name] = asDetailType;
+        const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
+        if (refCols.length > 0) {
+          const refQueries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
+          refCols.forEach(col => {
+            if (col.query) {
+              refQueries[col.name] = this.sparkService.executeQueryByName(col.query);
+            }
+          });
+          forkJoin(refQueries).subscribe(results => {
+            this.asDetailReferenceOptions[attr.name] = results;
+            this.cdr.detectChanges();
+          });
+        }
+      }
+    });
+  }
+
+  getAsDetailColumns(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
+    const type = this.asDetailTypes[attr.name];
+    if (!type) return [];
+    return type.attributes
+      .filter(a => a.isVisible)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  getAsDetailCellValue(parentAttr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): string {
+    const value = row[col.name];
+    if (value == null) return '';
+
+    if (col.dataType === 'Reference' && col.query) {
+      const parentOptions = this.asDetailReferenceOptions[parentAttr.name];
+      if (parentOptions) {
+        const options = parentOptions[col.name];
+        if (options) {
+          const match = options.find(o => o.id === value);
+          if (match) return match.breadcrumb || match.name || String(value);
+        }
+      }
+    }
+
+    return String(value);
+  }
+
+  getArrayValue(attrName: string): Record<string, any>[] {
+    const attr = this.item?.attributes.find(a => a.name === attrName);
+    if (!attr || !Array.isArray(attr.value)) return [];
+    return attr.value;
   }
 
   private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
