@@ -83,6 +83,18 @@
       "resource": "QueryRead/Person",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
+    },
+    {
+      "id": "ca000001-0000-0000-0000-000000000001",
+      "resource": "CarCopy/Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "ca000001-0000-0000-0000-000000000002",
+      "resource": "CarCopy/Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
     }
   ]
 }

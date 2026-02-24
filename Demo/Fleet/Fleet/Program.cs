@@ -12,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration);
+builder.Services.AddSparkActions();
+builder.Services.AddSparkCustomActions();
 builder.Services.AddScoped<SparkContext, FleetContext>();
 
 builder.Services.AddSparkAuthorization();
