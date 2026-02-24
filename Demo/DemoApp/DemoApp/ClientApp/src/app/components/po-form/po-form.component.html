@@ -63,48 +63,46 @@
               </button>
             </bs-input-group>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
-            <div class="table-responsive">
-              <table class="table table-sm table-bordered mb-1">
-                <thead>
+            <bs-table [isResponsive]="true" class="mb-1">
+              <thead>
+                <tr>
+                  @for (col of getAsDetailColumns(attr); track col.name) {
+                    <th>{{ resolveTranslation(col.label) || col.name }}</th>
+                  }
+                  <th style="width: 80px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of formData[attr.name] || []; track $index) {
                   <tr>
                     @for (col of getAsDetailColumns(attr); track col.name) {
-                      <th>{{ resolveTranslation(col.label) || col.name }}</th>
+                      <td>{{ getAsDetailCellValue(attr, row, col) }}</td>
                     }
-                    <th style="width: 80px"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of formData[attr.name] || []; track $index) {
-                    <tr>
-                      @for (col of getAsDetailColumns(attr); track col.name) {
-                        <td>{{ getAsDetailCellValue(attr, row, col) }}</td>
-                      }
-                      <td class="text-nowrap">
-                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
-                          <app-icon name="pencil" />
+                    <td class="text-nowrap">
+                      <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
+                        <app-icon name="pencil" />
+                      </button>
+                      @if (canDeleteDetailRow(attr)) {
+                        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
+                          <app-icon name="trash" />
                         </button>
-                        @if (canDeleteDetailRow(attr)) {
-                          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
-                            <app-icon name="trash" />
-                          </button>
-                        }
-                      </td>
-                    </tr>
-                  } @empty {
-                    <tr>
-                      <td [attr.colspan]="getAsDetailColumns(attr).length + 1" class="text-center text-muted">
-                        {{ 'noItemsFound' | t }}
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-              @if (canCreateDetailRow(attr)) {
-                <button type="button" class="btn btn-sm btn-outline-primary" (click)="addArrayItem(attr)">
-                  <app-icon name="plus" /> {{ 'add' | t }}
-                </button>
-              }
-            </div>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="getAsDetailColumns(attr).length + 1" class="text-center text-muted">
+                      {{ 'noItemsFound' | t }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            @if (canCreateDetailRow(attr)) {
+              <button type="button" class="btn btn-sm btn-outline-primary" (click)="addArrayItem(attr)">
+                <app-icon name="plus" /> {{ 'add' | t }}
+              </button>
+            }
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input

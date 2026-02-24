@@ -8,7 +8,9 @@
       "id": "fc9b1e2a-4450-4411-9261-92a06109666d",
       "name": "Description",
       "label": {
-        "en": "Description"
+        "en": "Description",
+        "fr": "Description",
+        "nl": "Omschrijving"
       },
       "dataType": "string",
       "isRequired": false,
@@ -23,7 +25,9 @@
       "id": "d6ef20fd-91c3-4e23-beb2-c1a0e08e33a2",
       "name": "Regime",
       "label": {
-        "en": "Regime"
+        "en": "Regime",
+        "fr": "Régime",
+        "nl": "Regime"
       },
       "dataType": "string",
       "isRequired": false,

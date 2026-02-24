@@ -8,7 +8,9 @@
       "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",
       "name": "ProfessionId",
       "label": {
-        "en": "Profession Id"
+        "en": "Profession",
+        "fr": "Profession",
+        "nl": "Beroep"
       },
       "dataType": "Reference",
       "isRequired": false,
@@ -25,7 +27,9 @@
       "id": "e2e2fcd5-09b6-4693-b9c1-dc28e8126236",
       "name": "ContractStart",
       "label": {
-        "en": "Contract Start"
+        "en": "Contract Start",
+        "fr": "Début du contrat",
+        "nl": "Contractstart"
       },
       "dataType": "date",
       "isRequired": true,
@@ -40,7 +44,9 @@
       "id": "9299aff7-47c4-4fd9-9ea1-7ceabca0f1e9",
       "name": "ContractEnd",
       "label": {
-        "en": "Contract End"
+        "en": "Contract End",
+        "fr": "Fin du contrat",
+        "nl": "Contracteinde"
       },
       "dataType": "date",
       "isRequired": false,
