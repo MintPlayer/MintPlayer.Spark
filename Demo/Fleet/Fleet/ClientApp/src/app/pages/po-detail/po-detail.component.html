@@ -47,7 +47,18 @@
                     @for (row of getArrayValue(attr.name); track $index) {
                       <tr>
                         @for (col of getAsDetailColumns(attr); track col.name) {
-                          <td>{{ getAsDetailCellValue(attr, row, col) }}</td>
+                          <td>
+                            @if (col.dataType === 'Reference' && col.referenceType) {
+                              @let route = getReferenceLinkRoute(col.referenceType, row[col.name]);
+                              @if (route) {
+                                <a [routerLink]="route">{{ getAsDetailCellValue(attr, row, col) }}</a>
+                              } @else {
+                                {{ getAsDetailCellValue(attr, row, col) }}
+                              }
+                            } @else {
+                              {{ getAsDetailCellValue(attr, row, col) }}
+                            }
+                          </td>
                         }
                       </tr>
                     } @empty {
@@ -66,6 +77,13 @@
                   disabled
                   onclick="return false;"
                   style="opacity: 1;">
+              } @else if (attr.dataType === 'Reference' && attr.referenceType) {
+                @let refRoute = getReferenceLinkRoute(attr.referenceType, getRawAttributeValue(attr.name));
+                @if (refRoute && getAttributeValue(attr.name)) {
+                  <a [routerLink]="refRoute">{{ getAttributeValue(attr.name) }}</a>
+                } @else {
+                  {{ getAttributeValue(attr.name) || '-' }}
+                }
               } @else {
                 {{ getAttributeValue(attr.name) || '-' }}
               }

@@ -188,6 +188,17 @@ export default class PoDetailComponent implements OnInit {
     return String(value);
   }
 
+  getReferenceLinkRoute(referenceClrType: string, referenceId: any): string[] | null {
+    if (!referenceId || !referenceClrType) return null;
+    const targetType = this.allEntityTypes.find(t => t.clrType === referenceClrType);
+    if (!targetType) return null;
+    return ['/po', targetType.alias || targetType.id, referenceId];
+  }
+
+  getRawAttributeValue(attrName: string): any {
+    return this.item?.attributes.find(a => a.name === attrName)?.value;
+  }
+
   getArrayValue(attrName: string): Record<string, any>[] {
     const attr = this.item?.attributes.find(a => a.name === attrName);
     if (!attr || !Array.isArray(attr.value)) return [];
