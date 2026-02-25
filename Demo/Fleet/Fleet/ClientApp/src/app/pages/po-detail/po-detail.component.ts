@@ -4,7 +4,10 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
-import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group'
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
+import { BsCardModule } from '@mintplayer/ng-bootstrap/card';
+import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
+import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
 import { SparkService } from '../../core/services/spark.service';
 import { CustomActionDefinition, EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
@@ -17,7 +20,7 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, BsCardModule, BsContainerComponent, BsGridModule, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {

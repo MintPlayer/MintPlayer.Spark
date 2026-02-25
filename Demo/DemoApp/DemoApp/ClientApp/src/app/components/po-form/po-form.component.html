@@ -252,35 +252,37 @@
     <div bsModalBody>
       @if (referenceModalEntityType) {
         <!-- Search box -->
-        <div class="row mb-3">
-          <div class="col-md-6">
-            <bs-input-group>
-              <span class="input-group-text">
-                <app-icon name="search" />
-              </span>
-              <input
-                type="text"
-                [placeholder]="'search' | t"
-                [(ngModel)]="referenceSearchTerm"
-                (ngModelChange)="onReferenceSearchChange()">
-              @if (referenceSearchTerm) {
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  (click)="clearReferenceSearch()">
-                  <app-icon name="x-lg" />
-                </button>
+        <bs-grid>
+          <div bsRow class="mb-3">
+            <div [md]="6">
+              <bs-input-group>
+                <span class="input-group-text">
+                  <app-icon name="search" />
+                </span>
+                <input
+                  type="text"
+                  [placeholder]="'search' | t"
+                  [(ngModel)]="referenceSearchTerm"
+                  (ngModelChange)="onReferenceSearchChange()">
+                @if (referenceSearchTerm) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="clearReferenceSearch()">
+                    <app-icon name="x-lg" />
+                  </button>
+                }
+              </bs-input-group>
+            </div>
+            <div [md]="6" class="text-end">
+              @if (referenceSearchTerm && referenceModalPagination) {
+                <span class="text-muted">
+                  {{ referenceModalPagination.totalRecords }} {{ referenceModalPagination.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                </span>
               }
-            </bs-input-group>
+            </div>
           </div>
-          <div class="col-md-6 text-end">
-            @if (referenceSearchTerm && referenceModalPagination) {
-              <span class="text-muted">
-                {{ referenceModalPagination.totalRecords }} {{ referenceModalPagination.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
-              </span>
-            }
-          </div>
-        </div>
+        </bs-grid>
 
         <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
           @for (attr of getReferenceVisibleAttributes(); track attr.id) {
@@ -319,27 +321,29 @@
 
     <div bsModalBody>
       <!-- Search box -->
-      <div class="row mb-3">
-        <div class="col-12">
-          <bs-input-group>
-            <span class="input-group-text">
-              <app-icon name="search" />
-            </span>
-            <input
-              type="text"
-              [placeholder]="'search' | t"
-              [(ngModel)]="lookupSearchTerm">
-            @if (lookupSearchTerm) {
-              <button
-                type="button"
-                class="btn btn-outline-secondary"
-                (click)="lookupSearchTerm = ''">
-                <app-icon name="x-lg" />
-              </button>
-            }
-          </bs-input-group>
+      <bs-grid>
+        <div bsRow class="mb-3">
+          <div [col]>
+            <bs-input-group>
+              <span class="input-group-text">
+                <app-icon name="search" />
+              </span>
+              <input
+                type="text"
+                [placeholder]="'search' | t"
+                [(ngModel)]="lookupSearchTerm">
+              @if (lookupSearchTerm) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="lookupSearchTerm = ''">
+                  <app-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
         </div>
-      </div>
+      </bs-grid>
 
       <!-- List of items -->
       <bs-table [striped]="true" [hover]="true">

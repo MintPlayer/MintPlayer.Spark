@@ -1,3 +1,4 @@
+<bs-container>
 <div class="container">
   @if (errorMessage) {
     <bs-alert [type]="colors.danger" class="mb-3">
@@ -28,12 +29,14 @@
       </bs-button-group>
     </div>
 
-    <div class="card">
-      <div class="card-body">
-        <dl class="row">
-          @for (attr of getVisibleAttributes(); track attr.id) {
-            <dt class="col-sm-3">{{ (attr.label | translate) || attr.name }}</dt>
-            <dd class="col-sm-9">
+    <bs-card>
+      <bs-card-header>{{ 'details' | t }}</bs-card-header>
+      <div class="p-3">
+        <bs-grid>
+          <dl bsRow>
+            @for (attr of getVisibleAttributes(); track attr.id) {
+              <dt [sm]="3">{{ (attr.label | translate) || attr.name }}</dt>
+              <dd [sm]="9">
               @if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
                   <thead>
@@ -87,11 +90,12 @@
               } @else {
                 {{ getAttributeValue(attr.name) || '-' }}
               }
-            </dd>
-          }
-        </dl>
+              </dd>
+            }
+          </dl>
+        </bs-grid>
       </div>
-    </div>
+    </bs-card>
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
@@ -100,3 +104,4 @@
     </div>
   }
 </div>
+</bs-container>

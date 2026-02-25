@@ -1,3 +1,4 @@
+<bs-container>
 <div class="container">
   @if (entityType) {
     <h2 class="mb-4">{{ 'create' | t }} {{ resolveTranslation(entityType.description) || entityType.name }}</h2>
@@ -9,8 +10,9 @@
       </bs-alert>
     }
 
-    <div class="card">
-      <div class="card-body">
+    <bs-card>
+      <bs-card-header>{{ 'properties' | t }}</bs-card-header>
+      <div class="p-3">
         <app-po-form
           [entityType]="entityType"
           [(formData)]="formData"
@@ -21,7 +23,7 @@
           (cancel)="onCancel()">
         </app-po-form>
       </div>
-    </div>
+    </bs-card>
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
@@ -30,3 +32,4 @@
     </div>
   }
 </div>
+</bs-container>

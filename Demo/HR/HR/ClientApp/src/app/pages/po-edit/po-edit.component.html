@@ -1,3 +1,4 @@
+<bs-container>
 <div class="container">
   @for (error of getGeneralErrors(); track error.errorMessage) {
     <bs-alert [type]="colors.danger" class="mb-3">
@@ -8,8 +9,9 @@
   @if (entityType && item) {
     <h2 class="mb-4">{{ 'edit' | t }} {{ (entityType.description | translate) || entityType.name }}</h2>
 
-    <div class="card">
-      <div class="card-body">
+    <bs-card>
+      <bs-card-header>{{ 'properties' | t }}</bs-card-header>
+      <div class="p-3">
         <app-po-form
           [entityType]="entityType"
           [(formData)]="formData"
@@ -20,7 +22,7 @@
           (cancel)="onCancel()">
         </app-po-form>
       </div>
-    </div>
+    </bs-card>
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">
@@ -29,3 +31,4 @@
     </div>
   }
 </div>
+</bs-container>

@@ -4,6 +4,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardModule } from '@mintplayer/ng-bootstrap/card';
+import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
@@ -14,7 +16,7 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
 @Component({
   selector: 'app-po-edit',
-  imports: [CommonModule, BsAlertModule, PoFormComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertModule, BsCardModule, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-edit.component.html'
 })
 export default class PoEditComponent implements OnInit {

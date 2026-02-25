@@ -1,3 +1,4 @@
+<bs-container>
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>{{ (query?.description | translate) || query?.name || ('loading' | t) }}</h2>
@@ -11,35 +12,37 @@
   @if (entityType) {
     <!-- Search box -->
     <bs-form>
-      <div class="row mb-3">
-        <div class="col-md-4">
-          <bs-input-group>
-            <span class="input-group-text">
-              <app-icon name="search" />
-            </span>
-            <input
-              type="text"
-              [placeholder]="'search' | t"
-              [(ngModel)]="searchTerm"
-              (ngModelChange)="onSearchChange()">
-            @if (searchTerm) {
-              <button
-                type="button"
-                class="btn btn-outline-secondary"
-                (click)="clearSearch()">
-                <app-icon name="x-lg" />
-              </button>
+      <bs-grid>
+        <div bsRow class="mb-3">
+          <div [md]="4">
+            <bs-input-group>
+              <span class="input-group-text">
+                <app-icon name="search" />
+              </span>
+              <input
+                type="text"
+                [placeholder]="'search' | t"
+                [(ngModel)]="searchTerm"
+                (ngModelChange)="onSearchChange()">
+              @if (searchTerm) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="clearSearch()">
+                  <app-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
+          <div [md]="8" class="text-end">
+            @if (searchTerm && paginationData) {
+              <span class="text-muted">
+                {{ paginationData.totalRecords }} {{ paginationData.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+              </span>
             }
-          </bs-input-group>
+          </div>
         </div>
-        <div class="col-md-8 text-end">
-          @if (searchTerm && paginationData) {
-            <span class="text-muted">
-              {{ paginationData.totalRecords }} {{ paginationData.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
-            </span>
-          }
-        </div>
-      </div>
+      </bs-grid>
     </bs-form>
 
     @if (errorMessage) {
@@ -79,3 +82,4 @@
     </div>
   }
 </div>
+</bs-container>

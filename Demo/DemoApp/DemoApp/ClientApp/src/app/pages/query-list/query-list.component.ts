@@ -7,6 +7,8 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
+import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
@@ -18,7 +20,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsDatatableModule, BsFormModule, BsInputGroupComponent, IconComponent, TranslateKeyPipe],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsContainerComponent, BsDatatableModule, BsFormModule, BsGridModule, BsInputGroupComponent, IconComponent, TranslateKeyPipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

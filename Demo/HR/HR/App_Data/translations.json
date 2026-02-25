@@ -328,5 +328,15 @@
     "en": "{0} must be a valid URL.",
     "fr": "{0} doit être une URL valide.",
     "nl": "{0} moet een geldige URL zijn."
+  },
+  "details": {
+    "en": "Details",
+    "fr": "Détails",
+    "nl": "Details"
+  },
+  "properties": {
+    "en": "Properties",
+    "fr": "Propriétés",
+    "nl": "Eigenschappen"
   }
 }
