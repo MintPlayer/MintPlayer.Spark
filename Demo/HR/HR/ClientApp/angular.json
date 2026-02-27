@@ -31,7 +31,7 @@
               }
             ],
             "styles": [
-              "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+              "../../../../node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
               "src/styles.scss"
             ],
             "loader": {

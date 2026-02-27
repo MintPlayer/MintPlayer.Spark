@@ -29,7 +29,7 @@ builder.Services.AddSparkReplication(opt =>
 {
     var section = builder.Configuration.GetSection("SparkReplication");
     opt.ModuleName = section["ModuleName"] ?? "Fleet";
-    opt.ModuleUrl = section["ModuleUrl"] ?? "https://localhost:5001";
+    opt.ModuleUrl = section["ModuleUrl"] ?? "https://localhost:5003";
     opt.SparkModulesUrls = section.GetSection("SparkModulesUrls").Get<string[]>() ?? ["http://localhost:8080"];
     opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
     opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
