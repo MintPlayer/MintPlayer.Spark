@@ -1,0 +1,5 @@
+<Project>
+	<PropertyGroup>
+		<NpmInstallWorkingDirectory>$(MSBuildThisFileDirectory)</NpmInstallWorkingDirectory>
+	</PropertyGroup>
+</Project>

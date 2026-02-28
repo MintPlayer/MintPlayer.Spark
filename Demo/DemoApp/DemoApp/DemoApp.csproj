@@ -13,7 +13,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.3.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.4.0" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.17.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
