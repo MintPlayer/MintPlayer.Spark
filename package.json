@@ -2,7 +2,8 @@
   "private": true,
   "description": "Root package.json - npm workspaces monorepo. Single node_modules for all Angular projects.",
   "workspaces": [
-    "packages/ng-spark-auth",
+    "node_packages/ng-spark",
+    "node_packages/ng-spark-auth",
     "Demo/DemoApp/DemoApp/ClientApp",
     "Demo/Fleet/Fleet/ClientApp",
     "Demo/HR/HR/ClientApp"

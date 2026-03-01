@@ -8,7 +8,7 @@ Migrate all Angular projects in MintPlayer.Spark to a fully modern Angular 21 ar
 4. Convert `resolveTranslation` function calls in templates to a pure pipe
 
 ## Scope
-- `packages/ng-spark-auth/` — shared auth library
+- `node_packages/ng-spark-auth/` — shared auth library
 - `Demo/DemoApp/DemoApp/ClientApp/` — DemoApp
 - `Demo/HR/HR/ClientApp/` — HR app
 - `Demo/Fleet/Fleet/ClientApp/` — Fleet app
@@ -240,17 +240,17 @@ Since `resolveTranslation` is a general i18n utility tied to the Spark data mode
 ## Files to Modify
 
 ### ng-spark-auth library
-- `packages/ng-spark-auth/src/lib/services/spark-auth.service.ts`
-- `packages/ng-spark-auth/src/lib/components/login/login.component.ts`
-- `packages/ng-spark-auth/src/lib/components/login/login.component.html`
-- `packages/ng-spark-auth/src/lib/components/register/register.component.ts`
-- `packages/ng-spark-auth/src/lib/components/register/register.component.html`
-- `packages/ng-spark-auth/src/lib/components/forgot-password/forgot-password.component.ts`
-- `packages/ng-spark-auth/src/lib/components/forgot-password/forgot-password.component.html`
-- `packages/ng-spark-auth/src/lib/components/reset-password/reset-password.component.ts`
-- `packages/ng-spark-auth/src/lib/components/reset-password/reset-password.component.html`
-- `packages/ng-spark-auth/src/lib/guards/spark-auth.guard.ts`
-- `packages/ng-spark-auth/src/lib/interceptors/spark-auth.interceptor.ts`
+- `node_packages/ng-spark-auth/src/lib/services/spark-auth.service.ts`
+- `node_packages/ng-spark-auth/src/lib/components/login/login.component.ts`
+- `node_packages/ng-spark-auth/src/lib/components/login/login.component.html`
+- `node_packages/ng-spark-auth/src/lib/components/register/register.component.ts`
+- `node_packages/ng-spark-auth/src/lib/components/register/register.component.html`
+- `node_packages/ng-spark-auth/src/lib/components/forgot-password/forgot-password.component.ts`
+- `node_packages/ng-spark-auth/src/lib/components/forgot-password/forgot-password.component.html`
+- `node_packages/ng-spark-auth/src/lib/components/reset-password/reset-password.component.ts`
+- `node_packages/ng-spark-auth/src/lib/components/reset-password/reset-password.component.html`
+- `node_packages/ng-spark-auth/src/lib/guards/spark-auth.guard.ts`
+- `node_packages/ng-spark-auth/src/lib/interceptors/spark-auth.interceptor.ts`
 
 ### Per Demo App (DemoApp, HR, Fleet — identical structure)
 - `src/app/app.config.ts` — verify zoneless

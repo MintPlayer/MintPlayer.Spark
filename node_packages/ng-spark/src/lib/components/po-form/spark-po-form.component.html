@@ -1,0 +1,373 @@
+<bs-form>
+  @if (entityType()) {
+    <bs-grid>
+    @for (attr of editableAttributes(); track attr.id) {
+      <div bsRow class="mb-3">
+        <label [md]="4" bsColFormLabel [for]="attr.name">
+          {{ attr.label | resolveTranslation:attr.name }}
+          @if (attr.isRequired) {
+            <span class="text-danger">*</span>
+          }
+        </label>
+        <div [md]="8">
+          @if (attr.dataType === 'boolean') {
+            <bs-toggle-button
+              [ngModel]="formData()[attr.name]"
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">
+            </bs-toggle-button>
+          } @else if (attr.lookupReferenceType) {
+            @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
+              <bs-input-group>
+                <input
+                  type="text"
+                  [id]="attr.name"
+                  [value]="attr | lookupDisplayValue:formData():lookupReferenceOptions()"
+                  readonly
+                  [class.is-invalid]="hasError(attr.name)">
+                <button
+                  type="button"
+                  bsInputGroupBtn
+                  [color]="colors.secondary"
+                  (click)="openLookupSelector(attr)">
+                  ...
+                </button>
+              </bs-input-group>
+            } @else {
+              <bs-select
+                [ngModel]="formData()[attr.name]"
+                (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+                [id]="attr.name"
+                [class.is-invalid]="hasError(attr.name)">
+                <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                @for (option of (attr | lookupOptions:lookupReferenceOptions()); track option.key) {
+                  <option [ngValue]="option.key">
+                    {{ option.values | resolveTranslation:option.key }}
+                  </option>
+                }
+              </bs-select>
+            }
+          } @else if (attr.dataType === 'Reference') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="attr | referenceDisplayValue:formData():referenceOptions()"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openReferenceSelector(attr)">
+                ...
+              </button>
+            </bs-input-group>
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+            <bs-table [isResponsive]="true" class="mb-1">
+              <thead>
+                <tr>
+                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                    <th>{{ col.label | resolveTranslation:col.name }}</th>
+                  }
+                  <th style="width: 50px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of formData()[attr.name] || []; track $index) {
+                  <tr>
+                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                      <td>
+                        @if (col.dataType === 'boolean') {
+                          <bs-toggle-button
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                          </bs-toggle-button>
+                        } @else if (col.dataType === 'Reference' && col.query) {
+                          <bs-select
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                              <option [ngValue]="option.id">
+                                {{ option.breadcrumb || option.name || option.id }}
+                              </option>
+                            }
+                          </bs-select>
+                        } @else {
+                          <input
+                            [type]="col.dataType | inputType"
+                            [(ngModel)]="row[col.name]"
+                            [required]="col.isRequired"
+                            [step]="col.dataType === 'decimal' ? '0.01' : '1'"
+                            (ngModelChange)="onFieldChange()">
+                        }
+                      </td>
+                    }
+                    <td class="text-nowrap">
+                      @if (attr | canDeleteDetailRow:asDetailPermissions()) {
+                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, $index)">
+                          <spark-icon name="trash" />
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
+                      {{ 'noItemsFound' | t }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            @if (attr | canCreateDetailRow:asDetailPermissions()) {
+              <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addInlineRow(attr)">
+                <spark-icon name="plus" /> {{ 'add' | t }}
+              </button>
+            }
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            <bs-table [isResponsive]="true" class="mb-1">
+              <thead>
+                <tr>
+                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                    <th>{{ col.label | resolveTranslation:col.name }}</th>
+                  }
+                  <th style="width: 80px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of formData()[attr.name] || []; track $index) {
+                  <tr>
+                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                      <td>{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</td>
+                    }
+                    <td class="text-nowrap">
+                      <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
+                        <spark-icon name="pencil" />
+                      </button>
+                      @if (attr | canDeleteDetailRow:asDetailPermissions()) {
+                        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
+                          <spark-icon name="trash" />
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
+                      {{ 'noItemsFound' | t }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            @if (attr | canCreateDetailRow:asDetailPermissions()) {
+              <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
+                <spark-icon name="plus" /> {{ 'add' | t }}
+              </button>
+            }
+          } @else if (attr.dataType === 'AsDetail') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="attr | asDetailDisplayValue:formData():asDetailTypes()"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openAsDetailEditor(attr)">
+                <spark-icon name="pencil" />
+              </button>
+            </bs-input-group>
+          } @else {
+            <input
+              [type]="attr.dataType | inputType"
+              [id]="attr.name"
+              [ngModel]="formData()[attr.name]"
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+              [name]="attr.name"
+              [required]="attr.isRequired"
+              [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
+              [class.is-invalid]="hasError(attr.name)">
+          }
+          @if (attr.name | errorForAttribute:validationErrors(); as errorMsg) {
+            <div class="invalid-feedback d-block">
+              {{ errorMsg }}
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (showButtons()) {
+      <div bsRow class="mt-4">
+        <div [md]="4"></div>
+        <div [md]="8" class="d-flex justify-content-end gap-2">
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving()">{{ 'cancel' | t }}</button>
+          <button type="submit" [color]="colors.primary" [disabled]="isSaving()" (click)="onSave()">
+            @if (isSaving()) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            {{ 'save' | t }}
+          </button>
+        </div>
+      </div>
+    }
+  </bs-grid>
+}
+
+<!-- Modal for editing AsDetail objects -->
+<bs-modal [isOpen]="showAsDetailModal()" (isOpenChange)="!$event && closeAsDetailModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'edit' | t }} {{ editingAsDetailAttr()?.label | resolveTranslation:editingAsDetailAttr()?.name }}</h5>
+    </div>
+
+    @if (editingAsDetailAttr(); as attr) {
+      <div bsModalBody>
+        <spark-po-form
+          [entityType]="attr | asDetailType:asDetailTypes()"
+          [(formData)]="asDetailFormData">
+        </spark-po-form>
+      </div>
+    }
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'cancel' | t }}</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'save' | t }}</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting Reference items -->
+<bs-modal [isOpen]="showReferenceModal()" (isOpenChange)="!$event && closeReferenceModal()">
+  <div *bsModal class="reference-modal">
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'select' | t }} {{ editingReferenceAttr()?.label | resolveTranslation:editingReferenceAttr()?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      @if (referenceModalEntityType()) {
+        <!-- Search box -->
+        <bs-grid>
+          <div bsRow class="mb-3">
+            <div [md]="6">
+              <bs-input-group>
+                <span class="input-group-text">
+                  <spark-icon name="search" />
+                </span>
+                <input
+                  type="text"
+                  [placeholder]="'search' | t"
+                  [(ngModel)]="referenceSearchTerm"
+                  (ngModelChange)="onReferenceSearchChange()">
+                @if (referenceSearchTerm) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="clearReferenceSearch()">
+                    <spark-icon name="x-lg" />
+                  </button>
+                }
+              </bs-input-group>
+            </div>
+            <div [md]="6" class="text-end">
+              @if (referenceSearchTerm && referenceModalPagination()) {
+                <span class="text-muted">
+                  {{ referenceModalPagination()!.totalRecords }} {{ referenceModalPagination()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                </span>
+              }
+            </div>
+          </div>
+        </bs-grid>
+
+        <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
+          @for (attr of referenceVisibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ attr.label | resolveTranslation:attr.name }}
+            </div>
+          }
+
+          <tr *bsRowTemplate="let item of referenceModalPagination()" (click)="selectReferenceItem(item)" style="cursor: pointer;">
+            @for (attr of referenceVisibleAttributes(); track attr.id) {
+              <td>{{ item | referenceAttrValue:attr.name }}</td>
+            }
+          </tr>
+        </bs-datatable>
+      } @else {
+        <div class="text-center p-3">
+          <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">{{ 'loading' | t }}</span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">{{ 'cancel' | t }}</button>
+    </div>
+  </div>
+</bs-modal>
+
+<!-- Modal for selecting LookupReference items -->
+<bs-modal [isOpen]="showLookupModal()" (isOpenChange)="!$event && closeLookupModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'select' | t }} {{ editingLookupAttr()?.label | resolveTranslation:editingLookupAttr()?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <!-- Search box -->
+      <bs-grid>
+        <div bsRow class="mb-3">
+          <div [col]>
+            <bs-input-group>
+              <span class="input-group-text">
+                <spark-icon name="search" />
+              </span>
+              <input
+                type="text"
+                [placeholder]="'search' | t"
+                [ngModel]="lookupSearchTerm()"
+                (ngModelChange)="lookupSearchTerm.set($event)">
+              @if (lookupSearchTerm()) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="lookupSearchTerm.set('')">
+                  <spark-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
+        </div>
+      </bs-grid>
+
+      <!-- List of items -->
+      <bs-table [striped]="true" [hover]="true">
+        <tbody>
+          @for (item of filteredLookupItems(); track item.key) {
+            <tr
+              [class.table-primary]="formData()[editingLookupAttr()?.name ?? ''] === item.key"
+              (click)="selectLookupItem(item)"
+              style="cursor: pointer;">
+              <td>{{ item.values | resolveTranslation:item.key }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="text-center text-muted">{{ 'noItemsFound' | t }}</td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'cancel' | t }}</button>
+    </div>
+  </div>
+</bs-modal>
+</bs-form>

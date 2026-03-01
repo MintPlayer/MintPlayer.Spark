@@ -32,7 +32,7 @@ jobs:
       run: npm ci
 
     - name: Build ng-spark-auth
-      run: dotnet build packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
+      run: dotnet build node_packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
 
     - name: Install dependencies
       run: dotnet restore

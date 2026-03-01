@@ -143,7 +143,7 @@ import { sparkAuthGuard } from '@mintplayer/ng-spark-auth';
 #### Project Structure
 
 ```
-packages/ng-spark-auth/
+node_packages/ng-spark-auth/
   ng-package.json
   package.json
   src/
@@ -484,7 +484,7 @@ Alternatively, developers can use `SparkAuthService` signals directly in their o
 4. Update demo apps to use new endpoint paths
 
 ### Phase 2: npm Package Scaffolding
-1. Create `packages/ng-spark-auth/` Angular library project
+1. Create `node_packages/ng-spark-auth/` Angular library project
 2. Implement `SparkAuthService` (login, register, logout, checkAuth, forgotPassword, resetPassword)
 3. Implement `provideSparkAuth()` provider function
 4. Implement `sparkAuthInterceptor` (401 redirect)
@@ -520,22 +520,22 @@ Alternatively, developers can use `SparkAuthService` signals directly in their o
 
 | File | Purpose |
 |------|---------|
-| `packages/ng-spark-auth/ng-package.json` | Angular library config |
-| `packages/ng-spark-auth/package.json` | npm package config |
-| `packages/ng-spark-auth/src/public-api.ts` | Library exports |
-| `packages/ng-spark-auth/src/lib/providers/provide-spark-auth.ts` | `provideSparkAuth()` |
-| `packages/ng-spark-auth/src/lib/routes/spark-auth-routes.ts` | `sparkAuthRoutes()` |
-| `packages/ng-spark-auth/src/lib/services/spark-auth.service.ts` | Auth service |
-| `packages/ng-spark-auth/src/lib/interceptors/spark-auth.interceptor.ts` | 401 interceptor |
-| `packages/ng-spark-auth/src/lib/guards/spark-auth.guard.ts` | Route guard |
-| `packages/ng-spark-auth/src/lib/components/login/spark-login.component.ts` | Login page |
-| `packages/ng-spark-auth/src/lib/components/two-factor/spark-two-factor.component.ts` | 2FA page |
-| `packages/ng-spark-auth/src/lib/components/register/spark-register.component.ts` | Register page |
-| `packages/ng-spark-auth/src/lib/components/forgot-password/spark-forgot-password.component.ts` | Forgot password page |
-| `packages/ng-spark-auth/src/lib/components/reset-password/spark-reset-password.component.ts` | Reset password page |
-| `packages/ng-spark-auth/src/lib/components/auth-bar/spark-auth-bar.component.ts` | Shell auth bar |
-| `packages/ng-spark-auth/src/lib/models/auth-user.ts` | AuthUser interface |
-| `packages/ng-spark-auth/src/lib/models/auth-config.ts` | Config types |
+| `node_packages/ng-spark-auth/ng-package.json` | Angular library config |
+| `node_packages/ng-spark-auth/package.json` | npm package config |
+| `node_packages/ng-spark-auth/src/public-api.ts` | Library exports |
+| `node_packages/ng-spark-auth/src/lib/providers/provide-spark-auth.ts` | `provideSparkAuth()` |
+| `node_packages/ng-spark-auth/src/lib/routes/spark-auth-routes.ts` | `sparkAuthRoutes()` |
+| `node_packages/ng-spark-auth/src/lib/services/spark-auth.service.ts` | Auth service |
+| `node_packages/ng-spark-auth/src/lib/interceptors/spark-auth.interceptor.ts` | 401 interceptor |
+| `node_packages/ng-spark-auth/src/lib/guards/spark-auth.guard.ts` | Route guard |
+| `node_packages/ng-spark-auth/src/lib/components/login/spark-login.component.ts` | Login page |
+| `node_packages/ng-spark-auth/src/lib/components/two-factor/spark-two-factor.component.ts` | 2FA page |
+| `node_packages/ng-spark-auth/src/lib/components/register/spark-register.component.ts` | Register page |
+| `node_packages/ng-spark-auth/src/lib/components/forgot-password/spark-forgot-password.component.ts` | Forgot password page |
+| `node_packages/ng-spark-auth/src/lib/components/reset-password/spark-reset-password.component.ts` | Reset password page |
+| `node_packages/ng-spark-auth/src/lib/components/auth-bar/spark-auth-bar.component.ts` | Shell auth bar |
+| `node_packages/ng-spark-auth/src/lib/models/auth-user.ts` | AuthUser interface |
+| `node_packages/ng-spark-auth/src/lib/models/auth-config.ts` | Config types |
 | `MintPlayer.Spark.Authorization/Endpoints/GetCurrentUser.cs` | `/spark/auth/me` |
 | `MintPlayer.Spark.Authorization/Endpoints/Logout.cs` | `/spark/auth/logout` |
 
