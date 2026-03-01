@@ -56,7 +56,7 @@ export class PoFormComponent {
   private readonly lang = inject(LanguageService);
   colors = Color;
   referenceOptions: Record<string, PersistentObject[]> = {};
-  asDetailTypes: Record<string, EntityType> = {};
+  asDetailTypes = signal<Record<string, EntityType>>({});
   lookupReferenceOptions: Record<string, LookupReference> = {};
 
   // Modal state for AsDetail object editing
@@ -66,10 +66,10 @@ export class PoFormComponent {
   editingArrayIndex: number | null = null;
 
   // Permissions for array AsDetail entity types
-  asDetailPermissions: Record<string, EntityPermissions> = {};
+  asDetailPermissions = signal<Record<string, EntityPermissions>>({});
 
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
-  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
+  asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
 
   // Modal state for Reference selection
   editingReferenceAttr: EntityAttributeDefinition | null = null;
@@ -130,15 +130,17 @@ export class PoFormComponent {
     if (asDetailAttrs.length === 0) return;
 
     const types = await this.sparkService.getEntityTypes();
+    const newAsDetailTypes: Record<string, EntityType> = {};
+
     for (const attr of asDetailAttrs) {
       const asDetailType = types.find(t => t.clrType === attr.asDetailType);
       if (asDetailType) {
-        this.asDetailTypes[attr.name] = asDetailType;
+        newAsDetailTypes[attr.name] = asDetailType;
 
         // Fetch permissions and reference options for array AsDetail entity types
         if (attr.isArray) {
-          const p = await this.sparkService.getPermissions(asDetailType.id);
-          this.asDetailPermissions[attr.name] = p;
+          const perms = await this.sparkService.getPermissions(asDetailType.id);
+          this.asDetailPermissions.update(prev => ({ ...prev, [attr.name]: perms }));
 
           // Load reference options for Reference columns within this AsDetail type
           const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
@@ -149,12 +151,12 @@ export class PoFormComponent {
                 return [col.name, results] as const;
               })
             );
-            this.asDetailReferenceOptions[attr.name] = Object.fromEntries(refEntries);
+            this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: Object.fromEntries(refEntries) }));
           }
         }
       }
     }
-    this.cdr.markForCheck();
+    this.asDetailTypes.set(newAsDetailTypes);
   }
 
   async loadLookupReferenceOptions(): Promise<void> {

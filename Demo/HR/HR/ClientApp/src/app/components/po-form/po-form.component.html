@@ -66,7 +66,7 @@
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
-                  @for (col of (attr | asDetailColumns:asDetailTypes); track col.name) {
+                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                     <th>{{ (col.label | translate) || col.name }}</th>
                   }
                   <th style="width: 50px"></th>
@@ -75,7 +75,7 @@
               <tbody>
                 @for (row of formData()[attr.name] || []; track $index) {
                   <tr>
-                    @for (col of (attr | asDetailColumns:asDetailTypes); track col.name) {
+                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                       <td>
                         @if (col.dataType === 'boolean') {
                           <bs-toggle-button
@@ -87,7 +87,7 @@
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
                             <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
-                            @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions); track option.id) {
+                            @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
                               <option [ngValue]="option.id">
                                 {{ option.breadcrumb || option.name || option.id }}
                               </option>
@@ -104,7 +104,7 @@
                       </td>
                     }
                     <td class="text-nowrap">
-                      @if (attr | canDeleteDetailRow:asDetailPermissions) {
+                      @if (attr | canDeleteDetailRow:asDetailPermissions()) {
                         <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, $index)">
                           <app-icon name="trash" />
                         </button>
@@ -113,14 +113,14 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes).length + 1" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
                       {{ 'noItemsFound' | t }}
                     </td>
                   </tr>
                 }
               </tbody>
             </bs-table>
-            @if (attr | canCreateDetailRow:asDetailPermissions) {
+            @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addInlineRow(attr)">
                 <app-icon name="plus" /> {{ 'add' | t }}
               </button>
@@ -129,7 +129,7 @@
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
-                  @for (col of (attr | asDetailColumns:asDetailTypes); track col.name) {
+                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                     <th>{{ (col.label | translate) || col.name }}</th>
                   }
                   <th style="width: 80px"></th>
@@ -138,14 +138,14 @@
               <tbody>
                 @for (row of formData()[attr.name] || []; track $index) {
                   <tr>
-                    @for (col of (attr | asDetailColumns:asDetailTypes); track col.name) {
-                      <td>{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions }}</td>
+                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                      <td>{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</td>
                     }
                     <td class="text-nowrap">
                       <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
                         <app-icon name="pencil" />
                       </button>
-                      @if (attr | canDeleteDetailRow:asDetailPermissions) {
+                      @if (attr | canDeleteDetailRow:asDetailPermissions()) {
                         <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
                           <app-icon name="trash" />
                         </button>
@@ -154,14 +154,14 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes).length + 1" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
                       {{ 'noItemsFound' | t }}
                     </td>
                   </tr>
                 }
               </tbody>
             </bs-table>
-            @if (attr | canCreateDetailRow:asDetailPermissions) {
+            @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
                 <app-icon name="plus" /> {{ 'add' | t }}
               </button>
@@ -171,7 +171,7 @@
               <input
                 type="text"
                 [id]="attr.name"
-                [value]="attr | asDetailDisplayValue:formData():asDetailTypes"
+                [value]="attr | asDetailDisplayValue:formData():asDetailTypes()"
                 readonly
                 [class.is-invalid]="hasError(attr.name)">
               <button
@@ -229,7 +229,7 @@
     @if (editingAsDetailAttr) {
       <div bsModalBody>
         <app-po-form
-          [entityType]="editingAsDetailAttr | asDetailType:asDetailTypes"
+          [entityType]="editingAsDetailAttr | asDetailType:asDetailTypes()"
           [(formData)]="asDetailFormData">
         </app-po-form>
       </div>
