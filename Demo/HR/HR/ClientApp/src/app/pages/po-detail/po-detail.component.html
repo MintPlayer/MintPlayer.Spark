@@ -50,12 +50,12 @@
                             @if (col.dataType === 'Reference' && col.referenceType) {
                               @let route = col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes();
                               @if (route) {
-                                <a [routerLink]="route">{{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions) }}</a>
+                                <a [routerLink]="route">{{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}</a>
                               } @else {
-                                {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions) }}
+                                {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
                               }
                             } @else {
-                              {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions) }}
+                              {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
                             }
                           </td>
                         }

@@ -42,7 +42,7 @@ export default class PoDetailComponent {
   item = signal<PersistentObject | null>(null);
   lookupReferenceOptions: Record<string, LookupReference> = {};
   asDetailTypes: Record<string, EntityType> = {};
-  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
+  asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
   type = '';
   id = '';
   canEdit = signal(false);
@@ -103,6 +103,7 @@ export default class PoDetailComponent {
     const asDetailAttrs = this.visibleAttributes().filter(a => a.dataType === 'AsDetail' && a.isArray && a.asDetailType);
     if (asDetailAttrs.length === 0) return;
 
+    const newRefOptions: Record<string, Record<string, PersistentObject[]>> = {};
     for (const attr of asDetailAttrs) {
       const asDetailType = this.allEntityTypes().find(t => t.clrType === attr.asDetailType);
       if (asDetailType) {
@@ -115,10 +116,11 @@ export default class PoDetailComponent {
               return [col.name, results] as const;
             })
           );
-          this.asDetailReferenceOptions[attr.name] = Object.fromEntries(refEntries);
+          newRefOptions[attr.name] = Object.fromEntries(refEntries);
         }
       }
     }
+    this.asDetailReferenceOptions.set({ ...this.asDetailReferenceOptions(), ...newRefOptions });
   }
 
   onEdit(): void {
