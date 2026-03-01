@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, output, QueryList, signal, TemplateRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -10,21 +10,46 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-
-import { SparkService, SparkLanguageService, CustomActionDefinition, EntityType, LookupReference, PersistentObject, ShowedOn, hasShowedOnFlag, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe } from '@mintplayer/ng-spark';
+import { SparkService } from '../../services/spark.service';
+import { SparkLanguageService } from '../../services/spark-language.service';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
+import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
+import { RawAttributeValuePipe } from '../../pipes/raw-attribute-value.pipe';
+import { AsDetailColumnsPipe } from '../../pipes/as-detail-columns.pipe';
+import { AsDetailCellValuePipe } from '../../pipes/as-detail-cell-value.pipe';
+import { ArrayValuePipe } from '../../pipes/array-value.pipe';
+import { ReferenceLinkRoutePipe } from '../../pipes/reference-link-route.pipe';
+import { SparkIconComponent } from '../icon/spark-icon.component';
+import { SparkDetailFieldTemplateDirective, SparkDetailFieldTemplateContext } from '../../directives/spark-detail-field-template.directive';
+import { CustomActionDefinition } from '../../models/custom-action';
+import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
+import { LookupReference } from '../../models/lookup-reference';
+import { PersistentObject } from '../../models/persistent-object';
+import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
-  selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe],
-  templateUrl: './po-detail.component.html',
+  selector: 'spark-po-detail',
+  imports: [CommonModule, NgTemplateOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
+  templateUrl: './spark-po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class PoDetailComponent {
+export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-
   private readonly lang = inject(SparkLanguageService);
+
+  @ContentChildren(SparkDetailFieldTemplateDirective) detailFieldTemplates!: QueryList<SparkDetailFieldTemplateDirective>;
+
+  showCustomActions = input(true);
+  extraActionsTemplate = input<TemplateRef<void> | null>(null);
+  extraContentTemplate = input<TemplateRef<{ $implicit: PersistentObject; entityType: EntityType }> | null>(null);
+
+  edited = output<void>();
+  deleted = output<void>();
+  customActionExecuted = output<{ action: CustomActionDefinition; item: PersistentObject }>();
+
   colors = Color;
   errorMessage = signal<string | null>(null);
   entityType = signal<EntityType | null>(null);
@@ -81,6 +106,24 @@ export default class PoDetailComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
+  getDetailFieldTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkDetailFieldTemplateContext> | null {
+    if (!this.detailFieldTemplates) return null;
+    const byName = this.detailFieldTemplates.find(t => t.name() === attr.name);
+    if (byName) return byName.template;
+    const byType = this.detailFieldTemplates.find(t => t.name() === attr.dataType);
+    if (byType) return byType.template;
+    return null;
+  }
+
+  getDetailFieldContext(attr: EntityAttributeDefinition, item: PersistentObject): SparkDetailFieldTemplateContext {
+    const itemAttr = item.attributes.find(a => a.name === attr.name);
+    return {
+      $implicit: attr,
+      item,
+      value: itemAttr?.value
+    };
+  }
+
   private async loadLookupReferenceOptions(): Promise<void> {
     const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;
@@ -92,7 +135,7 @@ export default class PoDetailComponent {
         return [name, result] as const;
       })
     );
-    this.lookupReferenceOptions.set(Object.fromEntries(entries));
+    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
   }
 
   private async loadAsDetailTypes(): Promise<void> {
@@ -116,7 +159,7 @@ export default class PoDetailComponent {
           );
           this.asDetailReferenceOptions.update(prev => ({
             ...prev,
-            [attr.name]: Object.fromEntries(refEntries)
+            [attr.name]: refEntries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, PersistentObject[]>)
           }));
         }
       }
@@ -131,6 +174,7 @@ export default class PoDetailComponent {
     }
     try {
       await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
+      this.customActionExecuted.emit({ action, item: this.item()! });
       if (action.refreshOnCompleted) {
         const item = await this.sparkService.get(this.type, this.id);
         this.item.set(item);
@@ -142,12 +186,14 @@ export default class PoDetailComponent {
   }
 
   onEdit(): void {
+    this.edited.emit();
     this.router.navigate(['/po', this.type, this.id, 'edit']);
   }
 
   async onDelete(): Promise<void> {
     if (confirm(this.lang.t('confirmDelete'))) {
       await this.sparkService.delete(this.type, this.id);
+      this.deleted.emit();
       this.router.navigate(['/']);
     }
   }

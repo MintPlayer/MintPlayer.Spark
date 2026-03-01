@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
@@ -11,73 +14,8 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
   selector: 'spark-two-factor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
-  template: `
-    <div class="d-flex justify-content-center">
-      <div class="card" style="width: 100%; max-width: 400px;">
-        <div class="card-body">
-          <h3 class="card-title text-center mb-4">{{ 'authTwoFactorTitle' | t }}</h3>
-
-          @if (errorMessage()) {
-            <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
-          }
-
-          <bs-form>
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              @if (!useRecoveryCode()) {
-                <div class="mb-3">
-                  <label for="code" class="form-label">{{ 'authCode' | t }}</label>
-                  <input
-                    type="text"
-                    id="code"
-                    formControlName="code"
-                    autocomplete="one-time-code"
-                    maxlength="6"
-                    [placeholder]="'authEnterCode' | t"
-                  />
-                </div>
-              } @else {
-                <div class="mb-3">
-                  <label for="recoveryCode" class="form-label">{{ 'authRecoveryCode' | t }}</label>
-                  <input
-                    type="text"
-                    id="recoveryCode"
-                    formControlName="recoveryCode"
-                    autocomplete="off"
-                    [placeholder]="'authEnterRecoveryCode' | t"
-                  />
-                </div>
-              }
-
-              <button
-                type="submit"
-                class="btn btn-primary w-100"
-                [disabled]="loading()"
-              >
-                @if (loading()) {
-                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                {{ 'authVerify' | t }}
-              </button>
-            </form>
-          </bs-form>
-
-          <div class="mt-3 text-center">
-            <button class="btn btn-link" (click)="toggleRecoveryCode()">
-              @if (useRecoveryCode()) {
-                {{ 'authUseAuthCode' | t }}
-              } @else {
-                {{ 'authUseRecoveryCode' | t }}
-              }
-            </button>
-          </div>
-          <div class="mt-2 text-center">
-            <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  `,
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
+  templateUrl: './spark-two-factor.component.html',
 })
 export class SparkTwoFactorComponent {
   private readonly fb = inject(FormBuilder);
@@ -88,6 +26,7 @@ export class SparkTwoFactorComponent {
   private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
+  colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
   readonly useRecoveryCode = signal(false);

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, output, QueryList, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -7,19 +7,32 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-
-import { SparkService, EntityType, PersistentObject, PersistentObjectAttribute, ValidationError, ShowedOn, hasShowedOnFlag, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark';
+import { SparkService } from '../../services/spark.service';
+import { SparkPoFormComponent } from '../po-form/spark-po-form.component';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
+import { SparkFieldTemplateDirective } from '../../directives/spark-field-template.directive';
+import { EntityType } from '../../models/entity-type';
+import { PersistentObject } from '../../models/persistent-object';
+import { PersistentObjectAttribute } from '../../models/persistent-object-attribute';
+import { ValidationError } from '../../models/validation-error';
+import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
-  selector: 'app-po-create',
+  selector: 'spark-po-create',
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
-  templateUrl: './po-create.component.html',
+  templateUrl: './spark-po-create.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class PoCreateComponent {
+export class SparkPoCreateComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+
+  @ContentChildren(SparkFieldTemplateDirective) fieldTemplates!: QueryList<SparkFieldTemplateDirective>;
+
+  saved = output<PersistentObject>();
+  cancelled = output<void>();
 
   colors = Color;
   entityType = signal<EntityType | null>(null);
@@ -27,6 +40,7 @@ export default class PoCreateComponent {
   formData = signal<Record<string, any>>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
+  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -90,6 +104,7 @@ export default class PoCreateComponent {
     try {
       const result = await this.sparkService.create(this.type(), po);
       this.isSaving.set(false);
+      this.saved.emit(result);
       this.router.navigate(['/po', this.type(), result.id]);
     } catch (e) {
       this.isSaving.set(false);
@@ -106,9 +121,8 @@ export default class PoCreateComponent {
     }
   }
 
-  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
-
   onCancel(): void {
+    this.cancelled.emit();
     window.history.back();
   }
 }

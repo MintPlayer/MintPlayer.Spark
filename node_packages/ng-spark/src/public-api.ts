@@ -24,6 +24,10 @@ export { RetryActionService } from './lib/services/retry-action.service';
 
 // Components
 export { SparkPoFormComponent } from './lib/components/po-form/spark-po-form.component';
+export { SparkPoCreateComponent } from './lib/components/po-create/spark-po-create.component';
+export { SparkPoEditComponent } from './lib/components/po-edit/spark-po-edit.component';
+export { SparkPoDetailComponent } from './lib/components/po-detail/spark-po-detail.component';
+export { SparkQueryListComponent } from './lib/components/query-list/spark-query-list.component';
 export { SparkRetryActionModalComponent } from './lib/components/retry-action-modal/spark-retry-action-modal.component';
 export { SparkIconComponent } from './lib/components/icon/spark-icon.component';
 export { SparkIconRegistry } from './lib/components/icon/spark-icon-registry';
@@ -51,6 +55,18 @@ export { InlineRefOptionsPipe } from './lib/pipes/inline-ref-options.pipe';
 export { ErrorForAttributePipe } from './lib/pipes/error-for-attribute.pipe';
 export { IconNamePipe } from './lib/pipes/icon-name.pipe';
 export { ArrayValuePipe } from './lib/pipes/array-value.pipe';
+
+// Directives
+export { SparkFieldTemplateDirective } from './lib/directives/spark-field-template.directive';
+export type { SparkFieldTemplateContext } from './lib/directives/spark-field-template.directive';
+export { SparkDetailFieldTemplateDirective } from './lib/directives/spark-detail-field-template.directive';
+export type { SparkDetailFieldTemplateContext } from './lib/directives/spark-detail-field-template.directive';
+export { SparkColumnTemplateDirective } from './lib/directives/spark-column-template.directive';
+export type { SparkColumnTemplateContext } from './lib/directives/spark-column-template.directive';
+
+// Routes
+export { sparkRoutes } from './lib/routes/spark-routes';
+export type { SparkRouteConfig } from './lib/routes/spark-routes';
 
 // Providers
 export { provideSpark } from './lib/providers/provide-spark';

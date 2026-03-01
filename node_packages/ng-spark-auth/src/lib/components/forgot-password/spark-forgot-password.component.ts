@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
@@ -11,59 +14,8 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
   selector: 'spark-forgot-password',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
-  template: `
-    <div class="d-flex justify-content-center">
-      <div class="card" style="width: 100%; max-width: 400px;">
-        <div class="card-body">
-          <h3 class="card-title text-center mb-4">{{ 'authForgotPasswordTitle' | t }}</h3>
-
-          @if (successMessage()) {
-            <div class="alert alert-success" role="alert">{{ successMessage() }}</div>
-          }
-
-          @if (errorMessage()) {
-            <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
-          }
-
-          @if (!successMessage()) {
-            <p class="text-muted mb-3">
-              {{ 'authForgotPasswordDescription' | t }}
-            </p>
-
-            <bs-form>
-              <form [formGroup]="form" (ngSubmit)="onSubmit()">
-                <div class="mb-3">
-                  <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
-                  <input
-                    type="email"
-                    id="email"
-                    formControlName="email"
-                    autocomplete="email"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  class="btn btn-primary w-100"
-                  [disabled]="loading()"
-                >
-                  @if (loading()) {
-                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                  }
-                  {{ 'authSendResetLink' | t }}
-                </button>
-              </form>
-            </bs-form>
-          }
-
-          <div class="mt-3 text-center">
-            <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  `,
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
+  templateUrl: './spark-forgot-password.component.html',
 })
 export class SparkForgotPasswordComponent {
   private readonly fb = inject(FormBuilder);
@@ -71,6 +23,7 @@ export class SparkForgotPasswordComponent {
   private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
+  colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
   readonly successMessage = signal('');

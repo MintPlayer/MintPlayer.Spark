@@ -17,10 +17,15 @@
             <spark-icon name="pencil" /> {{ 'edit' | t }}
           </button>
         }
-        @for (action of customActions(); track action.name) {
-          <button class="btn btn-outline-primary" (click)="onCustomAction(action)">
-            {{ action.displayName | resolveTranslation }}
-          </button>
+        @if (extraActionsTemplate(); as extraActionsTpl) {
+          <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
+        }
+        @if (showCustomActions()) {
+          @for (action of customActions(); track action.name) {
+            <button class="btn btn-outline-primary" (click)="onCustomAction(action)">
+              {{ action.displayName | resolveTranslation }}
+            </button>
+          }
         }
         @if (canDelete()) {
           <button class="btn btn-danger" (click)="onDelete()">
@@ -38,7 +43,9 @@
             @for (attr of visibleAttributes(); track attr.id) {
               <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
               <dd [sm]="9">
-              @if (attr.dataType === 'AsDetail' && attr.isArray) {
+              @if (getDetailFieldTemplate(attr); as customTpl) {
+                <ng-container *ngTemplateOutlet="customTpl; context: getDetailFieldContext(attr, currentItem)"></ng-container>
+              } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
                   <thead>
                     <tr>
@@ -97,6 +104,9 @@
         </bs-grid>
       </div>
     </bs-card>
+    @if (extraContentTemplate(); as extraContentTpl) {
+      <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
+    }
     }
   } @else {
     <div class="text-center p-5">

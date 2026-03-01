@@ -2,6 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { ReactiveFormsModule, FormBuilder, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
@@ -21,76 +24,8 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
   selector: 'spark-register',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
-  template: `
-    <div class="d-flex justify-content-center">
-      <div class="card" style="width: 100%; max-width: 400px;">
-        <div class="card-body">
-          <h3 class="card-title text-center mb-4">{{ 'authRegister' | t }}</h3>
-
-          @if (errorMessage()) {
-            <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
-          }
-
-          <bs-form>
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              <div class="mb-3">
-                <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
-                <input
-                  type="email"
-                  id="email"
-                  formControlName="email"
-                  autocomplete="email"
-                />
-                @if (form.get('email')?.touched && form.get('email')?.hasError('email')) {
-                  <div class="text-danger mt-1">{{ 'authInvalidEmail' | t }}</div>
-                }
-              </div>
-
-              <div class="mb-3">
-                <label for="password" class="form-label">{{ 'authPassword' | t }}</label>
-                <input
-                  type="password"
-                  id="password"
-                  formControlName="password"
-                  autocomplete="new-password"
-                />
-              </div>
-
-              <div class="mb-3">
-                <label for="confirmPassword" class="form-label">{{ 'authConfirmPassword' | t }}</label>
-                <input
-                  type="password"
-                  id="confirmPassword"
-                  formControlName="confirmPassword"
-                  autocomplete="new-password"
-                />
-                @if (form.touched && form.hasError('passwordMismatch')) {
-                  <div class="text-danger mt-1">{{ 'authPasswordMismatch' | t }}</div>
-                }
-              </div>
-
-              <button
-                type="submit"
-                class="btn btn-primary w-100"
-                [disabled]="loading()"
-              >
-                @if (loading()) {
-                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                {{ 'authRegister' | t }}
-              </button>
-            </form>
-          </bs-form>
-
-          <div class="mt-3 text-center">
-            <span>{{ 'authAlreadyHaveAccount' | t }} </span>
-            <a [routerLink]="routePaths.login">{{ 'authLogin' | t }}</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  `,
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
+  templateUrl: './spark-register.component.html',
 })
 export class SparkRegisterComponent {
   private readonly fb = inject(FormBuilder);
@@ -99,6 +34,7 @@ export class SparkRegisterComponent {
   private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
+  colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
 

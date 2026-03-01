@@ -9,14 +9,7 @@ import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, TranslateKeyPipe],
-  template: `
-    @if (authService.isAuthenticated()) {
-      <span class="me-2">{{ authService.user()?.userName }}</span>
-      <button class="btn btn-outline-light btn-sm" (click)="onLogout()">{{ 'authLogout' | t }}</button>
-    } @else {
-      <a class="btn btn-outline-light btn-sm" [routerLink]="config.loginUrl">{{ 'authLogin' | t }}</a>
-    }
-  `,
+  templateUrl: './spark-auth-bar.component.html',
 })
 export class SparkAuthBarComponent {
   readonly authService = inject(SparkAuthService);

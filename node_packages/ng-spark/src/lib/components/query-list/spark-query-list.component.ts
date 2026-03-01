@@ -1,6 +1,6 @@
-import { Component, ChangeDetectionStrategy, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, output, QueryList, signal, TemplateRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -11,20 +11,36 @@ import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
-
-import { SparkService, EntityType, LookupReference, PersistentObject, SparkQuery, ShowedOn, hasShowedOnFlag, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe } from '@mintplayer/ng-spark';
+import { SparkService } from '../../services/spark.service';
+import { SparkIconComponent } from '../icon/spark-icon.component';
+import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
+import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
+import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
+import { SparkColumnTemplateDirective, SparkColumnTemplateContext } from '../../directives/spark-column-template.directive';
+import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
+import { LookupReference } from '../../models/lookup-reference';
+import { PersistentObject } from '../../models/persistent-object';
+import { SparkQuery } from '../../models/spark-query';
+import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
-  selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
-  templateUrl: './query-list.component.html',
-  styleUrl: './query-list.component.scss',
+  selector: 'spark-query-list',
+  imports: [CommonModule, NgTemplateOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  templateUrl: './spark-query-list.component.html',
+  styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class QueryListComponent {
+export class SparkQueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+
+  @ContentChildren(SparkColumnTemplateDirective) columnTemplates!: QueryList<SparkColumnTemplateDirective>;
+
+  extraActionsTemplate = input<TemplateRef<void> | null>(null);
+
+  rowClicked = output<PersistentObject>();
+  createClicked = output<void>();
 
   colors = Color;
   errorMessage = signal<string | null>(null);
@@ -215,6 +231,24 @@ export default class QueryListComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
+  getColumnTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkColumnTemplateContext> | null {
+    if (!this.columnTemplates) return null;
+    const byName = this.columnTemplates.find(t => t.name() === attr.name);
+    if (byName) return byName.template;
+    const byType = this.columnTemplates.find(t => t.name() === attr.dataType);
+    if (byType) return byType.template;
+    return null;
+  }
+
+  getColumnTemplateContext(item: PersistentObject, attr: EntityAttributeDefinition): SparkColumnTemplateContext {
+    const itemAttr = item.attributes.find(a => a.name === attr.name);
+    return {
+      $implicit: item,
+      attr,
+      value: itemAttr?.value
+    };
+  }
+
   private async loadLookupReferenceOptions(): Promise<void> {
     const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;
@@ -226,10 +260,11 @@ export default class QueryListComponent {
         return [name, result] as const;
       })
     );
-    this.lookupReferenceOptions.set(Object.fromEntries(entries));
+    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
   }
 
   onRowClick(item: PersistentObject): void {
+    this.rowClicked.emit(item);
     const et = this.entityType();
     if (et) {
       this.router.navigate(['/po', et.alias || et.id, item.id]);
@@ -237,6 +272,7 @@ export default class QueryListComponent {
   }
 
   onCreate(): void {
+    this.createClicked.emit();
     const et = this.entityType();
     if (et) {
       this.router.navigate(['/po', et.alias || et.id, 'new']);

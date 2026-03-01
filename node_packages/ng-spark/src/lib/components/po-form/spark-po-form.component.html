@@ -10,7 +10,9 @@
           }
         </label>
         <div [md]="8">
-          @if (attr.dataType === 'boolean') {
+          @if (getFieldTemplate(attr); as customTpl) {
+            <ng-container *ngTemplateOutlet="customTpl; context: getFieldTemplateContext(attr)"></ng-container>
+          } @else if (attr.dataType === 'boolean') {
             <bs-toggle-button
               [ngModel]="formData()[attr.name]"
               (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">

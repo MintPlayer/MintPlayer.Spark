@@ -2,6 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { SparkAuthService } from '../../services/spark-auth.service';
@@ -13,66 +16,8 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
   selector: 'spark-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, TranslateKeyPipe],
-  template: `
-    <div class="d-flex justify-content-center">
-      <div class="card" style="width: 100%; max-width: 400px;">
-        <div class="card-body">
-          <h3 class="card-title text-center mb-4">{{ 'authLogin' | t }}</h3>
-
-          @if (errorMessage()) {
-            <div class="alert alert-danger" role="alert">{{ errorMessage() }}</div>
-          }
-
-          <bs-form>
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              <div class="mb-3">
-                <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
-                <input
-                  type="text"
-                  id="email"
-                  formControlName="email"
-                  autocomplete="username"
-                />
-              </div>
-
-              <div class="mb-3">
-                <label for="password" class="form-label">{{ 'authPassword' | t }}</label>
-                <input
-                  type="password"
-                  id="password"
-                  formControlName="password"
-                  autocomplete="current-password"
-                />
-              </div>
-
-              <div class="mb-3">
-                <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">{{ 'authRememberMe' | t }}</bs-toggle-button>
-              </div>
-
-              <button
-                type="submit"
-                class="btn btn-primary w-100"
-                [disabled]="loading()"
-              >
-                @if (loading()) {
-                  <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                {{ 'authLogin' | t }}
-              </button>
-            </form>
-          </bs-form>
-
-          <div class="mt-3 text-center">
-            <a [routerLink]="routePaths.register">{{ 'authCreateAccount' | t }}</a>
-          </div>
-          <div class="mt-2 text-center">
-            <a [routerLink]="routePaths.forgotPassword">{{ 'authForgotPassword' | t }}</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  `,
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, TranslateKeyPipe],
+  templateUrl: './spark-login.component.html',
 })
 export class SparkLoginComponent {
   private readonly fb = inject(FormBuilder);
@@ -83,6 +28,7 @@ export class SparkLoginComponent {
   private readonly translation = inject(SparkAuthTranslationService);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
+  colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
 

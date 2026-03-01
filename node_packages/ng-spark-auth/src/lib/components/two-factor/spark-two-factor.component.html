@@ -1,0 +1,65 @@
+<div class="d-flex justify-content-center">
+  <bs-card style="width: 100%; max-width: 400px;">
+    <bs-card-header>
+      <h3 class="mb-0 text-center">{{ 'authTwoFactorTitle' | t }}</h3>
+    </bs-card-header>
+    <div class="p-4">
+      @if (errorMessage()) {
+        <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
+      }
+
+      <bs-form>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+          @if (!useRecoveryCode()) {
+            <div class="mb-3">
+              <label for="code" class="form-label">{{ 'authCode' | t }}</label>
+              <input
+                type="text"
+                id="code"
+                formControlName="code"
+                autocomplete="one-time-code"
+                maxlength="6"
+                [placeholder]="'authEnterCode' | t"
+              />
+            </div>
+          } @else {
+            <div class="mb-3">
+              <label for="recoveryCode" class="form-label">{{ 'authRecoveryCode' | t }}</label>
+              <input
+                type="text"
+                id="recoveryCode"
+                formControlName="recoveryCode"
+                autocomplete="off"
+                [placeholder]="'authEnterRecoveryCode' | t"
+              />
+            </div>
+          }
+
+          <button
+            type="submit"
+            class="btn btn-primary w-100"
+            [disabled]="loading()"
+          >
+            @if (loading()) {
+              <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+            }
+            {{ 'authVerify' | t }}
+          </button>
+        </form>
+      </bs-form>
+
+      <div class="mt-3 text-center">
+        <button class="btn btn-link" (click)="toggleRecoveryCode()">
+          @if (useRecoveryCode()) {
+            {{ 'authUseAuthCode' | t }}
+          } @else {
+            {{ 'authUseRecoveryCode' | t }}
+          }
+        </button>
+      </div>
+      <div class="mt-2 text-center">
+        <a [routerLink]="routePaths.login">{{ 'authBackToLogin' | t }}</a>
+      </div>
+    </div>
+  </bs-card>
+</div>

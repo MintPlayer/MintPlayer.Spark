@@ -7,8 +7,8 @@
   }
 
   @if (entityType(); as et) {
-    @if (item(); as currentItem) {
-    <h2 class="mb-4">{{ 'edit' | t }} {{ et.description | resolveTranslation:et.name }}</h2>
+    @if (item()) {
+    <h2 class="mb-4">{{ 'edit' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
 
     <bs-card>
       <bs-card-header>{{ 'properties' | t }}</bs-card-header>
@@ -19,6 +19,7 @@
           [validationErrors]="validationErrors()"
           [showButtons]="true"
           [isSaving]="isSaving()"
+          [externalFieldTemplates]="fieldTemplates.toArray()"
           (save)="onSave()"
           (cancel)="onCancel()">
         </spark-po-form>
