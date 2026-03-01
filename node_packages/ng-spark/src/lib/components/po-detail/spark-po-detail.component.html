@@ -49,11 +49,15 @@
         @if (tab.id === '__default__') {
           @let ungroupedAttrs = ungroupedAttributes();
           @if (ungroupedAttrs.length > 0) {
-            <dl bsRow>
-              @for (attr of ungroupedAttrs; track attr.id) {
-                <ng-container *ngTemplateOutlet="detailAttrField; context: { $implicit: attr, item: currentItem }"></ng-container>
-              }
-            </dl>
+            <bs-card style="display: block; margin: 1rem;">
+              <div class="p-3">
+                <dl bsRow>
+                  @for (attr of ungroupedAttrs; track attr.id) {
+                    <ng-container *ngTemplateOutlet="detailAttrField; context: { $implicit: attr, item: currentItem }"></ng-container>
+                  }
+                </dl>
+              </div>
+            </bs-card>
           }
         }
         @for (group of groupsForTab(tab); track group.id) {

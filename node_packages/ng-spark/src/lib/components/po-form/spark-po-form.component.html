@@ -12,8 +12,14 @@
 
     <ng-template #tabContent let-tab>
       @if (tab.id === '__default__') {
-        @for (attr of ungroupedAttributes(); track attr.id) {
-          <ng-container *ngTemplateOutlet="attrField; context: { $implicit: attr }"></ng-container>
+        @if (ungroupedAttributes().length > 0) {
+          <bs-card class="d-block m-3">
+            <div class="p-3">
+              @for (attr of ungroupedAttributes(); track attr.id) {
+                <ng-container *ngTemplateOutlet="attrField; context: { $implicit: attr }"></ng-container>
+              }
+            </div>
+          </bs-card>
         }
       }
       @for (group of groupsForTab(tab); track group.id) {
