@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsModalModule } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { Subscription } from 'rxjs';
 import { RetryActionService } from '../../core/services/retry-action.service';
@@ -9,7 +9,7 @@ import { RetryActionPayload } from '../../core/models/retry-action';
 
 @Component({
   selector: 'app-retry-action-modal',
-  imports: [CommonModule, BsModalModule, BsButtonTypeDirective],
+  imports: [CommonModule, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective],
   template: `
     <bs-modal [(isOpen)]="isOpen" (isOpenChange)="!$event && onOption('Cancel')">
       <div *bsModal>

@@ -4,11 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
+import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
@@ -22,7 +22,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertModule, BsContainerComponent, BsDatatableModule, BsFormModule, BsGridModule, BsInputGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

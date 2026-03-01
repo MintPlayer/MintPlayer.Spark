@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
-import { BsCardModule } from '@mintplayer/ng-bootstrap/card';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { SparkService } from '../../core/services/spark.service';
 import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
@@ -15,7 +15,7 @@ import { switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
-  imports: [CommonModule, BsAlertModule, BsCardModule, BsContainerComponent, PoFormComponent, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslateKeyPipe],
   templateUrl: './po-create.component.html'
 })
 export default class PoCreateComponent implements OnInit {

@@ -2,8 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
-import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -12,7 +12,7 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
 @Component({
   selector: 'spark-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule, BsToggleButtonModule, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">

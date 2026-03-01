@@ -2,14 +2,14 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, Out
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
-import { BsModalModule } from '@mintplayer/ng-bootstrap/modal';
-import { BsDatatableModule, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
-import { BsToggleButtonModule } from '@mintplayer/ng-bootstrap/toggle-button';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
+import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
@@ -23,7 +23,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormModule, BsGridModule, BsButtonTypeDirective, BsInputGroupComponent, BsSelectModule, BsModalModule, BsDatatableModule, BsTableComponent, BsToggleButtonModule, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

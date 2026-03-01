@@ -1,10 +1,10 @@
 import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
-import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
+import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
+import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
-import { BsSelectModule } from '@mintplayer/ng-bootstrap/select';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
@@ -18,7 +18,7 @@ import { KeyValuePipe } from '@angular/common';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, BsSelectModule, IconComponent, SparkAuthBarComponent, TranslatePipe, FormsModule, KeyValuePipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, IconComponent, SparkAuthBarComponent, TranslatePipe, FormsModule, KeyValuePipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

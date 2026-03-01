@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { BsFormModule } from '@mintplayer/ng-bootstrap/form';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -10,7 +10,7 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
 @Component({
   selector: 'spark-forgot-password',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, BsFormModule, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <div class="card" style="width: 100%; max-width: 400px;">

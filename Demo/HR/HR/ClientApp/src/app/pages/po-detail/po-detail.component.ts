@@ -3,11 +3,11 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsAlertModule } from '@mintplayer/ng-bootstrap/alert';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
-import { BsCardModule } from '@mintplayer/ng-bootstrap/card';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
+import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { SparkService } from '../../core/services/spark.service';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
@@ -20,7 +20,7 @@ import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertModule, BsButtonGroupComponent, BsCardModule, BsContainerComponent, BsGridModule, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-detail.component.html'
 })
 export default class PoDetailComponent implements OnInit {

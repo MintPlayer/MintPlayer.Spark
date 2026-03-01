@@ -1,8 +1,8 @@
 import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
-import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
+import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
+import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup, resolveTranslation } from '../core/models';
@@ -12,7 +12,7 @@ import { fromEvent } from 'rxjs';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, IconComponent],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
