@@ -16,7 +16,7 @@
 	        AfterTargets="DebugEnsureNodeEnv"
 	        Condition=" '$(EnableSparkAuthSpa)' == 'true'
 	                    And Exists('$(SpaRoot)package.json')
-	                    And !Exists('$(SpaRoot)node_modules\$(SparkAuthNpmPackage)')
+	                    And !Exists('$(NodeModulesCheckPath)node_modules\$(SparkAuthNpmPackage)')
 	                    And !Exists('$(SparkAuthNpmStampFile)') ">
 
 		<!-- Check if Node.js is available -->
@@ -33,7 +33,7 @@
 		         Text="[MintPlayer.Spark.Authorization] Installing $(SparkAuthNpmPackage)..."
 		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
 
-		<Exec WorkingDirectory="$(SpaRoot)"
+		<Exec WorkingDirectory="$(NpmInstallWorkingDirectory)"
 		      Command="npm i $(SparkAuthNpmPackage)"
 		      ContinueOnError="WarnAndContinue"
 		      Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
