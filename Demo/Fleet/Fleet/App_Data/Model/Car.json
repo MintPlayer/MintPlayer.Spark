@@ -78,18 +78,25 @@
       "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
       "name": "Color",
       "label": {"en": "Color", "fr": "Couleur", "nl": "Kleur"},
-      "dataType": "string",
+      "dataType": "color",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 4,
       "showedOn": "Query, PersistentObject",
-      "rules": [
-        {
-          "type": "maxLength",
-          "value": 30
-        }
-      ]
+      "rules": []
+    },
+    {
+      "id": "a3c1e8f7-5b42-4d19-9e6a-1f8d3c7b2a05",
+      "name": "InteriorColor",
+      "label": {"en": "Interior Color", "fr": "Couleur intérieure", "nl": "Interieurkleur"},
+      "dataType": "color",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
     },
     {
       "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
@@ -99,7 +106,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 5,
+      "order": 6,
       "lookupReferenceType": "CarStatus",
       "showedOn": "Query, PersistentObject",
       "rules": []
@@ -112,7 +119,7 @@
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
-      "order": 6,
+      "order": 7,
       "lookupReferenceType": "CarBrand",
       "showedOn": "Query, PersistentObject",
       "rules": []

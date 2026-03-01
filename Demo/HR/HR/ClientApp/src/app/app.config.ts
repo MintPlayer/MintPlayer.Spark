@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
@@ -13,5 +13,6 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(...withSparkAuth()),
     provideAnimations(),
     provideSparkAuth(),
+    provideZonelessChangeDetection()
   ]
 };

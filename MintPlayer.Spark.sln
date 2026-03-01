@@ -39,9 +39,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "FleetApp", "FleetApp", "{CF
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "HRApp", "HRApp", "{2A519F7C-005D-12C2-C047-E13C1573BFEA}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "packages", "packages", "{809F86A1-1C4C-B159-0CD4-DF9D33D876CE}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "node_packages", "node_packages", "{809F86A1-1C4C-B159-0CD4-DF9D33D876CE}"
 EndProject
-Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark-auth", "packages\ng-spark-auth\ng-spark-auth.esproj", "{3A3366F2-9EC5-49BD-B408-0C90F52636B9}"
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark-auth", "node_packages\ng-spark-auth\ng-spark-auth.esproj", "{3A3366F2-9EC5-49BD-B408-0C90F52636B9}"
+EndProject
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark", "node_packages\ng-spark\ng-spark.esproj", "{503DE99E-29F1-40A7-B42A-2B37A744C64D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -227,6 +229,12 @@ Global
 		{3A3366F2-9EC5-49BD-B408-0C90F52636B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3A3366F2-9EC5-49BD-B408-0C90F52636B9}.Release|x64.ActiveCfg = Release|Any CPU
 		{3A3366F2-9EC5-49BD-B408-0C90F52636B9}.Release|x86.ActiveCfg = Release|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|x64.ActiveCfg = Release|Any CPU
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -242,6 +250,7 @@ Global
 		{CF2BA7A2-9D64-C420-DB99-F252FCABF1D0} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
 		{2A519F7C-005D-12C2-C047-E13C1573BFEA} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
 		{3A3366F2-9EC5-49BD-B408-0C90F52636B9} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
+		{503DE99E-29F1-40A7-B42A-2B37A744C64D} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BE3C450D-A8DE-4D9E-B4D4-3F32F348E7EA}

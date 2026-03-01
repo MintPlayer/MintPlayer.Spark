@@ -1,34 +1,9 @@
-<bs-container>
-<div class="container">
-  @for (error of getGeneralErrors(); track error.errorMessage) {
-    <bs-alert [type]="colors.danger" class="mb-3">
-      {{ error.errorMessage }}
-    </bs-alert>
-  }
-
-  @if (entityType && item) {
-    <h2 class="mb-4">{{ 'edit' | t }} {{ (entityType.description | translate) || entityType.name }}</h2>
-
-    <bs-card>
-      <bs-card-header>{{ 'properties' | t }}</bs-card-header>
-      <div class="p-3">
-        <app-po-form
-          [entityType]="entityType"
-          [(formData)]="formData"
-          [validationErrors]="validationErrors"
-          [showButtons]="true"
-          [isSaving]="isSaving"
-          (save)="onSave()"
-          (cancel)="onCancel()">
-        </app-po-form>
-      </div>
-    </bs-card>
-  } @else {
-    <div class="text-center p-5">
-      <div class="spinner-border" role="status">
-        <span class="visually-hidden">{{ 'loading' | t }}</span>
-      </div>
-    </div>
-  }
-</div>
-</bs-container>
+<spark-po-edit>
+  <ng-template sparkFieldTemplate="InteriorColor" let-attr let-formData="formData">
+    <bs-color-picker
+      [ngModel]="formData[attr.name]"
+      (ngModelChange)="formData[attr.name] = $event"
+      [size]="150">
+    </bs-color-picker>
+  </ng-template>
+</spark-po-edit>

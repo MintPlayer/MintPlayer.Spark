@@ -1,12 +1,13 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BsCardModule } from '@mintplayer/ng-bootstrap/card';
-import { BsGridModule } from '@mintplayer/ng-bootstrap/grid';
-import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark';
 
 @Component({
   selector: 'app-home',
-  imports: [CommonModule, BsCardModule, BsGridModule, TranslateKeyPipe],
-  templateUrl: './home.component.html'
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, TranslateKeyPipe],
+  templateUrl: './home.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class HomeComponent {}

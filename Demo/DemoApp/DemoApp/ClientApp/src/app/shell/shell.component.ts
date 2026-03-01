@@ -1,30 +1,28 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { BsShellModule, BsShellState } from '@mintplayer/ng-bootstrap/shell';
-import { BsAccordionModule } from '@mintplayer/ng-bootstrap/accordion';
+import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
+import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
-import { SparkService } from '../core/services/spark.service';
-import { ProgramUnit, ProgramUnitGroup, resolveTranslation } from '../core/models';
-import { IconComponent } from '../components/icon/icon.component';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { fromEvent } from 'rxjs';
+import {
+  SparkService, SparkIconComponent,
+  ResolveTranslationPipe, IconNamePipe, RouterLinkPipe,
+  ProgramUnitGroup
+} from '@mintplayer/ng-spark';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellModule, BsAccordionModule, BsNavbarTogglerComponent, IconComponent],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
-  private readonly cdr = inject(ChangeDetectorRef);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
-  resolveTranslation = resolveTranslation;
-  programUnitGroups: ProgramUnitGroup[] = [];
+  programUnitGroups = signal<ProgramUnitGroup[]>([]);
   shellState = signal<BsShellState>('auto');
   isSidebarVisible = signal<boolean>(false);
 
@@ -35,20 +33,9 @@ export class ShellComponent implements OnInit {
     });
   }
 
-  ngOnInit(): void {
-    this.sparkService.getProgramUnits().subscribe(config => {
-      this.programUnitGroups = config.programUnitGroups.sort((a, b) => a.order - b.order);
-      this.cdr.markForCheck();
-    });
-  }
-
-  getRouterLink(unit: ProgramUnit): string[] {
-    if (unit.type === 'query') {
-      return ['/query', unit.alias || unit.queryId!];
-    } else if (unit.type === 'persistentObject') {
-      return ['/po', unit.alias || unit.persistentObjectId!];
-    }
-    return ['/'];
+  async ngOnInit(): Promise<void> {
+    const config = await this.sparkService.getProgramUnits();
+    this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
   }
 
   toggleSidebar(open: boolean) {
@@ -68,11 +55,9 @@ export class ShellComponent implements OnInit {
       return;
     }
 
-    fromEvent(window, 'resize')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.updateSidebarVisibility();
-      });
+    const handler = () => this.updateSidebarVisibility();
+    window.addEventListener('resize', handler);
+    this.destroyRef.onDestroy(() => window.removeEventListener('resize', handler));
   }
 
   private updateSidebarVisibility(): void {
@@ -89,7 +74,6 @@ export class ShellComponent implements OnInit {
     }
 
     this.isSidebarVisible.set(isVisible);
-    this.cdr.markForCheck();
   }
 
   private isAboveBreakpoint(): boolean {
@@ -100,9 +84,4 @@ export class ShellComponent implements OnInit {
     return window.innerWidth >= 768;
   }
 
-  getIconName(icon: string | undefined, fallback: string): string {
-    const iconClass = icon || fallback;
-    // Strip 'bi-' prefix if present
-    return iconClass.startsWith('bi-') ? iconClass.substring(3) : iconClass;
-  }
 }

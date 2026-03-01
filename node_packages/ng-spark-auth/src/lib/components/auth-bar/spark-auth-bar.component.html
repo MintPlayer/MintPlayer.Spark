@@ -1,0 +1,6 @@
+@if (authService.isAuthenticated()) {
+  <span class="me-2">{{ authService.user()?.userName }}</span>
+  <button class="btn btn-outline-light btn-sm" (click)="onLogout()">{{ 'authLogout' | t }}</button>
+} @else {
+  <a class="btn btn-outline-light btn-sm" [routerLink]="config.loginUrl">{{ 'authLogin' | t }}</a>
+}

@@ -41,8 +41,11 @@ jobs:
     - name: Install npm dependencies
       run: npm ci
 
+    - name: Build ng-spark
+      run: dotnet build node_packages/ng-spark/ng-spark.esproj --configuration Release
+
     - name: Build ng-spark-auth
-      run: dotnet build packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
+      run: dotnet build node_packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
 
     - name: Install dependencies
       run: dotnet restore
@@ -66,10 +69,28 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
 
+    - name: Push ng-spark to NPM
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'node_packages/ng-spark/dist/package.json'
+        registry: 'https://registry.npmjs.org'
+        token: ${{ secrets.PUBLISH_TO_NPMJS }}
+        access: 'public'
+        provenance: true
+
+    - name: Push ng-spark to Github
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'node_packages/ng-spark/dist/package.json'
+        registry: 'https://npm.pkg.github.com'
+        token: ${{ github.token }}
+        access: 'public'
+        provenance: true
+
     - name: Push ng-spark-auth to NPM
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'packages/ng-spark-auth/dist/package.json'
+        package: 'node_packages/ng-spark-auth/dist/package.json'
         registry: 'https://registry.npmjs.org'
         token: ${{ secrets.PUBLISH_TO_NPMJS }}
         access: 'public'
@@ -78,7 +99,7 @@ jobs:
     - name: Push ng-spark-auth to Github
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'packages/ng-spark-auth/dist/package.json'
+        package: 'node_packages/ng-spark-auth/dist/package.json'
         registry: 'https://npm.pkg.github.com'
         token: ${{ github.token }}
         access: 'public'

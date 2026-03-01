@@ -8,7 +8,7 @@
         <bs-select [ngModel]="lang.language()"
                    (ngModelChange)="lang.setLanguage($event)">
           @for (l of langs; track l.key) {
-            <option [ngValue]="l.key">{{ l.value | translate }}</option>
+            <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
           }
         </bs-select>
       }
@@ -20,20 +20,20 @@
   <nav *bsShellSidebar class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">
-      @for (group of programUnitGroups; track group.id) {
+      @for (group of programUnitGroups(); track group.id) {
       <bs-accordion-tab>
         <bs-accordion-tab-header>
           <span class="triangle me-2"></span>
-          <app-icon [name]="getIconName(group.icon, 'bi-folder')" />
-          <span class="ms-2">{{ group.name | translate }}</span>
+          <spark-icon [name]="group.icon | iconName:'bi-folder'" />
+          <span class="ms-2">{{ group.name | resolveTranslation }}</span>
         </bs-accordion-tab-header>
         @for (unit of group.programUnits; track unit.id) {
-        <a [routerLink]="getRouterLink(unit)"
+        <a [routerLink]="unit | routerLink"
            routerLinkActive="active"
            (click)="onMenuItemClick()"
            class="d-block px-3 py-2 text-light text-decoration-none nav-link">
-          <app-icon [name]="getIconName(unit.icon, 'bi-file')" />
-          <span class="ms-2">{{ unit.name | translate }}</span>
+          <spark-icon [name]="unit.icon | iconName:'bi-file'" />
+          <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
         </a>
         }
       </bs-accordion-tab>

@@ -9,6 +9,7 @@ public class Car
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
     public string? Color { get; set; }
+    public string? InteriorColor { get; set; }
 
     [LookupReference(typeof(LookupReferences.CarStatus))]
     public string? Status { get; set; }
