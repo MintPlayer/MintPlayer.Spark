@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, ChangeDetectorRef, input, output, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, ChangeDetectorRef, input, output, model, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -12,7 +12,7 @@ import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirectiv
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
-import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
+import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
@@ -30,12 +30,13 @@ import { CanCreateDetailRowPipe } from '../../core/pipes/can-create-detail-row.p
 import { CanDeleteDetailRowPipe } from '../../core/pipes/can-delete-detail-row.pipe';
 import { InlineRefOptionsPipe } from '../../core/pipes/inline-ref-options.pipe';
 import { ReferenceAttrValuePipe } from '../../core/pipes/reference-attr-value.pipe';
+import { ErrorForAttributePipe } from '../../core/pipes/error-for-attribute.pipe';
 import { IconComponent } from '../icon/icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe],
+  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -87,8 +88,8 @@ export class PoFormComponent {
   // Modal state for LookupReference selection (Modal display type)
   editingLookupAttr: EntityAttributeDefinition | null = null;
   showLookupModal = false;
-  lookupModalItems: LookupReferenceValue[] = [];
-  lookupSearchTerm: string = '';
+  lookupModalItems = signal<LookupReferenceValue[]>([]);
+  lookupSearchTerm = signal('');
   ELookupDisplayType = ELookupDisplayType;
 
   // Track previous entityType to detect changes
@@ -191,22 +192,24 @@ export class PoFormComponent {
   // LookupReference modal methods
   openLookupSelector(attr: EntityAttributeDefinition): void {
     this.editingLookupAttr = attr;
-    this.lookupSearchTerm = '';
-    this.lookupModalItems = this.getLookupOptions(attr);
+    this.lookupSearchTerm.set('');
+    this.lookupModalItems.set(this.getLookupOptions(attr));
     this.showLookupModal = true;
     this.cdr.markForCheck();
   }
 
-  getFilteredLookupItems(): LookupReferenceValue[] {
-    if (!this.lookupSearchTerm.trim()) {
-      return this.lookupModalItems;
+  filteredLookupItems = computed(() => {
+    const items = this.lookupModalItems();
+    const term = this.lookupSearchTerm().trim();
+    if (!term) {
+      return items;
     }
-    const term = this.lookupSearchTerm.toLowerCase().trim();
-    return this.lookupModalItems.filter(item => {
+    const lowerTerm = term.toLowerCase();
+    return items.filter(item => {
       const translation = this.lang.resolve(item.values);
-      return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
+      return translation.toLowerCase().includes(lowerTerm) || item.key.toLowerCase().includes(lowerTerm);
     });
-  }
+  });
 
   selectLookupItem(item: LookupReferenceValue): void {
     if (this.editingLookupAttr) {
@@ -220,14 +223,9 @@ export class PoFormComponent {
   closeLookupModal(): void {
     this.showLookupModal = false;
     this.editingLookupAttr = null;
-    this.lookupModalItems = [];
-    this.lookupSearchTerm = '';
+    this.lookupModalItems.set([]);
+    this.lookupSearchTerm.set('');
     this.cdr.markForCheck();
-  }
-
-  getErrorForAttribute(attrName: string): string | null {
-    const error = this.validationErrors().find(e => e.attributeName === attrName);
-    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   hasError(attrName: string): boolean {
@@ -384,7 +382,7 @@ export class PoFormComponent {
     this.onReferenceSearchChange();
   }
 
-  getReferenceVisibleAttributes(): EntityAttributeDefinition[] {
+  get referenceVisibleAttributes(): EntityAttributeDefinition[] {
     return this.referenceModalEntityType?.attributes
       .filter(a => a.isVisible)
       .sort((a, b) => a.order - b.order) || [];

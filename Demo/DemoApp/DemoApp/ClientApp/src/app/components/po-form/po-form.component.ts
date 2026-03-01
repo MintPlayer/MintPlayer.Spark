@@ -28,6 +28,7 @@ import { CanCreateDetailRowPipe } from '../../core/pipes/can-create-detail-row.p
 import { CanDeleteDetailRowPipe } from '../../core/pipes/can-delete-detail-row.pipe';
 import { InlineRefOptionsPipe } from '../../core/pipes/inline-ref-options.pipe';
 import { ReferenceAttrValuePipe } from '../../core/pipes/reference-attr-value.pipe';
+import { ErrorForAttributePipe } from '../../core/pipes/error-for-attribute.pipe';
 import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
@@ -35,7 +36,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe],
+  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -87,13 +88,30 @@ export class PoFormComponent {
   editingLookupAttr = signal<EntityAttributeDefinition | null>(null);
   showLookupModal = signal(false);
   lookupModalItems = signal<LookupReferenceValue[]>([]);
-  lookupSearchTerm = '';
+  lookupSearchTerm = signal('');
   ELookupDisplayType = ELookupDisplayType;
 
   editableAttributes = computed(() => {
     return this.entityType()?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
+  });
+
+  referenceVisibleAttributes = computed(() => {
+    return this.referenceModalEntityType()?.attributes
+      .filter(a => a.isVisible)
+      .sort((a, b) => a.order - b.order) || [];
+  });
+
+  filteredLookupItems = computed(() => {
+    if (!this.lookupSearchTerm().trim()) {
+      return this.lookupModalItems();
+    }
+    const term = this.lookupSearchTerm().toLowerCase().trim();
+    return this.lookupModalItems().filter(item => {
+      const translation = resolveTranslation(item.values);
+      return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
+    });
   });
 
   constructor() {
@@ -178,20 +196,9 @@ export class PoFormComponent {
   // LookupReference modal methods
   openLookupSelector(attr: EntityAttributeDefinition): void {
     this.editingLookupAttr.set(attr);
-    this.lookupSearchTerm = '';
+    this.lookupSearchTerm.set('');
     this.lookupModalItems.set(this.getLookupOptions(attr));
     this.showLookupModal.set(true);
-  }
-
-  getFilteredLookupItems(): LookupReferenceValue[] {
-    if (!this.lookupSearchTerm.trim()) {
-      return this.lookupModalItems();
-    }
-    const term = this.lookupSearchTerm.toLowerCase().trim();
-    return this.lookupModalItems().filter(item => {
-      const translation = resolveTranslation(item.values);
-      return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
-    });
   }
 
   selectLookupItem(item: LookupReferenceValue): void {
@@ -208,12 +215,7 @@ export class PoFormComponent {
     this.showLookupModal.set(false);
     this.editingLookupAttr.set(null);
     this.lookupModalItems.set([]);
-    this.lookupSearchTerm = '';
-  }
-
-  getErrorForAttribute(attrName: string): string | null {
-    const error = this.validationErrors().find(e => e.attributeName === attrName);
-    return error ? resolveTranslation(error.errorMessage) : null;
+    this.lookupSearchTerm.set('');
   }
 
   hasError(attrName: string): boolean {
@@ -359,12 +361,6 @@ export class PoFormComponent {
   clearReferenceSearch(): void {
     this.referenceSearchTerm = '';
     this.onReferenceSearchChange();
-  }
-
-  getReferenceVisibleAttributes(): EntityAttributeDefinition[] {
-    return this.referenceModalEntityType()?.attributes
-      .filter(a => a.isVisible)
-      .sort((a, b) => a.order - b.order) || [];
   }
 
   selectReferenceItem(item: PersistentObject): void {

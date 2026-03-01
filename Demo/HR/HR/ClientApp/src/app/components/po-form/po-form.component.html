@@ -193,7 +193,7 @@
               [class.is-invalid]="hasError(attr.name)"
               (ngModelChange)="onFieldChange()">
           }
-          @if (getErrorForAttribute(attr.name); as errorMsg) {
+          @if (attr.name | errorForAttribute:validationErrors(); as errorMsg) {
             <div class="invalid-feedback d-block">
               {{ errorMsg }}
             </div>
@@ -285,14 +285,14 @@
         </bs-grid>
 
         <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
-          @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+          @for (attr of referenceVisibleAttributes; track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">
               {{ (attr.label | translate) || attr.name }}
             </div>
           }
 
           <tr *bsRowTemplate="let item of referenceModalPagination" (click)="selectReferenceItem(item)" style="cursor: pointer;">
-            @for (attr of getReferenceVisibleAttributes(); track attr.id) {
+            @for (attr of referenceVisibleAttributes; track attr.id) {
               <td>{{ item | referenceAttrValue:attr.name }}</td>
             }
           </tr>
@@ -331,12 +331,13 @@
               <input
                 type="text"
                 [placeholder]="'search' | t"
-                [(ngModel)]="lookupSearchTerm">
-              @if (lookupSearchTerm) {
+                [ngModel]="lookupSearchTerm()"
+                (ngModelChange)="lookupSearchTerm.set($event)">
+              @if (lookupSearchTerm()) {
                 <button
                   type="button"
                   class="btn btn-outline-secondary"
-                  (click)="lookupSearchTerm = ''">
+                  (click)="lookupSearchTerm.set('')">
                   <app-icon name="x-lg" />
                 </button>
               }
@@ -348,7 +349,7 @@
       <!-- List of items -->
       <bs-table [striped]="true" [hover]="true">
         <tbody>
-          @for (item of getFilteredLookupItems(); track item.key) {
+          @for (item of filteredLookupItems(); track item.key) {
             <tr
               [class.table-primary]="formData()[editingLookupAttr?.name ?? ''] === item.key"
               (click)="selectLookupItem(item)"

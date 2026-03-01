@@ -43,12 +43,12 @@
                     </tr>
                   </thead>
                   <tbody>
-                    @for (row of getArrayValue(attr.name); track $index) {
+                    @for (row of (attr.name | arrayValue:currentItem); track $index) {
                       <tr>
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
                             @if (col.dataType === 'Reference' && col.referenceType) {
-                              @let route = getReferenceLinkRoute(col.referenceType, row[col.name]);
+                              @let route = col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes();
                               @if (route) {
                                 <a [routerLink]="route">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</a>
                               } @else {
@@ -77,7 +77,7 @@
                   onclick="return false;"
                   style="opacity: 1;">
               } @else if (attr.dataType === 'Reference' && attr.referenceType) {
-                @let refRoute = getReferenceLinkRoute(attr.referenceType, getRawAttributeValue(attr.name));
+                @let refRoute = attr.referenceType | referenceLinkRoute:(attr.name | rawAttributeValue:currentItem):allEntityTypes();
                 @if (refRoute && (attr.name | attributeValue:currentItem:et:lookupReferenceOptions():allEntityTypes())) {
                   <a [routerLink]="refRoute">{{ attr.name | attributeValue:currentItem:et:lookupReferenceOptions():allEntityTypes() }}</a>
                 } @else {

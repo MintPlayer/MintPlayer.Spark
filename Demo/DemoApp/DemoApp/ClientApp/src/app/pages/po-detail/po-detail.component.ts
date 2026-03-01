@@ -15,6 +15,9 @@ import { ResolveTranslationPipe } from '../../core/pipes/resolve-translation.pip
 import { AttributeValuePipe } from '../../core/pipes/attribute-value.pipe';
 import { AsDetailColumnsPipe } from '../../core/pipes/as-detail-columns.pipe';
 import { AsDetailCellValuePipe } from '../../core/pipes/as-detail-cell-value.pipe';
+import { ArrayValuePipe } from '../../core/pipes/array-value.pipe';
+import { ReferenceLinkRoutePipe } from '../../core/pipes/reference-link-route.pipe';
+import { RawAttributeValuePipe } from '../../core/pipes/raw-attribute-value.pipe';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -23,7 +26,7 @@ import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, IconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, IconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe],
   templateUrl: './po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -120,23 +123,6 @@ export default class PoDetailComponent implements OnInit {
       })
     );
     this.asDetailReferenceOptions.update(prev => ({ ...prev, [attrName]: Object.fromEntries(entries) }));
-  }
-
-  getReferenceLinkRoute(referenceClrType: string, referenceId: any): string[] | null {
-    if (!referenceId || !referenceClrType) return null;
-    const targetType = this.allEntityTypes().find(t => t.clrType === referenceClrType);
-    if (!targetType) return null;
-    return ['/po', targetType.alias || targetType.id, referenceId];
-  }
-
-  getRawAttributeValue(attrName: string): any {
-    return this.item()?.attributes.find(a => a.name === attrName)?.value;
-  }
-
-  getArrayValue(attrName: string): Record<string, any>[] {
-    const attr = this.item()?.attributes.find(a => a.name === attrName);
-    if (!attr || !Array.isArray(attr.value)) return [];
-    return attr.value;
   }
 
   onEdit(): void {
