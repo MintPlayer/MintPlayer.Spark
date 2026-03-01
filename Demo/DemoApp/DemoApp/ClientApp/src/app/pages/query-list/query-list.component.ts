@@ -1,4 +1,5 @@
 import { Component, ChangeDetectionStrategy, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -56,7 +57,7 @@ export default class QueryListComponent {
   });
 
   constructor() {
-    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
   }
 
   private async onParamsChange(params: any): Promise<void> {

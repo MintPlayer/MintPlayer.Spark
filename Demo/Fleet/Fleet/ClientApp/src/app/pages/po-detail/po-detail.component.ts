@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -39,7 +40,7 @@ export default class PoDetailComponent {
   customActions = signal<CustomActionDefinition[]>([]);
 
   constructor() {
-    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
   }
 
   private async onParamsChange(params: any): Promise<void> {
