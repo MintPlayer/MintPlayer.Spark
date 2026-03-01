@@ -8,24 +8,12 @@ import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { SparkService } from '../../core/services/spark.service';
-import { EntityType, LookupReference, PersistentObject } from '../../core/models';
-import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
-import { LanguageService } from '../../core/services/language.service';
-import { TranslatePipe } from '../../core/pipes/translate.pipe';
-import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
-import { AttributeValuePipe } from '../../core/pipes/attribute-value.pipe';
-import { AsDetailColumnsPipe } from '../../core/pipes/as-detail-columns.pipe';
-import { AsDetailCellValuePipe } from '../../core/pipes/as-detail-cell-value.pipe';
-import { ArrayValuePipe } from '../../core/pipes/array-value.pipe';
-import { ReferenceLinkRoutePipe } from '../../core/pipes/reference-link-route.pipe';
-import { RawAttributeValuePipe } from '../../core/pipes/raw-attribute-value.pipe';
-import { IconComponent } from '../../components/icon/icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { SparkService, SparkLanguageService, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe, EntityType, LookupReference, PersistentObject, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark';
 
 @Component({
   selector: 'app-po-detail',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe],
   templateUrl: './po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -34,7 +22,7 @@ export default class PoDetailComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
 
-  private readonly lang = inject(LanguageService);
+  private readonly lang = inject(SparkLanguageService);
   colors = Color;
   errorMessage = signal<string | null>(null);
   entityType = signal<EntityType | null>(null);

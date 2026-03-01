@@ -10,21 +10,21 @@
       <h2>{{ currentItem.breadcrumb || currentItem.name }}</h2>
       <bs-button-group>
         <button class="btn btn-outline-secondary" (click)="onBack()">
-          <app-icon name="arrow-left" /> {{ 'back' | t }}
+          <spark-icon name="arrow-left" /> {{ 'back' | t }}
         </button>
         @if (canEdit()) {
           <button class="btn btn-primary" (click)="onEdit()">
-            <app-icon name="pencil" /> {{ 'edit' | t }}
+            <spark-icon name="pencil" /> {{ 'edit' | t }}
           </button>
         }
         @for (action of customActions(); track action.name) {
           <button class="btn btn-outline-primary" (click)="onCustomAction(action)">
-            {{ action.displayName | translate }}
+            {{ action.displayName | resolveTranslation }}
           </button>
         }
         @if (canDelete()) {
           <button class="btn btn-danger" (click)="onDelete()">
-            <app-icon name="trash" /> {{ 'delete' | t }}
+            <spark-icon name="trash" /> {{ 'delete' | t }}
           </button>
         }
       </bs-button-group>
@@ -36,14 +36,14 @@
         <bs-grid>
           <dl bsRow>
             @for (attr of visibleAttributes(); track attr.id) {
-              <dt [sm]="3">{{ (attr.label | translate) || attr.name }}</dt>
+              <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
               <dd [sm]="9">
               @if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
                   <thead>
                     <tr>
                       @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                        <th>{{ (col.label | translate) || col.name }}</th>
+                        <th>{{ (col.label | resolveTranslation) || col.name }}</th>
                       }
                     </tr>
                   </thead>

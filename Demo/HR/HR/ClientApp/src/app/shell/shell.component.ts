@@ -5,20 +5,14 @@ import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintpl
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { SparkService } from '../core/services/spark.service';
-import { ProgramUnit, ProgramUnitGroup } from '../core/models';
-import { IconComponent } from '../components/icon/icon.component';
+import { SparkService, SparkLanguageService, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, ProgramUnitGroup } from '@mintplayer/ng-spark';
 import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
-import { LanguageService } from '../core/services/language.service';
-import { TranslatePipe } from '../core/pipes/translate.pipe';
-import { IconNamePipe } from '../core/pipes/icon-name.pipe';
-import { RouterLinkPipe } from '../core/pipes/router-link.pipe';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, IconComponent, SparkAuthBarComponent, TranslatePipe, IconNamePipe, RouterLinkPipe, FormsModule, KeyValuePipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, SparkIconComponent, SparkAuthBarComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, FormsModule, KeyValuePipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -29,7 +23,7 @@ export class ShellComponent {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly lang = inject(LanguageService);
+  readonly lang = inject(SparkLanguageService);
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
   shellState = signal<BsShellState>('auto');
   isSidebarVisible = signal<boolean>(false);

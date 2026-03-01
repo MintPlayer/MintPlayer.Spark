@@ -8,12 +8,12 @@
 
   @if (entityType(); as et) {
     @if (item()) {
-    <h2 class="mb-4">{{ 'edit' | t }} {{ (et.description | translate) || et.name }}</h2>
+    <h2 class="mb-4">{{ 'edit' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
 
     <bs-card>
       <bs-card-header>{{ 'properties' | t }}</bs-card-header>
       <div class="p-3">
-        <app-po-form
+        <spark-po-form
           [entityType]="entityType()"
           [(formData)]="formData"
           [validationErrors]="validationErrors()"
@@ -21,7 +21,7 @@
           [isSaving]="isSaving()"
           (save)="onSave()"
           (cancel)="onCancel()">
-        </app-po-form>
+        </spark-po-form>
       </div>
     </bs-card>
     }

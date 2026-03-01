@@ -13,7 +13,7 @@
     <bs-card>
       <bs-card-header>{{ 'properties' | t }}</bs-card-header>
       <div class="p-3">
-        <app-po-form
+        <spark-po-form
           [entityType]="et"
           [(formData)]="formData"
           [validationErrors]="validationErrors()"
@@ -21,7 +21,7 @@
           [isSaving]="isSaving()"
           (save)="onSave()"
           (cancel)="onCancel()">
-        </app-po-form>
+        </spark-po-form>
       </div>
     </bs-card>
     }

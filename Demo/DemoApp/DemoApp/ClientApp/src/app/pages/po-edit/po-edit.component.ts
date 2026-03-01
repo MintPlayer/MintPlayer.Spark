@@ -6,17 +6,17 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-import { SparkService } from '../../core/services/spark.service';
-import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
-import { ResolveTranslationPipe } from '../../core/pipes/resolve-translation.pipe';
-import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
-import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
-import { PoFormComponent } from '../../components/po-form/po-form.component';
+import {
+  SparkService, SparkPoFormComponent,
+  TranslateKeyPipe, ResolveTranslationPipe,
+  EntityType, PersistentObject, PersistentObjectAttribute, ValidationError,
+  ShowedOn, hasShowedOnFlag
+} from '@mintplayer/ng-spark';
 import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
-  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslateKeyPipe, ResolveTranslationPipe],
+  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe],
   templateUrl: './po-edit.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

@@ -10,16 +10,16 @@
       <h2>{{ currentItem.breadcrumb || currentItem.name }}</h2>
       <bs-button-group>
         <button class="btn btn-outline-secondary" (click)="onBack()">
-          <app-icon name="arrow-left" /> {{ 'back' | t }}
+          <spark-icon name="arrow-left" /> {{ 'back' | t }}
         </button>
         @if (canEdit()) {
           <button class="btn btn-primary" (click)="onEdit()">
-            <app-icon name="pencil" /> {{ 'edit' | t }}
+            <spark-icon name="pencil" /> {{ 'edit' | t }}
           </button>
         }
         @if (canDelete()) {
           <button class="btn btn-danger" (click)="onDelete()">
-            <app-icon name="trash" /> {{ 'delete' | t }}
+            <spark-icon name="trash" /> {{ 'delete' | t }}
           </button>
         }
       </bs-button-group>

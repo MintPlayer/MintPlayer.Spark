@@ -6,16 +6,11 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-import { SparkService } from '../../core/services/spark.service';
-import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
-import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
-import { PoFormComponent } from '../../components/po-form/po-form.component';
-import { TranslatePipe } from '../../core/pipes/translate.pipe';
-import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
+import { SparkService, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe, EntityType, PersistentObject, PersistentObjectAttribute, ValidationError, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark';
 
 @Component({
   selector: 'app-po-create',
-  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './po-create.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

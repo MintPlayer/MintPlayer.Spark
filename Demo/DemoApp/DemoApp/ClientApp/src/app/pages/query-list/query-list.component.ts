@@ -11,18 +11,17 @@ import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
-import { SparkService } from '../../core/services/spark.service';
-import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
-import { ResolveTranslationPipe } from '../../core/pipes/resolve-translation.pipe';
-import { AttributeValuePipe } from '../../core/pipes/attribute-value.pipe';
-import { IconComponent } from '../../components/icon/icon.component';
-import { EntityType, LookupReference, PersistentObject, SparkQuery } from '../../core/models';
-import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
+import {
+  SparkService, SparkIconComponent,
+  TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe,
+  EntityType, LookupReference, PersistentObject, SparkQuery,
+  ShowedOn, hasShowedOnFlag
+} from '@mintplayer/ng-spark';
 import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, IconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

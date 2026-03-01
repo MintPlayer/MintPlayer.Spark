@@ -4,7 +4,7 @@
     <h2>{{ query() ? (query()!.description | resolveTranslation:query()!.name) : ('loading' | t) }}</h2>
     @if (canCreate()) {
       <button class="btn btn-primary" (click)="onCreate()">
-        <app-icon name="plus-lg" /> {{ 'new' | t }}
+        <spark-icon name="plus-lg" /> {{ 'new' | t }}
       </button>
     }
   </div>
@@ -17,7 +17,7 @@
           <div [md]="4">
             <bs-input-group>
               <span class="input-group-text">
-                <app-icon name="search" />
+                <spark-icon name="search" />
               </span>
               <input
                 type="text"
@@ -29,7 +29,7 @@
                   type="button"
                   class="btn btn-outline-secondary"
                   (click)="clearSearch()">
-                  <app-icon name="x-lg" />
+                  <spark-icon name="x-lg" />
                 </button>
               }
             </bs-input-group>
