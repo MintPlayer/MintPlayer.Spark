@@ -10,6 +10,8 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService } from '../../services/spark.service';
 import { SparkLanguageService } from '../../services/spark-language.service';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -23,14 +25,14 @@ import { ReferenceLinkRoutePipe } from '../../pipes/reference-link-route.pipe';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { SparkDetailFieldTemplateDirective, SparkDetailFieldTemplateContext } from '../../directives/spark-detail-field-template.directive';
 import { CustomActionDefinition } from '../../models/custom-action';
-import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
+import { EntityType, EntityAttributeDefinition, AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
+  imports: [CommonModule, NgTemplateOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
   templateUrl: './spark-po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -105,6 +107,38 @@ export class SparkPoDetailComponent {
       .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
+
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
+
+  ungroupedAttributes = computed(() => {
+    const attrs = this.visibleAttributes();
+    const groupIds = new Set((this.entityType()?.groups || []).map(g => g.id));
+    return attrs.filter(a => !a.group || !groupIds.has(a.group));
+  });
+
+  resolvedTabs = computed((): AttributeTab[] => {
+    const et = this.entityType();
+    const definedTabs = et?.tabs?.length ? [...et.tabs].sort((a, b) => a.order - b.order) : [];
+    const hasUngroupedAttrs = this.ungroupedAttributes().length > 0;
+    const hasUntabbedGroups = (et?.groups || []).some(g => !g.tab);
+
+    if (hasUngroupedAttrs || hasUntabbedGroups || definedTabs.length === 0) {
+      return [SparkPoDetailComponent.DEFAULT_TAB, ...definedTabs];
+    }
+    return definedTabs;
+  });
+
+  groupsForTab(tab: AttributeTab): AttributeGroup[] {
+    const groups = this.entityType()?.groups || [];
+    if (tab.id === '__default__') {
+      return groups.filter(g => !g.tab).sort((a, b) => a.order - b.order);
+    }
+    return groups.filter(g => g.tab === tab.id).sort((a, b) => a.order - b.order);
+  }
+
+  attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
+    return this.visibleAttributes().filter(a => a.group === group.id);
+  }
 
   getDetailFieldTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkDetailFieldTemplateContext> | null {
     if (!this.detailFieldTemplates) return null;

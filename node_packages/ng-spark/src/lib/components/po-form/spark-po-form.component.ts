@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, 
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
@@ -10,6 +11,8 @@ import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/sele
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { SparkLanguageService } from '../../services/spark-language.service';
@@ -30,6 +33,7 @@ import { InlineRefOptionsPipe } from '../../pipes/inline-ref-options.pipe';
 import { ReferenceAttrValuePipe } from '../../pipes/reference-attr-value.pipe';
 import { ErrorForAttributePipe } from '../../pipes/error-for-attribute.pipe';
 import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../models';
+import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
@@ -37,7 +41,7 @@ import { SparkFieldTemplateDirective, SparkFieldTemplateContext } from '../../di
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -100,6 +104,38 @@ export class SparkPoFormComponent {
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
+
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
+
+  ungroupedAttributes = computed(() => {
+    const attrs = this.editableAttributes();
+    const groupIds = new Set((this.entityType()?.groups || []).map(g => g.id));
+    return attrs.filter(a => !a.group || !groupIds.has(a.group));
+  });
+
+  resolvedTabs = computed((): AttributeTab[] => {
+    const et = this.entityType();
+    const definedTabs = et?.tabs?.length ? [...et.tabs].sort((a, b) => a.order - b.order) : [];
+    const hasUngroupedAttrs = this.ungroupedAttributes().length > 0;
+    const hasUntabbedGroups = (et?.groups || []).some(g => !g.tab);
+
+    if (hasUngroupedAttrs || hasUntabbedGroups || definedTabs.length === 0) {
+      return [SparkPoFormComponent.DEFAULT_TAB, ...definedTabs];
+    }
+    return definedTabs;
+  });
+
+  groupsForTab(tab: AttributeTab): AttributeGroup[] {
+    const groups = this.entityType()?.groups || [];
+    if (tab.id === '__default__') {
+      return groups.filter(g => !g.tab).sort((a, b) => a.order - b.order);
+    }
+    return groups.filter(g => g.tab === tab.id).sort((a, b) => a.order - b.order);
+  }
+
+  attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
+    return this.editableAttributes().filter(a => a.group === group.id);
+  }
 
   referenceVisibleAttributes = computed(() => {
     return this.referenceModalEntityType()?.attributes

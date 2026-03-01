@@ -1,7 +1,40 @@
 <bs-form>
   @if (entityType()) {
     <bs-grid>
-    @for (attr of editableAttributes(); track attr.id) {
+      <bs-tab-control>
+        @for (tab of resolvedTabs(); track tab.id) {
+          <bs-tab-page>
+            <ng-template bsTabPageHeader>{{ tab.label | resolveTranslation:tab.name }}</ng-template>
+            <ng-container *ngTemplateOutlet="tabContent; context: { $implicit: tab }"></ng-container>
+          </bs-tab-page>
+        }
+      </bs-tab-control>
+
+    <ng-template #tabContent let-tab>
+      @if (tab.id === '__default__') {
+        @for (attr of ungroupedAttributes(); track attr.id) {
+          <ng-container *ngTemplateOutlet="attrField; context: { $implicit: attr }"></ng-container>
+        }
+      }
+      @for (group of groupsForTab(tab); track group.id) {
+        @if (attrsForGroup(group); as groupAttrs) {
+          @if (groupAttrs.length > 0) {
+            <bs-card style="display: block; margin: 1rem;">
+              @if (group.label) {
+                <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
+              }
+              <div class="p-3">
+                @for (attr of groupAttrs; track attr.id) {
+                  <ng-container *ngTemplateOutlet="attrField; context: { $implicit: attr }"></ng-container>
+                }
+              </div>
+            </bs-card>
+          }
+        }
+      }
+    </ng-template>
+
+    <ng-template #attrField let-attr>
       <div bsRow class="mb-3">
         <label [md]="4" bsColFormLabel [for]="attr.name">
           {{ attr.label | resolveTranslation:attr.name }}
@@ -202,7 +235,7 @@
           }
         </div>
       </div>
-    }
+    </ng-template>
 
     @if (showButtons()) {
       <div bsRow class="mt-4">
@@ -211,7 +244,7 @@
           <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving()">{{ 'cancel' | t }}</button>
           <button type="submit" [color]="colors.primary" [disabled]="isSaving()" (click)="onSave()">
             @if (isSaving()) {
-              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              <bs-spinner class="me-1" />
             }
             {{ 'save' | t }}
           </button>
@@ -301,9 +334,7 @@
         </bs-datatable>
       } @else {
         <div class="text-center p-3">
-          <div class="spinner-border spinner-border-sm" role="status">
-            <span class="visually-hidden">{{ 'loading' | t }}</span>
-          </div>
+          <bs-spinner />
         </div>
       }
     </div>

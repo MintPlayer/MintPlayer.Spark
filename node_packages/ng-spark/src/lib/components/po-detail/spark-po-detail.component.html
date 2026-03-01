@@ -35,12 +35,48 @@
       </bs-button-group>
     </div>
 
-    <bs-card>
-      <bs-card-header>{{ 'details' | t }}</bs-card-header>
-      <div class="p-3">
-        <bs-grid>
-          <dl bsRow>
-            @for (attr of visibleAttributes(); track attr.id) {
+    <bs-grid>
+      <bs-tab-control>
+        @for (tab of resolvedTabs(); track tab.id) {
+          <bs-tab-page>
+            <ng-template bsTabPageHeader>{{ tab.label | resolveTranslation:tab.name }}</ng-template>
+            <ng-container *ngTemplateOutlet="detailTabContent; context: { $implicit: tab }"></ng-container>
+          </bs-tab-page>
+        }
+      </bs-tab-control>
+
+      <ng-template #detailTabContent let-tab>
+        @if (tab.id === '__default__') {
+          @let ungroupedAttrs = ungroupedAttributes();
+          @if (ungroupedAttrs.length > 0) {
+            <dl bsRow>
+              @for (attr of ungroupedAttrs; track attr.id) {
+                <ng-container *ngTemplateOutlet="detailAttrField; context: { $implicit: attr, item: currentItem }"></ng-container>
+              }
+            </dl>
+          }
+        }
+        @for (group of groupsForTab(tab); track group.id) {
+          @if (attrsForGroup(group); as groupAttrs) {
+            @if (groupAttrs.length > 0) {
+              <bs-card style="display: block; margin: 1rem;">
+                @if (group.label) {
+                  <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
+                }
+                <div class="p-3">
+                  <dl bsRow>
+                    @for (attr of groupAttrs; track attr.id) {
+                      <ng-container *ngTemplateOutlet="detailAttrField; context: { $implicit: attr, item: currentItem }"></ng-container>
+                    }
+                  </dl>
+                </div>
+              </bs-card>
+            }
+          }
+        }
+      </ng-template>
+
+          <ng-template #detailAttrField let-attr let-currentItem="item">
               <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
               <dd [sm]="9">
               @if (getDetailFieldTemplate(attr); as customTpl) {
@@ -107,20 +143,15 @@
                 {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               }
               </dd>
-            }
-          </dl>
-        </bs-grid>
-      </div>
-    </bs-card>
+          </ng-template>
+    </bs-grid>
     @if (extraContentTemplate(); as extraContentTpl) {
       <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
     }
     }
   } @else {
     <div class="text-center p-5">
-      <div class="spinner-border" role="status">
-        <span class="visually-hidden">{{ 'loading' | t }}</span>
-      </div>
+      <bs-spinner />
     </div>
   }
 </div>

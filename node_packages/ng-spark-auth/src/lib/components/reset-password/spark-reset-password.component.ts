@@ -6,6 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_ROUTE_PATHS } from '../../models';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -24,7 +25,7 @@ function passwordMatchValidator(control: AbstractControl): ValidationErrors | nu
   selector: 'spark-reset-password',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsSpinnerComponent, TranslateKeyPipe],
   templateUrl: './spark-reset-password.component.html',
 })
 export class SparkResetPasswordComponent implements OnInit {
