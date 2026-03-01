@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -17,7 +17,6 @@ import {
   EntityType, EntityAttributeDefinition, LookupReference, PersistentObject,
   ShowedOn, hasShowedOnFlag
 } from '@mintplayer/ng-spark';
-import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-po-detail',
@@ -25,7 +24,7 @@ import { firstValueFrom } from 'rxjs';
   templateUrl: './po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class PoDetailComponent implements OnInit {
+export default class PoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
@@ -50,8 +49,11 @@ export default class PoDetailComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  async ngOnInit(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+  }
+
+  private async onParamsChange(params: any): Promise<void> {
     this.type.set(params.get('type') || '');
     this.id.set(params.get('id') || '');
 

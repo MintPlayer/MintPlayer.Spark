@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -12,7 +12,6 @@ import {
   EntityType, PersistentObject, PersistentObjectAttribute, ValidationError,
   ShowedOn, hasShowedOnFlag
 } from '@mintplayer/ng-spark';
-import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
@@ -20,7 +19,7 @@ import { firstValueFrom } from 'rxjs';
   templateUrl: './po-edit.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class PoEditComponent implements OnInit {
+export default class PoEditComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
@@ -34,8 +33,11 @@ export default class PoEditComponent implements OnInit {
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
 
-  async ngOnInit(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+  }
+
+  private async onParamsChange(params: any): Promise<void> {
     this.type.set(params.get('type') || '');
     this.id.set(params.get('id') || '');
 

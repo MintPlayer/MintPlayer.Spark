@@ -9,7 +9,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { firstValueFrom } from 'rxjs';
+
 import { SparkService, SparkLanguageService, CustomActionDefinition, EntityType, LookupReference, PersistentObject, ShowedOn, hasShowedOnFlag, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, RawAttributeValuePipe } from '@mintplayer/ng-spark';
 
 @Component({
@@ -39,11 +39,10 @@ export default class PoDetailComponent {
   customActions = signal<CustomActionDefinition[]>([]);
 
   constructor() {
-    this.init();
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
   }
 
-  private async init(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  private async onParamsChange(params: any): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
 

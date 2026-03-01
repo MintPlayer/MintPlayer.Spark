@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, computed, inject, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -17,7 +17,6 @@ import {
   EntityType, LookupReference, PersistentObject, SparkQuery,
   ShowedOn, hasShowedOnFlag
 } from '@mintplayer/ng-spark';
-import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-query-list',
@@ -26,7 +25,7 @@ import { firstValueFrom } from 'rxjs';
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class QueryListComponent implements OnInit {
+export default class QueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
@@ -56,8 +55,11 @@ export default class QueryListComponent implements OnInit {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  async ngOnInit(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+  }
+
+  private async onParamsChange(params: any): Promise<void> {
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
 

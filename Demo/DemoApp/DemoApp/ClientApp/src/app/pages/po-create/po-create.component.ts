@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -12,7 +12,6 @@ import {
   EntityType, PersistentObject, PersistentObjectAttribute, ValidationError,
   ShowedOn, hasShowedOnFlag
 } from '@mintplayer/ng-spark';
-import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-po-create',
@@ -20,7 +19,7 @@ import { firstValueFrom } from 'rxjs';
   templateUrl: './po-create.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class PoCreateComponent implements OnInit {
+export default class PoCreateComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
@@ -32,8 +31,11 @@ export default class PoCreateComponent implements OnInit {
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
 
-  async ngOnInit(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+  }
+
+  private async onParamsChange(params: any): Promise<void> {
     this.type.set(params.get('type') || '');
     const types = await this.sparkService.getEntityTypes();
     const et = types.find(t => t.id === this.type() || t.alias === this.type()) || null;

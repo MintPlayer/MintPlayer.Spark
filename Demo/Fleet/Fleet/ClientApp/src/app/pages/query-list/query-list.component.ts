@@ -10,7 +10,7 @@ import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { PaginationResponse } from '@mintplayer/pagination';
-import { firstValueFrom } from 'rxjs';
+
 import { SparkService, EntityType, LookupReference, PersistentObject, SparkQuery, ShowedOn, hasShowedOnFlag, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe } from '@mintplayer/ng-spark';
 
 @Component({
@@ -45,11 +45,10 @@ export default class QueryListComponent {
   private currentSortDirection = '';
 
   constructor() {
-    this.init();
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
   }
 
-  private async init(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  private async onParamsChange(params: any): Promise<void> {
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
 

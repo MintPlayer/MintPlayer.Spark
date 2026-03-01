@@ -6,7 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
-import { firstValueFrom } from 'rxjs';
+
 import { SparkService, EntityType, PersistentObject, PersistentObjectAttribute, ValidationError, ShowedOn, hasShowedOnFlag, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark';
 
 @Component({
@@ -28,11 +28,10 @@ export default class PoCreateComponent {
   isSaving = signal(false);
 
   constructor() {
-    this.init();
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
   }
 
-  private async init(): Promise<void> {
-    const params = await firstValueFrom(this.route.paramMap);
+  private async onParamsChange(params: any): Promise<void> {
     this.type.set(params.get('type') || '');
     const types = await this.sparkService.getEntityTypes();
     const entityType = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
