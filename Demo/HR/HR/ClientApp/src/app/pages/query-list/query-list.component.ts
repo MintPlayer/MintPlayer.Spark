@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, ChangeDetectorRef, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -15,35 +15,33 @@ import { SparkService } from '../../core/services/spark.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { EntityType, EntityAttributeDefinition, LookupReference, PersistentObject, SparkQuery } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
-import { LanguageService } from '../../core/services/language.service';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
 import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
-import { switchMap, forkJoin, of } from 'rxjs';
+import { AttributeValuePipe } from '../../core/pipes/attribute-value.pipe';
 
 @Component({
   selector: 'app-query-list',
-  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe],
+  imports: [CommonModule, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, IconComponent, TranslatePipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './query-list.component.html',
   styleUrl: './query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export default class QueryListComponent implements OnInit {
+export default class QueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly cdr = inject(ChangeDetectorRef);
 
-  private readonly lang = inject(LanguageService);
   colors = Color;
-  errorMessage: string | null = null;
-  query: SparkQuery | null = null;
-  entityType: EntityType | null = null;
-  allEntityTypes: EntityType[] = [];
+  errorMessage = signal<string | null>(null);
+  query = signal<SparkQuery | null>(null);
+  entityType = signal<EntityType | null>(null);
+  allEntityTypes = signal<EntityType[]>([]);
   allItems: PersistentObject[] = [];
   lookupReferenceOptions: Record<string, LookupReference> = {};
   paginationData: PaginationResponse<PersistentObject> | undefined = undefined;
   searchTerm: string = '';
-  canCreate = false;
+  canCreate = signal(false);
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -53,87 +51,68 @@ export default class QueryListComponent implements OnInit {
   private currentSortProperty = '';
   private currentSortDirection = '';
 
-  ngOnInit(): void {
-    this.route.paramMap.pipe(
-      switchMap(params => {
-        const queryId = params.get('queryId');
-        const typeParam = params.get('type');
-
-        if (queryId) {
-          // Entry via /query/:queryId route
-          return this.sparkService.getQuery(queryId).pipe(
-            switchMap(query => {
-              if (!query) return of({ query: null, entityType: null, entityTypes: [] });
-              this.query = query;
-              return this.resolveEntityTypeForQuery(query);
-            })
-          );
-        } else if (typeParam) {
-          // Entry via /po/:type route - resolve entity type, then find associated query
-          return this.sparkService.getEntityTypes().pipe(
-            switchMap(entityTypes => {
-              const entityType = entityTypes.find(t =>
-                t.id === typeParam || t.alias === typeParam
-              );
-              if (!entityType) return of({ query: null, entityType: null, entityTypes });
-
-              // Find a query whose contextProperty matches this entity type
-              return this.sparkService.getQueries().pipe(
-                switchMap(queries => {
-                  const singularName = entityType.name;
-                  const query = queries.find(q => {
-                    const contextSingular = this.singularize(q.contextProperty);
-                    return q.contextProperty === singularName ||
-                      contextSingular === singularName ||
-                      q.contextProperty === singularName + 's';
-                  });
-                  if (query) this.query = query;
-                  return of({ query: query || null, entityType, entityTypes });
-                })
-              );
-            })
-          );
-        }
-
-        return of({ query: null, entityType: null, entityTypes: [] });
-      })
-    ).subscribe(result => {
-      if (result?.entityType) {
-        this.entityType = result.entityType;
-        this.allEntityTypes = result.entityTypes;
-        this.settings = new DatatableSettings({
-          perPage: { values: [10, 25, 50], selected: 10 },
-          page: { values: [1], selected: 1 },
-          sortProperty: this.query?.sortBy || '',
-          sortDirection: this.query?.sortDirection === 'desc' ? 'descending' : 'ascending'
-        });
-        this.loadLookupReferenceOptions();
-        this.cdr.markForCheck();
-        this.sparkService.getPermissions(this.entityType!.id).subscribe(p => {
-          this.canCreate = p.canCreate;
-          this.cdr.markForCheck();
-        });
-        this.loadItems();
-      }
-    });
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
   }
 
-  private resolveEntityTypeForQuery(query: SparkQuery) {
-    const singularName = this.singularize(query.contextProperty);
-    return this.sparkService.getEntityTypes().pipe(
-      switchMap(entityTypes => {
-        const type = entityTypes.find(t =>
-          t.name === query.contextProperty ||
+  private async onParamsChange(params: any): Promise<void> {
+    const queryId = params.get('queryId');
+    const typeParam = params.get('type');
+
+    let resolvedQuery: SparkQuery | null = null;
+    let resolvedEntityType: EntityType | null = null;
+    let entityTypes: EntityType[] = [];
+
+    if (queryId) {
+      // Entry via /query/:queryId route
+      const q = await this.sparkService.getQuery(queryId);
+      if (q) {
+        resolvedQuery = q;
+        const singularName = this.singularize(q.contextProperty);
+        entityTypes = await this.sparkService.getEntityTypes();
+        resolvedEntityType = entityTypes.find(t =>
+          t.name === q.contextProperty ||
           t.name === singularName ||
           t.clrType.endsWith(singularName)
-        );
-        return of({
-          query,
-          entityType: type || null,
-          entityTypes
-        });
-      })
-    );
+        ) || null;
+      }
+    } else if (typeParam) {
+      // Entry via /po/:type route
+      entityTypes = await this.sparkService.getEntityTypes();
+      const et = entityTypes.find(t => t.id === typeParam || t.alias === typeParam);
+      if (et) {
+        resolvedEntityType = et;
+        const queries = await this.sparkService.getQueries();
+        const singularName = et.name;
+        resolvedQuery = queries.find(q => {
+          const contextSingular = this.singularize(q.contextProperty);
+          return q.contextProperty === singularName ||
+            contextSingular === singularName ||
+            q.contextProperty === singularName + 's';
+        }) || null;
+      }
+    }
+
+    this.query.set(resolvedQuery);
+    this.entityType.set(resolvedEntityType);
+    this.allEntityTypes.set(entityTypes);
+
+    if (resolvedEntityType) {
+      this.settings = new DatatableSettings({
+        perPage: { values: [10, 25, 50], selected: 10 },
+        page: { values: [1], selected: 1 },
+        sortProperty: resolvedQuery?.sortBy || '',
+        sortDirection: resolvedQuery?.sortDirection === 'desc' ? 'descending' : 'ascending'
+      });
+      this.loadLookupReferenceOptions();
+      this.cdr.markForCheck();
+
+      const p = await this.sparkService.getPermissions(resolvedEntityType.id);
+      this.canCreate.set(p.canCreate);
+      this.cdr.markForCheck();
+
+      await this.loadItems();
+    }
   }
 
   private singularize(plural: string): string {
@@ -159,27 +138,27 @@ export default class QueryListComponent implements OnInit {
     return plural;
   }
 
-  loadItems(): void {
-    if (!this.query) return;
+  async loadItems(): Promise<void> {
+    const q = this.query();
+    if (!q) return;
     const sortDirection = this.settings.sortDirection === 'descending' ? 'desc' : 'asc';
-    this.sparkService.executeQuery(
-      this.query.id,
-      this.settings.sortProperty || undefined,
-      this.settings.sortProperty ? sortDirection : undefined
-    ).subscribe({
-      next: items => {
-        this.errorMessage = null;
-        this.allItems = items;
-        this.currentSortProperty = this.settings.sortProperty;
-        this.currentSortDirection = this.settings.sortDirection;
-        this.applyFilter();
-      },
-      error: (error: HttpErrorResponse) => {
-        this.errorMessage = error.error?.error || error.message || 'An unexpected error occurred';
-        this.allItems = [];
-        this.applyFilter();
-      }
-    });
+    try {
+      const items = await this.sparkService.executeQuery(
+        q.id,
+        this.settings.sortProperty || undefined,
+        this.settings.sortProperty ? sortDirection : undefined
+      );
+      this.errorMessage.set(null);
+      this.allItems = items;
+      this.currentSortProperty = this.settings.sortProperty;
+      this.currentSortDirection = this.settings.sortDirection;
+      this.applyFilter();
+    } catch (e) {
+      const error = e as HttpErrorResponse;
+      this.errorMessage.set(error.error?.error || error.message || 'An unexpected error occurred');
+      this.allItems = [];
+      this.applyFilter();
+    }
   }
 
   onSettingsChange(): void {
@@ -246,100 +225,39 @@ export default class QueryListComponent implements OnInit {
     this.onSearchChange();
   }
 
-  getVisibleAttributes() {
-    return this.entityType?.attributes
+  visibleAttributes = computed(() => {
+    return this.entityType()?.attributes
       .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
-  }
+  });
 
-  private loadLookupReferenceOptions(): void {
-    const lookupAttrs = this.getVisibleAttributes().filter(a => a.lookupReferenceType);
+  private async loadLookupReferenceOptions(): Promise<void> {
+    const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;
 
     const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
-    lookupNames.forEach(name => {
-      queries[name] = this.sparkService.getLookupReference(name);
-    });
+    const entries = await Promise.all(
+      lookupNames.map(async name => {
+        const result = await this.sparkService.getLookupReference(name);
+        return [name, result] as const;
+      })
+    );
 
-    forkJoin(queries).subscribe(results => {
-      this.lookupReferenceOptions = results;
-      this.cdr.markForCheck();
-    });
-  }
-
-  getAttributeValue(item: PersistentObject, attrName: string): any {
-    const attr = item.attributes.find(a => a.name === attrName);
-    if (!attr) return '';
-
-    // For Reference attributes, breadcrumb is resolved on backend
-    if (attr.breadcrumb) return attr.breadcrumb;
-
-    // For AsDetail attributes, format using displayFormat
-    const attrDef = this.entityType?.attributes.find(a => a.name === attrName);
-    if (attrDef?.dataType === 'AsDetail' && attr.value && typeof attr.value === 'object') {
-      return this.formatAsDetailValue(attrDef, attr.value);
-    }
-
-    // For LookupReference attributes, resolve to translated display name
-    if (attrDef?.lookupReferenceType && attr.value != null && attr.value !== '') {
-      const lookupRef = this.lookupReferenceOptions[attrDef.lookupReferenceType];
-      if (lookupRef) {
-        const option = lookupRef.values.find(v => v.key === String(attr.value));
-        if (option) {
-          return this.lang.resolve(option.values) || option.key;
-        }
-      }
-    }
-
-    // For boolean attributes, preserve null for indeterminate state
-    if (attrDef?.dataType === 'boolean') {
-      return attr.value ?? null;
-    }
-
-    return attr.value ?? '';
-  }
-
-  private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>): string {
-    // Find the AsDetail entity type
-    const asDetailType = this.allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
-
-    // 1. Try displayFormat (template with {PropertyName} placeholders)
-    if (asDetailType?.displayFormat) {
-      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
-      if (result && result.trim()) return result;
-    }
-
-    // 2. Try displayAttribute (single property name)
-    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
-      return value[asDetailType.displayAttribute];
-    }
-
-    // 3. Fallback to common property names
-    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
-    for (const prop of displayProps) {
-      if (value[prop]) return value[prop];
-    }
-
-    return '(object)';
-  }
-
-  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
-    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
-      const value = data[propertyName];
-      return value != null ? String(value) : '';
-    });
+    this.lookupReferenceOptions = Object.fromEntries(entries);
+    this.cdr.markForCheck();
   }
 
   onRowClick(item: PersistentObject): void {
-    if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.alias || this.entityType.id, item.id]);
+    const et = this.entityType();
+    if (et) {
+      this.router.navigate(['/po', et.alias || et.id, item.id]);
     }
   }
 
   onCreate(): void {
-    if (this.entityType) {
-      this.router.navigate(['/po', this.entityType.alias || this.entityType.id, 'new']);
+    const et = this.entityType();
+    if (et) {
+      this.router.navigate(['/po', et.alias || et.id, 'new']);
     }
   }
 }

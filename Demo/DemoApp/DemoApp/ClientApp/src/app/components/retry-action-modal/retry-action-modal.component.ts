@@ -1,28 +1,26 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { Subscription } from 'rxjs';
 import { RetryActionService } from '../../core/services/retry-action.service';
-import { RetryActionPayload } from '../../core/models/retry-action';
 
 @Component({
   selector: 'app-retry-action-modal',
   imports: [CommonModule, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective],
   template: `
-    <bs-modal [(isOpen)]="isOpen" (isOpenChange)="!$event && onOption('Cancel')">
+    <bs-modal [isOpen]="isOpen()" (isOpenChange)="!$event && onOption('Cancel')">
       <div *bsModal>
         <div bsModalHeader>
-          <h5 class="modal-title">{{ payload?.title }}</h5>
+          <h5 class="modal-title">{{ retryActionService.payload()?.title }}</h5>
         </div>
-        @if (payload?.message; as message) {
+        @if (retryActionService.payload()?.message; as message) {
           <div bsModalBody>
             <p>{{ message }}</p>
           </div>
         }
         <div bsModalFooter>
-          @for (option of payload?.options; track option) {
+          @for (option of retryActionService.payload()?.options; track option) {
             <button
               type="button"
               [color]="option === 'Cancel' ? colors.secondary : colors.primary"
@@ -36,36 +34,19 @@ import { RetryActionPayload } from '../../core/models/retry-action';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class RetryActionModalComponent implements OnInit, OnDestroy {
-  private readonly retryActionService = inject(RetryActionService);
-  private readonly cdr = inject(ChangeDetectorRef);
-  private subscription?: Subscription;
+export class RetryActionModalComponent {
+  protected readonly retryActionService = inject(RetryActionService);
 
   colors = Color;
-  isOpen = false;
-  payload: RetryActionPayload | null = null;
-
-  ngOnInit(): void {
-    this.subscription = this.retryActionService.payload$.subscribe(payload => {
-      this.payload = payload;
-      this.isOpen = true;
-      this.cdr.markForCheck();
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.subscription?.unsubscribe();
-  }
+  isOpen = computed(() => this.retryActionService.payload() !== null);
 
   onOption(option: string): void {
-    if (!this.payload) return;
-    this.isOpen = false;
+    const payload = this.retryActionService.payload();
+    if (!payload) return;
     this.retryActionService.respond({
-      step: this.payload.step,
+      step: payload.step,
       option,
-      persistentObject: this.payload.persistentObject
+      persistentObject: payload.persistentObject
     });
-    this.payload = null;
-    this.cdr.markForCheck();
   }
 }

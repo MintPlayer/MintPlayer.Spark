@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 
 type TranslatedString = Record<string, string>;
 
@@ -9,9 +10,16 @@ export class SparkAuthTranslationService {
   private readonly translationsMap = signal<Record<string, TranslatedString>>({});
 
   constructor() {
-    this.http.get<Record<string, TranslatedString>>('/spark/translations').subscribe(t => {
+    this.loadTranslations();
+  }
+
+  private async loadTranslations(): Promise<void> {
+    try {
+      const t = await firstValueFrom(this.http.get<Record<string, TranslatedString>>('/spark/translations'));
       this.translationsMap.set(t);
-    });
+    } catch {
+      // Translations failed to load; keys will be shown as-is
+    }
   }
 
   t(key: string): string {

@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -10,7 +10,7 @@ import { SparkService } from '../../core/services/spark.service';
 import { EntityType, PersistentObject, PersistentObjectAttribute, ValidationError } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
-import { switchMap, of } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
 import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 
@@ -19,66 +19,63 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-create.component.html'
 })
-export default class PoCreateComponent implements OnInit {
+export default class PoCreateComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-  private readonly cdr = inject(ChangeDetectorRef);
 
   colors = Color;
-  entityType: EntityType | null = null;
-  type: string = '';
-  formData: Record<string, any> = {};
-  validationErrors: ValidationError[] = [];
-  isSaving = false;
+  entityType = signal<EntityType | null>(null);
+  type = signal('');
+  formData = signal<Record<string, any>>({});
+  validationErrors = signal<ValidationError[]>([]);
+  isSaving = signal(false);
 
-  ngOnInit(): void {
-    this.route.paramMap.pipe(
-      switchMap(params => {
-        this.type = params.get('type') || '';
-        return this.sparkService.getEntityTypes().pipe(
-          switchMap(types => of(types.find(t => t.id === this.type || t.alias === this.type) || null))
-        );
-      })
-    ).subscribe(entityType => {
-      this.entityType = entityType;
-      this.initFormData();
-      this.cdr.detectChanges();
-    });
+  constructor() {
+    this.init();
+  }
+
+  private async init(): Promise<void> {
+    const params = await firstValueFrom(this.route.paramMap);
+    this.type.set(params.get('type') || '');
+    const types = await this.sparkService.getEntityTypes();
+    const entityType = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
+    this.entityType.set(entityType);
+    this.initFormData();
   }
 
   initFormData(): void {
-    this.formData = {};
+    const data: Record<string, any> = {};
     this.getEditableAttributes().forEach(attr => {
       if (attr.dataType === 'Reference') {
-        this.formData[attr.name] = null;
+        data[attr.name] = null;
       } else if (attr.dataType === 'AsDetail') {
-        this.formData[attr.name] = attr.isArray ? [] : {};
+        data[attr.name] = attr.isArray ? [] : {};
       } else if (attr.dataType === 'boolean') {
-        this.formData[attr.name] = false;
+        data[attr.name] = false;
       } else {
-        this.formData[attr.name] = '';
+        data[attr.name] = '';
       }
     });
+    this.formData.set(data);
   }
 
   getEditableAttributes() {
-    return this.entityType?.attributes
+    return this.entityType()?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  onSave(): void {
-    if (!this.entityType) return;
+  async onSave(): Promise<void> {
+    if (!this.entityType()) return;
 
-    // Clear previous validation errors
-    this.validationErrors = [];
-    this.isSaving = true;
+    this.validationErrors.set([]);
+    this.isSaving.set(true);
 
     const attributes: PersistentObjectAttribute[] = this.getEditableAttributes().map(attr => ({
       id: attr.id,
       name: attr.name,
-      value: this.formData[attr.name],
+      value: this.formData()[attr.name],
       dataType: attr.dataType,
       isRequired: attr.isRequired,
       isVisible: attr.isVisible,
@@ -89,35 +86,31 @@ export default class PoCreateComponent implements OnInit {
     }));
 
     const po: Partial<PersistentObject> = {
-      name: this.formData['Name'] || 'New Item',
-      objectTypeId: this.entityType.id,
+      name: this.formData()['Name'] || 'New Item',
+      objectTypeId: this.entityType()!.id,
       attributes
     };
 
-    this.sparkService.create(this.type, po).subscribe({
-      next: result => {
-        this.isSaving = false;
-        this.router.navigate(['/po', this.type, result.id]);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.isSaving = false;
-        if (error.status === 400 && error.error?.errors) {
-          this.validationErrors = error.error.errors;
-        } else {
-          this.validationErrors = [{
-            attributeName: '',
-            errorMessage: { en: error.message || 'An unexpected error occurred' },
-            ruleType: 'error'
-          }];
-        }
-        this.cdr.detectChanges();
+    try {
+      const result = await this.sparkService.create(this.type(), po);
+      this.isSaving.set(false);
+      this.router.navigate(['/po', this.type(), result.id]);
+    } catch (e) {
+      this.isSaving.set(false);
+      const error = e as HttpErrorResponse;
+      if (error.status === 400 && error.error?.errors) {
+        this.validationErrors.set(error.error.errors);
+      } else {
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          ruleType: 'error'
+        }]);
       }
-    });
+    }
   }
 
-  getGeneralErrors(): ValidationError[] {
-    return this.validationErrors.filter(e => !e.attributeName);
-  }
+  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
 
   onCancel(): void {
     window.history.back();

@@ -1,28 +1,30 @@
 <bs-container>
 <div class="container">
-  @for (error of getGeneralErrors(); track error.errorMessage) {
+  @for (error of generalErrors(); track error.errorMessage) {
     <bs-alert [type]="colors.danger" class="mb-3">
       {{ error.errorMessage }}
     </bs-alert>
   }
 
-  @if (entityType && item) {
-    <h2 class="mb-4">{{ 'edit' | t }} {{ resolveTranslation(entityType.description) || entityType.name }}</h2>
+  @if (entityType(); as et) {
+    @if (item(); as currentItem) {
+    <h2 class="mb-4">{{ 'edit' | t }} {{ et.description | resolveTranslation:et.name }}</h2>
 
     <bs-card>
       <bs-card-header>{{ 'properties' | t }}</bs-card-header>
       <div class="p-3">
         <app-po-form
-          [entityType]="entityType"
+          [entityType]="et"
           [(formData)]="formData"
-          [validationErrors]="validationErrors"
+          [validationErrors]="validationErrors()"
           [showButtons]="true"
-          [isSaving]="isSaving"
+          [isSaving]="isSaving()"
           (save)="onSave()"
           (cancel)="onCancel()">
         </app-po-form>
       </div>
     </bs-card>
+    }
   } @else {
     <div class="text-center p-5">
       <div class="spinner-border" role="status">

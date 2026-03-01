@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { TranslatedString } from '../models';
 
 interface CultureConfiguration {
@@ -17,14 +18,20 @@ export class LanguageService {
   readonly languages = signal<Record<string, TranslatedString>>({});
 
   constructor() {
-    this.http.get<CultureConfiguration>('/spark/culture').subscribe(config => {
-      this.languages.set(config.languages);
-      const saved = localStorage.getItem('spark-lang');
-      this.currentLang.set(saved ?? config.defaultLanguage);
-    });
-    this.http.get<Record<string, TranslatedString>>('/spark/translations').subscribe(t => {
-      this.translationsMap.set(t);
-    });
+    this.loadCulture();
+    this.loadTranslations();
+  }
+
+  private async loadCulture(): Promise<void> {
+    const config = await firstValueFrom(this.http.get<CultureConfiguration>('/spark/culture'));
+    this.languages.set(config.languages);
+    const saved = localStorage.getItem('spark-lang');
+    this.currentLang.set(saved ?? config.defaultLanguage);
+  }
+
+  private async loadTranslations(): Promise<void> {
+    const t = await firstValueFrom(this.http.get<Record<string, TranslatedString>>('/spark/translations'));
+    this.translationsMap.set(t);
   }
 
   setLanguage(lang: string) {

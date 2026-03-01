@@ -1,15 +1,15 @@
 <bs-container>
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>{{ (query?.description | translate) || query?.name || ('loading' | t) }}</h2>
-    @if (canCreate) {
+    <h2>{{ (query()?.description | translate) || query()?.name || ('loading' | t) }}</h2>
+    @if (canCreate()) {
       <button class="btn btn-primary" (click)="onCreate()">
         <app-icon name="plus-lg" /> {{ 'new' | t }}
       </button>
     }
   </div>
 
-  @if (entityType) {
+  @if (entityType()) {
     <!-- Search box -->
     <bs-form>
       <bs-grid>
@@ -35,9 +35,9 @@
             </bs-input-group>
           </div>
           <div [md]="8" class="text-end">
-            @if (searchTerm && paginationData) {
+            @if (searchTerm && paginationData()) {
               <span class="text-muted">
-                {{ paginationData.totalRecords }} {{ paginationData.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                {{ paginationData()!.totalRecords }} {{ paginationData()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
               </span>
             }
           </div>
@@ -45,30 +45,30 @@
       </bs-grid>
     </bs-form>
 
-    @if (errorMessage) {
+    @if (errorMessage(); as err) {
       <bs-alert [type]="colors.danger" class="mb-3">
-        {{ errorMessage }}
+        {{ err }}
       </bs-alert>
     }
 
     <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
-      @for (attr of getVisibleAttributes(); track attr.id) {
+      @for (attr of visibleAttributes(); track attr.id) {
         <div *bsDatatableColumn="attr.name; sortable: true">
           {{ (attr.label | translate) || attr.name }}
         </div>
       }
 
-      <tr *bsRowTemplate="let item of paginationData" (click)="onRowClick(item)" style="cursor: pointer;">
-        @for (attr of getVisibleAttributes(); track attr.id) {
+      <tr *bsRowTemplate="let item of paginationData()" (click)="onRowClick(item)" style="cursor: pointer;">
+        @for (attr of visibleAttributes(); track attr.id) {
           <td>
             @if (attr.dataType === 'boolean') {
               <input type="checkbox"
-                [checked]="getAttributeValue(item, attr.name) === true"
-                [indeterminate]="getAttributeValue(item, attr.name) == null"
+                [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+                [indeterminate]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) == null"
                 disabled
                 onclick="return false;">
             } @else {
-              {{ getAttributeValue(item, attr.name) }}
+              {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
             }
           </td>
         }

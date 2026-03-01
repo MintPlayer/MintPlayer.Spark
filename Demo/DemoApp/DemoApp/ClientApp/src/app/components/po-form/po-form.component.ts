@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -14,253 +14,214 @@ import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../core/services/spark.service';
 import { TranslationsService } from '../../core/services/translations.service';
 import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
+import { ResolveTranslationPipe } from '../../core/pipes/resolve-translation.pipe';
+import { InputTypePipe } from '../../core/pipes/input-type.pipe';
+import { LookupDisplayValuePipe } from '../../core/pipes/lookup-display-value.pipe';
+import { LookupDisplayTypePipe } from '../../core/pipes/lookup-display-type.pipe';
+import { LookupOptionsPipe } from '../../core/pipes/lookup-options.pipe';
+import { ReferenceDisplayValuePipe } from '../../core/pipes/reference-display-value.pipe';
+import { AsDetailDisplayValuePipe } from '../../core/pipes/as-detail-display-value.pipe';
+import { AsDetailTypePipe } from '../../core/pipes/as-detail-type.pipe';
+import { AsDetailColumnsPipe } from '../../core/pipes/as-detail-columns.pipe';
+import { AsDetailCellValuePipe } from '../../core/pipes/as-detail-cell-value.pipe';
+import { CanCreateDetailRowPipe } from '../../core/pipes/can-create-detail-row.pipe';
+import { CanDeleteDetailRowPipe } from '../../core/pipes/can-delete-detail-row.pipe';
+import { InlineRefOptionsPipe } from '../../core/pipes/inline-ref-options.pipe';
+import { ReferenceAttrValuePipe } from '../../core/pipes/reference-attr-value.pipe';
 import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../core/models';
 import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { IconComponent } from '../icon/icon.component';
-import { forkJoin } from 'rxjs';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 
 @Component({
   selector: 'app-po-form',
-  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslateKeyPipe],
+  imports: [CommonModule, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, IconComponent, PoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe],
   templateUrl: './po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class PoFormComponent implements OnChanges {
+export class PoFormComponent {
   private readonly sparkService = inject(SparkService);
-  private readonly cdr = inject(ChangeDetectorRef);
   private readonly translations = inject(TranslationsService);
 
-  @Input() entityType: EntityType | null = null;
-  @Input() formData: Record<string, any> = {};
-  @Input() validationErrors: ValidationError[] = [];
-  @Input() showButtons = false;
-  @Input() isSaving = false;
+  entityType = input<EntityType | null>(null);
+  formData = model<Record<string, any>>({});
+  validationErrors = input<ValidationError[]>([]);
+  showButtons = input(false);
+  isSaving = input(false);
 
-  @Output() formDataChange = new EventEmitter<Record<string, any>>();
-  @Output() save = new EventEmitter<void>();
-  @Output() cancel = new EventEmitter<void>();
+  save = output<void>();
+  cancel = output<void>();
 
-  resolveTranslation = resolveTranslation;
   colors = Color;
-  referenceOptions: Record<string, PersistentObject[]> = {};
-  asDetailTypes: Record<string, EntityType> = {};
-  lookupReferenceOptions: Record<string, LookupReference> = {};
+  referenceOptions = signal<Record<string, PersistentObject[]>>({});
+  asDetailTypes = signal<Record<string, EntityType>>({});
+  lookupReferenceOptions = signal<Record<string, LookupReference>>({});
 
   // Modal state for AsDetail object editing
-  editingAsDetailAttr: EntityAttributeDefinition | null = null;
-  asDetailFormData: Record<string, any> = {};
-  showAsDetailModal = false;
-  editingArrayIndex: number | null = null;
+  editingAsDetailAttr = signal<EntityAttributeDefinition | null>(null);
+  asDetailFormData = signal<Record<string, any>>({});
+  showAsDetailModal = signal(false);
+  editingArrayIndex = signal<number | null>(null);
 
   // Permissions for array AsDetail entity types
-  asDetailPermissions: Record<string, EntityPermissions> = {};
+  asDetailPermissions = signal<Record<string, EntityPermissions>>({});
 
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
-  asDetailReferenceOptions: Record<string, Record<string, PersistentObject[]>> = {};
+  asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
 
   // Modal state for Reference selection
-  editingReferenceAttr: EntityAttributeDefinition | null = null;
-  showReferenceModal = false;
-  referenceModalItems: PersistentObject[] = [];
-  referenceModalEntityType: EntityType | null = null;
-  referenceModalPagination: PaginationResponse<PersistentObject> | undefined = undefined;
+  editingReferenceAttr = signal<EntityAttributeDefinition | null>(null);
+  showReferenceModal = signal(false);
+  referenceModalItems = signal<PersistentObject[]>([]);
+  referenceModalEntityType = signal<EntityType | null>(null);
+  referenceModalPagination = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
   referenceModalSettings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
     sortProperty: '',
     sortDirection: 'ascending'
   });
-  referenceSearchTerm: string = '';
+  referenceSearchTerm = '';
 
   // Modal state for LookupReference selection (Modal display type)
-  editingLookupAttr: EntityAttributeDefinition | null = null;
-  showLookupModal = false;
-  lookupModalItems: LookupReferenceValue[] = [];
-  lookupSearchTerm: string = '';
+  editingLookupAttr = signal<EntityAttributeDefinition | null>(null);
+  showLookupModal = signal(false);
+  lookupModalItems = signal<LookupReferenceValue[]>([]);
+  lookupSearchTerm = '';
   ELookupDisplayType = ELookupDisplayType;
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['entityType'] && this.entityType) {
-      this.loadReferenceOptions();
-      this.loadAsDetailTypes();
-      this.loadLookupReferenceOptions();
-    }
-  }
+  editableAttributes = computed(() => {
+    return this.entityType()?.attributes
+      .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .sort((a, b) => a.order - b.order) || [];
+  });
 
-  loadReferenceOptions(): void {
-    const refAttrs = this.getEditableAttributes().filter(a => a.dataType === 'Reference' && a.query);
-
-    if (refAttrs.length === 0) return;
-
-    const queries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
-    refAttrs.forEach(attr => {
-      if (attr.query) {
-        queries[attr.name] = this.sparkService.executeQueryByName(attr.query);
+  constructor() {
+    effect(() => {
+      const et = this.entityType();
+      if (et) {
+        this.loadReferenceOptions();
+        this.loadAsDetailTypes();
+        this.loadLookupReferenceOptions();
       }
     });
-
-    forkJoin(queries).subscribe(results => {
-      this.referenceOptions = results;
-      this.cdr.markForCheck();
-    });
   }
 
-  loadAsDetailTypes(): void {
-    const asDetailAttrs = this.getEditableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType);
+  async loadReferenceOptions(): Promise<void> {
+    const refAttrs = this.editableAttributes().filter(a => a.dataType === 'Reference' && a.query);
+    if (refAttrs.length === 0) return;
 
+    const entries = await Promise.all(
+      refAttrs.filter(a => a.query).map(async attr => {
+        const items = await this.sparkService.executeQueryByName(attr.query!);
+        return [attr.name, items] as [string, PersistentObject[]];
+      })
+    );
+    this.referenceOptions.set(Object.fromEntries(entries));
+  }
+
+  async loadAsDetailTypes(): Promise<void> {
+    const asDetailAttrs = this.editableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType);
     if (asDetailAttrs.length === 0) return;
 
-    this.sparkService.getEntityTypes().subscribe(types => {
-      asDetailAttrs.forEach(attr => {
-        const asDetailType = types.find(t => t.clrType === attr.asDetailType);
-        if (asDetailType) {
-          this.asDetailTypes[attr.name] = asDetailType;
+    const types = await this.sparkService.getEntityTypes();
+    const newAsDetailTypes: Record<string, EntityType> = {};
 
-          // Fetch permissions and reference options for array AsDetail entity types
-          if (attr.isArray) {
-            this.sparkService.getPermissions(asDetailType.id).subscribe(p => {
-              this.asDetailPermissions[attr.name] = p;
-              this.cdr.markForCheck();
-            });
+    for (const attr of asDetailAttrs) {
+      const asDetailType = types.find(t => t.clrType === attr.asDetailType);
+      if (asDetailType) {
+        newAsDetailTypes[attr.name] = asDetailType;
 
-            // Load reference options for Reference columns within this AsDetail type
-            const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
-            if (refCols.length > 0) {
-              const refQueries: Record<string, ReturnType<typeof this.sparkService.executeQueryByName>> = {};
-              refCols.forEach(col => {
-                if (col.query) {
-                  refQueries[col.name] = this.sparkService.executeQueryByName(col.query);
-                }
-              });
-              forkJoin(refQueries).subscribe(results => {
-                this.asDetailReferenceOptions[attr.name] = results;
-                this.cdr.markForCheck();
-              });
-            }
+        if (attr.isArray) {
+          const perms = await this.sparkService.getPermissions(asDetailType.id);
+          this.asDetailPermissions.update(prev => ({ ...prev, [attr.name]: perms }));
+
+          const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
+          if (refCols.length > 0) {
+            const refEntries = await Promise.all(
+              refCols.filter(c => c.query).map(async col => {
+                const items = await this.sparkService.executeQueryByName(col.query!);
+                return [col.name, items] as [string, PersistentObject[]];
+              })
+            );
+            this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: Object.fromEntries(refEntries) }));
           }
         }
-      });
-      this.cdr.markForCheck();
-    });
+      }
+    }
+    this.asDetailTypes.set(newAsDetailTypes);
   }
 
-  loadLookupReferenceOptions(): void {
-    const lookupAttrs = this.getEditableAttributes().filter(a => a.lookupReferenceType);
-
+  async loadLookupReferenceOptions(): Promise<void> {
+    const lookupAttrs = this.editableAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;
 
     const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    const queries: Record<string, ReturnType<typeof this.sparkService.getLookupReference>> = {};
-
-    lookupNames.forEach(name => {
-      queries[name] = this.sparkService.getLookupReference(name);
-    });
-
-    forkJoin(queries).subscribe(results => {
-      this.lookupReferenceOptions = results;
-      this.cdr.markForCheck();
-    });
-  }
-
-  getEditableAttributes(): EntityAttributeDefinition[] {
-    return this.entityType?.attributes
-      .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
-      .sort((a, b) => a.order - b.order) || [];
+    const entries = await Promise.all(
+      lookupNames.map(async name => {
+        const ref = await this.sparkService.getLookupReference(name);
+        return [name, ref] as [string, LookupReference];
+      })
+    );
+    this.lookupReferenceOptions.set(Object.fromEntries(entries));
   }
 
   getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
-    return this.referenceOptions[attr.name] || [];
+    return this.referenceOptions()[attr.name] || [];
   }
 
   getLookupOptions(attr: EntityAttributeDefinition): LookupReferenceValue[] {
-    const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions[attr.lookupReferenceType] : null;
+    const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions()[attr.lookupReferenceType] : null;
     return lookupRef?.values.filter(v => v.isActive) || [];
-  }
-
-  getLookupDisplayValue(attr: EntityAttributeDefinition): string {
-    const currentValue = this.formData[attr.name];
-    if (currentValue == null || currentValue === '') return '';
-
-    const options = this.getLookupOptions(attr);
-    const selected = options.find(o => o.key === String(currentValue));
-    if (!selected) return String(currentValue);
-
-    return resolveTranslation(selected.values) || selected.key;
-  }
-
-  getLookupDisplayType(attr: EntityAttributeDefinition): ELookupDisplayType {
-    const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions[attr.lookupReferenceType] : null;
-    return lookupRef?.displayType ?? ELookupDisplayType.Dropdown;
   }
 
   // LookupReference modal methods
   openLookupSelector(attr: EntityAttributeDefinition): void {
-    this.editingLookupAttr = attr;
+    this.editingLookupAttr.set(attr);
     this.lookupSearchTerm = '';
-    this.lookupModalItems = this.getLookupOptions(attr);
-    this.showLookupModal = true;
-    this.cdr.markForCheck();
+    this.lookupModalItems.set(this.getLookupOptions(attr));
+    this.showLookupModal.set(true);
   }
 
   getFilteredLookupItems(): LookupReferenceValue[] {
     if (!this.lookupSearchTerm.trim()) {
-      return this.lookupModalItems;
+      return this.lookupModalItems();
     }
     const term = this.lookupSearchTerm.toLowerCase().trim();
-    return this.lookupModalItems.filter(item => {
+    return this.lookupModalItems().filter(item => {
       const translation = resolveTranslation(item.values);
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   }
 
   selectLookupItem(item: LookupReferenceValue): void {
-    if (this.editingLookupAttr) {
-      this.formData[this.editingLookupAttr.name] = item.key;
-      this.formDataChange.emit(this.formData);
+    const attr = this.editingLookupAttr();
+    if (attr) {
+      const data = { ...this.formData() };
+      data[attr.name] = item.key;
+      this.formData.set(data);
     }
     this.closeLookupModal();
   }
 
   closeLookupModal(): void {
-    this.showLookupModal = false;
-    this.editingLookupAttr = null;
-    this.lookupModalItems = [];
+    this.showLookupModal.set(false);
+    this.editingLookupAttr.set(null);
+    this.lookupModalItems.set([]);
     this.lookupSearchTerm = '';
-    this.cdr.markForCheck();
-  }
-
-  getAsDetailType(attr: EntityAttributeDefinition): EntityType | null {
-    return this.asDetailTypes[attr.name] || null;
-  }
-
-  getInputType(dataType: string): string {
-    switch (dataType) {
-      case 'number':
-      case 'decimal':
-        return 'number';
-      case 'boolean':
-        return 'checkbox';
-      case 'datetime':
-        return 'datetime-local';
-      case 'date':
-        return 'date';
-      default:
-        return 'text';
-    }
   }
 
   getErrorForAttribute(attrName: string): string | null {
-    const error = this.validationErrors.find(e => e.attributeName === attrName);
+    const error = this.validationErrors().find(e => e.attributeName === attrName);
     return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   hasError(attrName: string): boolean {
-    return this.validationErrors.some(e => e.attributeName === attrName);
+    return this.validationErrors().some(e => e.attributeName === attrName);
   }
 
   onFieldChange(): void {
-    this.formDataChange.emit(this.formData);
+    this.formData.set({ ...this.formData() });
   }
 
   onSave(): void {
@@ -272,186 +233,90 @@ export class PoFormComponent implements OnChanges {
   }
 
   // AsDetail object modal methods
-  getAsDetailDisplayValue(attr: EntityAttributeDefinition): string {
-    const value = this.formData[attr.name];
-    if (!value) return this.translations.t('notSet');
-
-    const asDetailType = this.getAsDetailType(attr);
-
-    // 1. Try displayFormat (template with {PropertyName} placeholders)
-    if (asDetailType?.displayFormat) {
-      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
-      if (result && result.trim()) return result;
-    }
-
-    // 2. Try displayAttribute (single property name)
-    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
-      return value[asDetailType.displayAttribute];
-    }
-
-    // 3. Fallback to common property names
-    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
-    for (const prop of displayProps) {
-      if (value[prop]) return value[prop];
-    }
-
-    return this.translations.t('clickToEdit');
-  }
-
-  /**
-   * Resolves a display format template by substituting {PropertyName} placeholders with actual values.
-   * @param format The format template string (e.g., "{Street}, {PostalCode} {City}")
-   * @param data The data object containing the property values
-   * @returns The resolved string with placeholders replaced by values
-   */
-  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
-    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
-      const value = data[propertyName];
-      return value != null ? String(value) : '';
-    });
-  }
-
   openAsDetailEditor(attr: EntityAttributeDefinition): void {
-    this.editingAsDetailAttr = attr;
-    this.editingArrayIndex = null;
-    // Copy current AsDetail data or initialize empty object
-    this.asDetailFormData = { ...(this.formData[attr.name] || {}) };
-    this.showAsDetailModal = true;
-    this.cdr.markForCheck();
+    this.editingAsDetailAttr.set(attr);
+    this.editingArrayIndex.set(null);
+    this.asDetailFormData.set({ ...(this.formData()[attr.name] || {}) });
+    this.showAsDetailModal.set(true);
   }
 
   saveAsDetailObject(): void {
-    if (this.editingAsDetailAttr) {
-      if (this.editingAsDetailAttr.isArray) {
-        // Array AsDetail: add or update item in array
-        const arr = [...(this.formData[this.editingAsDetailAttr.name] || [])];
-        if (this.editingArrayIndex !== null) {
-          arr[this.editingArrayIndex] = { ...this.asDetailFormData };
+    const attr = this.editingAsDetailAttr();
+    if (attr) {
+      const data = { ...this.formData() };
+      if (attr.isArray) {
+        const arr = [...(data[attr.name] || [])];
+        const idx = this.editingArrayIndex();
+        if (idx !== null) {
+          arr[idx] = { ...this.asDetailFormData() };
         } else {
-          arr.push({ ...this.asDetailFormData });
+          arr.push({ ...this.asDetailFormData() });
         }
-        this.formData[this.editingAsDetailAttr.name] = arr;
+        data[attr.name] = arr;
       } else {
-        // Single object AsDetail
-        this.formData[this.editingAsDetailAttr.name] = { ...this.asDetailFormData };
+        data[attr.name] = { ...this.asDetailFormData() };
       }
-      this.formDataChange.emit(this.formData);
+      this.formData.set(data);
     }
     this.closeAsDetailModal();
   }
 
   closeAsDetailModal(): void {
-    this.showAsDetailModal = false;
-    this.editingAsDetailAttr = null;
-    this.editingArrayIndex = null;
-    this.asDetailFormData = {};
-    this.cdr.markForCheck();
+    this.showAsDetailModal.set(false);
+    this.editingAsDetailAttr.set(null);
+    this.editingArrayIndex.set(null);
+    this.asDetailFormData.set({});
   }
 
   // Inline AsDetail methods
   addInlineRow(attr: EntityAttributeDefinition): void {
-    const arr = this.formData[attr.name] || [];
+    const data = { ...this.formData() };
+    const arr = [...(data[attr.name] || [])];
     arr.push({});
-    this.formData[attr.name] = arr;
-    this.formDataChange.emit(this.formData);
-    this.cdr.markForCheck();
-  }
-
-  getInlineReferenceOptions(parentAttr: EntityAttributeDefinition, col: EntityAttributeDefinition): PersistentObject[] {
-    return this.asDetailReferenceOptions[parentAttr.name]?.[col.name] || [];
+    data[attr.name] = arr;
+    this.formData.set(data);
   }
 
   // Array AsDetail methods
   addArrayItem(attr: EntityAttributeDefinition): void {
-    this.editingAsDetailAttr = attr;
-    this.editingArrayIndex = null;
-    this.asDetailFormData = {};
-    this.showAsDetailModal = true;
-    this.cdr.markForCheck();
+    this.editingAsDetailAttr.set(attr);
+    this.editingArrayIndex.set(null);
+    this.asDetailFormData.set({});
+    this.showAsDetailModal.set(true);
   }
 
   editArrayItem(attr: EntityAttributeDefinition, index: number): void {
-    this.editingAsDetailAttr = attr;
-    this.editingArrayIndex = index;
-    const arr = this.formData[attr.name] || [];
-    this.asDetailFormData = { ...(arr[index] || {}) };
-    this.showAsDetailModal = true;
-    this.cdr.markForCheck();
+    this.editingAsDetailAttr.set(attr);
+    this.editingArrayIndex.set(index);
+    const arr = this.formData()[attr.name] || [];
+    this.asDetailFormData.set({ ...(arr[index] || {}) });
+    this.showAsDetailModal.set(true);
   }
 
   removeArrayItem(attr: EntityAttributeDefinition, index: number): void {
-    const arr = [...(this.formData[attr.name] || [])];
+    const data = { ...this.formData() };
+    const arr = [...(data[attr.name] || [])];
     arr.splice(index, 1);
-    this.formData[attr.name] = arr;
-    this.formDataChange.emit(this.formData);
-    this.cdr.markForCheck();
-  }
-
-  getAsDetailColumns(attr: EntityAttributeDefinition): EntityAttributeDefinition[] {
-    const type = this.getAsDetailType(attr);
-    if (!type) return [];
-    return type.attributes
-      .filter(a => a.isVisible)
-      .sort((a, b) => a.order - b.order);
-  }
-
-  getAsDetailCellValue(parentAttr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): string {
-    const value = row[col.name];
-    if (value == null) return '';
-
-    // For Reference columns, resolve breadcrumb from AsDetail reference options
-    if (col.dataType === 'Reference' && col.query) {
-      const parentOptions = this.asDetailReferenceOptions[parentAttr.name];
-      if (parentOptions) {
-        const options = parentOptions[col.name];
-        if (options) {
-          const match = options.find(o => o.id === value);
-          if (match) return match.breadcrumb || match.name || String(value);
-        }
-      }
-    }
-
-    return String(value);
-  }
-
-  canCreateDetailRow(attr: EntityAttributeDefinition): boolean {
-    const perms = this.asDetailPermissions[attr.name];
-    return perms ? perms.canCreate : true;
-  }
-
-  canDeleteDetailRow(attr: EntityAttributeDefinition): boolean {
-    const perms = this.asDetailPermissions[attr.name];
-    return perms ? perms.canDelete : true;
+    data[attr.name] = arr;
+    this.formData.set(data);
   }
 
   // Reference modal methods
-  getReferenceDisplayValue(attr: EntityAttributeDefinition): string {
-    const selectedId = this.formData[attr.name];
-    if (!selectedId) return this.translations.t('notSelected');
-
-    const options = this.getReferenceOptions(attr);
-    const selected = options.find(o => o.id === selectedId);
-    return selected?.breadcrumb || selected?.name || selectedId;
-  }
-
-  openReferenceSelector(attr: EntityAttributeDefinition): void {
-    this.editingReferenceAttr = attr;
+  async openReferenceSelector(attr: EntityAttributeDefinition): Promise<void> {
+    this.editingReferenceAttr.set(attr);
     this.referenceSearchTerm = '';
-    this.referenceModalItems = this.getReferenceOptions(attr);
+    this.referenceModalItems.set(this.getReferenceOptions(attr));
 
-    // Find the entity type for the reference
-    this.sparkService.getEntityTypes().subscribe(types => {
-      this.referenceModalEntityType = types.find(t => t.clrType === attr.referenceType) || null;
-      this.referenceModalSettings = new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1], selected: 1 },
-        sortProperty: '',
-        sortDirection: 'ascending'
-      });
-      this.applyReferenceFilter();
-      this.showReferenceModal = true;
-      this.cdr.markForCheck();
+    const types = await this.sparkService.getEntityTypes();
+    this.referenceModalEntityType.set(types.find(t => t.clrType === attr.referenceType) || null);
+    this.referenceModalSettings = new DatatableSettings({
+      perPage: { values: [10, 25, 50], selected: 10 },
+      page: { values: [1], selected: 1 },
+      sortProperty: '',
+      sortDirection: 'ascending'
     });
+    this.applyReferenceFilter();
+    this.showReferenceModal.set(true);
   }
 
   onReferenceSearchChange(): void {
@@ -460,12 +325,11 @@ export class PoFormComponent implements OnChanges {
   }
 
   applyReferenceFilter(): void {
-    let filteredItems = this.referenceModalItems;
+    let filteredItems = this.referenceModalItems();
 
-    // Apply search filter
     if (this.referenceSearchTerm.trim()) {
       const term = this.referenceSearchTerm.toLowerCase().trim();
-      filteredItems = this.referenceModalItems.filter(item => {
+      filteredItems = this.referenceModalItems().filter(item => {
         if (item.name?.toLowerCase().includes(term)) return true;
         if (item.breadcrumb?.toLowerCase().includes(term)) return true;
         return item.attributes.some(attr => {
@@ -477,21 +341,19 @@ export class PoFormComponent implements OnChanges {
     }
 
     const totalPages = Math.ceil(filteredItems.length / this.referenceModalSettings.perPage.selected) || 1;
-    this.referenceModalPagination = {
+    this.referenceModalPagination.set({
       data: filteredItems,
       totalRecords: filteredItems.length,
       totalPages: totalPages,
       perPage: this.referenceModalSettings.perPage.selected,
       page: this.referenceModalSettings.page.selected
-    };
+    });
 
     this.referenceModalSettings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
 
     if (this.referenceModalSettings.page.selected > totalPages) {
       this.referenceModalSettings.page.selected = 1;
     }
-
-    this.cdr.markForCheck();
   }
 
   clearReferenceSearch(): void {
@@ -500,32 +362,26 @@ export class PoFormComponent implements OnChanges {
   }
 
   getReferenceVisibleAttributes(): EntityAttributeDefinition[] {
-    return this.referenceModalEntityType?.attributes
+    return this.referenceModalEntityType()?.attributes
       .filter(a => a.isVisible)
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  getReferenceAttributeValue(item: PersistentObject, attrName: string): any {
-    const attr = item.attributes.find(a => a.name === attrName);
-    if (!attr) return '';
-    if (attr.breadcrumb) return attr.breadcrumb;
-    return attr.value ?? '';
-  }
-
   selectReferenceItem(item: PersistentObject): void {
-    if (this.editingReferenceAttr) {
-      this.formData[this.editingReferenceAttr.name] = item.id;
-      this.formDataChange.emit(this.formData);
+    const attr = this.editingReferenceAttr();
+    if (attr) {
+      const data = { ...this.formData() };
+      data[attr.name] = item.id;
+      this.formData.set(data);
     }
     this.closeReferenceModal();
   }
 
   closeReferenceModal(): void {
-    this.showReferenceModal = false;
-    this.editingReferenceAttr = null;
-    this.referenceModalItems = [];
-    this.referenceModalEntityType = null;
+    this.showReferenceModal.set(false);
+    this.editingReferenceAttr.set(null);
+    this.referenceModalItems.set([]);
+    this.referenceModalEntityType.set(null);
     this.referenceSearchTerm = '';
-    this.cdr.markForCheck();
   }
 }

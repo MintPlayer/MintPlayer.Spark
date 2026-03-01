@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -12,90 +12,84 @@ import { ShowedOn, hasShowedOnFlag } from '../../core/models/showed-on';
 import { PoFormComponent } from '../../components/po-form/po-form.component';
 import { TranslatePipe } from '../../core/pipes/translate.pipe';
 import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
-import { switchMap, forkJoin, of } from 'rxjs';
 
 @Component({
   selector: 'app-po-edit',
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
   templateUrl: './po-edit.component.html'
 })
-export default class PoEditComponent implements OnInit {
+export default class PoEditComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-  private readonly cdr = inject(ChangeDetectorRef);
 
   colors = Color;
-  entityType: EntityType | null = null;
-  item: PersistentObject | null = null;
-  type: string = '';
-  id: string = '';
-  formData: Record<string, any> = {};
-  validationErrors: ValidationError[] = [];
-  isSaving = false;
+  entityType = signal<EntityType | null>(null);
+  item = signal<PersistentObject | null>(null);
+  type = '';
+  id = '';
+  formData = signal<Record<string, any>>({});
+  validationErrors = signal<ValidationError[]>([]);
+  isSaving = signal(false);
 
-  ngOnInit(): void {
-    this.route.paramMap.pipe(
-      switchMap(params => {
-        this.type = params.get('type') || '';
-        this.id = params.get('id') || '';
-        return forkJoin({
-          entityType: this.sparkService.getEntityTypes().pipe(
-            switchMap(types => of(types.find(t => t.id === this.type || t.alias === this.type) || null))
-          ),
-          item: this.sparkService.get(this.type, this.id)
-        });
-      })
-    ).subscribe({
-      next: result => {
-        this.entityType = result.entityType;
-        this.item = result.item;
-        this.initFormData();
-        this.cdr.detectChanges();
-      },
-      error: (error: HttpErrorResponse) => {
-        this.validationErrors = [{
-          attributeName: '',
-          errorMessage: { en: error.error?.error || error.message || 'An unexpected error occurred' },
-          ruleType: 'error'
-        }];
-        this.cdr.detectChanges();
-      }
-    });
+  constructor() {
+    this.route.paramMap.subscribe(params => this.onParamsChange(params));
+  }
+
+  private async onParamsChange(params: any): Promise<void> {
+    this.type = params.get('type') || '';
+    this.id = params.get('id') || '';
+
+    try {
+      const [types, item] = await Promise.all([
+        this.sparkService.getEntityTypes(),
+        this.sparkService.get(this.type, this.id)
+      ]);
+      this.entityType.set(types.find(t => t.id === this.type || t.alias === this.type) || null);
+      this.item.set(item);
+      this.initFormData();
+    } catch (e) {
+      const error = e as HttpErrorResponse;
+      this.validationErrors.set([{
+        attributeName: '',
+        errorMessage: { en: error.error?.error || error.message || 'An unexpected error occurred' },
+        ruleType: 'error'
+      }]);
+    }
   }
 
   initFormData(): void {
-    this.formData = {};
+    const data: Record<string, any> = {};
     this.getEditableAttributes().forEach(attr => {
-      const itemAttr = this.item?.attributes.find(a => a.name === attr.name);
+      const itemAttr = this.item()?.attributes.find(a => a.name === attr.name);
       if (attr.dataType === 'Reference') {
-        this.formData[attr.name] = itemAttr?.value ?? null;
+        data[attr.name] = itemAttr?.value ?? null;
       } else if (attr.dataType === 'AsDetail') {
-        this.formData[attr.name] = itemAttr?.value ?? (attr.isArray ? [] : {});
+        data[attr.name] = itemAttr?.value ?? (attr.isArray ? [] : {});
       } else if (attr.dataType === 'boolean') {
-        this.formData[attr.name] = itemAttr?.value ?? false;
+        data[attr.name] = itemAttr?.value ?? false;
       } else {
-        this.formData[attr.name] = itemAttr?.value ?? '';
+        data[attr.name] = itemAttr?.value ?? '';
       }
     });
+    this.formData.set(data);
   }
 
   getEditableAttributes() {
-    return this.entityType?.attributes
+    return this.entityType()?.attributes
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
 
-  onSave(): void {
-    if (!this.entityType || !this.item) return;
+  async onSave(): Promise<void> {
+    if (!this.entityType() || !this.item()) return;
 
-    // Clear previous validation errors
-    this.validationErrors = [];
-    this.isSaving = true;
+    this.validationErrors.set([]);
+    this.isSaving.set(true);
 
-    const attributes: PersistentObjectAttribute[] = this.item.attributes.map(attr => {
+    const attributes: PersistentObjectAttribute[] = this.item()!.attributes.map(attr => {
       const editableAttr = this.getEditableAttributes().find(a => a.name === attr.name);
-      const newValue = editableAttr ? this.formData[attr.name] : attr.value;
+      const newValue = editableAttr ? this.formData()[attr.name] : attr.value;
       return {
         ...attr,
         value: newValue,
@@ -104,36 +98,32 @@ export default class PoEditComponent implements OnInit {
     });
 
     const po: Partial<PersistentObject> = {
-      id: this.item.id,
-      name: this.formData['Name'] || this.item.name,
-      objectTypeId: this.entityType.id,
+      id: this.item()!.id,
+      name: this.formData()['Name'] || this.item()!.name,
+      objectTypeId: this.entityType()!.id,
       attributes
     };
 
-    this.sparkService.update(this.type, this.id, po).subscribe({
-      next: () => {
-        this.isSaving = false;
-        this.router.navigate(['/po', this.type, this.id]);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.isSaving = false;
-        if (error.status === 400 && error.error?.errors) {
-          this.validationErrors = error.error.errors;
-        } else {
-          this.validationErrors = [{
-            attributeName: '',
-            errorMessage: { en: error.message || 'An unexpected error occurred' },
-            ruleType: 'error'
-          }];
-        }
-        this.cdr.detectChanges();
+    try {
+      await this.sparkService.update(this.type, this.id, po);
+      this.isSaving.set(false);
+      this.router.navigate(['/po', this.type, this.id]);
+    } catch (e) {
+      this.isSaving.set(false);
+      const error = e as HttpErrorResponse;
+      if (error.status === 400 && error.error?.errors) {
+        this.validationErrors.set(error.error.errors);
+      } else {
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          ruleType: 'error'
+        }]);
       }
-    });
+    }
   }
 
-  getGeneralErrors(): ValidationError[] {
-    return this.validationErrors.filter(e => !e.attributeName);
-  }
+  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
 
   onCancel(): void {
     this.router.navigate(['/po', this.type, this.id]);

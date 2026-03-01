@@ -1,10 +1,10 @@
 <bs-container>
 <div class="container">
-  @if (entityType) {
-    <h2 class="mb-4">{{ 'create' | t }} {{ (entityType.description | translate) || entityType.name }}</h2>
+  @if (entityType(); as et) {
+    <h2 class="mb-4">{{ 'create' | t }} {{ (et.description | translate) || et.name }}</h2>
 
     <!-- General validation errors -->
-    @for (error of getGeneralErrors(); track error.errorMessage) {
+    @for (error of generalErrors(); track error.errorMessage) {
       <bs-alert [type]="colors.danger" class="mb-3">
         {{ error.errorMessage }}
       </bs-alert>
@@ -14,11 +14,11 @@
       <bs-card-header>{{ 'properties' | t }}</bs-card-header>
       <div class="p-3">
         <app-po-form
-          [entityType]="entityType"
+          [entityType]="et"
           [(formData)]="formData"
-          [validationErrors]="validationErrors"
+          [validationErrors]="validationErrors()"
           [showButtons]="true"
-          [isSaving]="isSaving"
+          [isSaving]="isSaving()"
           (save)="onSave()"
           (cancel)="onCancel()">
         </app-po-form>

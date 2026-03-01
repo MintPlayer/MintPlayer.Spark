@@ -1,9 +1,8 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { Observable, of, throwError } from 'rxjs';
-import { catchError, map, switchMap } from 'rxjs/operators';
+import { firstValueFrom } from 'rxjs';
 import { EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
-import { RetryActionPayload, RetryActionResult } from '../models/retry-action';
+import { RetryActionResult } from '../models/retry-action';
 import { RetryActionService } from './retry-action.service';
 
 @Injectable({ providedIn: 'root' })
@@ -13,143 +12,141 @@ export class SparkService {
   private readonly retryActionService = inject(RetryActionService);
 
   // Entity Types
-  getEntityTypes(): Observable<EntityType[]> {
-    return this.http.get<EntityType[]>(`${this.baseUrl}/types`);
+  async getEntityTypes(): Promise<EntityType[]> {
+    return firstValueFrom(this.http.get<EntityType[]>(`${this.baseUrl}/types`));
   }
 
-  getEntityType(id: string): Observable<EntityType> {
-    return this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}`);
+  async getEntityType(id: string): Promise<EntityType> {
+    return firstValueFrom(this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}`));
   }
 
-  getEntityTypeByClrType(clrType: string): Observable<EntityType | undefined> {
-    return this.getEntityTypes().pipe(
-      map(types => types.find(t => t.clrType === clrType))
-    );
+  async getEntityTypeByClrType(clrType: string): Promise<EntityType | undefined> {
+    const types = await this.getEntityTypes();
+    return types.find(t => t.clrType === clrType);
   }
 
   // Permissions
-  getPermissions(entityTypeId: string): Observable<EntityPermissions> {
-    return this.http.get<EntityPermissions>(`${this.baseUrl}/permissions/${encodeURIComponent(entityTypeId)}`);
+  async getPermissions(entityTypeId: string): Promise<EntityPermissions> {
+    return firstValueFrom(this.http.get<EntityPermissions>(`${this.baseUrl}/permissions/${encodeURIComponent(entityTypeId)}`));
   }
 
   // Queries
-  getQueries(): Observable<SparkQuery[]> {
-    return this.http.get<SparkQuery[]>(`${this.baseUrl}/queries`);
+  async getQueries(): Promise<SparkQuery[]> {
+    return firstValueFrom(this.http.get<SparkQuery[]>(`${this.baseUrl}/queries`));
   }
 
-  getQuery(id: string): Observable<SparkQuery> {
-    return this.http.get<SparkQuery>(`${this.baseUrl}/queries/${encodeURIComponent(id)}`);
+  async getQuery(id: string): Promise<SparkQuery> {
+    return firstValueFrom(this.http.get<SparkQuery>(`${this.baseUrl}/queries/${encodeURIComponent(id)}`));
   }
 
-  getQueryByName(name: string): Observable<SparkQuery | undefined> {
-    return this.getQueries().pipe(
-      map(queries => queries.find(q => q.name === name))
-    );
+  async getQueryByName(name: string): Promise<SparkQuery | undefined> {
+    const queries = await this.getQueries();
+    return queries.find(q => q.name === name);
   }
 
-  executeQuery(queryId: string, sortBy?: string, sortDirection?: string): Observable<PersistentObject[]> {
+  async executeQuery(queryId: string, sortBy?: string, sortDirection?: string): Promise<PersistentObject[]> {
     let params = new HttpParams();
     if (sortBy) params = params.set('sortBy', sortBy);
     if (sortDirection) params = params.set('sortDirection', sortDirection);
-    return this.http.get<PersistentObject[]>(
+    return firstValueFrom(this.http.get<PersistentObject[]>(
       `${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`,
       { params }
-    );
+    ));
   }
 
-  executeQueryByName(queryName: string): Observable<PersistentObject[]> {
-    return this.getQueryByName(queryName).pipe(
-      switchMap(query => query ? this.executeQuery(query.id) : of([]))
-    );
+  async executeQueryByName(queryName: string): Promise<PersistentObject[]> {
+    const query = await this.getQueryByName(queryName);
+    return query ? this.executeQuery(query.id) : [];
   }
 
   // Program Units
-  getProgramUnits(): Observable<ProgramUnitsConfiguration> {
-    return this.http.get<ProgramUnitsConfiguration>(`${this.baseUrl}/program-units`);
+  async getProgramUnits(): Promise<ProgramUnitsConfiguration> {
+    return firstValueFrom(this.http.get<ProgramUnitsConfiguration>(`${this.baseUrl}/program-units`));
   }
 
   // Persistent Objects
-  list(type: string): Observable<PersistentObject[]> {
-    return this.http.get<PersistentObject[]>(`${this.baseUrl}/po/${encodeURIComponent(type)}`);
+  async list(type: string): Promise<PersistentObject[]> {
+    return firstValueFrom(this.http.get<PersistentObject[]>(`${this.baseUrl}/po/${encodeURIComponent(type)}`));
   }
 
-  get(type: string, id: string): Observable<PersistentObject> {
-    return this.http.get<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+  async get(type: string, id: string): Promise<PersistentObject> {
+    return firstValueFrom(this.http.get<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`));
   }
 
-  create(type: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
+  async create(type: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
     return this.postWithRetry<PersistentObject>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}`,
       { persistentObject: data }
     );
   }
 
-  update(type: string, id: string, data: Partial<PersistentObject>): Observable<PersistentObject> {
+  async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
     return this.putWithRetry<PersistentObject>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       { persistentObject: data }
     );
   }
 
-  delete(type: string, id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+  async delete(type: string, id: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`));
   }
 
   // LookupReferences
-  getLookupReferences(): Observable<LookupReferenceListItem[]> {
-    return this.http.get<LookupReferenceListItem[]>(`${this.baseUrl}/lookupref`);
+  async getLookupReferences(): Promise<LookupReferenceListItem[]> {
+    return firstValueFrom(this.http.get<LookupReferenceListItem[]>(`${this.baseUrl}/lookupref`));
   }
 
-  getLookupReference(name: string): Observable<LookupReference> {
-    return this.http.get<LookupReference>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`);
+  async getLookupReference(name: string): Promise<LookupReference> {
+    return firstValueFrom(this.http.get<LookupReference>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`));
   }
 
-  addLookupReferenceValue(name: string, value: LookupReferenceValue): Observable<LookupReferenceValue> {
-    return this.http.post<LookupReferenceValue>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`, value);
+  async addLookupReferenceValue(name: string, value: LookupReferenceValue): Promise<LookupReferenceValue> {
+    return firstValueFrom(this.http.post<LookupReferenceValue>(`${this.baseUrl}/lookupref/${encodeURIComponent(name)}`, value));
   }
 
-  updateLookupReferenceValue(name: string, key: string, value: LookupReferenceValue): Observable<LookupReferenceValue> {
-    return this.http.put<LookupReferenceValue>(
+  async updateLookupReferenceValue(name: string, key: string, value: LookupReferenceValue): Promise<LookupReferenceValue> {
+    return firstValueFrom(this.http.put<LookupReferenceValue>(
       `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`,
       value
-    );
+    ));
   }
 
-  deleteLookupReferenceValue(name: string, key: string): Observable<void> {
-    return this.http.delete<void>(
+  async deleteLookupReferenceValue(name: string, key: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(
       `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`
-    );
+    ));
   }
 
   // Retry Action helpers
 
-  private postWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
-    return this.http.post<T>(url, body).pipe(
-      catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.postWithRetry<T>(url, body), body))
-    );
+  private async postWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Promise<T> {
+    try {
+      return await firstValueFrom(this.http.post<T>(url, body));
+    } catch (error) {
+      return this.handleRetryError<T>(error as HttpErrorResponse, () => this.postWithRetry<T>(url, body), body);
+    }
   }
 
-  private putWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Observable<T> {
-    return this.http.put<T>(url, body).pipe(
-      catchError((error: HttpErrorResponse) => this.handleRetryError<T>(error, () => this.putWithRetry<T>(url, body), body))
-    );
+  private async putWithRetry<T>(url: string, body: { persistentObject: any; retryResult?: RetryActionResult }): Promise<T> {
+    try {
+      return await firstValueFrom(this.http.put<T>(url, body));
+    } catch (error) {
+      return this.handleRetryError<T>(error as HttpErrorResponse, () => this.putWithRetry<T>(url, body), body);
+    }
   }
 
-  private handleRetryError<T>(
+  private async handleRetryError<T>(
     error: HttpErrorResponse,
-    retryFn: () => Observable<T>,
+    retryFn: () => Promise<T>,
     body: { persistentObject: any; retryResult?: RetryActionResult }
-  ): Observable<T> {
+  ): Promise<T> {
     if (error.status !== 449 || error.error?.type !== 'retry-action') {
-      return throwError(() => error);
+      throw error;
     }
 
-    const payload = error.error as RetryActionPayload;
-    return this.retryActionService.show(payload).pipe(
-      switchMap(result => {
-        body.retryResult = result;
-        return retryFn();
-      })
-    );
+    const payload = error.error;
+    const result = await this.retryActionService.show(payload);
+    body.retryResult = result;
+    return retryFn();
   }
 }

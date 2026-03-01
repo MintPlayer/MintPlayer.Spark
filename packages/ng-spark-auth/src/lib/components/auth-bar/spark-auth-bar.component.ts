@@ -22,10 +22,9 @@ export class SparkAuthBarComponent {
   readonly config = inject(SPARK_AUTH_CONFIG);
   private readonly router = inject(Router);
 
-  onLogout(): void {
-    this.authService.logout().subscribe(() => {
-      this.router.navigateByUrl('/');
-    });
+  async onLogout(): Promise<void> {
+    await this.authService.logout();
+    this.router.navigateByUrl('/');
   }
 }
 

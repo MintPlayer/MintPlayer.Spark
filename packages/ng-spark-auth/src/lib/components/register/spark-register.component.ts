@@ -107,7 +107,7 @@ export class SparkRegisterComponent {
     confirmPassword: ['', Validators.required],
   }, { validators: passwordMatchValidator });
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -118,15 +118,13 @@ export class SparkRegisterComponent {
 
     const { email, password } = this.form.value;
 
-    this.authService.register(email!, password!).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.router.navigate([this.routePaths.login], {
-          queryParams: { registered: 'true' },
-        });
-      },
-      error: (err: HttpErrorResponse) => {
-        this.loading.set(false);
+    try {
+      await this.authService.register(email!, password!);
+      this.router.navigate([this.routePaths.login], {
+        queryParams: { registered: 'true' },
+      });
+    } catch (err: any) {
+      if (err instanceof HttpErrorResponse) {
         if (err.status === 400 && err.error?.errors) {
           const messages = ([] as string[]).concat(...Object.values(err.error.errors) as string[][]);
           this.errorMessage.set(messages.join(' '));
@@ -135,8 +133,12 @@ export class SparkRegisterComponent {
         } else {
           this.errorMessage.set(this.translation.t('authRegistrationFailed'));
         }
-      },
-    });
+      } else {
+        this.errorMessage.set(this.translation.t('authRegistrationFailed'));
+      }
+    } finally {
+      this.loading.set(false);
+    }
   }
 }
 

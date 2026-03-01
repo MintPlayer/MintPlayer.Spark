@@ -117,7 +117,7 @@ export class SparkResetPasswordComponent implements OnInit {
     }
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -134,20 +134,18 @@ export class SparkResetPasswordComponent implements OnInit {
 
     const { newPassword } = this.form.value;
 
-    this.authService.resetPassword(this.email, this.code, newPassword!).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.successMessage.set(this.translation.t('authResetSuccess'));
-      },
-      error: (err: HttpErrorResponse) => {
-        this.loading.set(false);
-        if (err.error?.detail) {
-          this.errorMessage.set(err.error.detail);
-        } else {
-          this.errorMessage.set(this.translation.t('authResetFailed'));
-        }
-      },
-    });
+    try {
+      await this.authService.resetPassword(this.email, this.code, newPassword!);
+      this.successMessage.set(this.translation.t('authResetSuccess'));
+    } catch (err: any) {
+      if (err instanceof HttpErrorResponse && err.error?.detail) {
+        this.errorMessage.set(err.error.detail);
+      } else {
+        this.errorMessage.set(this.translation.t('authResetFailed'));
+      }
+    } finally {
+      this.loading.set(false);
+    }
   }
 }
 

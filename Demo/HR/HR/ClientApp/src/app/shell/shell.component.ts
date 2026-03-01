@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
@@ -9,29 +9,28 @@ import { SparkService } from '../core/services/spark.service';
 import { ProgramUnit, ProgramUnitGroup } from '../core/models';
 import { IconComponent } from '../components/icon/icon.component';
 import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { fromEvent } from 'rxjs';
 import { LanguageService } from '../core/services/language.service';
 import { TranslatePipe } from '../core/pipes/translate.pipe';
+import { IconNamePipe } from '../core/pipes/icon-name.pipe';
+import { RouterLinkPipe } from '../core/pipes/router-link.pipe';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, IconComponent, SparkAuthBarComponent, TranslatePipe, FormsModule, KeyValuePipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, IconComponent, SparkAuthBarComponent, TranslatePipe, IconNamePipe, RouterLinkPipe, FormsModule, KeyValuePipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ShellComponent implements OnInit {
+export class ShellComponent {
   private readonly sparkService = inject(SparkService);
   private readonly authService = inject(SparkAuthService);
-  private readonly cdr = inject(ChangeDetectorRef);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly lang = inject(LanguageService);
-  programUnitGroups: ProgramUnitGroup[] = [];
+  programUnitGroups = signal<ProgramUnitGroup[]>([]);
   shellState = signal<BsShellState>('auto');
   isSidebarVisible = signal<boolean>(false);
 
@@ -48,23 +47,9 @@ export class ShellComponent implements OnInit {
     });
   }
 
-  ngOnInit(): void {
-  }
-
-  private loadProgramUnits(): void {
-    this.sparkService.getProgramUnits().subscribe(config => {
-      this.programUnitGroups = config.programUnitGroups.sort((a, b) => a.order - b.order);
-      this.cdr.markForCheck();
-    });
-  }
-
-  getRouterLink(unit: ProgramUnit): string[] {
-    if (unit.type === 'query') {
-      return ['/query', unit.alias || unit.queryId!];
-    } else if (unit.type === 'persistentObject') {
-      return ['/po', unit.alias || unit.persistentObjectId!];
-    }
-    return ['/'];
+  private async loadProgramUnits(): Promise<void> {
+    const config = await this.sparkService.getProgramUnits();
+    this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
   }
 
   toggleSidebar(open: boolean) {
@@ -84,11 +69,9 @@ export class ShellComponent implements OnInit {
       return;
     }
 
-    fromEvent(window, 'resize')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.updateSidebarVisibility();
-      });
+    const onResize = () => this.updateSidebarVisibility();
+    window.addEventListener('resize', onResize);
+    this.destroyRef.onDestroy(() => window.removeEventListener('resize', onResize));
   }
 
   private updateSidebarVisibility(): void {
@@ -105,7 +88,6 @@ export class ShellComponent implements OnInit {
     }
 
     this.isSidebarVisible.set(isVisible);
-    this.cdr.markForCheck();
   }
 
   private isAboveBreakpoint(): boolean {
@@ -116,9 +98,4 @@ export class ShellComponent implements OnInit {
     return window.innerWidth >= 768;
   }
 
-  getIconName(icon: string | undefined, fallback: string): string {
-    const iconClass = icon || fallback;
-    // Strip 'bi-' prefix if present
-    return iconClass.startsWith('bi-') ? iconClass.substring(3) : iconClass;
-  }
 }

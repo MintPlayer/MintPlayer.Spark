@@ -78,7 +78,7 @@ export class SparkForgotPasswordComponent {
     email: ['', [Validators.required, Validators.email]],
   });
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -90,17 +90,13 @@ export class SparkForgotPasswordComponent {
 
     const { email } = this.form.value;
 
-    this.authService.forgotPassword(email!).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.successMessage.set(this.translation.t('authForgotPasswordSuccess'));
-      },
-      error: () => {
-        this.loading.set(false);
-        // Don't reveal whether the email exists
-        this.successMessage.set(this.translation.t('authForgotPasswordSuccess'));
-      },
-    });
+    try {
+      await this.authService.forgotPassword(email!);
+    } catch {
+      // Don't reveal whether the email exists
+    }
+    this.successMessage.set(this.translation.t('authForgotPasswordSuccess'));
+    this.loading.set(false);
   }
 }
 

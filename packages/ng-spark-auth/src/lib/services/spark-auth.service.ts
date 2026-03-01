@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, switchMap, tap } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { AuthUser, SPARK_AUTH_CONFIG } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -14,65 +14,58 @@ export class SparkAuthService {
   readonly isAuthenticated = computed(() => this.currentUser()?.isAuthenticated === true);
 
   constructor() {
-    this.checkAuth().subscribe();
+    this.checkAuth();
   }
 
-  login(email: string, password: string): Observable<void> {
-    return this.http
-      .post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password })
-      .pipe(
-        switchMap(() => this.csrfRefresh()),
-        tap(() => { this.checkAuth().subscribe(); }),
-      );
+  async login(email: string, password: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password }));
+    await this.csrfRefresh();
+    await this.checkAuth();
   }
 
-  loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Observable<void> {
-    return this.http
-      .post<void>(`${this.config.apiBasePath}/login?useCookies=true`, {
-        twoFactorCode,
-        twoFactorRecoveryCode,
-      })
-      .pipe(
-        switchMap(() => this.csrfRefresh()),
-        tap(() => { this.checkAuth().subscribe(); }),
-      );
+  async loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, {
+      twoFactorCode,
+      twoFactorRecoveryCode,
+    }));
+    await this.csrfRefresh();
+    await this.checkAuth();
   }
 
-  register(email: string, password: string): Observable<void> {
-    return this.http.post<void>(`${this.config.apiBasePath}/register`, { email, password });
+  async register(email: string, password: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/register`, { email, password }));
   }
 
-  logout(): Observable<void> {
-    return this.http
-      .post<void>(`${this.config.apiBasePath}/logout`, {})
-      .pipe(
-        switchMap(() => this.csrfRefresh()),
-        tap(() => { this.currentUser.set(null); }),
-      );
+  async logout(): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/logout`, {}));
+    await this.csrfRefresh();
+    this.currentUser.set(null);
   }
 
-  csrfRefresh(): Observable<void> {
-    return this.http.post<void>(`${this.config.apiBasePath}/csrf-refresh`, {});
+  async csrfRefresh(): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/csrf-refresh`, {}));
   }
 
-  checkAuth(): Observable<AuthUser | null> {
-    return this.http.get<AuthUser>(`${this.config.apiBasePath}/me`).pipe(
-      tap({
-        next: (user) => this.currentUser.set(user),
-        error: () => this.currentUser.set(null),
-      }),
-    );
+  async checkAuth(): Promise<AuthUser | null> {
+    try {
+      const user = await firstValueFrom(this.http.get<AuthUser>(`${this.config.apiBasePath}/me`));
+      this.currentUser.set(user);
+      return user;
+    } catch {
+      this.currentUser.set(null);
+      return null;
+    }
   }
 
-  forgotPassword(email: string): Observable<void> {
-    return this.http.post<void>(`${this.config.apiBasePath}/forgotPassword`, { email });
+  async forgotPassword(email: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/forgotPassword`, { email }));
   }
 
-  resetPassword(email: string, resetCode: string, newPassword: string): Observable<void> {
-    return this.http.post<void>(`${this.config.apiBasePath}/resetPassword`, {
+  async resetPassword(email: string, resetCode: string, newPassword: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/resetPassword`, {
       email,
       resetCode,
       newPassword,
-    });
+    }));
   }
 }

@@ -101,7 +101,7 @@ export class SparkTwoFactorComponent {
     this.errorMessage.set('');
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     const isRecovery = this.useRecoveryCode();
     const code = isRecovery ? this.form.value.recoveryCode : this.form.value.code;
 
@@ -118,17 +118,15 @@ export class SparkTwoFactorComponent {
     const twoFactorCode = isRecovery ? undefined : code;
     const twoFactorRecoveryCode = isRecovery ? code : undefined;
 
-    this.authService.loginTwoFactor(twoFactorCode ?? '', twoFactorRecoveryCode).subscribe({
-      next: () => {
-        this.loading.set(false);
-        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-        this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.errorMessage.set(this.translation.t('authInvalidCode'));
-      },
-    });
+    try {
+      await this.authService.loginTwoFactor(twoFactorCode ?? '', twoFactorRecoveryCode);
+      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+      this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
+    } catch {
+      this.errorMessage.set(this.translation.t('authInvalidCode'));
+    } finally {
+      this.loading.set(false);
+    }
   }
 }
 

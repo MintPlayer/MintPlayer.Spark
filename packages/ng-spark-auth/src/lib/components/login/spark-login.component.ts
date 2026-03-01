@@ -91,7 +91,7 @@ export class SparkLoginComponent {
     rememberMe: [false],
   });
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.form.invalid) return;
 
     this.loading.set(true);
@@ -99,24 +99,22 @@ export class SparkLoginComponent {
 
     const { email, password } = this.form.value;
 
-    this.authService.login(email!, password!).subscribe({
-      next: () => {
-        this.loading.set(false);
+    try {
+      await this.authService.login(email!, password!);
+      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+      this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
+    } catch (err: any) {
+      if (err instanceof HttpErrorResponse && err.status === 401 && err.error?.detail === 'RequiresTwoFactor') {
         const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-        this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
-      },
-      error: (err: HttpErrorResponse) => {
-        this.loading.set(false);
-        if (err.status === 401 && err.error?.detail === 'RequiresTwoFactor') {
-          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-          this.router.navigate([this.routePaths.twoFactor], {
-            queryParams: returnUrl ? { returnUrl } : undefined,
-          });
-        } else {
-          this.errorMessage.set(this.translation.t('authInvalidCredentials'));
-        }
-      },
-    });
+        this.router.navigate([this.routePaths.twoFactor], {
+          queryParams: returnUrl ? { returnUrl } : undefined,
+        });
+      } else {
+        this.errorMessage.set(this.translation.t('authInvalidCredentials'));
+      }
+    } finally {
+      this.loading.set(false);
+    }
   }
 }
 
