@@ -19,7 +19,7 @@
       @for (group of groupsForTab(tab); track group.id) {
         @if (attrsForGroup(group); as groupAttrs) {
           @if (groupAttrs.length > 0) {
-            <bs-card style="display: block; margin: 1rem;">
+            <bs-card class="d-block m-3">
               @if (group.label) {
                 <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
               }
