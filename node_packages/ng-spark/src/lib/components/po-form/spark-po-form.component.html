@@ -243,7 +243,7 @@
           <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving()">{{ 'cancel' | t }}</button>
           <button type="submit" [color]="colors.primary" [disabled]="isSaving()" (click)="onSave()">
             @if (isSaving()) {
-              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              <bs-spinner class="me-1" />
             }
             {{ 'save' | t }}
           </button>
@@ -333,9 +333,7 @@
         </bs-datatable>
       } @else {
         <div class="text-center p-3">
-          <div class="spinner-border spinner-border-sm" role="status">
-            <span class="visually-hidden">{{ 'loading' | t }}</span>
-          </div>
+          <bs-spinner />
         </div>
       }
     </div>

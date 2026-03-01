@@ -7,6 +7,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService } from '../../services/spark.service';
 import { SparkPoFormComponent } from '../po-form/spark-po-form.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -20,7 +21,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-po-create',
-  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsSpinnerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-create.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
