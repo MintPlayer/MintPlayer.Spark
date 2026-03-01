@@ -37,6 +37,9 @@ jobs:
     - name: Install npm dependencies
       run: npm ci
 
+    - name: Build ng-spark
+      run: dotnet build node_packages/ng-spark/ng-spark.esproj --configuration Release
+
     - name: Build ng-spark-auth
       run: dotnet build node_packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
 
