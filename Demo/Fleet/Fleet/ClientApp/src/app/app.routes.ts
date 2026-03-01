@@ -11,7 +11,10 @@ export const routes: Routes = [
       ...sparkAuthRoutes(),
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
-      ...sparkRoutes()
+      ...sparkRoutes({
+        poCreate: () => import('./pages/po-create/po-create.component'),
+        poEdit: () => import('./pages/po-edit/po-edit.component'),
+      })
     ]
   }
 ];

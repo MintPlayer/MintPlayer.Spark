@@ -74,6 +74,11 @@
                 [indeterminate]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) == null"
                 disabled
                 onclick="return false;">
+            } @else if (attr.dataType === 'color') {
+              @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+              @if (colorVal) {
+                <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+              }
             } @else {
               {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
             }

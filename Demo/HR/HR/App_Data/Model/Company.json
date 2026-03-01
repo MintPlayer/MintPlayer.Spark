@@ -83,6 +83,40 @@
           "max": 1000000
         }
       ]
+    },
+    {
+      "id": "b7e24a1c-9f38-4d56-8c12-3e5a7b9d1f04",
+      "name": "BrandColor",
+      "label": {
+        "en": "Brand Color",
+        "fr": "Couleur de marque",
+        "nl": "Merkkleur"
+      },
+      "dataType": "color",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 4,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
+    },
+    {
+      "id": "c8f35b2d-ae49-4e67-9d23-4f6b8cae2f15",
+      "name": "AccentColor",
+      "label": {
+        "en": "Accent Color",
+        "fr": "Couleur d'accent",
+        "nl": "Accentkleur"
+      },
+      "dataType": "color",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 5,
+      "isArray": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": []
     }
   ]
 }

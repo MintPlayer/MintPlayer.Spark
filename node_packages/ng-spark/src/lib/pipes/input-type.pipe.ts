@@ -13,6 +13,8 @@ export class InputTypePipe implements PipeTransform {
         return 'datetime-local';
       case 'date':
         return 'date';
+      case 'color':
+        return 'color';
       default:
         return 'text';
     }

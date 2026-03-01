@@ -1,0 +1,9 @@
+<spark-po-create>
+  <ng-template sparkFieldTemplate="InteriorColor" let-attr let-formData="formData">
+    <bs-color-picker
+      [ngModel]="formData[attr.name]"
+      (ngModelChange)="formData[attr.name] = $event"
+      [size]="150">
+    </bs-color-picker>
+  </ng-template>
+</spark-po-create>

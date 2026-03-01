@@ -88,6 +88,14 @@
                   disabled
                   onclick="return false;"
                   style="opacity: 1;">
+              } @else if (attr.dataType === 'color') {
+                @let colorVal = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
+                @if (colorVal) {
+                  <span class="d-inline-block align-middle border rounded me-2" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+                  {{ colorVal }}
+                } @else {
+                  -
+                }
               } @else if (attr.dataType === 'Reference' && attr.referenceType) {
                 @let refRoute = (attr.referenceType | referenceLinkRoute:(attr.name | rawAttributeValue:item()):allEntityTypes());
                 @if (refRoute && (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes())) {
