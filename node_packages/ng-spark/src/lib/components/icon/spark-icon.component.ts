@@ -5,7 +5,13 @@ import { SparkIconRegistry } from './spark-icon-registry';
   selector: 'spark-icon',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<span [innerHTML]="iconHtml()"></span>`,
+  template: `
+    @if (iconHtml(); as html) {
+      <span [innerHTML]="html"></span>
+    } @else {
+      <i class="bi" [class]="cssFallbackClass()"></i>
+    }
+  `,
   styles: [`
     :host {
       display: inline-flex;
@@ -28,12 +34,7 @@ export class SparkIconComponent {
 
   name = input.required<string>();
 
-  iconHtml = computed(() => {
-    const iconName = this.name();
-    const icon = this.registry.get(iconName);
-    if (!icon) {
-      console.warn(`Icon "${iconName}" not registered. Register it via SparkIconRegistry.`);
-    }
-    return icon;
-  });
+  iconHtml = computed(() => this.registry.get(this.name()));
+
+  cssFallbackClass = computed(() => `bi-${this.name()}`);
 }
