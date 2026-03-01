@@ -284,6 +284,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.Name = entityType.Name;
         entityTypeDef.ClrType = entityType.FullName ?? entityType.Name;
 
+        // Preserve manually-defined tabs and groups
+        entityTypeDef.Tabs = existing?.Tabs ?? [];
+        entityTypeDef.Groups = existing?.Groups ?? [];
+
         // Set QueryType and IndexName if projection type is provided
         if (projectionType != null)
         {

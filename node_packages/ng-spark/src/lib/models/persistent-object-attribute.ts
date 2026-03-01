@@ -23,4 +23,5 @@ export interface PersistentObjectAttribute {
   showedOn?: ShowedOn | string;
   isValueChanged?: boolean;
   rules: ValidationRule[];
+  group?: string;
 }

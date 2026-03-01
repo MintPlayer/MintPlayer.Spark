@@ -41,7 +41,7 @@
             [disabled]="loading()"
           >
             @if (loading()) {
-              <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+              <bs-spinner class="me-1" />
             }
             {{ 'authVerify' | t }}
           </button>

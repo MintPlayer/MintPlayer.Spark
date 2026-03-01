@@ -7,6 +7,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -16,7 +17,7 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
   selector: 'spark-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, BsSpinnerComponent, TranslateKeyPipe],
   templateUrl: './spark-login.component.html',
 })
 export class SparkLoginComponent {

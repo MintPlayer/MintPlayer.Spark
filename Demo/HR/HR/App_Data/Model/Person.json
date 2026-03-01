@@ -10,10 +10,68 @@
   "queryType": "HR.Indexes.VPerson",
   "indexName": "People_Overview",
   "displayAttribute": "FullName",
+  "tabs": [
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "General",
+      "label": {
+        "en": "General",
+        "fr": "Général",
+        "nl": "Algemeen"
+      },
+      "order": 1
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000002",
+      "name": "Employment",
+      "label": {
+        "en": "Employment",
+        "fr": "Emploi",
+        "nl": "Loopbaan"
+      },
+      "order": 2
+    }
+  ],
+  "groups": [
+    {
+      "id": "b1b2c3d4-0002-0002-0002-000000000001",
+      "name": "Personal",
+      "label": {
+        "en": "Personal Information",
+        "fr": "Informations personnelles",
+        "nl": "Persoonlijke gegevens"
+      },
+      "tab": "a1b2c3d4-0001-0001-0001-000000000001",
+      "order": 1
+    },
+    {
+      "id": "b1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Contact",
+      "label": {
+        "en": "Contact",
+        "fr": "Contact",
+        "nl": "Contact"
+      },
+      "tab": "a1b2c3d4-0001-0001-0001-000000000001",
+      "order": 2
+    },
+    {
+      "id": "b1b2c3d4-0002-0002-0002-000000000003",
+      "name": "Career",
+      "label": {
+        "en": "Career",
+        "fr": "Carrière",
+        "nl": "Carrière"
+      },
+      "tab": "a1b2c3d4-0001-0001-0001-000000000002",
+      "order": 1
+    }
+  ],
   "attributes": [
     {
       "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
       "name": "FirstName",
+      "group": "b1b2c3d4-0002-0002-0002-000000000001",
       "label": {
         "en": "First Name",
         "fr": "Prénom",
@@ -46,6 +104,7 @@
     {
       "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
       "name": "LastName",
+      "group": "b1b2c3d4-0002-0002-0002-000000000001",
       "label": {
         "en": "Last Name",
         "fr": "Nom de famille",
@@ -78,6 +137,7 @@
     {
       "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
       "name": "Email",
+      "group": "b1b2c3d4-0002-0002-0002-000000000002",
       "label": {
         "en": "Email",
         "fr": "E-mail",
@@ -103,6 +163,7 @@
     {
       "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
       "name": "DateOfBirth",
+      "group": "b1b2c3d4-0002-0002-0002-000000000001",
       "label": {
         "en": "Date Of Birth",
         "fr": "Date de naissance",
@@ -121,6 +182,7 @@
     {
       "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
       "name": "Company",
+      "group": "b1b2c3d4-0002-0002-0002-000000000003",
       "label": {
         "en": "Company",
         "fr": "Entreprise",
@@ -141,6 +203,7 @@
     {
       "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
       "name": "Address",
+      "group": "b1b2c3d4-0002-0002-0002-000000000002",
       "label": {
         "en": "Address",
         "fr": "Adresse",
@@ -160,6 +223,7 @@
     {
       "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
       "name": "Jobs",
+      "group": "b1b2c3d4-0002-0002-0002-000000000003",
       "label": {
         "en": "Jobs"
       },

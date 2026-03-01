@@ -33,6 +33,8 @@ public sealed class EntityTypeDefinition
     /// (Fallback) Single attribute name to use as display value when DisplayFormat is not specified.
     /// </summary>
     public string? DisplayAttribute { get; set; }
+    public AttributeTab[] Tabs { get; set; } = [];
+    public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
 }
 
@@ -87,4 +89,39 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
+    /// <summary>
+    /// References an AttributeGroup.Id to assign this attribute to a group.
+    /// When null, the attribute is placed in a default (ungrouped) section.
+    /// </summary>
+    public Guid? Group { get; set; }
+    /// <summary>
+    /// Number of grid columns this attribute spans within a tab's column layout.
+    /// Defaults to 1 when not specified.
+    /// </summary>
+    public int? ColumnSpan { get; set; }
+}
+
+public sealed class AttributeTab
+{
+    public required Guid Id { get; set; }
+    public required string Name { get; set; }
+    public TranslatedString? Label { get; set; }
+    public int Order { get; set; }
+    /// <summary>
+    /// Number of columns for the grid layout within this tab.
+    /// </summary>
+    public int? ColumnCount { get; set; }
+}
+
+public sealed class AttributeGroup
+{
+    public required Guid Id { get; set; }
+    public required string Name { get; set; }
+    public TranslatedString? Label { get; set; }
+    /// <summary>
+    /// References an AttributeTab.Id to assign this group to a tab.
+    /// When null, the group is placed on the first/default tab.
+    /// </summary>
+    public Guid? Tab { get; set; }
+    public int Order { get; set; }
 }

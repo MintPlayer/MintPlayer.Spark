@@ -29,6 +29,28 @@ export interface EntityAttributeDefinition {
    */
   showedOn?: ShowedOn | string;
   rules: ValidationRule[];
+  /** References an AttributeGroup.id to assign this attribute to a group */
+  group?: string;
+  /** Number of grid columns this attribute spans within a tab's column layout */
+  columnSpan?: number;
+}
+
+export interface AttributeTab {
+  id: string;
+  name: string;
+  label?: TranslatedString;
+  order: number;
+  /** Number of columns for the grid layout within this tab */
+  columnCount?: number;
+}
+
+export interface AttributeGroup {
+  id: string;
+  name: string;
+  label?: TranslatedString;
+  /** References an AttributeTab.id to assign this group to a tab */
+  tab?: string;
+  order: number;
 }
 
 export interface EntityType {
@@ -46,5 +68,7 @@ export interface EntityType {
    * (Fallback) Single attribute name to use as display value when displayFormat is not specified.
    */
   displayAttribute?: string;
+  tabs?: AttributeTab[];
+  groups?: AttributeGroup[];
   attributes: EntityAttributeDefinition[];
 }

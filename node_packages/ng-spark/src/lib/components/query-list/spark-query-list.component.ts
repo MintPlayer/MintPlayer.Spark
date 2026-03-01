@@ -10,6 +10,7 @@ import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstra
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
+import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { SparkIconComponent } from '../icon/spark-icon.component';
@@ -25,7 +26,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgTemplateOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

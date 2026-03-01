@@ -115,6 +115,7 @@ internal partial class EntityMapper : IEntityMapper
                     Order = attrDef.Order,
                     ShowedOn = attrDef.ShowedOn,
                     Rules = attrDef.Rules ?? [],
+                    Group = attrDef.Group,
                 };
 
                 // Handle reference attributes - resolve breadcrumb from included documents
