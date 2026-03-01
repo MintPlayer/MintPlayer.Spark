@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -16,7 +16,8 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 @Component({
   selector: 'app-po-create',
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
-  templateUrl: './po-create.component.html'
+  templateUrl: './po-create.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class PoCreateComponent {
   private readonly route = inject(ActivatedRoute);

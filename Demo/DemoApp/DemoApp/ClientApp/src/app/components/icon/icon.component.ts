@@ -1,9 +1,10 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { IconRegistry } from './icon-registry';
 
 @Component({
   selector: 'app-icon',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<span [innerHTML]="iconHtml()"></span>`,
   styles: [`
     :host {

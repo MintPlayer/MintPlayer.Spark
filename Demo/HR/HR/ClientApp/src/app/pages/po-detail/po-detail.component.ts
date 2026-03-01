@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -23,7 +23,8 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 @Component({
   selector: 'app-po-detail',
   imports: [CommonModule, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, IconComponent, TranslatePipe, TranslateKeyPipe, AttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe],
-  templateUrl: './po-detail.component.html'
+  templateUrl: './po-detail.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class PoDetailComponent {
   private readonly route = inject(ActivatedRoute);

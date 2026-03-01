@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -16,7 +16,8 @@ import { TranslateKeyPipe } from '../../core/pipes/translate-key.pipe';
 @Component({
   selector: 'app-po-edit',
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslatePipe, TranslateKeyPipe],
-  templateUrl: './po-edit.component.html'
+  templateUrl: './po-edit.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class PoEditComponent {
   private readonly route = inject(ActivatedRoute);

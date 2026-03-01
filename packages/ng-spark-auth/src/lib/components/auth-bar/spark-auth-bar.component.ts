@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { SparkAuthService } from '../../services/spark-auth.service';
 import { SPARK_AUTH_CONFIG } from '../../models';
@@ -7,6 +7,7 @@ import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 @Component({
   selector: 'spark-auth-bar',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, TranslateKeyPipe],
   template: `
     @if (authService.isAuthenticated()) {

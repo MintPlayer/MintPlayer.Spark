@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
@@ -10,6 +10,7 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
 @Component({
   selector: 'spark-forgot-password',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">

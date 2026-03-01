@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -17,7 +17,8 @@ import { firstValueFrom } from 'rxjs';
 @Component({
   selector: 'app-po-create',
   imports: [CommonModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, PoFormComponent, TranslateKeyPipe, ResolveTranslationPipe],
-  templateUrl: './po-create.component.html'
+  templateUrl: './po-create.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class PoCreateComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

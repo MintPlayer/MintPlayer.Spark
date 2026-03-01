@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -12,6 +12,7 @@ import { SparkAuthTranslationService } from '../../services/spark-auth-translati
 @Component({
   selector: 'spark-login',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, RouterLink, BsFormComponent, BsFormControlDirective, BsToggleButtonComponent, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
