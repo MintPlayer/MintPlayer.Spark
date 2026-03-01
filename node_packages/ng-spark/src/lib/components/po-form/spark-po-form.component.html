@@ -1,7 +1,39 @@
 <bs-form>
   @if (entityType()) {
     <bs-grid>
-    @for (attr of editableAttributes(); track attr.id) {
+    @if (showTabs()) {
+      <bs-tab-control>
+        @for (tab of resolvedTabs(); track tab.id) {
+          <bs-tab-page>
+            <ng-template bsTabPageHeader>{{ tab.label | resolveTranslation:tab.name }}</ng-template>
+            <div class="pt-3">
+              <ng-container *ngTemplateOutlet="tabContent; context: { $implicit: tab }"></ng-container>
+            </div>
+          </bs-tab-page>
+        }
+      </bs-tab-control>
+    } @else {
+      @for (tab of resolvedTabs(); track tab.id) {
+        <ng-container *ngTemplateOutlet="tabContent; context: { $implicit: tab }"></ng-container>
+      }
+    }
+
+    <ng-template #tabContent let-tab>
+      @for (group of groupsForTab(tab); track group.id) {
+        @if (attrsForGroup(group); as groupAttrs) {
+          @if (groupAttrs.length > 0) {
+            @if (group.label) {
+              <h6 class="mt-3 mb-2 text-muted border-bottom pb-1">{{ group.label | resolveTranslation:group.name }}</h6>
+            }
+            @for (attr of groupAttrs; track attr.id) {
+              <ng-container *ngTemplateOutlet="attrField; context: { $implicit: attr }"></ng-container>
+            }
+          }
+        }
+      }
+    </ng-template>
+
+    <ng-template #attrField let-attr>
       <div bsRow class="mb-3">
         <label [md]="4" bsColFormLabel [for]="attr.name">
           {{ attr.label | resolveTranslation:attr.name }}
@@ -202,7 +234,7 @@
           }
         </div>
       </div>
-    }
+    </ng-template>
 
     @if (showButtons()) {
       <div bsRow class="mt-4">

@@ -10,6 +10,7 @@ import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/sele
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
+import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { SparkLanguageService } from '../../services/spark-language.service';
@@ -30,6 +31,7 @@ import { InlineRefOptionsPipe } from '../../pipes/inline-ref-options.pipe';
 import { ReferenceAttrValuePipe } from '../../pipes/reference-attr-value.pipe';
 import { ErrorForAttributePipe } from '../../pipes/error-for-attribute.pipe';
 import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../models';
+import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
@@ -37,7 +39,7 @@ import { SparkFieldTemplateDirective, SparkFieldTemplateContext } from '../../di
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -100,6 +102,41 @@ export class SparkPoFormComponent {
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
+
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'default', order: 0 };
+  private static readonly DEFAULT_GROUP: AttributeGroup = { id: '__default__', name: 'default', order: 0 };
+
+  resolvedTabs = computed((): AttributeTab[] => {
+    const et = this.entityType();
+    if (et?.tabs && et.tabs.length > 0) {
+      return [...et.tabs].sort((a, b) => a.order - b.order);
+    }
+    return [SparkPoFormComponent.DEFAULT_TAB];
+  });
+
+  resolvedGroups = computed((): AttributeGroup[] => {
+    const et = this.entityType();
+    if (et?.groups && et.groups.length > 0) {
+      return [...et.groups].sort((a, b) => a.order - b.order);
+    }
+    return [SparkPoFormComponent.DEFAULT_GROUP];
+  });
+
+  showTabs = computed(() => this.resolvedTabs().length > 1);
+
+  groupsForTab(tab: AttributeTab): AttributeGroup[] {
+    const groups = this.resolvedGroups();
+    if (tab.id === '__default__') return groups;
+    return groups.filter(g => g.tab === tab.id || (!g.tab && tab === this.resolvedTabs()[0]));
+  }
+
+  attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
+    const attrs = this.editableAttributes();
+    if (group.id === '__default__') {
+      return attrs;
+    }
+    return attrs.filter(a => a.group === group.id || (!a.group && group === this.resolvedGroups()[0]));
+  }
 
   referenceVisibleAttributes = computed(() => {
     return this.referenceModalEntityType()?.attributes
