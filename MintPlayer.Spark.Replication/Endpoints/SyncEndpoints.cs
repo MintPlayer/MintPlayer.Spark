@@ -63,7 +63,7 @@ internal static class SyncEndpoints
                         }
 
                         var savedId = await handler.HandleSaveAsync(
-                            action.Collection, action.DocumentId, action.Data.Value, action.Properties);
+                            action.Collection, action.DocumentId, action.Data, action.Properties);
 
                         results.Add(new SyncActionResult
                         {

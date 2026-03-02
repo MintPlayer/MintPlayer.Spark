@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Reflection;
 
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
@@ -10,7 +10,7 @@ public enum SyncActionType
 }
 
 /// <summary>
-/// Non-generic transport form used for JSON serialization over HTTP and the message bus.
+/// Non-generic transport form used for JSON serialization over HTTP and RavenDB persistence.
 /// </summary>
 public class SyncAction
 {
@@ -27,10 +27,12 @@ public class SyncAction
     public string? DocumentId { get; set; }
 
     /// <summary>
-    /// The entity data as a JSON element. Required for Insert and Update.
-    /// Null for Delete.
+    /// The entity data as a dictionary of property names to values.
+    /// Required for Insert and Update. Null for Delete.
+    /// Uses Dictionary instead of JsonElement to ensure compatibility with both
+    /// System.Text.Json (HTTP) and Newtonsoft.Json (RavenDB).
     /// </summary>
-    public JsonElement? Data { get; set; }
+    public Dictionary<string, object?>? Data { get; set; }
 
     /// <summary>
     /// Property names to update on the owner entity. When set, only these properties
@@ -75,14 +77,25 @@ public class SyncAction<T> where T : class
 
     /// <summary>
     /// Converts this strongly-typed sync action to the non-generic transport form
-    /// by serializing the data to a <see cref="JsonElement"/>.
+    /// by converting the entity data to a property dictionary.
     /// </summary>
     public SyncAction ToTransport() => new()
     {
         ActionType = ActionType,
         Collection = Collection,
         DocumentId = DocumentId,
-        Data = Data != null ? JsonSerializer.SerializeToElement(Data) : null,
+        Data = Data != null ? EntityToDictionary(Data) : null,
         Properties = Properties,
     };
+
+    private static Dictionary<string, object?> EntityToDictionary(T entity)
+    {
+        var dict = new Dictionary<string, object?>();
+        foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (prop.CanRead)
+                dict[prop.Name] = prop.GetValue(entity);
+        }
+        return dict;
+    }
 }

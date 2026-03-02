@@ -9,8 +9,10 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Endpoints;
+using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Services;
+using MintPlayer.Spark.Replication.Workers;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Replication;
@@ -34,7 +36,7 @@ public static class SparkReplicationExtensions
 
         // Sync action services
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
-        services.AddScoped<IRecipient<SyncActionDeploymentMessage>, SyncActionDeploymentRecipient>();
+        services.AddHostedService<SyncActionSubscriptionWorker>();
         services.AddHttpClient("spark-sync");
 
         return services;
@@ -52,6 +54,9 @@ public static class SparkReplicationExtensions
         var registrationService = app.Services.GetRequiredService<ModuleRegistrationService>();
         var collector = app.Services.GetRequiredService<EtlScriptCollector>();
         var appStore = app.Services.GetRequiredService<IDocumentStore>();
+
+        // Deploy the SparkSyncActions index
+        new SparkSyncActions_ByStatus().Execute(appStore);
 
         // Run registration and ETL deployment asynchronously to not block startup
         _ = Task.Run(async () =>

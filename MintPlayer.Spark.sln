@@ -45,6 +45,8 @@ Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark-auth", "node_packa
 EndProject
 Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark", "node_packages\ng-spark\ng-spark.esproj", "{503DE99E-29F1-40A7-B42A-2B37A744C64D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SubscriptionWorker", "MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj", "{A754EA1F-571A-4D96-A2DA-A580DCEC1516}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -235,6 +237,18 @@ Global
 		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|x64.ActiveCfg = Release|Any CPU
 		{503DE99E-29F1-40A7-B42A-2B37A744C64D}.Release|x86.ActiveCfg = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|x64.Build.0 = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Debug|x86.Build.0 = Debug|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|x64.ActiveCfg = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|x64.Build.0 = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|x86.ActiveCfg = Release|Any CPU
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

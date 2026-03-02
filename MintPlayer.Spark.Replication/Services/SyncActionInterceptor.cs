@@ -4,21 +4,21 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Messages;
+using MintPlayer.Spark.Replication.Models;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Replication.Services;
 
 /// <summary>
-/// Intercepts write operations on replicated entities and dispatches them
-/// to the owner module via the durable message bus.
+/// Intercepts write operations on replicated entities and stores SparkSyncAction
+/// documents directly in RavenDB for processing by the subscription worker.
 /// </summary>
 internal class SyncActionInterceptor : ISyncActionInterceptor
 {
-    private readonly IMessageBus _messageBus;
+    private readonly IDocumentStore _documentStore;
     private readonly SparkReplicationOptions _options;
     private readonly ILogger<SyncActionInterceptor> _logger;
 
@@ -29,11 +29,11 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
     private static readonly ConcurrentDictionary<Type, string[]> _propertyNamesCache = new();
 
     public SyncActionInterceptor(
-        IMessageBus messageBus,
+        IDocumentStore documentStore,
         IOptions<SparkReplicationOptions> options,
         ILogger<SyncActionInterceptor> logger)
     {
-        _messageBus = messageBus;
+        _documentStore = documentStore;
         _options = options.Value;
         _logger = logger;
     }
@@ -63,11 +63,11 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
             changedProperties = GetPropertyNames(entityType);
         }
 
-        // Build data from PO attributes
+        // Build data from PO attributes, normalizing any JsonElement values to plain .NET types
         var data = new Dictionary<string, object?>();
         foreach (var attribute in obj.Attributes)
         {
-            data[attribute.Name] = attribute.Value;
+            data[attribute.Name] = NormalizeValue(attribute.Value);
         }
         if (obj.Id != null)
         {
@@ -79,7 +79,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
             ActionType = actionType,
             Collection = collection,
             DocumentId = obj.Id,
-            Data = JsonSerializer.SerializeToElement(data),
+            Data = data,
             Properties = changedProperties,
         };
 
@@ -102,12 +102,19 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         // Auto-populate Properties from the replicated entity type (all properties, no change tracking)
         var properties = GetPropertyNames(entityType);
 
+        var data = new Dictionary<string, object?>();
+        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (prop.CanRead)
+                data[prop.Name] = NormalizeValue(prop.GetValue(entity));
+        }
+
         var syncAction = new SyncAction
         {
             ActionType = actionType,
             Collection = collection,
             DocumentId = documentId,
-            Data = JsonSerializer.SerializeToElement(entity),
+            Data = data,
             Properties = properties,
         };
 
@@ -141,21 +148,44 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
 
     private async Task DispatchAsync(string ownerModuleName, string collection, SyncAction action)
     {
-        var request = new SyncActionRequest
-        {
-            RequestingModule = _options.ModuleName,
-            Actions = [action],
-        };
-
-        var message = new SyncActionDeploymentMessage
+        var syncActionDoc = new SparkSyncAction
         {
             OwnerModuleName = ownerModuleName,
-            Request = request,
+            RequestingModule = _options.ModuleName,
+            Collection = collection,
+            Actions = [action],
+            Status = ESyncActionStatus.Pending,
+            CreatedAtUtc = DateTime.UtcNow,
         };
 
-        // Use per-collection queue for isolation
-        var queueName = $"spark-sync-{collection}";
-        await _messageBus.BroadcastAsync(message, queueName);
+        using var session = _documentStore.OpenAsyncSession();
+        await session.StoreAsync(syncActionDoc);
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Converts JsonElement values (from Spark's JSON deserialization) to plain .NET types
+    /// so they can be safely serialized by both Newtonsoft.Json (RavenDB) and System.Text.Json (HTTP).
+    /// </summary>
+    private static object? NormalizeValue(object? value)
+    {
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+                JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+                JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => element.ToString(),
+            };
+        }
+
+        return value;
     }
 
     private static ReplicatedAttribute? GetReplicatedAttribute(Type type)

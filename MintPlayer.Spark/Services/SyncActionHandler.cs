@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
@@ -13,7 +12,7 @@ namespace MintPlayer.Spark.Services;
 /// Processes incoming sync actions on the owner module.
 /// Resolves the CLR entity type from the collection name and runs the operation
 /// through the IPersistentObjectActions pipeline (preserving lifecycle hooks).
-/// Constructs a PersistentObject from the incoming JSON data with IsValueChanged
+/// Constructs a PersistentObject from the incoming data dictionary with IsValueChanged
 /// metadata so the actions pipeline has full change tracking context.
 /// </summary>
 [Register(typeof(ISyncActionHandler), ServiceLifetime.Scoped)]
@@ -27,7 +26,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     // Cache: collection name → CLR entity type
     private static readonly ConcurrentDictionary<string, Type?> _collectionTypeCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<string?> HandleSaveAsync(string collection, string? documentId, JsonElement data, string[]? properties)
+    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties)
     {
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
@@ -61,11 +60,11 @@ internal partial class SyncActionHandler : ISyncActionHandler
     }
 
     /// <summary>
-    /// Builds a PersistentObject from the incoming sync action JSON data.
+    /// Builds a PersistentObject from the incoming sync action data dictionary.
     /// Marks attributes as IsValueChanged based on the Properties array.
     /// Uses the EntityTypeDefinition to construct proper attribute metadata.
     /// </summary>
-    private PersistentObject BuildPersistentObject(Type entityType, string? documentId, JsonElement data, string[]? properties)
+    private PersistentObject BuildPersistentObject(Type entityType, string? documentId, Dictionary<string, object?> data, string[]? properties)
     {
         // Find the entity type definition for attribute metadata
         var entityTypeDef = FindEntityTypeDefinition(entityType);
@@ -79,21 +78,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         {
             foreach (var attrDef in entityTypeDef.Attributes)
             {
-                var hasValue = data.TryGetProperty(attrDef.Name, out var jsonValue);
-
-                // Also try case-insensitive match
-                if (!hasValue)
-                {
-                    foreach (var prop in data.EnumerateObject())
-                    {
-                        if (string.Equals(prop.Name, attrDef.Name, StringComparison.OrdinalIgnoreCase))
-                        {
-                            jsonValue = prop.Value;
-                            hasValue = true;
-                            break;
-                        }
-                    }
-                }
+                var hasValue = TryGetValue(data, attrDef.Name, out var value);
 
                 var isChanged = propertySet != null
                     ? propertySet.Contains(attrDef.Name)
@@ -103,7 +88,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
                 {
                     Name = attrDef.Name,
                     Label = attrDef.Label,
-                    Value = hasValue ? ExtractJsonValue(jsonValue) : null,
+                    Value = hasValue ? NormalizeValue(value) : null,
                     IsValueChanged = isChanged,
                     DataType = attrDef.DataType,
                     IsRequired = attrDef.IsRequired,
@@ -123,19 +108,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
                 if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
                 if (!prop.CanRead || !prop.CanWrite) continue;
 
-                var hasValue = data.TryGetProperty(prop.Name, out var jsonValue);
-                if (!hasValue)
-                {
-                    foreach (var dataProp in data.EnumerateObject())
-                    {
-                        if (string.Equals(dataProp.Name, prop.Name, StringComparison.OrdinalIgnoreCase))
-                        {
-                            jsonValue = dataProp.Value;
-                            hasValue = true;
-                            break;
-                        }
-                    }
-                }
+                var hasValue = TryGetValue(data, prop.Name, out var value);
 
                 var isChanged = propertySet != null
                     ? propertySet.Contains(prop.Name)
@@ -144,7 +117,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
                 attributes.Add(new PersistentObjectAttribute
                 {
                     Name = prop.Name,
-                    Value = hasValue ? ExtractJsonValue(jsonValue) : null,
+                    Value = hasValue ? NormalizeValue(value) : null,
                     IsValueChanged = isChanged,
                 });
             }
@@ -165,22 +138,53 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return modelLoader.GetEntityTypeByClrType(clrTypeName);
     }
 
-    private static object? ExtractJsonValue(JsonElement element)
+    /// <summary>
+    /// Case-insensitive key lookup in the data dictionary.
+    /// </summary>
+    private static bool TryGetValue(Dictionary<string, object?> data, string key, out object? value)
     {
-        return element.ValueKind switch
+        if (data.TryGetValue(key, out value))
+            return true;
+
+        // Case-insensitive fallback
+        foreach (var kvp in data)
         {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number when element.TryGetInt32(out var i) => i,
-            JsonValueKind.Number when element.TryGetInt64(out var l) => l,
-            JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            JsonValueKind.Undefined => null,
-            JsonValueKind.Object => element, // Keep as JsonElement for complex types
-            JsonValueKind.Array => element,  // Keep as JsonElement for array types
-            _ => element.ToString()
-        };
+            if (string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = kvp.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Normalizes a dictionary value to a plain .NET type.
+    /// Values coming from System.Text.Json deserialization (HTTP path) arrive as JsonElement;
+    /// values coming from Newtonsoft.Json deserialization (RavenDB path) arrive as .NET primitives.
+    /// </summary>
+    private static object? NormalizeValue(object? value)
+    {
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+                JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+                JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => element.ToString()
+            };
+        }
+
+        // Already a .NET primitive (from Newtonsoft/RavenDB deserialization or direct assignment)
+        return value;
     }
 
     private Type? ResolveEntityType(string collection)
