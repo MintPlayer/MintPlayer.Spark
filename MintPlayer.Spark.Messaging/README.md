@@ -104,13 +104,14 @@ Both methods store a `SparkMessage` document in RavenDB and return immediately (
 
 ### Message Processing
 
-The `MessageProcessor` is a `BackgroundService` registered via `AddHostedService`. It:
+Internally, the messaging library uses **RavenDB data subscriptions** (via `MintPlayer.Spark.SubscriptionWorker`) with one subscription per queue:
 
-1. Subscribes to **RavenDB's Changes API** for near-instant detection of new messages
-2. Falls back to periodic polling (default 30s) as a safety net
-3. Processes each queue **independently and concurrently**
-4. Within a queue, processes messages **sequentially in FIFO order**
-5. Creates a **DI scope** per message and instantiates recipients via `ActivatorUtilities.CreateInstance`
+1. At startup, the `MessageSubscriptionManager` discovers all queue names from registered `IRecipient<T>` types
+2. For each queue, it creates a dedicated `MessageSubscriptionWorker` with `MaxDocsPerBatch = 1`
+3. Each queue's worker runs as an independent RavenDB subscription
+4. Within a queue, messages are processed **one at a time in FIFO order**
+5. Different queues are processed **concurrently and independently**
+6. Each message is dispatched within a **DI scope**, so recipients get fresh scoped services
 
 ### Retry with Incremental Backoff
 
@@ -195,8 +196,9 @@ You can query message status directly in RavenDB Studio for observability.
 ## Requirements
 
 - .NET 10.0+
-- RavenDB 6.2+ (with Changes API support)
+- RavenDB 6.2+
 - An `IDocumentStore` registered in the DI container (provided by `AddSpark()` or registered manually)
+- `MintPlayer.Spark.SubscriptionWorker` (referenced automatically)
 
 ## License
 
