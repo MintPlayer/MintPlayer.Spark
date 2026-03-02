@@ -4,21 +4,21 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Messages;
+using MintPlayer.Spark.Replication.Models;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Replication.Services;
 
 /// <summary>
-/// Intercepts write operations on replicated entities and dispatches them
-/// to the owner module via the durable message bus.
+/// Intercepts write operations on replicated entities and stores SparkSyncAction
+/// documents directly in RavenDB for processing by the subscription worker.
 /// </summary>
 internal class SyncActionInterceptor : ISyncActionInterceptor
 {
-    private readonly IMessageBus _messageBus;
+    private readonly IDocumentStore _documentStore;
     private readonly SparkReplicationOptions _options;
     private readonly ILogger<SyncActionInterceptor> _logger;
 
@@ -29,11 +29,11 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
     private static readonly ConcurrentDictionary<Type, string[]> _propertyNamesCache = new();
 
     public SyncActionInterceptor(
-        IMessageBus messageBus,
+        IDocumentStore documentStore,
         IOptions<SparkReplicationOptions> options,
         ILogger<SyncActionInterceptor> logger)
     {
-        _messageBus = messageBus;
+        _documentStore = documentStore;
         _options = options.Value;
         _logger = logger;
     }
@@ -141,21 +141,19 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
 
     private async Task DispatchAsync(string ownerModuleName, string collection, SyncAction action)
     {
-        var request = new SyncActionRequest
-        {
-            RequestingModule = _options.ModuleName,
-            Actions = [action],
-        };
-
-        var message = new SyncActionDeploymentMessage
+        var syncActionDoc = new SparkSyncAction
         {
             OwnerModuleName = ownerModuleName,
-            Request = request,
+            RequestingModule = _options.ModuleName,
+            Collection = collection,
+            Actions = [action],
+            Status = ESyncActionStatus.Pending,
+            CreatedAtUtc = DateTime.UtcNow,
         };
 
-        // Use per-collection queue for isolation
-        var queueName = $"spark-sync-{collection}";
-        await _messageBus.BroadcastAsync(message, queueName);
+        using var session = _documentStore.OpenAsyncSession();
+        await session.StoreAsync(syncActionDoc);
+        await session.SaveChangesAsync();
     }
 
     private static ReplicatedAttribute? GetReplicatedAttribute(Type type)
