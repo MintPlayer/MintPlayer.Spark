@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
@@ -18,10 +16,10 @@ public interface ISyncActionHandler
     /// </summary>
     /// <param name="collection">The RavenDB collection name (e.g., "Cars")</param>
     /// <param name="documentId">The document ID (null for inserts)</param>
-    /// <param name="data">The entity data as a JSON element</param>
+    /// <param name="data">The entity data as a dictionary of property names to values</param>
     /// <param name="properties">Property names to update (null for full replacement)</param>
     /// <returns>The document ID of the saved entity</returns>
-    Task<string?> HandleSaveAsync(string collection, string? documentId, JsonElement data, string[]? properties = null);
+    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null);
 
     /// <summary>
     /// Deletes an entity from a sync action.

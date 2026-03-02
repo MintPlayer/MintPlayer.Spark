@@ -63,11 +63,11 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
             changedProperties = GetPropertyNames(entityType);
         }
 
-        // Build data from PO attributes
+        // Build data from PO attributes, normalizing any JsonElement values to plain .NET types
         var data = new Dictionary<string, object?>();
         foreach (var attribute in obj.Attributes)
         {
-            data[attribute.Name] = attribute.Value;
+            data[attribute.Name] = NormalizeValue(attribute.Value);
         }
         if (obj.Id != null)
         {
@@ -79,7 +79,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
             ActionType = actionType,
             Collection = collection,
             DocumentId = obj.Id,
-            Data = JsonSerializer.SerializeToElement(data),
+            Data = data,
             Properties = changedProperties,
         };
 
@@ -102,12 +102,19 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         // Auto-populate Properties from the replicated entity type (all properties, no change tracking)
         var properties = GetPropertyNames(entityType);
 
+        var data = new Dictionary<string, object?>();
+        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (prop.CanRead)
+                data[prop.Name] = NormalizeValue(prop.GetValue(entity));
+        }
+
         var syncAction = new SyncAction
         {
             ActionType = actionType,
             Collection = collection,
             DocumentId = documentId,
-            Data = JsonSerializer.SerializeToElement(entity),
+            Data = data,
             Properties = properties,
         };
 
@@ -154,6 +161,31 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         using var session = _documentStore.OpenAsyncSession();
         await session.StoreAsync(syncActionDoc);
         await session.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Converts JsonElement values (from Spark's JSON deserialization) to plain .NET types
+    /// so they can be safely serialized by both Newtonsoft.Json (RavenDB) and System.Text.Json (HTTP).
+    /// </summary>
+    private static object? NormalizeValue(object? value)
+    {
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+                JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+                JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => element.ToString(),
+            };
+        }
+
+        return value;
     }
 
     private static ReplicatedAttribute? GetReplicatedAttribute(Type type)
