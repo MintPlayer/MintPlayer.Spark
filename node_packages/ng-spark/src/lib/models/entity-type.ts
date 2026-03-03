@@ -33,6 +33,10 @@ export interface EntityAttributeDefinition {
   group?: string;
   /** Number of grid columns this attribute spans within a tab's column layout */
   columnSpan?: number;
+  /** Renderer component name for custom display in detail/list views */
+  renderer?: string;
+  /** Options passed to the renderer component */
+  rendererOptions?: Record<string, any>;
 }
 
 export interface AttributeTab {

@@ -66,8 +66,8 @@
       <tr *bsRowTemplate="let item of paginationData()" (click)="onRowClick(item)" style="cursor: pointer;">
         @for (attr of visibleAttributes(); track attr.id) {
           <td>
-            @if (getColumnTemplate(attr); as customTpl) {
-              <ng-container *ngTemplateOutlet="customTpl; context: getColumnTemplateContext(item, attr)"></ng-container>
+            @if (getColumnRendererComponent(attr); as rendererType) {
+              <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
             } @else if (attr.dataType === 'boolean') {
               <input type="checkbox"
                 [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"

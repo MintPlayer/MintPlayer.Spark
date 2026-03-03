@@ -3,6 +3,8 @@
   "name": "CarreerJob",
   "clrType": "HR.Entities.CarreerJob",
   "displayAttribute": "ProfessionId",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",

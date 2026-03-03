@@ -8,6 +8,8 @@
   },
   "clrType": "HR.Replicated.Car",
   "displayAttribute": "LicensePlate",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "3ee949c5-cc99-4fb0-98ca-e3a4599bdae5",

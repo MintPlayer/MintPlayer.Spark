@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, model, output, QueryList, signal, effect, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect } from '@angular/core';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -37,7 +37,6 @@ import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { SparkFieldTemplateDirective, SparkFieldTemplateContext } from '../../directives/spark-field-template.directive';
 
 @Component({
   selector: 'spark-po-form',
@@ -49,14 +48,11 @@ export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
 
-  @ContentChildren(SparkFieldTemplateDirective) fieldTemplates!: QueryList<SparkFieldTemplateDirective>;
-
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
   validationErrors = input<ValidationError[]>([]);
   showButtons = input(false);
   isSaving = input(false);
-  externalFieldTemplates = input<SparkFieldTemplateDirective[]>([]);
 
   save = output<void>();
   cancel = output<void>();
@@ -153,31 +149,6 @@ export class SparkPoFormComponent {
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   });
-
-  getFieldTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkFieldTemplateContext> | null {
-    const allTemplates = [
-      ...(this.fieldTemplates?.toArray() || []),
-      ...this.externalFieldTemplates()
-    ];
-    // Priority 1: match by field name
-    const byName = allTemplates.find(t => t.name() === attr.name);
-    if (byName) return byName.template;
-    // Priority 2: match by data type
-    const byType = allTemplates.find(t => t.name() === attr.dataType);
-    if (byType) return byType.template;
-    return null;
-  }
-
-  getFieldTemplateContext(attr: EntityAttributeDefinition): SparkFieldTemplateContext {
-    const errorEntry = this.validationErrors().find(e => e.attributeName === attr.name);
-    return {
-      $implicit: attr,
-      formData: this.formData(),
-      value: this.formData()[attr.name],
-      hasError: this.hasError(attr.name),
-      errorMessage: errorEntry?.errorMessage || null
-    };
-  }
 
   constructor() {
     effect(() => {

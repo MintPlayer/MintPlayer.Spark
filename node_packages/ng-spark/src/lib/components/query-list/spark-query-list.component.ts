@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, output, QueryList, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -16,8 +16,9 @@ import { SparkService } from '../../services/spark.service';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
+import { NgComponentOutlet } from '@angular/common';
 import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
-import { SparkColumnTemplateDirective, SparkColumnTemplateContext } from '../../directives/spark-column-template.directive';
+import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
@@ -26,7 +27,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -35,8 +36,7 @@ export class SparkQueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-
-  @ContentChildren(SparkColumnTemplateDirective) columnTemplates!: QueryList<SparkColumnTemplateDirective>;
+  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
 
@@ -232,21 +232,17 @@ export class SparkQueryListComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  getColumnTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkColumnTemplateContext> | null {
-    if (!this.columnTemplates) return null;
-    const byName = this.columnTemplates.find(t => t.name() === attr.name);
-    if (byName) return byName.template;
-    const byType = this.columnTemplates.find(t => t.name() === attr.dataType);
-    if (byType) return byType.template;
-    return null;
+  getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
+    if (!attr.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === attr.renderer)?.columnComponent ?? null;
   }
 
-  getColumnTemplateContext(item: PersistentObject, attr: EntityAttributeDefinition): SparkColumnTemplateContext {
+  getColumnRendererInputs(item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
     return {
-      $implicit: item,
-      attr,
-      value: itemAttr?.value
+      value: itemAttr?.value,
+      attribute: attr,
+      options: attr.rendererOptions,
     };
   }
 

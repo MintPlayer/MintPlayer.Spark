@@ -27,6 +27,8 @@ public sealed class PersistentObjectAttribute
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
     public Guid? Group { get; set; }
+    public string? Renderer { get; set; }
+    public Dictionary<string, object>? RendererOptions { get; set; }
 
     public T? GetValue<T>()
     {

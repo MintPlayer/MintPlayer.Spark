@@ -395,8 +395,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
-                // Update existing attribute, preserving custom settings
-                existingAttr.DataType = dataType;
+                // Update existing attribute, preserving custom settings.
+                // Only overwrite DataType when it's a structural change (Reference, AsDetail)
+                // or the existing value matches an auto-resolved type.
+                // This preserves manually-set types like "color" or "guid".
+                if (dataType is "Reference" or "AsDetail" || existingAttr.DataType == GetDataType(property.PropertyType))
+                {
+                    existingAttr.DataType = dataType;
+                }
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
                 if (referenceAttr != null)
@@ -519,6 +525,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             _ when underlying == typeof(DateTime) || underlying == typeof(DateTimeOffset) => "datetime",
             _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
+            _ when underlying == typeof(System.Drawing.Color) => "color",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };

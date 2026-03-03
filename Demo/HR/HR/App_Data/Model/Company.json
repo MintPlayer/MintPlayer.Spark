@@ -8,6 +8,8 @@
   },
   "clrType": "HR.Entities.Company",
   "displayAttribute": "Name",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "a1784ded-7fec-468d-b181-2aa24b5d34b0",
@@ -92,7 +94,7 @@
         "fr": "Couleur de marque",
         "nl": "Merkkleur"
       },
-      "dataType": "color",
+      "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
@@ -109,7 +111,7 @@
         "fr": "Couleur d'accent",
         "nl": "Accentkleur"
       },
-      "dataType": "color",
+      "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,

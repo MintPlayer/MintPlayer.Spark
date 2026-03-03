@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Reflection;
 using System.Text.Json;
 using MintPlayer.SourceGenerators.Attributes;
@@ -83,6 +84,12 @@ internal partial class EntityMapper : IEntityMapper
                         value = value.ToString();
                     }
 
+                    // Convert Color to hex string for frontend compatibility
+                    if (propType == typeof(Color) && value is Color colorValue)
+                    {
+                        value = colorValue.IsEmpty ? null : $"#{colorValue.R:x2}{colorValue.G:x2}{colorValue.B:x2}";
+                    }
+
                     // For complex types (AsDetail), convert to dictionary for proper JSON serialization
                     if (attrDef.DataType == "AsDetail" && value != null)
                     {
@@ -116,6 +123,8 @@ internal partial class EntityMapper : IEntityMapper
                     ShowedOn = attrDef.ShowedOn,
                     Rules = attrDef.Rules ?? [],
                     Group = attrDef.Group,
+                    Renderer = attrDef.Renderer,
+                    RendererOptions = attrDef.RendererOptions,
                 };
 
                 // Handle reference attributes - resolve breadcrumb from included documents
@@ -218,6 +227,10 @@ internal partial class EntityMapper : IEntityMapper
             {
                 convertedValue = value is DateOnly d ? d : DateOnly.Parse(value.ToString()!);
             }
+            else if (targetType == typeof(Color))
+            {
+                convertedValue = ColorTranslator.FromHtml(value.ToString()!);
+            }
             else if (targetType.IsEnum)
             {
                 convertedValue = Enum.Parse(targetType, value.ToString()!);
@@ -264,6 +277,7 @@ internal partial class EntityMapper : IEntityMapper
             _ when underlying == typeof(DateTime) => "datetime",
             _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
+            _ when underlying == typeof(Color) => "color",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
