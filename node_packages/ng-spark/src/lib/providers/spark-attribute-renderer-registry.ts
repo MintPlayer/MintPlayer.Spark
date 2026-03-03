@@ -7,6 +7,8 @@ export interface SparkAttributeRendererRegistration {
   detailComponent: Type<any>;
   /** Component for query-list column cells. Must implement SparkAttributeColumnRenderer. */
   columnComponent: Type<any>;
+  /** Optional component for create/edit forms. Must implement SparkAttributeEditRenderer. When omitted, the default input is used. */
+  editComponent?: Type<any>;
 }
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(

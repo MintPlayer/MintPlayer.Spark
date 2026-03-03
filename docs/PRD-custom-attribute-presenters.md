@@ -24,24 +24,27 @@ These are used in the Fleet demo to render a color picker for `InteriorColor` in
 
 1. The **model JSON** (backend) declares *what* renderer an attribute should use -- independent of the PersistentObject, independent of the attribute name, independent of the DataType
 2. The **Angular app** registers renderer components **once globally** -- a single registration handles all attributes that reference that renderer name
-3. The underlying `dataType` is preserved for validation, serialization, and storage -- the renderer only affects **read-only display**
-4. **Create/edit pages render plain inputs** based on the underlying `dataType`, exactly as they do on master today. Custom renderers do NOT apply to create/edit views.
-5. Each renderer registration provides **two components**: one for the PO detail page, one for the query list column
+3. The underlying `dataType` is preserved for validation, serialization, and storage
+4. Each renderer registration provides **up to three components**:
+   - **detailComponent** (required): for the PO detail page
+   - **columnComponent** (required): for the query list column
+   - **editComponent** (optional): for the create/edit form -- when omitted, the default `<input>` based on `dataType` is used
 
 ## Scope
 
 ### In Scope
 - Backend: `renderer` and `rendererOptions` fields on attribute definitions
+- Backend: `System.Drawing.Color` support with automatic `dataType: "color"` detection
 - Angular: Global renderer registry with `provideSparkAttributeRenderers()`
-- Angular: Integration in `spark-po-detail` and `spark-query-list` only
+- Angular: Integration in `spark-po-detail`, `spark-query-list`, and `spark-po-form`
+- Angular: Optional `editComponent` for custom create/edit form rendering
 - Remove: All three existing template directives (`SparkFieldTemplateDirective`, `SparkDetailFieldTemplateDirective`, `SparkColumnTemplateDirective`)
 - Remove: All existing usages of those directives in demo apps (Fleet color picker templates)
 - Remove: `externalFieldTemplates` input and `@ContentChildren` for field templates in `spark-po-edit` and `spark-po-create`
-- Demo: Video player renderer in Fleet demo app
-- Demo: Color renderer replacing the existing custom color picker template
+- Demo: Video player renderer in Fleet demo app (detail + column only, plain `<input>` on edit)
+- Demo: Color swatch renderer for read-only views + color picker edit renderer using `<bs-color-picker>`
 
 ### Out of Scope
-- Custom renderers in create/edit views (create/edit always use plain inputs)
 - Dynamic/computed `rendererOptions`
 - C# `[Renderer]` attribute decorator (JSON model approach is sufficient)
 
@@ -65,7 +68,8 @@ These are used in the Fleet demo to render a color picker for `InteriorColor` in
 
 **Create/edit views (`spark-po-form`, `spark-po-create`, `spark-po-edit`):**
 ```
-No custom renderers. Always use built-in inputs based on dataType.
+1. Global attribute edit renderer (matched by attr.renderer, if editComponent is registered)
+2. Built-in inputs based on dataType (default)
 ```
 
 ### Data Flow
@@ -101,7 +105,8 @@ No custom renderers. Always use built-in inputs based on dataType.
 │    → renders VideoPlayerColumnComponent          │
 │                                                  │
 │  Create/Edit page:                               │
-│    → ignores renderer, renders <input type=text> │
+│    → if editComponent registered: renders it     │
+│    → otherwise: default <input> based on dataType│
 └──────────────────────────────────────────────────┘
 ```
 
@@ -188,38 +193,34 @@ rendererOptions?: Record<string, any>;
 
 **New file**: `node_packages/ng-spark/src/lib/interfaces/spark-attribute-renderer.ts`
 
-Both contracts are **read-only** (no `valueChange`):
+Three contracts -- detail and column are **read-only**, edit uses a **callback input** for value changes (since `NgComponentOutlet` doesn't support outputs):
 
 ```typescript
 import { InputSignal } from '@angular/core';
 import { EntityAttributeDefinition } from '../models/entity-type';
 
-/**
- * Contract for detail-page renderers (spark-po-detail).
- * Displays a single attribute value in the PO detail view.
- */
+/** Contract for detail-page renderers (spark-po-detail). */
 export interface SparkAttributeDetailRenderer {
-  /** The current attribute value */
   value: InputSignal<any>;
-  /** The attribute definition metadata */
-  attribute: InputSignal<EntityAttributeDefinition>;
-  /** Renderer-specific options from rendererOptions */
+  attribute: InputSignal<EntityAttributeDefinition | undefined>;
   options: InputSignal<Record<string, any> | undefined>;
-  /** The full form data (for cross-field dependencies) */
   formData: InputSignal<Record<string, any>>;
 }
 
-/**
- * Contract for query-list column renderers (spark-query-list).
- * Displays a compact cell value in the list/grid view.
- */
+/** Contract for query-list column renderers (spark-query-list). */
 export interface SparkAttributeColumnRenderer {
-  /** The current attribute value */
   value: InputSignal<any>;
-  /** The attribute definition metadata */
-  attribute: InputSignal<EntityAttributeDefinition>;
-  /** Renderer-specific options from rendererOptions */
+  attribute: InputSignal<EntityAttributeDefinition | undefined>;
   options: InputSignal<Record<string, any> | undefined>;
+}
+
+/** Contract for edit-form renderers (spark-po-form on create/edit pages). */
+export interface SparkAttributeEditRenderer {
+  value: InputSignal<any>;
+  attribute: InputSignal<EntityAttributeDefinition | undefined>;
+  options: InputSignal<Record<string, any> | undefined>;
+  /** Callback to notify parent form of value changes. */
+  valueChange: InputSignal<(value: any) => void>;
 }
 ```
 
@@ -237,6 +238,8 @@ export interface SparkAttributeRendererRegistration {
   detailComponent: Type<any>;
   /** Component for query-list column cells. Must implement SparkAttributeColumnRenderer. */
   columnComponent: Type<any>;
+  /** Optional component for create/edit forms. Must implement SparkAttributeEditRenderer. */
+  editComponent?: Type<any>;
 }
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(
@@ -251,7 +254,7 @@ export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRender
  * // app.config.ts
  * provideSparkAttributeRenderers([
  *   { name: 'video-player', detailComponent: VideoDetailComponent, columnComponent: VideoColumnComponent },
- *   { name: 'color-swatch', detailComponent: ColorDetailComponent, columnComponent: ColorColumnComponent },
+ *   { name: 'color-swatch', detailComponent: ColorDetailComponent, columnComponent: ColorColumnComponent, editComponent: ColorEditComponent },
  * ])
  */
 export function provideSparkAttributeRenderers(
@@ -369,16 +372,51 @@ export type { SparkColumnTemplateContext } from './lib/directives/spark-column-t
 **Add to `node_packages/ng-spark/src/public-api.ts`:**
 ```typescript
 // Attribute Renderers
-export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer } from './lib/interfaces/spark-attribute-renderer';
+export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer, SparkAttributeEditRenderer } from './lib/interfaces/spark-attribute-renderer';
 export type { SparkAttributeRendererRegistration } from './lib/providers/spark-attribute-renderer-registry';
 export { SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers } from './lib/providers/spark-attribute-renderer-registry';
 ```
 
-### 10. Dynamic Component Output Binding
+### 10. Angular: spark-po-form Integration (Edit Renderers)
 
-`NgComponentOutlet` supports `inputs` but not `outputs`. Since all renderers in this design are **read-only** (detail view and query list), there is no `valueChange` output to bind. This eliminates the output binding problem entirely.
+`NgComponentOutlet` supports `inputs` but not `outputs`. For edit renderers, the value change is communicated via a **callback function passed as an input**:
 
-If a future enhancement requires edit-mode renderers, option **(a)** (a thin wrapper component using `ViewContainerRef.createComponent()` for imperative output subscription) would be the approach.
+**`spark-po-form.component.ts`** changes:
+- Inject `SPARK_ATTRIBUTE_RENDERERS`
+- Add `NgComponentOutlet` to imports
+- Add `getEditRendererComponent(attr)` and `getEditRendererInputs(attr)` methods
+
+```typescript
+private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+
+getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
+  if (!attr.renderer) return null;
+  return this.rendererRegistry.find(r => r.name === attr.renderer)?.editComponent ?? null;
+}
+
+getEditRendererInputs(attr: EntityAttributeDefinition): Record<string, any> {
+  return {
+    value: this.formData()[attr.name],
+    attribute: attr,
+    options: attr.rendererOptions,
+    valueChange: (newValue: any) => {
+      this.formData()[attr.name] = newValue;
+      this.onFieldChange();
+    }
+  };
+}
+```
+
+**`spark-po-form.component.html`** -- in the `@else` branch (default input), check for edit renderer first:
+```html
+} @else if (getEditRendererComponent(attr); as editComp) {
+  <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(attr)"></ng-container>
+} @else {
+  <input [type]="attr.dataType | inputType" ...>
+}
+```
+
+**Key design decision:** The edit renderer receives a `valueChange` callback as an input signal, NOT an output. This is because `NgComponentOutlet` cannot bind to outputs. The component calls `valueChange()(newValue)` when the user changes the value.
 
 ## Demo: Example Renderers
 
@@ -435,6 +473,28 @@ export class VideoPlayerColumnRendererComponent implements SparkAttributeColumnR
 ```
 
 ### Color Swatch Renderer (replaces existing color picker template)
+
+**Edit component** -- shows `<bs-color-picker>` on create/edit forms:
+```typescript
+@Component({
+  selector: 'app-color-edit-renderer',
+  standalone: true,
+  imports: [BsColorPickerComponent],
+  template: `
+    <bs-color-picker
+      [ngModel]="value()"
+      (ngModelChange)="valueChange()?.($event)">
+    </bs-color-picker>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class ColorEditRendererComponent implements SparkAttributeEditRenderer {
+  value = input<any>();
+  attribute = input<EntityAttributeDefinition>();
+  options = input<Record<string, any>>();
+  valueChange = input<(value: any) => void>(() => {});
+}
+```
 
 **Detail component** -- shows color swatch + hex value:
 ```typescript
@@ -499,6 +559,7 @@ export const appConfig = {
         name: 'color-swatch',
         detailComponent: ColorDetailRendererComponent,
         columnComponent: ColorColumnRendererComponent,
+        editComponent: ColorEditRendererComponent,
       },
     ]),
   ]
@@ -531,12 +592,20 @@ export const appConfig = {
 ### Phase 4: Angular -- Integrate Renderer Registry
 1. Update `spark-po-detail` to inject `SPARK_ATTRIBUTE_RENDERERS` and use `NgComponentOutlet` for renderer lookup
 2. Update `spark-query-list` to inject `SPARK_ATTRIBUTE_RENDERERS` and use `NgComponentOutlet` for renderer lookup
-3. No changes to `spark-po-form` / `spark-po-create` / `spark-po-edit` rendering logic (they keep plain inputs)
+3. Update `spark-po-form` to inject `SPARK_ATTRIBUTE_RENDERERS` and use `NgComponentOutlet` for optional edit renderers (with `valueChange` callback input)
 
 ### Phase 5: Demo -- Renderer Components
-1. Create `ColorDetailRendererComponent` and `ColorColumnRendererComponent` in Fleet demo
-2. Create `VideoPlayerDetailRendererComponent` and `VideoPlayerColumnRendererComponent` in Fleet demo
+1. Create `ColorDetailRendererComponent`, `ColorColumnRendererComponent`, and `ColorEditRendererComponent` in Fleet demo
+2. Create `VideoPlayerDetailRendererComponent` and `VideoPlayerColumnRendererComponent` in Fleet demo (no edit component -- uses default `<input type="text">`)
 3. Install `@mintplayer/ng-video-player` + plugins in workspace
 4. Register all renderers via `provideSparkAttributeRenderers()` in Fleet app config
 5. Add `PromoVideoUrl` property to `Car` C# entity class
-6. Verify end-to-end rendering in detail page and query list
+6. Verify end-to-end: video player on detail, color picker on edit, color swatch on detail/list
+
+### Phase 6: Backend -- System.Drawing.Color Support
+1. Add `System.Drawing.Color` → `"color"` mapping in `GetDataType()` (ModelSynchronizer + EntityMapper)
+2. Create `ColorNewtonsoftJsonConverter` for RavenDB hex string serialization
+3. Register converter in `SparkMiddleware.cs` DocumentStore conventions
+4. Add Color ↔ hex string conversion in EntityMapper (`SetPropertyValue` + `ToPersistentObject`)
+5. Change `Car.Color` / `Car.InteriorColor` from `string?` to `Color?`
+6. Re-synchronize models -- `dataType: "color"` now auto-detected from C# type

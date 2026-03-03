@@ -57,7 +57,7 @@ export { IconNamePipe } from './lib/pipes/icon-name.pipe';
 export { ArrayValuePipe } from './lib/pipes/array-value.pipe';
 
 // Attribute Renderers
-export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer } from './lib/interfaces/spark-attribute-renderer';
+export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer, SparkAttributeEditRenderer } from './lib/interfaces/spark-attribute-renderer';
 export type { SparkAttributeRendererRegistration } from './lib/providers/spark-attribute-renderer-registry';
 export { SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers } from './lib/providers/spark-attribute-renderer-registry';
 

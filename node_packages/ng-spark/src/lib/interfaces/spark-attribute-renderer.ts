@@ -28,3 +28,18 @@ export interface SparkAttributeColumnRenderer {
   /** Renderer-specific options from rendererOptions */
   options: InputSignal<Record<string, any> | undefined>;
 }
+
+/**
+ * Contract for edit-form renderers (spark-po-form on create/edit pages).
+ * Replaces the default <input> for this attribute.
+ */
+export interface SparkAttributeEditRenderer {
+  /** The current attribute value */
+  value: InputSignal<any>;
+  /** The attribute definition metadata */
+  attribute: InputSignal<EntityAttributeDefinition | undefined>;
+  /** Renderer-specific options from rendererOptions */
+  options: InputSignal<Record<string, any> | undefined>;
+  /** Callback to notify parent form of value changes (since NgComponentOutlet doesn't support outputs) */
+  valueChange: InputSignal<(value: any) => void>;
+}
