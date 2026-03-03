@@ -64,8 +64,29 @@ MintPlayer.Spark/
 
 ## Documentation
 
-- **[Spark Library Documentation](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
-- **[Messaging Documentation](MintPlayer.Spark.Messaging/README.md)** - Durable message bus with RavenDB persistence, scoped recipients, and retry logic
+### Developer Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/guide-getting-started.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
+| [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
+| [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
+| [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
+| [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
+| [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
+| [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
+| [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
+| [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
+| [Authorization](docs/guide-authorization.md) | Optional security package, `security.json`, groups, permissions, XSRF |
+| [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
+| [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with scoped recipients and retry logic |
+| [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
+| [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
+
+### Reference
+
+- **[Spark Library API](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
+- **[Messaging API](MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
 
 ## Contributing
