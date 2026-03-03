@@ -221,6 +221,8 @@
                 <spark-icon name="pencil" />
               </button>
             </bs-input-group>
+          } @else if (getEditRendererComponent(attr); as editComp) {
+            <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(attr)"></ng-container>
           } @else {
             <input
               [type]="attr.dataType | inputType"

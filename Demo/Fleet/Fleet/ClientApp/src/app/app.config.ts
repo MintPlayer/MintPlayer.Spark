@@ -10,6 +10,7 @@ import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.
 import { ColorColumnRendererComponent } from './renderers/color-column-renderer.component';
 import { VideoPlayerDetailRendererComponent } from './renderers/video-player-detail-renderer.component';
 import { VideoPlayerColumnRendererComponent } from './renderers/video-player-column-renderer.component';
+import { ColorEditRendererComponent } from './renderers/color-edit-renderer.component';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -24,6 +25,7 @@ export const appConfig: ApplicationConfig = {
         name: 'color-swatch',
         detailComponent: ColorDetailRendererComponent,
         columnComponent: ColorColumnRendererComponent,
+        editComponent: ColorEditRendererComponent,
       },
       {
         name: 'video-player',

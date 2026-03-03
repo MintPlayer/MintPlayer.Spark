@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect } from '@angular/core';
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
+import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -37,16 +37,18 @@ import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
+  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
@@ -260,6 +262,25 @@ export class SparkPoFormComponent {
     this.editingLookupAttr.set(null);
     this.lookupModalItems.set([]);
     this.lookupSearchTerm.set('');
+  }
+
+  getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
+    if (!attr.renderer) return null;
+    const reg = this.rendererRegistry.find(r => r.name === attr.renderer);
+    return reg?.editComponent ?? null;
+  }
+
+  getEditRendererInputs(attr: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: this.formData()[attr.name],
+      attribute: attr,
+      options: attr.rendererOptions,
+      valueChange: (newValue: any) => {
+        const data = { ...this.formData() };
+        data[attr.name] = newValue;
+        this.formData.set(data);
+      },
+    };
   }
 
   hasError(attrName: string): boolean {
