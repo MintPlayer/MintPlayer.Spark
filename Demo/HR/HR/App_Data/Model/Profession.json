@@ -3,6 +3,8 @@
   "name": "Profession",
   "clrType": "HR.Entities.Profession",
   "displayAttribute": "Description",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "fc9b1e2a-4450-4411-9261-92a06109666d",

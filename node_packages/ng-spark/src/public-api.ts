@@ -56,13 +56,10 @@ export { ErrorForAttributePipe } from './lib/pipes/error-for-attribute.pipe';
 export { IconNamePipe } from './lib/pipes/icon-name.pipe';
 export { ArrayValuePipe } from './lib/pipes/array-value.pipe';
 
-// Directives
-export { SparkFieldTemplateDirective } from './lib/directives/spark-field-template.directive';
-export type { SparkFieldTemplateContext } from './lib/directives/spark-field-template.directive';
-export { SparkDetailFieldTemplateDirective } from './lib/directives/spark-detail-field-template.directive';
-export type { SparkDetailFieldTemplateContext } from './lib/directives/spark-detail-field-template.directive';
-export { SparkColumnTemplateDirective } from './lib/directives/spark-column-template.directive';
-export type { SparkColumnTemplateContext } from './lib/directives/spark-column-template.directive';
+// Attribute Renderers
+export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer, SparkAttributeEditRenderer } from './lib/interfaces/spark-attribute-renderer';
+export type { SparkAttributeRendererRegistration } from './lib/providers/spark-attribute-renderer-registry';
+export { SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers } from './lib/providers/spark-attribute-renderer-registry';
 
 // Routes
 export { sparkRoutes } from './lib/routes/spark-routes';

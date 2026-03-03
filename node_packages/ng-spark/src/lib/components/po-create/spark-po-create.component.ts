@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, output, QueryList, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -11,7 +11,6 @@ import { SparkService } from '../../services/spark.service';
 import { SparkPoFormComponent } from '../po-form/spark-po-form.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
-import { SparkFieldTemplateDirective } from '../../directives/spark-field-template.directive';
 import { EntityType } from '../../models/entity-type';
 import { PersistentObject } from '../../models/persistent-object';
 import { PersistentObjectAttribute } from '../../models/persistent-object-attribute';
@@ -28,8 +27,6 @@ export class SparkPoCreateComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-
-  @ContentChildren(SparkFieldTemplateDirective) fieldTemplates!: QueryList<SparkFieldTemplateDirective>;
 
   saved = output<PersistentObject>();
   cancelled = output<void>();

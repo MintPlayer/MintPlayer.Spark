@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, output, QueryList, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -22,8 +22,9 @@ import { AsDetailColumnsPipe } from '../../pipes/as-detail-columns.pipe';
 import { AsDetailCellValuePipe } from '../../pipes/as-detail-cell-value.pipe';
 import { ArrayValuePipe } from '../../pipes/array-value.pipe';
 import { ReferenceLinkRoutePipe } from '../../pipes/reference-link-route.pipe';
+import { NgComponentOutlet } from '@angular/common';
 import { SparkIconComponent } from '../icon/spark-icon.component';
-import { SparkDetailFieldTemplateDirective, SparkDetailFieldTemplateContext } from '../../directives/spark-detail-field-template.directive';
+import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 import { CustomActionDefinition } from '../../models/custom-action';
 import { EntityType, EntityAttributeDefinition, AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
@@ -32,7 +33,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
   templateUrl: './spark-po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -41,8 +42,7 @@ export class SparkPoDetailComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly lang = inject(SparkLanguageService);
-
-  @ContentChildren(SparkDetailFieldTemplateDirective) detailFieldTemplates!: QueryList<SparkDetailFieldTemplateDirective>;
+  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -140,21 +140,22 @@ export class SparkPoDetailComponent {
     return this.visibleAttributes().filter(a => a.group === group.id);
   }
 
-  getDetailFieldTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkDetailFieldTemplateContext> | null {
-    if (!this.detailFieldTemplates) return null;
-    const byName = this.detailFieldTemplates.find(t => t.name() === attr.name);
-    if (byName) return byName.template;
-    const byType = this.detailFieldTemplates.find(t => t.name() === attr.dataType);
-    if (byType) return byType.template;
-    return null;
+  getDetailRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
+    if (!attr.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
   }
 
-  getDetailFieldContext(attr: EntityAttributeDefinition, item: PersistentObject): SparkDetailFieldTemplateContext {
+  getDetailRendererInputs(attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
+    const formData: Record<string, any> = {};
+    for (const a of item.attributes) {
+      formData[a.name] = a.value;
+    }
     return {
-      $implicit: attr,
-      item,
-      value: itemAttr?.value
+      value: itemAttr?.value,
+      attribute: attr,
+      options: attr.rendererOptions,
+      formData,
     };
   }
 

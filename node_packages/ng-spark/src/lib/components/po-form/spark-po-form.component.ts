@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, ContentChildren, inject, input, model, output, QueryList, signal, effect, TemplateRef } from '@angular/core';
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
+import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -37,26 +37,24 @@ import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { SparkFieldTemplateDirective, SparkFieldTemplateContext } from '../../directives/spark-field-template.directive';
+import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
-
-  @ContentChildren(SparkFieldTemplateDirective) fieldTemplates!: QueryList<SparkFieldTemplateDirective>;
+  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
   validationErrors = input<ValidationError[]>([]);
   showButtons = input(false);
   isSaving = input(false);
-  externalFieldTemplates = input<SparkFieldTemplateDirective[]>([]);
 
   save = output<void>();
   cancel = output<void>();
@@ -153,31 +151,6 @@ export class SparkPoFormComponent {
       return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
     });
   });
-
-  getFieldTemplate(attr: EntityAttributeDefinition): TemplateRef<SparkFieldTemplateContext> | null {
-    const allTemplates = [
-      ...(this.fieldTemplates?.toArray() || []),
-      ...this.externalFieldTemplates()
-    ];
-    // Priority 1: match by field name
-    const byName = allTemplates.find(t => t.name() === attr.name);
-    if (byName) return byName.template;
-    // Priority 2: match by data type
-    const byType = allTemplates.find(t => t.name() === attr.dataType);
-    if (byType) return byType.template;
-    return null;
-  }
-
-  getFieldTemplateContext(attr: EntityAttributeDefinition): SparkFieldTemplateContext {
-    const errorEntry = this.validationErrors().find(e => e.attributeName === attr.name);
-    return {
-      $implicit: attr,
-      formData: this.formData(),
-      value: this.formData()[attr.name],
-      hasError: this.hasError(attr.name),
-      errorMessage: errorEntry?.errorMessage || null
-    };
-  }
 
   constructor() {
     effect(() => {
@@ -289,6 +262,25 @@ export class SparkPoFormComponent {
     this.editingLookupAttr.set(null);
     this.lookupModalItems.set([]);
     this.lookupSearchTerm.set('');
+  }
+
+  getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
+    if (!attr.renderer) return null;
+    const reg = this.rendererRegistry.find(r => r.name === attr.renderer);
+    return reg?.editComponent ?? null;
+  }
+
+  getEditRendererInputs(attr: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: this.formData()[attr.name],
+      attribute: attr,
+      options: attr.rendererOptions,
+      valueChange: (newValue: any) => {
+        const data = { ...this.formData() };
+        data[attr.name] = newValue;
+        this.formData.set(data);
+      },
+    };
   }
 
   hasError(attrName: string): boolean {

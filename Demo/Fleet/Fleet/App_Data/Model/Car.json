@@ -1,27 +1,42 @@
 {
   "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
   "name": "Car",
-  "description": {"en": "Car", "fr": "Voiture", "nl": "Auto"},
+  "description": {
+    "en": "Car",
+    "fr": "Voiture",
+    "nl": "Auto"
+  },
   "clrType": "Fleet.Entities.Car",
   "queryType": "Fleet.Indexes.VCar",
   "indexName": "Cars_Overview",
   "displayAttribute": "LicensePlate",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "cb321818-3574-44ee-9488-2b2567b56605",
       "name": "LicensePlate",
-      "label": {"en": "License Plate", "fr": "Plaque d'immatriculation", "nl": "Nummerplaat"},
+      "label": {
+        "en": "License Plate",
+        "fr": "Plaque d'immatriculation",
+        "nl": "Nummerplaat"
+      },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 1,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "minLength",
           "value": 2,
-          "message": {"en": "License Plate must be at least 2 characters.", "fr": "La plaque d'immatriculation doit contenir au moins 2 caract\u00e8res.", "nl": "Nummerplaat moet minstens 2 tekens bevatten."}
+          "message": {
+            "en": "License Plate must be at least 2 characters.",
+            "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
+            "nl": "Nummerplaat moet minstens 2 tekens bevatten."
+          }
         },
         {
           "type": "maxLength",
@@ -30,25 +45,38 @@
         {
           "type": "regex",
           "value": "^[A-Z0-9 -]+$",
-          "message": {"en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.", "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.", "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."}
+          "message": {
+            "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
+            "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
+            "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
+          }
         }
       ]
     },
     {
       "id": "260f5024-5dff-4b2d-b233-9933d16dc4a7",
       "name": "Model",
-      "label": {"en": "Model", "fr": "Mod\u00e8le", "nl": "Model"},
+      "label": {
+        "en": "Model",
+        "fr": "Modèle",
+        "nl": "Model"
+      },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 2,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
           "type": "minLength",
           "value": 2,
-          "message": {"en": "Model must be at least 2 characters.", "fr": "Le mod\u00e8le doit contenir au moins 2 caract\u00e8res.", "nl": "Model moet minstens 2 tekens bevatten."}
+          "message": {
+            "en": "Model must be at least 2 characters.",
+            "fr": "Le modèle doit contenir au moins 2 caractères.",
+            "nl": "Model moet minstens 2 tekens bevatten."
+          }
         },
         {
           "type": "maxLength",
@@ -59,12 +87,17 @@
     {
       "id": "ee84192a-dd42-4224-9bbb-9a4328083ef0",
       "name": "Year",
-      "label": {"en": "Year", "fr": "Ann\u00e9e", "nl": "Jaar"},
+      "label": {
+        "en": "Year",
+        "fr": "Année",
+        "nl": "Jaar"
+      },
       "dataType": "number",
       "isRequired": true,
       "isVisible": true,
       "isReadOnly": false,
       "order": 3,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
       "rules": [
         {
@@ -77,36 +110,77 @@
     {
       "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
       "name": "Color",
-      "label": {"en": "Color", "fr": "Couleur", "nl": "Kleur"},
+      "label": {
+        "en": "Color",
+        "fr": "Couleur",
+        "nl": "Kleur"
+      },
       "dataType": "color",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 4,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [],
+      "renderer": "color-swatch"
     },
     {
       "id": "a3c1e8f7-5b42-4d19-9e6a-1f8d3c7b2a05",
       "name": "InteriorColor",
-      "label": {"en": "Interior Color", "fr": "Couleur intérieure", "nl": "Interieurkleur"},
+      "label": {
+        "en": "Interior Color",
+        "fr": "Couleur intérieure",
+        "nl": "Interieurkleur"
+      },
       "dataType": "color",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 5,
+      "isArray": false,
       "showedOn": "Query, PersistentObject",
-      "rules": []
+      "rules": [],
+      "renderer": "color-swatch"
+    },
+    {
+      "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+      "name": "PromoVideoUrl",
+      "label": {
+        "en": "Promo Video",
+        "fr": "Vidéo promotionnelle",
+        "nl": "Promotievideo"
+      },
+      "dataType": "string",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": false,
+      "order": 8,
+      "isArray": false,
+      "inQueryType": false,
+      "showedOn": "Query, PersistentObject",
+      "rules": [],
+      "renderer": "video-player",
+      "rendererOptions": {
+        "width": 480,
+        "height": 270,
+        "autoplay": true
+      }
     },
     {
       "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
       "name": "Status",
-      "label": {"en": "Status", "fr": "Statut", "nl": "Status"},
+      "label": {
+        "en": "Status",
+        "fr": "Statut",
+        "nl": "Status"
+      },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 6,
+      "isArray": false,
       "lookupReferenceType": "CarStatus",
       "showedOn": "Query, PersistentObject",
       "rules": []
@@ -114,12 +188,17 @@
     {
       "id": "50b7dffd-aff1-4568-b4b0-4dfa7048ff31",
       "name": "Brand",
-      "label": {"en": "Brand", "fr": "Marque", "nl": "Merk"},
+      "label": {
+        "en": "Brand",
+        "fr": "Marque",
+        "nl": "Merk"
+      },
       "dataType": "string",
       "isRequired": false,
       "isVisible": true,
       "isReadOnly": false,
       "order": 7,
+      "isArray": false,
       "lookupReferenceType": "CarBrand",
       "showedOn": "Query, PersistentObject",
       "rules": []

@@ -8,6 +8,8 @@
   },
   "clrType": "HR.Entities.AddressDescription",
   "displayAttribute": "Title",
+  "tabs": [],
+  "groups": [],
   "attributes": [
     {
       "id": "1eaf31a0-7e8a-416c-b1aa-6e980ac3c0d7",

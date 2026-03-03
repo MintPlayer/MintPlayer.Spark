@@ -49,9 +49,7 @@
           }
         </label>
         <div [md]="8">
-          @if (getFieldTemplate(attr); as customTpl) {
-            <ng-container *ngTemplateOutlet="customTpl; context: getFieldTemplateContext(attr)"></ng-container>
-          } @else if (attr.dataType === 'boolean') {
+          @if (attr.dataType === 'boolean') {
             <bs-toggle-button
               [ngModel]="formData()[attr.name]"
               (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">
@@ -223,6 +221,8 @@
                 <spark-icon name="pencil" />
               </button>
             </bs-input-group>
+          } @else if (getEditRendererComponent(attr); as editComp) {
+            <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(attr)"></ng-container>
           } @else {
             <input
               [type]="attr.dataType | inputType"

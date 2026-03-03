@@ -24,4 +24,8 @@ export interface PersistentObjectAttribute {
   isValueChanged?: boolean;
   rules: ValidationRule[];
   group?: string;
+  /** Renderer component name for custom display in detail/list views */
+  renderer?: string;
+  /** Options passed to the renderer component */
+  rendererOptions?: Record<string, any>;
 }

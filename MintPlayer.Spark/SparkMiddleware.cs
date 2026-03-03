@@ -7,6 +7,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Converters;
 using MintPlayer.Spark.Endpoints.Actions;
 using MintPlayer.Spark.Endpoints.Aliases;
 using MintPlayer.Spark.Endpoints.Culture;
@@ -21,6 +22,7 @@ using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Session;
+using Raven.Client.Json.Serialization.NewtonsoftJson;
 using Raven.Client.ServerWide.Operations;
 
 namespace MintPlayer.Spark;
@@ -54,6 +56,15 @@ public static class SparkExtensions
                 {
                     var collectionName = store.Conventions.GetCollectionName(entity.GetType());
                     return Task.FromResult($"{collectionName}/{Guid.NewGuid()}");
+                };
+
+                // Register custom JSON converters for RavenDB document serialization
+                store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
+                {
+                    CustomizeJsonSerializer = serializer =>
+                    {
+                        serializer.Converters.Add(new ColorNewtonsoftJsonConverter());
+                    }
                 };
 
                 store.Initialize();

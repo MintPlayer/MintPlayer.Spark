@@ -99,6 +99,17 @@ public sealed class EntityAttributeDefinition
     /// Defaults to 1 when not specified.
     /// </summary>
     public int? ColumnSpan { get; set; }
+    /// <summary>
+    /// Optional renderer name that tells the frontend which custom component to use
+    /// for read-only display (detail page and query list).
+    /// Example: "video-player", "color-swatch", "markdown"
+    /// </summary>
+    public string? Renderer { get; set; }
+    /// <summary>
+    /// Optional configuration for the renderer (passed as-is to the frontend component).
+    /// Example: { "width": 480, "height": 270, "autoplay": false }
+    /// </summary>
+    public Dictionary<string, object>? RendererOptions { get; set; }
 }
 
 public sealed class AttributeTab
