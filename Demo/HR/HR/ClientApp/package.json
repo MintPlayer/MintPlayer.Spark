@@ -22,6 +22,6 @@
   },
   "private": true,
   "dependencies": {
-    "@mintplayer/ng-spark-auth": "^0.0.3"
+    "@mintplayer/ng-spark-auth": "^0.0.5"
   }
 }
