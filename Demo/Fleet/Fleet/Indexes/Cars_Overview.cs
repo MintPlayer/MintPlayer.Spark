@@ -18,6 +18,7 @@ public class Cars_Overview : AbstractIndexCreationTask<Car>
                           Year = car.Year,
                           Color = car.Color,
                           InteriorColor = car.InteriorColor,
+                          PromoVideoUrl = car.PromoVideoUrl,
                           Status = car.Status,
                           Brand = car.Brand,
                       };
@@ -35,6 +36,7 @@ public class VCar
     public int Year { get; set; }
     public Color? Color { get; set; }
     public Color? InteriorColor { get; set; }
+    public string? PromoVideoUrl { get; set; }
     public string? Status { get; set; }
     public string? Brand { get; set; }
 }

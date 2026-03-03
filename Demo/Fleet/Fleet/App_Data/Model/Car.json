@@ -158,13 +158,13 @@
       "order": 8,
       "isArray": false,
       "inQueryType": false,
-      "showedOn": "PersistentObject",
+      "showedOn": "Query, PersistentObject",
       "rules": [],
       "renderer": "video-player",
       "rendererOptions": {
         "width": 480,
         "height": 270,
-        "autoplay": false
+        "autoplay": true
       }
     },
     {
