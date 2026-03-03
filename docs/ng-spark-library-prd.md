@@ -28,6 +28,7 @@ Extract all shared, generic Spark UI code into a new `@mintplayer/ng-spark` Angu
 | **Components** (3) | `PoFormComponent`, `RetryActionModalComponent`, `IconComponent` + `IconRegistry` | Identical / Trivially different |
 | **Pipes** (22) | `translate-key`, `resolve-translation`, `input-type`, `attribute-value`, `raw-attribute-value`, `reference-display-value`, `reference-attr-value`, `reference-link-route`, `router-link`, `as-detail-type`, `as-detail-columns`, `as-detail-cell-value`, `as-detail-display-value`, `can-create-detail-row`, `can-delete-detail-row`, `lookup-display-type`, `lookup-display-value`, `lookup-options`, `inline-ref-options`, `error-for-attribute`, `icon-name`, `array-value` | Identical / Trivially different |
 | **Provider function** | `provideSpark()` - one-liner to configure the library | New |
+| **Attribute renderers** | `SparkAttributeDetailRenderer`, `SparkAttributeColumnRenderer`, `SparkAttributeEditRenderer` interfaces + `SPARK_ATTRIBUTE_RENDERERS` token + `provideSparkAttributeRenderers()` | New |
 | **Route factory** | `sparkRoutes()` - preconfigured lazy-loaded CRUD routes | New |
 
 ### 3.2 Out of Scope (remain app-specific)
@@ -219,8 +220,11 @@ node_packages/ng-spark/
         error-for-attribute.pipe.ts
         icon-name.pipe.ts
         array-value.pipe.ts
+      interfaces/
+        spark-attribute-renderer.ts
       providers/
         provide-spark.ts
+        spark-attribute-renderer-registry.ts
       models/
         spark-config.ts
 ```
@@ -278,6 +282,11 @@ export { InlineRefOptionsPipe } from './lib/pipes/inline-ref-options.pipe';
 export { ErrorForAttributePipe } from './lib/pipes/error-for-attribute.pipe';
 export { IconNamePipe } from './lib/pipes/icon-name.pipe';
 export { ArrayValuePipe } from './lib/pipes/array-value.pipe';
+
+// Attribute Renderers
+export type { SparkAttributeDetailRenderer, SparkAttributeColumnRenderer, SparkAttributeEditRenderer } from './lib/interfaces/spark-attribute-renderer';
+export type { SparkAttributeRendererRegistration } from './lib/providers/spark-attribute-renderer-registry';
+export { SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers } from './lib/providers/spark-attribute-renderer-registry';
 
 // Providers
 export { provideSpark } from './lib/providers/provide-spark';
