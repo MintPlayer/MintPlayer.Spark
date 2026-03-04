@@ -1,0 +1,10 @@
+{
+  "id": "a20e8400-e29b-41d4-a716-446655440010",
+  "name": "Cars_ByStatus",
+  "description": {"en": "Cars by Status", "fr": "Voitures par statut", "nl": "Auto's per status"},
+  "source": "Custom.Cars_ByStatus",
+  "entityType": "Car",
+  "sortBy": "LicensePlate",
+  "sortDirection": "asc",
+  "alias": "cars-by-status"
+}

@@ -3,6 +3,8 @@ using Fleet.LookupReferences;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Queries;
+using Raven.Client.Documents.Linq;
 
 namespace Fleet.Actions;
 
@@ -51,5 +53,17 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
             return;
 
         await base.OnBeforeDeleteAsync(entity);
+    }
+
+    /// <summary>
+    /// Custom query: returns cars filtered by status.
+    /// Source: "Custom.Cars_ByStatus"
+    /// </summary>
+    public IRavenQueryable<Car> Cars_ByStatus(CustomQueryArgs args)
+    {
+        args.EnsureParent("Car");
+        var status = args.Parent!.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status))?.Value as string;
+        return args.Session.Query<Car>()
+            .Where(c => c.Status == status);
     }
 }
