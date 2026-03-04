@@ -15,6 +15,11 @@ public sealed class CustomQueryArgs
     public PersistentObject? Parent { get; set; }
 
     /// <summary>
+    /// The entity type name of the parent (e.g., "Company").
+    /// </summary>
+    public string? ParentType { get; set; }
+
+    /// <summary>
     /// The SparkQuery being executed (for conditional behavior based on query metadata).
     /// </summary>
     public required SparkQuery Query { get; set; }
@@ -33,9 +38,9 @@ public sealed class CustomQueryArgs
         if (Parent is null)
             throw new InvalidOperationException(
                 $"Custom query '{Query.Name}' requires a parent object.");
-        if (!string.Equals(Parent.Name, expectedTypeName, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(ParentType, expectedTypeName, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
-                $"Custom query '{Query.Name}' expects parent of type '{expectedTypeName}', got '{Parent.Name}'.");
+                $"Custom query '{Query.Name}' expects parent of type '{expectedTypeName}', got '{ParentType}'.");
     }
 
     /// <summary>
@@ -46,8 +51,8 @@ public sealed class CustomQueryArgs
         if (Parent is null)
             throw new InvalidOperationException(
                 $"Custom query '{Query.Name}' requires a parent object.");
-        if (!expectedTypeNames.Any(t => string.Equals(Parent.Name, t, StringComparison.OrdinalIgnoreCase)))
+        if (!expectedTypeNames.Any(t => string.Equals(ParentType, t, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException(
-                $"Custom query '{Query.Name}' expects parent of type [{string.Join(", ", expectedTypeNames)}], got '{Parent.Name}'.");
+                $"Custom query '{Query.Name}' expects parent of type [{string.Join(", ", expectedTypeNames)}], got '{ParentType}'.");
     }
 }

@@ -177,9 +177,13 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Build args and invoke
+        var parentTypeName = parent != null
+            ? modelLoader.GetEntityType(parent.ObjectTypeId)?.Name
+            : null;
         var args = new CustomQueryArgs
         {
             Parent = parent,
+            ParentType = parentTypeName,
             Query = query,
             Session = session,
         };
