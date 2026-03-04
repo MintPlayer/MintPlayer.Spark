@@ -21,7 +21,7 @@ public sealed partial class GetProgramUnits
     {
         var config = programUnitsLoader.GetProgramUnits();
 
-        // Build a ContextProperty → ClrType lookup from the SparkContext (pure reflection, no DB queries)
+        // Build a Database property name → entity type name lookup from the SparkContext
         var contextPropertyMap = BuildContextPropertyMap();
 
         var filteredGroups = new List<ProgramUnitGroup>();
@@ -105,7 +105,27 @@ public sealed partial class GetProgramUnits
             var query = queryLoader.GetQuery(unit.QueryId.Value);
             if (query is null) return null;
 
-            return contextPropertyMap.TryGetValue(query.ContextProperty, out var clrType) ? clrType : null;
+            // Extract the property name from the Source field
+            var source = query.Source;
+            string? propertyName = null;
+            if (source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            {
+                propertyName = source[9..];
+            }
+            else if (source.StartsWith("Custom.", StringComparison.OrdinalIgnoreCase))
+            {
+                // For custom queries, use EntityType directly if available
+                if (!string.IsNullOrEmpty(query.EntityType))
+                    return query.EntityType;
+                return null;
+            }
+
+            if (propertyName != null)
+            {
+                return contextPropertyMap.TryGetValue(propertyName, out var clrType) ? clrType : null;
+            }
+
+            return null;
         }
 
         return null;
