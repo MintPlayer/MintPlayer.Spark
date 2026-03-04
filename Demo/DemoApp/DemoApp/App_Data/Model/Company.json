@@ -10,6 +10,7 @@
   "queryType": "DemoApp.Data.VCompany",
   "indexName": "Companies_Overview",
   "displayAttribute": "Name",
+  "queries": ["company-people"],
   "tabs": [],
   "groups": [],
   "attributes": [

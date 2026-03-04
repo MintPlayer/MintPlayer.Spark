@@ -28,6 +28,7 @@ export { SparkPoCreateComponent } from './lib/components/po-create/spark-po-crea
 export { SparkPoEditComponent } from './lib/components/po-edit/spark-po-edit.component';
 export { SparkPoDetailComponent } from './lib/components/po-detail/spark-po-detail.component';
 export { SparkQueryListComponent } from './lib/components/query-list/spark-query-list.component';
+export { SparkSubQueryComponent } from './lib/components/sub-query/spark-sub-query.component';
 export { SparkRetryActionModalComponent } from './lib/components/retry-action-modal/spark-retry-action-modal.component';
 export { SparkIconComponent } from './lib/components/icon/spark-icon.component';
 export { SparkIconRegistry } from './lib/components/icon/spark-icon-registry';
