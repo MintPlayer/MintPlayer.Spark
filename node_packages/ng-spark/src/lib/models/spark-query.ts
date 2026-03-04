@@ -4,7 +4,7 @@ export interface SparkQuery {
   id: string;
   name: string;
   description?: TranslatedString;
-  contextProperty: string;
+  source: string;
   alias?: string;
   sortBy?: string;
   sortDirection: string;
@@ -12,4 +12,6 @@ export interface SparkQuery {
   indexName?: string;
   /** When true, uses the projection type from [QueryType] attribute */
   useProjection?: boolean;
+  /** Optional entity type name (e.g., "Person"). When set, used for entity type resolution. */
+  entityType?: string;
 }
