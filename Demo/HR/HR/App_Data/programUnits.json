@@ -41,15 +41,6 @@
           "queryId": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",
           "alias": "professions",
           "order": 4
-        },
-        {
-          "id": "b10e8400-e29b-41d4-a716-446655440005",
-          "name": { "en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf" },
-          "icon": "bi-person-lines-fill",
-          "type": "query",
-          "queryId": "b20e8400-e29b-41d4-a716-446655440010",
-          "alias": "company-people",
-          "order": 5
         }
       ]
     }

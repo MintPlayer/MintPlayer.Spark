@@ -56,14 +56,12 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     }
 
     /// <summary>
-    /// Custom query: returns cars filtered by status.
-    /// Source: "Custom.Cars_ByStatus"
+    /// Custom query: returns cars reported as stolen.
+    /// Source: "Custom.Stolen_Cars"
     /// </summary>
-    public IRavenQueryable<Car> Cars_ByStatus(CustomQueryArgs args)
+    public IRavenQueryable<Car> Stolen_Cars(CustomQueryArgs args)
     {
-        args.EnsureParent("Car");
-        var status = args.Parent!.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status))?.Value as string;
         return args.Session.Query<Car>()
-            .Where(c => c.Status == status);
+            .Where(c => c.Status == CarStatus.Stolen);
     }
 }

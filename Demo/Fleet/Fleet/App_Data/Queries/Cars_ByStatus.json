@@ -1,10 +1,10 @@
 {
   "id": "a20e8400-e29b-41d4-a716-446655440010",
-  "name": "Cars_ByStatus",
-  "description": {"en": "Cars by Status", "fr": "Voitures par statut", "nl": "Auto's per status"},
-  "source": "Custom.Cars_ByStatus",
+  "name": "Stolen_Cars",
+  "description": {"en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's"},
+  "source": "Custom.Stolen_Cars",
   "entityType": "Car",
   "sortBy": "LicensePlate",
   "sortDirection": "asc",
-  "alias": "cars-by-status"
+  "alias": "stolen-cars"
 }

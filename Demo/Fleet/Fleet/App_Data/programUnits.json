@@ -35,11 +35,11 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440004",
-          "name": {"en": "Cars by Status", "fr": "Voitures par statut", "nl": "Auto's per status"},
-          "icon": "bi-funnel",
+          "name": {"en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's"},
+          "icon": "bi-exclamation-triangle",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440010",
-          "alias": "cars-by-status",
+          "alias": "stolen-cars",
           "order": 4
         }
       ]

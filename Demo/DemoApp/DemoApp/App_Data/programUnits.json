@@ -32,15 +32,6 @@
           "queryId": "bc696815-2abb-4e7c-98a1-ac86b4352105",
           "alias": "cars",
           "order": 3
-        },
-        {
-          "id": "990e8400-e29b-41d4-a716-446655440004",
-          "name": {"en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf"},
-          "icon": "bi-person-lines-fill",
-          "type": "query",
-          "queryId": "d40f9500-f39c-52e5-b827-557766551002",
-          "alias": "company-people",
-          "order": 4
         }
       ]
     }
