@@ -32,6 +32,15 @@
           "queryId": "a20e8400-e29b-41d4-a716-446655440003",
           "alias": "companies",
           "order": 3
+        },
+        {
+          "id": "a10e8400-e29b-41d4-a716-446655440004",
+          "name": {"en": "Cars by Status", "fr": "Voitures par statut", "nl": "Auto's per status"},
+          "icon": "bi-funnel",
+          "type": "query",
+          "queryId": "a20e8400-e29b-41d4-a716-446655440010",
+          "alias": "cars-by-status",
+          "order": 4
         }
       ]
     }
