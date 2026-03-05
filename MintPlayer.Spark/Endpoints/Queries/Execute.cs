@@ -76,6 +76,7 @@ public sealed partial class ExecuteQuery
                 IndexName = query.IndexName,
                 UseProjection = query.UseProjection,
                 EntityType = query.EntityType,
+                IsStreamingQuery = query.IsStreamingQuery,
             };
 
             var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search);

@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -14,6 +15,8 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
+import { SparkStreamingService } from '../../services/spark-streaming.service';
+import { StreamingMessage } from '../../models/streaming-message';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
@@ -40,7 +43,9 @@ export class SparkQueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly streamingService = inject(SparkStreamingService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly destroyRef = inject(DestroyRef);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
 
@@ -57,6 +62,9 @@ export class SparkQueryListComponent {
   searchTerm: string = '';
   canRead = signal(false);
   canCreate = signal(false);
+  isStreaming = signal(false);
+  private streamingSub: Subscription | null = null;
+  private allItems = signal<PersistentObject[]>([]);
   settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -69,6 +77,7 @@ export class SparkQueryListComponent {
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+    this.destroyRef.onDestroy(() => this.disconnectStreaming());
   }
 
   private async onParamsChange(params: any): Promise<void> {
@@ -205,6 +214,16 @@ export class SparkQueryListComponent {
   async loadItems(): Promise<void> {
     const currentQuery = this.query();
     if (!currentQuery) return;
+
+    // Streaming queries use WebSocket instead of HTTP
+    if (currentQuery.isStreamingQuery) {
+      this.connectStreaming(currentQuery.id);
+      return;
+    }
+
+    // Non-streaming: disconnect any previous streaming connection
+    this.disconnectStreaming();
+
     try {
       const s = this.settings();
       const result = await this.sparkService.executeQuery(currentQuery.id, {
@@ -231,6 +250,12 @@ export class SparkQueryListComponent {
   }
 
   onSettingsChange(): void {
+    // For streaming queries, sort/filter is client-side only
+    if (this.isStreaming()) {
+      this.applyFilter();
+      return;
+    }
+
     if (this.query()?.renderMode === 'VirtualScrolling') {
       this.virtualDataSource()?.reset();
       this.initVirtualDataSource();
@@ -240,6 +265,11 @@ export class SparkQueryListComponent {
   }
 
   onSearchChange(): void {
+    if (this.isStreaming()) {
+      this.applyFilter();
+      return;
+    }
+
     if (this.query()?.renderMode === 'VirtualScrolling') {
       this.virtualDataSource()?.reset();
       this.initVirtualDataSource();
@@ -296,5 +326,100 @@ export class SparkQueryListComponent {
     if (et) {
       this.router.navigate(['/po', et.alias || et.id, 'new']);
     }
+  }
+
+  private connectStreaming(queryId: string): void {
+    this.disconnectStreaming();
+    this.isStreaming.set(true);
+
+    this.streamingSub = this.streamingService.connectToStreamingQuery(queryId).subscribe({
+      next: (message) => this.handleStreamingMessage(message),
+      error: (err) => {
+        this.errorMessage.set(err?.message || 'Streaming connection failed');
+        this.isStreaming.set(false);
+      },
+      complete: () => {
+        this.isStreaming.set(false);
+      }
+    });
+  }
+
+  private disconnectStreaming(): void {
+    if (this.streamingSub) {
+      this.streamingSub.unsubscribe();
+      this.streamingSub = null;
+    }
+    this.isStreaming.set(false);
+  }
+
+  private handleStreamingMessage(message: StreamingMessage): void {
+    switch (message.type) {
+      case 'snapshot':
+        this.errorMessage.set(null);
+        this.allItems.set(message.data);
+        this.applyFilter();
+        break;
+
+      case 'patch':
+        if (message.updated.length > 0) {
+          const currentItems = this.allItems();
+          const updatedItems = currentItems.map(item => {
+            const patch = message.updated.find(u => u.id === item.id);
+            if (!patch) return item;
+
+            // Clone the item and update only changed attribute values
+            const updatedAttributes = item.attributes.map(attr => {
+              if (attr.name in patch.attributes) {
+                return { ...attr, value: patch.attributes[attr.name] };
+              }
+              return attr;
+            });
+
+            return { ...item, attributes: updatedAttributes };
+          });
+
+          this.allItems.set(updatedItems);
+          this.applyFilter();
+        }
+        break;
+
+      case 'error':
+        this.errorMessage.set(message.message);
+        break;
+    }
+  }
+
+  private applyFilter(): void {
+    let items = this.allItems();
+
+    // Apply search filter
+    if (this.searchTerm) {
+      const term = this.searchTerm.toLowerCase();
+      items = items.filter(item =>
+        item.attributes.some(a => String(a.value ?? '').toLowerCase().includes(term))
+      );
+    }
+
+    // Apply sorting from settings
+    const sortCols = this.settings().sortColumns;
+    if (sortCols.length > 0) {
+      items = [...items].sort((a, b) => {
+        for (const col of sortCols) {
+          const aVal = a.attributes.find(attr => attr.name === col.property)?.value ?? '';
+          const bVal = b.attributes.find(attr => attr.name === col.property)?.value ?? '';
+          const cmp = String(aVal).localeCompare(String(bVal));
+          if (cmp !== 0) return col.direction === 'descending' ? -cmp : cmp;
+        }
+        return 0;
+      });
+    }
+
+    this.paginationData.set({
+      data: items,
+      totalRecords: items.length,
+      totalPages: 1,
+      perPage: items.length,
+      page: 1
+    });
   }
 }

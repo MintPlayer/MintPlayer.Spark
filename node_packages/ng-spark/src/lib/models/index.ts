@@ -13,3 +13,4 @@ export * from './retry-action';
 export * from './entity-permissions';
 export * from './custom-action';
 export * from './spark-config';
+export * from './streaming-message';

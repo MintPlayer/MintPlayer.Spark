@@ -1,0 +1,100 @@
+{
+  "id": "770e8400-e29b-41d4-a716-446655440000",
+  "name": "Stock",
+  "description": {
+    "en": "Stock",
+    "fr": "Action",
+    "nl": "Aandeel"
+  },
+  "clrType": "DemoApp.Library.Entities.Stock",
+  "displayAttribute": "Symbol",
+  "tabs": [],
+  "groups": [],
+  "attributes": [
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440001",
+      "name": "Symbol",
+      "label": {
+        "en": "Symbol",
+        "fr": "Symbole",
+        "nl": "Symbool"
+      },
+      "dataType": "string",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": true,
+      "order": 1,
+      "isArray": false,
+      "showedOn": "Query",
+      "rules": []
+    },
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440002",
+      "name": "CompanyName",
+      "label": {
+        "en": "Company",
+        "fr": "Entreprise",
+        "nl": "Bedrijf"
+      },
+      "dataType": "string",
+      "isRequired": true,
+      "isVisible": true,
+      "isReadOnly": true,
+      "order": 2,
+      "isArray": false,
+      "showedOn": "Query",
+      "rules": []
+    },
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440003",
+      "name": "CurrentPrice",
+      "label": {
+        "en": "Price",
+        "fr": "Prix",
+        "nl": "Prijs"
+      },
+      "dataType": "number",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": true,
+      "order": 3,
+      "isArray": false,
+      "showedOn": "Query",
+      "rules": []
+    },
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440004",
+      "name": "Change",
+      "label": {
+        "en": "Change",
+        "fr": "Variation",
+        "nl": "Wijziging"
+      },
+      "dataType": "number",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": true,
+      "order": 4,
+      "isArray": false,
+      "showedOn": "Query",
+      "rules": []
+    },
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440005",
+      "name": "ChangePercent",
+      "label": {
+        "en": "Change %",
+        "fr": "Variation %",
+        "nl": "Wijziging %"
+      },
+      "dataType": "number",
+      "isRequired": false,
+      "isVisible": true,
+      "isReadOnly": true,
+      "order": 5,
+      "isArray": false,
+      "showedOn": "Query",
+      "rules": []
+    }
+  ]
+}
