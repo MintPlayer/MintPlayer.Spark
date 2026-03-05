@@ -1,8 +1,12 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, type Signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 type TranslatedString = Record<string, string>;
+
+/** Read the global language signal set by @mintplayer/ng-spark */
+const currentLanguage: Signal<string> =
+  (globalThis as any).__sparkCurrentLanguage ?? signal('en');
 
 @Injectable({ providedIn: 'root' })
 export class SparkAuthTranslationService {
@@ -25,7 +29,7 @@ export class SparkAuthTranslationService {
   t(key: string): string {
     const ts = this.translationsMap()[key];
     if (!ts) return key;
-    const lang = localStorage.getItem('spark-lang') ?? navigator.language?.split('-')[0] ?? 'en';
+    const lang = currentLanguage();
     return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? key;
   }
 }
