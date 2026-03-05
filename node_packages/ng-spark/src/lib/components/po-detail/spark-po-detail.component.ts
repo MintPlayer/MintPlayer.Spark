@@ -74,16 +74,17 @@ export class SparkPoDetailComponent {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
   }
 
+  ngOnInit(): void {
+    if (isPlatformServer(this.platformId) && this.serverData?.['persistentObject']) {
+      this.item.set(this.serverData['persistentObject']);
+    }
+  }
+
   private async onParamsChange(params: any): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
 
-    if (isPlatformServer(this.platformId)) {
-      if (this.serverData?.['persistentObject']) {
-        this.item.set(this.serverData['persistentObject']);
-      }
-      return;
-    }
+    if (isPlatformServer(this.platformId)) return;
 
     try {
       const [entityTypes, item] = await Promise.all([
