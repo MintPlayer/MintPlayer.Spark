@@ -12,6 +12,8 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IQueryExecutor queryExecutor;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -31,6 +33,29 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
         var route = await spaRouteService.GetCurrentRoute(context);
         switch (route?.Name)
         {
+            case "po-list":
+            {
+                var type = route.Parameters["type"];
+                var entityTypes = modelLoader.GetEntityTypes();
+                var entityType = modelLoader.ResolveEntityType(type);
+                if (entityType is not null)
+                {
+                    data["entityTypes"] = entityTypes;
+                    data["entityType"] = entityType;
+
+                    var query = queryLoader.GetQueries().FirstOrDefault(q =>
+                        q.EntityType == entityType.Name ||
+                        q.Source.EndsWith("." + entityType.Name, StringComparison.OrdinalIgnoreCase) ||
+                        q.Source.EndsWith("." + entityType.Name + "s", StringComparison.OrdinalIgnoreCase));
+                    if (query is not null)
+                    {
+                        data["query"] = query;
+                        var items = await queryExecutor.ExecuteQueryAsync(query);
+                        data["queryItems"] = items;
+                    }
+                }
+                break;
+            }
             case "po-detail":
             {
                 var type = route.Parameters["type"];
