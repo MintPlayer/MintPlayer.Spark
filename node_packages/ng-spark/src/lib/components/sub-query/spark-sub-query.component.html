@@ -1,0 +1,51 @@
+@if (query(); as q) {
+  <bs-card style="display: block; margin: 1rem 0;">
+    <bs-card-header>{{ (q.description | resolveTranslation) || q.name }}</bs-card-header>
+    @if (loading()) {
+      <div class="text-center p-3">
+        <bs-spinner />
+      </div>
+    } @else if (items().length === 0) {
+      <div class="p-3 text-center text-muted">
+        {{ 'noItemsFound' | t }}
+      </div>
+    } @else {
+      <div class="p-3">
+        <bs-table [isResponsive]="true">
+          <thead>
+            <tr>
+              @for (attr of visibleAttributes(); track attr.id) {
+                <th>{{ (attr.label | resolveTranslation) || attr.name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of items(); track item.id) {
+              <tr (click)="onRowClick(item)" style="cursor: pointer;">
+                @for (attr of visibleAttributes(); track attr.id) {
+                  <td>
+                    @if (getColumnRendererComponent(attr); as rendererType) {
+                      <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
+                    } @else if (attr.dataType === 'boolean') {
+                      <input type="checkbox"
+                        [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+                        disabled
+                        onclick="return false;">
+                    } @else if (attr.dataType === 'color') {
+                      @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+                      @if (colorVal) {
+                        <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+                      }
+                    } @else {
+                      {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </bs-table>
+      </div>
+    }
+  </bs-card>
+}

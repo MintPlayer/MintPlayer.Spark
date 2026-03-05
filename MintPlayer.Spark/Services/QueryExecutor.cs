@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -10,7 +12,7 @@ namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
 {
-    Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query);
+    Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -22,35 +24,65 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IActionsResolver actionsResolver;
 
-    public async Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query)
+    private static readonly ConcurrentDictionary<string, CustomQueryMethodInfo?> customQueryMethodCache = new();
+
+    public async Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null)
+    {
+        var (isCustom, name) = ResolveSource(query);
+
+        if (isCustom)
+        {
+            return await ExecuteCustomQueryAsync(query, name, parent);
+        }
+        else
+        {
+            return await ExecuteDatabaseQueryAsync(query, name);
+        }
+    }
+
+    private static (bool IsCustom, string Name) ResolveSource(SparkQuery query)
+    {
+        var source = query.Source;
+
+        if (source.StartsWith("Custom.", StringComparison.OrdinalIgnoreCase))
+            return (true, source[7..]);
+
+        if (source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            return (false, source[9..]);
+
+        throw new InvalidOperationException(
+            $"Query '{query.Name}' has invalid Source '{query.Source}'. " +
+            "Expected 'Database.PropertyName' or 'Custom.MethodName'.");
+    }
+
+    #region Database Queries
+
+    private async Task<IEnumerable<PersistentObject>> ExecuteDatabaseQueryAsync(SparkQuery query, string propertyName)
     {
         using var session = documentStore.OpenAsyncSession();
 
-        // Get the SparkContext with session injected
         var sparkContext = sparkContextResolver.ResolveContext(session);
         if (sparkContext == null)
         {
             return [];
         }
 
-        // Get the property from the SparkContext
         var contextType = sparkContext.GetType();
-        var property = contextType.GetProperty(query.ContextProperty, BindingFlags.Public | BindingFlags.Instance);
+        var property = contextType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
 
         if (property == null)
         {
             return [];
         }
 
-        // Get the queryable from the property
         var queryable = property.GetValue(sparkContext);
         if (queryable == null)
         {
             return [];
         }
 
-        // Determine the entity type from the IRavenQueryable<T>
         var queryableType = property.PropertyType;
         var entityType = queryableType.GetGenericArguments().FirstOrDefault();
         if (entityType == null)
@@ -58,7 +90,6 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        // Get entity type definition
         var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
         if (entityTypeDefinition == null)
         {
@@ -67,11 +98,9 @@ internal partial class QueryExecutor : IQueryExecutor
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
-        // Determine result type and index to use
         Type resultType = entityType;
-        string? indexName = query.IndexName; // Use query-specified index first
+        string? indexName = query.IndexName;
 
-        // Check IndexRegistry for projection type (from FromIndexAttribute on projections)
         var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
         if (registration?.ProjectionType != null)
         {
@@ -82,50 +111,258 @@ internal partial class QueryExecutor : IQueryExecutor
             }
         }
 
-        // Apply index if we have one (either from IndexRegistry or explicitly specified)
         Type? indexType = registration?.IndexType;
         if (!string.IsNullOrEmpty(indexName) && indexType != null)
         {
-            // Use session.Query<TEntity, TIndexCreator>() with the entity type, then
-            // ProjectInto to get stored/computed fields from the index.
-            // Important: we query with entityType (not resultType) so that ProjectInto
-            // is the single projection step — using resultType here would create a
-            // double projection that causes duplicate results when combined with OrderBy.
             queryable = ApplyIndexWithType(session, entityType, indexType);
         }
         else if (!string.IsNullOrEmpty(indexName))
         {
-            // Fallback: use string-based index name, queries as entityType
             queryable = ApplyIndexByName(session, entityType, indexName);
         }
 
-        // Apply ProjectInto to get computed/stored fields from the index (e.g. FullName)
         if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
         {
             queryable = ApplyProjection(queryable, resultType);
         }
 
-        // Apply sorting after projection so it can operate on projected fields (e.g. FullName)
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (!string.IsNullOrEmpty(query.SortBy))
         {
             queryable = ApplySorting(queryable, sortType, query.SortBy, query.SortDirection);
         }
 
-        // Execute the query
         var entities = await ExecuteQueryableAsync(queryable, resultType);
 
-        // Convert to PersistentObjects using the entity type definition (which includes merged attributes)
-        // Deduplicate by ID: ProjectInto on indexes with FieldIndexing.Search can return
-        // one result per search token for the same document. DistinctBy preserves sort order.
         return entities
             .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
             .DistinctBy(po => po.Id);
     }
 
+    #endregion
+
+    #region Custom Queries
+
+    private async Task<IEnumerable<PersistentObject>> ExecuteCustomQueryAsync(
+        SparkQuery query, string methodName, PersistentObject? parent)
+    {
+        using var session = documentStore.OpenAsyncSession();
+
+        // Resolve the entity type for this query
+        var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
+        if (entityTypeDefinition == null)
+        {
+            return [];
+        }
+
+        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
+
+        // Resolve the entity CLR type
+        var entityType = FindClrType(entityTypeDefinition.ClrType);
+        if (entityType == null)
+        {
+            return [];
+        }
+
+        // Resolve the Actions class for this entity type
+        var actionsInstance = actionsResolver.ResolveForType(entityType);
+
+        // Find the custom query method
+        var methodInfo = ResolveCustomQueryMethod(actionsInstance.GetType(), methodName);
+        if (methodInfo == null)
+        {
+            throw new InvalidOperationException(
+                $"Custom query method '{methodName}' not found on actions class '{actionsInstance.GetType().Name}'. " +
+                $"Expected a public method returning IQueryable<T> with zero parameters or one CustomQueryArgs parameter.");
+        }
+
+        // Build args and invoke
+        var parentTypeName = parent != null
+            ? modelLoader.GetEntityType(parent.ObjectTypeId)?.Name
+            : null;
+        var args = new CustomQueryArgs
+        {
+            Parent = parent,
+            ParentType = parentTypeName,
+            Query = query,
+            Session = session,
+        };
+
+        object? result;
+        if (methodInfo.AcceptsArgs)
+        {
+            result = methodInfo.Method.Invoke(actionsInstance, [args]);
+        }
+        else
+        {
+            result = methodInfo.Method.Invoke(actionsInstance, []);
+        }
+
+        if (result == null)
+        {
+            return [];
+        }
+
+        // Apply sorting if the result is IQueryable
+        if (methodInfo.IsQueryable && !string.IsNullOrEmpty(query.SortBy))
+        {
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortBy, query.SortDirection);
+        }
+
+        // Materialize results
+        IEnumerable<object> entities;
+        if (methodInfo.IsRavenQueryable)
+        {
+            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType);
+        }
+        else if (result is IQueryable)
+        {
+            // In-memory IQueryable — materialize via LINQ ToList
+            entities = MaterializeQueryable(result, methodInfo.ResultElementType);
+        }
+        else if (result is System.Collections.IEnumerable enumerable)
+        {
+            entities = enumerable.Cast<object>().ToList();
+        }
+        else
+        {
+            return [];
+        }
+
+        return entities
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .DistinctBy(po => po.Id);
+    }
+
+    private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)
+    {
+        // If EntityType is explicitly set, use it
+        if (!string.IsNullOrEmpty(query.EntityType))
+        {
+            return modelLoader.GetEntityTypeByName(query.EntityType);
+        }
+
+        // Otherwise, we need to infer from the method return type — but we need the Actions class first.
+        // For now, return null if not set (EntityType should be set for Custom queries).
+        return null;
+    }
+
+    private static CustomQueryMethodInfo? ResolveCustomQueryMethod(Type actionsType, string methodName)
+    {
+        var cacheKey = $"{actionsType.FullName};{methodName}";
+        return customQueryMethodCache.GetOrAdd(cacheKey, _ =>
+        {
+            var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+            if (method == null)
+                return null;
+
+            var returnType = method.ReturnType;
+            var parameters = method.GetParameters();
+
+            // Validate parameter: zero params or one CustomQueryArgs param
+            bool acceptsArgs;
+            if (parameters.Length == 0)
+            {
+                acceptsArgs = false;
+            }
+            else if (parameters.Length == 1 && parameters[0].ParameterType == typeof(CustomQueryArgs))
+            {
+                acceptsArgs = true;
+            }
+            else
+            {
+                return null; // Invalid signature
+            }
+
+            // Extract the element type from IQueryable<T> or IRavenQueryable<T>
+            var elementType = ExtractQueryableElementType(returnType);
+            if (elementType == null)
+                return null;
+
+            var isRavenQueryable = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsAssignableFrom(returnType);
+            var isQueryable = typeof(IQueryable).IsAssignableFrom(returnType);
+
+            return new CustomQueryMethodInfo
+            {
+                Method = method,
+                AcceptsArgs = acceptsArgs,
+                ResultElementType = elementType,
+                IsQueryable = isQueryable,
+                IsRavenQueryable = isRavenQueryable,
+            };
+        });
+    }
+
+    private static Type? ExtractQueryableElementType(Type type)
+    {
+        // Check if the type itself is IQueryable<T>
+        if (type.IsGenericType)
+        {
+            var genericDef = type.GetGenericTypeDefinition();
+            if (genericDef == typeof(IQueryable<>) || genericDef == typeof(IEnumerable<>))
+                return type.GetGenericArguments()[0];
+        }
+
+        // Check implemented interfaces for IQueryable<T>
+        foreach (var iface in type.GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IQueryable<>))
+                return iface.GetGenericArguments()[0];
+        }
+
+        // Check for IEnumerable<T> as fallback
+        foreach (var iface in type.GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var elementType = iface.GetGenericArguments()[0];
+                if (elementType != typeof(object))
+                    return elementType;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<object> MaterializeQueryable(object queryable, Type elementType)
+    {
+        // Call Queryable.ToList() on an in-memory IQueryable<T>
+        var toListMethod = typeof(Enumerable).GetMethods()
+            .First(m => m.Name == nameof(Enumerable.ToList) && m.GetGenericArguments().Length == 1)
+            .MakeGenericMethod(elementType);
+
+        var result = toListMethod.Invoke(null, [queryable]);
+        if (result is System.Collections.IEnumerable enumerable)
+        {
+            return enumerable.Cast<object>().ToList();
+        }
+        return [];
+    }
+
+    private static Type? FindClrType(string clrTypeName)
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var type = assembly.GetTypes()
+                    .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
+                if (type != null) return type;
+            }
+            catch (ReflectionTypeLoadException)
+            {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    #endregion
+
+    #region Shared Helpers
+
     private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
     {
-        // Use session.Query<TResult, TIndexCreator>() - the 2-generic-parameter, 0-regular-parameter overload
         var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
                 && m.IsGenericMethod
@@ -143,7 +380,6 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
     {
-        // Fallback: session.Query<T>(indexName, collectionName, isMapReduce) - string-based
         var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
                 && m.IsGenericMethod
@@ -183,7 +419,6 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private object ApplySorting(object queryable, Type entityType, string sortBy, string? sortDirection)
     {
-        // Get the property to sort by
         var propertyInfo = entityType.GetProperty(sortBy, BindingFlags.Public | BindingFlags.Instance);
         if (propertyInfo == null)
         {
@@ -192,15 +427,12 @@ internal partial class QueryExecutor : IQueryExecutor
 
         var isDescending = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
 
-        // Build lambda expression for OrderBy: x => x.SortByProperty
         var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
         var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
         var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
 
-        // Get the OrderBy or OrderByDescending method
         var methodName = isDescending ? "OrderByDescending" : "OrderBy";
 
-        // For IRavenQueryable, we need to use the Queryable extension methods
         var orderByMethod = typeof(Queryable).GetMethods()
             .First(m => m.Name == methodName && m.GetParameters().Length == 2)
             .MakeGenericMethod(entityType, propertyInfo.PropertyType);
@@ -210,7 +442,6 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
     {
-        // Call ToListAsync on the IRavenQueryable<T>
         var toListMethod = typeof(LinqExtensions).GetMethods()
             .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
                 && m.GetGenericArguments().Length == 1
@@ -241,4 +472,15 @@ internal partial class QueryExecutor : IQueryExecutor
 
         return [];
     }
+
+    #endregion
+}
+
+internal sealed class CustomQueryMethodInfo
+{
+    public required MethodInfo Method { get; init; }
+    public required bool AcceptsArgs { get; init; }
+    public required Type ResultElementType { get; init; }
+    public required bool IsQueryable { get; init; }
+    public required bool IsRavenQueryable { get; init; }
 }

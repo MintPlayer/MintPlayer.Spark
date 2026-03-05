@@ -1,0 +1,10 @@
+{
+  "id": "b20e8400-e29b-41d4-a716-446655440010",
+  "name": "Company_People",
+  "description": {"en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf"},
+  "source": "Custom.Company_People",
+  "entityType": "Person",
+  "sortBy": "LastName",
+  "sortDirection": "asc",
+  "alias": "company-people"
+}

@@ -36,6 +36,11 @@ public sealed class EntityTypeDefinition
     public AttributeTab[] Tabs { get; set; } = [];
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
+    /// <summary>
+    /// Query aliases or IDs to display as related query tables on the detail page.
+    /// Each entry references a SparkQuery that accepts parent context.
+    /// </summary>
+    public string[] Queries { get; set; } = [];
 }
 
 public sealed class EntityAttributeDefinition

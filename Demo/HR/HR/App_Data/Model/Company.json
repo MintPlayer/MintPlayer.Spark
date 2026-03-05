@@ -8,6 +8,7 @@
   },
   "clrType": "HR.Entities.Company",
   "displayAttribute": "Name",
+  "queries": ["company-people"],
   "tabs": [],
   "groups": [],
   "attributes": [

@@ -10,6 +10,7 @@ public interface IModelLoader
     IEnumerable<EntityTypeDefinition> GetEntityTypes();
     EntityTypeDefinition? GetEntityType(Guid id);
     EntityTypeDefinition? GetEntityTypeByClrType(string clrType);
+    EntityTypeDefinition? GetEntityTypeByName(string name);
     EntityTypeDefinition? GetEntityTypeByAlias(string alias);
     EntityTypeDefinition? ResolveEntityType(string idOrAlias);
 }
@@ -84,6 +85,9 @@ internal partial class ModelLoader : IModelLoader
 
     public EntityTypeDefinition? GetEntityTypeByClrType(string clrType)
         => EntityTypes.ById.Values.FirstOrDefault(e => e.ClrType == clrType);
+
+    public EntityTypeDefinition? GetEntityTypeByName(string name)
+        => EntityTypes.ById.Values.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public EntityTypeDefinition? GetEntityTypeByAlias(string alias)
         => EntityTypes.ByAlias.TryGetValue(alias, out var entityType) ? entityType : null;

@@ -91,10 +91,14 @@ export class SparkQueryListComponent {
         const queries = await this.sparkService.getQueries();
         const singularName = resolvedEntityType.name;
         resolvedQuery = queries.find(q => {
-          const contextSingular = this.singularize(q.contextProperty);
-          return q.contextProperty === singularName ||
-            contextSingular === singularName ||
-            q.contextProperty === singularName + 's';
+          // Match by explicit entityType
+          if (q.entityType === singularName) return true;
+          // Match by source name
+          const sourceName = this.extractSourceName(q.source);
+          const sourceSingular = this.singularize(sourceName);
+          return sourceName === singularName ||
+            sourceSingular === singularName ||
+            sourceName === singularName + 's';
         }) || null;
       }
     }
@@ -118,14 +122,30 @@ export class SparkQueryListComponent {
   }
 
   private async resolveEntityTypeForQuery(query: SparkQuery): Promise<{ entityType: EntityType | null; entityTypes: EntityType[] }> {
-    const singularName = this.singularize(query.contextProperty);
     const entityTypes = await this.sparkService.getEntityTypes();
+
+    // If entityType is explicitly set on the query, use it directly
+    if (query.entityType) {
+      const type = entityTypes.find(t =>
+        t.name === query.entityType || t.alias === query.entityType?.toLowerCase()
+      );
+      return { entityType: type || null, entityTypes };
+    }
+
+    // For Database.X sources, extract the property name and try to match
+    const sourceName = this.extractSourceName(query.source);
+    const singularName = this.singularize(sourceName);
     const type = entityTypes.find(t =>
-      t.name === query.contextProperty ||
+      t.name === sourceName ||
       t.name === singularName ||
       t.clrType.endsWith(singularName)
     );
     return { entityType: type || null, entityTypes };
+  }
+
+  private extractSourceName(source: string): string {
+    const dotIndex = source.indexOf('.');
+    return dotIndex >= 0 ? source.substring(dotIndex + 1) : source;
   }
 
   private singularize(plural: string): string {

@@ -75,4 +75,6 @@ export interface EntityType {
   tabs?: AttributeTab[];
   groups?: AttributeGroup[];
   attributes: EntityAttributeDefinition[];
+  /** Query aliases or IDs to display as related query tables on the detail page. */
+  queries?: string[];
 }

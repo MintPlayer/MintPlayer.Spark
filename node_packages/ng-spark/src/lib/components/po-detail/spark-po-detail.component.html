@@ -149,6 +149,11 @@
               </dd>
           </ng-template>
     </bs-grid>
+    @if (et.queries?.length) {
+      @for (queryAlias of et.queries; track queryAlias) {
+        <spark-sub-query [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name" />
+      }
+    }
     @if (extraContentTemplate(); as extraContentTpl) {
       <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
     }

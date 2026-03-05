@@ -4,6 +4,8 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Queries;
+using Raven.Client.Documents.Linq;
 
 namespace DemoApp.Actions;
 
@@ -34,5 +36,16 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
     {
         Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
+    }
+
+    /// <summary>
+    /// Custom query: returns people belonging to a specific company.
+    /// Source: "Custom.Company_People"
+    /// </summary>
+    public IRavenQueryable<Person> Company_People(CustomQueryArgs args)
+    {
+        args.EnsureParent("Company");
+        return args.Session.Query<Person>()
+            .Where(p => p.Company == args.Parent!.Id);
     }
 }

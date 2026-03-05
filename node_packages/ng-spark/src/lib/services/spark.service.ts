@@ -46,10 +46,12 @@ export class SparkService {
     return queries.find(q => q.name === name);
   }
 
-  async executeQuery(queryId: string, sortBy?: string, sortDirection?: string): Promise<PersistentObject[]> {
+  async executeQuery(queryId: string, sortBy?: string, sortDirection?: string, parentId?: string, parentType?: string): Promise<PersistentObject[]> {
     let params = new HttpParams();
     if (sortBy) params = params.set('sortBy', sortBy);
     if (sortDirection) params = params.set('sortDirection', sortDirection);
+    if (parentId) params = params.set('parentId', parentId);
+    if (parentType) params = params.set('parentType', parentType);
     return firstValueFrom(this.http.get<PersistentObject[]>(
       `${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`,
       { params }

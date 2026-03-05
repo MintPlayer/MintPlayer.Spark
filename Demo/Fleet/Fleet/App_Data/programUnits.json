@@ -32,6 +32,15 @@
           "queryId": "a20e8400-e29b-41d4-a716-446655440003",
           "alias": "companies",
           "order": 3
+        },
+        {
+          "id": "a10e8400-e29b-41d4-a716-446655440004",
+          "name": {"en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's"},
+          "icon": "bi-exclamation-triangle",
+          "type": "query",
+          "queryId": "a20e8400-e29b-41d4-a716-446655440010",
+          "alias": "stolen-cars",
+          "order": 4
         }
       ]
     }

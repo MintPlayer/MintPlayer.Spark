@@ -10,6 +10,8 @@ public sealed partial class ExecuteQuery
 {
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly IModelLoader modelLoader;
 
     public async Task HandleAsync(HttpContext httpContext, string id)
     {
@@ -28,20 +30,34 @@ public sealed partial class ExecuteQuery
             var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
             var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
 
+            // Read optional parent context for custom queries
+            Abstractions.PersistentObject? parent = null;
+            var parentId = httpContext.Request.Query["parentId"].FirstOrDefault();
+            var parentType = httpContext.Request.Query["parentType"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(parentId) && !string.IsNullOrEmpty(parentType))
+            {
+                var parentEntityType = modelLoader.ResolveEntityType(parentType);
+                if (parentEntityType != null)
+                {
+                    parent = await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, parentId);
+                }
+            }
+
             // Clone query with sort overrides if provided
             var effectiveQuery = new SparkQuery
             {
                 Id = query.Id,
                 Name = query.Name,
-                ContextProperty = query.ContextProperty,
+                Source = query.Source,
                 Alias = query.Alias,
                 SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
                 SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
                 IndexName = query.IndexName,
                 UseProjection = query.UseProjection,
+                EntityType = query.EntityType,
             };
 
-            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery);
+            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent);
             await httpContext.Response.WriteAsJsonAsync(results);
         }
         catch (SparkAccessDeniedException)

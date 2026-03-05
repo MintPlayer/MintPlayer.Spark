@@ -121,7 +121,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     Id = Guid.NewGuid(),
                     Name = queryName,
-                    ContextProperty = property.Name,
+                    Source = $"Database.{property.Name}",
                     SortBy = GetDefaultSortProperty(entityTypeDef),
                     SortDirection = "asc"
                 };

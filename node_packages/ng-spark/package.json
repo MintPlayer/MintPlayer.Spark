@@ -1,7 +1,7 @@
 {
   "name": "@mintplayer/ng-spark",
   "private": false,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Angular component library for MintPlayer.Spark CRUD applications",
   "repository": {
     "type": "git",
