@@ -21,7 +21,7 @@
           </thead>
           <tbody>
             @for (item of items(); track item.id) {
-              <tr (click)="onRowClick(item)" style="cursor: pointer;" [class.pe-none]="!canRead()">
+              <tr (click)="onRowClick(item)" [style.cursor]="canRead() ? 'pointer' : 'default'">
                 @for (attr of visibleAttributes(); track attr.id) {
                   <td>
                     @if (getColumnRendererComponent(attr); as rendererType) {
