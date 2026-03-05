@@ -63,7 +63,7 @@
         </div>
       }
 
-      <tr *bsRowTemplate="let item of paginationData()" (click)="onRowClick(item)" [style.cursor]="canRead() ? 'pointer' : 'default'">
+      <tr *bsRowTemplate="let item of paginationData()" (click)="onRowClick(item)" style="cursor: pointer;" [class.pe-none]="!canRead()">
         @for (attr of visibleAttributes(); track attr.id) {
           <td>
             @if (getColumnRendererComponent(attr); as rendererType) {
