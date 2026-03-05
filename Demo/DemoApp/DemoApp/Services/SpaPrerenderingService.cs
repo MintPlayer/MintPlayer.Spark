@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.SpaServices.Prerendering.Services;
 using MintPlayer.AspNetCore.SpaServices.Routing;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 
@@ -19,6 +20,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IRequestCultureResolver requestCultureResolver;
+    [Inject] private readonly IPermissionService permissionService;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -68,6 +70,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
                     {
                         data["entityTypes"] = modelLoader.GetEntityTypes();
                         data["entityType"] = entityType;
+                        await SupplyPermissionsAsync(data, entityType);
                     }
                 }
                 break;
@@ -81,6 +84,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
                 {
                     data["entityTypes"] = modelLoader.GetEntityTypes();
                     data["entityType"] = entityType;
+                    await SupplyPermissionsAsync(data, entityType);
 
                     var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, Uri.UnescapeDataString(id));
                     if (obj is not null)
@@ -101,10 +105,23 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
         if (entityType is not null)
         {
             data["entityType"] = entityType;
+            await SupplyPermissionsAsync(data, entityType);
         }
 
         var items = await queryExecutor.ExecuteQueryAsync(query);
         data["queryItems"] = items;
+    }
+
+    private async Task SupplyPermissionsAsync(IDictionary<string, object> data, EntityTypeDefinition entityType)
+    {
+        var target = entityType.Name;
+        data["permissions"] = new
+        {
+            canRead = await permissionService.IsAllowedAsync("Read", target),
+            canCreate = await permissionService.IsAllowedAsync("New", target),
+            canEdit = await permissionService.IsAllowedAsync("Edit", target),
+            canDelete = await permissionService.IsAllowedAsync("Delete", target),
+        };
     }
 
     private EntityTypeDefinition? ResolveEntityTypeForQuery(SparkQuery query, List<EntityTypeDefinition> entityTypes)

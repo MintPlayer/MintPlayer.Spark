@@ -20,6 +20,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
 import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
+import { EntityPermissions } from '../../models/entity-permissions';
 import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
@@ -85,6 +86,11 @@ export class SparkQueryListComponent implements OnInit {
         const items = this.serverData['queryItems'] as PersistentObject[];
         this.allItems.set(items);
         this.applyFilter();
+      }
+      if (this.serverData['permissions']) {
+        const perms = this.serverData['permissions'] as EntityPermissions;
+        this.canRead.set(perms.canRead);
+        this.canCreate.set(perms.canCreate);
       }
     }
   }

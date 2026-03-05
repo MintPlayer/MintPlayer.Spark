@@ -28,6 +28,7 @@ import { SparkSubQueryComponent } from '../sub-query/spark-sub-query.component';
 import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
 import { CustomActionDefinition } from '../../models/custom-action';
+import { EntityPermissions } from '../../models/entity-permissions';
 import { EntityType, EntityAttributeDefinition, AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
@@ -84,6 +85,11 @@ export class SparkPoDetailComponent {
       }
       if (this.serverData['entityType']) {
         this.entityType.set(this.serverData['entityType']);
+      }
+      if (this.serverData['permissions']) {
+        const perms = this.serverData['permissions'] as EntityPermissions;
+        this.canEdit.set(perms.canEdit);
+        this.canDelete.set(perms.canDelete);
       }
     }
   }
