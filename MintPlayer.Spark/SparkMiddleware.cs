@@ -40,6 +40,19 @@ public static class SparkExtensions
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
+        // Register Newtonsoft.Json converter for TranslatedString so aspnet-prerendering
+        // serializes it as flat {"en":"value"} instead of {"translations":{"en":"value"}}
+        var existingFactory = Newtonsoft.Json.JsonConvert.DefaultSettings;
+        Newtonsoft.Json.JsonConvert.DefaultSettings = () =>
+        {
+            var settings = existingFactory?.Invoke() ?? new Newtonsoft.Json.JsonSerializerSettings();
+            if (!settings.Converters.Any(c => c is TranslatedStringNewtonsoftJsonConverter))
+            {
+                settings.Converters.Add(new TranslatedStringNewtonsoftJsonConverter());
+            }
+            return settings;
+        };
+
         // Register the Spark services
         return services
             .AddSparkServices()

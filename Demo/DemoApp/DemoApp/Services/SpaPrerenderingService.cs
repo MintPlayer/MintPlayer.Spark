@@ -18,6 +18,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
     [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IRequestCultureResolver requestCultureResolver;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -34,6 +35,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     public async Task OnSupplyData(HttpContext context, IDictionary<string, object> data)
     {
         data["programUnits"] = programUnitsLoader.GetProgramUnits();
+        data["language"] = requestCultureResolver.GetCurrentCulture();
 
         var route = await spaRouteService.GetCurrentRoute(context);
         switch (route?.Name)
