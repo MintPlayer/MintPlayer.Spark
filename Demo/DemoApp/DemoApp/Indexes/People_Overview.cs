@@ -18,7 +18,8 @@ public class People_Overview : AbstractIndexCreationTask<Person> // , VPerson
                             Id = person.Id,
                             FullName = person.FirstName + " " + person.LastName,
                             Email = person.Email,
-                            IsActive = person.IsActive
+                            IsActive = person.IsActive,
+                            Company = person.Company,
                         };
 
         // Enable full-text search on common fields

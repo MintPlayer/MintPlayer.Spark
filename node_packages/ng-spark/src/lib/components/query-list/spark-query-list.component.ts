@@ -52,6 +52,7 @@ export class SparkQueryListComponent {
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   paginationData = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
   searchTerm: string = '';
+  canRead = signal(false);
   canCreate = signal(false);
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
@@ -116,6 +117,7 @@ export class SparkQueryListComponent {
       });
       this.loadLookupReferenceOptions();
       const permissions = await this.sparkService.getPermissions(resolvedEntityType.id);
+      this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
       await this.loadItems();
     }
@@ -278,14 +280,6 @@ export class SparkQueryListComponent {
       })
     );
     this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
-  }
-
-  onRowClick(item: PersistentObject): void {
-    this.rowClicked.emit(item);
-    const et = this.entityType();
-    if (et) {
-      this.router.navigate(['/po', et.alias || et.id, item.id]);
-    }
   }
 
   onCreate(): void {

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
@@ -23,7 +23,6 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkSubQueryComponent {
-  private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
@@ -37,6 +36,7 @@ export class SparkSubQueryComponent {
   items = signal<PersistentObject[]>([]);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
+  canRead = signal(false);
 
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -72,6 +72,10 @@ export class SparkSubQueryComponent {
           t.name === resolvedQuery.entityType || t.alias === resolvedQuery.entityType?.toLowerCase()
         );
         this.entityType.set(et || null);
+        if (et) {
+          const permissions = await this.sparkService.getPermissions(et.id);
+          this.canRead.set(permissions.canRead);
+        }
       }
 
       // Execute the query with parent context
@@ -121,10 +125,4 @@ export class SparkSubQueryComponent {
     };
   }
 
-  onRowClick(item: PersistentObject): void {
-    const et = this.entityType();
-    if (et) {
-      this.router.navigate(['/po', et.alias || et.id, item.id]);
-    }
-  }
 }

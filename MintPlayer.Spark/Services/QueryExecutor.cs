@@ -203,6 +203,13 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
+        // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
+        // Without this, RavenDB loads full documents which lack computed index fields.
+        if (methodInfo.IsRavenQueryable && indexRegistry.IsProjectionType(methodInfo.ResultElementType))
+        {
+            result = ApplyProjection(result, methodInfo.ResultElementType);
+        }
+
         // Apply sorting if the result is IQueryable
         if (methodInfo.IsQueryable && !string.IsNullOrEmpty(query.SortBy))
         {

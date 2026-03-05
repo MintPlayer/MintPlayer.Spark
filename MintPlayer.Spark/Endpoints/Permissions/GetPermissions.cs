@@ -21,10 +21,11 @@ public sealed partial class GetPermissions
         }
 
         var target = entityType.Name;
+        var canRead = await permissionService.IsAllowedAsync("Read", target);
         var canCreate = await permissionService.IsAllowedAsync("New", target);
         var canEdit = await permissionService.IsAllowedAsync("Edit", target);
         var canDelete = await permissionService.IsAllowedAsync("Delete", target);
 
-        await httpContext.Response.WriteAsJsonAsync(new { canCreate, canEdit, canDelete });
+        await httpContext.Response.WriteAsJsonAsync(new { canRead, canCreate, canEdit, canDelete });
     }
 }
