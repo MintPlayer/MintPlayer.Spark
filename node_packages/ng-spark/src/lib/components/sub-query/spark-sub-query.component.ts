@@ -37,6 +37,7 @@ export class SparkSubQueryComponent {
   items = signal<PersistentObject[]>([]);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
+  canRead = signal(false);
 
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -72,6 +73,10 @@ export class SparkSubQueryComponent {
           t.name === resolvedQuery.entityType || t.alias === resolvedQuery.entityType?.toLowerCase()
         );
         this.entityType.set(et || null);
+        if (et) {
+          const permissions = await this.sparkService.getPermissions(et.id);
+          this.canRead.set(permissions.canRead);
+        }
       }
 
       // Execute the query with parent context
@@ -122,6 +127,7 @@ export class SparkSubQueryComponent {
   }
 
   onRowClick(item: PersistentObject): void {
+    if (!this.canRead()) return;
     const et = this.entityType();
     if (et) {
       this.router.navigate(['/po', et.alias || et.id, item.id]);
