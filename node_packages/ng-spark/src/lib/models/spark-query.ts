@@ -14,4 +14,6 @@ export interface SparkQuery {
   useProjection?: boolean;
   /** Optional entity type name (e.g., "Person"). When set, used for entity type resolution. */
   entityType?: string;
+  /** When true, this query uses WebSocket streaming with snapshot + patch updates. */
+  isStreamingQuery?: boolean;
 }

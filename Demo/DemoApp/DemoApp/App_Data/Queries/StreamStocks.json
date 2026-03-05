@@ -1,0 +1,15 @@
+{
+  "id": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",
+  "name": "StreamStocks",
+  "description": {
+    "en": "Stock Market (Live)",
+    "fr": "Bourse (En direct)",
+    "nl": "Beurs (Live)"
+  },
+  "source": "Custom.StreamStocks",
+  "entityType": "Stock",
+  "sortBy": "Symbol",
+  "sortDirection": "asc",
+  "isStreamingQuery": true,
+  "alias": "stocks"
+}

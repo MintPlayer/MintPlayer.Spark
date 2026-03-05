@@ -116,6 +116,8 @@ public static class SparkExtensions
 
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
     {
+        app.UseWebSockets();
+
         // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
         app.Use(async (context, next) =>
         {
@@ -341,6 +343,8 @@ public static class SparkExtensions
         queriesGroup.MapGet("/{id}", async (HttpContext context, string id, GetQuery action) =>
             await action.HandleAsync(context, id));
         queriesGroup.MapGet("/{id}/execute", async (HttpContext context, string id, ExecuteQuery action) =>
+            await action.HandleAsync(context, id));
+        queriesGroup.Map("/{id}/stream", async (HttpContext context, string id, StreamExecuteQuery action) =>
             await action.HandleAsync(context, id));
 
         // Culture endpoint

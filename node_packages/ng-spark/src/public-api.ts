@@ -16,9 +16,11 @@ export type { CustomActionDefinition } from './lib/models/custom-action';
 export type { SparkConfig } from './lib/models/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/models/spark-config';
 export { ELookupDisplayType } from './lib/models/lookup-reference';
+export type { StreamingMessage, StreamingSnapshotMessage, StreamingPatchMessage, StreamingPatchItem, StreamingErrorMessage } from './lib/models/streaming-message';
 
 // Services
 export { SparkService } from './lib/services/spark.service';
+export { SparkStreamingService } from './lib/services/spark-streaming.service';
 export { SparkLanguageService } from './lib/services/spark-language.service';
 export { RetryActionService } from './lib/services/retry-action.service';
 
