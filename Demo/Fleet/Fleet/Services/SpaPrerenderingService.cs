@@ -19,6 +19,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     {
         routeBuilder
             .Route("home", "home")
+            .Route("query/{queryId}", "query-list")
             .Group("po/{type}", "po", poRoutes => poRoutes
                 .Route("", "list")
                 .Route("{id}", "detail")
@@ -33,25 +34,34 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
         var route = await spaRouteService.GetCurrentRoute(context);
         switch (route?.Name)
         {
+            case "query-list":
+            {
+                var queryIdOrAlias = route.Parameters["queryId"];
+                var query = queryLoader.ResolveQuery(queryIdOrAlias);
+                if (query is not null)
+                {
+                    await SupplyQueryListData(data, query);
+                }
+                break;
+            }
             case "po-list":
             {
                 var type = route.Parameters["type"];
-                var entityTypes = modelLoader.GetEntityTypes();
                 var entityType = modelLoader.ResolveEntityType(type);
                 if (entityType is not null)
                 {
-                    data["entityTypes"] = entityTypes;
-                    data["entityType"] = entityType;
-
                     var query = queryLoader.GetQueries().FirstOrDefault(q =>
                         q.EntityType == entityType.Name ||
                         q.Source.EndsWith("." + entityType.Name, StringComparison.OrdinalIgnoreCase) ||
                         q.Source.EndsWith("." + entityType.Name + "s", StringComparison.OrdinalIgnoreCase));
                     if (query is not null)
                     {
-                        data["query"] = query;
-                        var items = await queryExecutor.ExecuteQueryAsync(query);
-                        data["queryItems"] = items;
+                        await SupplyQueryListData(data, query);
+                    }
+                    else
+                    {
+                        data["entityTypes"] = modelLoader.GetEntityTypes();
+                        data["entityType"] = entityType;
                     }
                 }
                 break;
@@ -73,5 +83,29 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
                 break;
             }
         }
+    }
+
+    private async Task SupplyQueryListData(IDictionary<string, object> data, SparkQuery query)
+    {
+        var entityTypes = modelLoader.GetEntityTypes();
+        data["entityTypes"] = entityTypes;
+        data["query"] = query;
+
+        var entityTypeName = query.EntityType;
+        if (string.IsNullOrEmpty(entityTypeName) && query.Source.Contains('.'))
+        {
+            entityTypeName = query.Source[(query.Source.IndexOf('.') + 1)..];
+        }
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var entityType = modelLoader.ResolveEntityType(entityTypeName);
+            if (entityType is not null)
+            {
+                data["entityType"] = entityType;
+            }
+        }
+
+        var items = await queryExecutor.ExecuteQueryAsync(query);
+        data["queryItems"] = items;
     }
 }
