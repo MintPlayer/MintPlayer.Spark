@@ -1,25 +1,17 @@
 using MintPlayer.AspNetCore.SpaServices.Prerendering.Services;
 using MintPlayer.AspNetCore.SpaServices.Routing;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 
 namespace Fleet.Services;
 
-public class SpaPrerenderingService : ISpaPrerenderingService
+public partial class SpaPrerenderingService : ISpaPrerenderingService
 {
-    private readonly ISpaRouteService spaRouteService;
-    private readonly IDatabaseAccess databaseAccess;
-    private readonly IModelLoader modelLoader;
-
-    public SpaPrerenderingService(
-        ISpaRouteService spaRouteService,
-        IDatabaseAccess databaseAccess,
-        IModelLoader modelLoader)
-    {
-        this.spaRouteService = spaRouteService;
-        this.databaseAccess = databaseAccess;
-        this.modelLoader = modelLoader;
-    }
+    [Inject] private readonly ISpaRouteService spaRouteService;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -34,6 +26,8 @@ public class SpaPrerenderingService : ISpaPrerenderingService
 
     public async Task OnSupplyData(HttpContext context, IDictionary<string, object> data)
     {
+        data["programUnits"] = programUnitsLoader.GetProgramUnits();
+
         var route = await spaRouteService.GetCurrentRoute(context);
         switch (route?.Name)
         {

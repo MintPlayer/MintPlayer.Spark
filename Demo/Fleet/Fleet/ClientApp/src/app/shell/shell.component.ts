@@ -1,5 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
-import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { CommonModule, isPlatformBrowser, isPlatformServer } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
@@ -8,7 +8,7 @@ import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/sele
 import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
-import { SparkService, SparkLanguageService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark';
+import { SparkService, SparkLanguageService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe, SPARK_SERVER_DATA } from '@mintplayer/ng-spark';
 
 @Component({
   selector: 'app-shell',
@@ -22,6 +22,7 @@ export class ShellComponent {
   private readonly authService = inject(SparkAuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly serverData = inject(SPARK_SERVER_DATA, { optional: true });
 
   readonly lang = inject(SparkLanguageService);
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
@@ -29,6 +30,11 @@ export class ShellComponent {
   isSidebarVisible = signal<boolean>(false);
 
   constructor() {
+    if (isPlatformServer(this.platformId) && this.serverData?.['programUnits']) {
+      const config = this.serverData['programUnits'];
+      this.programUnitGroups.set((config.programUnitGroups || []).sort((a: ProgramUnitGroup, b: ProgramUnitGroup) => a.order - b.order));
+    }
+
     afterNextRender(() => {
       this.setupResizeListener();
       this.updateSidebarVisibility();
@@ -37,7 +43,9 @@ export class ShellComponent {
     // Re-fetch program units whenever auth state changes (login/logout)
     effect(() => {
       this.authService.user(); // track the signal
-      this.loadProgramUnits();
+      if (!isPlatformServer(this.platformId)) {
+        this.loadProgramUnits();
+      }
     });
   }
 

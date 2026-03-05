@@ -1,5 +1,5 @@
 import { Component, OnInit, ChangeDetectionStrategy, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
-import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { CommonModule, isPlatformBrowser, isPlatformServer } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
@@ -7,7 +7,7 @@ import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggle
 import {
   SparkService, SparkIconComponent,
   ResolveTranslationPipe, IconNamePipe, RouterLinkPipe,
-  ProgramUnitGroup
+  ProgramUnitGroup, SPARK_SERVER_DATA
 } from '@mintplayer/ng-spark';
 
 @Component({
@@ -21,6 +21,7 @@ export class ShellComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly serverData = inject(SPARK_SERVER_DATA, { optional: true });
 
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
   shellState = signal<BsShellState>('auto');
@@ -34,6 +35,11 @@ export class ShellComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    if (isPlatformServer(this.platformId) && this.serverData?.['programUnits']) {
+      const config = this.serverData['programUnits'];
+      this.programUnitGroups.set((config.programUnitGroups || []).sort((a: ProgramUnitGroup, b: ProgramUnitGroup) => a.order - b.order));
+      return;
+    }
     const config = await this.sparkService.getProgramUnits();
     this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
   }
