@@ -75,8 +75,16 @@ export class SparkPoDetailComponent {
   }
 
   ngOnInit(): void {
-    if (isPlatformServer(this.platformId) && this.serverData?.['persistentObject']) {
-      this.item.set(this.serverData['persistentObject']);
+    if (isPlatformServer(this.platformId) && this.serverData) {
+      if (this.serverData['persistentObject']) {
+        this.item.set(this.serverData['persistentObject']);
+      }
+      if (this.serverData['entityTypes']) {
+        this.allEntityTypes.set(this.serverData['entityTypes']);
+      }
+      if (this.serverData['entityType']) {
+        this.entityType.set(this.serverData['entityType']);
+      }
     }
   }
 

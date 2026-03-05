@@ -44,6 +44,9 @@ public class SpaPrerenderingService : ISpaPrerenderingService
                 var entityType = modelLoader.ResolveEntityType(type);
                 if (entityType is not null)
                 {
+                    data["entityTypes"] = modelLoader.GetEntityTypes();
+                    data["entityType"] = entityType;
+
                     var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, Uri.UnescapeDataString(id));
                     if (obj is not null)
                         data["persistentObject"] = obj;
