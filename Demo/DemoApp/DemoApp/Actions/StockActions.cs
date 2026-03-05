@@ -7,7 +7,7 @@ namespace DemoApp.Actions;
 
 public partial class StockActions : DefaultPersistentObjectActions<Stock>
 {
-    public async IAsyncEnumerable<IReadOnlyList<Stock>> StreamStocks(
+    public override async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
         StreamingQueryArgs args,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {

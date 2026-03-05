@@ -82,7 +82,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         if (result is null) yield break;
 
         // Iterate via IAsyncEnumerable reflection
-        await foreach (var batch in IterateAsyncEnumerable(result, methodInfo.ElementType, cancellationToken))
+        await foreach (var batch in IterateAsyncEnumerable(result, methodInfo.ElementType, methodInfo.IsSingleItemStream, cancellationToken))
         {
             // Map each entity in the batch to PersistentObject
             var persistentObjects = batch
@@ -111,19 +111,30 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 return null;
             }
 
-            // Validate return type: IAsyncEnumerable<IReadOnlyList<T>>
+            // Validate return type: IAsyncEnumerable<IReadOnlyList<T>> or IAsyncEnumerable<T>
             var asyncEnumerableType = ExtractAsyncEnumerableType(returnType);
             if (asyncEnumerableType is null) return null;
 
-            // asyncEnumerableType should be IReadOnlyList<T>
-            var elementType = ExtractReadOnlyListElementType(asyncEnumerableType);
-            if (elementType is null) return null;
+            // Check if it's IAsyncEnumerable<IReadOnlyList<T>> (batch) or IAsyncEnumerable<T> (single)
+            var batchElementType = ExtractReadOnlyListElementType(asyncEnumerableType);
+            if (batchElementType is not null)
+            {
+                return new StreamingMethodInfo
+                {
+                    Method = method,
+                    ElementType = batchElementType,
+                    BatchType = asyncEnumerableType,
+                    IsSingleItemStream = false,
+                };
+            }
 
+            // Single-item stream: IAsyncEnumerable<T>
             return new StreamingMethodInfo
             {
                 Method = method,
-                ElementType = elementType,
+                ElementType = asyncEnumerableType,
                 BatchType = asyncEnumerableType,
+                IsSingleItemStream = true,
             };
         });
     }
@@ -159,11 +170,12 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     }
 
     private static async IAsyncEnumerable<IReadOnlyList<object>> IterateAsyncEnumerable(
-        object asyncEnumerable, Type elementType, [EnumeratorCancellation] CancellationToken cancellationToken)
+        object asyncEnumerable, Type elementType, bool isSingleItem, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // Get IAsyncEnumerable<IReadOnlyList<T>>.GetAsyncEnumerator()
-        var batchType = typeof(IReadOnlyList<>).MakeGenericType(elementType);
-        var asyncEnumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(batchType);
+        // For batch streams: IAsyncEnumerable<IReadOnlyList<T>>
+        // For single-item streams: IAsyncEnumerable<T>
+        var innerType = isSingleItem ? elementType : typeof(IReadOnlyList<>).MakeGenericType(elementType);
+        var asyncEnumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(innerType);
 
         var getEnumeratorMethod = asyncEnumerableType.GetMethod("GetAsyncEnumerator")!;
         var enumerator = getEnumeratorMethod.Invoke(asyncEnumerable, [cancellationToken])!;
@@ -171,7 +183,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // Use the interface type to resolve methods — compiler-generated async enumerators
         // use explicit interface implementation, so MoveNextAsync/Current won't be found
         // on the concrete type.
-        var enumeratorInterfaceType = typeof(IAsyncEnumerator<>).MakeGenericType(batchType);
+        var enumeratorInterfaceType = typeof(IAsyncEnumerator<>).MakeGenericType(innerType);
         var moveNextMethod = enumeratorInterfaceType.GetMethod("MoveNextAsync")!;
         var currentProperty = enumeratorInterfaceType.GetProperty("Current")!;
 
@@ -192,8 +204,14 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
                 if (!hasMore) break;
 
-                var currentBatch = currentProperty.GetValue(enumerator);
-                if (currentBatch is System.Collections.IEnumerable enumerable)
+                var current = currentProperty.GetValue(enumerator);
+                if (isSingleItem)
+                {
+                    // Wrap single item in a list
+                    if (current is not null)
+                        yield return [current];
+                }
+                else if (current is System.Collections.IEnumerable enumerable)
                 {
                     yield return enumerable.Cast<object>().ToList();
                 }
@@ -233,4 +251,5 @@ internal sealed class StreamingMethodInfo
     public required MethodInfo Method { get; init; }
     public required Type ElementType { get; init; }
     public required Type BatchType { get; init; }
+    public required bool IsSingleItemStream { get; init; }
 }

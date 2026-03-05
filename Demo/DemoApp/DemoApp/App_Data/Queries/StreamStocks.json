@@ -6,7 +6,7 @@
     "fr": "Bourse (En direct)",
     "nl": "Beurs (Live)"
   },
-  "source": "Custom.StreamStocks",
+  "source": "Custom.StreamItems",
   "entityType": "Stock",
   "sortBy": "Symbol",
   "sortDirection": "asc",
