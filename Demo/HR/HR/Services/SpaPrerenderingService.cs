@@ -1,8 +1,10 @@
+using System.Reflection;
 using MintPlayer.AspNetCore.SpaServices.Prerendering.Services;
 using MintPlayer.AspNetCore.SpaServices.Routing;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using Raven.Client.Documents;
 
 namespace HR.Services;
 
@@ -14,6 +16,8 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
+    [Inject] private readonly ISparkContextResolver sparkContextResolver;
+    [Inject] private readonly IDocumentStore documentStore;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -87,25 +91,68 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
 
     private async Task SupplyQueryListData(IDictionary<string, object> data, SparkQuery query)
     {
-        var entityTypes = modelLoader.GetEntityTypes();
+        var entityTypes = modelLoader.GetEntityTypes().ToList();
         data["entityTypes"] = entityTypes;
         data["query"] = query;
 
-        var entityTypeName = query.EntityType;
-        if (string.IsNullOrEmpty(entityTypeName) && query.Source.Contains('.'))
+        var entityType = ResolveEntityTypeForQuery(query, entityTypes);
+        if (entityType is not null)
         {
-            entityTypeName = query.Source[(query.Source.IndexOf('.') + 1)..];
-        }
-        if (!string.IsNullOrEmpty(entityTypeName))
-        {
-            var entityType = modelLoader.ResolveEntityType(entityTypeName);
-            if (entityType is not null)
-            {
-                data["entityType"] = entityType;
-            }
+            data["entityType"] = entityType;
         }
 
         var items = await queryExecutor.ExecuteQueryAsync(query);
         data["queryItems"] = items;
+    }
+
+    private EntityTypeDefinition? ResolveEntityTypeForQuery(SparkQuery query, List<EntityTypeDefinition> entityTypes)
+    {
+        if (!string.IsNullOrEmpty(query.EntityType))
+        {
+            return modelLoader.GetEntityTypeByName(query.EntityType)
+                ?? modelLoader.ResolveEntityType(query.EntityType);
+        }
+
+        if (!query.Source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var propertyName = query.Source[9..];
+        var contextPropertyMap = BuildContextPropertyMap();
+        if (contextPropertyMap.TryGetValue(propertyName, out var entityTypeName))
+        {
+            return modelLoader.GetEntityTypeByName(entityTypeName);
+        }
+
+        return null;
+    }
+
+    private Dictionary<string, string> BuildContextPropertyMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var session = documentStore.OpenAsyncSession();
+            var sparkContext = sparkContextResolver.ResolveContext(session);
+            if (sparkContext is null) return map;
+
+            foreach (var property in sparkContext.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var propertyType = property.PropertyType;
+                if (!propertyType.IsGenericType) continue;
+
+                var entityClrType = propertyType.GetGenericArguments().FirstOrDefault();
+                if (entityClrType is null) continue;
+
+                var entityTypeDef = modelLoader.GetEntityTypeByClrType(entityClrType.FullName ?? entityClrType.Name);
+                if (entityTypeDef is not null)
+                {
+                    map[property.Name] = entityTypeDef.Name;
+                }
+            }
+        }
+        catch
+        {
+        }
+        return map;
     }
 }
