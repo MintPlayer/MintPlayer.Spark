@@ -9,11 +9,14 @@
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 		<DockerfileContext>..\..</DockerfileContext>
 		<SpaRoot>ClientApp\</SpaRoot>
+		<BuildServerSideRenderer>true</BuildServerSideRenderer>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+		<PackageReference Include="MintPlayer.AspNetCore.Hsts" Version="10.0.0-rc.1" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.4.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices.Routing" Version="10.0.0-rc.6" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.17.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
