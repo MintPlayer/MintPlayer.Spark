@@ -3,7 +3,7 @@ export type { PersistentObject } from './lib/models/persistent-object';
 export type { PersistentObjectAttribute } from './lib/models/persistent-object-attribute';
 export type { EntityType, EntityAttributeDefinition, AttributeTab, AttributeGroup } from './lib/models/entity-type';
 export type { TranslatedString } from './lib/models/translated-string';
-export { resolveTranslation } from './lib/models/translated-string';
+export { currentLanguage, resolveTranslation } from './lib/models/translated-string';
 export type { ValidationError } from './lib/models/validation-error';
 export type { ValidationRule } from './lib/models/validation-rule';
 export { ShowedOn, hasShowedOnFlag } from './lib/models/showed-on';

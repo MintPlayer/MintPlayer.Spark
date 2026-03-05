@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { TranslatedString } from '../models';
+import { TranslatedString, currentLanguage } from '../models';
 import { SPARK_CONFIG } from '../models/spark-config';
 
 interface CultureConfiguration {
@@ -29,7 +29,9 @@ export class SparkLanguageService {
     const config = await firstValueFrom(this.http.get<CultureConfiguration>(`${this.baseUrl}/culture`));
     this.languages.set(config.languages);
     const saved = localStorage.getItem('spark-lang');
-    this.currentLang.set(saved ?? config.defaultLanguage);
+    const lang = saved ?? config.defaultLanguage;
+    this.currentLang.set(lang);
+    currentLanguage.set(lang);
   }
 
   private async loadTranslations(): Promise<void> {
@@ -39,6 +41,7 @@ export class SparkLanguageService {
 
   setLanguage(lang: string) {
     this.currentLang.set(lang);
+    currentLanguage.set(lang);
     localStorage.setItem('spark-lang', lang);
   }
 
