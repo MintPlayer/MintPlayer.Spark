@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, PLATFORM_ID, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { CommonModule, isPlatformServer, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -26,6 +26,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { SparkSubQueryComponent } from '../sub-query/spark-sub-query.component';
 import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
+import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
 import { CustomActionDefinition } from '../../models/custom-action';
 import { EntityType, EntityAttributeDefinition, AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
@@ -44,6 +45,8 @@ export class SparkPoDetailComponent {
   private readonly sparkService = inject(SparkService);
   private readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly serverData = inject(SPARK_SERVER_DATA, { optional: true });
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -74,6 +77,13 @@ export class SparkPoDetailComponent {
   private async onParamsChange(params: any): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
+
+    if (isPlatformServer(this.platformId)) {
+      if (this.serverData?.['persistentObject']) {
+        this.item.set(this.serverData['persistentObject']);
+      }
+      return;
+    }
 
     try {
       const [entityTypes, item] = await Promise.all([
@@ -235,6 +245,8 @@ export class SparkPoDetailComponent {
   }
 
   onBack(): void {
-    window.history.back();
+    if (!isPlatformServer(this.platformId)) {
+      window.history.back();
+    }
   }
 }

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { provideServerRendering, renderApplication } from '@angular/platform-server';
 import { enableProdMode, StaticProvider } from '@angular/core';
 import { createServerRenderer } from 'aspnet-prerendering';
+import { SPARK_SERVER_DATA } from '@mintplayer/ng-spark';
 import { DATA_FROM_SERVER } from './app/providers/data-from-server';
 import { App } from './app/app';
 import { bootstrapApplication, BootstrapContext } from '@angular/platform-browser';
@@ -12,6 +13,7 @@ enableProdMode();
 export default createServerRenderer(params => {
   const providers: StaticProvider[] = [
     { provide: DATA_FROM_SERVER, useValue: params.data },
+    { provide: SPARK_SERVER_DATA, useValue: params.data },
   ];
 
   const options = {

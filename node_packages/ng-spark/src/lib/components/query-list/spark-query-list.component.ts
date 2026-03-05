@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, PLATFORM_ID, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { CommonModule, isPlatformServer, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -37,6 +37,7 @@ export class SparkQueryListComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly platformId = inject(PLATFORM_ID);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
 
@@ -68,6 +69,8 @@ export class SparkQueryListComponent {
   }
 
   private async onParamsChange(params: any): Promise<void> {
+    if (isPlatformServer(this.platformId)) return;
+
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
 
