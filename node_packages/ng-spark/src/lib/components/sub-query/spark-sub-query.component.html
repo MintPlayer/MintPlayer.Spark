@@ -21,23 +21,15 @@
           </thead>
           <tbody>
             @for (item of items(); track item.id) {
-              <tr (click)="onRowClick(item)" [style.cursor]="canRead() ? 'pointer' : 'default'">
-                @for (attr of visibleAttributes(); track attr.id) {
+              <tr>
+                @for (attr of visibleAttributes(); track attr.id; let first = $first) {
                   <td>
-                    @if (getColumnRendererComponent(attr); as rendererType) {
-                      <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
-                    } @else if (attr.dataType === 'boolean') {
-                      <input type="checkbox"
-                        [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
-                        disabled
-                        onclick="return false;">
-                    } @else if (attr.dataType === 'color') {
-                      @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
-                      @if (colorVal) {
-                        <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
-                      }
+                    @if (first && canRead()) {
+                      <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
+                        <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                      </a>
                     } @else {
-                      {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
                     }
                   </td>
                 }
@@ -49,3 +41,21 @@
     }
   </bs-card>
 }
+
+<ng-template #cellContent let-item let-attr="attr">
+  @if (getColumnRendererComponent(attr); as rendererType) {
+    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
+  } @else if (attr.dataType === 'boolean') {
+    <input type="checkbox"
+      [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+      disabled
+      onclick="return false;">
+  } @else if (attr.dataType === 'color') {
+    @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+    @if (colorVal) {
+      <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+    }
+  } @else {
+    {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
+  }
+</ng-template>

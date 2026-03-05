@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
@@ -23,7 +23,6 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkSubQueryComponent {
-  private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
@@ -126,11 +125,4 @@ export class SparkSubQueryComponent {
     };
   }
 
-  onRowClick(item: PersistentObject): void {
-    if (!this.canRead()) return;
-    const et = this.entityType();
-    if (et) {
-      this.router.navigate(['/po', et.alias || et.id, item.id]);
-    }
-  }
 }

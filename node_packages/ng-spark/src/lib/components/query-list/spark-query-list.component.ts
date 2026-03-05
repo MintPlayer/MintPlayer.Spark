@@ -282,15 +282,6 @@ export class SparkQueryListComponent {
     this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
   }
 
-  onRowClick(item: PersistentObject): void {
-    this.rowClicked.emit(item);
-    if (!this.canRead()) return;
-    const et = this.entityType();
-    if (et) {
-      this.router.navigate(['/po', et.alias || et.id, item.id]);
-    }
-  }
-
   onCreate(): void {
     this.createClicked.emit();
     const et = this.entityType();
