@@ -1,7 +1,12 @@
 <bs-container>
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>{{ (query()?.description | resolveTranslation) || query()?.name || ('loading' | t) }}</h2>
+    <h2>
+      {{ (query()?.description | resolveTranslation) || query()?.name || ('loading' | t) }}
+      @if (isStreaming()) {
+        <span class="badge bg-success ms-2" style="font-size: 0.5em; vertical-align: middle;">LIVE</span>
+      }
+    </h2>
     <div class="d-flex gap-2">
       @if (extraActionsTemplate(); as extraActionsTpl) {
         <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>

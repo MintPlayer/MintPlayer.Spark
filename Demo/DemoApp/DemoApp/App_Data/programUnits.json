@@ -32,6 +32,15 @@
           "queryId": "bc696815-2abb-4e7c-98a1-ac86b4352105",
           "alias": "cars",
           "order": 3
+        },
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440004",
+          "name": {"en": "Stock Market", "fr": "Bourse", "nl": "Beurs"},
+          "icon": "bi-graph-up-arrow",
+          "type": "query",
+          "queryId": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",
+          "alias": "stocks",
+          "order": 4
         }
       ]
     }

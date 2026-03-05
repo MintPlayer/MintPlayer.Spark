@@ -42,4 +42,11 @@ public sealed class SparkQuery
     /// - For Custom queries: from the method return type's generic parameter
     /// </summary>
     public string? EntityType { get; set; }
+
+    /// <summary>
+    /// When true, this query supports WebSocket streaming.
+    /// The frontend opens a WebSocket to /spark/queries/{id}/stream
+    /// and receives snapshot + patch messages instead of a single HTTP response.
+    /// </summary>
+    public bool IsStreamingQuery { get; set; }
 }
