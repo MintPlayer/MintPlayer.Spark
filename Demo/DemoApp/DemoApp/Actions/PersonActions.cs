@@ -1,3 +1,5 @@
+using DemoApp.Data;
+using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
 using MintPlayer.SourceGenerators.Attributes;
@@ -42,10 +44,10 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
     /// Custom query: returns people belonging to a specific company.
     /// Source: "Custom.Company_People"
     /// </summary>
-    public IRavenQueryable<Person> Company_People(CustomQueryArgs args)
+    public IRavenQueryable<VPerson> Company_People(CustomQueryArgs args)
     {
         args.EnsureParent("Company");
-        return args.Session.Query<Person>()
+        return args.Session.Query<VPerson, People_Overview>()
             .Where(p => p.Company == args.Parent!.Id);
     }
 }

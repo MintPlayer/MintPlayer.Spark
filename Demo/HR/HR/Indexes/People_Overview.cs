@@ -14,6 +14,7 @@ public class People_Overview : AbstractIndexCreationTask<Person>
                             Id = person.Id,
                             FullName = person.FirstName + " " + person.LastName,
                             Email = person.Email,
+                            Company = person.Company,
                         };
 
         Index(nameof(VPerson.FullName), FieldIndexing.Search);
@@ -27,4 +28,5 @@ public class VPerson
     public string? Id { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string? Email { get; set; }
+    public string? Company { get; set; }
 }
