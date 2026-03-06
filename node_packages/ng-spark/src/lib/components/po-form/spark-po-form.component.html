@@ -77,9 +77,9 @@
                 (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
                 [id]="attr.name"
                 [class.is-invalid]="hasError(attr.name)">
-                <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                <option [ngValue]="null" [attr.selected]="!formData()[attr.name] ? '' : null">-- {{ 'selectPlaceholder' | t }} --</option>
                 @for (option of (attr | lookupOptions:lookupReferenceOptions()); track option.key) {
-                  <option [ngValue]="option.key">
+                  <option [ngValue]="option.key" [attr.selected]="formData()[attr.name] === option.key ? '' : null">
                     {{ option.values | resolveTranslation:option.key }}
                   </option>
                 }
@@ -125,9 +125,9 @@
                           <bs-select
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
-                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            <option [ngValue]="null" [attr.selected]="!row[col.name] ? '' : null">-- {{ 'selectPlaceholder' | t }} --</option>
                             @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
-                              <option [ngValue]="option.id">
+                              <option [ngValue]="option.id" [attr.selected]="row[col.name] === option.id ? '' : null">
                                 {{ option.breadcrumb || option.name || option.id }}
                               </option>
                             }

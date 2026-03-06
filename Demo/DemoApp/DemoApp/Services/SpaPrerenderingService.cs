@@ -21,6 +21,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IRequestCultureResolver requestCultureResolver;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
     public Task BuildRoutes(ISpaRouteBuilder routeBuilder)
     {
@@ -77,6 +78,24 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
                 break;
             }
             case "po-edit":
+            {
+                var type = route.Parameters["type"];
+                var id = route.Parameters["id"];
+                var entityType = modelLoader.ResolveEntityType(type);
+                if (entityType is not null)
+                {
+                    data["entityTypes"] = modelLoader.GetEntityTypes();
+                    data["entityType"] = entityType;
+                    await SupplyPermissionsAsync(data, entityType);
+
+                    var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, Uri.UnescapeDataString(id));
+                    if (obj is not null)
+                        data["persistentObject"] = obj;
+
+                    await SupplyFormOptionsAsync(data, entityType);
+                }
+                break;
+            }
             case "po-detail":
             {
                 var type = route.Parameters["type"];
@@ -124,6 +143,52 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
             canEdit = await permissionService.IsAllowedAsync("Edit", target),
             canDelete = await permissionService.IsAllowedAsync("Delete", target),
         };
+    }
+
+    private async Task SupplyFormOptionsAsync(IDictionary<string, object> data, EntityTypeDefinition entityType)
+    {
+        var editableAttrs = entityType.Attributes
+            .Where(a => a.IsVisible && !a.IsReadOnly && a.ShowedOn.HasFlag(EShowedOn.PersistentObject))
+            .ToList();
+
+        // Lookup reference options
+        var lookupNames = editableAttrs
+            .Where(a => !string.IsNullOrEmpty(a.LookupReferenceType))
+            .Select(a => a.LookupReferenceType!)
+            .Distinct()
+            .ToList();
+
+        if (lookupNames.Count > 0)
+        {
+            var lookupOptions = new Dictionary<string, object>();
+            foreach (var name in lookupNames)
+            {
+                var lookup = await lookupReferenceService.GetAsync(name);
+                if (lookup is not null)
+                    lookupOptions[name] = lookup;
+            }
+            data["lookupReferenceOptions"] = lookupOptions;
+        }
+
+        // Reference options (via query execution)
+        var refAttrs = editableAttrs
+            .Where(a => a.DataType == "Reference" && !string.IsNullOrEmpty(a.Query))
+            .ToList();
+
+        if (refAttrs.Count > 0)
+        {
+            var refOptions = new Dictionary<string, object>();
+            foreach (var attr in refAttrs)
+            {
+                var query = queryLoader.GetQueryByName(attr.Query!);
+                if (query is not null)
+                {
+                    var items = await queryExecutor.ExecuteQueryAsync(query);
+                    refOptions[attr.Name] = items;
+                }
+            }
+            data["referenceOptions"] = refOptions;
+        }
     }
 
     private EntityTypeDefinition? ResolveEntityTypeForQuery(SparkQuery query, List<EntityTypeDefinition> entityTypes)

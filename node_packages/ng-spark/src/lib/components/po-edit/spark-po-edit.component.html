@@ -16,6 +16,8 @@
       [validationErrors]="validationErrors()"
       [showButtons]="true"
       [isSaving]="isSaving()"
+      [initialLookupReferenceOptions]="serverLookupReferenceOptions()"
+      [initialReferenceOptions]="serverReferenceOptions()"
       (save)="onSave()"
       (cancel)="onCancel()">
     </spark-po-form>

@@ -13,6 +13,7 @@ import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
 import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
 import { EntityType } from '../../models/entity-type';
+import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
 import { PersistentObjectAttribute } from '../../models/persistent-object-attribute';
 import { ValidationError } from '../../models/validation-error';
@@ -43,6 +44,8 @@ export class SparkPoEditComponent implements OnInit {
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
+  serverLookupReferenceOptions = signal<Record<string, LookupReference> | null>(null);
+  serverReferenceOptions = signal<Record<string, PersistentObject[]> | null>(null);
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -55,6 +58,12 @@ export class SparkPoEditComponent implements OnInit {
       }
       if (this.serverData['persistentObject']) {
         this.item.set(this.serverData['persistentObject']);
+      }
+      if (this.serverData['lookupReferenceOptions']) {
+        this.serverLookupReferenceOptions.set(this.serverData['lookupReferenceOptions'] as Record<string, LookupReference>);
+      }
+      if (this.serverData['referenceOptions']) {
+        this.serverReferenceOptions.set(this.serverData['referenceOptions'] as Record<string, PersistentObject[]>);
       }
       if (this.entityType() && this.item()) {
         this.initFormData();
