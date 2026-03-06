@@ -1,6 +1,10 @@
 using System.Text.RegularExpressions;
 using HR;
+using HR.Services;
+using MintPlayer.AspNetCore.Hsts;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
+using MintPlayer.AspNetCore.SpaServices.Prerendering;
+using MintPlayer.AspNetCore.SpaServices.Routing;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -38,11 +42,17 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
+builder.Services.AddSpaPrerenderingService<SpaPrerenderingService>();
+
 var app = builder.Build();
 
+app.UseImprovedHsts();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseSpaStaticFilesImproved();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseSpaStaticFilesImproved();
+}
 
 app.UseRouting();
 app.UseAuthentication();
@@ -69,6 +79,15 @@ app.MapWhen(
         appBuilder.UseSpaImproved(spa =>
         {
             spa.Options.SourcePath = "ClientApp";
+
+            spa.UseSpaPrerendering(options =>
+            {
+                options.BootModuleBuilder = app.Environment.IsDevelopment()
+                    ? new AngularPrerendererBuilder(npmScript: "build:ssr", @"Build at\:", 1)
+                    : null;
+                options.BootModulePath = $"{spa.Options.SourcePath}/dist/server/main.js";
+                options.ExcludeUrls = new[] { "/sockjs-node" };
+            });
 
             if (app.Environment.IsDevelopment())
             {

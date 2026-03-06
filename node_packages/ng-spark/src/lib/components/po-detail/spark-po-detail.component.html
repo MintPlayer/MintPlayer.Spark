@@ -9,13 +9,13 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h2>{{ currentItem.breadcrumb || currentItem.name }}</h2>
       <bs-button-group>
-        <button class="btn btn-outline-secondary" (click)="onBack()">
+        <a class="btn btn-outline-secondary" [routerLink]="backUrl()" (click)="onBack($event)">
           <spark-icon name="arrow-left" /> {{ 'back' | t }}
-        </button>
+        </a>
         @if (canEdit()) {
-          <button class="btn btn-primary" (click)="onEdit()">
+          <a class="btn btn-primary" [routerLink]="editUrl()" (click)="edited.emit()">
             <spark-icon name="pencil" /> {{ 'edit' | t }}
-          </button>
+          </a>
         }
         @if (extraActionsTemplate(); as extraActionsTpl) {
           <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>

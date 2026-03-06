@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, output, PLATFORM_ID, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { CommonModule, isPlatformServer, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -19,6 +19,8 @@ import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
 import { NgComponentOutlet } from '@angular/common';
 import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
 import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
+import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
+import { EntityPermissions } from '../../models/entity-permissions';
 import { EntityType, EntityAttributeDefinition } from '../../models/entity-type';
 import { LookupReference } from '../../models/lookup-reference';
 import { PersistentObject } from '../../models/persistent-object';
@@ -32,11 +34,13 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SparkQueryListComponent {
+export class SparkQueryListComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly serverData = inject(SPARK_SERVER_DATA, { optional: true });
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
 
@@ -67,7 +71,33 @@ export class SparkQueryListComponent {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
   }
 
+  ngOnInit(): void {
+    if (isPlatformServer(this.platformId) && this.serverData) {
+      if (this.serverData['query']) {
+        this.query.set(this.serverData['query']);
+      }
+      if (this.serverData['entityTypes']) {
+        this.allEntityTypes.set(this.serverData['entityTypes']);
+      }
+      if (this.serverData['entityType']) {
+        this.entityType.set(this.serverData['entityType']);
+      }
+      if (this.serverData['queryItems']) {
+        const items = this.serverData['queryItems'] as PersistentObject[];
+        this.allItems.set(items);
+        this.applyFilter();
+      }
+      if (this.serverData['permissions']) {
+        const perms = this.serverData['permissions'] as EntityPermissions;
+        this.canRead.set(perms.canRead);
+        this.canCreate.set(perms.canCreate);
+      }
+    }
+  }
+
   private async onParamsChange(params: any): Promise<void> {
+    if (isPlatformServer(this.platformId)) return;
+
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
 

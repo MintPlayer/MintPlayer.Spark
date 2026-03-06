@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
-import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, OnInit, output, PLATFORM_ID, signal, effect, Type } from '@angular/core';
+import { CommonModule, isPlatformServer, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -45,16 +45,19 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-rende
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SparkPoFormComponent {
+export class SparkPoFormComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly platformId = inject(PLATFORM_ID);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
   validationErrors = input<ValidationError[]>([]);
   showButtons = input(false);
   isSaving = input(false);
+  initialLookupReferenceOptions = input<Record<string, LookupReference> | null>(null);
+  initialReferenceOptions = input<Record<string, PersistentObject[]> | null>(null);
 
   save = output<void>();
   cancel = output<void>();
@@ -155,12 +158,37 @@ export class SparkPoFormComponent {
   constructor() {
     effect(() => {
       const et = this.entityType();
-      if (et) {
+      if (et && !isPlatformServer(this.platformId)) {
         this.loadReferenceOptions();
         this.loadAsDetailTypes();
         this.loadLookupReferenceOptions();
       }
     });
+  }
+
+  ngOnInit(): void {
+    // Server-supplied dictionary keys may be camelCased by the JSON serializer
+    // (e.g., "carStatus" instead of "CarStatus"). Re-key to match attribute values.
+    const initialLookup = this.initialLookupReferenceOptions();
+    if (initialLookup && Object.keys(initialLookup).length > 0) {
+      this.lookupReferenceOptions.set(this.remapKeys(initialLookup,
+        this.editableAttributes().filter(a => a.lookupReferenceType).map(a => a.lookupReferenceType!)));
+    }
+    const initialRef = this.initialReferenceOptions();
+    if (initialRef && Object.keys(initialRef).length > 0) {
+      this.referenceOptions.set(this.remapKeys(initialRef,
+        this.editableAttributes().filter(a => a.dataType === 'Reference').map(a => a.name)));
+    }
+  }
+
+  private remapKeys<T>(source: Record<string, T>, expectedKeys: string[]): Record<string, T> {
+    const lowerMap = new Map(Object.entries(source).map(([k, v]) => [k.toLowerCase(), v]));
+    const result: Record<string, T> = {};
+    for (const key of expectedKeys) {
+      const value = source[key] ?? lowerMap.get(key.toLowerCase());
+      if (value) result[key] = value;
+    }
+    return result;
   }
 
   private toRecord<T>(entries: [string, T][]): Record<string, T> {

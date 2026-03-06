@@ -68,3 +68,4 @@ export type { SparkRouteConfig } from './lib/routes/spark-routes';
 
 // Providers
 export { provideSpark } from './lib/providers/provide-spark';
+export { SPARK_SERVER_DATA } from './lib/providers/spark-server-data';
