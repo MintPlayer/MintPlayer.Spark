@@ -128,6 +128,19 @@ export class SparkPoDetailComponent {
     }
   }
 
+  backUrl = computed(() => {
+    const et = this.entityType();
+    if (!et) return null;
+    return ['/po', et.alias || et.id];
+  });
+
+  editUrl = computed(() => {
+    const et = this.entityType();
+    const currentItem = this.item();
+    if (!et || !currentItem?.id) return null;
+    return ['/po', et.alias || et.id, currentItem.id, 'edit'];
+  });
+
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
       .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
@@ -246,11 +259,6 @@ export class SparkPoDetailComponent {
     }
   }
 
-  onEdit(): void {
-    this.edited.emit();
-    this.router.navigate(['/po', this.type, this.id, 'edit']);
-  }
-
   async onDelete(): Promise<void> {
     if (confirm(this.lang.t('confirmDelete'))) {
       await this.sparkService.delete(this.type, this.id);
@@ -259,8 +267,9 @@ export class SparkPoDetailComponent {
     }
   }
 
-  onBack(): void {
+  onBack(event: Event): void {
     if (!isPlatformServer(this.platformId)) {
+      event.preventDefault();
       window.history.back();
     }
   }
