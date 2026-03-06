@@ -29,6 +29,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
             .Route("query/{queryId}", "query-list")
             .Group("po/{type}", "po", poRoutes => poRoutes
                 .Route("", "list")
+                .Route("{id}/edit", "edit")
                 .Route("{id}", "detail")
             );
         return Task.CompletedTask;
@@ -75,6 +76,7 @@ public partial class SpaPrerenderingService : ISpaPrerenderingService
                 }
                 break;
             }
+            case "po-edit":
             case "po-detail":
             {
                 var type = route.Parameters["type"];

@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
-import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, PLATFORM_ID, signal, effect, Type } from '@angular/core';
+import { CommonModule, isPlatformServer, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -49,6 +49,7 @@ export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly platformId = inject(PLATFORM_ID);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
@@ -155,7 +156,7 @@ export class SparkPoFormComponent {
   constructor() {
     effect(() => {
       const et = this.entityType();
-      if (et) {
+      if (et && !isPlatformServer(this.platformId)) {
         this.loadReferenceOptions();
         this.loadAsDetailTypes();
         this.loadLookupReferenceOptions();

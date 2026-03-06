@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, output, PLATFORM_ID, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, isPlatformServer } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -11,6 +11,7 @@ import { SparkService } from '../../services/spark.service';
 import { SparkPoFormComponent } from '../po-form/spark-po-form.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
+import { SPARK_SERVER_DATA } from '../../providers/spark-server-data';
 import { EntityType } from '../../models/entity-type';
 import { PersistentObject } from '../../models/persistent-object';
 import { PersistentObjectAttribute } from '../../models/persistent-object-attribute';
@@ -23,10 +24,12 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
   templateUrl: './spark-po-edit.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SparkPoEditComponent {
+export class SparkPoEditComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly serverData = inject(SPARK_SERVER_DATA, { optional: true });
 
   saved = output<PersistentObject>();
   cancelled = output<void>();
@@ -45,9 +48,25 @@ export class SparkPoEditComponent {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
   }
 
+  ngOnInit(): void {
+    if (isPlatformServer(this.platformId) && this.serverData) {
+      if (this.serverData['entityType']) {
+        this.entityType.set(this.serverData['entityType']);
+      }
+      if (this.serverData['persistentObject']) {
+        this.item.set(this.serverData['persistentObject']);
+      }
+      if (this.entityType() && this.item()) {
+        this.initFormData();
+      }
+    }
+  }
+
   private async onParamsChange(params: any): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
+
+    if (isPlatformServer(this.platformId)) return;
 
     try {
       const [types, item] = await Promise.all([
