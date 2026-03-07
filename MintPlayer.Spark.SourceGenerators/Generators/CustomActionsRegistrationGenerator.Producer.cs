@@ -29,21 +29,19 @@ public class CustomActionsRegistrationProducer : Producer
 
         writer.WriteLine(Header);
         writer.WriteLine();
-        writer.WriteLine("using Microsoft.Extensions.DependencyInjection;");
-        writer.WriteLine();
 
         using (writer.OpenBlock($"namespace {RootNamespace}"))
         {
-            using (writer.OpenBlock("internal static class SparkCustomActionsExtensions"))
+            using (writer.OpenBlock("internal static class SparkCustomActionsBuilderExtensions"))
             {
-                using (writer.OpenBlock("internal static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddSparkCustomActions(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)"))
+                using (writer.OpenBlock("internal static global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder AddCustomActions(this global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder builder)"))
                 {
                     foreach (var actionClass in actionsList)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        writer.WriteLine($"services.AddScoped<{actionClass.TypeName}>();");
+                        writer.WriteLine($"global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<{actionClass.TypeName}>(builder.Services);");
                     }
-                    writer.WriteLine("return services;");
+                    writer.WriteLine("return builder;");
                 }
             }
         }

@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Authorization;
 /// <summary>
 /// Extension methods for configuring Spark authorization services.
 /// </summary>
-public static class SparkAuthorizationExtensions
+internal static class SparkAuthorizationExtensions
 {
     /// <summary>
     /// Adds Spark authorization services to the service collection.
@@ -26,7 +26,7 @@ public static class SparkAuthorizationExtensions
     /// });
     /// </code>
     /// </example>
-    public static IServiceCollection AddSparkAuthorization(
+    internal static IServiceCollection AddSparkAuthorization(
         this IServiceCollection services,
         Action<AuthorizationOptions>? configureOptions = null)
     {
@@ -64,7 +64,7 @@ public static class SparkAuthorizationExtensions
     ///     .AddGroupMembershipProvider&lt;IdentityGroupMembershipProvider&gt;();
     /// </code>
     /// </example>
-    public static IServiceCollection AddGroupMembershipProvider<TProvider>(this IServiceCollection services)
+    internal static IServiceCollection AddGroupMembershipProvider<TProvider>(this IServiceCollection services)
         where TProvider : class, IGroupMembershipProvider
     {
         // Remove any existing registration

@@ -29,21 +29,19 @@ public class SubscriptionWorkerRegistrationProducer : Producer
 
         writer.WriteLine(Header);
         writer.WriteLine();
-        writer.WriteLine("using Microsoft.Extensions.DependencyInjection;");
-        writer.WriteLine();
 
         using (writer.OpenBlock($"namespace {RootNamespace}"))
         {
-            using (writer.OpenBlock("internal static class SparkSubscriptionWorkersExtensions"))
+            using (writer.OpenBlock("internal static class SparkSubscriptionWorkersBuilderExtensions"))
             {
-                using (writer.OpenBlock("internal static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddSparkSubscriptionWorkers(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)"))
+                using (writer.OpenBlock("internal static global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder AddSubscriptionWorkers(this global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder builder)"))
                 {
                     foreach (var workerClass in workerList)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        writer.WriteLine($"global::MintPlayer.Spark.SubscriptionWorker.SparkSubscriptionExtensions.AddSubscriptionWorker<{workerClass.WorkerTypeName}>(services);");
+                        writer.WriteLine($"global::MintPlayer.Spark.SubscriptionWorker.SparkSubscriptionExtensions.AddSubscriptionWorker<{workerClass.WorkerTypeName}>(builder.Services);");
                     }
-                    writer.WriteLine("return services;");
+                    writer.WriteLine("return builder;");
                 }
             }
         }

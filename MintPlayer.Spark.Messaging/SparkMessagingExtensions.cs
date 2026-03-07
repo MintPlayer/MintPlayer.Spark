@@ -8,9 +8,9 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging;
 
-public static class SparkMessagingExtensions
+internal static class SparkMessagingExtensions
 {
-    public static IServiceCollection AddSparkMessaging(
+    internal static IServiceCollection AddSparkMessaging(
         this IServiceCollection services,
         Action<SparkMessagingOptions>? configure = null)
     {
@@ -33,7 +33,7 @@ public static class SparkMessagingExtensions
     /// <summary>
     /// Deploys the SparkMessages RavenDB index. Call this after the application is built.
     /// </summary>
-    public static IApplicationBuilder CreateSparkMessagingIndexes(this IApplicationBuilder app)
+    internal static IApplicationBuilder CreateSparkMessagingIndexes(this IApplicationBuilder app)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         new SparkMessages_ByQueue().Execute(documentStore);

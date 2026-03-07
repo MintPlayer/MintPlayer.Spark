@@ -29,21 +29,19 @@ public class RecipientRegistrationProducer : Producer
 
         writer.WriteLine(Header);
         writer.WriteLine();
-        writer.WriteLine("using Microsoft.Extensions.DependencyInjection;");
-        writer.WriteLine();
 
         using (writer.OpenBlock($"namespace {RootNamespace}"))
         {
-            using (writer.OpenBlock("internal static class SparkRecipientsExtensions"))
+            using (writer.OpenBlock("internal static class SparkRecipientsBuilderExtensions"))
             {
-                using (writer.OpenBlock("internal static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddSparkRecipients(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)"))
+                using (writer.OpenBlock("internal static global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder AddRecipients(this global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder builder)"))
                 {
                     foreach (var recipientClass in recipientList)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        writer.WriteLine($"services.AddScoped<global::MintPlayer.Spark.Messaging.Abstractions.IRecipient<{recipientClass.MessageTypeName}>, {recipientClass.RecipientTypeName}>();");
+                        writer.WriteLine($"global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::MintPlayer.Spark.Messaging.Abstractions.IRecipient<{recipientClass.MessageTypeName}>, {recipientClass.RecipientTypeName}>(builder.Services);");
                     }
-                    writer.WriteLine("return services;");
+                    writer.WriteLine("return builder;");
                 }
             }
         }

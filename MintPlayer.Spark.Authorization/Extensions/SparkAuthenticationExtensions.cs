@@ -9,7 +9,7 @@ using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
-public static class SparkAuthenticationExtensions
+internal static class SparkAuthenticationExtensions
 {
     /// <summary>
     /// Adds Spark authentication with RavenDB-backed identity stores.
@@ -39,7 +39,7 @@ public static class SparkAuthenticationExtensions
     /// <param name="configureIdentity">Optional callback to configure identity options (password rules, lockout, etc.).</param>
     /// <typeparam name="TUser">The user type, must extend <see cref="SparkUser"/>.</typeparam>
     /// <returns>The <see cref="IdentityBuilder"/> for further configuration (e.g. adding external login providers).</returns>
-    public static IdentityBuilder AddSparkAuthentication<TUser>(
+    internal static IdentityBuilder AddSparkAuthentication<TUser>(
         this IServiceCollection services,
         Action<IdentityOptions>? configureIdentity = null)
         where TUser : SparkUser, new()
@@ -67,7 +67,7 @@ public static class SparkAuthenticationExtensions
     /// POST /spark/auth/manage/2fa, GET /spark/auth/manage/info, POST /spark/auth/manage/info,
     /// GET /spark/auth/me, POST /spark/auth/logout.
     /// </summary>
-    public static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(
+    internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(
         this IEndpointRouteBuilder endpoints)
         where TUser : SparkUser, new()
     {

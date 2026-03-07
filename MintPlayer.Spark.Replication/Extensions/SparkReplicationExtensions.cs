@@ -17,13 +17,13 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Replication;
 
-public static class SparkReplicationExtensions
+internal static class SparkReplicationExtensions
 {
     /// <summary>
     /// Registers replication services (module registration, ETL script collection, ETL task management,
     /// message bus recipient for deployment, and HTTP client for outbound requests).
     /// </summary>
-    public static IServiceCollection AddSparkReplication(
+    internal static IServiceCollection AddSparkReplication(
         this IServiceCollection services,
         Action<SparkReplicationOptions> configure)
     {
@@ -47,7 +47,7 @@ public static class SparkReplicationExtensions
     /// (2) scans assemblies for [Replicated] attributes, (3) sends ETL scripts to
     /// source modules via the durable message bus.
     /// </summary>
-    public static WebApplication UseSparkReplication(this WebApplication app)
+    internal static WebApplication UseSparkReplication(this WebApplication app)
     {
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SparkReplication");
         var options = app.Services.GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
@@ -141,7 +141,7 @@ public static class SparkReplicationExtensions
     /// <summary>
     /// Maps the POST /spark/etl/deploy endpoint that other modules call to deploy ETL scripts.
     /// </summary>
-    public static IEndpointRouteBuilder MapSparkReplication(this IEndpointRouteBuilder endpoints)
+    internal static IEndpointRouteBuilder MapSparkReplication(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/spark/etl/deploy", (Delegate)EtlEndpoints.HandleDeployAsync);
         endpoints.MapPost("/spark/sync/apply", (Delegate)SyncEndpoints.HandleApplyAsync);
