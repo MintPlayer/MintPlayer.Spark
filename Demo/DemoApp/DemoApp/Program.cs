@@ -8,15 +8,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddSpark(builder.Configuration);
-builder.Services.AddScoped<SparkContext, DemoSparkContext>();
-
-// Register all Actions classes (auto-discovered by source generator)
-builder.Services.AddSparkActions();
-
-// Register messaging infrastructure and recipients
-builder.Services.AddSparkMessaging();
-builder.Services.AddSparkRecipients();
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<DemoSparkContext>();
+    spark.AddActions();
+    spark.AddMessaging();
+    spark.AddRecipients();
+});
 
 // Configure SPA static files
 builder.Services.AddSpaStaticFilesImproved(configuration =>
@@ -32,11 +30,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseAuthorization();
-app.UseAntiforgery();
 app.UseSpark();
-app.CreateSparkIndexes();
-app.CreateSparkMessagingIndexes();
 app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
 
 app.UseEndpoints(endpoints =>
