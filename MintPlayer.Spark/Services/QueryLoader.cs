@@ -1,5 +1,3 @@
-using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 
@@ -17,7 +15,7 @@ public interface IQueryLoader
 [Register(typeof(IQueryLoader), ServiceLifetime.Singleton)]
 internal partial class QueryLoader : IQueryLoader
 {
-    [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly IModelLoader modelLoader;
 
     private Lazy<(Dictionary<Guid, SparkQuery> ById, Dictionary<string, SparkQuery> ByAlias)>? _queries;
 
@@ -43,42 +41,21 @@ internal partial class QueryLoader : IQueryLoader
     {
         var byId = new Dictionary<Guid, SparkQuery>();
         var byAlias = new Dictionary<string, SparkQuery>(StringComparer.OrdinalIgnoreCase);
-        var queriesPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Queries");
 
-        if (!Directory.Exists(queriesPath))
-            return (byId, byAlias);
-
-        var jsonOptions = new JsonSerializerOptions
+        foreach (var query in modelLoader.GetQueries())
         {
-            PropertyNameCaseInsensitive = true
-        };
+            // Auto-generate alias from Name if not explicitly set
+            query.Alias ??= GenerateQueryAlias(query.Name);
 
-        foreach (var file in Directory.GetFiles(queriesPath, "*.json"))
-        {
-            try
+            byId[query.Id] = query;
+
+            if (byAlias.ContainsKey(query.Alias))
             {
-                var json = File.ReadAllText(file);
-                var query = JsonSerializer.Deserialize<SparkQuery>(json, jsonOptions);
-                if (query != null)
-                {
-                    // Auto-generate alias from Name if not explicitly set
-                    query.Alias ??= GenerateQueryAlias(query.Name);
-
-                    byId[query.Id] = query;
-
-                    if (byAlias.ContainsKey(query.Alias))
-                    {
-                        Console.WriteLine($"Warning: Duplicate query alias '{query.Alias}' in {file}. Alias must be unique.");
-                    }
-                    else
-                    {
-                        byAlias[query.Alias] = query;
-                    }
-                }
+                Console.WriteLine($"Warning: Duplicate query alias '{query.Alias}'. Alias must be unique.");
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Error loading query file {file}: {ex.Message}");
+                byAlias[query.Alias] = query;
             }
         }
 

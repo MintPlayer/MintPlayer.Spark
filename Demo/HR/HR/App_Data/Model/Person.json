@@ -1,261 +1,282 @@
 {
-  "id": "2a34a658-1768-4c82-8724-884b2f99f4e0",
-  "name": "Person",
-  "description": {
-    "en": "Person",
-    "fr": "Personne",
-    "nl": "Persoon"
+  "persistentObject": {
+    "id": "2a34a658-1768-4c82-8724-884b2f99f4e0",
+    "name": "Person",
+    "description": {
+      "en": "Person",
+      "fr": "Personne",
+      "nl": "Persoon"
+    },
+    "clrType": "HR.Entities.Person",
+    "queryType": "HR.Indexes.VPerson",
+    "indexName": "People_Overview",
+    "displayAttribute": "FullName",
+    "tabs": [
+      {
+        "id": "a1b2c3d4-0001-0001-0001-000000000001",
+        "name": "General",
+        "label": {
+          "en": "General",
+          "fr": "Général",
+          "nl": "Algemeen"
+        },
+        "order": 1
+      },
+      {
+        "id": "a1b2c3d4-0001-0001-0001-000000000002",
+        "name": "Employment",
+        "label": {
+          "en": "Employment",
+          "fr": "Emploi",
+          "nl": "Loopbaan"
+        },
+        "order": 2
+      }
+    ],
+    "groups": [
+      {
+        "id": "b1b2c3d4-0002-0002-0002-000000000001",
+        "name": "Personal",
+        "label": {
+          "en": "Personal Information",
+          "fr": "Informations personnelles",
+          "nl": "Persoonlijke gegevens"
+        },
+        "tab": "a1b2c3d4-0001-0001-0001-000000000001",
+        "order": 1
+      },
+      {
+        "id": "b1b2c3d4-0002-0002-0002-000000000002",
+        "name": "Contact",
+        "label": {
+          "en": "Contact",
+          "fr": "Contact",
+          "nl": "Contact"
+        },
+        "tab": "a1b2c3d4-0001-0001-0001-000000000001",
+        "order": 2
+      },
+      {
+        "id": "b1b2c3d4-0002-0002-0002-000000000003",
+        "name": "Career",
+        "label": {
+          "en": "Career",
+          "fr": "Carrière",
+          "nl": "Carrière"
+        },
+        "tab": "a1b2c3d4-0001-0001-0001-000000000002",
+        "order": 1
+      }
+    ],
+    "attributes": [
+      {
+        "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
+        "name": "FirstName",
+        "label": {
+          "en": "First Name",
+          "fr": "Prénom",
+          "nl": "Voornaam"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "minLength",
+            "value": 2,
+            "message": {
+              "en": "First Name must be at least 2 characters.",
+              "fr": "Le prénom doit contenir au moins 2 caractères.",
+              "nl": "Voornaam moet minstens 2 tekens bevatten."
+            }
+          },
+          {
+            "type": "maxLength",
+            "value": 50
+          }
+        ],
+        "group": "b1b2c3d4-0002-0002-0002-000000000001"
+      },
+      {
+        "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
+        "name": "LastName",
+        "label": {
+          "en": "Last Name",
+          "fr": "Nom de famille",
+          "nl": "Achternaam"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "minLength",
+            "value": 2,
+            "message": {
+              "en": "Last Name must be at least 2 characters.",
+              "fr": "Le nom de famille doit contenir au moins 2 caractères.",
+              "nl": "Achternaam moet minstens 2 tekens bevatten."
+            }
+          },
+          {
+            "type": "maxLength",
+            "value": 50
+          }
+        ],
+        "group": "b1b2c3d4-0002-0002-0002-000000000001"
+      },
+      {
+        "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
+        "name": "Email",
+        "label": {
+          "en": "Email",
+          "fr": "E-mail",
+          "nl": "E-mail"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "email"
+          },
+          {
+            "type": "maxLength",
+            "value": 255
+          }
+        ],
+        "group": "b1b2c3d4-0002-0002-0002-000000000002"
+      },
+      {
+        "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
+        "name": "DateOfBirth",
+        "label": {
+          "en": "Date Of Birth",
+          "fr": "Date de naissance",
+          "nl": "Geboortedatum"
+        },
+        "dataType": "date",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000001"
+      },
+      {
+        "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
+        "name": "Company",
+        "label": {
+          "en": "Company",
+          "fr": "Entreprise",
+          "nl": "Bedrijf"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "query": "GetCompanies",
+        "referenceType": "HR.Entities.Company",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000003"
+      },
+      {
+        "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
+        "name": "Address",
+        "label": {
+          "en": "Address",
+          "fr": "Adresse",
+          "nl": "Adres"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "asDetailType": "HR.Entities.Address",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000002"
+      },
+      {
+        "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
+        "name": "Jobs",
+        "label": {
+          "en": "Jobs"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "asDetailType": "HR.Entities.CarreerJob",
+        "isArray": true,
+        "editMode": "inline",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000003"
+      },
+      {
+        "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
+        "name": "FullName",
+        "label": {
+          "en": "Full Name",
+          "fr": "Nom complet",
+          "nl": "Volledige naam"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      }
+    ]
   },
-  "clrType": "HR.Entities.Person",
-  "queryType": "HR.Indexes.VPerson",
-  "indexName": "People_Overview",
-  "displayAttribute": "FullName",
-  "tabs": [
+  "queries": [
     {
-      "id": "a1b2c3d4-0001-0001-0001-000000000001",
-      "name": "General",
-      "label": {
-        "en": "General",
-        "fr": "Général",
-        "nl": "Algemeen"
-      },
-      "order": 1
+      "id": "b20e8400-e29b-41d4-a716-446655440001",
+      "name": "GetPeople",
+      "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+      "source": "Database.People",
+      "sortBy": "LastName",
+      "sortDirection": "asc"
     },
     {
-      "id": "a1b2c3d4-0001-0001-0001-000000000002",
-      "name": "Employment",
-      "label": {
-        "en": "Employment",
-        "fr": "Emploi",
-        "nl": "Loopbaan"
-      },
-      "order": 2
-    }
-  ],
-  "groups": [
-    {
-      "id": "b1b2c3d4-0002-0002-0002-000000000001",
-      "name": "Personal",
-      "label": {
-        "en": "Personal Information",
-        "fr": "Informations personnelles",
-        "nl": "Persoonlijke gegevens"
-      },
-      "tab": "a1b2c3d4-0001-0001-0001-000000000001",
-      "order": 1
-    },
-    {
-      "id": "b1b2c3d4-0002-0002-0002-000000000002",
-      "name": "Contact",
-      "label": {
-        "en": "Contact",
-        "fr": "Contact",
-        "nl": "Contact"
-      },
-      "tab": "a1b2c3d4-0001-0001-0001-000000000001",
-      "order": 2
-    },
-    {
-      "id": "b1b2c3d4-0002-0002-0002-000000000003",
-      "name": "Career",
-      "label": {
-        "en": "Career",
-        "fr": "Carrière",
-        "nl": "Carrière"
-      },
-      "tab": "a1b2c3d4-0001-0001-0001-000000000002",
-      "order": 1
-    }
-  ],
-  "attributes": [
-    {
-      "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
-      "name": "FirstName",
-      "label": {
-        "en": "First Name",
-        "fr": "Prénom",
-        "nl": "Voornaam"
-      },
-      "dataType": "string",
-      "isRequired": true,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 1,
-      "isArray": false,
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [
-        {
-          "type": "minLength",
-          "value": 2,
-          "message": {
-            "en": "First Name must be at least 2 characters.",
-            "fr": "Le prénom doit contenir au moins 2 caractères.",
-            "nl": "Voornaam moet minstens 2 tekens bevatten."
-          }
-        },
-        {
-          "type": "maxLength",
-          "value": 50
-        }
-      ],
-      "group": "b1b2c3d4-0002-0002-0002-000000000001"
-    },
-    {
-      "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
-      "name": "LastName",
-      "label": {
-        "en": "Last Name",
-        "fr": "Nom de famille",
-        "nl": "Achternaam"
-      },
-      "dataType": "string",
-      "isRequired": true,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 2,
-      "isArray": false,
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [
-        {
-          "type": "minLength",
-          "value": 2,
-          "message": {
-            "en": "Last Name must be at least 2 characters.",
-            "fr": "Le nom de famille doit contenir au moins 2 caractères.",
-            "nl": "Achternaam moet minstens 2 tekens bevatten."
-          }
-        },
-        {
-          "type": "maxLength",
-          "value": 50
-        }
-      ],
-      "group": "b1b2c3d4-0002-0002-0002-000000000001"
-    },
-    {
-      "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
-      "name": "Email",
-      "label": {
-        "en": "Email",
-        "fr": "E-mail",
-        "nl": "E-mail"
-      },
-      "dataType": "string",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 3,
-      "isArray": false,
-      "showedOn": "Query, PersistentObject",
-      "rules": [
-        {
-          "type": "email"
-        },
-        {
-          "type": "maxLength",
-          "value": 255
-        }
-      ],
-      "group": "b1b2c3d4-0002-0002-0002-000000000002"
-    },
-    {
-      "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
-      "name": "DateOfBirth",
-      "label": {
-        "en": "Date Of Birth",
-        "fr": "Date de naissance",
-        "nl": "Geboortedatum"
-      },
-      "dataType": "date",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 4,
-      "isArray": false,
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [],
-      "group": "b1b2c3d4-0002-0002-0002-000000000001"
-    },
-    {
-      "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
-      "name": "Company",
-      "label": {
-        "en": "Company",
-        "fr": "Entreprise",
-        "nl": "Bedrijf"
-      },
-      "dataType": "Reference",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 5,
-      "query": "GetCompanies",
-      "referenceType": "HR.Entities.Company",
-      "isArray": false,
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [],
-      "group": "b1b2c3d4-0002-0002-0002-000000000003"
-    },
-    {
-      "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
-      "name": "Address",
-      "label": {
-        "en": "Address",
-        "fr": "Adresse",
-        "nl": "Adres"
-      },
-      "dataType": "AsDetail",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 6,
-      "asDetailType": "HR.Entities.Address",
-      "isArray": false,
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [],
-      "group": "b1b2c3d4-0002-0002-0002-000000000002"
-    },
-    {
-      "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
-      "name": "Jobs",
-      "label": {
-        "en": "Jobs"
-      },
-      "dataType": "AsDetail",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 7,
-      "asDetailType": "HR.Entities.CarreerJob",
-      "isArray": true,
-      "editMode": "inline",
-      "inQueryType": false,
-      "showedOn": "PersistentObject",
-      "rules": [],
-      "group": "b1b2c3d4-0002-0002-0002-000000000003"
-    },
-    {
-      "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
-      "name": "FullName",
-      "label": {
-        "en": "Full Name",
-        "fr": "Nom complet",
-        "nl": "Volledige naam"
-      },
-      "dataType": "string",
-      "isRequired": false,
-      "isVisible": true,
-      "isReadOnly": false,
-      "order": 7,
-      "isArray": false,
-      "inCollectionType": false,
-      "showedOn": "Query",
-      "rules": []
+      "id": "b20e8400-e29b-41d4-a716-446655440010",
+      "name": "Company_People",
+      "description": { "en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf" },
+      "source": "Custom.Company_People",
+      "sortBy": "FullName",
+      "sortDirection": "asc",
+      "alias": "company-people"
     }
   ]
 }

@@ -13,6 +13,7 @@ public interface IModelLoader
     EntityTypeDefinition? GetEntityTypeByName(string name);
     EntityTypeDefinition? GetEntityTypeByAlias(string alias);
     EntityTypeDefinition? ResolveEntityType(string idOrAlias);
+    IEnumerable<SparkQuery> GetQueries();
 }
 
 [Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
@@ -20,25 +21,26 @@ internal partial class ModelLoader : IModelLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
 
-    private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias)>? _entityTypes;
+    private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries)>? _data;
 
-    private (Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias) EntityTypes
+    private (Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries) Data
     {
         get
         {
-            _entityTypes ??= new Lazy<(Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>)>(LoadEntityTypes);
-            return _entityTypes.Value;
+            _data ??= new Lazy<(Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>)>(LoadData);
+            return _data.Value;
         }
     }
 
-    private (Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>) LoadEntityTypes()
+    private (Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>) LoadData()
     {
         var byId = new Dictionary<Guid, EntityTypeDefinition>();
         var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
+        var allQueries = new List<SparkQuery>();
         var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
 
         if (!Directory.Exists(modelPath))
-            return (byId, byAlias);
+            return (byId, byAlias, allQueries);
 
         var jsonOptions = new JsonSerializerOptions
         {
@@ -50,9 +52,11 @@ internal partial class ModelLoader : IModelLoader
             try
             {
                 var json = File.ReadAllText(file);
-                var entityType = JsonSerializer.Deserialize<EntityTypeDefinition>(json, jsonOptions);
-                if (entityType != null)
+                var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
+                if (entityTypeFile?.PersistentObject != null)
                 {
+                    var entityType = entityTypeFile.PersistentObject;
+
                     // Auto-generate alias from Name if not explicitly set
                     entityType.Alias ??= entityType.Name.ToLowerInvariant();
 
@@ -66,6 +70,13 @@ internal partial class ModelLoader : IModelLoader
                     {
                         byAlias[entityType.Alias] = entityType;
                     }
+
+                    // Extract queries and auto-populate EntityType
+                    foreach (var query in entityTypeFile.Queries)
+                    {
+                        query.EntityType ??= entityType.Name;
+                        allQueries.Add(query);
+                    }
                 }
             }
             catch (Exception ex)
@@ -74,23 +85,23 @@ internal partial class ModelLoader : IModelLoader
             }
         }
 
-        return (byId, byAlias);
+        return (byId, byAlias, allQueries);
     }
 
     public IEnumerable<EntityTypeDefinition> GetEntityTypes()
-        => EntityTypes.ById.Values;
+        => Data.ById.Values;
 
     public EntityTypeDefinition? GetEntityType(Guid id)
-        => EntityTypes.ById.TryGetValue(id, out var entityType) ? entityType : null;
+        => Data.ById.TryGetValue(id, out var entityType) ? entityType : null;
 
     public EntityTypeDefinition? GetEntityTypeByClrType(string clrType)
-        => EntityTypes.ById.Values.FirstOrDefault(e => e.ClrType == clrType);
+        => Data.ById.Values.FirstOrDefault(e => e.ClrType == clrType);
 
     public EntityTypeDefinition? GetEntityTypeByName(string name)
-        => EntityTypes.ById.Values.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+        => Data.ById.Values.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public EntityTypeDefinition? GetEntityTypeByAlias(string alias)
-        => EntityTypes.ByAlias.TryGetValue(alias, out var entityType) ? entityType : null;
+        => Data.ByAlias.TryGetValue(alias, out var entityType) ? entityType : null;
 
     public EntityTypeDefinition? ResolveEntityType(string idOrAlias)
     {
@@ -98,4 +109,7 @@ internal partial class ModelLoader : IModelLoader
             return GetEntityType(guid);
         return GetEntityTypeByAlias(idOrAlias);
     }
+
+    public IEnumerable<SparkQuery> GetQueries()
+        => Data.Queries;
 }
