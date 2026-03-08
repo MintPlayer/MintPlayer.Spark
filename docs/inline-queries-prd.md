@@ -1,6 +1,6 @@
 # PRD: Inline Query Definitions in Entity Type Files
 
-**Status:** Draft
+**Status:** Complete
 **Last Updated:** 2026-03-08
 **Issue:** N/A (internal improvement)
 
