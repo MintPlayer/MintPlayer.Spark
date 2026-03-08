@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
@@ -29,10 +30,22 @@ namespace MintPlayer.Spark;
 
 public static class SparkExtensions
 {
-    public static IServiceCollection AddSpark(this IServiceCollection services, Action<SparkOptions>? configureOptions = null)
+    public static IServiceCollection AddSpark(this IServiceCollection services, IConfiguration configuration, Action<ISparkBuilder> configure)
     {
-        var options = new SparkOptions();
-        configureOptions?.Invoke(options);
+        var builder = new SparkBuilder(services, configuration);
+        configuration.GetSection("Spark").Bind(builder.Options);
+        return services.AddSparkCore(builder, configure);
+    }
+
+    public static IServiceCollection AddSpark(this IServiceCollection services, Action<ISparkBuilder> configure)
+    {
+        var builder = new SparkBuilder(services);
+        return services.AddSparkCore(builder, configure);
+    }
+
+    private static IServiceCollection AddSparkCore(this IServiceCollection services, SparkBuilder builder, Action<ISparkBuilder> configure)
+    {
+        var options = builder.Options;
 
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
@@ -41,70 +54,72 @@ public static class SparkExtensions
         services.AddHttpContextAccessor();
 
         // Register the Spark services
-        return services
-            .AddSparkServices()
-            .AddSingleton<IDocumentStore>(sp =>
+        services.AddSparkServices();
+
+        services.AddSingleton<IDocumentStore>(sp =>
+        {
+            var store = new DocumentStore
             {
-                var store = new DocumentStore
-                {
-                    Urls = options.RavenDb.Urls,
-                    Database = options.RavenDb.Database,
-                };
+                Urls = options.RavenDb.Urls,
+                Database = options.RavenDb.Database,
+            };
 
-                // Use GUID-based document IDs instead of HiLo
-                store.Conventions.AsyncDocumentIdGenerator = (dbName, entity) =>
-                {
-                    var collectionName = store.Conventions.GetCollectionName(entity.GetType());
-                    return Task.FromResult($"{collectionName}/{Guid.NewGuid()}");
-                };
+            // Use GUID-based document IDs instead of HiLo
+            store.Conventions.AsyncDocumentIdGenerator = (dbName, entity) =>
+            {
+                var collectionName = store.Conventions.GetCollectionName(entity.GetType());
+                return Task.FromResult($"{collectionName}/{Guid.NewGuid()}");
+            };
 
-                // Register custom JSON converters for RavenDB document serialization
-                store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
+            // Register custom JSON converters for RavenDB document serialization
+            store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
+            {
+                CustomizeJsonSerializer = serializer =>
                 {
-                    CustomizeJsonSerializer = serializer =>
-                    {
-                        serializer.Converters.Add(new ColorNewtonsoftJsonConverter());
-                    }
-                };
-
-                store.Initialize();
-
-                var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
-                if (hostEnvironment.IsDevelopment())
-                {
-                    var databaseNames = store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
-                    if (!databaseNames.Contains(options.RavenDb.Database))
-                    {
-                        store.Maintenance.Server.Send(new CreateDatabaseOperation(o =>
-                            o.Regular(options.RavenDb.Database).WithReplicationFactor(1)
-                        ));
-                    }
+                    serializer.Converters.Add(new ColorNewtonsoftJsonConverter());
                 }
+            };
 
-                return store;
-            });
+            store.Initialize();
+
+            var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
+            if (hostEnvironment.IsDevelopment())
+            {
+                var databaseNames = store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
+                if (!databaseNames.Contains(options.RavenDb.Database))
+                {
+                    store.Maintenance.Server.Send(new CreateDatabaseOperation(o =>
+                        o.Regular(options.RavenDb.Database).WithReplicationFactor(1)
+                    ));
+                }
+            }
+
+            return store;
+        });
+
+        // Let modules register their services
+        configure(builder);
+
+        // Store the registry in DI so UseSpark/MapSpark can access it
+        services.AddSingleton(builder.Registry);
+
+        return services;
     }
 
-    public static IServiceCollection AddSpark(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// Registers the SparkContext implementation for this application.
+    /// </summary>
+    public static ISparkBuilder UseContext<TContext>(this ISparkBuilder builder)
+        where TContext : SparkContext
     {
-        var options = new SparkOptions();
-        configuration.GetSection("Spark").Bind(options);
-
-        return services.AddSpark(opt =>
-        {
-            opt.RavenDb.Urls = options.RavenDb.Urls;
-            opt.RavenDb.Database = options.RavenDb.Database;
-        });
+        builder.Services.AddScoped<SparkContext, TContext>();
+        return builder;
     }
 
     /// <summary>
     /// Registers entity-specific Actions class for customizing CRUD behavior.
-    /// Consider using the generated AddSparkActions() extension method which auto-discovers Actions classes.
+    /// Used internally by the source generator.
     /// </summary>
-    /// <typeparam name="TActions">The Actions class type (must implement IPersistentObjectActions&lt;TEntity&gt;)</typeparam>
-    /// <typeparam name="TEntity">The entity type</typeparam>
-    /// <param name="services">The service collection</param>
-    /// <returns>The service collection for chaining</returns>
     public static IServiceCollection AddSparkActions<TActions, TEntity>(this IServiceCollection services)
         where TActions : class, IPersistentObjectActions<TEntity>
         where TEntity : class
@@ -114,8 +129,25 @@ public static class SparkExtensions
         return services;
     }
 
+    /// <summary>
+    /// Configures Spark middleware, indexes, and all registered module middleware.
+    /// Call after UseRouting(). Do NOT call UseAuthentication/UseAuthorization/UseAntiforgery separately
+    /// when using this method — they are added automatically if authentication is configured.
+    /// </summary>
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
     {
+        var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
+
+        // If authentication is registered, add auth middleware
+        if (registry.IdentityUserType != null)
+        {
+            app.UseAuthentication();
+        }
+
+        // Always add authorization and antiforgery
+        app.UseAuthorization();
+        app.UseAntiforgery();
+
         // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
         app.Use(async (context, next) =>
         {
@@ -134,6 +166,13 @@ public static class SparkExtensions
         });
 
         app.UseMiddleware<SparkMiddleware>();
+
+        // Create RavenDB indexes
+        CreateSparkIndexes(app);
+
+        // Run module-specific middleware/startup tasks
+        registry.ApplyMiddleware(app);
+
         return app;
     }
 
@@ -141,9 +180,6 @@ public static class SparkExtensions
     /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.
     /// Call this during development to generate or update model files based on your SparkContext properties.
     /// </summary>
-    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
-    /// <param name="app">The application builder</param>
-    /// <returns>The application builder for chaining</returns>
     public static IApplicationBuilder SynchronizeSparkModels<TContext>(this IApplicationBuilder app)
         where TContext : SparkContext, new()
     {
@@ -174,10 +210,6 @@ public static class SparkExtensions
     /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
     /// Exits the application after synchronization completes.
     /// </summary>
-    /// <typeparam name="TContext">The SparkContext implementation type</typeparam>
-    /// <param name="app">The application builder</param>
-    /// <param name="args">Command-line arguments</param>
-    /// <returns>The application builder for chaining</returns>
     public static IApplicationBuilder SynchronizeSparkModelsIfRequested<TContext>(this IApplicationBuilder app, string[] args)
         where TContext : SparkContext, new()
     {
@@ -190,136 +222,12 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// Creates or updates all RavenDB indexes defined in the specified assembly.
-    /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
-    /// Also registers indexes and projections with the IndexRegistry for automatic projection type resolution.
-    /// Call this at application startup to ensure indexes are available for queries.
+    /// Maps all Spark endpoints, including any registered module endpoints (authorization, replication, etc.).
     /// </summary>
-    /// <param name="app">The application builder</param>
-    /// <param name="assembly">The assembly to scan for index definitions. If null, scans the entry assembly.</param>
-    /// <returns>The application builder for chaining</returns>
-    public static IApplicationBuilder CreateSparkIndexes(this IApplicationBuilder app, Assembly? assembly = null)
-    {
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
-        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
-
-        if (targetAssembly == null)
-        {
-            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
-            return app;
-        }
-
-        try
-        {
-            // Find and register all index types
-            var indexTypes = targetAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                .ToList();
-
-            foreach (var indexType in indexTypes)
-            {
-                indexRegistry.RegisterIndex(indexType);
-            }
-
-            // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = targetAssembly.GetTypes()
-                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
-                .ToList();
-
-            foreach (var projectionType in projectionTypes)
-            {
-                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
-                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
-            }
-
-            // Create indexes in RavenDB
-            IndexCreation.CreateIndexes(targetAssembly, documentStore);
-            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
-        }
-
-        return app;
-    }
-
-    private static bool IsAbstractIndexCreationTask(Type type)
-    {
-        var current = type;
-        while (current != null && current != typeof(object))
-        {
-            if (current.IsGenericType)
-            {
-                var genericDef = current.GetGenericTypeDefinition();
-                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
-                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
-                {
-                    return true;
-                }
-            }
-            current = current.BaseType;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Asynchronously creates or updates all RavenDB indexes defined in the specified assembly.
-    /// Scans for all AbstractIndexCreationTask implementations and deploys them to RavenDB.
-    /// Also registers indexes and projections with the IndexRegistry for automatic projection type resolution.
-    /// Call this at application startup to ensure indexes are available for queries.
-    /// </summary>
-    /// <param name="app">The application builder</param>
-    /// <param name="assembly">The assembly to scan for index definitions. If null, scans the entry assembly.</param>
-    /// <returns>A task representing the async operation</returns>
-    public static async Task CreateSparkIndexesAsync(this IApplicationBuilder app, Assembly? assembly = null)
-    {
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
-        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
-
-        if (targetAssembly == null)
-        {
-            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
-            return;
-        }
-
-        try
-        {
-            // Find and register all index types
-            var indexTypes = targetAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                .ToList();
-
-            foreach (var indexType in indexTypes)
-            {
-                indexRegistry.RegisterIndex(indexType);
-            }
-
-            // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = targetAssembly.GetTypes()
-                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
-                .ToList();
-
-            foreach (var projectionType in projectionTypes)
-            {
-                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
-                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
-            }
-
-            // Create indexes in RavenDB
-            await IndexCreation.CreateIndexesAsync(targetAssembly, documentStore);
-            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
-        }
-    }
-
     public static IEndpointRouteBuilder MapSpark(this IEndpointRouteBuilder endpoints)
     {
+        var registry = endpoints.ServiceProvider.GetRequiredService<SparkModuleRegistry>();
+
         // Register the Spark middleware for all requests
         var sparkGroup = endpoints.MapGroup("/spark");
         sparkGroup.MapGet("/", async context =>
@@ -396,7 +304,74 @@ public static class SparkExtensions
         lookupRefGroup.MapDelete("/{name}/{key}", async (HttpContext context, string name, string key, DeleteLookupReferenceValue action) =>
             await action.HandleAsync(context, name, key)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
+        // Map module-specific endpoints (authorization, replication, etc.)
+        registry.MapEndpoints(endpoints);
+
         return endpoints;
+    }
+
+    private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
+    {
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
+
+        if (targetAssembly == null)
+        {
+            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
+            return;
+        }
+
+        try
+        {
+            // Find and register all index types
+            var indexTypes = targetAssembly.GetTypes()
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToList();
+
+            foreach (var indexType in indexTypes)
+            {
+                indexRegistry.RegisterIndex(indexType);
+            }
+
+            // Find and register all projection types with FromIndexAttribute
+            var projectionTypes = targetAssembly.GetTypes()
+                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
+                .ToList();
+
+            foreach (var projectionType in projectionTypes)
+            {
+                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
+                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+            }
+
+            // Create indexes in RavenDB
+            IndexCreation.CreateIndexes(targetAssembly, documentStore);
+            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
+        }
+    }
+
+    private static bool IsAbstractIndexCreationTask(Type type)
+    {
+        var current = type;
+        while (current != null && current != typeof(object))
+        {
+            if (current.IsGenericType)
+            {
+                var genericDef = current.GetGenericTypeDefinition();
+                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
+                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
+                {
+                    return true;
+                }
+            }
+            current = current.BaseType;
+        }
+        return false;
     }
 }
 
