@@ -142,10 +142,10 @@ public static class SparkExtensions
         if (registry.IdentityUserType != null)
         {
             app.UseAuthentication();
-            app.UseAuthorization();
         }
 
-        // Always add antiforgery
+        // Always add authorization and antiforgery
+        app.UseAuthorization();
         app.UseAntiforgery();
 
         // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
