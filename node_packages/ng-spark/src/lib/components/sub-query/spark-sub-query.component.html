@@ -11,6 +11,7 @@
           <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
               [(settings)]="virtualSettings"
               [dataSource]="vds"
+              [isResponsive]="true"
               (settingsChange)="onSettingsChange()">
             @for (attr of visibleAttributes(); track attr.id) {
               <div *bsDatatableColumn="attr.name; sortable: true">
