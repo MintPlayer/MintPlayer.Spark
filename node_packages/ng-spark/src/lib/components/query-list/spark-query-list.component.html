@@ -1,6 +1,6 @@
 <div class="d-flex flex-column h-100">
   <!-- Title + Actions row -->
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-shrink-0">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     <h2>{{ (query()?.description | resolveTranslation) || query()?.name || ('loading' | t) }}</h2>
     <div class="d-flex gap-2">
       @if (extraActionsTemplate(); as extraActionsTpl) {
@@ -16,7 +16,7 @@
 
   @if (entityType()) {
     <!-- Search box -->
-    <div class="flex-shrink-0">
+    <div class="flex-shrink-0" [class.px-4]="isVirtualScrolling()">
       <bs-form>
         <bs-grid>
           <div bsRow class="mb-3">

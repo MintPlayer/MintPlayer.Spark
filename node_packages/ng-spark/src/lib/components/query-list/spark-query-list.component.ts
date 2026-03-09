@@ -31,7 +31,10 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
   imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.virtual-scrolling]': 'isVirtualScrolling()'
+  }
 })
 export class SparkQueryListComponent {
   private readonly route = inject(ActivatedRoute);
@@ -250,6 +253,8 @@ export class SparkQueryListComponent {
     this.searchTerm = '';
     this.onSearchChange();
   }
+
+  isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');
 
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
