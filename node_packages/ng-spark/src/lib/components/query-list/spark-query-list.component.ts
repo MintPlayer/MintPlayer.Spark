@@ -130,23 +130,25 @@ export class SparkQueryListComponent {
 
       if (resolvedQuery?.renderMode === 'VirtualScrolling') {
         this.virtualSettings.set(new DatatableSettings({ sortColumns: initialSortColumns }));
-        this.initVirtualDataSource();
+        if (resolvedQuery?.isStreamingQuery) {
+          // Streaming + VirtualScrolling: connect WebSocket, data source will be created on snapshot
+          this.connectStreaming(resolvedQuery.id);
+        } else {
+          this.initVirtualDataSource();
+        }
       } else {
         this.settings.set(new DatatableSettings({
           perPage: { values: [10, 25, 50], selected: 10 },
           page: { values: [1], selected: 1 },
           sortColumns: initialSortColumns
         }));
+        await this.loadItems();
       }
 
       this.loadLookupReferenceOptions();
       const permissions = await this.sparkService.getPermissions(resolvedEntityType.id);
       this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
-
-      if (resolvedQuery?.renderMode !== 'VirtualScrolling') {
-        await this.loadItems();
-      }
     }
   }
 
@@ -250,8 +252,8 @@ export class SparkQueryListComponent {
   }
 
   onSettingsChange(): void {
-    // For streaming queries, sort/filter is client-side only
     if (this.isStreaming()) {
+      // Streaming: sort/filter is client-side only
       this.applyFilter();
       return;
     }
@@ -400,8 +402,9 @@ export class SparkQueryListComponent {
       );
     }
 
-    // Apply sorting from settings
-    const sortCols = this.settings().sortColumns;
+    // Apply sorting
+    const isVirtual = this.query()?.renderMode === 'VirtualScrolling';
+    const sortCols = isVirtual ? this.virtualSettings().sortColumns : this.settings().sortColumns;
     if (sortCols.length > 0) {
       items = [...items].sort((a, b) => {
         for (const col of sortCols) {
@@ -414,12 +417,24 @@ export class SparkQueryListComponent {
       });
     }
 
-    this.paginationData.set({
-      data: items,
-      totalRecords: items.length,
-      totalPages: 1,
-      perPage: items.length,
-      page: 1
-    });
+    if (isVirtual) {
+      // Feed filtered/sorted items into a client-side virtual data source
+      const filtered = items;
+      this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
+        (skip, take) => Promise.resolve({
+          data: filtered.slice(skip, skip + take),
+          totalRecords: filtered.length
+        }),
+        50
+      ));
+    } else {
+      this.paginationData.set({
+        data: items,
+        totalRecords: items.length,
+        totalPages: 1,
+        perPage: items.length,
+        page: 1
+      });
+    }
   }
 }

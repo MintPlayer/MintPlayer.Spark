@@ -1,16 +1,17 @@
 {
-  "id": "770e8400-e29b-41d4-a716-446655440000",
-  "name": "Stock",
-  "description": {
-    "en": "Stock",
-    "fr": "Action",
-    "nl": "Aandeel"
-  },
-  "clrType": "DemoApp.Library.Entities.Stock",
-  "displayAttribute": "Symbol",
-  "tabs": [],
-  "groups": [],
-  "attributes": [
+  "persistentObject": {
+    "id": "770e8400-e29b-41d4-a716-446655440000",
+    "name": "Stock",
+    "description": {
+      "en": "Stock",
+      "fr": "Action",
+      "nl": "Aandeel"
+    },
+    "clrType": "DemoApp.Library.Entities.Stock",
+    "displayAttribute": "Symbol",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
     {
       "id": "770e8400-e29b-41d4-a716-446655440001",
       "name": "Symbol",
@@ -95,6 +96,24 @@
       "isArray": false,
       "showedOn": "Query",
       "rules": []
+    }
+  ]
+  },
+  "queries": [
+    {
+      "id": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",
+      "name": "StreamStocks",
+      "description": {
+        "en": "Stock Market (Live)",
+        "fr": "Bourse (En direct)",
+        "nl": "Beurs (Live)"
+      },
+      "source": "Custom.StreamItems",
+      "entityType": "Stock",
+      "sortColumns": [{ "property": "Symbol", "direction": "asc" }],
+      "isStreamingQuery": true,
+      "renderMode": "VirtualScrolling",
+      "alias": "stocks"
     }
   ]
 }
