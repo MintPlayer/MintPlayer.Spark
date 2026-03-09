@@ -13,18 +13,39 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>
     {
         var random = new Random();
 
-        // Seed initial stock data
-        var stocks = new List<Stock>
+        // Seed initial stock data — well-known tickers + generated ones to reach 300
+        var knownStocks = new (string Symbol, string Company, decimal Price)[]
         {
-            new() { Id = "stocks/AAPL", Symbol = "AAPL", CompanyName = "Apple Inc.", CurrentPrice = 189.50m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/MSFT", Symbol = "MSFT", CompanyName = "Microsoft Corp.", CurrentPrice = 415.20m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/GOOG", Symbol = "GOOG", CompanyName = "Alphabet Inc.", CurrentPrice = 141.80m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/AMZN", Symbol = "AMZN", CompanyName = "Amazon.com Inc.", CurrentPrice = 178.30m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/TSLA", Symbol = "TSLA", CompanyName = "Tesla Inc.", CurrentPrice = 248.90m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/META", Symbol = "META", CompanyName = "Meta Platforms Inc.", CurrentPrice = 505.60m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/NVDA", Symbol = "NVDA", CompanyName = "NVIDIA Corp.", CurrentPrice = 875.40m, Change = 0m, ChangePercent = 0m },
-            new() { Id = "stocks/NFLX", Symbol = "NFLX", CompanyName = "Netflix Inc.", CurrentPrice = 628.70m, Change = 0m, ChangePercent = 0m },
+            ("AAPL", "Apple Inc.", 189.50m), ("MSFT", "Microsoft Corp.", 415.20m),
+            ("GOOG", "Alphabet Inc.", 141.80m), ("AMZN", "Amazon.com Inc.", 178.30m),
+            ("TSLA", "Tesla Inc.", 248.90m), ("META", "Meta Platforms Inc.", 505.60m),
+            ("NVDA", "NVIDIA Corp.", 875.40m), ("NFLX", "Netflix Inc.", 628.70m),
+            ("JPM", "JPMorgan Chase & Co.", 198.40m), ("V", "Visa Inc.", 279.30m),
+            ("WMT", "Walmart Inc.", 168.20m), ("JNJ", "Johnson & Johnson", 155.80m),
+            ("PG", "Procter & Gamble Co.", 162.50m), ("MA", "Mastercard Inc.", 458.90m),
+            ("HD", "Home Depot Inc.", 362.70m), ("UNH", "UnitedHealth Group Inc.", 527.30m),
+            ("DIS", "Walt Disney Co.", 112.40m), ("BAC", "Bank of America Corp.", 35.20m),
+            ("ADBE", "Adobe Inc.", 552.60m), ("CRM", "Salesforce Inc.", 265.40m),
+            ("CSCO", "Cisco Systems Inc.", 50.80m), ("PFE", "Pfizer Inc.", 27.30m),
+            ("INTC", "Intel Corp.", 43.60m), ("AMD", "Advanced Micro Devices Inc.", 164.20m),
+            ("ORCL", "Oracle Corp.", 125.80m), ("PYPL", "PayPal Holdings Inc.", 63.50m),
+            ("QCOM", "Qualcomm Inc.", 168.90m),
+            ("UBER", "Uber Technologies Inc.", 72.40m), ("SPOT", "Spotify Technology SA", 248.30m),
         };
+
+        var stocks = new List<Stock>(300);
+        foreach (var (symbol, company, price) in knownStocks)
+        {
+            stocks.Add(new() { Id = $"stocks/{symbol}", Symbol = symbol, CompanyName = company, CurrentPrice = price, Change = 0m, ChangePercent = 0m });
+        }
+
+        // Generate remaining stocks to reach 300
+        for (var i = stocks.Count; i < 300; i++)
+        {
+            var symbol = $"STK{i:D3}";
+            var price = Math.Round((decimal)(random.Next(5, 800) + random.NextDouble()), 2);
+            stocks.Add(new() { Id = $"stocks/{symbol}", Symbol = symbol, CompanyName = $"Company {symbol}", CurrentPrice = price, Change = 0m, ChangePercent = 0m });
+        }
 
         var basePrices = stocks.ToDictionary(s => s.Id!, s => s.CurrentPrice);
 
@@ -36,8 +57,8 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>
         {
             await Task.Delay(1000, cancellationToken);
 
-            // Randomly update 2-4 stocks
-            var updateCount = random.Next(2, 5);
+            // Randomly update 5-15 stocks per tick
+            var updateCount = random.Next(5, 16);
             var indicesToUpdate = Enumerable.Range(0, stocks.Count)
                 .OrderBy(_ => random.Next())
                 .Take(updateCount);
