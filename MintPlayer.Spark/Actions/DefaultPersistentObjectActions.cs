@@ -1,5 +1,7 @@
+using System.Runtime.CompilerServices;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -55,4 +57,22 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <inheritdoc />
     public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
+
+    /// <summary>
+    /// Override to stream a collection of entities via WebSocket.
+    /// Each yielded batch is diffed against the previous one; only changed attribute values are sent as patches.
+    /// </summary>
+    public virtual IAsyncEnumerable<IReadOnlyList<T>> StreamItems(
+        StreamingQueryArgs args, [EnumeratorCancellation] CancellationToken cancellationToken)
+        => throw new NotSupportedException(
+            $"Streaming method 'StreamItems' is not implemented on {GetType().Name}. Override it to enable streaming.");
+
+    /// <summary>
+    /// Override to stream a single entity via WebSocket.
+    /// Each yielded value is diffed against the previous one; only changed attribute values are sent as patches.
+    /// </summary>
+    public virtual IAsyncEnumerable<T> StreamItem(
+        StreamingQueryArgs args, [EnumeratorCancellation] CancellationToken cancellationToken)
+        => throw new NotSupportedException(
+            $"Streaming method 'StreamItem' is not implemented on {GetType().Name}. Override it to enable streaming.");
 }

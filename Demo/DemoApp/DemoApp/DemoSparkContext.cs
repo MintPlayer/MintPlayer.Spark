@@ -9,4 +9,5 @@ public class DemoSparkContext : SparkContext
     public IRavenQueryable<Person> People => Session.Query<Person>();
     public IRavenQueryable<Company> Companies => Session.Query<Company>();
     public IRavenQueryable<Car> Cars => Session.Query<Car>();
+    public IRavenQueryable<Stock> Stocks => Session.Query<Stock>();
 }
