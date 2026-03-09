@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MintPlayer.Spark.Abstractions;
 
 public sealed class SparkQuery
@@ -30,6 +32,7 @@ public sealed class SparkQuery
     /// <summary>
     /// Controls how query results are rendered in the UI.
     /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SparkQueryRenderMode RenderMode { get; set; } = SparkQueryRenderMode.Pagination;
 
     /// <summary>
