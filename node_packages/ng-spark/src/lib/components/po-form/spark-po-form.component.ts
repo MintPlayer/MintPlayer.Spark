@@ -82,11 +82,11 @@ export class SparkPoFormComponent {
   referenceModalItems = signal<PersistentObject[]>([]);
   referenceModalEntityType = signal<EntityType | null>(null);
   referenceModalPagination = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
-  referenceModalSettings: DatatableSettings = new DatatableSettings({
+  referenceModalSettings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
     sortColumns: []
-  });
+  }));
   referenceSearchTerm = '';
 
   // Modal state for LookupReference selection (Modal display type)
@@ -375,17 +375,17 @@ export class SparkPoFormComponent {
 
     const types = await this.sparkService.getEntityTypes();
     this.referenceModalEntityType.set(types.find(t => t.clrType === attr.referenceType) || null);
-    this.referenceModalSettings = new DatatableSettings({
+    this.referenceModalSettings.set(new DatatableSettings({
       perPage: { values: [10, 25, 50], selected: 10 },
       page: { values: [1], selected: 1 },
       sortColumns: []
-    });
+    }));
     this.applyReferenceFilter();
     this.showReferenceModal.set(true);
   }
 
   onReferenceSearchChange(): void {
-    this.referenceModalSettings.page.selected = 1;
+    this.referenceModalSettings().page.selected = 1;
     this.applyReferenceFilter();
   }
 
@@ -405,19 +405,19 @@ export class SparkPoFormComponent {
       });
     }
 
-    const totalPages = Math.ceil(filteredItems.length / this.referenceModalSettings.perPage.selected) || 1;
+    const totalPages = Math.ceil(filteredItems.length / this.referenceModalSettings().perPage.selected) || 1;
     this.referenceModalPagination.set({
       data: filteredItems,
       totalRecords: filteredItems.length,
       totalPages: totalPages,
-      perPage: this.referenceModalSettings.perPage.selected,
-      page: this.referenceModalSettings.page.selected
+      perPage: this.referenceModalSettings().perPage.selected,
+      page: this.referenceModalSettings().page.selected
     });
 
-    this.referenceModalSettings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+    this.referenceModalSettings().page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
 
-    if (this.referenceModalSettings.page.selected > totalPages) {
-      this.referenceModalSettings.page.selected = 1;
+    if (this.referenceModalSettings().page.selected > totalPages) {
+      this.referenceModalSettings().page.selected = 1;
     }
   }
 

@@ -6,11 +6,11 @@
         <bs-spinner />
       </div>
     } @else if (q.renderMode === 'VirtualScrolling') {
-      @if (virtualDataSource) {
+      @if (virtualDataSource(); as vds) {
         <div class="p-3 d-flex flex-column" style="height: 400px;">
           <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
               [(settings)]="virtualSettings"
-              [dataSource]="virtualDataSource"
+              [dataSource]="vds"
               (settingsChange)="onSettingsChange()">
             @for (attr of visibleAttributes(); track attr.id) {
               <div *bsDatatableColumn="attr.name; sortable: true">

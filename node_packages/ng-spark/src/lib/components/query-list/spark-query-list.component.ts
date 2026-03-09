@@ -54,15 +54,15 @@ export class SparkQueryListComponent {
   searchTerm: string = '';
   canRead = signal(false);
   canCreate = signal(false);
-  settings: DatatableSettings = new DatatableSettings({
+  settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
     sortColumns: []
-  });
-  virtualDataSource: VirtualDatatableDataSource<PersistentObject> | null = null;
-  virtualSettings: DatatableSettings = new DatatableSettings({
+  }));
+  virtualDataSource = signal<VirtualDatatableDataSource<PersistentObject> | null>(null);
+  virtualSettings = signal(new DatatableSettings({
     sortColumns: []
-  });
+  }));
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -117,14 +117,14 @@ export class SparkQueryListComponent {
       }));
 
       if (resolvedQuery?.renderMode === 'VirtualScrolling') {
-        this.virtualSettings = new DatatableSettings({ sortColumns: initialSortColumns });
+        this.virtualSettings.set(new DatatableSettings({ sortColumns: initialSortColumns }));
         this.initVirtualDataSource();
       } else {
-        this.settings = new DatatableSettings({
+        this.settings.set(new DatatableSettings({
           perPage: { values: [10, 25, 50], selected: 10 },
           page: { values: [1], selected: 1 },
           sortColumns: initialSortColumns
-        });
+        }));
       }
 
       this.loadLookupReferenceOptions();
@@ -189,37 +189,38 @@ export class SparkQueryListComponent {
   private initVirtualDataSource(): void {
     const currentQuery = this.query();
     if (!currentQuery) return;
-    this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+    this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
       (skip, take) => this.sparkService.executeQuery(currentQuery.id, {
-        sortColumns: this.virtualSettings.sortColumns,
+        sortColumns: this.virtualSettings().sortColumns,
         skip, take,
         search: this.searchTerm || undefined,
       }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
       50
-    );
+    ));
   }
 
   async loadItems(): Promise<void> {
     const currentQuery = this.query();
     if (!currentQuery) return;
     try {
+      const s = this.settings();
       const result = await this.sparkService.executeQuery(currentQuery.id, {
-        sortColumns: this.settings.sortColumns,
-        skip: (this.settings.page.selected - 1) * this.settings.perPage.selected,
-        take: this.settings.perPage.selected,
+        sortColumns: s.sortColumns,
+        skip: (s.page.selected - 1) * s.perPage.selected,
+        take: s.perPage.selected,
         search: this.searchTerm || undefined,
       });
       this.errorMessage.set(null);
 
-      const totalPages = Math.ceil(result.totalRecords / this.settings.perPage.selected) || 1;
+      const totalPages = Math.ceil(result.totalRecords / s.perPage.selected) || 1;
       this.paginationData.set({
         data: result.data,
         totalRecords: result.totalRecords,
         totalPages: totalPages,
-        perPage: this.settings.perPage.selected,
-        page: this.settings.page.selected
+        perPage: s.perPage.selected,
+        page: s.page.selected
       });
-      this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+      s.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
     } catch (e: any) {
       this.errorMessage.set(e.error?.error || e.message || 'An unexpected error occurred');
       this.paginationData.set(undefined);
@@ -228,7 +229,7 @@ export class SparkQueryListComponent {
 
   onSettingsChange(): void {
     if (this.query()?.renderMode === 'VirtualScrolling') {
-      this.virtualDataSource?.reset();
+      this.virtualDataSource()?.reset();
       this.initVirtualDataSource();
     } else {
       this.loadItems();
@@ -237,10 +238,10 @@ export class SparkQueryListComponent {
 
   onSearchChange(): void {
     if (this.query()?.renderMode === 'VirtualScrolling') {
-      this.virtualDataSource?.reset();
+      this.virtualDataSource()?.reset();
       this.initVirtualDataSource();
     } else {
-      this.settings.page.selected = 1;
+      this.settings().page.selected = 1;
       this.loadItems();
     }
   }

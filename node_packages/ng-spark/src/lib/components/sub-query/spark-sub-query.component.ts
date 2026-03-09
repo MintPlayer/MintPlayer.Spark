@@ -40,15 +40,15 @@ export class SparkSubQueryComponent {
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
   canRead = signal(false);
-  settings: DatatableSettings = new DatatableSettings({
+  settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
     sortColumns: []
-  });
-  virtualDataSource: VirtualDatatableDataSource<PersistentObject> | null = null;
-  virtualSettings: DatatableSettings = new DatatableSettings({
+  }));
+  virtualDataSource = signal<VirtualDatatableDataSource<PersistentObject> | null>(null);
+  virtualSettings = signal(new DatatableSettings({
     sortColumns: []
-  });
+  }));
 
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -96,21 +96,21 @@ export class SparkSubQueryComponent {
       }
 
       if (resolvedQuery.renderMode === 'VirtualScrolling') {
-        this.virtualSettings = new DatatableSettings({ sortColumns: initialSortColumns });
-        this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+        this.virtualSettings.set(new DatatableSettings({ sortColumns: initialSortColumns }));
+        this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
           (skip, take) => this.sparkService.executeQuery(resolvedQuery.id, {
-            sortColumns: this.virtualSettings.sortColumns,
+            sortColumns: this.virtualSettings().sortColumns,
             skip, take,
             parentId, parentType,
           }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
           50
-        );
+        ));
       } else {
-        this.settings = new DatatableSettings({
+        this.settings.set(new DatatableSettings({
           perPage: { values: [10, 25, 50], selected: 10 },
           page: { values: [1], selected: 1 },
           sortColumns: initialSortColumns
-        });
+        }));
         await this.loadPage(resolvedQuery.id, parentId, parentType);
       }
 
@@ -123,39 +123,40 @@ export class SparkSubQueryComponent {
   }
 
   private async loadPage(queryId: string, parentId: string, parentType: string): Promise<void> {
+    const s = this.settings();
     const result = await this.sparkService.executeQuery(queryId, {
-      sortColumns: this.settings.sortColumns,
-      skip: (this.settings.page.selected - 1) * this.settings.perPage.selected,
-      take: this.settings.perPage.selected,
+      sortColumns: s.sortColumns,
+      skip: (s.page.selected - 1) * s.perPage.selected,
+      take: s.perPage.selected,
       parentId, parentType,
     });
 
-    const totalPages = Math.ceil(result.totalRecords / this.settings.perPage.selected) || 1;
+    const totalPages = Math.ceil(result.totalRecords / s.perPage.selected) || 1;
     this.paginationData.set({
       data: result.data,
       totalRecords: result.totalRecords,
       totalPages,
-      perPage: this.settings.perPage.selected,
-      page: this.settings.page.selected,
+      perPage: s.perPage.selected,
+      page: s.page.selected,
     });
-    this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+    s.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
   }
 
   onSettingsChange(): void {
     const q = this.query();
     if (!q) return;
     if (q.renderMode === 'VirtualScrolling') {
-      this.virtualDataSource?.reset();
+      this.virtualDataSource()?.reset();
       const pId = this.parentId();
       const pType = this.parentType();
-      this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+      this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
         (skip, take) => this.sparkService.executeQuery(q.id, {
-          sortColumns: this.virtualSettings.sortColumns,
+          sortColumns: this.virtualSettings().sortColumns,
           skip, take,
           parentId: pId, parentType: pType,
         }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
         50
-      );
+      ));
     } else {
       this.loadPage(q.id, this.parentId(), this.parentType());
     }
