@@ -196,8 +196,7 @@
         "query": "GetCompanies",
         "referenceType": "HR.Entities.Company",
         "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "b1b2c3d4-0002-0002-0002-000000000003"
       },
@@ -258,25 +257,38 @@
         "showedOn": "Query",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "b20e8400-e29b-41d4-a716-446655440001",
       "name": "GetPeople",
-      "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+      "description": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      },
       "source": "Database.People",
       "sortBy": "LastName",
-      "sortDirection": "asc"
+      "sortDirection": "asc",
+      "useProjection": false,
+      "entityType": "Person"
     },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440010",
       "name": "Company_People",
-      "description": { "en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf" },
+      "description": {
+        "en": "People in Company",
+        "fr": "Personnes dans l'entreprise",
+        "nl": "Personen in bedrijf"
+      },
       "source": "Custom.Company_People",
+      "alias": "company-people",
       "sortBy": "FullName",
       "sortDirection": "asc",
-      "alias": "company-people"
+      "useProjection": false,
+      "entityType": "Person"
     }
   ]
 }

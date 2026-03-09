@@ -32,15 +32,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     {
         var contextType = sparkContext.GetType();
         var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
-        var queriesPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Queries");
 
-        // Ensure directories exist
+        // Ensure directory exists
         Directory.CreateDirectory(modelPath);
-        Directory.CreateDirectory(queriesPath);
 
-        // Load existing entity types
-        var existingEntityTypes = LoadExistingEntityTypes(modelPath);
-        var existingQueries = LoadExistingQueries(queriesPath);
+        // Load existing entity types and their inline queries
+        var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles(modelPath);
 
         // Find all IRavenQueryable<T> properties on the SparkContext
         var queryableProperties = contextType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -86,9 +83,34 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
 
-            // Save the entity type definition
+            // Collect existing inline queries for this entity type, plus create default if missing
+            var queriesForType = existingQueries
+                .Where(q => string.Equals(q.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var queryName = $"Get{property.Name}";
+            if (!queriesForType.Any(q => q.Name == queryName))
+            {
+                var query = new SparkQuery
+                {
+                    Id = Guid.NewGuid(),
+                    Name = queryName,
+                    Source = $"Database.{property.Name}",
+                    SortBy = GetDefaultSortProperty(entityTypeDef),
+                    SortDirection = "asc"
+                };
+                queriesForType.Add(query);
+                Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");
+            }
+
+            // Save the entity type file with inline queries
             var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
-            var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
+            var entityTypeFile = new EntityTypeFile
+            {
+                PersistentObject = entityTypeDef,
+                Queries = queriesForType.ToArray()
+            };
+            var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
             processedTypes.Add(clrType);
 
@@ -112,26 +134,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             {
                 CollectEmbeddedTypes(projectionType, typesToProcess, processedTypes);
             }
-
-            // Create default query for this entity type if it doesn't exist
-            var queryName = $"Get{property.Name}";
-            if (!existingQueries.Values.Any(q => q.Name == queryName))
-            {
-                var query = new SparkQuery
-                {
-                    Id = Guid.NewGuid(),
-                    Name = queryName,
-                    Source = $"Database.{property.Name}",
-                    SortBy = GetDefaultSortProperty(entityTypeDef),
-                    SortDirection = "asc"
-                };
-
-                var queryFileName = Path.Combine(queriesPath, $"{queryName}.json");
-                var queryJson = JsonSerializer.Serialize(query, JsonOptions);
-                File.WriteAllText(queryFileName, queryJson);
-
-                Console.WriteLine($"Created query: {queryName} -> {queryFileName}");
-            }
         }
 
         // Process embedded types
@@ -146,8 +148,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
 
+            // Preserve any existing inline queries for this embedded type
+            var embeddedQueries = existingQueries
+                .Where(q => string.Equals(q.EntityType, embeddedType.Name, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
-            var json = JsonSerializer.Serialize(entityTypeDef, JsonOptions);
+            var entityTypeFile = new EntityTypeFile
+            {
+                PersistentObject = entityTypeDef,
+                Queries = embeddedQueries
+            };
+            var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
             processedTypes.Add(clrType);
 
@@ -167,20 +179,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     File.Delete(staleModelFile);
                     Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
-                }
-
-                var projectionPropertyName = queryableProperties
-                    .FirstOrDefault(p => GetQueryableEntityType(p.PropertyType) == registration.ProjectionType)
-                    ?.Name;
-
-                if (projectionPropertyName != null)
-                {
-                    var staleQueryFile = Path.Combine(queriesPath, $"Get{projectionPropertyName}.json");
-                    if (File.Exists(staleQueryFile))
-                    {
-                        File.Delete(staleQueryFile);
-                        Console.WriteLine($"Removed stale projection query file: Get{projectionPropertyName}.json");
-                    }
                 }
             }
         }
@@ -211,25 +209,36 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
     }
 
-    private Dictionary<Guid, EntityTypeDefinition> LoadExistingEntityTypes(string modelPath)
+    private (Dictionary<Guid, EntityTypeDefinition> EntityTypes, List<SparkQuery> Queries) LoadExistingEntityTypeFiles(string modelPath)
     {
-        var result = new Dictionary<Guid, EntityTypeDefinition>();
+        var entityTypes = new Dictionary<Guid, EntityTypeDefinition>();
+        var queries = new List<SparkQuery>();
 
         if (!Directory.Exists(modelPath))
-            return result;
+            return (entityTypes, queries);
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         foreach (var file in Directory.GetFiles(modelPath, "*.json"))
         {
             try
             {
                 var json = File.ReadAllText(file);
-                var entityType = JsonSerializer.Deserialize<EntityTypeDefinition>(json, new JsonSerializerOptions
+                var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
+                if (entityTypeFile?.PersistentObject != null)
                 {
-                    PropertyNameCaseInsensitive = true
-                });
-                if (entityType != null)
-                {
-                    result[entityType.Id] = entityType;
+                    var entityType = entityTypeFile.PersistentObject;
+                    entityTypes[entityType.Id] = entityType;
+
+                    // Extract inline queries, auto-populating EntityType from the containing file
+                    foreach (var query in entityTypeFile.Queries)
+                    {
+                        query.EntityType ??= entityType.Name;
+                        queries.Add(query);
+                    }
                 }
             }
             catch (Exception ex)
@@ -238,37 +247,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
         }
 
-        return result;
-    }
-
-    private Dictionary<Guid, SparkQuery> LoadExistingQueries(string queriesPath)
-    {
-        var result = new Dictionary<Guid, SparkQuery>();
-
-        if (!Directory.Exists(queriesPath))
-            return result;
-
-        foreach (var file in Directory.GetFiles(queriesPath, "*.json"))
-        {
-            try
-            {
-                var json = File.ReadAllText(file);
-                var query = JsonSerializer.Deserialize<SparkQuery>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-                if (query != null)
-                {
-                    result[query.Id] = query;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading query file {file}: {ex.Message}");
-            }
-        }
-
-        return result;
+        return (entityTypes, queries);
     }
 
     private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null)

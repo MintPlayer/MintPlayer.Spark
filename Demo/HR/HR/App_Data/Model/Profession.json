@@ -41,7 +41,8 @@
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
@@ -50,7 +51,8 @@
       "source": "Database.Professions",
       "sortBy": "Description",
       "sortDirection": "asc",
-      "useProjection": false
+      "useProjection": false,
+      "entityType": "Profession"
     }
   ]
 }
