@@ -65,6 +65,7 @@ export class SparkQueryListComponent {
   isStreaming = signal(false);
   private streamingSub: Subscription | null = null;
   private allItems = signal<PersistentObject[]>([]);
+  private filteredItems: PersistentObject[] = [];
   settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -131,7 +132,14 @@ export class SparkQueryListComponent {
       if (resolvedQuery?.renderMode === 'VirtualScrolling') {
         this.virtualSettings.set(new DatatableSettings({ sortColumns: initialSortColumns }));
         if (resolvedQuery?.isStreamingQuery) {
-          // Streaming + VirtualScrolling: connect WebSocket, data source will be created on snapshot
+          // Streaming + VirtualScrolling: create a stable client-side data source, then connect WebSocket
+          this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
+            (skip, take) => Promise.resolve({
+              data: this.filteredItems.slice(skip, skip + take),
+              totalRecords: this.filteredItems.length
+            }),
+            50
+          ));
           this.connectStreaming(resolvedQuery.id);
         } else {
           this.initVirtualDataSource();
@@ -418,15 +426,11 @@ export class SparkQueryListComponent {
     }
 
     if (isVirtual) {
-      // Feed filtered/sorted items into a client-side virtual data source
-      const filtered = items;
-      this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
-        (skip, take) => Promise.resolve({
-          data: filtered.slice(skip, skip + take),
-          totalRecords: filtered.length
-        }),
-        50
-      ));
+      // Update the mutable filtered items array.
+      // The stable data source's fetchFn closure reads from this.filteredItems,
+      // so clearing its cache and emitting empty triggers the CDK viewport to re-fetch.
+      this.filteredItems = items;
+      this.virtualDataSource()?.reset();
     } else {
       this.paginationData.set({
         data: items,
