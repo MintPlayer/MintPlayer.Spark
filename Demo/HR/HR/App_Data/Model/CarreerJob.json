@@ -60,7 +60,8 @@
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": []
 }

@@ -48,9 +48,12 @@ nav.sidebar-inner {
 }
 
 main {
-  min-height: 100vh;
+  height: 100vh;
   padding-top: 4rem !important; // 54px for top-bar
   background-color: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 
 ::ng-deep .sidebar {

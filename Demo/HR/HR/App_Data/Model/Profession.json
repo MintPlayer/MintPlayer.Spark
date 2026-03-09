@@ -41,16 +41,17 @@
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",
       "name": "GetProfessions",
       "source": "Database.Professions",
-      "sortBy": "Description",
-      "sortDirection": "asc",
-      "useProjection": false
+      "sortColumns": [{ "property": "Description", "direction": "asc" }],
+      "useProjection": false,
+      "entityType": "Profession"
     }
   ]
 }

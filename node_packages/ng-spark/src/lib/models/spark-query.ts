@@ -1,13 +1,20 @@
 import { TranslatedString } from './translated-string';
 
+export type SparkQueryRenderMode = 'Pagination' | 'VirtualScrolling';
+
+export interface SparkQuerySortColumn {
+  property: string;
+  direction: string;
+}
+
 export interface SparkQuery {
   id: string;
   name: string;
   description?: TranslatedString;
   source: string;
   alias?: string;
-  sortBy?: string;
-  sortDirection: string;
+  sortColumns: SparkQuerySortColumn[];
+  renderMode?: SparkQueryRenderMode;
   /** Optional RavenDB index name for queries using indexes */
   indexName?: string;
   /** When true, uses the projection type from [QueryType] attribute */

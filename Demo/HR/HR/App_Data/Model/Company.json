@@ -9,7 +9,6 @@
     },
     "clrType": "HR.Entities.Company",
     "displayAttribute": "Name",
-    "queries": ["company-people"],
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -122,16 +121,24 @@
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
+    ],
+    "queries": [
+      "company-people"
     ]
   },
   "queries": [
     {
       "id": "b20e8400-e29b-41d4-a716-446655440002",
       "name": "GetCompanies",
-      "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+      "description": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      },
       "source": "Database.Companies",
-      "sortBy": "Name",
-      "sortDirection": "asc"
+      "sortColumns": [{ "property": "Name", "direction": "asc" }],
+      "useProjection": false,
+      "entityType": "Company"
     }
   ]
 }

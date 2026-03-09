@@ -1,6 +1,6 @@
-<bs-container>
-<div class="container-fluid">
-  <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex flex-column h-100">
+  <!-- Title + Actions row -->
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     <h2>{{ (query()?.description | resolveTranslation) || query()?.name || ('loading' | t) }}</h2>
     <div class="d-flex gap-2">
       @if (extraActionsTemplate(); as extraActionsTpl) {
@@ -16,74 +16,109 @@
 
   @if (entityType()) {
     <!-- Search box -->
-    <bs-form>
-      <bs-grid>
-        <div bsRow class="mb-3">
-          <div [md]="4">
-            <bs-input-group>
-              <span class="input-group-text">
-                <spark-icon name="search" />
-              </span>
-              <input
-                type="text"
-                [placeholder]="'search' | t"
-                [(ngModel)]="searchTerm"
-                (ngModelChange)="onSearchChange()">
-              @if (searchTerm) {
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  (click)="clearSearch()">
-                  <spark-icon name="x-lg" />
-                </button>
+    <div class="flex-shrink-0" [class.px-4]="isVirtualScrolling()">
+      <bs-form>
+        <bs-grid>
+          <div bsRow class="mb-3">
+            <div [md]="4">
+              <bs-input-group>
+                <span class="input-group-text">
+                  <spark-icon name="search" />
+                </span>
+                <input
+                  type="text"
+                  [placeholder]="'search' | t"
+                  [(ngModel)]="searchTerm"
+                  (ngModelChange)="onSearchChange()">
+                @if (searchTerm) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="clearSearch()">
+                    <spark-icon name="x-lg" />
+                  </button>
+                }
+              </bs-input-group>
+            </div>
+            <div [md]="8" class="text-end">
+              @if (searchTerm && paginationData()) {
+                <span class="text-muted">
+                  {{ paginationData()!.totalRecords }} {{ paginationData()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                </span>
               }
-            </bs-input-group>
+            </div>
           </div>
-          <div [md]="8" class="text-end">
-            @if (searchTerm && paginationData()) {
-              <span class="text-muted">
-                {{ paginationData()!.totalRecords }} {{ paginationData()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
-              </span>
-            }
-          </div>
-        </div>
-      </bs-grid>
-    </bs-form>
+        </bs-grid>
+      </bs-form>
 
-    @if (errorMessage(); as err) {
-      <bs-alert [type]="colors.danger" class="mb-3">
-        {{ err }}
-      </bs-alert>
-    }
-
-    <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
-      @for (attr of visibleAttributes(); track attr.id) {
-        <div *bsDatatableColumn="attr.name; sortable: true">
-          {{ (attr.label | resolveTranslation) || attr.name }}
-        </div>
+      @if (errorMessage(); as err) {
+        <bs-alert [type]="colors.danger" class="mb-3">
+          {{ err }}
+        </bs-alert>
       }
+    </div>
 
-      <tr *bsRowTemplate="let item of paginationData()">
-        @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-          <td>
-            @if (first && canRead()) {
-              <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]" (click)="rowClicked.emit(item)">
-                <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
-              </a>
-            } @else {
-              <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+    @if (query()?.renderMode === 'VirtualScrolling') {
+      @if (virtualDataSource(); as vds) {
+        <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
+            [(settings)]="virtualSettings"
+            [dataSource]="vds"
+            [isResponsive]="true"
+            (settingsChange)="onSettingsChange()">
+          @for (attr of visibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ (attr.label | resolveTranslation) || attr.name }}
+            </div>
+          }
+
+          <ng-template bsVirtualRowTemplate let-item>
+            @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+              <td>
+                @if (item) {
+                  @if (first && canRead()) {
+                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]" (click)="rowClicked.emit(item)">
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                    </a>
+                  } @else {
+                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                  }
+                } @else {
+                  &nbsp;
+                }
+              </td>
             }
-          </td>
+          </ng-template>
+        </bs-virtual-datatable>
+      }
+    } @else {
+      <bs-datatable class="flex-grow-1" [(settings)]="settings" (settingsChange)="onSettingsChange()">
+        @for (attr of visibleAttributes(); track attr.id) {
+          <div *bsDatatableColumn="attr.name; sortable: true">
+            {{ (attr.label | resolveTranslation) || attr.name }}
+          </div>
         }
-      </tr>
-    </bs-datatable>
+
+        <tr *bsRowTemplate="let item of paginationData()">
+          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+            <td>
+              @if (first && canRead()) {
+                <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]" (click)="rowClicked.emit(item)">
+                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                </a>
+              } @else {
+                <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+              }
+            </td>
+          }
+        </tr>
+      </bs-datatable>
+    }
   } @else {
     <div class="text-center p-5">
       <bs-spinner />
     </div>
   }
 </div>
-</bs-container>
 
 <ng-template #cellContent let-item let-attr="attr">
   @if (getColumnRendererComponent(attr); as rendererType) {

@@ -7,7 +7,8 @@ export { currentLanguage, resolveTranslation } from './lib/models/translated-str
 export type { ValidationError } from './lib/models/validation-error';
 export type { ValidationRule } from './lib/models/validation-rule';
 export { ShowedOn, hasShowedOnFlag } from './lib/models/showed-on';
-export type { SparkQuery } from './lib/models/spark-query';
+export type { SparkQuery, SparkQueryRenderMode, SparkQuerySortColumn } from './lib/models/spark-query';
+export type { QueryResult } from './lib/models/query-result';
 export type { ProgramUnit, ProgramUnitGroup, ProgramUnitsConfiguration } from './lib/models/program-unit';
 export type { LookupReference, LookupReferenceValue, LookupReferenceListItem } from './lib/models/lookup-reference';
 export type { RetryActionPayload, RetryActionResult } from './lib/models/retry-action';

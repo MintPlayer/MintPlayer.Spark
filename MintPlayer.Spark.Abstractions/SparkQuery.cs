@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MintPlayer.Spark.Abstractions;
 
 public sealed class SparkQuery
@@ -19,8 +21,19 @@ public sealed class SparkQuery
     /// If not set, auto-generated from Name by stripping "Get" prefix and lowercasing.
     /// </summary>
     public string? Alias { get; set; }
-    public string? SortBy { get; set; }
-    public string SortDirection { get; set; } = "asc";
+
+    /// <summary>
+    /// Multi-column sort specification.
+    /// Each entry specifies a property name and direction ("asc"/"desc").
+    /// Applied in order: first entry = primary sort, subsequent = tiebreakers.
+    /// </summary>
+    public SortColumn[] SortColumns { get; set; } = [];
+
+    /// <summary>
+    /// Controls how query results are rendered in the UI.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SparkQueryRenderMode RenderMode { get; set; } = SparkQueryRenderMode.Pagination;
 
     /// <summary>
     /// Optional RavenDB index name. When specified, the query will use this index
