@@ -27,8 +27,29 @@ public sealed partial class ExecuteQuery
         try
         {
             // Read optional sort overrides from query string
-            var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
-            var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
+            var sortColumnsParam = httpContext.Request.Query["sortColumns"].FirstOrDefault();
+            SortColumn[]? sortOverrides = null;
+            if (!string.IsNullOrEmpty(sortColumnsParam))
+            {
+                sortOverrides = sortColumnsParam.Split(',')
+                    .Select(part =>
+                    {
+                        var segments = part.Split(':');
+                        return new SortColumn
+                        {
+                            Property = segments[0],
+                            Direction = segments.Length > 1 ? segments[1] : "asc"
+                        };
+                    })
+                    .ToArray();
+            }
+
+            // Read pagination parameters
+            var skipParam = httpContext.Request.Query["skip"].FirstOrDefault();
+            var takeParam = httpContext.Request.Query["take"].FirstOrDefault();
+            var search = httpContext.Request.Query["search"].FirstOrDefault();
+            int skip = int.TryParse(skipParam, out var s) ? s : 0;
+            int take = int.TryParse(takeParam, out var t) ? t : 50;
 
             // Read optional parent context for custom queries
             Abstractions.PersistentObject? parent = null;
@@ -50,14 +71,14 @@ public sealed partial class ExecuteQuery
                 Name = query.Name,
                 Source = query.Source,
                 Alias = query.Alias,
-                SortBy = !string.IsNullOrEmpty(sortBy) ? sortBy : query.SortBy,
-                SortDirection = !string.IsNullOrEmpty(sortDirection) ? sortDirection : query.SortDirection,
+                SortColumns = sortOverrides ?? query.SortColumns,
+                RenderMode = query.RenderMode,
                 IndexName = query.IndexName,
                 UseProjection = query.UseProjection,
                 EntityType = query.EntityType,
             };
 
-            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent);
+            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search);
             await httpContext.Response.WriteAsJsonAsync(results);
         }
         catch (SparkAccessDeniedException)

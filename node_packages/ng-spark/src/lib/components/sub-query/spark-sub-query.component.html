@@ -5,25 +5,23 @@
       <div class="text-center p-3">
         <bs-spinner />
       </div>
-    } @else if (items().length === 0) {
-      <div class="p-3 text-center text-muted">
-        {{ 'noItemsFound' | t }}
-      </div>
-    } @else {
-      <div class="p-3">
-        <bs-table [isResponsive]="true">
-          <thead>
-            <tr>
-              @for (attr of visibleAttributes(); track attr.id) {
-                <th>{{ (attr.label | resolveTranslation) || attr.name }}</th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (item of items(); track item.id) {
-              <tr>
-                @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-                  <td>
+    } @else if (q.renderMode === 'VirtualScrolling') {
+      @if (virtualDataSource) {
+        <div class="p-3 d-flex flex-column" style="height: 400px;">
+          <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
+              [(settings)]="virtualSettings"
+              [dataSource]="virtualDataSource"
+              (settingsChange)="onSettingsChange()">
+            @for (attr of visibleAttributes(); track attr.id) {
+              <div *bsDatatableColumn="attr.name; sortable: true">
+                {{ (attr.label | resolveTranslation) || attr.name }}
+              </div>
+            }
+
+            <ng-template bsVirtualRowTemplate let-item>
+              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+                <td>
+                  @if (item) {
                     @if (first && canRead()) {
                       <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
                         <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
@@ -31,12 +29,44 @@
                     } @else {
                       <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
                     }
-                  </td>
-                }
-              </tr>
+                  } @else {
+                    &nbsp;
+                  }
+                </td>
+              }
+            </ng-template>
+          </bs-virtual-datatable>
+        </div>
+      }
+    } @else {
+      <div class="p-3">
+        @if (!paginationData() || paginationData()!.totalRecords === 0) {
+          <div class="text-center text-muted">
+            {{ 'noItemsFound' | t }}
+          </div>
+        } @else {
+          <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
+            @for (attr of visibleAttributes(); track attr.id) {
+              <div *bsDatatableColumn="attr.name; sortable: true">
+                {{ (attr.label | resolveTranslation) || attr.name }}
+              </div>
             }
-          </tbody>
-        </bs-table>
+
+            <tr *bsRowTemplate="let item of paginationData()">
+              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+                <td>
+                  @if (first && canRead()) {
+                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                    </a>
+                  } @else {
+                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                  }
+                </td>
+              }
+            </tr>
+          </bs-datatable>
+        }
       </div>
     }
   </bs-card>

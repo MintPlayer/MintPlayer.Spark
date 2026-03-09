@@ -212,16 +212,15 @@
       "name": "GetCars",
       "description": { "en": "Cars", "fr": "Voitures", "nl": "Auto's" },
       "source": "Database.Cars",
-      "sortBy": "LicensePlate",
-      "sortDirection": "asc"
+      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
+      "renderMode": "VirtualScrolling"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440010",
       "name": "Stolen_Cars",
       "description": { "en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's" },
       "source": "Custom.Stolen_Cars",
-      "sortBy": "LicensePlate",
-      "sortDirection": "asc",
+      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
       "alias": "stolen-cars"
     }
   ]

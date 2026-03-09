@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
 {
-    Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null);
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -28,18 +28,47 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private static readonly ConcurrentDictionary<string, CustomQueryMethodInfo?> customQueryMethodCache = new();
 
-    public async Task<IEnumerable<PersistentObject>> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null)
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
     {
         var (isCustom, name) = ResolveSource(query);
 
+        IEnumerable<PersistentObject> allResults;
         if (isCustom)
         {
-            return await ExecuteCustomQueryAsync(query, name, parent);
+            allResults = await ExecuteCustomQueryAsync(query, name, parent);
         }
         else
         {
-            return await ExecuteDatabaseQueryAsync(query, name);
+            allResults = await ExecuteDatabaseQueryAsync(query, name);
         }
+
+        // Apply server-side search filtering
+        if (!string.IsNullOrEmpty(search))
+        {
+            var term = search.ToLowerInvariant();
+            allResults = allResults.Where(po =>
+                (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                po.Attributes.Any(attr =>
+                {
+                    var value = attr.Breadcrumb ?? attr.Value?.ToString();
+                    return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+                })
+            ).ToList();
+        }
+
+        var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
+        var totalRecords = materialized.Count;
+
+        var paged = materialized.Skip(skip).Take(take);
+
+        return new QueryResult
+        {
+            Data = paged,
+            TotalRecords = totalRecords,
+            Skip = skip,
+            Take = take,
+        };
     }
 
     private static (bool IsCustom, string Name) ResolveSource(SparkQuery query)
@@ -127,9 +156,9 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
-        if (!string.IsNullOrEmpty(query.SortBy))
+        if (query.SortColumns.Length > 0)
         {
-            queryable = ApplySorting(queryable, sortType, query.SortBy, query.SortDirection);
+            queryable = ApplySorting(queryable, sortType, query.SortColumns);
         }
 
         var entities = await ExecuteQueryableAsync(queryable, resultType);
@@ -211,9 +240,9 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Apply sorting if the result is IQueryable
-        if (methodInfo.IsQueryable && !string.IsNullOrEmpty(query.SortBy))
+        if (methodInfo.IsQueryable && query.SortColumns.Length > 0)
         {
-            result = ApplySorting(result, methodInfo.ResultElementType, query.SortBy, query.SortDirection);
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns);
         }
 
         // Materialize results
@@ -424,27 +453,30 @@ internal partial class QueryExecutor : IQueryExecutor
         return genericProjectMethod.Invoke(null, [queryable])!;
     }
 
-    private object ApplySorting(object queryable, Type entityType, string sortBy, string? sortDirection)
+    private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns)
     {
-        var propertyInfo = entityType.GetProperty(sortBy, BindingFlags.Public | BindingFlags.Instance);
-        if (propertyInfo == null)
+        for (int i = 0; i < sortColumns.Length; i++)
         {
-            return queryable;
+            var col = sortColumns[i];
+            var propertyInfo = entityType.GetProperty(col.Property, BindingFlags.Public | BindingFlags.Instance);
+            if (propertyInfo == null) continue;
+
+            var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
+            var methodName = i == 0
+                ? (isDescending ? "OrderByDescending" : "OrderBy")
+                : (isDescending ? "ThenByDescending" : "ThenBy");
+
+            var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
+            var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
+            var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
+
+            var orderMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == methodName && m.GetParameters().Length == 2)
+                .MakeGenericMethod(entityType, propertyInfo.PropertyType);
+
+            queryable = orderMethod.Invoke(null, [queryable, lambda])!;
         }
-
-        var isDescending = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
-
-        var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
-        var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
-        var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
-
-        var methodName = isDescending ? "OrderByDescending" : "OrderBy";
-
-        var orderByMethod = typeof(Queryable).GetMethods()
-            .First(m => m.Name == methodName && m.GetParameters().Length == 2)
-            .MakeGenericMethod(entityType, propertyInfo.PropertyType);
-
-        return orderByMethod.Invoke(null, [queryable, lambda])!;
+        return queryable;
     }
 
     private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)

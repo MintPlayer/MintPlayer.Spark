@@ -270,8 +270,7 @@
         "nl": "Personen"
       },
       "source": "Database.People",
-      "sortBy": "LastName",
-      "sortDirection": "asc",
+      "sortColumns": [{ "property": "LastName", "direction": "asc" }],
       "useProjection": false,
       "entityType": "Person"
     },
@@ -285,8 +284,7 @@
       },
       "source": "Custom.Company_People",
       "alias": "company-people",
-      "sortBy": "FullName",
-      "sortDirection": "asc",
+      "sortColumns": [{ "property": "FullName", "direction": "asc" }],
       "useProjection": false,
       "entityType": "Person"
     }

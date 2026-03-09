@@ -141,8 +141,7 @@
         "nl": "Auto's"
       },
       "source": "Database.Cars",
-      "sortBy": "LicensePlate",
-      "sortDirection": "asc",
+      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
       "useProjection": false,
       "entityType": "Car"
     }

@@ -95,8 +95,7 @@
       "name": "GetCompanies",
       "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
       "source": "Database.Companies",
-      "sortBy": "Name",
-      "sortDirection": "asc"
+      "sortColumns": [{ "property": "Name", "direction": "asc" }]
     }
   ]
 }

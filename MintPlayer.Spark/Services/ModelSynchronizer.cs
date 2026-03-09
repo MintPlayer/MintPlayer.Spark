@@ -96,8 +96,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Id = Guid.NewGuid(),
                     Name = queryName,
                     Source = $"Database.{property.Name}",
-                    SortBy = GetDefaultSortProperty(entityTypeDef),
-                    SortDirection = "asc"
+                    SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
+                        ? [new SortColumn { Property = sortProp, Direction = "asc" }]
+                        : []
                 };
                 queriesForType.Add(query);
                 Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");

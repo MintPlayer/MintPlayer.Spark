@@ -2,8 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, VirtualDatatableDataSource } from '@mintplayer/ng-bootstrap/virtual-datatable';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -18,7 +21,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-sub-query',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsCardComponent, BsCardHeaderComponent, BsTableComponent, BsSpinnerComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsTableComponent, BsSpinnerComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-sub-query.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -33,10 +36,19 @@ export class SparkSubQueryComponent {
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
   allEntityTypes = signal<EntityType[]>([]);
-  items = signal<PersistentObject[]>([]);
+  paginationData = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
   canRead = signal(false);
+  settings: DatatableSettings = new DatatableSettings({
+    perPage: { values: [10, 25, 50], selected: 10 },
+    page: { values: [1], selected: 1 },
+    sortColumns: []
+  });
+  virtualDataSource: VirtualDatatableDataSource<PersistentObject> | null = null;
+  virtualSettings: DatatableSettings = new DatatableSettings({
+    sortColumns: []
+  });
 
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -66,6 +78,11 @@ export class SparkSubQueryComponent {
       this.query.set(resolvedQuery);
       this.allEntityTypes.set(entityTypes);
 
+      const initialSortColumns: SortColumn[] = (resolvedQuery.sortColumns || []).map(sc => ({
+        property: sc.property,
+        direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
+      }));
+
       // Resolve entity type from query's entityType field
       if (resolvedQuery.entityType) {
         const et = entityTypes.find(t =>
@@ -78,22 +95,69 @@ export class SparkSubQueryComponent {
         }
       }
 
-      // Execute the query with parent context
-      const sortDirection = resolvedQuery.sortDirection === 'desc' ? 'desc' : 'asc';
-      const items = await this.sparkService.executeQuery(
-        resolvedQuery.id,
-        resolvedQuery.sortBy,
-        sortDirection,
-        parentId,
-        parentType
-      );
-      this.items.set(items);
+      if (resolvedQuery.renderMode === 'VirtualScrolling') {
+        this.virtualSettings = new DatatableSettings({ sortColumns: initialSortColumns });
+        this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+          (skip, take) => this.sparkService.executeQuery(resolvedQuery.id, {
+            sortColumns: this.virtualSettings.sortColumns,
+            skip, take,
+            parentId, parentType,
+          }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
+          50
+        );
+      } else {
+        this.settings = new DatatableSettings({
+          perPage: { values: [10, 25, 50], selected: 10 },
+          page: { values: [1], selected: 1 },
+          sortColumns: initialSortColumns
+        });
+        await this.loadPage(resolvedQuery.id, parentId, parentType);
+      }
 
       this.loadLookupReferenceOptions();
     } catch {
-      this.items.set([]);
+      this.paginationData.set(undefined);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  private async loadPage(queryId: string, parentId: string, parentType: string): Promise<void> {
+    const result = await this.sparkService.executeQuery(queryId, {
+      sortColumns: this.settings.sortColumns,
+      skip: (this.settings.page.selected - 1) * this.settings.perPage.selected,
+      take: this.settings.perPage.selected,
+      parentId, parentType,
+    });
+
+    const totalPages = Math.ceil(result.totalRecords / this.settings.perPage.selected) || 1;
+    this.paginationData.set({
+      data: result.data,
+      totalRecords: result.totalRecords,
+      totalPages,
+      perPage: this.settings.perPage.selected,
+      page: this.settings.page.selected,
+    });
+    this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  onSettingsChange(): void {
+    const q = this.query();
+    if (!q) return;
+    if (q.renderMode === 'VirtualScrolling') {
+      this.virtualDataSource?.reset();
+      const pId = this.parentId();
+      const pType = this.parentType();
+      this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+        (skip, take) => this.sparkService.executeQuery(q.id, {
+          sortColumns: this.virtualSettings.sortColumns,
+          skip, take,
+          parentId: pId, parentType: pType,
+        }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
+        50
+      );
+    } else {
+      this.loadPage(q.id, this.parentId(), this.parentType());
     }
   }
 
@@ -124,5 +188,4 @@ export class SparkSubQueryComponent {
       options: attr.rendererOptions,
     };
   }
-
 }

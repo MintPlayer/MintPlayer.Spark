@@ -136,8 +136,7 @@
         "nl": "Bedrijven"
       },
       "source": "Database.Companies",
-      "sortBy": "Name",
-      "sortDirection": "asc",
+      "sortColumns": [{ "property": "Name", "direction": "asc" }],
       "useProjection": false,
       "entityType": "Company"
     }

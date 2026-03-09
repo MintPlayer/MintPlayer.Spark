@@ -189,8 +189,8 @@ export class SparkPoDetailComponent {
         if (refCols.length > 0) {
           const refEntries = await Promise.all(
             refCols.map(async col => {
-              const results = await this.sparkService.executeQueryByName(col.query!);
-              return [col.name, results] as const;
+              const result = await this.sparkService.executeQueryByName(col.query!);
+              return [col.name, result.data] as const;
             })
           );
           this.asDetailReferenceOptions.update(prev => ({

@@ -1,7 +1,8 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, SparkQuery } from '../models';
+import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryResult, SparkQuery } from '../models';
+import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionPayload, RetryActionResult } from '../models';
 import { RetryActionService } from './retry-action.service';
 import { SPARK_CONFIG } from '../models/spark-config';
@@ -46,21 +47,34 @@ export class SparkService {
     return queries.find(q => q.name === name);
   }
 
-  async executeQuery(queryId: string, sortBy?: string, sortDirection?: string, parentId?: string, parentType?: string): Promise<PersistentObject[]> {
+  async executeQuery(queryId: string, options?: {
+    sortColumns?: SortColumn[];
+    parentId?: string;
+    parentType?: string;
+    skip?: number;
+    take?: number;
+    search?: string;
+  }): Promise<QueryResult> {
     let params = new HttpParams();
-    if (sortBy) params = params.set('sortBy', sortBy);
-    if (sortDirection) params = params.set('sortDirection', sortDirection);
-    if (parentId) params = params.set('parentId', parentId);
-    if (parentType) params = params.set('parentType', parentType);
-    return firstValueFrom(this.http.get<PersistentObject[]>(
+    if (options?.sortColumns?.length) {
+      params = params.set('sortColumns',
+        options.sortColumns.map(c => `${c.property}:${c.direction === 'descending' ? 'desc' : 'asc'}`).join(',')
+      );
+    }
+    if (options?.parentId) params = params.set('parentId', options.parentId);
+    if (options?.parentType) params = params.set('parentType', options.parentType);
+    if (options?.skip != null) params = params.set('skip', options.skip);
+    if (options?.take != null) params = params.set('take', options.take);
+    if (options?.search) params = params.set('search', options.search);
+    return firstValueFrom(this.http.get<QueryResult>(
       `${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`,
       { params }
     ));
   }
 
-  async executeQueryByName(queryName: string): Promise<PersistentObject[]> {
+  async executeQueryByName(queryName: string): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
-    return query ? this.executeQuery(query.id) : [];
+    return query ? this.executeQuery(query.id) : { data: [], totalRecords: 0, skip: 0, take: 50 };
   }
 
   // Program Units

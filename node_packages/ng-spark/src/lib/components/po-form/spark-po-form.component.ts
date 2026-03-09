@@ -85,8 +85,7 @@ export class SparkPoFormComponent {
   referenceModalSettings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
-    sortProperty: '',
-    sortDirection: 'ascending'
+    sortColumns: []
   });
   referenceSearchTerm = '';
 
@@ -177,8 +176,8 @@ export class SparkPoFormComponent {
 
     const entries = await Promise.all(
       refAttrs.filter(a => a.query).map(async attr => {
-        const items = await this.sparkService.executeQueryByName(attr.query!);
-        return [attr.name, items] as [string, PersistentObject[]];
+        const result = await this.sparkService.executeQueryByName(attr.query!);
+        return [attr.name, result.data] as [string, PersistentObject[]];
       })
     );
     this.referenceOptions.set(this.toRecord(entries));
@@ -204,8 +203,8 @@ export class SparkPoFormComponent {
           if (refCols.length > 0) {
             const refEntries = await Promise.all(
               refCols.filter(c => c.query).map(async col => {
-                const items = await this.sparkService.executeQueryByName(col.query!);
-                return [col.name, items] as [string, PersistentObject[]];
+                const result = await this.sparkService.executeQueryByName(col.query!);
+                return [col.name, result.data] as [string, PersistentObject[]];
               })
             );
             this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries) }));
@@ -379,8 +378,7 @@ export class SparkPoFormComponent {
     this.referenceModalSettings = new DatatableSettings({
       perPage: { values: [10, 25, 50], selected: 10 },
       page: { values: [1], selected: 1 },
-      sortProperty: '',
-      sortDirection: 'ascending'
+      sortColumns: []
     });
     this.applyReferenceFilter();
     this.showReferenceModal.set(true);

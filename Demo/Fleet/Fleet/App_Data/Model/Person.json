@@ -107,8 +107,7 @@
       "name": "GetPeople",
       "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
       "source": "Database.People",
-      "sortBy": "LastName",
-      "sortDirection": "asc"
+      "sortColumns": [{ "property": "LastName", "direction": "asc" }]
     }
   ]
 }

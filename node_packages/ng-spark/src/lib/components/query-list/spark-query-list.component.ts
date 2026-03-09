@@ -6,12 +6,13 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, VirtualDatatableDataSource } from '@mintplayer/ng-bootstrap/virtual-datatable';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { PaginationResponse } from '@mintplayer/pagination';
+import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -27,7 +28,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -48,7 +49,6 @@ export class SparkQueryListComponent {
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
   allEntityTypes = signal<EntityType[]>([]);
-  allItems = signal<PersistentObject[]>([]);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   paginationData = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
   searchTerm: string = '';
@@ -57,11 +57,12 @@ export class SparkQueryListComponent {
   settings: DatatableSettings = new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
-    sortProperty: '',
-    sortDirection: 'ascending'
+    sortColumns: []
   });
-  private currentSortProperty = '';
-  private currentSortDirection = '';
+  virtualDataSource: VirtualDatatableDataSource<PersistentObject> | null = null;
+  virtualSettings: DatatableSettings = new DatatableSettings({
+    sortColumns: []
+  });
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -109,17 +110,31 @@ export class SparkQueryListComponent {
     if (resolvedEntityType) {
       this.entityType.set(resolvedEntityType);
       this.allEntityTypes.set(resolvedEntityTypes);
-      this.settings = new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1], selected: 1 },
-        sortProperty: resolvedQuery?.sortBy || '',
-        sortDirection: resolvedQuery?.sortDirection === 'desc' ? 'descending' : 'ascending'
-      });
+
+      const initialSortColumns: SortColumn[] = (resolvedQuery?.sortColumns || []).map(sc => ({
+        property: sc.property,
+        direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
+      }));
+
+      if (resolvedQuery?.renderMode === 'VirtualScrolling') {
+        this.virtualSettings = new DatatableSettings({ sortColumns: initialSortColumns });
+        this.initVirtualDataSource();
+      } else {
+        this.settings = new DatatableSettings({
+          perPage: { values: [10, 25, 50], selected: 10 },
+          page: { values: [1], selected: 1 },
+          sortColumns: initialSortColumns
+        });
+      }
+
       this.loadLookupReferenceOptions();
       const permissions = await this.sparkService.getPermissions(resolvedEntityType.id);
       this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
-      await this.loadItems();
+
+      if (resolvedQuery?.renderMode !== 'VirtualScrolling') {
+        await this.loadItems();
+      }
     }
   }
 
@@ -171,75 +186,62 @@ export class SparkQueryListComponent {
     return plural;
   }
 
+  private initVirtualDataSource(): void {
+    const currentQuery = this.query();
+    if (!currentQuery) return;
+    this.virtualDataSource = new VirtualDatatableDataSource<PersistentObject>(
+      (skip, take) => this.sparkService.executeQuery(currentQuery.id, {
+        sortColumns: this.virtualSettings.sortColumns,
+        skip, take,
+        search: this.searchTerm || undefined,
+      }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
+      50
+    );
+  }
+
   async loadItems(): Promise<void> {
     const currentQuery = this.query();
     if (!currentQuery) return;
     try {
-      const sortDirection = this.settings.sortDirection === 'descending' ? 'desc' : 'asc';
-      const items = await this.sparkService.executeQuery(
-        currentQuery.id,
-        this.settings.sortProperty || undefined,
-        this.settings.sortProperty ? sortDirection : undefined
-      );
+      const result = await this.sparkService.executeQuery(currentQuery.id, {
+        sortColumns: this.settings.sortColumns,
+        skip: (this.settings.page.selected - 1) * this.settings.perPage.selected,
+        take: this.settings.perPage.selected,
+        search: this.searchTerm || undefined,
+      });
       this.errorMessage.set(null);
-      this.allItems.set(items);
-      this.currentSortProperty = this.settings.sortProperty;
-      this.currentSortDirection = this.settings.sortDirection;
-      this.applyFilter();
+
+      const totalPages = Math.ceil(result.totalRecords / this.settings.perPage.selected) || 1;
+      this.paginationData.set({
+        data: result.data,
+        totalRecords: result.totalRecords,
+        totalPages: totalPages,
+        perPage: this.settings.perPage.selected,
+        page: this.settings.page.selected
+      });
+      this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
     } catch (e: any) {
       this.errorMessage.set(e.error?.error || e.message || 'An unexpected error occurred');
-      this.allItems.set([]);
-      this.applyFilter();
+      this.paginationData.set(undefined);
     }
   }
 
   onSettingsChange(): void {
-    const sortChanged =
-      this.settings.sortProperty !== this.currentSortProperty ||
-      this.settings.sortDirection !== this.currentSortDirection;
-
-    if (sortChanged) {
-      this.settings.page.selected = 1;
-      this.loadItems();
+    if (this.query()?.renderMode === 'VirtualScrolling') {
+      this.virtualDataSource?.reset();
+      this.initVirtualDataSource();
     } else {
-      this.applyFilter();
+      this.loadItems();
     }
   }
 
   onSearchChange(): void {
-    this.settings.page.selected = 1;
-    this.applyFilter();
-  }
-
-  applyFilter(): void {
-    let filteredItems = this.allItems();
-
-    if (this.searchTerm.trim()) {
-      const term = this.searchTerm.toLowerCase().trim();
-      filteredItems = filteredItems.filter(item => {
-        if (item.name?.toLowerCase().includes(term)) return true;
-        if (item.breadcrumb?.toLowerCase().includes(term)) return true;
-        return item.attributes.some(attr => {
-          const value = attr.breadcrumb || attr.value;
-          if (value == null) return false;
-          return String(value).toLowerCase().includes(term);
-        });
-      });
-    }
-
-    const totalPages = Math.ceil(filteredItems.length / this.settings.perPage.selected) || 1;
-    this.paginationData.set({
-      data: filteredItems,
-      totalRecords: filteredItems.length,
-      totalPages: totalPages,
-      perPage: this.settings.perPage.selected,
-      page: this.settings.page.selected
-    });
-
-    this.settings.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-
-    if (this.settings.page.selected > totalPages) {
+    if (this.query()?.renderMode === 'VirtualScrolling') {
+      this.virtualDataSource?.reset();
+      this.initVirtualDataSource();
+    } else {
       this.settings.page.selected = 1;
+      this.loadItems();
     }
   }
 
