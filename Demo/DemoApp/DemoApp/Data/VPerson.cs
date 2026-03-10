@@ -1,4 +1,5 @@
 using DemoApp.Indexes;
+using DemoApp.Library.Entities;
 using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Data;
@@ -14,5 +15,6 @@ public class VPerson
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public bool IsActive { get; set; }
+    [Reference(typeof(Company))]
     public string? Company { get; set; }
 }

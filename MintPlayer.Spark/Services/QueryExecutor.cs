@@ -25,6 +25,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly IReferenceResolver referenceResolver;
 
     private static readonly ConcurrentDictionary<string, CustomQueryMethodInfo?> customQueryMethodCache = new();
 
@@ -155,16 +156,26 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplyProjection(queryable, resultType);
         }
 
+        // Resolve reference properties before executing so we can chain .Include()
+        var referenceProperties = referenceResolver.GetReferenceProperties(resultType, entityType);
+        if (referenceProperties.Count > 0)
+        {
+            queryable = referenceResolver.ApplyIncludes(queryable, referenceProperties);
+        }
+
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
         {
             queryable = ApplySorting(queryable, sortType, query.SortColumns);
         }
 
-        var entities = await ExecuteQueryableAsync(queryable, resultType);
+        var entities = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+
+        // Referenced docs are now in session cache — no extra DB calls
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
 
         return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
             .DistinctBy(po => po.Id);
     }
 
@@ -265,8 +276,12 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
+        // Resolve reference breadcrumbs
+        var referenceProperties = referenceResolver.GetReferenceProperties(methodInfo.ResultElementType);
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities.ToList(), referenceProperties);
+
         return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
             .DistinctBy(po => po.Id);
     }
 

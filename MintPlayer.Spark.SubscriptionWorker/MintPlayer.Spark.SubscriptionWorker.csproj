@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SubscriptionWorker</PackageId>
-		<Version>10.0.0-preview.18</Version>
+		<Version>10.0.0-preview.19</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>RavenDB subscription worker framework for MintPlayer.Spark with built-in retry logic, incremental backoff, and ASP.NET Core lifecycle management.</Description>
