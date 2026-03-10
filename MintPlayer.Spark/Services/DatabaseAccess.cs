@@ -18,6 +18,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IServiceProvider serviceProvider;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IReferenceResolver referenceResolver;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -87,7 +88,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         using var session = documentStore.OpenAsyncSession();
 
         // Get reference properties to include
-        var referenceProperties = GetReferenceProperties(entityType);
+        var referenceProperties = referenceResolver.GetReferenceProperties(entityType);
 
         // Use actions for loading
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
@@ -95,7 +96,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (entity == null) return null;
 
         // Load included documents for breadcrumb resolution
-        var includedDocuments = await LoadIncludedDocumentsAsync(session, entity, referenceProperties);
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, [entity], referenceProperties);
 
         return entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
     }
@@ -124,18 +125,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
             indexName = registration.IndexName;
         }
 
-        // Get reference properties from the type being queried (queryType, not entityType)
-        // When querying an index, the projection type (e.g., VPerson) may not have the same reference properties
-        var referenceProperties = GetReferenceProperties(queryType);
+        // Get reference properties — fall back to base entity type when projection lacks [Reference]
+        var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
         var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
 
         // Referenced documents are now in session cache - extract them
-        // Only do this if we have reference properties on the queried type
-        var includedDocuments = referenceProperties.Count > 0
-            ? await ExtractIncludedDocumentsFromSessionAsync(session, entities, referenceProperties)
-            : new Dictionary<string, object>();
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
 
         // Convert each entity to PersistentObject with breadcrumb resolution
         return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, includedDocuments));
@@ -275,50 +272,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return null;
     }
 
-    private List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
-    {
-        return entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(p => (Property: p, Attribute: p.GetCustomAttribute<ReferenceAttribute>()))
-            .Where(x => x.Attribute != null)
-            .Select(x => (x.Property, x.Attribute!))
-            .ToList();
-    }
-
-    private async Task<object?> LoadEntityWithIncludesAsync(
-        IAsyncDocumentSession session,
-        Type entityType,
-        string documentId,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
-    {
-        // For simplicity, just load the entity normally
-        // RavenDB will automatically track any subsequently loaded documents
-        return await LoadEntityAsync(session, entityType, documentId);
-    }
-
-    private async Task<Dictionary<string, object>> LoadIncludedDocumentsAsync(
-        IAsyncDocumentSession session,
-        object entity,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
-    {
-        var includedDocuments = new Dictionary<string, object>();
-
-        foreach (var (property, refAttr) in referenceProperties)
-        {
-            var refId = property.GetValue(entity) as string;
-            if (string.IsNullOrEmpty(refId)) continue;
-
-            var targetType = refAttr.TargetType;
-            var referencedEntity = await LoadEntityAsync(session, targetType, refId);
-
-            if (referencedEntity != null)
-            {
-                includedDocuments[refId] = referencedEntity;
-            }
-        }
-
-        return includedDocuments;
-    }
-
     /// <summary>
     /// Queries entities and uses .Include() for all reference properties so that
     /// referenced documents are loaded in a single database call.
@@ -417,56 +370,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         return [];
-    }
-
-    /// <summary>
-    /// Extracts referenced documents from the session cache (they were loaded via .Include()).
-    /// Since they're already in the session, LoadAsync returns immediately without a database call.
-    /// </summary>
-    private async Task<Dictionary<string, object>> ExtractIncludedDocumentsFromSessionAsync(
-        IAsyncDocumentSession session,
-        IEnumerable<object> entities,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
-    {
-        var includedDocuments = new Dictionary<string, object>();
-
-        if (!referenceProperties.Any())
-            return includedDocuments;
-
-        // Collect all unique reference IDs
-        var refIdsByType = new Dictionary<Type, HashSet<string>>();
-
-        foreach (var entity in entities)
-        {
-            foreach (var (property, refAttr) in referenceProperties)
-            {
-                var refId = property.GetValue(entity) as string;
-                if (string.IsNullOrEmpty(refId)) continue;
-
-                var targetType = refAttr.TargetType;
-                if (!refIdsByType.ContainsKey(targetType))
-                {
-                    refIdsByType[targetType] = [];
-                }
-                refIdsByType[targetType].Add(refId);
-            }
-        }
-
-        // Load from session cache (no database calls - documents were included in the query)
-        foreach (var (targetType, refIds) in refIdsByType)
-        {
-            foreach (var refId in refIds)
-            {
-                // This LoadAsync returns from session cache, not from database
-                var referencedEntity = await LoadEntityAsync(session, targetType, refId);
-                if (referencedEntity != null)
-                {
-                    includedDocuments[refId] = referencedEntity;
-                }
-            }
-        }
-
-        return includedDocuments;
     }
 
     #region Actions Helper Methods

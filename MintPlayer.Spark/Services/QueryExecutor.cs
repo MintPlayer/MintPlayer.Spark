@@ -25,6 +25,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly IReferenceResolver referenceResolver;
 
     private static readonly ConcurrentDictionary<string, CustomQueryMethodInfo?> customQueryMethodCache = new();
 
@@ -161,10 +162,14 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplySorting(queryable, sortType, query.SortColumns);
         }
 
-        var entities = await ExecuteQueryableAsync(queryable, resultType);
+        var entities = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+
+        // Resolve reference breadcrumbs (fall back to base entity type when projection lacks [Reference])
+        var referenceProperties = referenceResolver.GetReferenceProperties(resultType, entityType);
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
 
         return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
             .DistinctBy(po => po.Id);
     }
 
@@ -265,8 +270,12 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
+        // Resolve reference breadcrumbs
+        var referenceProperties = referenceResolver.GetReferenceProperties(methodInfo.ResultElementType);
+        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities.ToList(), referenceProperties);
+
         return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id))
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
             .DistinctBy(po => po.Id);
     }
 
