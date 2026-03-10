@@ -28,5 +28,6 @@ public class VPerson
     public string? Id { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string? Email { get; set; }
+    [Reference(typeof(Company))]
     public string? Company { get; set; }
 }
