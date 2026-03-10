@@ -156,6 +156,13 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplyProjection(queryable, resultType);
         }
 
+        // Resolve reference properties before executing so we can chain .Include()
+        var referenceProperties = referenceResolver.GetReferenceProperties(resultType, entityType);
+        if (referenceProperties.Count > 0)
+        {
+            queryable = referenceResolver.ApplyIncludes(queryable, referenceProperties);
+        }
+
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
         {
@@ -164,8 +171,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         var entities = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
 
-        // Resolve reference breadcrumbs (fall back to base entity type when projection lacks [Reference])
-        var referenceProperties = referenceResolver.GetReferenceProperties(resultType, entityType);
+        // Referenced docs are now in session cache — no extra DB calls
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
 
         return entities

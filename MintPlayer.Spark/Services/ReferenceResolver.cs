@@ -16,6 +16,12 @@ internal interface IReferenceResolver
     /// </summary>
     List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType, Type fallbackType);
 
+    /// <summary>
+    /// Chains .Include(propertyName) on a RavenDB IRavenQueryable so that referenced documents
+    /// are loaded in the same round-trip. Returns the (possibly wrapped) queryable.
+    /// </summary>
+    object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
+
     Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(
         IAsyncDocumentSession session,
         IEnumerable<object> entities,
@@ -54,6 +60,26 @@ internal partial class ReferenceResolver : IReferenceResolver
         }
 
         return result;
+    }
+
+    public object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    {
+        foreach (var (property, _) in referenceProperties)
+        {
+            var queryType = queryable.GetType();
+
+            var includeMethod = queryType.GetMethods()
+                .FirstOrDefault(m => m.Name == "Include"
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(string));
+
+            if (includeMethod != null)
+            {
+                queryable = includeMethod.Invoke(queryable, [property.Name])!;
+            }
+        }
+
+        return queryable;
     }
 
     public async Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(

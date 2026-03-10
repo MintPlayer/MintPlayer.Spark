@@ -324,24 +324,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
-        // Chain .Include(propertyName) for each reference property
-        // RavenDB's IRavenQueryable<T> has Include(string path) method
-        foreach (var (property, _) in referenceProperties)
+        // Chain .Include(propertyName) so referenced documents are loaded in the same round-trip
+        if (query != null && referenceProperties.Count > 0)
         {
-            if (query == null) break;
-
-            var queryType = query.GetType();
-
-            // Look for Include method that takes a string path
-            var includeMethod = queryType.GetMethods()
-                .FirstOrDefault(m => m.Name == "Include"
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(string));
-
-            if (includeMethod != null)
-            {
-                query = includeMethod.Invoke(query, [property.Name]);
-            }
+            query = referenceResolver.ApplyIncludes(query, referenceProperties);
         }
 
         // Call ToListAsync on the query
