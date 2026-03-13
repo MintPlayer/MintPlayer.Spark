@@ -95,14 +95,17 @@ internal partial class EntityMapper : IEntityMapper
                     {
                         if (attrDef.IsArray && value is System.Collections.IEnumerable enumerable && value is not string)
                         {
-                            var list = new List<Dictionary<string, object?>>();
+                            var items = new List<object?>();
                             foreach (var item in enumerable)
                             {
-                                list.Add(ConvertToSerializableDictionary(item));
+                                if (item == null || !IsComplexType(item.GetType()))
+                                    items.Add(item);
+                                else
+                                    items.Add(ConvertToSerializableDictionary(item));
                             }
-                            value = list;
+                            value = items;
                         }
-                        else if (!attrDef.IsArray)
+                        else if (!attrDef.IsArray && IsComplexType(value.GetType()))
                         {
                             value = ConvertToSerializableDictionary(value);
                         }
