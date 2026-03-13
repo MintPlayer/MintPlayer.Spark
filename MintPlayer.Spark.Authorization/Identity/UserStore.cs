@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Authorization.Indexes;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
 using Raven.Client.Exceptions;
@@ -466,7 +468,7 @@ public class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        return await Session.Query<TUser>()
+        return await Session.Query<TUser, SparkUsers_ByLogin<TUser>>()
             .FirstOrDefaultAsync(u => u.Logins.Any(l =>
                 l.LoginProvider == loginProvider && l.ProviderKey == providerKey), cancellationToken);
     }

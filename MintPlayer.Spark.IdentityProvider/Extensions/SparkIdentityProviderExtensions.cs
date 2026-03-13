@@ -61,6 +61,8 @@ public static class SparkIdentityProviderExtensions
         // OIDC protocol endpoints
         var connectGroup = endpoints.MapGroup("/connect");
         connectGroup.MapGet("/authorize", (Delegate)Authorize.Handle);
+        connectGroup.MapGet("/login", (Delegate)Login.HandleGet);
+        connectGroup.MapPost("/login", (Delegate)Login.HandlePost);
         connectGroup.MapGet("/consent", (Delegate)Consent.HandleGet);
         connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost);
         connectGroup.MapPost("/token", (Delegate)Token.Handle);

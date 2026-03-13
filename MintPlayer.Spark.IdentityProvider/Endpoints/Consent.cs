@@ -36,7 +36,7 @@ internal static class Consent
         if (string.IsNullOrEmpty(userId))
         {
             var returnUrl = context.Request.Path + context.Request.QueryString;
-            context.Response.Redirect($"/auth/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+            context.Response.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
             return;
         }
 

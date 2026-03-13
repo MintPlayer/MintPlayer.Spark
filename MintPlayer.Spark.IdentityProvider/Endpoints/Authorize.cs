@@ -90,9 +90,9 @@ internal static class Authorize
         var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
         {
-            // User not authenticated — redirect to login page with returnUrl
+            // User not authenticated — redirect to MVC login page
             var currentUrl = context.Request.QueryString.Value;
-            var loginUrl = $"/auth/login?returnUrl={Uri.EscapeDataString($"/connect/authorize{currentUrl}")}";
+            var loginUrl = $"/connect/login?returnUrl={Uri.EscapeDataString($"/connect/authorize{currentUrl}")}";
             context.Response.Redirect(loginUrl);
             return;
         }
