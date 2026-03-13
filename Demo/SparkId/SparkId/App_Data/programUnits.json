@@ -1,0 +1,30 @@
+{
+  "programUnitGroups": [
+    {
+      "id": "c10e8400-e29b-41d4-a716-446655440000",
+      "name": { "en": "Identity Provider" },
+      "icon": "bi-shield-lock-fill",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "c10e8400-e29b-41d4-a716-446655440001",
+          "name": { "en": "OIDC Applications" },
+          "icon": "bi-app-indicator",
+          "type": "query",
+          "queryId": "dd5d3b1d-9f12-49f7-b13d-11f675cb9851",
+          "alias": "oidcapplications",
+          "order": 1
+        },
+        {
+          "id": "c10e8400-e29b-41d4-a716-446655440002",
+          "name": { "en": "OIDC Scopes" },
+          "icon": "bi-key",
+          "type": "query",
+          "queryId": "eb830179-60ed-47dd-ac01-0ec5499b3d23",
+          "alias": "oidcscopes",
+          "order": 2
+        }
+      ]
+    }
+  ]
+}

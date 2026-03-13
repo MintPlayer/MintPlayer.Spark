@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.IdentityProvider</PackageId>
+		<Version>10.0.0-preview.19</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow with RavenDB storage. No external OIDC framework required.</Description>
+		<PackageTags>oidc;identity-provider;openid-connect;authorization-code;pkce;ravendb</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.*" />
+		<PackageReference Include="RavenDB.Client" Version="7.1.5" />
+	</ItemGroup>
+
+</Project>

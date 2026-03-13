@@ -1,0 +1,212 @@
+{
+  "persistentObject": {
+    "id": "1051a844-fa01-475a-811e-5fe38757b7a3",
+    "name": "OidcApplication",
+    "clrType": "SparkId.Entities.OidcApplication",
+    "displayAttribute": "ClientId",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "1d0534de-080a-4f2e-9050-fc81f98e048b",
+        "name": "ClientId",
+        "label": {
+          "en": "Client Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "231f50bb-581c-44f2-b344-a2840c74fdc4",
+        "name": "ClientSecretHash",
+        "label": {
+          "en": "Client Secret Hash"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0122f2c3-2381-4531-8e4d-d1fb690b619b",
+        "name": "DisplayName",
+        "label": {
+          "en": "Display Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a1bd1281-aad6-4419-b419-aa38bead51d5",
+        "name": "ClientType",
+        "label": {
+          "en": "Client Type"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "873f317e-685d-437b-a1a8-5c770bbdf5df",
+        "name": "ConsentType",
+        "label": {
+          "en": "Consent Type"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a45de99d-1335-4f75-b57f-e21e235515a8",
+        "name": "RedirectUris",
+        "label": {
+          "en": "Redirect Uris"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "asDetailType": "System.String",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "09f757b5-ee1e-46a2-b5b7-340930ba7502",
+        "name": "PostLogoutRedirectUris",
+        "label": {
+          "en": "Post Logout Redirect Uris"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "asDetailType": "System.String",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8c28c9d9-4a2f-4c9f-bdd9-3d9013170a11",
+        "name": "AllowedScopes",
+        "label": {
+          "en": "Allowed Scopes"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "asDetailType": "System.String",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1a1bcebc-cdb1-4870-98ca-4e0930545401",
+        "name": "RequirePkce",
+        "label": {
+          "en": "Require Pkce"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0fd66b1f-799a-4390-abb5-82e3cf171ddd",
+        "name": "AccessTokenLifetimeMinutes",
+        "label": {
+          "en": "Access Token Lifetime Minutes"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e63fcaa9-b479-41fe-9ced-8bf97347cfe3",
+        "name": "RefreshTokenLifetimeDays",
+        "label": {
+          "en": "Refresh Token Lifetime Days"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4d683d5c-eab6-4619-871a-fc63c7e494b4",
+        "name": "Enabled",
+        "label": {
+          "en": "Enabled"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "dd5d3b1d-9f12-49f7-b13d-11f675cb9851",
+      "name": "GetOidcApplications",
+      "source": "Database.OidcApplications",
+      "sortColumns": [
+        {
+          "property": "ClientId",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "isStreamingQuery": false
+    }
+  ]
+}

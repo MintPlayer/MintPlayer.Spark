@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -9,7 +9,7 @@ import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstra
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '../../services/spark-auth.service';
-import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '../../models';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, SPARK_OIDC_PROVIDERS, SparkOidcProvider } from '../../models';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { SparkAuthTranslationService } from '../../services/spark-auth-translation.service';
 
@@ -27,11 +27,13 @@ export class SparkLoginComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly config = inject(SPARK_AUTH_CONFIG);
   private readonly translation = inject(SparkAuthTranslationService);
+  private readonly oidcProviders = inject(SPARK_OIDC_PROVIDERS, { optional: true });
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
 
   colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
+  readonly externalProviders = computed(() => this.oidcProviders ?? []);
 
   readonly form = this.fb.group({
     email: ['', Validators.required],
@@ -63,6 +65,19 @@ export class SparkLoginComponent {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  getExternalLoginUrl(provider: SparkOidcProvider): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || this.config.defaultRedirectUrl;
+    return `${this.config.apiBasePath}/external-login/${provider.scheme}?returnUrl=${encodeURIComponent(returnUrl)}`;
+  }
+
+  getProviderButtonClass(provider: SparkOidcProvider): string {
+    return `btn btn-outline-${provider.buttonClass ?? 'secondary'} w-100 mb-2`;
+  }
+
+  getProviderIconClass(provider: SparkOidcProvider): string {
+    return `bi bi-${provider.icon} me-2`;
   }
 }
 
