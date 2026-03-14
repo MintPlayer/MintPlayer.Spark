@@ -53,6 +53,24 @@
       <div class="mt-2 text-center">
         <a [routerLink]="routePaths.forgotPassword">{{ 'authForgotPassword' | t }}</a>
       </div>
+
+      @if (externalProviders().length > 0) {
+        <hr class="my-3">
+        <div class="text-center mb-2">
+          <small class="text-muted">{{ 'authOrLoginWith' | t }}</small>
+        </div>
+        @for (provider of externalProviders(); track provider.scheme) {
+          <a
+            [href]="getExternalLoginUrl(provider)"
+            [class]="getProviderButtonClass(provider)"
+          >
+            @if (provider.icon) {
+              <i [class]="getProviderIconClass(provider)"></i>
+            }
+            {{ provider.displayName }}
+          </a>
+        }
+      }
     </div>
   </bs-card>
 </div>

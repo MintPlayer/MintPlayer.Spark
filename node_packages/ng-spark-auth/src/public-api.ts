@@ -31,8 +31,14 @@ export { sparkAuthInterceptor } from './lib/interceptors/spark-auth.interceptor'
 // Guards
 export { sparkAuthGuard } from './lib/guards/spark-auth.guard';
 
+// OIDC Provider Support
+export type { SparkOidcProvider } from './lib/models/oidc-provider';
+export type { SparkOidcLoginConfig } from './lib/models/oidc-login-config';
+export { SPARK_OIDC_PROVIDERS } from './lib/models/oidc-provider';
+
 // Providers
 export { provideSparkAuth, withSparkAuth } from './lib/providers/provide-spark-auth';
+export { provideSparkOidcLogin } from './lib/providers/provide-spark-oidc';
 
 // Routes
 export { sparkAuthRoutes } from './lib/routes/spark-auth-routes';

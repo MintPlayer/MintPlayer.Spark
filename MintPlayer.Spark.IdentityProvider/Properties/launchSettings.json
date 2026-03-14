@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "MintPlayer.Spark.IdentityProvider": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:60263;http://localhost:60264"
+    }
+  }
+}

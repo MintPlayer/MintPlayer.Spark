@@ -6,7 +6,8 @@
     "node_packages/ng-spark-auth",
     "Demo/DemoApp/DemoApp/ClientApp",
     "Demo/Fleet/Fleet/ClientApp",
-    "Demo/HR/HR/ClientApp"
+    "Demo/HR/HR/ClientApp",
+    "Demo/SparkId/SparkId/ClientApp"
   ],
   "dependencies": {
     "@angular/animations": "21.1.6",

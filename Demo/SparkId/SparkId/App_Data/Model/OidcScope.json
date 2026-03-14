@@ -1,0 +1,105 @@
+{
+  "persistentObject": {
+    "id": "0b0d90e9-a3c9-4b14-ac69-a1d1ad171aa7",
+    "name": "OidcScope",
+    "clrType": "SparkId.Entities.OidcScope",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "75294a19-4dba-4695-928f-8fea4815f35b",
+        "name": "Name",
+        "label": {
+          "en": "Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7b91b31f-1119-4dfd-99e9-59f45c9394cb",
+        "name": "DisplayName",
+        "label": {
+          "en": "Display Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fdd6c315-98ea-4125-8a5f-f0a36640fe44",
+        "name": "Description",
+        "label": {
+          "en": "Description"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "99252ff4-3277-4d24-bf8d-95b1a91b9014",
+        "name": "ClaimTypes",
+        "label": {
+          "en": "Claim Types"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "System.String",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "141bf995-72b3-45ad-80e6-40ea057f0679",
+        "name": "Required",
+        "label": {
+          "en": "Required"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "eb830179-60ed-47dd-ac01-0ec5499b3d23",
+      "name": "GetOidcScopes",
+      "source": "Database.OidcScopes",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "isStreamingQuery": false
+    }
+  ]
+}
