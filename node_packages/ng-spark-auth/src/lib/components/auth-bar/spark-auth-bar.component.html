@@ -1,5 +1,5 @@
 @if (authService.isAuthenticated()) {
-  <span class="me-2">{{ authService.user()?.userName }}</span>
+  <a class="me-2 text-light text-decoration-none" [routerLink]="routePaths.profile">{{ authService.user()?.userName }}</a>
   <button class="btn btn-outline-light btn-sm" (click)="onLogout()">{{ 'authLogout' | t }}</button>
 } @else {
   <a class="btn btn-outline-light btn-sm" [routerLink]="config.loginUrl">{{ 'authLogin' | t }}</a>

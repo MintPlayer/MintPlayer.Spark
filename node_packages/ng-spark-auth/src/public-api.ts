@@ -5,6 +5,9 @@ export type {
 export type {
   SparkAuthConfig,
 } from './lib/models/auth-config';
+export type {
+  ExternalLogin,
+} from './lib/models/external-login';
 export {
   SPARK_AUTH_CONFIG,
   defaultSparkAuthConfig,
@@ -50,3 +53,4 @@ export { SparkTwoFactorComponent } from './lib/components/two-factor/spark-two-f
 export { SparkRegisterComponent } from './lib/components/register/spark-register.component';
 export { SparkForgotPasswordComponent } from './lib/components/forgot-password/spark-forgot-password.component';
 export { SparkResetPasswordComponent } from './lib/components/reset-password/spark-reset-password.component';
+export { SparkProfileComponent } from './lib/components/profile/spark-profile.component';

@@ -102,6 +102,8 @@ public static class SparkBuilderOidcExtensions
         authGroup.MapGet("/external-providers", ExternalProviders.Handle);
         authGroup.MapGet("/external-login/{scheme}", (Delegate)ExternalLogin.Handle);
         authGroup.MapGet("/oidc-callback", (Delegate)OidcCallback.Handle);
+        authGroup.MapGet("/logins", (Delegate)ExternalLogins.HandleList).RequireAuthorization();
+        authGroup.MapDelete("/logins/{provider}", (Delegate)ExternalLogins.HandleRemove).RequireAuthorization();
 
         return endpoints;
     }

@@ -1,7 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { AuthUser, SPARK_AUTH_CONFIG } from '../models';
+import { AuthUser, ExternalLogin, SPARK_AUTH_CONFIG } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class SparkAuthService {
@@ -55,6 +55,14 @@ export class SparkAuthService {
       this.currentUser.set(null);
       return null;
     }
+  }
+
+  async getExternalLogins(): Promise<ExternalLogin[]> {
+    return await firstValueFrom(this.http.get<ExternalLogin[]>(`${this.config.apiBasePath}/logins`));
+  }
+
+  async removeExternalLogin(provider: string): Promise<void> {
+    await firstValueFrom(this.http.delete<void>(`${this.config.apiBasePath}/logins/${encodeURIComponent(provider)}`));
   }
 
   async forgotPassword(email: string): Promise<void> {

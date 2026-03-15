@@ -338,5 +338,40 @@
     "en": "Properties",
     "fr": "Propriétés",
     "nl": "Eigenschappen"
+  },
+  "authProfile": {
+    "en": "Profile",
+    "fr": "Profil",
+    "nl": "Profiel"
+  },
+  "authUserName": {
+    "en": "Username",
+    "fr": "Nom d'utilisateur",
+    "nl": "Gebruikersnaam"
+  },
+  "authExternalLogins": {
+    "en": "External Logins",
+    "fr": "Connexions externes",
+    "nl": "Externe logins"
+  },
+  "authRemove": {
+    "en": "Remove",
+    "fr": "Supprimer",
+    "nl": "Verwijderen"
+  },
+  "authNoExternalLogins": {
+    "en": "No external logins linked to your account.",
+    "fr": "Aucune connexion externe liée à votre compte.",
+    "nl": "Geen externe logins gekoppeld aan uw account."
+  },
+  "authAddExternalLogin": {
+    "en": "Add an external login:",
+    "fr": "Ajouter une connexion externe :",
+    "nl": "Externe login toevoegen:"
+  },
+  "authOrLoginWith": {
+    "en": "Or login with",
+    "fr": "Ou connectez-vous avec",
+    "nl": "Of log in met"
   }
 }

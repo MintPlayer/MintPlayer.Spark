@@ -8,6 +8,7 @@ export interface SparkAuthRouteConfig {
   register?: SparkAuthRouteEntry;
   forgotPassword?: SparkAuthRouteEntry;
   resetPassword?: SparkAuthRouteEntry;
+  profile?: SparkAuthRouteEntry;
 }
 
 export type SparkAuthRoutePaths = Required<Record<keyof SparkAuthRouteConfig, string>>;

@@ -1,4 +1,5 @@
 export type { AuthUser } from './auth-user';
+export type { ExternalLogin } from './external-login';
 export type { SparkAuthConfig } from './auth-config';
 export { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from './auth-config';
 export type {
