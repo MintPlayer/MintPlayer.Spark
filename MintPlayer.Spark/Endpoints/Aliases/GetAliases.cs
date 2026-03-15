@@ -1,11 +1,18 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Aliases;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class GetAliases
+public sealed partial class GetAliases : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/aliases", async (HttpContext context, GetAliases action) =>
+            await action.HandleAsync(context));
+    }
+
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
 

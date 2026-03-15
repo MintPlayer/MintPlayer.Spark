@@ -1,11 +1,26 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
-internal static class GetCurrentUser
+[Register(ServiceLifetime.Scoped)]
+internal sealed partial class GetCurrentUser : IEndpoint
 {
-    public static IResult Handle(HttpContext httpContext)
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/me", (HttpContext context) =>
+        {
+            var endpoint = context.CreateEndpoint<GetCurrentUser>();
+            return endpoint.Handle(context);
+        });
+    }
+
+    public IResult Handle(HttpContext httpContext)
     {
         var identity = httpContext.User.Identity;
 

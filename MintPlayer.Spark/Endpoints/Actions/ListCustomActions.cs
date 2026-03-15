@@ -1,3 +1,4 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
@@ -5,8 +6,17 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Actions;
 
 [Register(ServiceLifetime.Scoped)]
-internal sealed partial class ListCustomActions
+internal sealed partial class ListCustomActions : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId) =>
+        {
+            var endpoint = context.CreateEndpoint<ListCustomActions>();
+            await endpoint.HandleAsync(context, objectTypeId);
+        });
+    }
+
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
     [Inject] private readonly ICustomActionResolver actionResolver;

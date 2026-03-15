@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -6,12 +6,12 @@
 		<Nullable>enable</Nullable>
 
 		<!-- NuGet Package Metadata -->
-		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
-		<Version>10.0.0-preview.19</Version>
+		<PackageId>MintPlayer.AspNetCore.Endpoints</PackageId>
+		<Version>10.0.0-preview.1</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
-		<PackageTags>low-code;framework;ravendb;abstractions</PackageTags>
+		<Description>Lightweight endpoint infrastructure for ASP.NET Core. Provides IEndpoint interface with static abstract MapRoutes, per-request ActivatorUtilities instantiation, and assembly-based endpoint discovery.</Description>
+		<PackageTags>aspnetcore;endpoints;di;routing;minimal-api</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
@@ -20,10 +20,6 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\MintPlayer.AspNetCore.Endpoints\MintPlayer.AspNetCore.Endpoints.csproj" />
 	</ItemGroup>
 
 </Project>

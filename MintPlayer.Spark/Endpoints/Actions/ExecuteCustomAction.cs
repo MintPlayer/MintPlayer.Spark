@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.Extensions.Logging;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -9,8 +11,17 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Actions;
 
 [Register(ServiceLifetime.Scoped)]
-internal sealed partial class ExecuteCustomAction
+internal sealed partial class ExecuteCustomAction : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/{objectTypeId}/{actionName}", async (HttpContext context, string objectTypeId, string actionName) =>
+        {
+            var endpoint = context.CreateEndpoint<ExecuteCustomAction>();
+            await endpoint.HandleAsync(context, objectTypeId, actionName);
+        }).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;

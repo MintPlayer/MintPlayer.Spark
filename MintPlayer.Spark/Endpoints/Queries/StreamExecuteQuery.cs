@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
@@ -9,8 +10,17 @@ using MintPlayer.Spark.Streaming;
 namespace MintPlayer.Spark.Endpoints.Queries;
 
 [Register(ServiceLifetime.Scoped)]
-internal sealed partial class StreamExecuteQuery
+internal sealed partial class StreamExecuteQuery : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.Map("/{id}/stream", async (HttpContext context, string id) =>
+        {
+            var endpoint = context.CreateEndpoint<StreamExecuteQuery>();
+            await endpoint.HandleAsync(context, id);
+        });
+    }
+
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;
 

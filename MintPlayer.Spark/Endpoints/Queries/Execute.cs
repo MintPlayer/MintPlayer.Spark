@@ -1,3 +1,4 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -6,8 +7,14 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Queries;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class ExecuteQuery
+public sealed partial class ExecuteQuery : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/{id}/execute", async (HttpContext context, string id, ExecuteQuery action) =>
+            await action.HandleAsync(context, id));
+    }
+
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDatabaseAccess databaseAccess;

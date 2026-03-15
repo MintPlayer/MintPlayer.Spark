@@ -1,11 +1,20 @@
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class AddLookupReferenceValue
+public sealed partial class AddLookupReferenceValue : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/{name}", async (HttpContext context, string name, AddLookupReferenceValue action) =>
+            await action.HandleAsync(context, name))
+            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
     public async Task HandleAsync(HttpContext httpContext, string name)

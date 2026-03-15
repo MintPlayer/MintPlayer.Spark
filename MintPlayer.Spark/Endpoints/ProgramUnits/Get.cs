@@ -1,4 +1,5 @@
 using System.Reflection;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -8,8 +9,14 @@ using Raven.Client.Documents;
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class GetProgramUnits
+public sealed partial class GetProgramUnits : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
+            await action.HandleAsync(context));
+    }
+
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;

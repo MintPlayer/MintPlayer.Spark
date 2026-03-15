@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -8,8 +10,15 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class DeletePersistentObject
+public sealed partial class DeletePersistentObject : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId, id))
+            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;

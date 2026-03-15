@@ -1,6 +1,4 @@
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,9 +71,12 @@ internal static class SparkAuthenticationExtensions
     {
         var authGroup = endpoints.MapGroup("/spark/auth");
         authGroup.MapIdentityApi<TUser>();
-        authGroup.MapGet("/me", GetCurrentUser.Handle);
-        authGroup.MapPost("/logout", (Delegate)Logout.Handle).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-        authGroup.MapPost("/csrf-refresh", CsrfRefresh.Handle);
+
+        // Map Spark auth endpoints
+        GetCurrentUser.MapRoutes(authGroup);
+        Logout.MapRoutes(authGroup);
+        CsrfRefresh.MapRoutes(authGroup);
+
         return endpoints;
     }
 }

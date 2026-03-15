@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -8,8 +10,15 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class UpdatePersistentObject
+public sealed partial class UpdatePersistentObject : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapPut("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, UpdatePersistentObject action) =>
+            await action.HandleAsync(context, objectTypeId, id))
+            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;

@@ -1,3 +1,4 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
@@ -5,8 +6,14 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Permissions;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class GetPermissions
+public sealed partial class GetPermissions : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/permissions/{entityTypeId}", async (HttpContext context, string entityTypeId, GetPermissions action) =>
+            await action.HandleAsync(context, entityTypeId));
+    }
+
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
 

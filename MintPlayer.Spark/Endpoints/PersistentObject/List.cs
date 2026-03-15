@@ -1,3 +1,4 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -6,8 +7,14 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [Register(ServiceLifetime.Scoped)]
-public sealed partial class ListPersistentObjects
+public sealed partial class ListPersistentObjects : IEndpoint
 {
+    public static void MapRoutes(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId, ListPersistentObjects action) =>
+            await action.HandleAsync(context, objectTypeId));
+    }
+
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
 
