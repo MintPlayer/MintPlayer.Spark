@@ -1,13 +1,14 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -79,32 +80,19 @@ internal static class UserInfo
             return;
         }
 
-        // Build response based on granted scopes
-        var scopes = scopeString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var claims = new Dictionary<string, object>
-        {
-            ["sub"] = user.Id!,
-        };
+        // Load scope definitions from DB to resolve claims
+        var scopeNames = scopeString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-        if (scopes.Contains("profile"))
-        {
-            if (!string.IsNullOrEmpty(user.UserName))
-                claims["name"] = user.UserName;
-        }
+        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
+        using var session = store.OpenAsyncSession();
 
-        if (scopes.Contains("email"))
-        {
-            if (!string.IsNullOrEmpty(user.Email))
-            {
-                claims["email"] = user.Email;
-                claims["email_verified"] = user.EmailConfirmed;
-            }
-        }
+        var grantedScopes = await session
+            .Query<OidcScope>()
+            .Where(s => s.Name.In(scopeNames) && s.Enabled)
+            .ToListAsync(ct);
 
-        if (scopes.Contains("roles"))
-        {
-            claims["roles"] = user.Roles;
-        }
+        // Resolve claims from scope definitions
+        var claims = OidcTokenGenerator.ResolveUserInfoClaims(user, grantedScopes);
 
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsJsonAsync(claims);

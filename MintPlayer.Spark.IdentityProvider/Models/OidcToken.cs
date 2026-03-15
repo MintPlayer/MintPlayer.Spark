@@ -3,10 +3,10 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 public class OidcToken
 {
     public string? Id { get; set; }
-    public string ApplicationId { get; set; } = "";
-    public string AuthorizationId { get; set; } = "";
-    public string Subject { get; set; } = "";
-    public string Type { get; set; } = "";
+    public string ApplicationId { get; set; } = string.Empty;
+    public string AuthorizationId { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
     public string? ReferenceId { get; set; }
     public string? CodeChallenge { get; set; }
     public string? CodeChallengeMethod { get; set; }

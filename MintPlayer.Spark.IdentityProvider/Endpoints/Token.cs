@@ -9,6 +9,8 @@ using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -35,6 +37,9 @@ internal static class Token
                 break;
             case "refresh_token":
                 await HandleRefreshTokenGrant(context, form, ct);
+                break;
+            case "client_credentials":
+                await HandleClientCredentialsGrant(context, form, ct);
                 break;
             default:
                 context.Response.StatusCode = 400;
@@ -70,10 +75,18 @@ internal static class Token
             return;
         }
 
+        // Check grant type is allowed
+        if (!app.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for authorization_code grant." });
+            return;
+        }
+
         // Validate client secret for confidential clients
         if (app.ClientType == "confidential")
         {
-            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.ClientSecretHash))
+            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
             {
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(new { error = "invalid_client", error_description = "Invalid client credentials." });
@@ -144,12 +157,15 @@ internal static class Token
             return;
         }
 
+        // Load scope definitions from DB
+        var grantedScopes = await LoadScopesAsync(session, codeToken.Scopes, ct);
+
         var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate tokens
-        var accessToken = tokenGenerator.GenerateAccessToken(user, clientId, issuer, codeToken.Scopes, app.AccessTokenLifetimeMinutes);
-        var idToken = tokenGenerator.GenerateIdToken(user, clientId, issuer, codeToken.Scopes, codeToken.State, app.AccessTokenLifetimeMinutes);
+        var accessToken = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var idToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes);
         var refreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
         // Store access token
@@ -224,7 +240,7 @@ internal static class Token
 
         if (app.ClientType == "confidential")
         {
-            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.ClientSecretHash))
+            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
             {
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
@@ -254,12 +270,15 @@ internal static class Token
             return;
         }
 
+        // Load scope definitions from DB
+        var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc.Scopes, ct);
+
         var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate new tokens
-        var newAccessToken = tokenGenerator.GenerateAccessToken(user, clientId, issuer, refreshTokenDoc.Scopes, app.AccessTokenLifetimeMinutes);
-        var newIdToken = tokenGenerator.GenerateIdToken(user, clientId, issuer, refreshTokenDoc.Scopes, null, app.AccessTokenLifetimeMinutes);
+        var newAccessToken = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var newIdToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes);
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
         // Revoke old refresh token
@@ -311,7 +330,102 @@ internal static class Token
         });
     }
 
-    private static async Task<SparkUser?> LoadUserAsync(IServiceProvider serviceProvider, string userId, CancellationToken ct)
+    private static async Task HandleClientCredentialsGrant(HttpContext context, IFormCollection form, CancellationToken ct)
+    {
+        var clientId = form["client_id"].FirstOrDefault();
+        var clientSecret = form["client_secret"].FirstOrDefault();
+        var scope = form["scope"].FirstOrDefault();
+
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "client_id and client_secret are required." });
+            return;
+        }
+
+        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
+        using var session = store.OpenAsyncSession();
+
+        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        if (app == null || !app.Enabled)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
+            return;
+        }
+
+        // Check grant type is allowed
+        if (!app.AllowedGrantTypes.Contains("client_credentials", StringComparer.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for client_credentials grant." });
+            return;
+        }
+
+        // Validate client secret
+        if (!VerifyClientSecret(clientSecret, app.Secrets))
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_client", error_description = "Invalid client credentials." });
+            return;
+        }
+
+        // Parse and validate requested scopes
+        var requestedScopes = (scope ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        foreach (var s in requestedScopes)
+        {
+            if (!app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = 400;
+                await context.Response.WriteAsJsonAsync(new { error = "invalid_scope", error_description = $"Scope '{s}' is not allowed for this client." });
+                return;
+            }
+        }
+
+        // If no scopes requested, use all allowed scopes
+        if (requestedScopes.Count == 0)
+        {
+            requestedScopes = app.AllowedScopes.ToList();
+        }
+
+        // Load scope definitions from DB
+        var grantedScopes = await LoadScopesAsync(session, requestedScopes, ct);
+
+        var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+        var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
+
+        // Generate access token only (no user, no ID token, no refresh token)
+        var accessToken = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+
+        // Store access token
+        var accessTokenDoc = new OidcToken
+        {
+            ApplicationId = app.Id!,
+            Subject = $"client:{app.ClientId}",
+            Type = "access_token",
+            Payload = accessToken,
+            Scopes = requestedScopes,
+            Status = "valid",
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
+        };
+
+        await session.StoreAsync(accessTokenDoc, ct);
+        await session.SaveChangesAsync(ct);
+
+        context.Response.ContentType = "application/json";
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            access_token = accessToken,
+            token_type = "Bearer",
+            expires_in = app.AccessTokenLifetimeMinutes * 60,
+        });
+    }
+
+    internal static async Task<SparkUser?> LoadUserAsync(IServiceProvider serviceProvider, string userId, CancellationToken ct)
     {
         var registry = serviceProvider.GetRequiredService<SparkModuleRegistry>();
         var userType = registry.IdentityUserType ?? typeof(SparkUser);
@@ -324,16 +438,26 @@ internal static class Token
         return result as SparkUser;
     }
 
-    private static bool VerifyClientSecret(string secret, string? hash)
+    internal static async Task<List<OidcScope>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(hash)) return false;
+        return await session
+            .Query<OidcScope>()
+            .Where(s => s.Name.In(scopeNames) && s.Enabled)
+            .ToListAsync(ct);
+    }
 
-        // Simple SHA256 verification: hash the provided secret and compare
+    internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)
+    {
+        if (secrets.Count == 0) return false;
+
         var secretBytes = Encoding.UTF8.GetBytes(secret);
         var hashBytes = SHA256.HashData(secretBytes);
         var computed = Convert.ToBase64String(hashBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-        return string.Equals(computed, hash, StringComparison.Ordinal);
+        var now = DateTime.UtcNow;
+        return secrets.Any(s =>
+            string.Equals(computed, s.Hash, StringComparison.Ordinal) &&
+            (s.ExpiresAt == null || s.ExpiresAt > now));
     }
 
     private static string ComputeS256Challenge(string codeVerifier)

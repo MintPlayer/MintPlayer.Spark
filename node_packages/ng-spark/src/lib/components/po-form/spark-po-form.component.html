@@ -101,7 +101,7 @@
                 ...
               </button>
             </bs-input-group>
-          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline' && asDetailTypes()[attr.name]) {
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -164,7 +164,7 @@
                 <spark-icon name="plus" /> {{ 'add' | t }}
               </button>
             }
-          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && !attr.editMode && asDetailTypes()[attr.name]) {
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -205,6 +205,29 @@
                 <spark-icon name="plus" /> {{ 'add' | t }}
               </button>
             }
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            <div class="mb-1">
+              @for (val of formData()[attr.name] || []; track $index) {
+                <bs-input-group class="mb-1">
+                  <input
+                    type="text"
+                    [ngModel]="val"
+                    (ngModelChange)="updateSimpleArrayItem(attr, $index, $event)">
+                  <button
+                    type="button"
+                    bsInputGroupBtn
+                    [color]="colors.danger"
+                    (click)="removeArrayItem(attr, $index)">
+                    <spark-icon name="trash" />
+                  </button>
+                </bs-input-group>
+              } @empty {
+                <div class="text-muted mb-1">{{ 'noItemsFound' | t }}</div>
+              }
+            </div>
+            <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addSimpleArrayItem(attr)">
+              <spark-icon name="plus" /> {{ 'add' | t }}
+            </button>
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input

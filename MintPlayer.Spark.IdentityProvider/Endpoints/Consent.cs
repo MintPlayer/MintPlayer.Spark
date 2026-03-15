@@ -11,8 +11,7 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
 /// <summary>
 /// Handles both GET (render consent form) and POST (process consent decision).
-/// Phase 5 will replace the GET with a proper Razor Page.
-/// For now, renders a minimal HTML form.
+/// Renders a minimal inline HTML form (no Razor infrastructure needed).
 /// </summary>
 internal static class Consent
 {
@@ -85,12 +84,19 @@ internal static class Consent
             var displayName = def?.DisplayName ?? s;
             var description = def?.Description ?? "";
             var isRequired = def?.Required ?? (s == "openid");
+            var isEmphasized = def?.Emphasize ?? false;
 
-            sb.Append("<li><label>");
+            sb.Append("<li");
+            if (isEmphasized) sb.Append(" style=\"background:#fff3cd;padding:8px;border-radius:4px\"");
+            sb.Append("><label>");
             sb.Append("<input type=\"checkbox\" name=\"scopes\" value=\"").Append(Encode(s)).Append("\" checked");
             if (isRequired) sb.Append(" disabled");
             sb.Append(" />");
-            sb.Append("<strong>").Append(Encode(displayName)).Append("</strong>");
+            if (isEmphasized) sb.Append("<strong style=\"color:#856404\">⚠ ");
+            else sb.Append("<strong>");
+            sb.Append(Encode(displayName));
+            if (isEmphasized) sb.Append("</strong>");
+            else sb.Append("</strong>");
             if (!string.IsNullOrEmpty(description))
                 sb.Append(" &mdash; ").Append(Encode(description));
             sb.Append("</label>");

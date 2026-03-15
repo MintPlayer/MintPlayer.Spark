@@ -97,13 +97,13 @@ internal class OidcSigningKeyService
 
     private sealed class RsaKeyData
     {
-        public string N { get; set; } = "";
-        public string E { get; set; } = "";
-        public string D { get; set; } = "";
-        public string P { get; set; } = "";
-        public string Q { get; set; } = "";
-        public string DP { get; set; } = "";
-        public string DQ { get; set; } = "";
-        public string QI { get; set; } = "";
+        public string N { get; set; } = string.Empty;
+        public string E { get; set; } = string.Empty;
+        public string D { get; set; } = string.Empty;
+        public string P { get; set; } = string.Empty;
+        public string Q { get; set; } = string.Empty;
+        public string DP { get; set; } = string.Empty;
+        public string DQ { get; set; } = string.Empty;
+        public string QI { get; set; } = string.Empty;
     }
 }

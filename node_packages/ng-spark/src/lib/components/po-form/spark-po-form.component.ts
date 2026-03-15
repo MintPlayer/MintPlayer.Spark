@@ -343,6 +343,23 @@ export class SparkPoFormComponent {
     this.formData.set(data);
   }
 
+  // Simple array methods (for string[], number[], etc.)
+  addSimpleArrayItem(attr: EntityAttributeDefinition): void {
+    const data = { ...this.formData() };
+    const arr = [...(data[attr.name] || [])];
+    arr.push('');
+    data[attr.name] = arr;
+    this.formData.set(data);
+  }
+
+  updateSimpleArrayItem(attr: EntityAttributeDefinition, index: number, value: string): void {
+    const data = { ...this.formData() };
+    const arr = [...(data[attr.name] || [])];
+    arr[index] = value;
+    data[attr.name] = arr;
+    this.formData.set(data);
+  }
+
   // Array AsDetail methods
   addArrayItem(attr: EntityAttributeDefinition): void {
     this.editingAsDetailAttr.set(attr);

@@ -17,4 +17,10 @@ public class SparkIdentityProviderOptions
     /// Token cleanup interval. Default: 1 hour.
     /// </summary>
     public TimeSpan TokenCleanupInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// If true, automatically allows origins registered in
+    /// OidcApplication.AllowedCorsOrigins for the OIDC endpoints.
+    /// </summary>
+    public bool EnableDynamicCors { get; set; } = true;
 }

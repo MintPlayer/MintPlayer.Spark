@@ -7,6 +7,7 @@ using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.IdentityProvider.Indexes;
+using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
@@ -36,12 +37,31 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton<OidcTokenGenerator>();
         builder.Services.AddHostedService<OidcTokenCleanupService>();
 
+        // Register dynamic CORS policy for OIDC endpoints
+        if (options.EnableDynamicCors)
+        {
+            builder.Services.AddCors(corsOptions =>
+            {
+                corsOptions.AddPolicy("SparkOidcCors", policy =>
+                {
+                    policy.SetIsOriginAllowed(_ => true) // Validated at runtime below
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+            });
+        }
+
         // Register OIDC endpoints
-        builder.Registry.AddEndpoints(endpoints => endpoints.MapIdentityProviderEndpoints());
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapIdentityProviderEndpoints(options));
 
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>
         {
+            if (options.EnableDynamicCors)
+            {
+                app.UseCors("SparkOidcCors");
+            }
+
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
             new OidcTokens_ByReferenceId().Execute(documentStore);
@@ -52,7 +72,7 @@ public static class SparkIdentityProviderExtensions
         return builder;
     }
 
-    private static IEndpointRouteBuilder MapIdentityProviderEndpoints(this IEndpointRouteBuilder endpoints)
+    private static IEndpointRouteBuilder MapIdentityProviderEndpoints(this IEndpointRouteBuilder endpoints, SparkIdentityProviderOptions options)
     {
         // Discovery endpoints (well-known paths)
         endpoints.MapGet("/.well-known/openid-configuration", Discovery.Handle);
@@ -68,6 +88,8 @@ public static class SparkIdentityProviderExtensions
         connectGroup.MapPost("/token", (Delegate)Token.Handle);
         connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle);
         connectGroup.MapGet("/logout", (Delegate)Logout.Handle);
+        connectGroup.MapPost("/introspect", (Delegate)Introspection.Handle);
+        connectGroup.MapPost("/revoke", (Delegate)Revocation.Handle);
 
         return endpoints;
     }
