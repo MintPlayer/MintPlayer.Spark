@@ -23,6 +23,7 @@ internal static class ExternalLogin
         IDataProtectionProvider dataProtectionProvider)
     {
         var returnUrl = httpContext.Request.Query["returnUrl"].FirstOrDefault() ?? "/";
+        var popup = httpContext.Request.Query["popup"].FirstOrDefault() == "true";
 
         // Verify the scheme is registered
         var provider = registry.GetByScheme(scheme);
@@ -58,6 +59,7 @@ internal static class ExternalLogin
             CodeVerifier = codeVerifier,
             State = state,
             ReturnUrl = returnUrl,
+            Popup = popup,
         });
 
         var protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
@@ -85,4 +87,5 @@ internal class OidcStateCookie
     public string CodeVerifier { get; set; } = "";
     public string State { get; set; } = "";
     public string ReturnUrl { get; set; } = "/";
+    public bool Popup { get; set; }
 }

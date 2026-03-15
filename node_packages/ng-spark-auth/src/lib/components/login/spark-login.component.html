@@ -60,15 +60,16 @@
           <small class="text-muted">{{ 'authOrLoginWith' | t }}</small>
         </div>
         @for (provider of externalProviders(); track provider.scheme) {
-          <a
-            [href]="getExternalLoginUrl(provider)"
+          <button
+            type="button"
             [class]="getProviderButtonClass(provider)"
+            (click)="openExternalLogin(provider)"
           >
             @if (provider.icon) {
               <i [class]="getProviderIconClass(provider)"></i>
             }
             {{ provider.displayName }}
-          </a>
+          </button>
         }
       }
     </div>

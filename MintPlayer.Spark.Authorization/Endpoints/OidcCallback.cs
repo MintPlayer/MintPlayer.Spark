@@ -40,6 +40,13 @@ internal static class OidcCallback
         {
             var errorDescription = httpContext.Request.Query["error_description"].FirstOrDefault();
             logger.LogWarning("OIDC callback received error: {Error} - {Description}", error, errorDescription);
+
+            // Check if this was a popup flow (peek at state cookie)
+            if (TryGetStateCookie(httpContext, dataProtectionProvider, out var errStateCookie) && errStateCookie.Popup)
+            {
+                return PopupResult(httpContext, "error", errStateCookie.Scheme, error, errorDescription);
+            }
+
             return Results.Redirect($"/?error=external_login_failed&description={Uri.EscapeDataString(errorDescription ?? error)}");
         }
 
@@ -87,6 +94,12 @@ internal static class OidcCallback
         if (tokenResponse?.AccessToken == null)
         {
             logger.LogWarning("Failed to exchange authorization code for tokens (scheme: {Scheme})", stateCookie.Scheme);
+
+            if (stateCookie.Popup)
+            {
+                return PopupResult(httpContext, "error", stateCookie.Scheme, "token_exchange_failed");
+            }
+
             return Results.Redirect($"{stateCookie.ReturnUrl}?error=token_exchange_failed");
         }
 
@@ -177,6 +190,11 @@ internal static class OidcCallback
 
         if (!result)
         {
+            if (stateCookie.Popup)
+            {
+                return PopupResult(httpContext, "error", stateCookie.Scheme, "login_failed");
+            }
+
             return Results.Redirect($"{stateCookie.ReturnUrl}?error=login_failed");
         }
 
@@ -185,6 +203,11 @@ internal static class OidcCallback
         {
             Path = "/spark/auth",
         });
+
+        if (stateCookie.Popup)
+        {
+            return PopupResult(httpContext, "success", stateCookie.Scheme);
+        }
 
         // Redirect to return URL
         return Results.Redirect(stateCookie.ReturnUrl);
@@ -288,6 +311,65 @@ internal static class OidcCallback
             [signInManagerType.GetGenericArguments()[0], typeof(bool), typeof(string)])!;
         await (dynamic)signInMethod.Invoke(signInManager, [user, true, null])!;
     }
+
+    private static bool TryGetStateCookie(
+        HttpContext httpContext,
+        IDataProtectionProvider dataProtectionProvider,
+        out OidcStateCookie cookie)
+    {
+        cookie = default!;
+        var encrypted = httpContext.Request.Cookies[CookieName];
+        if (string.IsNullOrEmpty(encrypted)) return false;
+
+        try
+        {
+            var protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
+            var decrypted = protector.Unprotect(encrypted);
+            cookie = JsonSerializer.Deserialize<OidcStateCookie>(decrypted)!;
+            return cookie != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static IResult PopupResult(
+        HttpContext httpContext,
+        string status,
+        string scheme,
+        string? error = null,
+        string? errorDescription = null)
+    {
+        var request = httpContext.Request;
+        var origin = $"{request.Scheme}://{request.Host}";
+
+        var messageProps = $@"""status"":""{Encode(status)}"",""scheme"":""{Encode(scheme)}""";
+        if (error != null)
+            messageProps += $@",""error"":""{Encode(error)}""";
+        if (errorDescription != null)
+            messageProps += $@",""errorDescription"":""{Encode(errorDescription)}""";
+
+        var html = $$"""
+            <!DOCTYPE html>
+            <html><head><title>Login complete</title>
+            <script>
+                window.opener.postMessage('{{{messageProps}}}', '{{origin}}');
+                window.close();
+            </script>
+            </head>
+            <body><p>Login complete. This window will close automatically.</p></body>
+            </html>
+            """;
+
+        // Clear state cookie
+        httpContext.Response.Cookies.Delete(CookieName, new CookieOptions { Path = "/spark/auth" });
+
+        return Results.Content(html, "text/html");
+    }
+
+    private static string Encode(string value) =>
+        value.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"");
 
     /// <summary>
     /// Decodes a base64url-encoded string to bytes.

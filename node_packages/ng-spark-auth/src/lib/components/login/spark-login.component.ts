@@ -67,9 +67,46 @@ export class SparkLoginComponent {
     }
   }
 
-  getExternalLoginUrl(provider: SparkOidcProvider): string {
+  openExternalLogin(provider: SparkOidcProvider): void {
     const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || this.config.defaultRedirectUrl;
-    return `${this.config.apiBasePath}/external-login/${provider.scheme}?returnUrl=${encodeURIComponent(returnUrl)}`;
+    const url = `${this.config.apiBasePath}/external-login/${provider.scheme}?returnUrl=${encodeURIComponent(returnUrl)}&popup=true`;
+
+    const popup = window.open(url, '_blank', 'width=600,height=600');
+
+    const listener = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      let data: { status: string; scheme?: string; error?: string; errorDescription?: string };
+      try {
+        data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      } catch {
+        return;
+      }
+
+      if (!data?.status) return;
+
+      window.removeEventListener('message', listener);
+
+      if (data.status === 'success') {
+        this.authService.csrfRefresh().then(() =>
+          this.authService.checkAuth()
+        ).then(() => {
+          this.router.navigateByUrl(returnUrl);
+        });
+      } else {
+        this.errorMessage.set(data.errorDescription || data.error || 'External login failed');
+      }
+    };
+
+    window.addEventListener('message', listener);
+
+    // Clean up listener if user closes popup manually
+    const timer = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(timer);
+        window.removeEventListener('message', listener);
+      }
+    }, 500);
   }
 
   getProviderButtonClass(provider: SparkOidcProvider): string {
