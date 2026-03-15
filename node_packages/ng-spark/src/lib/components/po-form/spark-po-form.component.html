@@ -206,25 +206,29 @@
               </button>
             }
           } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
-            <div class="mb-1">
-              @for (val of formData()[attr.name] || []; track $index) {
-                <bs-input-group class="mb-1">
-                  <input
-                    type="text"
-                    [ngModel]="val"
-                    (ngModelChange)="updateSimpleArrayItem(attr, $index, $event)">
-                  <button
-                    type="button"
-                    bsInputGroupBtn
-                    [color]="colors.danger"
-                    (click)="removeArrayItem(attr, $index)">
-                    <spark-icon name="trash" />
-                  </button>
-                </bs-input-group>
-              } @empty {
-                <div class="text-muted mb-1">{{ 'noItemsFound' | t }}</div>
-              }
-            </div>
+            <bs-table [isResponsive]="true" class="mb-1">
+              <tbody>
+                @for (val of formData()[attr.name] || []; track $index) {
+                  <tr>
+                    <td>
+                      <input
+                        type="text"
+                        [ngModel]="val"
+                        (ngModelChange)="updateSimpleArrayItem(attr, $index, $event)">
+                    </td>
+                    <td style="width: 50px" class="text-nowrap">
+                      <button type="button" [color]="colors.danger" (click)="removeArrayItem(attr, $index)">
+                        <spark-icon name="trash" />
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td class="text-center text-muted">{{ 'noItemsFound' | t }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
             <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addSimpleArrayItem(attr)">
               <spark-icon name="plus" /> {{ 'add' | t }}
             </button>

@@ -122,13 +122,15 @@
                   </tbody>
                 </bs-table>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
-                <ul class="list-unstyled mb-0">
-                  @for (val of (attr.name | arrayValue:currentItem); track $index) {
-                    <li>{{ val }}</li>
-                  } @empty {
-                    <span class="text-muted">-</span>
-                  }
-                </ul>
+                <bs-table [isResponsive]="true">
+                  <tbody>
+                    @for (val of (attr.name | arrayValue:currentItem); track $index) {
+                      <tr><td>{{ val }}</td></tr>
+                    } @empty {
+                      <tr><td class="text-center text-muted">{{ 'noItemsFound' | t }}</td></tr>
+                    }
+                  </tbody>
+                </bs-table>
               } @else if (attr.dataType === 'boolean') {
                 <input type="checkbox"
                   [checked]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) === true"
