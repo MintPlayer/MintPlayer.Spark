@@ -4,19 +4,14 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Aliases;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetAliases : IEndpoint
+internal sealed partial class GetAliases : IGetEndpoint, IMemberOf<SparkGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/aliases", async (HttpContext context, GetAliases action) =>
-            await action.HandleAsync(context));
-    }
+    public static string Path => "/aliases";
 
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var entityTypeAliases = modelLoader.GetEntityTypes()
             .Where(e => e.Alias != null)
@@ -26,7 +21,7 @@ public sealed partial class GetAliases : IEndpoint
             .Where(q => q.Alias != null)
             .ToDictionary(q => q.Id.ToString(), q => q.Alias!);
 
-        await httpContext.Response.WriteAsJsonAsync(new
+        return Results.Json(new
         {
             entityTypes = entityTypeAliases,
             queries = queryAliases

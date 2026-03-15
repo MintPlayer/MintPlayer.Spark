@@ -5,38 +5,37 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class UpdateLookupReferenceValue : IEndpoint
+internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint, IMemberOf<LookupReferencesGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
+    public static string Path => "/{name}/{key}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
-        routes.MapPut("/{name}/{key}", async (HttpContext context, string name, string key, UpdateLookupReferenceValue action) =>
-            await action.HandleAsync(context, name, key))
-            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
-    public async Task HandleAsync(HttpContext httpContext, string name, string key)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var name = (string)httpContext.Request.RouteValues["name"]!;
+        var key = (string)httpContext.Request.RouteValues["key"]!;
+
         try
         {
             var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
 
             if (value == null)
             {
-                httpContext.Response.StatusCode = 400;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Invalid request body" });
-                return;
+                return Results.Json(new { error = "Invalid request body" }, statusCode: 400);
             }
 
             var result = await lookupReferenceService.UpdateValueAsync(name, key, value);
-            await httpContext.Response.WriteAsJsonAsync(result);
+            return Results.Json(result);
         }
         catch (InvalidOperationException ex)
         {
-            httpContext.Response.StatusCode = 400;
-            await httpContext.Response.WriteAsJsonAsync(new { error = ex.Message });
+            return Results.Json(new { error = ex.Message }, statusCode: 400);
         }
     }
 }

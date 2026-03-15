@@ -6,26 +6,22 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetPersistentObject : IEndpoint
+internal sealed partial class GetPersistentObject : IGetEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, GetPersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id));
-    }
+    public static string Path => "/{objectTypeId}/{**id}";
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
         }
 
         try
@@ -35,24 +31,20 @@ public sealed partial class GetPersistentObject : IEndpoint
 
             if (obj is null)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-                await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
-                return;
+                return Results.Json(new { error = $"Object with ID {decodedId} not found" }, statusCode: 404);
             }
 
-            await httpContext.Response.WriteAsJsonAsync(obj);
+            return Results.Json(obj);
         }
         catch (SparkAccessDeniedException)
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: 403);
             }
         }
     }

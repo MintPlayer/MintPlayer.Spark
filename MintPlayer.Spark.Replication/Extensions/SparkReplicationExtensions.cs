@@ -4,12 +4,11 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.AspNetCore.Endpoints;
-using MintPlayer.Spark.Replication.Endpoints;
 using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Services;
@@ -144,8 +143,7 @@ internal static class SparkReplicationExtensions
     /// </summary>
     internal static IEndpointRouteBuilder MapSparkReplication(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapEndpoints("/spark/etl", typeof(EtlDeploy));
-        endpoints.MapEndpoints("/spark/sync", typeof(SyncApply));
+        endpoints.MapSparkReplicationEndpoints();
         return endpoints;
     }
 }

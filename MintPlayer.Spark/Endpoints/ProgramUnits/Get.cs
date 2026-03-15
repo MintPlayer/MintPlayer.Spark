@@ -8,14 +8,9 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetProgramUnits : IEndpoint
+internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
-            await action.HandleAsync(context));
-    }
+    public static string Path => "/program-units";
 
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
     [Inject] private readonly IPermissionService permissionService;
@@ -24,11 +19,11 @@ public sealed partial class GetProgramUnits : IEndpoint
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
     [Inject] private readonly IDocumentStore documentStore;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var config = programUnitsLoader.GetProgramUnits();
 
-        // Build a Database property name → entity type name lookup from the SparkContext
+        // Build a Database property name -> entity type name lookup from the SparkContext
         var contextPropertyMap = BuildContextPropertyMap();
 
         var filteredGroups = new List<ProgramUnitGroup>();
@@ -62,7 +57,7 @@ public sealed partial class GetProgramUnits : IEndpoint
             ProgramUnitGroups = filteredGroups.ToArray(),
         };
 
-        await httpContext.Response.WriteAsJsonAsync(result);
+        return Results.Json(result);
     }
 
     private Dictionary<string, string> BuildContextPropertyMap()

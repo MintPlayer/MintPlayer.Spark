@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.Extensions.Logging;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Actions;
@@ -10,16 +9,13 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class ExecuteCustomAction : IEndpoint
+internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<ActionsGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
+    public static string Path => "/{objectTypeId}/{actionName}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
-        routes.MapPost("/{objectTypeId}/{actionName}", async (HttpContext context, string objectTypeId, string actionName) =>
-        {
-            var endpoint = context.CreateEndpoint<ExecuteCustomAction>();
-            await endpoint.HandleAsync(context, objectTypeId, actionName);
-        }).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
     [Inject] private readonly IModelLoader modelLoader;
@@ -28,14 +24,15 @@ internal sealed partial class ExecuteCustomAction : IEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
 
-    public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string actionName)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]?.ToString()!;
+        var actionName = httpContext.Request.RouteValues["actionName"]?.ToString()!;
+
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
         }
 
         // Get the simple type name (e.g., "Car" from "Fleet.Entities.Car")
@@ -50,24 +47,19 @@ internal sealed partial class ExecuteCustomAction : IEndpoint
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: StatusCodes.Status401Unauthorized);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: StatusCodes.Status403Forbidden);
             }
-            return;
         }
 
         // Resolve the custom action implementation
         var action = actionResolver.Resolve(actionName);
         if (action is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Custom action '{actionName}' not found" });
-            return;
+            return Results.Json(new { error = $"Custom action '{actionName}' not found" }, statusCode: StatusCodes.Status404NotFound);
         }
 
         // Deserialize request body
@@ -89,12 +81,11 @@ internal sealed partial class ExecuteCustomAction : IEndpoint
         try
         {
             await action.ExecuteAsync(args, httpContext.RequestAborted);
-            httpContext.Response.StatusCode = StatusCodes.Status200OK;
+            return Results.Ok();
         }
         catch (SparkRetryActionException ex)
         {
-            httpContext.Response.StatusCode = 449;
-            await httpContext.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 type = "retry-action",
                 step = ex.Step,
@@ -103,26 +94,23 @@ internal sealed partial class ExecuteCustomAction : IEndpoint
                 options = ex.Options,
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
-            });
+            }, statusCode: 449);
         }
         catch (SparkAccessDeniedException)
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: StatusCodes.Status401Unauthorized);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: StatusCodes.Status403Forbidden);
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
-            httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            await httpContext.Response.WriteAsJsonAsync(new { error = ex.Message });
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 }

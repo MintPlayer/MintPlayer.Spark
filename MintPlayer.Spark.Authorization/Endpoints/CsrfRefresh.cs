@@ -1,23 +1,14 @@
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.AspNetCore.Endpoints;
-using MintPlayer.SourceGenerators.Attributes;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class CsrfRefresh : IEndpoint
+internal sealed class CsrfRefresh : IPostEndpoint, IMemberOf<SparkAuthGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapPost("/csrf-refresh", (HttpContext context) =>
-        {
-            var endpoint = context.CreateEndpoint<CsrfRefresh>();
-            return endpoint.Handle();
-        });
-    }
+    public static string Path => "/csrf-refresh";
 
-    public IResult Handle() => Results.Ok();
+    public Task<IResult> HandleAsync(HttpContext httpContext)
+    {
+        return Task.FromResult(Results.Ok());
+    }
 }

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Authorization.Endpoints;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
@@ -72,10 +72,8 @@ internal static class SparkAuthenticationExtensions
         var authGroup = endpoints.MapGroup("/spark/auth");
         authGroup.MapIdentityApi<TUser>();
 
-        // Map Spark auth endpoints
-        GetCurrentUser.MapRoutes(authGroup);
-        Logout.MapRoutes(authGroup);
-        CsrfRefresh.MapRoutes(authGroup);
+        // Map Spark auth endpoints (source-generated)
+        endpoints.MapSparkAuthEndpoints();
 
         return endpoints;
     }

@@ -4,20 +4,15 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Culture;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetCulture : IEndpoint
+internal sealed partial class GetCulture : IGetEndpoint, IMemberOf<SparkGroup>
 {
+    public static string Path => "/culture";
+
     [Inject] private readonly ICultureLoader cultureLoader;
 
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/culture", async (HttpContext context, GetCulture action) =>
-            await action.HandleAsync(context));
-    }
-
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var culture = cultureLoader.GetCulture();
-        await httpContext.Response.WriteAsJsonAsync(culture);
+        return Results.Json(culture);
     }
 }

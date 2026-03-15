@@ -1,7 +1,4 @@
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -10,27 +7,19 @@ using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class EtlDeploy : IEndpoint
+internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup>
 {
+    public static string Path => "/deploy";
+
     [Inject] private readonly ILogger<EtlTaskManager> logger;
     [Inject] private readonly EtlTaskManager etlTaskManager;
 
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapPost("/deploy", async (HttpContext context) =>
-        {
-            var endpoint = context.CreateEndpoint<EtlDeploy>();
-            return await endpoint.HandleAsync(context);
-        });
-    }
-
-    public async Task<IResult> HandleAsync(HttpContext context)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         EtlScriptRequest? request;
         try
         {
-            request = await context.Request.ReadFromJsonAsync<EtlScriptRequest>();
+            request = await httpContext.Request.ReadFromJsonAsync<EtlScriptRequest>();
         }
         catch (Exception ex)
         {

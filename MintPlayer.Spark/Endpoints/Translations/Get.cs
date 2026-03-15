@@ -4,20 +4,15 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Translations;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetTranslations : IEndpoint
+internal sealed partial class GetTranslations : IGetEndpoint, IMemberOf<SparkGroup>
 {
+    public static string Path => "/translations";
+
     [Inject] private readonly ITranslationsLoader translationsLoader;
 
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/translations", async (HttpContext context, GetTranslations action) =>
-            await action.HandleAsync(context));
-    }
-
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var translations = translationsLoader.GetTranslations();
-        await httpContext.Response.WriteAsJsonAsync(translations);
+        return Results.Json(translations);
     }
 }

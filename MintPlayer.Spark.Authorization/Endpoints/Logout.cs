@@ -3,26 +3,20 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.AspNetCore.Endpoints;
-using MintPlayer.SourceGenerators.Attributes;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class Logout : IEndpoint
+internal sealed class Logout : IPostEndpoint, IMemberOf<SparkAuthGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
+    public static string Path => "/logout";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
-        routes.MapPost("/logout", async (HttpContext context) =>
-        {
-            var endpoint = context.CreateEndpoint<Logout>();
-            return await endpoint.Handle(context);
-        }).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
-    public async Task<IResult> Handle(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         await httpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
         return Results.Ok();

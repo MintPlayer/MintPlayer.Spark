@@ -10,16 +10,6 @@ using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
-using MintPlayer.Spark.Endpoints.Actions;
-using MintPlayer.Spark.Endpoints.Aliases;
-using MintPlayer.Spark.Endpoints.Culture;
-using MintPlayer.Spark.Endpoints.EntityTypes;
-using MintPlayer.Spark.Endpoints.Translations;
-using MintPlayer.Spark.Endpoints.LookupReferences;
-using MintPlayer.Spark.Endpoints.Permissions;
-using MintPlayer.Spark.Endpoints.PersistentObject;
-using MintPlayer.Spark.Endpoints.ProgramUnits;
-using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
@@ -231,42 +221,8 @@ public static class SparkExtensions
     {
         var registry = endpoints.ServiceProvider.GetRequiredService<SparkModuleRegistry>();
 
-        var sparkGroup = endpoints.MapGroup("/spark");
-        sparkGroup.MapGet("/", async context =>
-        {
-            await context.Response.WriteAsync("Spark Middleware is active!");
-        });
-
-        // Entity Types
-        sparkGroup.MapEndpoints("/types",
-            typeof(ListEntityTypes), typeof(GetEntityType));
-
-        // Queries
-        sparkGroup.MapEndpoints("/queries",
-            typeof(ListQueries), typeof(GetQuery), typeof(ExecuteQuery), typeof(StreamExecuteQuery));
-
-        // Standalone endpoints (mapped directly on sparkGroup)
-        GetCulture.MapRoutes(sparkGroup);
-        GetTranslations.MapRoutes(sparkGroup);
-        GetProgramUnits.MapRoutes(sparkGroup);
-        GetPermissions.MapRoutes(sparkGroup);
-        GetAliases.MapRoutes(sparkGroup);
-
-        // Persistent Objects
-        sparkGroup.MapEndpoints("/po",
-            typeof(ListPersistentObjects), typeof(GetPersistentObject),
-            typeof(CreatePersistentObject), typeof(UpdatePersistentObject),
-            typeof(DeletePersistentObject));
-
-        // Custom Actions
-        sparkGroup.MapEndpoints("/actions",
-            typeof(ListCustomActions), typeof(ExecuteCustomAction));
-
-        // Lookup References
-        sparkGroup.MapEndpoints("/lookupref",
-            typeof(ListLookupReferences), typeof(GetLookupReference),
-            typeof(AddLookupReferenceValue), typeof(UpdateLookupReferenceValue),
-            typeof(DeleteLookupReferenceValue));
+        // Map all core Spark endpoints (source-generated from endpoint classes)
+        endpoints.MapSparkCoreEndpoints();
 
         // Map module-specific endpoints (authorization, replication, etc.)
         registry.MapEndpoints(endpoints);

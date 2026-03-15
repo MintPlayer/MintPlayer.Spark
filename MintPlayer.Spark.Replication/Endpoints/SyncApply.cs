@@ -1,7 +1,4 @@
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -10,29 +7,21 @@ using MintPlayer.Spark.Replication.Abstractions.Models;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class SyncApply : IEndpoint
+internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGroup>
 {
+    public static string Path => "/apply";
+
     [Inject] private readonly ILoggerFactory loggerFactory;
     [Inject] private readonly ISyncActionHandler? syncActionHandler;
 
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapPost("/apply", async (HttpContext context) =>
-        {
-            var endpoint = context.CreateEndpoint<SyncApply>();
-            return await endpoint.HandleAsync(context);
-        });
-    }
-
-    public async Task<IResult> HandleAsync(HttpContext context)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var logger = loggerFactory.CreateLogger("SparkSync");
 
         SyncActionRequest? request;
         try
         {
-            request = await context.Request.ReadFromJsonAsync<SyncActionRequest>();
+            request = await httpContext.Request.ReadFromJsonAsync<SyncActionRequest>();
         }
         catch (Exception ex)
         {

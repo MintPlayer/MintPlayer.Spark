@@ -5,26 +5,21 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Permissions;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetPermissions : IEndpoint
+internal sealed partial class GetPermissions : IGetEndpoint, IMemberOf<SparkGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/permissions/{entityTypeId}", async (HttpContext context, string entityTypeId, GetPermissions action) =>
-            await action.HandleAsync(context, entityTypeId));
-    }
+    public static string Path => "/permissions/{entityTypeId}";
 
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, string entityTypeId)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var entityTypeId = (string)httpContext.Request.RouteValues["entityTypeId"]!;
+
         var entityType = modelLoader.ResolveEntityType(entityTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{entityTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{entityTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
         }
 
         var target = entityType.Name;
@@ -33,6 +28,6 @@ public sealed partial class GetPermissions : IEndpoint
         var canEdit = await permissionService.IsAllowedAsync("Edit", target);
         var canDelete = await permissionService.IsAllowedAsync("Delete", target);
 
-        await httpContext.Response.WriteAsJsonAsync(new { canRead, canCreate, canEdit, canDelete });
+        return Results.Json(new { canRead, canCreate, canEdit, canDelete });
     }
 }

@@ -4,20 +4,15 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class ListLookupReferences : IEndpoint
+internal sealed partial class ListLookupReferences : IGetEndpoint, IMemberOf<LookupReferencesGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
-    {
-        routes.MapGet("/", async (HttpContext context, ListLookupReferences action) =>
-            await action.HandleAsync(context));
-    }
+    public static string Path => "/";
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var lookupReferences = await lookupReferenceService.GetAllAsync();
-        await httpContext.Response.WriteAsJsonAsync(lookupReferences);
+        return Results.Json(lookupReferences);
     }
 }

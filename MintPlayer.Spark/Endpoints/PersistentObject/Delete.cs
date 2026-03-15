@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Builder;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -9,28 +10,28 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class DeletePersistentObject : IEndpoint
+internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static void MapRoutes(IEndpointRouteBuilder routes)
+    public static string Path => "/{objectTypeId}/{**id}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
-        routes.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id))
-            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
 
-    public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
         }
 
         // Read retry state from body if present (body is normally empty for DELETE)
@@ -51,18 +52,15 @@ public sealed partial class DeletePersistentObject : IEndpoint
 
             if (obj is null)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-                await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
-                return;
+                return Results.Json(new { error = $"Object with ID {decodedId} not found" }, statusCode: 404);
             }
 
             await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
-            httpContext.Response.StatusCode = StatusCodes.Status204NoContent;
+            return Results.NoContent();
         }
         catch (SparkRetryActionException ex)
         {
-            httpContext.Response.StatusCode = 449;
-            await httpContext.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 type = "retry-action",
                 step = ex.Step,
@@ -71,19 +69,17 @@ public sealed partial class DeletePersistentObject : IEndpoint
                 options = ex.Options,
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
-            });
+            }, statusCode: 449);
         }
         catch (SparkAccessDeniedException)
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: 403);
             }
         }
     }
