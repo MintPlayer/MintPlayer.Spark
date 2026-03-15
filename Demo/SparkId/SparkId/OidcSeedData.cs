@@ -39,7 +39,7 @@ internal static class OidcSeedData
             ],
             DisplayName = "HR Application",
             ClientType = "confidential",
-            ConsentType = "implicit", // auto-approve for dev
+            ConsentType = "explicit",
             AllowedGrantTypes = ["authorization_code", "refresh_token"],
             RedirectUris = ["https://localhost:5005/spark/auth/oidc-callback"],
             PostLogoutRedirectUris = ["https://localhost:5005"],
@@ -63,7 +63,7 @@ internal static class OidcSeedData
             ],
             DisplayName = "Fleet Application",
             ClientType = "confidential",
-            ConsentType = "implicit", // auto-approve for dev
+            ConsentType = "explicit",
             AllowedGrantTypes = ["authorization_code", "refresh_token"],
             RedirectUris = ["https://localhost:5003/spark/auth/oidc-callback"],
             PostLogoutRedirectUris = ["https://localhost:5003"],
