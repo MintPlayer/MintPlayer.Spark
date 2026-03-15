@@ -12,6 +12,8 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@min
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
+import { FormsModule } from '@angular/forms';
 import { SparkService } from '../../services/spark.service';
 import { SparkLanguageService } from '../../services/spark-language.service';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -34,7 +36,7 @@ import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkSubQueryComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, FormsModule, BsAlertComponent, BsButtonGroupComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, BsToggleButtonComponent, SparkIconComponent, SparkSubQueryComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe],
   templateUrl: './spark-po-detail.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
