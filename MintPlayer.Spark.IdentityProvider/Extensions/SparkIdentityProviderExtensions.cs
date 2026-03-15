@@ -85,6 +85,8 @@ public static class SparkIdentityProviderExtensions
         connectGroup.MapPost("/login", (Delegate)Login.HandlePost);
         connectGroup.MapGet("/consent", (Delegate)Consent.HandleGet);
         connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost);
+        connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
+        connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost);
         connectGroup.MapPost("/token", (Delegate)Token.Handle);
         connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle);
         connectGroup.MapGet("/logout", (Delegate)Logout.Handle);

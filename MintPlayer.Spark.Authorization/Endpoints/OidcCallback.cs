@@ -188,7 +188,7 @@ internal static class OidcCallback
             httpContext, serviceProvider, userType, stateCookie.Scheme,
             providerKey, email, name, logger, ct);
 
-        if (!result)
+        if (result.Status == ExternalSignInStatus.Failed)
         {
             if (stateCookie.Popup)
             {
@@ -198,11 +198,24 @@ internal static class OidcCallback
             return Results.Redirect($"{stateCookie.ReturnUrl}?error=login_failed");
         }
 
-        // Clear state cookie
+        // Clear OIDC state cookie (OAuth flow is complete regardless of 2FA)
         httpContext.Response.Cookies.Delete(CookieName, new CookieOptions
         {
             Path = "/spark/auth",
         });
+
+        if (result.Status == ExternalSignInStatus.RequiresTwoFactor)
+        {
+            // Store pending 2FA state and redirect to inline 2FA form
+            ExternalTwoFactor.StorePendingCookie(httpContext, dataProtectionProvider, new Pending2faCookie
+            {
+                UserId = result.UserId!,
+                Scheme = stateCookie.Scheme,
+                Popup = stateCookie.Popup,
+                ReturnUrl = stateCookie.ReturnUrl,
+            });
+            return Results.Redirect("/spark/auth/external-two-factor");
+        }
 
         if (stateCookie.Popup)
         {
@@ -213,7 +226,7 @@ internal static class OidcCallback
         return Results.Redirect(stateCookie.ReturnUrl);
     }
 
-    private static async Task<bool> FindOrCreateUserAndSignInAsync(
+    private static async Task<ExternalSignInResult> FindOrCreateUserAndSignInAsync(
         HttpContext httpContext,
         IServiceProvider serviceProvider,
         Type userType,
@@ -238,8 +251,12 @@ internal static class OidcCallback
         if (existingUser != null)
         {
             logger.LogInformation("Found existing user by external login ({Scheme}/{ProviderKey})", scheme, providerKey);
+            if (((SparkUser)existingUser).TwoFactorEnabled)
+            {
+                return new ExternalSignInResult(ExternalSignInStatus.RequiresTwoFactor, ((SparkUser)existingUser).Id);
+            }
             await SignInUserAsync(signInManager, signInManagerType, existingUser, httpContext);
-            return true;
+            return new ExternalSignInResult(ExternalSignInStatus.Success);
         }
 
         // 2. Try FindByEmailAsync(email) and link
@@ -257,13 +274,17 @@ internal static class OidcCallback
 
                 if (((IdentityResult)addResult).Succeeded)
                 {
+                    if (((SparkUser)userByEmail).TwoFactorEnabled)
+                    {
+                        return new ExternalSignInResult(ExternalSignInStatus.RequiresTwoFactor, ((SparkUser)userByEmail).Id);
+                    }
                     await SignInUserAsync(signInManager, signInManagerType, userByEmail, httpContext);
-                    return true;
+                    return new ExternalSignInResult(ExternalSignInStatus.Success);
                 }
 
                 logger.LogWarning("Failed to link external login to existing user: {Errors}",
                     string.Join(", ", ((IdentityResult)addResult).Errors.Select(e => e.Description)));
-                return false;
+                return new ExternalSignInResult(ExternalSignInStatus.Failed);
             }
         }
 
@@ -282,7 +303,7 @@ internal static class OidcCallback
         {
             logger.LogWarning("Failed to create user: {Errors}",
                 string.Join(", ", ((IdentityResult)createResult).Errors.Select(e => e.Description)));
-            return false;
+            return new ExternalSignInResult(ExternalSignInStatus.Failed);
         }
 
         var loginInfoForNew = new UserLoginInfo(scheme, providerKey, scheme);
@@ -293,11 +314,11 @@ internal static class OidcCallback
         {
             logger.LogWarning("Failed to add external login to new user: {Errors}",
                 string.Join(", ", ((IdentityResult)addLoginResult).Errors.Select(e => e.Description)));
-            return false;
+            return new ExternalSignInResult(ExternalSignInStatus.Failed);
         }
 
         await SignInUserAsync(signInManager, signInManagerType, newUser, httpContext);
-        return true;
+        return new ExternalSignInResult(ExternalSignInStatus.Success);
     }
 
     private static async Task SignInUserAsync(
@@ -385,4 +406,7 @@ internal static class OidcCallback
         }
         return Convert.FromBase64String(s);
     }
+
+    private enum ExternalSignInStatus { Success, Failed, RequiresTwoFactor }
+    private record ExternalSignInResult(ExternalSignInStatus Status, string? UserId = null);
 }

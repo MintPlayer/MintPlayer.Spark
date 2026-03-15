@@ -108,8 +108,7 @@ internal static class Login
 
         if (result.RequiresTwoFactor)
         {
-            // TODO: MVC two-factor page
-            RedirectWithError(context, returnUrl, "Two-factor authentication is not yet supported in this flow.");
+            context.Response.Redirect($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}");
             return;
         }
 
