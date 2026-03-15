@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Authorization.Indexes;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -37,6 +40,13 @@ public static class SparkBuilderAuthorizationExtensions
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>
             endpoints.MapSparkIdentityApi<TUser>());
+
+        // Deploy fanout index for FindByLoginAsync (Any() with multiple fields)
+        builder.Registry.AddMiddleware(app =>
+        {
+            var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+            new SparkUsers_ByLogin<TUser>().Execute(documentStore);
+        });
 
         return builder;
     }

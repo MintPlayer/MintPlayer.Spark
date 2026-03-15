@@ -19,6 +19,16 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddAuthorization();
     spark.AddAuthentication<SparkUser>();
 
+    // Login with SparkId identity provider
+    spark.AddOidcLogin("sparkid", opts =>
+    {
+        opts.Authority = "https://localhost:5001";
+        opts.ClientId = "fleet-app";
+        opts.ClientSecret = "fleet-dev-secret";
+        opts.DisplayName = "SparkId";
+        opts.Icon = "shield-lock";
+    });
+
     spark.AddMessaging();
 
     spark.AddReplication(opt =>

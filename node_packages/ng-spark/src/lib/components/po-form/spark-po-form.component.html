@@ -101,7 +101,7 @@
                 ...
               </button>
             </bs-input-group>
-          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline' && asDetailTypes()[attr.name]) {
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -164,7 +164,7 @@
                 <spark-icon name="plus" /> {{ 'add' | t }}
               </button>
             }
-          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray && !attr.editMode && asDetailTypes()[attr.name]) {
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -205,6 +205,33 @@
                 <spark-icon name="plus" /> {{ 'add' | t }}
               </button>
             }
+          } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            <bs-table [isResponsive]="true" class="mb-1">
+              <tbody>
+                @for (val of formData()[attr.name] || []; track $index) {
+                  <tr>
+                    <td>
+                      <input
+                        type="text"
+                        [ngModel]="val"
+                        (ngModelChange)="updateSimpleArrayItem(attr, $index, $event)">
+                    </td>
+                    <td style="width: 50px" class="text-nowrap">
+                      <button type="button" [color]="colors.danger" (click)="removeArrayItem(attr, $index)">
+                        <spark-icon name="trash" />
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td class="text-center text-muted">{{ 'noItemsFound' | t }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addSimpleArrayItem(attr)">
+              <spark-icon name="plus" /> {{ 'add' | t }}
+            </button>
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input

@@ -1,4 +1,5 @@
 import { SPARK_AUTH_ROUTE_PATHS, SparkAuthRouteConfig, SparkAuthRouteEntry, SparkAuthRoutePaths } from '../models';
+import { sparkAuthGuard } from '../guards/spark-auth.guard';
 
 interface ResolvedEntry {
   path: string;
@@ -35,6 +36,8 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
     () => import('../components/forgot-password/spark-forgot-password.component').then(m => m.SparkForgotPasswordComponent));
   const resetPassword = resolveEntry(config?.resetPassword, 'reset-password',
     () => import('../components/reset-password/spark-reset-password.component').then(m => m.SparkResetPasswordComponent));
+  const profile = resolveEntry(config?.profile, 'profile',
+    () => import('../components/profile/spark-profile.component').then(m => m.SparkProfileComponent));
 
   const paths: SparkAuthRoutePaths = {
     login: '/' + login.path,
@@ -42,6 +45,7 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
     register: '/' + register.path,
     forgotPassword: '/' + forgotPassword.path,
     resetPassword: '/' + resetPassword.path,
+    profile: '/' + profile.path,
   };
 
   return [
@@ -56,6 +60,7 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
         { path: register.path, loadComponent: register.loadComponent },
         { path: forgotPassword.path, loadComponent: forgotPassword.loadComponent },
         { path: resetPassword.path, loadComponent: resetPassword.loadComponent },
+        { path: profile.path, loadComponent: profile.loadComponent, canActivate: [sparkAuthGuard] },
       ],
     },
   ];

@@ -11,6 +11,11 @@
         "Path": "Demo\\HR\\HR\\HR.csproj",
         "Action": "Start",
         "DebugTarget": "https"
+      },
+      {
+        "Path": "Demo\\SparkId\\SparkId\\SparkId.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
       }
     ]
   }

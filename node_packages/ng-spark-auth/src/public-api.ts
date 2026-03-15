@@ -5,6 +5,9 @@ export type {
 export type {
   SparkAuthConfig,
 } from './lib/models/auth-config';
+export type {
+  ExternalLogin,
+} from './lib/models/external-login';
 export {
   SPARK_AUTH_CONFIG,
   defaultSparkAuthConfig,
@@ -31,8 +34,14 @@ export { sparkAuthInterceptor } from './lib/interceptors/spark-auth.interceptor'
 // Guards
 export { sparkAuthGuard } from './lib/guards/spark-auth.guard';
 
+// OIDC Provider Support
+export type { SparkOidcProvider } from './lib/models/oidc-provider';
+export type { SparkOidcLoginConfig } from './lib/models/oidc-login-config';
+export { SPARK_OIDC_PROVIDERS } from './lib/models/oidc-provider';
+
 // Providers
 export { provideSparkAuth, withSparkAuth } from './lib/providers/provide-spark-auth';
+export { provideSparkOidcLogin } from './lib/providers/provide-spark-oidc';
 
 // Routes
 export { sparkAuthRoutes } from './lib/routes/spark-auth-routes';
@@ -44,3 +53,4 @@ export { SparkTwoFactorComponent } from './lib/components/two-factor/spark-two-f
 export { SparkRegisterComponent } from './lib/components/register/spark-register.component';
 export { SparkForgotPasswordComponent } from './lib/components/forgot-password/spark-forgot-password.component';
 export { SparkResetPasswordComponent } from './lib/components/reset-password/spark-reset-password.component';
+export { SparkProfileComponent } from './lib/components/profile/spark-profile.component';

@@ -1,0 +1,78 @@
+<div class="d-flex justify-content-center">
+  <div style="width: 100%; max-width: 600px;">
+    @if (errorMessage()) {
+      <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
+    }
+    @if (successMessage()) {
+      <bs-alert [type]="colors.success" class="mb-3">{{ successMessage() }}</bs-alert>
+    }
+
+    <bs-card class="mb-4">
+      <bs-card-header>
+        <h3 class="mb-0">{{ 'authProfile' | t }}</h3>
+      </bs-card-header>
+      <div class="p-4">
+        @if (authService.user(); as user) {
+          <bs-table [border]="true">
+            <tbody>
+              <tr>
+                <td><strong>{{ 'authUserName' | t }}</strong></td>
+                <td>{{ user.userName }}</td>
+              </tr>
+              <tr>
+                <td><strong>{{ 'authEmail' | t }}</strong></td>
+                <td>{{ user.email }}</td>
+              </tr>
+            </tbody>
+          </bs-table>
+        }
+      </div>
+    </bs-card>
+
+    <bs-card>
+      <bs-card-header>
+        <h3 class="mb-0">{{ 'authExternalLogins' | t }}</h3>
+      </bs-card-header>
+      <div class="p-4">
+        @if (logins().length > 0) {
+          <bs-table [border]="true">
+            <tbody>
+              @for (login of logins(); track login.loginProvider) {
+                <tr>
+                  <td>{{ login.providerDisplayName || login.loginProvider }}</td>
+                  <td style="width: 1px" class="text-nowrap">
+                    <button
+                      class="btn btn-outline-danger btn-sm"
+                      (click)="removeLogin(login)"
+                    >
+                      {{ 'authRemove' | t }}
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </bs-table>
+        } @else {
+          <p class="text-muted mb-3">{{ 'authNoExternalLogins' | t }}</p>
+        }
+
+        @if (availableProviders().length > 0) {
+          <hr class="my-3">
+          <p class="text-muted mb-2">{{ 'authAddExternalLogin' | t }}</p>
+          @for (provider of availableProviders(); track provider.scheme) {
+            <button
+              type="button"
+              class="btn btn-outline-{{provider.buttonClass ?? 'secondary'}} w-100 mb-2"
+              (click)="addLogin(provider)"
+            >
+              @if (provider.icon) {
+                <i class="bi bi-{{provider.icon}} me-2"></i>
+              }
+              {{ provider.displayName }}
+            </button>
+          }
+        }
+      </div>
+    </bs-card>
+  </div>
+</div>

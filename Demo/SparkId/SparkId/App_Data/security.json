@@ -1,0 +1,32 @@
+{
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Everyone" },
+    "d1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" }
+  },
+  "rights": [
+    {
+      "id": "d0000001-0000-0000-0000-000000000001",
+      "resource": "QueryReadEditNewDelete/OidcApplication",
+      "groupId": "d1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000002",
+      "resource": "QueryReadEditNewDelete/OidcScope",
+      "groupId": "d1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000003",
+      "resource": "QueryRead/OidcApplication",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000004",
+      "resource": "QueryRead/OidcScope",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    }
+  ]
+}

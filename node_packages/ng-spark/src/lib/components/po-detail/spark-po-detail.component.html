@@ -85,8 +85,8 @@
               <dd [sm]="9">
               @if (getDetailRendererComponent(attr); as rendererType) {
                 <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(attr, currentItem)"></ng-container>
-              } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
-                <bs-table [isResponsive]="true">
+              } @else if (attr.dataType === 'AsDetail' && attr.isArray && asDetailTypes()[attr.name]) {
+                <bs-table [isResponsive]="true" [border]="true">
                   <thead>
                     <tr>
                       @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
@@ -121,13 +121,21 @@
                     }
                   </tbody>
                 </bs-table>
+              } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+                <bs-table [isResponsive]="true" [border]="true">
+                  <tbody>
+                    @for (val of (attr.name | arrayValue:currentItem); track $index) {
+                      <tr><td>{{ val }}</td></tr>
+                    } @empty {
+                      <tr><td class="text-center text-muted">{{ 'noItemsFound' | t }}</td></tr>
+                    }
+                  </tbody>
+                </bs-table>
               } @else if (attr.dataType === 'boolean') {
-                <input type="checkbox"
-                  [checked]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) === true"
-                  [indeterminate]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) == null"
-                  disabled
-                  onclick="return false;"
-                  style="opacity: 1;">
+                <bs-toggle-button
+                  [ngModel]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes())"
+                  disabled>
+                </bs-toggle-button>
               } @else if (attr.dataType === 'color') {
                 @let colorVal = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
                 @if (colorVal) {
