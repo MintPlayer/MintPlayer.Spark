@@ -1,3 +1,4 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -5,23 +6,23 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class ExecuteQuery
+internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGroup>
 {
+    public static string Path => "/{id}/execute";
+
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
         var query = queryLoader.ResolveQuery(id);
 
         if (query is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' not found" });
-            return;
+            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
         try
@@ -80,19 +81,17 @@ public sealed partial class ExecuteQuery
             };
 
             var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search);
-            await httpContext.Response.WriteAsJsonAsync(results);
+            return Results.Json(results);
         }
         catch (SparkAccessDeniedException)
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: 403);
             }
         }
     }

@@ -1,25 +1,25 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-internal static class EtlEndpoints
+internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup>
 {
-    /// <summary>
-    /// Handles POST /spark/etl/deploy — receives ETL script requests from other modules
-    /// and creates/updates RavenDB ETL tasks in this module's database.
-    /// </summary>
-    public static async Task<IResult> HandleDeployAsync(HttpContext context)
-    {
-        var logger = context.RequestServices.GetRequiredService<ILogger<EtlTaskManager>>();
+    public static string Path => "/deploy";
 
+    [Inject] private readonly ILogger<EtlTaskManager> logger;
+    [Inject] private readonly EtlTaskManager etlTaskManager;
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    {
         EtlScriptRequest? request;
         try
         {
-            request = await context.Request.ReadFromJsonAsync<EtlScriptRequest>();
+            request = await httpContext.Request.ReadFromJsonAsync<EtlScriptRequest>();
         }
         catch (Exception ex)
         {
@@ -40,7 +40,6 @@ internal static class EtlEndpoints
             });
         }
 
-        var etlTaskManager = context.RequestServices.GetRequiredService<EtlTaskManager>();
         var result = await etlTaskManager.DeployAsync(request);
 
         return result.Success ? Results.Ok(result) : Results.StatusCode(500);

@@ -1,26 +1,27 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-internal static class SyncEndpoints
+internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGroup>
 {
-    /// <summary>
-    /// Handles POST /spark/sync/apply — receives sync action requests from non-owner modules
-    /// and applies the CRUD operations on the locally owned entities via the actions pipeline.
-    /// </summary>
-    public static async Task<IResult> HandleApplyAsync(HttpContext context)
+    public static string Path => "/apply";
+
+    [Inject] private readonly ILoggerFactory loggerFactory;
+    [Inject] private readonly ISyncActionHandler? syncActionHandler;
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("SparkSync");
+        var logger = loggerFactory.CreateLogger("SparkSync");
 
         SyncActionRequest? request;
         try
         {
-            request = await context.Request.ReadFromJsonAsync<SyncActionRequest>();
+            request = await httpContext.Request.ReadFromJsonAsync<SyncActionRequest>();
         }
         catch (Exception ex)
         {
@@ -33,8 +34,7 @@ internal static class SyncEndpoints
             return Results.BadRequest(new { error = "Request must contain at least one sync action" });
         }
 
-        var handler = context.RequestServices.GetService<ISyncActionHandler>();
-        if (handler == null)
+        if (syncActionHandler == null)
         {
             logger.LogError("ISyncActionHandler is not registered. Ensure MintPlayer.Spark is configured.");
             return Results.StatusCode(500);
@@ -62,7 +62,7 @@ internal static class SyncEndpoints
                             continue;
                         }
 
-                        var savedId = await handler.HandleSaveAsync(
+                        var savedId = await syncActionHandler.HandleSaveAsync(
                             action.Collection, action.DocumentId, action.Data, action.Properties);
 
                         results.Add(new SyncActionResult
@@ -86,7 +86,7 @@ internal static class SyncEndpoints
                             continue;
                         }
 
-                        await handler.HandleDeleteAsync(action.Collection, action.DocumentId);
+                        await syncActionHandler.HandleDeleteAsync(action.Collection, action.DocumentId);
 
                         results.Add(new SyncActionResult
                         {

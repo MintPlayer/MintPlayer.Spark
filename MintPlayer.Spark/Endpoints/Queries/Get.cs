@@ -1,24 +1,25 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetQuery
+internal sealed partial class GetQuery : IGetEndpoint, IMemberOf<QueriesGroup>
 {
+    public static string Path => "/{id}";
+
     [Inject] private readonly IQueryLoader queryLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
         var query = queryLoader.ResolveQuery(id);
 
         if (query is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' not found" });
-            return;
+            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
-        await httpContext.Response.WriteAsJsonAsync(query);
+        return Results.Json(query);
     }
 }

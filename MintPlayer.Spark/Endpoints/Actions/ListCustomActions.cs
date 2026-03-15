@@ -1,25 +1,27 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class ListCustomActions
+internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<ActionsGroup>
 {
+    public static string Path => "/{objectTypeId}";
+
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
 
-    public async Task HandleAsync(HttpContext httpContext, string objectTypeId)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]?.ToString()!;
+
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
         }
 
         var config = configLoader.GetConfiguration();
@@ -62,6 +64,6 @@ internal sealed partial class ListCustomActions
             return aOffset.CompareTo(bOffset);
         });
 
-        await httpContext.Response.WriteAsJsonAsync(result);
+        return Results.Json(result);
     }
 }

@@ -1,16 +1,18 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class ListLookupReferences
+internal sealed partial class ListLookupReferences : IGetEndpoint, IMemberOf<LookupReferencesGroup>
 {
+    public static string Path => "/";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var lookupReferences = await lookupReferenceService.GetAllAsync();
-        await httpContext.Response.WriteAsJsonAsync(lookupReferences);
+        return Results.Json(lookupReferences);
     }
 }

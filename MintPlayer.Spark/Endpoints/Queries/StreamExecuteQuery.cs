@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
@@ -8,9 +9,11 @@ using MintPlayer.Spark.Streaming;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-[Register(ServiceLifetime.Scoped)]
-internal sealed partial class StreamExecuteQuery
+internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesGroup>
 {
+    public static string Path => "/{id}/stream";
+    public static IEnumerable<string> Methods => ["GET"];
+
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;
 
@@ -19,28 +22,24 @@ internal sealed partial class StreamExecuteQuery
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public async Task HandleAsync(HttpContext httpContext, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+
         if (!httpContext.WebSockets.IsWebSocketRequest)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "WebSocket connection required" });
-            return;
+            return Results.Json(new { error = "WebSocket connection required" }, statusCode: 400);
         }
 
         var query = queryLoader.ResolveQuery(id);
         if (query is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' not found" });
-            return;
+            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
         if (!query.IsStreamingQuery)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Query '{id}' is not a streaming query" });
-            return;
+            return Results.Json(new { error = $"Query '{id}' is not a streaming query" }, statusCode: 400);
         }
 
         using var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
@@ -91,6 +90,8 @@ internal sealed partial class StreamExecuteQuery
         {
             await SendErrorAndCloseAsync(webSocket, ex.Message);
         }
+
+        return Results.Empty;
     }
 
     private static async Task SendErrorAndCloseAsync(WebSocket webSocket, string message)

@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Builder;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -7,22 +10,29 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class UpdatePersistentObject
+internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<PersistentObjectGroup>
 {
+    public static string Path => "/{objectTypeId}/{**id}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
 
-    public async Task HandleAsync(HttpContext httpContext, string objectTypeId, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{objectTypeId}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
         }
 
         try
@@ -32,9 +42,7 @@ public sealed partial class UpdatePersistentObject
 
             if (existingObj is null)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-                await httpContext.Response.WriteAsJsonAsync(new { error = $"Object with ID {decodedId} not found" });
-                return;
+                return Results.Json(new { error = $"Object with ID {decodedId} not found" }, statusCode: 404);
             }
 
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -58,18 +66,15 @@ public sealed partial class UpdatePersistentObject
             var validationResult = validationService.Validate(obj);
             if (!validationResult.IsValid)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await httpContext.Response.WriteAsJsonAsync(new { errors = validationResult.Errors });
-                return;
+                return Results.Json(new { errors = validationResult.Errors }, statusCode: 400);
             }
 
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            await httpContext.Response.WriteAsJsonAsync(result);
+            return Results.Json(result);
         }
         catch (SparkRetryActionException ex)
         {
-            httpContext.Response.StatusCode = 449;
-            await httpContext.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 type = "retry-action",
                 step = ex.Step,
@@ -78,19 +83,17 @@ public sealed partial class UpdatePersistentObject
                 options = ex.Options,
                 defaultOption = ex.DefaultOption,
                 persistentObject = ex.PersistentObject,
-            });
+            }, statusCode: 449);
         }
         catch (SparkAccessDeniedException)
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
             {
-                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
             }
             else
             {
-                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Access denied" });
+                return Results.Json(new { error = "Access denied" }, statusCode: 403);
             }
         }
     }

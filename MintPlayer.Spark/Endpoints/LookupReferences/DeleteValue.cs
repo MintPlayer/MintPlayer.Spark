@@ -1,24 +1,34 @@
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class DeleteLookupReferenceValue
+internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint, IMemberOf<LookupReferencesGroup>
 {
+    public static string Path => "/{name}/{key}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
-    public async Task HandleAsync(HttpContext httpContext, string name, string key)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var name = (string)httpContext.Request.RouteValues["name"]!;
+        var key = (string)httpContext.Request.RouteValues["key"]!;
+
         try
         {
             await lookupReferenceService.DeleteValueAsync(name, key);
-            httpContext.Response.StatusCode = 204;
+            return Results.NoContent();
         }
         catch (InvalidOperationException ex)
         {
-            httpContext.Response.StatusCode = 400;
-            await httpContext.Response.WriteAsJsonAsync(new { error = ex.Message });
+            return Results.Json(new { error = ex.Message }, statusCode: 400);
         }
     }
 }

@@ -1,16 +1,18 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class ListEntityTypes
+internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTypesGroup>
 {
+    public static string Path => "/";
+
     [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var entityTypes = modelLoader.GetEntityTypes();
-        await httpContext.Response.WriteAsJsonAsync(entityTypes);
+        return Results.Json(entityTypes);
     }
 }

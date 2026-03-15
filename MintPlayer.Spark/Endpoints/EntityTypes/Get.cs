@@ -1,24 +1,25 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetEntityType
+internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityTypesGroup>
 {
+    public static string Path => "/{id}";
+
     [Inject] private readonly IModelLoader modelLoader;
 
-    public async Task HandleAsync(HttpContext httpContext, string id)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
         var entityType = modelLoader.ResolveEntityType(id);
 
         if (entityType is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"Entity type '{id}' not found" });
-            return;
+            return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
         }
 
-        await httpContext.Response.WriteAsJsonAsync(entityType);
+        return Results.Json(entityType);
     }
 }

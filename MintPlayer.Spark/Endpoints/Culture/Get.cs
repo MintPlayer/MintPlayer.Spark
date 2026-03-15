@@ -1,16 +1,18 @@
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Culture;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class GetCulture
+internal sealed partial class GetCulture : IGetEndpoint, IMemberOf<SparkGroup>
 {
+    public static string Path => "/culture";
+
     [Inject] private readonly ICultureLoader cultureLoader;
 
-    public async Task HandleAsync(HttpContext httpContext)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var culture = cultureLoader.GetCulture();
-        await httpContext.Response.WriteAsJsonAsync(culture);
+        return Results.Json(culture);
     }
 }

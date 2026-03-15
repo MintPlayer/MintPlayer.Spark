@@ -3,22 +3,13 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
-using MintPlayer.Spark.Endpoints.Actions;
-using MintPlayer.Spark.Endpoints.Aliases;
-using MintPlayer.Spark.Endpoints.Culture;
-using MintPlayer.Spark.Endpoints.EntityTypes;
-using MintPlayer.Spark.Endpoints.Translations;
-using MintPlayer.Spark.Endpoints.LookupReferences;
-using MintPlayer.Spark.Endpoints.Permissions;
-using MintPlayer.Spark.Endpoints.PersistentObject;
-using MintPlayer.Spark.Endpoints.ProgramUnits;
-using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
@@ -230,83 +221,8 @@ public static class SparkExtensions
     {
         var registry = endpoints.ServiceProvider.GetRequiredService<SparkModuleRegistry>();
 
-        // Register the Spark middleware for all requests
-        var sparkGroup = endpoints.MapGroup("/spark");
-        sparkGroup.MapGet("/", async context =>
-        {
-            await context.Response.WriteAsync("Spark Middleware is active!");
-        });
-
-        // Entity Types endpoints
-        var typesGroup = sparkGroup.MapGroup("/types");
-        typesGroup.MapGet("/", async (HttpContext context, ListEntityTypes action) =>
-            await action.HandleAsync(context));
-        typesGroup.MapGet("/{id}", async (HttpContext context, string id, GetEntityType action) =>
-            await action.HandleAsync(context, id));
-
-        // Queries endpoints
-        var queriesGroup = sparkGroup.MapGroup("/queries");
-        queriesGroup.MapGet("/", async (HttpContext context, ListQueries action) =>
-            await action.HandleAsync(context));
-        queriesGroup.MapGet("/{id}", async (HttpContext context, string id, GetQuery action) =>
-            await action.HandleAsync(context, id));
-        queriesGroup.MapGet("/{id}/execute", async (HttpContext context, string id, ExecuteQuery action) =>
-            await action.HandleAsync(context, id));
-        queriesGroup.Map("/{id}/stream", async (HttpContext context, string id, StreamExecuteQuery action) =>
-            await action.HandleAsync(context, id));
-
-        // Culture endpoint
-        sparkGroup.MapGet("/culture", async (HttpContext context, GetCulture action) =>
-            await action.HandleAsync(context));
-
-        // Translations endpoint
-        sparkGroup.MapGet("/translations", async (HttpContext context, GetTranslations action) =>
-            await action.HandleAsync(context));
-
-        // Program Units endpoint
-        sparkGroup.MapGet("/program-units", async (HttpContext context, GetProgramUnits action) =>
-            await action.HandleAsync(context));
-
-        // Permissions endpoint
-        sparkGroup.MapGet("/permissions/{entityTypeId}", async (HttpContext context, string entityTypeId, GetPermissions action) =>
-            await action.HandleAsync(context, entityTypeId));
-
-        // Aliases endpoint
-        sparkGroup.MapGet("/aliases", async (HttpContext context, GetAliases action) =>
-            await action.HandleAsync(context));
-
-        // Persistent Object endpoints
-        var persistentObjectGroup = sparkGroup.MapGroup("/po");
-        persistentObjectGroup.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId, ListPersistentObjects action) =>
-            await action.HandleAsync(context, objectTypeId));
-        persistentObjectGroup.MapGet("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, GetPersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id));
-        persistentObjectGroup.MapPost("/{objectTypeId}", async (HttpContext context, string objectTypeId, CreatePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-        persistentObjectGroup.MapPut("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, UpdatePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-        persistentObjectGroup.MapDelete("/{objectTypeId}/{**id}", async (HttpContext context, string objectTypeId, string id, DeletePersistentObject action) =>
-            await action.HandleAsync(context, objectTypeId, id)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-
-        // Custom Actions endpoints
-        var actionsGroup = sparkGroup.MapGroup("/actions");
-        actionsGroup.MapGet("/{objectTypeId}", async (HttpContext context, string objectTypeId, ListCustomActions action) =>
-            await action.HandleAsync(context, objectTypeId));
-        actionsGroup.MapPost("/{objectTypeId}/{actionName}", async (HttpContext context, string objectTypeId, string actionName, ExecuteCustomAction action) =>
-            await action.HandleAsync(context, objectTypeId, actionName)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-
-        // LookupReferences endpoints
-        var lookupRefGroup = sparkGroup.MapGroup("/lookupref");
-        lookupRefGroup.MapGet("/", async (HttpContext context, ListLookupReferences action) =>
-            await action.HandleAsync(context));
-        lookupRefGroup.MapGet("/{name}", async (HttpContext context, string name, GetLookupReference action) =>
-            await action.HandleAsync(context, name));
-        lookupRefGroup.MapPost("/{name}", async (HttpContext context, string name, AddLookupReferenceValue action) =>
-            await action.HandleAsync(context, name)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-        lookupRefGroup.MapPut("/{name}/{key}", async (HttpContext context, string name, string key, UpdateLookupReferenceValue action) =>
-            await action.HandleAsync(context, name, key)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-        lookupRefGroup.MapDelete("/{name}/{key}", async (HttpContext context, string name, string key, DeleteLookupReferenceValue action) =>
-            await action.HandleAsync(context, name, key)).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        // Map all core Spark endpoints (source-generated from endpoint classes)
+        endpoints.MapSparkCoreEndpoints();
 
         // Map module-specific endpoints (authorization, replication, etc.)
         registry.MapEndpoints(endpoints);

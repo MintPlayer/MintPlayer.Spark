@@ -1,34 +1,40 @@
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-[Register(ServiceLifetime.Scoped)]
-public sealed partial class AddLookupReferenceValue
+internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf<LookupReferencesGroup>
 {
+    public static string Path => "/{name}";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
 
-    public async Task HandleAsync(HttpContext httpContext, string name)
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
+        var name = (string)httpContext.Request.RouteValues["name"]!;
+
         try
         {
             var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
 
             if (value == null)
             {
-                httpContext.Response.StatusCode = 400;
-                await httpContext.Response.WriteAsJsonAsync(new { error = "Invalid request body" });
-                return;
+                return Results.Json(new { error = "Invalid request body" }, statusCode: 400);
             }
 
             var result = await lookupReferenceService.AddValueAsync(name, value);
-            httpContext.Response.StatusCode = 201;
-            await httpContext.Response.WriteAsJsonAsync(result);
+            return Results.Json(result, statusCode: 201);
         }
         catch (InvalidOperationException ex)
         {
-            httpContext.Response.StatusCode = 400;
-            await httpContext.Response.WriteAsJsonAsync(new { error = ex.Message });
+            return Results.Json(new { error = ex.Message }, statusCode: 400);
         }
     }
 }
