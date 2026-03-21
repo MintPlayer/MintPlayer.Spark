@@ -84,9 +84,21 @@ Spark applications need a simple, declarative way to react to GitHub webhook eve
 
 ### 5.2 Message Record Design
 
-A single generic record wraps the Octokit event model and includes common metadata:
+Two records: a non-generic base for catch-all recipients, and a generic one for event-specific recipients.
 
 ```csharp
+// Catch-all base record — broadcast on queue "spark-github-all" for every webhook event
+[MessageQueue("spark-github-all")]
+public record GitHubWebhookMessage
+{
+    public required WebhookHeaders Headers { get; init; }
+    public required long InstallationId { get; init; }
+    public required string RepositoryFullName { get; init; }
+    public required string EventType { get; init; }     // e.g., "pull_request", "issues"
+    public required string EventJson { get; init; }     // raw JSON for dynamic processing
+}
+
+// Event-specific generic record — broadcast on a per-event-type queue
 public record GitHubWebhookMessage<TEvent> where TEvent : WebhookEvent
 {
     public required WebhookHeaders Headers { get; init; }
@@ -96,13 +108,14 @@ public record GitHubWebhookMessage<TEvent> where TEvent : WebhookEvent
 }
 ```
 
-**Queue naming**: Derived from the Octokit event type name at broadcast time:
+**Queue naming**: The generic record's queue name is derived from the Octokit event type name at broadcast time:
 
 ```csharp
 // e.g., "PullRequestEvent" → "spark-github-pull-request"
 //       "IssuesEvent"      → "spark-github-issues"
 var queueName = GitHubQueueNames.FromEventType<TEvent>();
-await messageBus.BroadcastAsync(message, queueName, ct);
+await messageBus.BroadcastAsync(genericMessage, queueName, ct);
+await messageBus.BroadcastAsync(catchAllMessage, ct); // uses [MessageQueue] attribute
 ```
 
 The `GitHubQueueNames` helper converts PascalCase event type names to kebab-case queue names with a `spark-github-` prefix, stripping the `Event` suffix.
@@ -133,11 +146,16 @@ For developers without a deployed production server, smee.io provides a public U
 
 ```csharp
 // In Program.cs (development only)
-spark.AddGithubWebhooks(options => { ... })
-     .AddSmeeDevTunnel("https://smee.io/your-channel-id");
+spark.AddGithubWebhooks(options =>
+{
+    options.WebhookSecret = "...";
+    options.AddSmeeDevTunnel("https://smee.io/your-channel-id");
+});
 ```
 
 **Implementation**: A `BackgroundService` that connects to the smee.io channel using `Smee.IO.Client`, receives webhook payloads via SSE, and POSTs them to the local webhook endpoint (e.g., `http://localhost:5000/api/github/webhooks`).
+
+**Signature validation caveat**: smee.io relays webhook payloads as JSON through Server-Sent Events, which may reformat (pretty-print) the body. Before validating the `X-Hub-Signature-256` HMAC, the JSON body must be **re-minimized** to match the exact bytes GitHub signed. This is the same approach used in the SlingBot implementation.
 
 ### 5.5 WebSocket Dev Forwarding (Same Package as Smee)
 
@@ -151,8 +169,11 @@ For teams that already have a production deployment, the "dev" GitHub App's webh
 
 **Dev client side** (in `MintPlayer.Spark.Webhooks.GitHub.DevTunnel`):
 ```csharp
-spark.AddGithubWebhooks(options => { ... })
-     .AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", githubToken: "...");
+spark.AddGithubWebhooks(options =>
+{
+    options.WebhookSecret = "...";
+    options.AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", githubToken: "...");
+});
 ```
 
 **Implementation**: A `BackgroundService` that maintains a WebSocket connection to production, receives forwarded webhooks, and POSTs them to the local webhook endpoint.
@@ -166,7 +187,7 @@ spark.AddGithubWebhooks(options => { ... })
 public static class SparkGitHubWebhooksExtensions
 {
     // Primary registration on ISparkBuilder
-    public static GitHubWebhooksBuilder AddGithubWebhooks(
+    public static ISparkBuilder AddGithubWebhooks(
         this ISparkBuilder builder,
         Action<GitHubWebhooksOptions> configure);
 }
@@ -176,6 +197,9 @@ public static class SparkGitHubWebhooksExtensions
 ```csharp
 public class GitHubWebhooksOptions
 {
+    // Stores deferred service registrations from AddSmeeDevTunnel / AddWebSocketDevTunnel
+    internal IServiceCollection Services { get; set; } = default!;
+
     /// <summary>Webhook secret configured in the GitHub App settings.</summary>
     public string WebhookSecret { get; set; } = string.Empty;
 
@@ -205,17 +229,7 @@ public class GitHubWebhooksOptions
 }
 ```
 
-**GitHubWebhooksBuilder** (returned for chaining dev-tunnel methods):
-```csharp
-public class GitHubWebhooksBuilder
-{
-    public ISparkBuilder SparkBuilder { get; }
-
-    // Provided by MintPlayer.Spark.Webhooks.GitHub.DevTunnel package:
-    // public GitHubWebhooksBuilder AddSmeeDevTunnel(string channelUrl);
-    // public GitHubWebhooksBuilder AddWebSocketDevTunnel(string wsUrl, string githubToken);
-}
-```
+The `AddSmeeDevTunnel` and `AddWebSocketDevTunnel` methods are extension methods on `GitHubWebhooksOptions`, provided by the `MintPlayer.Spark.Webhooks.GitHub.DevTunnel` package (see section 6.2). This keeps dev-tunnel configuration inside the same options lambda.
 
 **SparkWebhookEventProcessor** (internal, auto-registered):
 ```csharp
@@ -231,7 +245,7 @@ internal class SparkWebhookEventProcessor : WebhookEventProcessor
 
 ### 6.2 Package: MintPlayer.Spark.Webhooks.GitHub.DevTunnel
 
-**Extension Methods**:
+**Extension Methods on `GitHubWebhooksOptions`**:
 ```csharp
 public static class GitHubWebhooksDevTunnelExtensions
 {
@@ -239,16 +253,17 @@ public static class GitHubWebhooksDevTunnelExtensions
     /// Adds a smee.io tunnel for receiving webhooks during local development.
     /// The developer configures the smee channel URL as the Webhook URL in the GitHub App settings.
     /// </summary>
-    public static GitHubWebhooksBuilder AddSmeeDevTunnel(
-        this GitHubWebhooksBuilder builder,
+    public static GitHubWebhooksOptions AddSmeeDevTunnel(
+        this GitHubWebhooksOptions options,
         string smeeChannelUrl);
 
     /// <summary>
     /// Connects to a production server's WebSocket endpoint to receive forwarded dev webhooks.
     /// The production server must have DevelopmentAppId configured.
+    /// Uses the GitHub token to authenticate and determine the developer's GitHub username.
     /// </summary>
-    public static GitHubWebhooksBuilder AddWebSocketDevTunnel(
-        this GitHubWebhooksBuilder builder,
+    public static GitHubWebhooksOptions AddWebSocketDevTunnel(
+        this GitHubWebhooksOptions options,
         string productionWebSocketUrl,
         string githubToken);
 }
@@ -267,13 +282,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"]!;
         options.ProductionAppId = 123456;
         options.DevelopmentAppId = 789012;
-    });
 
-    // Development only — pick ONE:
-    // Option A: smee.io tunnel (no production deployment needed)
-    //   .AddSmeeDevTunnel(builder.Configuration["GitHub:SmeeChannelUrl"]!);
-    // Option B: WebSocket from production (production deployment exists)
-    //   .AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", devGithubToken);
+        // Development only — pick ONE:
+        // Option A: smee.io tunnel (no production deployment needed)
+        options.AddSmeeDevTunnel(builder.Configuration["GitHub:SmeeChannelUrl"]!);
+        // Option B: WebSocket from production (production deployment exists)
+        // options.AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", devGithubToken);
+    });
 });
 ```
 
@@ -285,8 +300,10 @@ app.MapSpark();
 ```
 
 **Handling webhook events** (in any Spark application service):
+
+No `[Register]` attribute is needed — the `RecipientRegistrationGenerator` source generator automatically discovers all `IRecipient<T>` implementations and registers them in DI.
+
 ```csharp
-[Register(typeof(IRecipient<GitHubWebhookMessage<PullRequestEvent>>), ServiceLifetime.Scoped)]
 public class PullRequestHandler : IRecipient<GitHubWebhookMessage<PullRequestEvent>>
 {
     public async Task HandleAsync(GitHubWebhookMessage<PullRequestEvent> message, CancellationToken ct)
@@ -302,7 +319,6 @@ public class PullRequestHandler : IRecipient<GitHubWebhookMessage<PullRequestEve
     }
 }
 
-[Register(typeof(IRecipient<GitHubWebhookMessage<IssuesEvent>>), ServiceLifetime.Scoped)]
 public class IssueHandler : IRecipient<GitHubWebhookMessage<IssuesEvent>>
 {
     public async Task HandleAsync(GitHubWebhookMessage<IssuesEvent> message, CancellationToken ct)
@@ -333,19 +349,36 @@ protected override Task ProcessIssuesWebhookAsync(
 // ... same one-liner for each supported event type
 
 private async Task HandleWebhookAsync<TEvent>(
-    WebhookHeaders headers, TEvent evt, CancellationToken ct) where TEvent : WebhookEvent
+    WebhookHeaders headers, TEvent evt, string eventJson, CancellationToken ct)
+    where TEvent : WebhookEvent
 {
     // 1. Check if dev app → forward raw headers + body via WebSocket
-    // 2. Otherwise → build GitHubWebhookMessage<TEvent> and broadcast
+    // 2. Otherwise → broadcast both catch-all and event-specific messages
+
+    var installationId = evt.Installation?.Id ?? 0;
+    var repoFullName = evt.Repository?.FullName ?? string.Empty;
+
+    // Event-specific message (e.g., queue "spark-github-pull-request")
     var queueName = GitHubQueueNames.FromEventType<TEvent>();
-    var message = new GitHubWebhookMessage<TEvent>
+    var typedMessage = new GitHubWebhookMessage<TEvent>
     {
         Headers = headers,
-        InstallationId = evt.Installation?.Id ?? 0,
-        RepositoryFullName = evt.Repository?.FullName ?? string.Empty,
+        InstallationId = installationId,
+        RepositoryFullName = repoFullName,
         Event = evt,
     };
-    await messageBus.BroadcastAsync(message, queueName, ct);
+    await messageBus.BroadcastAsync(typedMessage, queueName, ct);
+
+    // Catch-all message (queue "spark-github-all")
+    var catchAllMessage = new GitHubWebhookMessage
+    {
+        Headers = headers,
+        InstallationId = installationId,
+        RepositoryFullName = repoFullName,
+        EventType = headers.Event ?? string.Empty,
+        EventJson = eventJson,
+    };
+    await messageBus.BroadcastAsync(catchAllMessage, ct);
 }
 ```
 
@@ -355,15 +388,19 @@ Adding support for a new event type = one additional one-liner override.
 
 - Registered as singleton `IDevWebSocketService`
 - Manages list of `DevClient { WebSocket, GitHubUsername }`
-- WebSocket endpoint validates handshake (GitHub token → username lookup via Octokit API)
-- Message format over WebSocket (same as SlingBot):
+- **Handshake protocol** (same as SlingBot):
+  1. Client connects to WebSocket endpoint and sends a JSON handshake: `{ "GithubToken": "ghp_..." }`
+  2. Server calls GitHub API (`Octokit`) with the token to resolve the authenticated username
+  3. Server checks username against `AllowedDevUsers` list (if configured; if empty, all authenticated users are accepted)
+  4. Server maintains the `DevClient` in-memory with the resolved username
+- **Wire format** (matches GitHub's HTTP format and SlingBot):
   ```
   Header-Name: Value\n
   Header-Name: Value\n
   \n
   {json-body}
   ```
-- Forwards to all connected dev clients (or filtered by allowed users list)
+- When a dev-app webhook arrives, forwards to all connected dev clients matching the filter
 
 ### 7.3 SmeeService (Dev Side)
 
@@ -371,8 +408,9 @@ Adding support for a new event type = one additional one-liner override.
 - Creates `SmeeClient` connected to configured channel URL
 - On each `OnMessage` event:
   1. Extracts headers and body from smee event
-  2. POSTs to local webhook endpoint using `HttpClient`
-  3. This triggers the standard `SparkWebhookEventProcessor` → `IMessageBus` flow
+  2. **Re-minimizes the JSON body** before forwarding — smee.io may reformat the JSON, which would break the `X-Hub-Signature-256` HMAC validation. The body must be byte-identical to what GitHub originally signed.
+  3. POSTs to local webhook endpoint using `HttpClient`
+  4. This triggers the standard `SparkWebhookEventProcessor` → `IMessageBus` flow
 
 ### 7.4 WebSocketDevClient (Dev Side)
 
@@ -402,41 +440,54 @@ Adding support for a new event type = one additional one-liner override.
 }
 ```
 
-The options can be bound from configuration or set inline:
+The core options can be bound from configuration, with dev-tunnel methods called inline:
 ```csharp
 spark.AddGithubWebhooks(options =>
 {
     builder.Configuration.GetSection("GitHub").Bind(options);
+
+    // Dev tunnel (if needed) — still configured on the options object
+    options.AddSmeeDevTunnel(builder.Configuration["GitHub:SmeeChannelUrl"]!);
 });
 ```
 
 ## 9. Project Structure
 
 ```
+MintPlayer.Dotnet.SocketExtensions/             # Moved from SlingBot repo
+├── SocketExtensions.cs                          # ReadMessage, WriteMessage, ReadObject, WriteObject
+└── MintPlayer.Dotnet.SocketExtensions.csproj
+
 MintPlayer.Spark.Webhooks.GitHub/
 ├── Extensions/
 │   └── SparkBuilderExtensions.cs          # AddGithubWebhooks() on ISparkBuilder
 ├── Configuration/
-│   ├── GitHubWebhooksOptions.cs           # Options POCO
-│   └── GitHubWebhooksBuilder.cs           # Builder for chaining dev-tunnel methods
+│   └── GitHubWebhooksOptions.cs           # Options POCO (with internal Services for deferred registration)
 ├── Messages/
-│   ├── GitHubWebhookMessage.cs            # Generic record: GitHubWebhookMessage<TEvent>
+│   ├── GitHubWebhookMessage.cs            # Non-generic catch-all + generic GitHubWebhookMessage<TEvent>
 │   └── GitHubQueueNames.cs               # Event type → queue name helper
 ├── Services/
 │   ├── SparkWebhookEventProcessor.cs      # Extends WebhookEventProcessor
 │   ├── IDevWebSocketService.cs            # Interface for dev forwarding
-│   └── DevWebSocketService.cs             # WebSocket server for dev clients
+│   └── DevWebSocketService.cs             # WebSocket server for dev clients (validates GitHub token → username)
 ├── MintPlayer.Spark.Webhooks.GitHub.csproj
 └── README.md
 
 MintPlayer.Spark.Webhooks.GitHub.DevTunnel/
 ├── Extensions/
-│   └── GitHubWebhooksDevTunnelExtensions.cs  # AddSmeeDevTunnel, AddWebSocketDevTunnel
+│   └── GitHubWebhooksDevTunnelExtensions.cs  # AddSmeeDevTunnel, AddWebSocketDevTunnel on GitHubWebhooksOptions
 ├── Services/
-│   ├── SmeeBackgroundService.cs           # Smee.io SSE listener
+│   ├── SmeeBackgroundService.cs           # Smee.io SSE listener (re-minimizes JSON before signature validation)
 │   └── WebSocketDevClientService.cs       # WebSocket client to production
 ├── MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj
 └── README.md
+
+Demo/WebhooksDemo/                               # New demo application
+├── WebhooksDemo/                                # ASP.NET Core backend
+│   ├── Program.cs
+│   ├── Recipients/                              # IRecipient<T> implementations
+│   └── appsettings.json
+└── WebhooksDemo.Library/                        # Shared library (Actions, etc.)
 ```
 
 ## 10. Scenarios
@@ -446,8 +497,11 @@ MintPlayer.Spark.Webhooks.GitHub.DevTunnel/
 1. Developer creates a GitHub App, sets webhook URL to their smee.io channel
 2. In `Program.cs`:
    ```csharp
-   spark.AddGithubWebhooks(o => o.WebhookSecret = "...")
-        .AddSmeeDevTunnel("https://smee.io/abc123");
+   spark.AddGithubWebhooks(options =>
+   {
+       options.WebhookSecret = "...";
+       options.AddSmeeDevTunnel("https://smee.io/abc123");
+   });
    ```
 3. Developer implements `IRecipient<GitHubWebhookMessage<PullRequestEvent>>` etc.
 4. Smee.io forwards GitHub webhooks → local endpoint → message bus → recipients
@@ -465,9 +519,13 @@ MintPlayer.Spark.Webhooks.GitHub.DevTunnel/
        o.DevelopmentAppId = 456;
    });
    ```
-4. Developer's local `Program.cs` adds:
+4. Developer's local `Program.cs`:
    ```csharp
-   .AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", devToken);
+   spark.AddGithubWebhooks(options =>
+   {
+       options.WebhookSecret = "...";
+       options.AddWebSocketDevTunnel("wss://myapp.com/spark/github/dev-ws", devToken);
+   });
    ```
 5. Production webhooks (App ID 123) → processed by production recipients
 6. Dev webhooks (App ID 456) → forwarded via WebSocket → processed by local recipients
@@ -488,40 +546,57 @@ MintPlayer.Spark.Webhooks.GitHub.DevTunnel/
 | `Octokit.Webhooks` | 3.x | Core (transitive) |
 | `MintPlayer.Spark.Abstractions` | current | Core |
 | `MintPlayer.Spark.Messaging.Abstractions` | current | Core |
+| `Octokit` | 13.x | Core (GitHub API for WebSocket handshake username lookup) |
 | `Smee.IO.Client` | 1.0.x | DevTunnel only |
-| `MintPlayer.Dotnet.SocketExtensions` | 10.x (from SlingBot) | Core (WebSocket helpers) — or inline implementation |
+| `MintPlayer.Dotnet.SocketExtensions` | 10.x (moved from SlingBot repo into this repo) | Core (WebSocket helpers) |
 
-## 12. Open Questions
+## 12. Resolved Design Questions
 
-1. **Should `MintPlayer.Dotnet.SocketExtensions` be reused from SlingBot or should we inline simple WebSocket read/write helpers?** The SlingBot package is small (ReadMessage, WriteMessage, ReadObject, WriteObject). We could reference it as a NuGet package or copy the ~40 lines of code.
+1. **`MintPlayer.Dotnet.SocketExtensions`**: Move the library from the SlingBot repository into this repository. It will be published from here going forward. The SlingBot repo will be archived.
 
-2. **Should the DevTunnel WebSocket handshake validate against GitHub's API (like SlingBot does) or accept any token and let the user configure allowed users?** SlingBot validates the GitHub token to get the username and checks against an allowlist. This is more secure but adds an Octokit dependency to the core package.
+2. **WebSocket handshake validation**: Same approach as SlingBot — use the developer's GitHub token to call the GitHub API, determine the GitHub username, and downstream webhooks to connected clients filtered by username. This requires an `Octokit` dependency in the core package for the production-side WebSocket endpoint.
 
-3. **Should we support a "catch-all" recipient** (e.g., `IRecipient<GitHubWebhookMessage<WebhookEvent>>`) for users who want to handle all events generically? The contravariant `in TMessage` on `IRecipient` doesn't help here since `GitHubWebhookMessage<T>` is not covariant. A separate non-generic `GitHubWebhookMessage` base record could be broadcast alongside the generic one, but adds complexity.
+3. **Catch-all recipient**: Supported. The `SparkWebhookEventProcessor` will broadcast **two messages** for each webhook event:
+   - A non-generic `GitHubWebhookMessage` (base record) on queue `spark-github-all`
+   - A generic `GitHubWebhookMessage<TEvent>` on the event-specific queue (e.g., `spark-github-pull-request`)
 
-4. **Wire format for WebSocket forwarding**: SlingBot uses `headers\n\nbody` text format. Should we use the same format for compatibility, or use a JSON envelope (`{ "headers": {...}, "body": "..." }`)?
+   This allows developers to implement either:
+   - `IRecipient<GitHubWebhookMessage>` — catch-all for any webhook event
+   - `IRecipient<GitHubWebhookMessage<PullRequestEvent>>` — specific event type
+
+   The non-generic base record carries the same metadata (`Headers`, `InstallationId`, `RepositoryFullName`) plus `EventJson` (raw JSON string) and `EventType` (string, e.g., `"pull_request"`) for dynamic processing.
+
+4. **Wire format**: Use `headers\n\nbody` text format (same as SlingBot). This matches how GitHub itself sends webhooks over HTTP, so smee.io forwarding, WebSocket forwarding, and the actual webhook endpoint all use the same format. No unnecessary abstraction layers.
 
 ## 13. Implementation Plan
 
+### Phase 0: Prerequisites
+1. Move `MintPlayer.Dotnet.SocketExtensions` from the SlingBot repo into this solution
+2. Add to solution file and verify NuGet packaging
+
 ### Phase 1: Core Package (`MintPlayer.Spark.Webhooks.GitHub`)
-1. Create project, define `GitHubWebhookMessage<TEvent>` record and `GitHubQueueNames` helper
-2. Implement `SparkWebhookEventProcessor` with generic `HandleWebhookAsync<TEvent>` — broadcasts to `IMessageBus`
-3. Implement `AddGithubWebhooks()` extension method + options
-4. Register endpoint via `SparkModuleRegistry.AddEndpoints`
-5. Add to solution file, test with DemoApp
+1. Create project, define `GitHubWebhookMessage` (catch-all) + `GitHubWebhookMessage<TEvent>` (generic) records and `GitHubQueueNames` helper
+2. Implement `SparkWebhookEventProcessor` with generic `HandleWebhookAsync<TEvent>` — broadcasts both catch-all and typed messages to `IMessageBus`
+3. Implement `AddGithubWebhooks()` extension method on `ISparkBuilder` + `GitHubWebhooksOptions`
+4. Implement webhook signature validation (HMAC-SHA256 via `X-Hub-Signature-256`)
+5. Register endpoint via `SparkModuleRegistry.AddEndpoints`
+6. Add to solution file
 
 ### Phase 2: Dev Forwarding (Production Side)
 1. Implement `DevWebSocketService` — WebSocket server for dev clients
-2. Add dev-app detection logic in `SparkWebhookEventProcessor`
-3. Register WebSocket endpoint via `SparkModuleRegistry.AddEndpoints`
+2. WebSocket handshake: validate GitHub token via Octokit API → resolve username → filter by `AllowedDevUsers`
+3. Add dev-app detection logic in `SparkWebhookEventProcessor` (check `X-GitHub-Hook-Installation-Target-ID` against `DevelopmentAppId`)
+4. Forward dev webhooks to connected clients using `headers\n\nbody` wire format
+5. Register WebSocket endpoint via `SparkModuleRegistry.AddEndpoints`
 
 ### Phase 3: DevTunnel Package (`MintPlayer.Spark.Webhooks.GitHub.DevTunnel`)
-1. Create project, implement `SmeeBackgroundService`
-2. Implement `WebSocketDevClientService`
-3. Implement `AddSmeeDevTunnel()` and `AddWebSocketDevTunnel()` extension methods
+1. Create project, implement `SmeeBackgroundService` — including JSON re-minimization before signature validation
+2. Implement `WebSocketDevClientService` with auto-reconnect and exponential backoff
+3. Implement `AddSmeeDevTunnel()` and `AddWebSocketDevTunnel()` as extension methods on `GitHubWebhooksOptions`
 4. Test locally with smee.io channel
 
-### Phase 4: Demo & Documentation
-1. Add GitHub webhook handling to DemoApp
-2. Write guide document
-3. Publish NuGet packages
+### Phase 4: Demo App & Documentation
+1. Create new `Demo/WebhooksDemo/` application (ASP.NET Core + Library project)
+2. Implement sample `IRecipient<GitHubWebhookMessage<PullRequestEvent>>` and `IRecipient<GitHubWebhookMessage>` (catch-all) handlers
+3. Write guide document
+4. Publish NuGet packages
