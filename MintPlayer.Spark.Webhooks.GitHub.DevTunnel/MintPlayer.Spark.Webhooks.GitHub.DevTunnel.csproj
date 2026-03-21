@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Webhooks.GitHub.DevTunnel</PackageId>
+		<Version>10.0.0-preview.19</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Development tunneling for MintPlayer.Spark GitHub webhooks — smee.io tunnel and WebSocket dev client for receiving production-forwarded webhooks locally.</Description>
+		<PackageTags>spark;github;webhooks;smee;dev-tunnel;development</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+		<ProjectReference Include="..\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="Smee.IO.Client" Version="1.0.16" />
+	</ItemGroup>
+
+</Project>
