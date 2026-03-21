@@ -1,0 +1,90 @@
+name: webhooks-demo-deploy
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'Demo/WebhooksDemo/**'
+      - 'MintPlayer.Spark/**'
+      - 'MintPlayer.Spark.Abstractions/**'
+      - 'MintPlayer.Spark.Messaging/**'
+      - 'MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'MintPlayer.Spark.SubscriptionWorker/**'
+      - 'MintPlayer.Spark.SourceGenerators/**'
+      - 'MintPlayer.Spark.Webhooks.GitHub/**'
+      - 'MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'
+      - 'MintPlayer.Dotnet.SocketExtensions/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+
+    name: Build and deploy WebhooksDemo
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj
+
+    - name: Build
+      run: dotnet build Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj --configuration Release --no-restore
+
+    # Publish to GitHub Container Registry
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-ghcr
+      uses: docker/metadata-action@v5
+      with:
+        github-token: ${{ github.token }}
+        images: ghcr.io/${{ github.repository }}/webhooks-demo
+
+    - name: Publish to GitHub Container Registry
+      id: push-ghcr
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Demo/WebhooksDemo/WebhooksDemo/Dockerfile
+        push: true
+        tags: ${{ steps.meta-ghcr.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ghcr.io/${{ github.repository }}/webhooks-demo
+        subject-digest: ${{ steps.push-ghcr.outputs.digest }}
+        push-to-registry: true
+
+    - name: Trigger deploy hook
+      uses: fjogeleit/http-request-action@v1
+      with:
+        url: ${{ secrets.SLIPLANE_WEBHOOKS_DEMO_DEPLOY_HOOK }}
+        method: GET
