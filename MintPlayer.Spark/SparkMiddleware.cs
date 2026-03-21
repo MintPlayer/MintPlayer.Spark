@@ -38,6 +38,9 @@ public static class SparkExtensions
     {
         var options = builder.Options;
 
+        // Register authorization (required by UseSpark → UseAuthorization)
+        services.AddAuthorization();
+
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
 
