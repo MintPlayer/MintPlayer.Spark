@@ -23,15 +23,19 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 
 ```csharp
 // 1. Configure services
-builder.Services.AddSpark(builder.Configuration);
-builder.Services.AddScoped<SparkContext, MySparkContext>();
-builder.Services.AddSparkActions();
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();
+    spark.AddMessaging();
+    spark.AddRecipients();
+});
 
 // 2. Configure middleware
+app.UseRouting();
 app.UseSpark();
 app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);
-app.CreateSparkIndexes();
-app.UseEndpoints(endpoints => endpoints.MapSpark());
+app.MapSpark();
 ```
 
 ```csharp
