@@ -55,9 +55,13 @@ MintPlayer.Spark/
 ├── MintPlayer.Spark.Abstractions/               # Shared interfaces and models
 ├── MintPlayer.Spark.Messaging.Abstractions/     # Messaging interfaces (IMessageBus, IRecipient<T>)
 ├── MintPlayer.Spark.Messaging/                  # Durable message bus with RavenDB persistence
+├── MintPlayer.Spark.Webhooks.GitHub/            # GitHub webhook integration
+├── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
 ├── MintPlayer.Spark.SourceGenerators/           # Compile-time DI code generation
+├── MintPlayer.Dotnet.SocketExtensions/          # WebSocket read/write helpers
 ├── Demo/
 │   ├── DemoApp/                                 # Sample ASP.NET Core + Angular application
+│   ├── WebhooksDemo/                            # GitHub webhooks demo application
 │   └── DemoApp.Library/                         # Shared entity definitions
 └── docs/                                        # Documentation
 ```
@@ -82,6 +86,7 @@ MintPlayer.Spark/
 | [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with scoped recipients and retry logic |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
+| [GitHub Webhooks](docs/guide-github-webhooks.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 
 ### Reference
 
