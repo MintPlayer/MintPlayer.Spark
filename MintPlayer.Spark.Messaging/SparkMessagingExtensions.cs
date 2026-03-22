@@ -41,7 +41,7 @@ internal static class SparkMessagingExtensions
         documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
         {
             Disabled = false,
-            DeleteFrequencyInSec = 60,
+            DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)
         }));
 
         return app;
