@@ -20,12 +20,6 @@ public static class GitHubWebhooksDevTunnelExtensions
             services.Configure<SmeeOptions>(opt =>
             {
                 opt.ChannelUrl = smeeChannelUrl;
-                opt.LocalWebhookPath = options.WebhookPath;
-            });
-
-            services.AddHttpClient("SparkSmeeDevTunnel", client =>
-            {
-                client.BaseAddress = new Uri("http://localhost:5000");
             });
 
             services.AddHostedService<SmeeBackgroundService>();
@@ -50,12 +44,6 @@ public static class GitHubWebhooksDevTunnelExtensions
             {
                 opt.ProductionWebSocketUrl = productionWebSocketUrl;
                 opt.GitHubToken = githubToken;
-                opt.LocalWebhookPath = options.WebhookPath;
-            });
-
-            services.AddHttpClient("SparkWebSocketDevTunnel", client =>
-            {
-                client.BaseAddress = new Uri("http://localhost:5000");
             });
 
             services.AddHostedService<WebSocketDevClientService>();

@@ -1,8 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
+using Octokit.Webhooks;
 using System.Net.WebSockets;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;
@@ -10,16 +13,16 @@ namespace MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;
 internal class WebSocketDevClientService : BackgroundService
 {
     private readonly WebSocketDevTunnelOptions _options;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<WebSocketDevClientService> _logger;
 
     public WebSocketDevClientService(
         IOptions<WebSocketDevTunnelOptions> options,
-        IHttpClientFactory httpClientFactory,
+        IServiceProvider serviceProvider,
         ILogger<WebSocketDevClientService> logger)
     {
         _options = options.Value;
-        _httpClientFactory = httpClientFactory;
+        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
@@ -82,25 +85,17 @@ internal class WebSocketDevClientService : BackgroundService
                 .Where(parts => parts.Length == 2)
                 .ToDictionary(
                     parts => parts[0].Trim(),
-                    parts => parts[1].Trim());
+                    parts => new StringValues(parts[1].Trim()));
 
-            // Forward to local webhook endpoint
             try
             {
-                var httpClient = _httpClientFactory.CreateClient("SparkWebSocketDevTunnel");
-                var request = new HttpRequestMessage(HttpMethod.Post, _options.LocalWebhookPath);
-                request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-
-                foreach (var header in headers)
-                {
-                    request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                }
-
-                await httpClient.SendAsync(request, stoppingToken);
+                using var scope = _serviceProvider.CreateScope();
+                var processor = scope.ServiceProvider.GetRequiredService<WebhookEventProcessor>();
+                await processor.ProcessWebhookAsync(headers, body);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to forward WebSocket webhook to local endpoint");
+                _logger.LogError(ex, "Failed to process WebSocket webhook");
             }
         }
     }

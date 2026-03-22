@@ -1,8 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Configuration;
 using Newtonsoft.Json;
+using Octokit.Webhooks;
 using Smee.IO.Client;
 using Smee.IO.Client.Dto;
 
@@ -11,16 +14,16 @@ namespace MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;
 internal class SmeeBackgroundService : BackgroundService
 {
     private readonly SmeeOptions _options;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SmeeBackgroundService> _logger;
 
     public SmeeBackgroundService(
         IOptions<SmeeOptions> options,
-        IHttpClientFactory httpClientFactory,
+        IServiceProvider serviceProvider,
         ILogger<SmeeBackgroundService> logger)
     {
         _options = options.Value;
-        _httpClientFactory = httpClientFactory;
+        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
@@ -59,22 +62,16 @@ internal class SmeeBackgroundService : BackgroundService
                 JsonConvert.DeserializeObject(e.Data.Body.ToString()
                     ?? throw new InvalidOperationException("Smee body cannot be empty")));
 
-            var httpClient = _httpClientFactory.CreateClient("SparkSmeeDevTunnel");
+            var headers = e.Data.Headers
+                .ToDictionary(h => h.Key, h => new StringValues(h.Value));
 
-            var request = new HttpRequestMessage(HttpMethod.Post, _options.LocalWebhookPath);
-            request.Content = new StringContent(minifiedBody, System.Text.Encoding.UTF8, "application/json");
-
-            // Forward all GitHub headers from the smee event
-            foreach (var header in e.Data.Headers)
-            {
-                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            await httpClient.SendAsync(request);
+            using var scope = _serviceProvider.CreateScope();
+            var processor = scope.ServiceProvider.GetRequiredService<WebhookEventProcessor>();
+            await processor.ProcessWebhookAsync(headers, minifiedBody);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to forward smee.io webhook to local endpoint");
+            _logger.LogError(ex, "Failed to process smee.io webhook");
         }
     }
 }
