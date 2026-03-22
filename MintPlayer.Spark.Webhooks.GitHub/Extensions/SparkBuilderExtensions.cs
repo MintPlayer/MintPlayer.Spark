@@ -27,9 +27,8 @@ public static class SparkBuilderExtensions
             opt.AllowedDevUsers = options.AllowedDevUsers;
         });
 
-        // Register services (AddSparkWebhooksGitHubServices is source-generated from [Register] attributes)
+        // Register services (source-generated from [Register] attributes)
         builder.Services.AddSparkWebhooksGitHubServices();
-        builder.Services.AddScoped<WebhookEventProcessor, SparkWebhookEventProcessor>();
 
         // Register dev WebSocket forwarding service if DevelopmentAppId is configured
         if (options.DevelopmentAppId.HasValue)

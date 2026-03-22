@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.SourceGenerators.Attributes;
@@ -18,6 +19,7 @@ using Octokit.Webhooks.Events.Repository;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
+[Register(typeof(WebhookEventProcessor), ServiceLifetime.Scoped)]
 internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 {
     [Inject] private readonly IMessageBus _messageBus;

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
-[Register(typeof(ISignatureService), ServiceLifetime.Scoped, accessibility: EGeneratedAccessibility.Internal)]
+[Register(typeof(ISignatureService), ServiceLifetime.Scoped)]
 internal class SignatureService : ISignatureService
 {
     public bool VerifySignature(string? signature, string secret, string requestBody)
