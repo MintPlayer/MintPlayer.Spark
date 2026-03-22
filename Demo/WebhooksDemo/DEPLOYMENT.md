@@ -5,10 +5,10 @@ This guide covers deploying the WebhooksDemo to [Sliplane](https://sliplane.io/)
 ## Architecture
 
 ```
-GitHub ──POST──► WebhooksDemo (Sliplane service)
+GitHub ──POST──► WebhooksDemo (Sliplane service, port 8080)
                       │
                       ▼
-                 RavenDB (Sliplane service)
+                 RavenDB (Sliplane service, port 8080)
 ```
 
 Two Sliplane services in the same project, communicating over the internal network.
@@ -19,9 +19,11 @@ Add a new service in Sliplane:
 
 | Setting | Value |
 |---|---|
-| **Image URL** | `ravendb/ravendb:latest` |
-| **Port** | `8080` |
-| **Persistent volume** | Mount on `/opt/RavenDB/Server/RavenData` |
+| **Image URL** | `docker.io/ravendb/ravendb:latest` |
+| **Service Name** | `ravendb` (this becomes the internal DNS hostname) |
+| **Public** | Enable (to access RavenDB Studio for management) |
+| **Health check path** | `/` |
+| **Volume** | Create a volume, mount on `/opt/RavenDB/Server/RavenData` |
 
 Configure the following environment variables:
 
@@ -29,13 +31,15 @@ Configure the following environment variables:
 |---|---|
 | `RAVEN_Setup_Mode` | `None` |
 | `RAVEN_License_Eula_Accepted` | `true` |
-| `RAVEN_Security_UnsecuredAccessAllowed` | `PrivateNetwork` |
+| `RAVEN_Security_UnsecuredAccessAllowed` | `PublicNetwork` |
 | `RAVEN_ServerUrl` | `http://0.0.0.0:8080` |
 | `RAVEN_License` | Your RavenDB license JSON (single line, see below) |
 
+> **Note**: Sliplane does not have a port configuration field — the RavenDB image exposes port 8080 by default, and Sliplane routes traffic to it automatically.
+
 ### RavenDB license
 
-Get a free community license at [ravendb.net/license/request](https://ravendb.net/license/request). The license is a JSON object — pass it as a single-line string:
+Get a free community license at [ravendb.net/license/request](https://ravendb.net/license/request). The license is a JSON object — pass it as a single-line string in the environment variable:
 
 ```
 {"Id":"your-license-id","Name":"your-name","Keys":["key1","key2","..."]}
@@ -43,7 +47,7 @@ Get a free community license at [ravendb.net/license/request](https://ravendb.ne
 
 ### Verifying RavenDB
 
-Once the service is running, you can access the RavenDB Studio through the public URL Sliplane assigns to verify the database is operational.
+Once the service is running, access the RavenDB Studio through the public URL Sliplane assigns (e.g., `https://ravendb-xxxxx.sliplane.app/`). You should see the Studio dashboard.
 
 ## Step 2: Deploy WebhooksDemo
 
@@ -52,18 +56,21 @@ Add a new service in Sliplane:
 | Setting | Value |
 |---|---|
 | **Image URL** | `ghcr.io/mintplayer/mintplayer.spark/webhooks-demo:master` |
-| **Port** | `8080` |
+| **Service Name** | `webhooks-demo` |
+| **Public** | Enable |
 | **Health check path** | `/health` |
 
 Configure the following environment variables:
 
 | Variable | Value | Description |
 |---|---|---|
-| `Spark__RavenDb__Urls__0` | `http://your-ravendb-hostname:8080` | Internal Sliplane hostname of your RavenDB service |
-| `Spark__RavenDb__Database` | `WebhooksDemo` | Database name (auto-created in development) |
+| `Spark__RavenDb__Urls__0` | `http://ravendb:8080` | Internal Sliplane hostname of RavenDB (use the Service Name from Step 1) |
+| `Spark__RavenDb__Database` | `WebhooksDemo` | Database name (auto-created) |
 | `GitHub__WebhookSecret` | Your webhook secret | Must match the secret in your GitHub App settings |
 
 The `__` double-underscore maps to nested config sections in ASP.NET Core (e.g., `Spark__RavenDb__Urls__0` becomes `Spark:RavenDb:Urls:0`).
+
+> **Important**: Deploy RavenDB first and wait until it is healthy before deploying WebhooksDemo. The app will crash on startup if it cannot reach RavenDB.
 
 ### Optional: DataProtection keys
 
@@ -97,7 +104,8 @@ You can find the deploy hook URL in your Sliplane service settings.
 
 | Problem | Solution |
 |---|---|
-| `Connection refused (localhost:8080)` | The WebhooksDemo is trying to reach RavenDB at localhost. Set the `Spark__RavenDb__Urls__0` env var to point to the RavenDB service's internal hostname. |
+| `Connection refused (localhost:8080)` | The WebhooksDemo is trying to reach RavenDB at localhost. Set `Spark__RavenDb__Urls__0` to the RavenDB service's internal hostname (e.g., `http://ravendb:8080`). |
+| RavenDB health check fails on `/` | Ensure all environment variables are set, especially `RAVEN_Setup_Mode=None`. Without this, RavenDB shows the setup wizard which may not return 200 on `/`. |
 | `DataProtection-Keys` warning | Add a persistent volume at `/home/app/.aspnet/DataProtection-Keys`, or ignore for non-production use. |
 | RavenDB setup wizard appears | Ensure `RAVEN_Setup_Mode=None` is set on the RavenDB service. |
 | License not accepted | Ensure both `RAVEN_License` and `RAVEN_License_Eula_Accepted=true` are set. |
