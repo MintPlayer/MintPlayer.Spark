@@ -27,9 +27,9 @@ When creating the app, configure the Webhook URL (your production endpoint or sm
 Add project references (or NuGet package references) to your web application:
 
 ```xml
-<ProjectReference Include="..\..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.19" />
 <!-- Development only: -->
-<ProjectReference Include="..\..\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.19" />
 ```
 
 ### 2. Register in Program.cs
