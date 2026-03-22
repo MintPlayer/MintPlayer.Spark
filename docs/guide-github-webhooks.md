@@ -11,6 +11,15 @@ Spark provides first-class GitHub webhook integration through two optional packa
 
 The DevTunnel package is only needed during development. Production deployments only need the core package.
 
+## Prerequisites
+
+You need a GitHub App with webhook events enabled. Manage your GitHub Apps here:
+
+- **Personal account**: https://github.com/settings/apps
+- **Organization**: `https://github.com/organizations/{org_name}/settings/apps`
+
+When creating the app, configure the Webhook URL (your production endpoint or smee.io channel) and select the events you want to receive.
+
 ## Setup
 
 ### 1. Install packages
