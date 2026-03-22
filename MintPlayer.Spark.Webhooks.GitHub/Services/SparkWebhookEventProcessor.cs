@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
@@ -17,28 +18,17 @@ using Octokit.Webhooks.Events.Repository;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
-internal class SparkWebhookEventProcessor : WebhookEventProcessor
+internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 {
-    private readonly IMessageBus _messageBus;
-    private readonly GitHubWebhooksOptions _options;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SparkWebhookEventProcessor> _logger;
+    [Inject] private readonly IMessageBus _messageBus;
+    [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
+    [Inject] private readonly ISignatureService _signatureService;
+    [Inject] private readonly IServiceProvider _serviceProvider;
+    [Inject] private readonly ILogger<SparkWebhookEventProcessor> _logger;
 
     // Stashed per-request for catch-all message and dev forwarding
     private string? _rawBody;
     private IDictionary<string, StringValues>? _rawHeaders;
-
-    public SparkWebhookEventProcessor(
-        IMessageBus messageBus,
-        IOptions<GitHubWebhooksOptions> options,
-        IServiceProvider serviceProvider,
-        ILogger<SparkWebhookEventProcessor> logger)
-    {
-        _messageBus = messageBus;
-        _options = options.Value;
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
 
     public override async Task ProcessWebhookAsync(IDictionary<string, StringValues> headers, string body)
     {
@@ -46,10 +36,10 @@ internal class SparkWebhookEventProcessor : WebhookEventProcessor
         var caseInsensitiveHeaders = new Dictionary<string, StringValues>(headers, StringComparer.OrdinalIgnoreCase);
 
         // Validate webhook signature
-        if (!string.IsNullOrEmpty(_options.WebhookSecret))
+        if (!string.IsNullOrEmpty(_options.Value.WebhookSecret))
         {
             caseInsensitiveHeaders.TryGetValue("X-Hub-Signature-256", out var signatureSha256);
-            if (!SignatureService.VerifySignature(signatureSha256, _options.WebhookSecret, body))
+            if (!_signatureService.VerifySignature(signatureSha256, _options.Value.WebhookSecret, body))
             {
                 _logger.LogWarning("GitHub webhook signature validation failed — dropping event");
                 return;
@@ -57,10 +47,10 @@ internal class SparkWebhookEventProcessor : WebhookEventProcessor
         }
 
         // Check if this is from the development GitHub App
-        if (_options.DevelopmentAppId.HasValue)
+        if (_options.Value.DevelopmentAppId.HasValue)
         {
             caseInsensitiveHeaders.TryGetValue("X-GitHub-Hook-Installation-Target-ID", out var targetId);
-            if (long.TryParse(targetId.ToString(), out var appId) && appId == _options.DevelopmentAppId.Value)
+            if (long.TryParse(targetId.ToString(), out var appId) && appId == _options.Value.DevelopmentAppId.Value)
             {
                 // Forward to connected dev clients instead of processing locally
                 var devSocketService = _serviceProvider.GetService<IDevWebSocketService>();

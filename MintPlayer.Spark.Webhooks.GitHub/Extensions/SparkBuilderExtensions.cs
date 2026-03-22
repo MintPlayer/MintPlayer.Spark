@@ -27,7 +27,8 @@ public static class SparkBuilderExtensions
             opt.AllowedDevUsers = options.AllowedDevUsers;
         });
 
-        // Register the webhook event processor (scoped — one per request)
+        // Register services
+        builder.Services.AddScoped<ISignatureService, SignatureService>();
         builder.Services.AddScoped<WebhookEventProcessor, SparkWebhookEventProcessor>();
 
         // Register dev WebSocket forwarding service if DevelopmentAppId is configured

@@ -3,9 +3,9 @@ using System.Text;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
-internal static class SignatureService
+internal class SignatureService : ISignatureService
 {
-    public static bool VerifySignature(string? signature, string secret, string requestBody)
+    public bool VerifySignature(string? signature, string secret, string requestBody)
     {
         if (string.IsNullOrEmpty(secret))
             return true;
