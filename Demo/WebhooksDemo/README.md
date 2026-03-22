@@ -34,6 +34,16 @@ dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
 dotnet user-secrets set "GitHub:SmeeChannelUrl" "https://smee.io/your-channel-id"
 ```
 
+Optionally, if your recipients need to make authenticated GitHub API calls (e.g., commenting on issues), also store your GitHub App credentials:
+
+```bash
+dotnet user-secrets set "GitHub:AppId" "your-app-id"
+dotnet user-secrets set "GitHub:ClientId" "your-client-id"
+dotnet user-secrets set "GitHub:PrivateKeyPath" "C:\path\to\your-app.private-key.pem"
+```
+
+You can find these values on your GitHub App's settings page. The private key is downloaded when you generate one under "Private keys".
+
 ### 4. Install the GitHub App
 
 Install your GitHub App on a repository you want to test with. Go to your app's page on GitHub and click "Install App".
