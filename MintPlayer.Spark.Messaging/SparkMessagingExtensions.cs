@@ -4,6 +4,7 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Services;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Operations.Expiration;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging;
@@ -37,6 +38,14 @@ internal static class SparkMessagingExtensions
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         new SparkMessages_ByQueue().Execute(documentStore);
+
+        // Enable RavenDB document expiration so @expires metadata is honored
+        documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
+        {
+            Disabled = false,
+            DeleteFrequencyInSec = 60,
+        }));
+
         return app;
     }
 }
