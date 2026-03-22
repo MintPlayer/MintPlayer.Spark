@@ -64,8 +64,9 @@ Configure the following environment variables:
 
 | Variable | Value | Description |
 |---|---|---|
+| `ASPNETCORE_ENVIRONMENT` | `Development` | Required: enables auto-creation of the RavenDB database on startup. Without this, the app crashes with `DatabaseDoesNotExistException`. |
 | `Spark__RavenDb__Urls__0` | `http://ravendb:8080` | Internal Sliplane hostname of RavenDB (use the Service Name from Step 1) |
-| `Spark__RavenDb__Database` | `WebhooksDemo` | Database name (auto-created) |
+| `Spark__RavenDb__Database` | `WebhooksDemo` | Database name (auto-created when `ASPNETCORE_ENVIRONMENT=Development`) |
 | `GitHub__WebhookSecret` | Your webhook secret | Must match the secret in your GitHub App settings |
 
 The `__` double-underscore maps to nested config sections in ASP.NET Core (e.g., `Spark__RavenDb__Urls__0` becomes `Spark:RavenDb:Urls:0`).
@@ -104,6 +105,7 @@ You can find the deploy hook URL in your Sliplane service settings.
 
 | Problem | Solution |
 |---|---|
+| `DatabaseDoesNotExistException` | The database auto-creation only runs when `ASPNETCORE_ENVIRONMENT=Development`. Set this env var, or manually create the database through RavenDB Studio. |
 | `Connection refused (localhost:8080)` | The WebhooksDemo is trying to reach RavenDB at localhost. Set `Spark__RavenDb__Urls__0` to the RavenDB service's internal hostname (e.g., `http://ravendb:8080`). |
 | RavenDB health check fails on `/` | Ensure all environment variables are set, especially `RAVEN_Setup_Mode=None`. Without this, RavenDB shows the setup wizard which may not return 200 on `/`. |
 | `DataProtection-Keys` warning | Add a persistent volume at `/home/app/.aspnet/DataProtection-Keys`, or ignore for non-production use. |
