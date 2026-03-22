@@ -27,7 +27,7 @@ Click **"New GitHub App"** and fill in:
 |---|---|
 | **GitHub App name** | Any unique name (e.g., `MyWebhooksTest`) |
 | **Homepage URL** | `https://github.com` (any valid URL) |
-| **Webhook URL** | Paste your smee.io channel URL from step 1 |
+| **Webhook URL** | Your smee.io channel URL from step 1 (for local dev), or `https://your-app.sliplane.app/api/github/webhooks` (for production) |
 | **Webhook secret** | Generate a strong random string (e.g., using `openssl rand -hex 32`) |
 | **Permissions** | Under "Repository permissions": Issues → Read & write, Pull requests → Read & write |
 | **Subscribe to events** | Check: Issues, Pull request |
