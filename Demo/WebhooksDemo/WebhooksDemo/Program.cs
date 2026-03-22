@@ -1,7 +1,6 @@
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
-using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using WebhooksDemo;
 
 var builder = WebApplication.CreateBuilder(args);
