@@ -6,35 +6,65 @@ A minimal Spark application demonstrating GitHub webhook integration. Receives w
 
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download)
 - [RavenDB 6.2+](https://ravendb.net/) running on `http://localhost:8080`
-- A GitHub App with webhook events enabled
+- A GitHub account
 
-## Setup
+## Step-by-step setup
 
-### 1. Create a GitHub App
+### 1. Create a smee.io channel
 
-Go to your [GitHub App settings](https://github.com/settings/apps) (or `https://github.com/organizations/{org}/settings/apps` for an organization) and create a new app:
+Go to [smee.io](https://smee.io/) and click **"Start a new channel"**. You'll get a unique URL like `https://smee.io/abc123xyz`. Keep this tab open — you'll need this URL in the next steps.
+
+### 2. Create a GitHub App
+
+Go to your GitHub App settings:
+
+- **Personal account**: https://github.com/settings/apps
+- **Organization**: `https://github.com/organizations/{org_name}/settings/apps`
+
+Click **"New GitHub App"** and fill in:
 
 | Setting | Value |
 |---|---|
-| **Webhook URL** | Your smee.io channel URL (see step 2) |
-| **Webhook secret** | Generate a strong random string |
-| **Permissions** | Issues: Read & write, Pull requests: Read & write |
-| **Subscribe to events** | Issues, Pull request |
-| **Where can this app be installed?** | Any account (for testing) |
+| **GitHub App name** | Any unique name (e.g., `MyWebhooksTest`) |
+| **Homepage URL** | `https://github.com` (any valid URL) |
+| **Webhook URL** | Paste your smee.io channel URL from step 1 |
+| **Webhook secret** | Generate a strong random string (e.g., using `openssl rand -hex 32`) |
+| **Permissions** | Under "Repository permissions": Issues → Read & write, Pull requests → Read & write |
+| **Subscribe to events** | Check: Issues, Pull request |
+| **Where can this GitHub App be installed?** | Any account |
 
-### 2. Create a smee.io channel
+Click **"Create GitHub App"**. On the resulting page, note the **App ID** displayed at the top.
 
-Go to [smee.io](https://smee.io/) and click "Start a new channel". Copy the channel URL.
+Optionally, scroll down to **"Private keys"** and click **"Generate a private key"** — this downloads a `.pem` file you'll need if your recipients make authenticated GitHub API calls.
 
-### 3. Configure user secrets
+### 3. Create a test repository
+
+Create a new repository on your personal account (or use an existing one). This is the repo where you'll create issues/PRs to trigger webhooks.
+
+### 4. Install the GitHub App on your repository
+
+Navigate to your app's installation page:
+
+- **Personal account**: `https://github.com/settings/apps/{app_name}/installations`
+- **Organization**: `https://github.com/organizations/{org_name}/settings/apps/{app_name}/installations`
+
+Click **"Install"**, then choose either "All repositories" or "Only select repositories" and pick your test repository. Click **"Install"**.
+
+### 5. Configure user secrets
+
+From the repository root, run:
 
 ```bash
 cd Demo/WebhooksDemo/WebhooksDemo
+
+# Required: webhook secret (must match what you entered in the GitHub App settings)
 dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
+
+# Required: smee.io channel URL from step 1
 dotnet user-secrets set "GitHub:SmeeChannelUrl" "https://smee.io/your-channel-id"
 ```
 
-Optionally, if your recipients need to make authenticated GitHub API calls (e.g., commenting on issues), also store your GitHub App credentials:
+Optionally, if your recipients need to make authenticated GitHub API calls (e.g., commenting on issues):
 
 ```bash
 dotnet user-secrets set "GitHub:AppId" "your-app-id"
@@ -42,29 +72,50 @@ dotnet user-secrets set "GitHub:ClientId" "your-client-id"
 dotnet user-secrets set "GitHub:PrivateKeyPath" "C:\path\to\your-app.private-key.pem"
 ```
 
-You can find these values on your GitHub App's settings page. The private key is downloaded when you generate one under "Private keys".
+You can find the App ID and Client ID on your GitHub App's settings page. The private key is the `.pem` file downloaded in step 2.
 
-### 4. Install the GitHub App
-
-Install your GitHub App on a repository you want to test with. Go to your app's page on GitHub and click "Install App".
-
-### 5. Run the application
+### 6. Run the application
 
 ```bash
 cd Demo/WebhooksDemo/WebhooksDemo
 dotnet run
 ```
 
-### 6. Trigger a webhook
-
-Create or edit an issue or pull request in the repository where you installed the app. You should see log output like:
+You should see a log line confirming the smee.io connection:
 
 ```
-info: WebhooksDemo.Recipients.LogAllWebhooks  - Webhook received: issues from owner/repo (installation 12345678)
-info: WebhooksDemo.Recipients.LogIssues        - Issue #1 (opened): My test issue in owner/repo
+info: MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services.SmeeBackgroundService
+      Connecting to smee.io channel: https://smee.io/your-channel-id
 ```
+
+### 7. Trigger a webhook
+
+Go to your test repository on GitHub and **create a new issue** (or pull request). Within a few seconds you should see log output like:
+
+```
+info: WebhooksDemo.Recipients.LogAllWebhooks
+      Webhook received: issues from owner/repo (installation 12345678)
+info: WebhooksDemo.Recipients.LogIssues
+      Issue #1 (opened): My test issue in owner/repo
+```
+
+Try other actions too: close the issue, reopen it, edit the title, create a pull request, etc. Each action triggers a webhook that flows through the message bus to your recipients.
 
 ## How it works
+
+```
+GitHub ──POST──► smee.io ──SSE──► SmeeBackgroundService ──POST──► /api/github/webhooks
+                                   (re-minimizes JSON)              │
+                                                                    ▼
+                                                     SparkWebhookEventProcessor
+                                                        │              │
+                                                        ▼              ▼
+                                          GitHubWebhookMessage<T>   GitHubWebhookMessage
+                                             (typed queue)            (catch-all queue)
+                                                        │              │
+                                                        ▼              ▼
+                                                   IRecipient<T> handlers
+```
 
 The app registers three `IRecipient<T>` handlers:
 
@@ -74,4 +125,11 @@ The app registers three `IRecipient<T>` handlers:
 | `LogIssues` | `GitHubWebhookMessage<IssuesEvent>` | Issue number, action, title, repo |
 | `LogAllWebhooks` | `GitHubWebhookMessage` (catch-all) | Event type, repo, installation ID |
 
-The smee.io background service connects to the channel via SSE, re-minimizes the JSON (for correct signature validation), and forwards webhooks to the local endpoint where `SparkWebhookEventProcessor` broadcasts them to the message bus.
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| No log output when creating an issue | Check that the smee.io channel URL matches between your GitHub App settings and user secrets |
+| Signature validation failed | Ensure the webhook secret in user secrets matches exactly what you entered in the GitHub App settings |
+| Smee.io not connecting | Make sure the smee.io tab is still open (or just verify the channel URL is correct) |
+| RavenDB connection error | Ensure RavenDB is running on `http://localhost:8080` |
