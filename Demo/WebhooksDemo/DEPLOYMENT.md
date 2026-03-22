@@ -23,7 +23,7 @@ Add a new service in Sliplane:
 | **Service Name** | `ravendb` (this becomes the internal DNS hostname) |
 | **Public** | Enable (to access RavenDB Studio for management) |
 | **Health check path** | `/` |
-| **Volume** | Create a volume, mount on `/opt/RavenDB/Server/RavenData` |
+| **Volume** | Create a volume, mount on `/home/ravendb/RavenData` |
 
 Configure the following environment variables:
 
@@ -33,6 +33,7 @@ Configure the following environment variables:
 | `RAVEN_License_Eula_Accepted` | `true` |
 | `RAVEN_Security_UnsecuredAccessAllowed` | `PublicNetwork` |
 | `RAVEN_ServerUrl` | `http://0.0.0.0:8080` |
+| `RAVEN_DataDir` | `/home/ravendb/RavenData` |
 | `RAVEN_License` | Your RavenDB license JSON (single line, see below) |
 
 > **Note**: Sliplane does not have a port configuration field — the RavenDB image exposes port 8080 by default, and Sliplane routes traffic to it automatically.
