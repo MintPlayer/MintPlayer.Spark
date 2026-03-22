@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 
 namespace MintPlayer.Spark.Services;

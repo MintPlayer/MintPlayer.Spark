@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.ConnectionStrings;

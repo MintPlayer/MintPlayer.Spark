@@ -1,7 +1,6 @@
-using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Services;
 

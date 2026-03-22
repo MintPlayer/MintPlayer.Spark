@@ -1,5 +1,5 @@
-using System.Reflection;
 using MintPlayer.Spark.Abstractions;
+using System.Reflection;
 
 namespace MintPlayer.Spark.Extensions;
 

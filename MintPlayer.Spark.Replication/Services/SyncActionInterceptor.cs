@@ -1,7 +1,3 @@
-using System.Collections.Concurrent;
-using System.Reflection;
-using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
@@ -9,6 +5,9 @@ using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Models;
 using Raven.Client.Documents;
+using System.Collections.Concurrent;
+using System.Reflection;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Replication.Services;
 

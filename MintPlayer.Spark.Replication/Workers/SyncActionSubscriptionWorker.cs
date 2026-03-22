@@ -1,12 +1,10 @@
-using System.Net;
-using System.Net.Http.Json;
-using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
+using System.Net;
 
 namespace MintPlayer.Spark.Replication.Workers;
 

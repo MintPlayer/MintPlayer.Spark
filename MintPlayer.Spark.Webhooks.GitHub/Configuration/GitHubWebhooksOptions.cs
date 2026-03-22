@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace MintPlayer.Spark.Webhooks.GitHub.Configuration;
 
 public class GitHubWebhooksOptions

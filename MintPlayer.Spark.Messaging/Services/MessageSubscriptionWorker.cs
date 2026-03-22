@@ -1,6 +1,3 @@
-using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
@@ -8,6 +5,7 @@ using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
 

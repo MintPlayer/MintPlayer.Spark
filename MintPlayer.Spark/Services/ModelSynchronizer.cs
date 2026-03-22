@@ -1,11 +1,10 @@
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
+using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Hosting;
-using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Services;
 

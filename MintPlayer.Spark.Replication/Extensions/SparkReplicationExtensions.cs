@@ -1,8 +1,3 @@
-using System.Reflection;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Abstractions;
@@ -14,6 +9,7 @@ using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Replication.Workers;
 using Raven.Client.Documents;
+using System.Reflection;
 
 namespace MintPlayer.Spark.Replication;
 

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;

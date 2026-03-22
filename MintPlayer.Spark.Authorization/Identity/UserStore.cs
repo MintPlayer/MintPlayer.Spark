@@ -1,9 +1,8 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using System.Security.Claims;
 
 namespace MintPlayer.Spark.Authorization.Identity;
 

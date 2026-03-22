@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
 
