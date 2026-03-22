@@ -1,6 +1,7 @@
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
+using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using WebhooksDemo;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,14 +21,20 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         if (long.TryParse(builder.Configuration["GitHub:DevelopmentAppId"], out var devId))
             options.DevelopmentAppId = devId;
 
-        // Uncomment ONE of these for local development:
-        // Option A: smee.io tunnel (no production deployment needed)
-        // options.AddSmeeDevTunnel(builder.Configuration["GitHub:SmeeChannelUrl"]!);
+        // Local development: smee.io tunnel
+        var smeeUrl = builder.Configuration["GitHub:SmeeChannelUrl"];
+        if (!string.IsNullOrEmpty(smeeUrl))
+        {
+            options.AddSmeeDevTunnel(smeeUrl);
+        }
 
-        // Option B: WebSocket from production (production deployment exists)
-        // options.AddWebSocketDevTunnel(
-        //     builder.Configuration["GitHub:DevWebSocketUrl"]!,
-        //     builder.Configuration["GitHub:DevGitHubToken"]!);
+        // Alternative: WebSocket from production (uncomment if deployed)
+        // var wsUrl = builder.Configuration["GitHub:DevWebSocketUrl"];
+        // var wsToken = builder.Configuration["GitHub:DevGitHubToken"];
+        // if (!string.IsNullOrEmpty(wsUrl) && !string.IsNullOrEmpty(wsToken))
+        // {
+        //     options.AddWebSocketDevTunnel(wsUrl, wsToken);
+        // }
     });
 });
 
