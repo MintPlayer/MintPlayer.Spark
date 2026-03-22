@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Configuration;
 using Newtonsoft.Json;
 using Octokit.Webhooks;
@@ -11,30 +12,20 @@ using Smee.IO.Client.Dto;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;
 
-internal class SmeeBackgroundService : BackgroundService
+internal partial class SmeeBackgroundService : BackgroundService
 {
-    private readonly SmeeOptions _options;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SmeeBackgroundService> _logger;
-
-    public SmeeBackgroundService(
-        IOptions<SmeeOptions> options,
-        IServiceProvider serviceProvider,
-        ILogger<SmeeBackgroundService> logger)
-    {
-        _options = options.Value;
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
+    [Options] private readonly IOptions<SmeeOptions> _options;
+    [Inject] private readonly IServiceProvider _serviceProvider;
+    [Inject] private readonly ILogger<SmeeBackgroundService> _logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (string.IsNullOrEmpty(_options.ChannelUrl))
+        if (string.IsNullOrEmpty(_options.Value.ChannelUrl))
             return;
 
-        _logger.LogInformation("Connecting to smee.io channel: {ChannelUrl}", _options.ChannelUrl);
+        _logger.LogInformation("Connecting to smee.io channel: {ChannelUrl}", _options.Value.ChannelUrl);
 
-        var smeeClient = new SmeeClient(new Uri(_options.ChannelUrl));
+        var smeeClient = new SmeeClient(new Uri(_options.Value.ChannelUrl));
         smeeClient.OnMessage += SmeeClient_OnMessage;
 
         try

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit.Webhooks;
@@ -10,25 +11,15 @@ using System.Net.WebSockets;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Services;
 
-internal class WebSocketDevClientService : BackgroundService
+internal partial class WebSocketDevClientService : BackgroundService
 {
-    private readonly WebSocketDevTunnelOptions _options;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<WebSocketDevClientService> _logger;
-
-    public WebSocketDevClientService(
-        IOptions<WebSocketDevTunnelOptions> options,
-        IServiceProvider serviceProvider,
-        ILogger<WebSocketDevClientService> logger)
-    {
-        _options = options.Value;
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
+    [Options] private readonly IOptions<WebSocketDevTunnelOptions> _options;
+    [Inject] private readonly IServiceProvider _serviceProvider;
+    [Inject] private readonly ILogger<WebSocketDevClientService> _logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (string.IsNullOrEmpty(_options.ProductionWebSocketUrl))
+        if (string.IsNullOrEmpty(_options.Value.ProductionWebSocketUrl))
             return;
 
         while (!stoppingToken.IsCancellationRequested)
@@ -56,14 +47,14 @@ internal class WebSocketDevClientService : BackgroundService
         ws.Options.AddSubProtocol("ws");
         ws.Options.AddSubProtocol("wss");
 
-        var baseUri = new Uri(_options.ProductionWebSocketUrl);
+        var baseUri = new Uri(_options.Value.ProductionWebSocketUrl);
         _logger.LogInformation("Connecting to production WebSocket: {Url}", baseUri);
 
         await ws.ConnectAsync(baseUri, stoppingToken);
         _logger.LogInformation("Connected to production WebSocket");
 
         // Send handshake with GitHub token
-        var handshake = new Handshake { GithubToken = _options.GitHubToken };
+        var handshake = new Handshake { GithubToken = _options.Value.GitHubToken };
         await ws.WriteObject(handshake);
 
         while (!stoppingToken.IsCancellationRequested && ws.State == WebSocketState.Open)
