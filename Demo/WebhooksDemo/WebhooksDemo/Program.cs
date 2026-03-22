@@ -40,10 +40,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 var app = builder.Build();
 
+app.MapGet("/health", () => Results.Ok()).DisableAntiforgery();
+
 app.UseRouting();
 app.UseSpark();
 
 app.MapSpark();
-app.MapGet("/health", () => Results.Ok());
 
 app.Run();
