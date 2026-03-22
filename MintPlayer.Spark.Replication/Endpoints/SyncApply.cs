@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;

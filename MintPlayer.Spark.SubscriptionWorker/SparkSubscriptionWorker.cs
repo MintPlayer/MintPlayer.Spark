@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Exceptions.Database;

@@ -1,21 +1,16 @@
-using System.Reflection;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Actions;
-using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
-using Raven.Client.Documents.Session;
 using Raven.Client.Json.Serialization.NewtonsoftJson;
 using Raven.Client.ServerWide.Operations;
+using System.Reflection;
 
 namespace MintPlayer.Spark;
 
@@ -37,6 +32,9 @@ public static class SparkExtensions
     private static IServiceCollection AddSparkCore(this IServiceCollection services, SparkBuilder builder, Action<ISparkBuilder> configure)
     {
         var options = builder.Options;
+
+        // Register authorization (required by UseSpark → UseAuthorization)
+        services.AddAuthorization();
 
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");

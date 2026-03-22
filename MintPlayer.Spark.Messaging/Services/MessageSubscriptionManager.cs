@@ -1,10 +1,7 @@
-using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
+using System.Reflection;
 
 namespace MintPlayer.Spark.Messaging.Services;
 

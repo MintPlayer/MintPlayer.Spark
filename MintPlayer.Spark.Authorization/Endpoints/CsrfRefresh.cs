@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using MintPlayer.AspNetCore.Endpoints;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;

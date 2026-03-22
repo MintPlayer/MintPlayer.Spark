@@ -1,14 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
 		<IsPackable>true</IsPackable>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Authorization</PackageId>
-		<Version>10.0.0-preview.20</Version>
+		<Version>10.0.0-preview.21</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
@@ -31,10 +32,6 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.17.0" GeneratePathProperty="true" />
 		<PackageReference Include="RavenDB.Client" Version="7.1.5" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
 	<!-- Global usings required by the MintPlayer.AspNetCore.Endpoints source generator output -->

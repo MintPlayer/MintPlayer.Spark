@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using MintPlayer.Spark.Abstractions;
+using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Streaming;
 

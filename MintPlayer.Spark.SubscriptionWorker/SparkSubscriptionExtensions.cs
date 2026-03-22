@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-
 namespace MintPlayer.Spark.SubscriptionWorker;
 
 public static class SparkSubscriptionExtensions

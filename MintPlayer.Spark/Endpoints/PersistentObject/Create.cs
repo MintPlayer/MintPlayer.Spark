@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Builder;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;

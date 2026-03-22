@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 

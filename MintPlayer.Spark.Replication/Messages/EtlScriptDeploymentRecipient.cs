@@ -1,5 +1,3 @@
-using System.Net.Http.Json;
-using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 

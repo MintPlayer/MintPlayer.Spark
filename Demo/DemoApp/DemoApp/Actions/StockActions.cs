@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
 using DemoApp.Library.Entities;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
+using System.Runtime.CompilerServices;
 
 namespace DemoApp.Actions;
 

@@ -1,8 +1,8 @@
-using System.Text.RegularExpressions;
 using DemoApp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
+using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
 

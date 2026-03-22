@@ -1,7 +1,4 @@
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Identity;
 

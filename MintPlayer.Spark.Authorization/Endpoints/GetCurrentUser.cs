@@ -1,6 +1,5 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Http;
 using MintPlayer.AspNetCore.Endpoints;
+using System.Security.Claims;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
