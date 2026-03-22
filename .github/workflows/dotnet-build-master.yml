@@ -31,7 +31,7 @@ jobs:
         # Authenticates packages to push to GPR
         source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       env:
-        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+        NUGET_AUTH_TOKEN: ${{ github.token }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
