@@ -1,8 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.SourceGenerators.Attributes;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
+[Register(typeof(ISignatureService), ServiceLifetime.Scoped, accessibility: EGeneratedAccessibility.Internal)]
 internal class SignatureService : ISignatureService
 {
     public bool VerifySignature(string? signature, string secret, string requestBody)
