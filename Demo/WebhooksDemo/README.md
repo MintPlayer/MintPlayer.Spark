@@ -125,6 +125,10 @@ The app registers three `IRecipient<T>` handlers:
 | `LogIssues` | `GitHubWebhookMessage<IssuesEvent>` | Issue number, action, title, repo |
 | `LogAllWebhooks` | `GitHubWebhookMessage` (catch-all) | Event type, repo, installation ID |
 
+## Deployment
+
+For deploying to Sliplane (or similar container hosting), see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Troubleshooting
 
 | Problem | Solution |
