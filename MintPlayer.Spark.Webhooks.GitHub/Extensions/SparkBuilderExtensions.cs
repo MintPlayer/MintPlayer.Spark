@@ -43,7 +43,9 @@ public static class SparkBuilderExtensions
         builder.Registry.AddEndpoints(endpoints =>
         {
             // Map the Octokit webhook endpoint with signature validation
-            endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret);
+            // DisableAntiforgery: GitHub POSTs webhooks without XSRF tokens
+            endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)
+                .DisableAntiforgery();
 
             // Map the dev WebSocket endpoint if DevelopmentAppId is configured
             if (options.DevelopmentAppId.HasValue)
