@@ -42,8 +42,8 @@ public static class SparkBuilderExtensions
         // Register endpoint mapping via SparkModuleRegistry
         builder.Registry.AddEndpoints(endpoints =>
         {
-            // Map the Octokit webhook endpoint (signature validation is handled in our processor)
-            endpoints.MapGitHubWebhooks(options.WebhookPath);
+            // Map the Octokit webhook endpoint with signature validation
+            endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret);
 
             // Map the dev WebSocket endpoint if DevelopmentAppId is configured
             if (options.DevelopmentAppId.HasValue)
