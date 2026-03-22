@@ -44,5 +44,6 @@ app.UseRouting();
 app.UseSpark();
 
 app.MapSpark();
+app.MapGet("/health", () => Results.Ok());
 
 app.Run();
