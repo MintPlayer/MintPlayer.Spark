@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
@@ -6,6 +8,7 @@ using WebhooksDemo;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<WebhooksDemoSparkContext>();
@@ -38,12 +41,40 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     });
 });
 
+builder.Services.AddSpaStaticFilesImproved(configuration =>
+{
+    configuration.RootPath = "ClientApp/dist/ClientApp/browser";
+});
+
 var app = builder.Build();
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
 app.UseSpark();
 
-app.MapSpark();
-app.MapGet("/health", () => Results.Ok());
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+    endpoints.MapSpark();
+    endpoints.MapGet("/health", () => Results.Ok());
+});
+
+app.MapWhen(
+    context => !context.Request.Path.StartsWithSegments("/spark"),
+    appBuilder =>
+    {
+        appBuilder.UseSpaImproved(spa =>
+        {
+            spa.Options.SourcePath = "ClientApp";
+
+            if (app.Environment.IsDevelopment())
+            {
+                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
+            }
+        });
+    });
 
 app.Run();
