@@ -8,7 +8,7 @@
 
 	<PropertyGroup>
 		<IsPackable>true</IsPackable>
-		<Version>10.0.0-preview.21</Version>
+		<Version>10.0.0-preview.22</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Extension methods for WebSocket (ReadMessage, WriteMessage, ReadObject, WriteObject)</Description>
