@@ -20,4 +20,11 @@ public class RavenDbOptions
     /// Delay in seconds between connection retry attempts. Default: 2.
     /// </summary>
     public int RetryDelaySeconds { get; set; } = 2;
+
+    /// <summary>
+    /// Automatically create the database if it does not exist.
+    /// Always enabled in Development mode. Set to true for container deployments
+    /// where the database may not exist yet. Default: false.
+    /// </summary>
+    public bool EnsureDatabaseCreated { get; set; } = false;
 }

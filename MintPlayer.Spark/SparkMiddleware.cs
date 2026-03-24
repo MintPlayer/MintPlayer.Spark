@@ -75,7 +75,7 @@ public static class SparkExtensions
             WaitForRavenDbConnection(store, options.RavenDb);
 
             var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
-            if (hostEnvironment.IsDevelopment())
+            if (hostEnvironment.IsDevelopment() || options.RavenDb.EnsureDatabaseCreated)
             {
                 var databaseNames = store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
                 if (!databaseNames.Contains(options.RavenDb.Database))
