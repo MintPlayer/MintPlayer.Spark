@@ -71,6 +71,9 @@ public static class SparkExtensions
 
             store.Initialize();
 
+            // Wait for RavenDB to become available (handles container startup ordering in docker-compose, etc.)
+            WaitForRavenDbConnection(store, options.RavenDb);
+
             var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
             if (hostEnvironment.IsDevelopment())
             {
@@ -226,6 +229,35 @@ public static class SparkExtensions
         registry.MapEndpoints(endpoints);
 
         return endpoints;
+    }
+
+    private static void WaitForRavenDbConnection(IDocumentStore store, Configuration.RavenDbOptions ravenDbOptions)
+    {
+        var maxRetries = ravenDbOptions.MaxConnectionRetries;
+        if (maxRetries <= 0) return;
+
+        var delay = TimeSpan.FromSeconds(Math.Max(ravenDbOptions.RetryDelaySeconds, 1));
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
+                if (attempt > 1)
+                {
+                    Console.WriteLine($"Successfully connected to RavenDB after {attempt} attempts.");
+                }
+                return;
+            }
+            catch (Exception ex) when (attempt < maxRetries)
+            {
+                Console.WriteLine($"Waiting for RavenDB to become available (attempt {attempt}/{maxRetries}): {ex.Message}");
+                Thread.Sleep(delay);
+            }
+        }
+
+        // Final attempt — let the exception propagate if it still fails
+        store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
     }
 
     private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
