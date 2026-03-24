@@ -9,4 +9,15 @@ public class RavenDbOptions
 {
     public string[] Urls { get; set; } = ["http://localhost:8080"];
     public string Database { get; set; } = "Spark";
+
+    /// <summary>
+    /// Maximum number of connection attempts when waiting for RavenDB to become available.
+    /// Set to 0 to disable retry logic. Default: 30.
+    /// </summary>
+    public int MaxConnectionRetries { get; set; } = 30;
+
+    /// <summary>
+    /// Delay in seconds between connection retry attempts. Default: 2.
+    /// </summary>
+    public int RetryDelaySeconds { get; set; } = 2;
 }
