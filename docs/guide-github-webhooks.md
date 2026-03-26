@@ -114,6 +114,8 @@ Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
 {
   "GitHub": {
     "WebhookSecret": "whsec_...",
+    "ClientId": "Iv1.abc123",
+    "PrivateKeyPath": "my-app.pem",
     "ProductionAppId": "123456",
     "DevelopmentAppId": "789012",
     "SmeeChannelUrl": "https://smee.io/your-channel-id",
@@ -133,6 +135,9 @@ Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
 | `DevelopmentAppId` | `null` | GitHub App ID for the dev app. When set, webhooks from this app are forwarded to dev clients instead of being processed locally. |
 | `DevWebSocketPath` | `"/spark/github/dev-ws"` | WebSocket endpoint path for dev client connections. |
 | `AllowedDevUsers` | `[]` | GitHub usernames allowed to connect via WebSocket. Empty = all authenticated users. |
+| `ClientId` | `null` | GitHub App Client ID. Required for `IGitHubInstallationService` API calls. |
+| `PrivateKeyPem` | `null` | GitHub App private key PEM content (inline). Either this or `PrivateKeyPath` is required for API calls. |
+| `PrivateKeyPath` | `null` | Path to the GitHub App private key `.pem` file. Relative paths are resolved from the working directory. |
 
 ## Local development
 

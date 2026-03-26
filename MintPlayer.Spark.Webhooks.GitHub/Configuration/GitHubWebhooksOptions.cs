@@ -31,6 +31,15 @@ public class GitHubWebhooksOptions
     /// </summary>
     public List<string> AllowedDevUsers { get; set; } = [];
 
+    /// <summary>GitHub App Client ID, used for JWT authentication when making API calls.</summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>GitHub App private key PEM content. Either this or <see cref="PrivateKeyPath"/> is required for API calls.</summary>
+    public string? PrivateKeyPem { get; set; }
+
+    /// <summary>Path to the GitHub App private key .pem file. Either this or <see cref="PrivateKeyPem"/> is required for API calls.</summary>
+    public string? PrivateKeyPath { get; set; }
+
     /// <summary>
     /// Used by dev-tunnel extension methods to register background services.
     /// </summary>

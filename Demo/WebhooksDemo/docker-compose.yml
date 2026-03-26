@@ -1,0 +1,42 @@
+services:
+
+  spark-raven:
+    image: docker.io/ravendb/ravendb:latest
+    environment:
+      - RAVEN_Setup_Mode=None
+      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
+      - RAVEN_ServerUrl=http://0.0.0.0:8080
+    volumes:
+      - raven-data:/home/ravendb/RavenData
+    networks:
+      - web
+    restart: unless-stopped
+
+  spark-app:
+    image: ghcr.io/mintplayer/mintplayer.spark/webhooks-demo:master
+    depends_on:
+      - spark-raven
+    environment:
+      - Spark__RavenDB__Urls__0=http://spark-raven:8080
+      - Spark__RavenDb__EnsureDatabaseCreated=true
+      - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
+      - GitHub__ClientId=${GITHUB_APP_CLIENT_ID}
+      - GitHub__ProductionAppId=${GITHUB_PRODUCTION_APP_ID}
+      - GitHub__PrivateKeyPath=/run/secrets/github-app.pem
+    volumes:
+      - ./github-app.pem:/run/secrets/github-app.pem:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spark-webhooks.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.spark-webhooks.entrypoints=websecure"
+      - "traefik.http.routers.spark-webhooks.tls.certresolver=letsencrypt"
+    networks:
+      - web
+    restart: unless-stopped
+
+volumes:
+  raven-data:
+
+networks:
+  web:
+    external: true

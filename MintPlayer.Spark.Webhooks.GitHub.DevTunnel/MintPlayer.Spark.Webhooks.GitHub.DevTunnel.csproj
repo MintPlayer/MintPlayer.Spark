@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Webhooks.GitHub.DevTunnel</PackageId>
-		<Version>10.0.0-preview.22</Version>
+		<Version>10.0.0-preview.23</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Development tunneling for MintPlayer.Spark GitHub webhooks — smee.io tunnel and WebSocket dev client for receiving production-forwarded webhooks locally.</Description>

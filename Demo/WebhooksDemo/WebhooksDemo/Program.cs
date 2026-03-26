@@ -17,6 +17,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
+        options.ClientId = builder.Configuration["GitHub:ClientId"];
+        options.PrivateKeyPath = builder.Configuration["GitHub:PrivateKeyPath"];
 
         if (long.TryParse(builder.Configuration["GitHub:ProductionAppId"], out var prodId))
             options.ProductionAppId = prodId;

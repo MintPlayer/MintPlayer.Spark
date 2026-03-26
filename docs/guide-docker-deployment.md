@@ -92,7 +92,34 @@ In Development mode, Spark always creates the database if it doesn't exist. For 
 
 ## Production Deployment with Traefik
 
-For production deployments behind a reverse proxy like Traefik:
+The repository includes a production-ready `docker-compose.yml` at `Demo/WebhooksDemo/docker-compose.yml` that uses `${...}` placeholders for secrets. These are resolved from a `.env` file you create on the server.
+
+### 1. Create the `.env` file
+
+On your server, create `/var/www/webhooks-demo/.env` (see `Demo/WebhooksDemo/.env.example` for a template):
+
+```env
+GITHUB_WEBHOOK_SECRET=whsec_your_webhook_secret
+GITHUB_APP_CLIENT_ID=Iv1.your_client_id
+GITHUB_PRODUCTION_APP_ID=123456
+TRAEFIK_HOST=spark-webhooks.example.com
+```
+
+### 2. Place the GitHub App private key
+
+Copy your GitHub App's `.pem` file to the same directory:
+
+```bash
+# Copy or create the file
+cp ~/my-app.private-key.pem /var/www/webhooks-demo/github-app.pem
+chmod 600 /var/www/webhooks-demo/github-app.pem
+```
+
+The `docker-compose.yml` mounts this file read-only into the container at `/run/secrets/github-app.pem`.
+
+### 3. Docker Compose file
+
+The included `Demo/WebhooksDemo/docker-compose.yml` sets up:
 
 ```yaml
 services:
@@ -116,11 +143,17 @@ services:
     environment:
       - Spark__RavenDB__Urls__0=http://spark-raven:8080
       - Spark__RavenDb__EnsureDatabaseCreated=true
+      - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
+      - GitHub__ClientId=${GITHUB_APP_CLIENT_ID}
+      - GitHub__ProductionAppId=${GITHUB_PRODUCTION_APP_ID}
+      - GitHub__PrivateKeyPath=/run/secrets/github-app.pem
+    volumes:
+      - ./github-app.pem:/run/secrets/github-app.pem:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.spark-app.rule=Host(`spark.example.com`)"
-      - "traefik.http.routers.spark-app.entrypoints=websecure"
-      - "traefik.http.routers.spark-app.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.spark-webhooks.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.spark-webhooks.entrypoints=websecure"
+      - "traefik.http.routers.spark-webhooks.tls.certresolver=letsencrypt"
     networks:
       - web
     restart: unless-stopped
@@ -134,6 +167,27 @@ networks:
 ```
 
 > **Note:** The `web` network must already exist. Create it with `docker network create web` if it doesn't.
+
+### GitHub App Environment Variables
+
+| `.env` variable | Maps to | Description |
+|---|---|---|
+| `GITHUB_WEBHOOK_SECRET` | `GitHub__WebhookSecret` | Webhook secret for HMAC-SHA256 signature validation |
+| `GITHUB_APP_CLIENT_ID` | `GitHub__ClientId` | GitHub App Client ID for API authentication |
+| `GITHUB_PRODUCTION_APP_ID` | `GitHub__ProductionAppId` | GitHub App ID (used for dev-forwarding routing) |
+| `TRAEFIK_HOST` | Traefik router rule | Hostname for HTTPS routing |
+
+The private key is provided via a file mount rather than an environment variable, since PEM content is multi-line.
+
+### CI/CD
+
+The GitHub Actions workflow (`webhooks-demo-deploy.yml`) automatically:
+
+1. Builds and pushes the Docker image to GHCR
+2. SSHes into the VPS and downloads the latest `docker-compose.yml` from the repository
+3. Pulls the new image and restarts the stack
+
+The workflow only needs VPS SSH credentials as GitHub secrets. Application secrets (webhook secret, GitHub App credentials) live in the `.env` file and `github-app.pem` that you manage directly on the server.
 
 ## Data Persistence
 
