@@ -19,7 +19,7 @@ using Octokit.Webhooks.Events.Repository;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
-[Register(typeof(WebhookEventProcessor), ServiceLifetime.Scoped)]
+// [Register(typeof(WebhookEventProcessor), ServiceLifetime.Scoped)] — source generator doesn't support class-typed registrations yet
 internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 {
     [Inject] private readonly IMessageBus _messageBus;

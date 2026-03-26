@@ -33,6 +33,9 @@ public static class SparkBuilderExtensions
         // Register services (source-generated from [Register] attributes)
         builder.Services.AddSparkWebhooksGitHubServices();
 
+        // Manual registration: source generator doesn't support class-typed registrations yet
+        builder.Services.AddScoped<WebhookEventProcessor, SparkWebhookEventProcessor>();
+
         // Register dev WebSocket forwarding service if DevelopmentAppId is configured
         if (options.DevelopmentAppId.HasValue)
         {
