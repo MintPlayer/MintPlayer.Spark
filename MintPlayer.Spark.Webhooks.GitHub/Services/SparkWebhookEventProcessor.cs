@@ -129,7 +129,7 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
             Headers = headers,
             InstallationId = installationId,
             RepositoryFullName = repoFullName,
-            Event = evt,
+            EventJson = _rawBody ?? string.Empty,
         };
         await _messageBus.BroadcastAsync(typedMessage);
 
