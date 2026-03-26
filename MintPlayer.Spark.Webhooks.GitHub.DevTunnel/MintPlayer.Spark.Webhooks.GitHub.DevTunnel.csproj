@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Webhooks.GitHub.DevTunnel</PackageId>
-		<Version>10.0.0-preview.25</Version>
+		<Version>10.0.0-preview.26</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Development tunneling for MintPlayer.Spark GitHub webhooks — smee.io tunnel and WebSocket dev client for receiving production-forwarded webhooks locally.</Description>
@@ -25,11 +25,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.17.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.18.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.17.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.18.0" GeneratePathProperty="true" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Smee.IO.Client" Version="1.0.16" />
 	</ItemGroup>
