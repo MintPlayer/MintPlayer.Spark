@@ -5,7 +5,7 @@ using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -71,7 +71,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                     return;
                 }
 
-                var payload = JsonSerializer.Deserialize(sparkMessage.PayloadJson, clrType);
+                var payload = JsonConvert.DeserializeObject(sparkMessage.PayloadJson, clrType);
                 if (payload == null)
                 {
                     Logger.LogError("Failed to deserialize payload for message {MessageId}", sparkMessage.Id);

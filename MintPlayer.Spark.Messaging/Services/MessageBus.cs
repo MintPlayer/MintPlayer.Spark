@@ -3,7 +3,7 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client.Documents;
 using System.Reflection;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -38,7 +38,7 @@ internal class MessageBus : IMessageBus
             queueName = queueAttribute?.QueueName ?? messageType.FullName!;
         }
 
-        var payloadJson = JsonSerializer.Serialize(message);
+        var payloadJson = JsonConvert.SerializeObject(message);
 
         var sparkMessage = new SparkMessage
         {
