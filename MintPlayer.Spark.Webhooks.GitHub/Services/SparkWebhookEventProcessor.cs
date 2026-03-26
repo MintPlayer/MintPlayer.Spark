@@ -122,7 +122,8 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         var repoFullName = evt.Repository?.FullName ?? string.Empty;
 
         // Broadcast event-specific typed message
-        var queueName = GitHubQueueNames.FromEventType<TEvent>();
+        // No queue name override — MessageBus uses typeof(GitHubWebhookMessage<TEvent>).FullName,
+        // which matches what MessageSubscriptionManager discovers from IRecipient<> registrations.
         var typedMessage = new GitHubWebhookMessage<TEvent>
         {
             Headers = headers,
@@ -130,7 +131,7 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
             RepositoryFullName = repoFullName,
             Event = evt,
         };
-        await _messageBus.BroadcastAsync(typedMessage, queueName);
+        await _messageBus.BroadcastAsync(typedMessage);
 
         // Broadcast catch-all message
         var catchAllMessage = new GitHubWebhookMessage
