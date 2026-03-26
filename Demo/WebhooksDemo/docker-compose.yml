@@ -1,7 +1,7 @@
 services:
 
   spark-raven:
-    image: docker.io/ravendb/ravendb:latest
+    image: docker.io/ravendb/ravendb:7.1-latest
     environment:
       - RAVEN_Setup_Mode=None
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
