@@ -65,7 +65,8 @@ app.UseEndpoints(endpoints =>
 });
 
 app.MapWhen(
-    context => !context.Request.Path.StartsWithSegments("/spark"),
+    context => !context.Request.Path.StartsWithSegments("/spark")
+        && !context.Request.Path.StartsWithSegments("/api"),
     appBuilder =>
     {
         appBuilder.UseSpaImproved(spa =>
