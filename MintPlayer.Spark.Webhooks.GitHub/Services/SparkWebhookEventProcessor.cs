@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.SourceGenerators.Attributes;
@@ -19,7 +18,7 @@ using Octokit.Webhooks.Events.Repository;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
-// [Register(typeof(WebhookEventProcessor), ServiceLifetime.Scoped)] — source generator doesn't support class-typed registrations yet
+[Register(typeof(WebhookEventProcessor), ServiceLifetime.Scoped)]
 internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 {
     [Inject] private readonly IMessageBus _messageBus;
@@ -32,7 +31,7 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
     private string? _rawBody;
     private IDictionary<string, StringValues>? _rawHeaders;
 
-    public override async Task ProcessWebhookAsync(IDictionary<string, StringValues> headers, string body)
+    public override async ValueTask ProcessWebhookAsync(IDictionary<string, StringValues> headers, string body, CancellationToken cancellationToken = default)
     {
         // Octokit uses case-sensitive dictionary — make it case-insensitive
         var caseInsensitiveHeaders = new Dictionary<string, StringValues>(headers, StringComparer.OrdinalIgnoreCase);
@@ -68,54 +67,44 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         _rawHeaders = caseInsensitiveHeaders;
         _rawBody = body;
 
-        await base.ProcessWebhookAsync(caseInsensitiveHeaders, body);
+        await base.ProcessWebhookAsync(caseInsensitiveHeaders, body, cancellationToken);
     }
 
     // --- Event overrides: each delegates to the shared generic helper ---
 
-    protected override Task ProcessPushWebhookAsync(
-        WebhookHeaders headers, PushEvent pushEvent)
-        => HandleWebhookAsync(headers, pushEvent);
+    protected override ValueTask ProcessPushWebhookAsync(WebhookHeaders headers, PushEvent pushEvent, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, pushEvent, cancellationToken);
 
-    protected override Task ProcessIssuesWebhookAsync(
-        WebhookHeaders headers, IssuesEvent issuesEvent, IssuesAction action)
-        => HandleWebhookAsync(headers, issuesEvent);
+    protected override ValueTask ProcessIssuesWebhookAsync(WebhookHeaders headers, IssuesEvent issuesEvent, IssuesAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, issuesEvent, cancellationToken);
 
-    protected override Task ProcessIssueCommentWebhookAsync(
-        WebhookHeaders headers, IssueCommentEvent issueCommentEvent, IssueCommentAction action)
-        => HandleWebhookAsync(headers, issueCommentEvent);
+    protected override ValueTask ProcessIssueCommentWebhookAsync(WebhookHeaders headers, IssueCommentEvent issueCommentEvent, IssueCommentAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, issueCommentEvent, cancellationToken);
 
-    protected override Task ProcessPullRequestWebhookAsync(
-        WebhookHeaders headers, PullRequestEvent pullRequestEvent, PullRequestAction action)
-        => HandleWebhookAsync(headers, pullRequestEvent);
+    protected override ValueTask ProcessPullRequestWebhookAsync(WebhookHeaders headers, PullRequestEvent pullRequestEvent, PullRequestAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, pullRequestEvent, cancellationToken);
 
-    protected override Task ProcessPullRequestReviewWebhookAsync(
-        WebhookHeaders headers, PullRequestReviewEvent pullRequestReviewEvent, PullRequestReviewAction action)
-        => HandleWebhookAsync(headers, pullRequestReviewEvent);
+    protected override ValueTask ProcessPullRequestReviewWebhookAsync(WebhookHeaders headers, PullRequestReviewEvent pullRequestReviewEvent, PullRequestReviewAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, pullRequestReviewEvent, cancellationToken);
 
-    protected override Task ProcessPullRequestReviewCommentWebhookAsync(
-        WebhookHeaders headers, PullRequestReviewCommentEvent pullRequestReviewCommentEvent, PullRequestReviewCommentAction action)
-        => HandleWebhookAsync(headers, pullRequestReviewCommentEvent);
+    protected override ValueTask ProcessPullRequestReviewCommentWebhookAsync(WebhookHeaders headers, PullRequestReviewCommentEvent pullRequestReviewCommentEvent, PullRequestReviewCommentAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, pullRequestReviewCommentEvent, cancellationToken);
 
-    protected override Task ProcessCheckRunWebhookAsync(
-        WebhookHeaders headers, CheckRunEvent checkRunEvent, CheckRunAction action)
-        => HandleWebhookAsync(headers, checkRunEvent);
+    protected override ValueTask ProcessCheckRunWebhookAsync(WebhookHeaders headers, CheckRunEvent checkRunEvent, CheckRunAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, checkRunEvent, cancellationToken);
 
-    protected override Task ProcessCheckSuiteWebhookAsync(
-        WebhookHeaders headers, CheckSuiteEvent checkSuiteEvent, CheckSuiteAction action)
-        => HandleWebhookAsync(headers, checkSuiteEvent);
+    protected override ValueTask ProcessCheckSuiteWebhookAsync(WebhookHeaders headers, CheckSuiteEvent checkSuiteEvent, CheckSuiteAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, checkSuiteEvent, cancellationToken);
 
-    protected override Task ProcessInstallationWebhookAsync(
-        WebhookHeaders headers, InstallationEvent installationEvent, InstallationAction action)
-        => HandleWebhookAsync(headers, installationEvent);
+    protected override ValueTask ProcessInstallationWebhookAsync(WebhookHeaders headers, InstallationEvent installationEvent, InstallationAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, installationEvent, cancellationToken);
 
-    protected override Task ProcessRepositoryWebhookAsync(
-        WebhookHeaders headers, RepositoryEvent repositoryEvent, RepositoryAction action)
-        => HandleWebhookAsync(headers, repositoryEvent);
+    protected override ValueTask ProcessRepositoryWebhookAsync(WebhookHeaders headers, RepositoryEvent repositoryEvent, RepositoryAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, repositoryEvent, cancellationToken);
 
     // --- Shared handler ---
 
-    private async Task HandleWebhookAsync<TEvent>(WebhookHeaders headers, TEvent evt)
+    private async ValueTask HandleWebhookAsync<TEvent>(WebhookHeaders headers, TEvent evt, CancellationToken cancellationToken = default)
         where TEvent : WebhookEvent
     {
         var installationId = evt.Installation?.Id ?? 0;
@@ -131,7 +120,7 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
             RepositoryFullName = repoFullName,
             EventJson = _rawBody ?? string.Empty,
         };
-        await _messageBus.BroadcastAsync(typedMessage);
+        await _messageBus.BroadcastAsync(typedMessage, cancellationToken);
 
         // Broadcast catch-all message
         var catchAllMessage = new GitHubWebhookMessage
@@ -142,6 +131,6 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
             EventType = headers.Event ?? string.Empty,
             EventJson = _rawBody ?? string.Empty,
         };
-        await _messageBus.BroadcastAsync(catchAllMessage);
+        await _messageBus.BroadcastAsync(catchAllMessage, cancellationToken);
     }
 }

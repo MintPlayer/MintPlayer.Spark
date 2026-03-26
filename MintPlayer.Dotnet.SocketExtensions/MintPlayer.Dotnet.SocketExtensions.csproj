@@ -8,7 +8,7 @@
 
 	<PropertyGroup>
 		<IsPackable>true</IsPackable>
-		<Version>10.0.0-preview.25</Version>
+		<Version>10.0.0-preview.26</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Extension methods for WebSocket (ReadMessage, WriteMessage, ReadObject, WriteObject)</Description>
@@ -23,7 +23,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
 
 </Project>
