@@ -1,8 +1,8 @@
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 
 namespace MintPlayer.Spark;
 
 public abstract class SparkContext
 {
-    public IAsyncDocumentSession Session { get; internal set; } = null!;
+    public ISparkSession Session { get; internal set; } = null!;
 }

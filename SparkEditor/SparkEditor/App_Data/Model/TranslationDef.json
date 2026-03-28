@@ -1,0 +1,51 @@
+{
+  "persistentObject": {
+    "id": "d9e0f1a2-b3c4-5678-defa-789012345678",
+    "name": "TranslationDef",
+    "description": {
+      "en": "Translation",
+      "nl": "Vertaling"
+    },
+    "clrType": "SparkEditor.Entities.TranslationDef",
+    "displayAttribute": "Key",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d9e00001-0001-0001-0001-000000000001",
+        "name": "Key",
+        "label": { "en": "Key", "nl": "Sleutel" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [{ "type": "minLength", "value": 1 }]
+      },
+      {
+        "id": "d9e00001-0001-0001-0001-000000000002",
+        "name": "Values",
+        "label": { "en": "Values", "nl": "Waarden" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "d9e0f1a2-0001-0001-0001-000000000001",
+      "name": "GetTranslationDefs",
+      "description": { "en": "Translations", "nl": "Vertalingen" },
+      "source": "Database.Translations",
+      "sortColumns": [{ "property": "Key", "direction": "asc" }]
+    }
+  ]
+}

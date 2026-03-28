@@ -1,0 +1,125 @@
+{
+  "programUnitGroups": [
+    {
+      "id": "ed000001-0000-0000-0000-000000000001",
+      "name": { "en": "App", "nl": "App" },
+      "icon": "bi-box",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "ed000001-0001-0001-0001-000000000001",
+          "name": { "en": "Persistent Objects", "nl": "Persistent Objects" },
+          "icon": "bi-diagram-3",
+          "type": "query",
+          "queryId": "b1a2c3d4-0001-0001-0001-000000000001",
+          "alias": "persistent-objects",
+          "order": 1
+        },
+        {
+          "id": "ed000001-0001-0001-0001-000000000002",
+          "name": { "en": "Attributes", "nl": "Attributen" },
+          "icon": "bi-list-ul",
+          "type": "query",
+          "queryId": "c2b3d4e5-0001-0001-0001-000000000001",
+          "alias": "attributes",
+          "order": 2
+        },
+        {
+          "id": "ed000001-0001-0001-0001-000000000003",
+          "name": { "en": "Queries", "nl": "Queries" },
+          "icon": "bi-search",
+          "type": "query",
+          "queryId": "d3c4e5f6-0001-0001-0001-000000000001",
+          "alias": "queries",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ed000002-0000-0000-0000-000000000001",
+      "name": { "en": "Service", "nl": "Service" },
+      "icon": "bi-gear",
+      "order": 2,
+      "programUnits": [
+        {
+          "id": "ed000002-0001-0001-0001-000000000001",
+          "name": { "en": "Custom Actions", "nl": "Aangepaste acties" },
+          "icon": "bi-lightning",
+          "type": "query",
+          "queryId": "e4d5f6a7-0001-0001-0001-000000000001",
+          "alias": "custom-actions",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "id": "ed000003-0000-0000-0000-000000000001",
+      "name": { "en": "Client", "nl": "Client" },
+      "icon": "bi-window",
+      "order": 3,
+      "programUnits": [
+        {
+          "id": "ed000003-0001-0001-0001-000000000001",
+          "name": { "en": "Program Units", "nl": "Programma-eenheden" },
+          "icon": "bi-grid",
+          "type": "query",
+          "queryId": "f5e6a7b8-0001-0001-0001-000000000001",
+          "alias": "program-units",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "id": "ed000004-0000-0000-0000-000000000001",
+      "name": { "en": "Security", "nl": "Beveiliging" },
+      "icon": "bi-shield-lock",
+      "order": 4,
+      "programUnits": [
+        {
+          "id": "ed000004-0001-0001-0001-000000000001",
+          "name": { "en": "Security Groups", "nl": "Beveiligingsgroepen" },
+          "icon": "bi-people-fill",
+          "type": "query",
+          "queryId": "a6b7c8d9-0001-0001-0001-000000000001",
+          "alias": "security-groups",
+          "order": 1
+        },
+        {
+          "id": "ed000004-0001-0001-0001-000000000002",
+          "name": { "en": "Security Rights", "nl": "Beveiligingsrechten" },
+          "icon": "bi-key",
+          "type": "query",
+          "queryId": "b7c8d9e0-0001-0001-0001-000000000001",
+          "alias": "security-rights",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "ed000005-0000-0000-0000-000000000001",
+      "name": { "en": "Culture", "nl": "Cultuur" },
+      "icon": "bi-translate",
+      "order": 5,
+      "programUnits": [
+        {
+          "id": "ed000005-0001-0001-0001-000000000001",
+          "name": { "en": "Languages", "nl": "Talen" },
+          "icon": "bi-globe",
+          "type": "query",
+          "queryId": "c8d9e0f1-0001-0001-0001-000000000001",
+          "alias": "languages",
+          "order": 1
+        },
+        {
+          "id": "ed000005-0001-0001-0001-000000000002",
+          "name": { "en": "Translations", "nl": "Vertalingen" },
+          "icon": "bi-chat-square-text",
+          "type": "query",
+          "queryId": "d9e0f1a2-0001-0001-0001-000000000001",
+          "alias": "translations",
+          "order": 2
+        }
+      ]
+    }
+  ]
+}

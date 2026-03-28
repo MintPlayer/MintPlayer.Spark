@@ -2,6 +2,7 @@ using DemoApp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.RavenDB;
 using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    spark.UseRavenDb();
     spark.UseContext<DemoSparkContext>();
     spark.AddActions();
     spark.AddMessaging();

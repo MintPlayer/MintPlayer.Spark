@@ -1,0 +1,33 @@
+name: Publish Visual Studio Extension
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'extensions/visualstudio/**'
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore extensions/visualstudio/SparkEditor.Vsix/SparkEditor.Vsix.csproj
+
+      - name: Build VSIX
+        run: msbuild extensions/visualstudio/SparkEditor.Vsix/SparkEditor.Vsix.csproj /p:Configuration=Release /p:DeployExtension=false
+
+      - name: Publish to Visual Studio Marketplace
+        uses: cezarypiatek/VsixPublisherAction@1.1
+        with:
+          extension-file: extensions/visualstudio/SparkEditor.Vsix/bin/Release/SparkEditor.Vsix.vsix
+          publish-manifest-file: extensions/visualstudio/publishManifest.json
+          personal-access-code: ${{ secrets.PUBLISH_SPARK_EDITOR_VS }}

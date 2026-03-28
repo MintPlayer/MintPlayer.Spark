@@ -1,0 +1,60 @@
+{
+  "name": "spark-editor",
+  "displayName": "Spark Editor",
+  "description": "Visual configuration editor for MintPlayer.Spark applications. Edit entities, queries, program units, security, translations, and custom actions.",
+  "version": "0.1.0",
+  "publisher": "MintPlayer",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "spark",
+    "ravendb",
+    "low-code",
+    "configuration",
+    "editor"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/App_Data/programUnits.json"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spark.openEditor",
+        "title": "Spark: Open Editor",
+        "icon": "$(settings-gear)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "spark.openEditor",
+          "when": "explorerResourceIsFolder && resourceFilename == App_Data",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

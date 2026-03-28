@@ -5,7 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Linq;
 
 namespace Fleet.Actions;
 
@@ -60,9 +59,9 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     /// Custom query: returns cars reported as stolen.
     /// Source: "Custom.Stolen_Cars"
     /// </summary>
-    public IRavenQueryable<VCar> Stolen_Cars(CustomQueryArgs args)
+    public IQueryable<VCar> Stolen_Cars(CustomQueryArgs args)
     {
-        return args.Session.Query<VCar, Cars_Overview>()
+        return args.Session.Query<VCar>(nameof(Cars_Overview))
             .Where(c => c.Status == CarStatus.Stolen);
     }
 }

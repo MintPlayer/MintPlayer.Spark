@@ -5,6 +5,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.RavenDB;
 using MintPlayer.Spark.Replication;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    spark.UseRavenDb();
     spark.UseContext<FleetContext>();
     spark.AddActions();
     spark.AddCustomActions();

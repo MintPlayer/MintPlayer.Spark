@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/custom-actions.schema.json",
+  "title": "Spark Custom Actions",
+  "description": "Defines custom actions that can be executed on entity instances in a MintPlayer Spark application. Each key is the action name and the value defines its metadata and behavior. Place this file at App_Data/customActions.json.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/CustomActionDefinition"
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "CustomActionDefinition": {
+      "type": "object",
+      "description": "Defines the metadata and behavior for a custom action that can be triggered on entity instances.",
+      "required": ["displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display name shown in the UI button/menu item for this action."
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon name for the action button (e.g., 'Copy', 'Delete', 'Send')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this action does."
+        },
+        "showedOn": {
+          "type": "string",
+          "description": "Where the action button is displayed. 'query' = list view only, 'persistentObject' = detail view only, 'both' = both views.",
+          "enum": ["query", "persistentObject", "both"],
+          "default": "both"
+        },
+        "selectionRule": {
+          "type": "string",
+          "description": "Selection rule that determines when the action is available based on selected items. Examples: '=1' (exactly one selected), '>=1' (one or more selected), '=0' (no selection required)."
+        },
+        "refreshOnCompleted": {
+          "type": "boolean",
+          "description": "When true, the UI refreshes the current view after the action completes successfully.",
+          "default": false
+        },
+        "confirmationMessageKey": {
+          "type": "string",
+          "description": "Translation key for a confirmation dialog shown before executing the action. When set, the user must confirm before the action runs."
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Display offset/order for positioning the action button relative to other actions.",
+          "default": 0
+        }
+      }
+    }
+  }
+}

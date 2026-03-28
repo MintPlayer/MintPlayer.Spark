@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/translations.schema.json",
+  "title": "Spark Translations",
+  "description": "Defines the UI translation strings for a MintPlayer Spark application. Each key maps to a TranslatedString with translations per language code. Place this file at App_Data/translations.json.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/TranslatedString"
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

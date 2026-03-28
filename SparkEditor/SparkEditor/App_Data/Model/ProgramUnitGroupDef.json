@@ -1,0 +1,64 @@
+{
+  "persistentObject": {
+    "id": "e5f6a7b8-c9d0-1234-abcd-234567890123",
+    "name": "ProgramUnitGroupDef",
+    "description": {
+      "en": "Program Unit Group",
+      "nl": "Programma-eenheidsgroep"
+    },
+    "clrType": "SparkEditor.Entities.ProgramUnitGroupDef",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e5f60001-0001-0001-0001-000000000001",
+        "name": "Name",
+        "label": { "en": "Name", "nl": "Naam" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e5f60001-0001-0001-0001-000000000002",
+        "name": "Icon",
+        "label": { "en": "Icon", "nl": "Icoon" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e5f60001-0001-0001-0001-000000000003",
+        "name": "Order",
+        "label": { "en": "Order", "nl": "Volgorde" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "e5f6a7b8-0001-0001-0001-000000000001",
+      "name": "GetProgramUnitGroupDefs",
+      "description": { "en": "Program Unit Groups", "nl": "Programma-eenheidsgroepen" },
+      "source": "Database.ProgramUnitGroups",
+      "sortColumns": [{ "property": "Order", "direction": "asc" }]
+    }
+  ]
+}

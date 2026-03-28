@@ -1,7 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
@@ -18,7 +17,8 @@ namespace MintPlayer.Spark.Services;
 [Register(typeof(ISyncActionHandler), ServiceLifetime.Scoped)]
 internal partial class SyncActionHandler : ISyncActionHandler
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSessionFactory sessionFactory;
+    [Inject] private readonly ISparkStorageProvider storageProvider;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
@@ -35,7 +35,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var po = BuildPersistentObject(entityType, documentId, data, properties);
 
         // Run through the actions pipeline (which now receives PO and does entity mapping inside)
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, po);
 
         // Extract the generated/existing ID
@@ -53,7 +53,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         await DeleteEntityViaActionsAsync(session, entityType, documentId);
 
         logger.LogInformation("Sync action: deleted {Collection}/{DocumentId}", collection, documentId);
@@ -163,7 +163,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     /// <summary>
     /// Normalizes a dictionary value to a plain .NET type.
     /// Values coming from System.Text.Json deserialization (HTTP path) arrive as JsonElement;
-    /// values coming from Newtonsoft.Json deserialization (RavenDB path) arrive as .NET primitives.
+    /// values coming from other deserialization paths arrive as .NET primitives.
     /// </summary>
     private static object? NormalizeValue(object? value)
     {
@@ -183,7 +183,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             };
         }
 
-        // Already a .NET primitive (from Newtonsoft/RavenDB deserialization or direct assignment)
+        // Already a .NET primitive (from deserialization or direct assignment)
         return value;
     }
 
@@ -192,13 +192,13 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return _collectionTypeCache.GetOrAdd(collection, col =>
         {
             // Iterate all entity type definitions, resolve each CLR type,
-            // and check if the RavenDB collection name matches
+            // and check if the collection name matches
             foreach (var entityTypeDef in modelLoader.GetEntityTypes())
             {
                 var clrType = ResolveType(entityTypeDef.ClrType);
                 if (clrType == null) continue;
 
-                var collectionName = documentStore.Conventions.FindCollectionName(clrType);
+                var collectionName = storageProvider.GetCollectionName(clrType);
                 if (string.Equals(collectionName, col, StringComparison.OrdinalIgnoreCase))
                     return clrType;
             }
@@ -221,7 +221,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return null;
     }
 
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
+    private async Task<object> SaveEntityViaActionsAsync(ISparkSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
@@ -230,7 +230,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
-    private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private async Task DeleteEntityViaActionsAsync(ISparkSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onDeleteMethod = actions.GetType().GetMethod("OnDeleteAsync")!;
