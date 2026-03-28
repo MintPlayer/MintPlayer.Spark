@@ -1,6 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -38,9 +37,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // Load existing entity types and their inline queries
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles(modelPath);
 
-        // Find all IRavenQueryable<T> properties on the SparkContext
+        // Find all IQueryable<T> properties on the SparkContext
         var queryableProperties = contextType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => IsRavenQueryable(p.PropertyType))
+            .Where(p => IsQueryable(p.PropertyType))
             .ToList();
 
         // Build mapping from entity CLR type → query name for auto-resolving reference queries
@@ -465,11 +464,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return false;
     }
 
-    private bool IsRavenQueryable(Type type)
+    private bool IsQueryable(Type type)
     {
         if (!type.IsGenericType) return false;
         var genericDef = type.GetGenericTypeDefinition();
-        return genericDef == typeof(IRavenQueryable<>);
+        return genericDef == typeof(IQueryable<>);
     }
 
     private Type? GetQueryableEntityType(Type queryableType)

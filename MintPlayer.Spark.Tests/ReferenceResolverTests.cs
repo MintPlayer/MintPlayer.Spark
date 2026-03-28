@@ -5,7 +5,7 @@ namespace MintPlayer.Spark.Tests;
 
 public class ReferenceResolverTests
 {
-    private readonly ReferenceResolver _resolver = new();
+    private readonly ReferenceResolver _resolver = new(storageProvider: null!);
 
     [Fact]
     public void GetReferenceProperties_FindsReferenceAttributes()

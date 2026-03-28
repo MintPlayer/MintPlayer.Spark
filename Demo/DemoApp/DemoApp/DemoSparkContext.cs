@@ -1,13 +1,12 @@
 using DemoApp.Library.Entities;
 using MintPlayer.Spark;
-using Raven.Client.Documents.Linq;
 
 namespace DemoApp;
 
 public class DemoSparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
-    public IRavenQueryable<Company> Companies => Session.Query<Company>();
-    public IRavenQueryable<Car> Cars => Session.Query<Car>();
-    public IRavenQueryable<Stock> Stocks => Session.Query<Stock>();
+    public IQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Company> Companies => Session.Query<Company>();
+    public IQueryable<Car> Cars => Session.Query<Car>();
+    public IQueryable<Stock> Stocks => Session.Query<Stock>();
 }

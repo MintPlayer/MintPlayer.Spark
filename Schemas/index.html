@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MintPlayer Spark - JSON Schemas</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-card: #f8f9fa;
+      --text: #1a1a2e;
+      --text-secondary: #555;
+      --border: #dee2e6;
+      --accent: #0d6efd;
+      --accent-hover: #0b5ed7;
+      --code-bg: #f1f3f5;
+      --code-border: #d1d5db;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a2e;
+        --bg-card: #16213e;
+        --text: #e6e6e6;
+        --text-secondary: #a0a0a0;
+        --border: #2d3748;
+        --accent: #5b9cf6;
+        --accent-hover: #7db3ff;
+        --code-bg: #0f1629;
+        --code-border: #2d3748;
+      }
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0;
+    }
+
+    header {
+      text-align: center;
+      padding: 3rem 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      margin: 2.5rem 0 1rem;
+      font-weight: 600;
+    }
+
+    .schema-list {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .schema-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      transition: border-color 0.2s;
+    }
+
+    .schema-card:hover {
+      border-color: var(--accent);
+    }
+
+    .schema-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .schema-card h3 a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .schema-card h3 a:hover {
+      text-decoration: underline;
+      color: var(--accent-hover);
+    }
+
+    .schema-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .schema-card code {
+      font-size: 0.8rem;
+      background: var(--code-bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid var(--code-border);
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+
+    .usage-section {
+      margin-top: 3rem;
+    }
+
+    .usage-section p {
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text);
+      font-size: inherit;
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MintPlayer Spark - JSON Schemas</h1>
+    <p>JSON Schema definitions for MintPlayer Spark application configuration files. Add IntelliSense and validation to your App_Data JSON files.</p>
+  </header>
+
+  <main>
+    <h2>Available Schemas (v1)</h2>
+
+    <div class="schema-list">
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/entity-type.schema.json">Entity Type</a></h3>
+        <p>Defines entity types (persistent objects) with attributes, tabs, groups, validation rules, and associated queries. Used in <strong>App_Data/Model/*.json</strong> files.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/entity-type.schema.json</code>
+      </div>
+
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/program-units.schema.json">Program Units</a></h3>
+        <p>Defines the navigation menu structure with groups and program units linking to queries or persistent objects. Used in <strong>App_Data/programUnits.json</strong>.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/program-units.schema.json</code>
+      </div>
+
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/translations.schema.json">Translations</a></h3>
+        <p>Defines UI translation strings as key-value pairs where each value is a translated string with language codes. Used in <strong>App_Data/translations.json</strong>.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/translations.schema.json</code>
+      </div>
+
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/culture.schema.json">Culture Configuration</a></h3>
+        <p>Defines supported languages with their translated display names and the default language. Used in <strong>App_Data/culture.json</strong>.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/culture.schema.json</code>
+      </div>
+
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/security.schema.json">Security Configuration</a></h3>
+        <p>Defines security groups and permission rights for the authorization system. Used in <strong>App_Data/security.json</strong> with the MintPlayer.Spark.Authorization package.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/security.schema.json</code>
+      </div>
+
+      <div class="schema-card">
+        <h3><a href="/schemas/v1/custom-actions.schema.json">Custom Actions</a></h3>
+        <p>Defines custom actions that can be executed on entity instances, with display metadata, confirmation dialogs, and selection rules. Used in <strong>App_Data/customActions.json</strong>.</p>
+        <code>https://json.spark.mintplayer.com/schemas/v1/custom-actions.schema.json</code>
+      </div>
+    </div>
+
+    <div class="usage-section">
+      <h2>Usage</h2>
+      <p>Add a <code>$schema</code> property at the top of your JSON files to enable IntelliSense and validation in your editor (VS Code, Visual Studio, JetBrains IDEs):</p>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Entity Type (App_Data/Model/Car.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/entity-type.schema.json",
+  "persistentObject": {
+    "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
+    "name": "Car",
+    "clrType": "Fleet.Entities.Car",
+    "attributes": []
+  },
+  "queries": []
+}</code></pre>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Program Units (App_Data/programUnits.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/program-units.schema.json",
+  "programUnitGroups": []
+}</code></pre>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Translations (App_Data/translations.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/translations.schema.json",
+  "save": { "en": "Save", "fr": "Enregistrer", "nl": "Opslaan" },
+  "cancel": { "en": "Cancel", "fr": "Annuler", "nl": "Annuleren" }
+}</code></pre>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Culture (App_Data/culture.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/culture.schema.json",
+  "languages": {
+    "en": { "en": "English", "fr": "Anglais", "nl": "Engels" }
+  },
+  "defaultLanguage": "en"
+}</code></pre>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Security (App_Data/security.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/security.schema.json",
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Everyone" }
+  },
+  "rights": []
+}</code></pre>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Custom Actions (App_Data/customActions.json)</h3>
+      <pre><code>{
+  "$schema": "https://json.spark.mintplayer.com/schemas/v1/custom-actions.schema.json",
+  "CarCopy": {
+    "displayName": { "en": "Copy Car" },
+    "icon": "Copy",
+    "showedOn": "both",
+    "selectionRule": "=1",
+    "refreshOnCompleted": true
+  }
+}</code></pre>
+    </div>
+  </main>
+
+  <footer>
+    <p>
+      <a href="https://github.com/MintPlayer/MintPlayer.Spark">MintPlayer.Spark on GitHub</a>
+    </p>
+  </footer>
+</body>
+</html>

@@ -1,7 +1,7 @@
 using Newtonsoft.Json;
 using System.Drawing;
 
-namespace MintPlayer.Spark.Converters;
+namespace MintPlayer.Spark.RavenDB.Converters;
 
 /// <summary>
 /// Newtonsoft.Json converter for System.Drawing.Color that serializes as hex string "#rrggbb".

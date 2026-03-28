@@ -1,5 +1,5 @@
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 
 namespace MintPlayer.Spark.Actions;
 
@@ -13,35 +13,35 @@ public interface IPersistentObjectActions<T> where T : class
     /// <summary>
     /// Called when querying all entities of this type.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
+    /// <param name="session">The storage session</param>
     /// <returns>Collection of entities</returns>
-    Task<IEnumerable<T>> OnQueryAsync(IAsyncDocumentSession session);
+    Task<IEnumerable<T>> OnQueryAsync(ISparkSession session);
 
     /// <summary>
     /// Called when loading a single entity by ID.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
+    /// <param name="session">The storage session</param>
     /// <param name="id">The document ID</param>
     /// <returns>The entity or null if not found</returns>
-    Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id);
+    Task<T?> OnLoadAsync(ISparkSession session, string id);
 
     /// <summary>
     /// Called when saving (creating or updating) an entity.
     /// Receives the full PersistentObject with attribute metadata (including IsValueChanged).
     /// Entity mapping happens inside this method.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
+    /// <param name="session">The storage session</param>
     /// <param name="obj">The PersistentObject with attribute values and metadata</param>
     /// <returns>The saved entity</returns>
-    Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj);
+    Task<T> OnSaveAsync(ISparkSession session, PersistentObject obj);
 
     /// <summary>
     /// Called when deleting an entity.
     /// This method should call OnBeforeDeleteAsync.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
+    /// <param name="session">The storage session</param>
     /// <param name="id">The document ID to delete</param>
-    Task OnDeleteAsync(IAsyncDocumentSession session, string id);
+    Task OnDeleteAsync(ISparkSession session, string id);
 
     /// <summary>
     /// Lifecycle hook called before saving an entity.

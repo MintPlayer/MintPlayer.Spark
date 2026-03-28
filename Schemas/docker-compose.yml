@@ -1,0 +1,15 @@
+services:
+  spark-json-schemas:
+    image: ghcr.io/mintplayer/spark-json-schemas:master
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spark-json-schemas.rule=Host(`json.spark.mintplayer.com`)"
+      - "traefik.http.routers.spark-json-schemas.entrypoints=websecure"
+      - "traefik.http.routers.spark-json-schemas.tls.certresolver=myresolver"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

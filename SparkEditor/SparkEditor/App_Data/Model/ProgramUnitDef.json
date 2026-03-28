@@ -1,0 +1,129 @@
+{
+  "persistentObject": {
+    "id": "f5e6a7b8-c9d0-1234-efab-345678901234",
+    "name": "ProgramUnitDef",
+    "description": {
+      "en": "Program Unit",
+      "nl": "Programma-eenheid"
+    },
+    "clrType": "SparkEditor.Entities.ProgramUnitDef",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f5e60001-0001-0001-0001-000000000001",
+        "name": "Name",
+        "label": { "en": "Name", "nl": "Naam" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000002",
+        "name": "Icon",
+        "label": { "en": "Icon", "nl": "Icoon" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000003",
+        "name": "Type",
+        "label": { "en": "Type", "nl": "Type" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000004",
+        "name": "QueryId",
+        "label": { "en": "Query ID", "nl": "Query-ID" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000005",
+        "name": "PersistentObjectId",
+        "label": { "en": "PO ID", "nl": "PO-ID" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000006",
+        "name": "Order",
+        "label": { "en": "Order", "nl": "Volgorde" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000007",
+        "name": "Alias",
+        "label": { "en": "Alias", "nl": "Alias" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e60001-0001-0001-0001-000000000008",
+        "name": "GroupId",
+        "label": { "en": "Group", "nl": "Groep" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "f5e6a7b8-0001-0001-0001-000000000001",
+      "name": "GetProgramUnitDefs",
+      "description": { "en": "Program Units", "nl": "Programma-eenheden" },
+      "source": "Database.ProgramUnits",
+      "sortColumns": [{ "property": "Order", "direction": "asc" }]
+    }
+  ]
+}

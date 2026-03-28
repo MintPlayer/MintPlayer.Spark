@@ -1,11 +1,11 @@
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 
 namespace MintPlayer.Spark.Services;
 
 public interface ISparkContextResolver
 {
-    SparkContext? ResolveContext(IAsyncDocumentSession session);
+    SparkContext? ResolveContext(ISparkSession session);
 }
 
 [Register(typeof(ISparkContextResolver), ServiceLifetime.Scoped)]
@@ -13,7 +13,7 @@ internal partial class SparkContextResolver : ISparkContextResolver
 {
     [Inject] private readonly IServiceProvider serviceProvider;
 
-    public SparkContext? ResolveContext(IAsyncDocumentSession session)
+    public SparkContext? ResolveContext(ISparkSession session)
     {
         // Try to resolve any registered SparkContext implementation
         var sparkContext = serviceProvider.GetService<SparkContext>();

@@ -1,0 +1,403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/entity-type.schema.json",
+  "title": "Spark Entity Type File",
+  "description": "Defines an entity type (persistent object) and its associated queries for a MintPlayer Spark application. Place these files in App_Data/Model/.",
+  "type": "object",
+  "required": ["persistentObject"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    },
+    "persistentObject": {
+      "$ref": "#/$defs/EntityTypeDefinition"
+    },
+    "queries": {
+      "type": "array",
+      "description": "Queries associated with this entity type. Each query defines a data source and how results are fetched and displayed.",
+      "items": {
+        "$ref": "#/$defs/SparkQuery"
+      }
+    }
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "EntityTypeDefinition": {
+      "type": "object",
+      "description": "Defines the metadata, attributes, layout, and behavior of a persistent object (entity type) in the Spark framework.",
+      "required": ["id", "name", "clrType"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this entity type definition."
+        },
+        "name": {
+          "type": "string",
+          "description": "The programmatic name of the entity type (e.g., 'Car', 'Person'). Used internally for resolution and routing."
+        },
+        "description": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Human-readable translated description of this entity type."
+        },
+        "clrType": {
+          "type": "string",
+          "description": "The full CLR type name of the entity class (e.g., 'Fleet.Entities.Car'). Must match the C# class used in RavenDB."
+        },
+        "alias": {
+          "type": "string",
+          "description": "Optional URL-friendly alias for this entity type. Used as an alternative to the GUID in URLs (e.g., /po/car instead of /po/{guid}). If not set, auto-generated from Name by lowercasing."
+        },
+        "queryType": {
+          "type": "string",
+          "description": "The CLR type name of the projection type used for RavenDB index queries. Set when a projection class has [FromIndex] attribute linking to an index for this entity (e.g., 'Fleet.Indexes.VCar')."
+        },
+        "indexName": {
+          "type": "string",
+          "description": "The name of the RavenDB index to use for list queries when queryType is set. Derived from the IndexRegistry based on the index class name (e.g., 'Cars_Overview')."
+        },
+        "displayFormat": {
+          "type": "string",
+          "description": "Template string with {PropertyName} placeholders for building a formatted display value (e.g., '{Street}, {PostalCode} {City}')."
+        },
+        "displayAttribute": {
+          "type": "string",
+          "description": "Fallback: single attribute name to use as display value when displayFormat is not specified (e.g., 'LicensePlate')."
+        },
+        "tabs": {
+          "type": "array",
+          "description": "Tab definitions for organizing attribute groups on the detail/edit page.",
+          "items": {
+            "$ref": "#/$defs/AttributeTab"
+          },
+          "default": []
+        },
+        "groups": {
+          "type": "array",
+          "description": "Attribute group definitions for visually grouping related attributes within a tab.",
+          "items": {
+            "$ref": "#/$defs/AttributeGroup"
+          },
+          "default": []
+        },
+        "attributes": {
+          "type": "array",
+          "description": "The attribute (field/property) definitions for this entity type.",
+          "items": {
+            "$ref": "#/$defs/EntityAttributeDefinition"
+          },
+          "default": []
+        },
+        "queries": {
+          "type": "array",
+          "description": "Query aliases or IDs to display as related query tables on the detail page. Each entry references a SparkQuery that accepts parent context.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "AttributeTab": {
+      "type": "object",
+      "description": "Defines a tab on the entity detail/edit page for organizing attribute groups.",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this tab."
+        },
+        "name": {
+          "type": "string",
+          "description": "Programmatic name of the tab."
+        },
+        "label": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display label for the tab."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Sort order of the tab. Lower numbers appear first.",
+          "default": 0
+        },
+        "columnCount": {
+          "type": "integer",
+          "description": "Number of columns for the grid layout within this tab.",
+          "minimum": 1
+        }
+      }
+    },
+    "AttributeGroup": {
+      "type": "object",
+      "description": "Defines a visual group for related attributes within a tab.",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this group."
+        },
+        "name": {
+          "type": "string",
+          "description": "Programmatic name of the group."
+        },
+        "label": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display label for the group."
+        },
+        "tab": {
+          "type": "string",
+          "format": "uuid",
+          "description": "References an AttributeTab.id to assign this group to a tab. When null, the group is placed on the first/default tab."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Sort order of the group within its tab. Lower numbers appear first.",
+          "default": 0
+        }
+      }
+    },
+    "EntityAttributeDefinition": {
+      "type": "object",
+      "description": "Defines a single attribute (field/property) on an entity type, including its data type, visibility, validation, and rendering options.",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this attribute."
+        },
+        "name": {
+          "type": "string",
+          "description": "The property name on the CLR entity class (e.g., 'LicensePlate', 'FirstName')."
+        },
+        "label": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display label shown in the UI for this attribute."
+        },
+        "dataType": {
+          "type": "string",
+          "description": "The data type of the attribute. Built-in types: 'string', 'number', 'date', 'boolean', 'color', 'Reference', 'AsDetail'. Custom types may also be used.",
+          "default": "string"
+        },
+        "isRequired": {
+          "type": "boolean",
+          "description": "When true, the attribute must have a value. The framework generates a 'required' validation rule automatically.",
+          "default": false
+        },
+        "isVisible": {
+          "type": "boolean",
+          "description": "When false, the attribute is hidden from all UI views.",
+          "default": true
+        },
+        "isReadOnly": {
+          "type": "boolean",
+          "description": "When true, the attribute is displayed but cannot be edited.",
+          "default": false
+        },
+        "order": {
+          "type": "integer",
+          "description": "Sort order of the attribute within its group or tab. Lower numbers appear first.",
+          "default": 0
+        },
+        "query": {
+          "type": "string",
+          "description": "For Reference attributes, the query name or alias used to fetch the list of selectable items (e.g., 'GetCompanies')."
+        },
+        "referenceType": {
+          "type": "string",
+          "description": "For Reference attributes, specifies the target entity type's CLR type name (e.g., 'HR.Entities.Company')."
+        },
+        "asDetailType": {
+          "type": "string",
+          "description": "For AsDetail attributes, specifies the nested entity type's CLR type name (e.g., 'HR.Entities.Address')."
+        },
+        "isArray": {
+          "type": "boolean",
+          "description": "When true, the attribute represents an array/collection of AsDetail objects (e.g., CarreerJob[]). When false, a single AsDetail object.",
+          "default": false
+        },
+        "editMode": {
+          "type": "string",
+          "description": "For array AsDetail attributes, controls how items are edited. 'modal' (default) opens a dialog; 'inline' edits directly in the table row.",
+          "enum": ["modal", "inline"]
+        },
+        "lookupReferenceType": {
+          "type": "string",
+          "description": "For LookupReference attributes, specifies the lookup reference type name (e.g., 'CarStatus', 'CarBrand')."
+        },
+        "inCollectionType": {
+          "type": "boolean",
+          "description": "When false, this attribute exists only in the projection type (computed by index). Not present in the collection entity. Used for list views only."
+        },
+        "inQueryType": {
+          "type": "boolean",
+          "description": "When false, this attribute exists only in the collection type (not projected by the index). Used for detail/edit views only."
+        },
+        "showedOn": {
+          "type": "string",
+          "description": "Controls on which pages the attribute is displayed. 'Query' = list views, 'PersistentObject' = detail/edit views, 'Query, PersistentObject' = both.",
+          "enum": [
+            "Query",
+            "PersistentObject",
+            "Query, PersistentObject"
+          ],
+          "default": "Query, PersistentObject"
+        },
+        "rules": {
+          "type": "array",
+          "description": "Validation rules applied to this attribute.",
+          "items": {
+            "$ref": "#/$defs/ValidationRule"
+          },
+          "default": []
+        },
+        "group": {
+          "type": "string",
+          "format": "uuid",
+          "description": "References an AttributeGroup.id to assign this attribute to a group. When null, the attribute is placed in a default (ungrouped) section."
+        },
+        "columnSpan": {
+          "type": "integer",
+          "description": "Number of grid columns this attribute spans within a tab's column layout. Defaults to 1 when not specified.",
+          "minimum": 1
+        },
+        "renderer": {
+          "type": "string",
+          "description": "Optional renderer name that tells the frontend which custom component to use for read-only display (detail page and query list). Examples: 'video-player', 'color-swatch', 'markdown'."
+        },
+        "rendererOptions": {
+          "type": "object",
+          "description": "Optional configuration for the renderer, passed as-is to the frontend component. Example: { \"width\": 480, \"height\": 270, \"autoplay\": false }.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "ValidationRule": {
+      "type": "object",
+      "description": "A validation rule applied to an entity attribute. The 'type' field determines which other properties are relevant.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The validation rule type. Built-in types: 'required', 'minLength', 'maxLength', 'range', 'regex', 'email', 'url'.",
+          "enum": ["required", "minLength", "maxLength", "range", "regex", "email", "url"]
+        },
+        "value": {
+          "description": "The rule parameter. For 'minLength'/'maxLength': a number. For 'regex': a regular expression string.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" }
+          ]
+        },
+        "min": {
+          "type": "integer",
+          "description": "Minimum value for 'range' rules."
+        },
+        "max": {
+          "type": "integer",
+          "description": "Maximum value for 'range' rules."
+        },
+        "message": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Custom translated validation error message. When not set, a default message is generated using translation keys."
+        }
+      }
+    },
+    "SparkQuery": {
+      "type": "object",
+      "description": "Defines a data query that fetches a list of entities, optionally with sorting, pagination, and streaming.",
+      "required": ["id", "name", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this query."
+        },
+        "name": {
+          "type": "string",
+          "description": "Programmatic name of the query (e.g., 'GetCars', 'Company_People')."
+        },
+        "description": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated human-readable description of the query, shown in the UI."
+        },
+        "source": {
+          "type": "string",
+          "description": "Query data source. Two formats supported: 'Database.PropertyName' resolves to an IRavenQueryable property on SparkContext; 'Custom.MethodName' resolves to a method on the entity's Actions class.",
+          "pattern": "^(Database|Custom)\\.[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "alias": {
+          "type": "string",
+          "description": "Optional URL-friendly alias for this query. Used as an alternative to the GUID in URLs (e.g., /query/cars instead of /query/{guid}). If not set, auto-generated from Name by stripping 'Get' prefix and lowercasing."
+        },
+        "sortColumns": {
+          "type": "array",
+          "description": "Multi-column sort specification. Each entry specifies a property name and direction. Applied in order: first entry = primary sort, subsequent = tiebreakers.",
+          "items": {
+            "$ref": "#/$defs/SortColumn"
+          },
+          "default": []
+        },
+        "renderMode": {
+          "type": "string",
+          "description": "Controls how query results are rendered in the UI.",
+          "enum": ["Pagination", "VirtualScrolling"],
+          "default": "Pagination"
+        },
+        "indexName": {
+          "type": "string",
+          "description": "Optional RavenDB index name. When specified, the query will use this index and return the projection type registered in the IndexRegistry."
+        },
+        "useProjection": {
+          "type": "boolean",
+          "description": "When true, indicates this query uses a projection type (from IndexRegistry) rather than the full entity type.",
+          "default": false
+        },
+        "entityType": {
+          "type": "string",
+          "description": "The entity/view-model type name this query returns (e.g., 'Person', 'CompanyProductsOverview'). When set, the framework uses the corresponding EntityTypeDefinition to map results. When not set, the type is inferred from the source."
+        },
+        "isStreamingQuery": {
+          "type": "boolean",
+          "description": "When true, this query supports WebSocket streaming. The frontend opens a WebSocket to /spark/queries/{id}/stream and receives snapshot + patch messages.",
+          "default": false
+        }
+      }
+    },
+    "SortColumn": {
+      "type": "object",
+      "description": "Specifies a sort column with property name and direction.",
+      "required": ["property"],
+      "additionalProperties": false,
+      "properties": {
+        "property": {
+          "type": "string",
+          "description": "The property name to sort by."
+        },
+        "direction": {
+          "type": "string",
+          "description": "Sort direction: 'asc' for ascending, 'desc' for descending.",
+          "enum": ["asc", "desc"],
+          "default": "asc"
+        }
+      }
+    }
+  }
+}

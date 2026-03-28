@@ -1,17 +1,24 @@
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Registry that tracks the relationship between RavenDB indexes, collection types, and projection types.
+/// Registry that tracks the relationship between indexes, collection types, and projection types.
+/// Storage-agnostic: providers register indexes during initialization.
 /// </summary>
 public interface IIndexRegistry
 {
     /// <summary>
-    /// Registers an index type, extracting its collection type from the generic parameter.
+    /// Registers an index type, attempting to extract its collection type from the generic parameter.
+    /// Falls back to provider-specific inspection if needed.
     /// </summary>
     void RegisterIndex(Type indexType);
+
+    /// <summary>
+    /// Registers an index with pre-resolved metadata.
+    /// Used by storage providers to register indexes without requiring provider-specific type inspection in core.
+    /// </summary>
+    void RegisterIndex(string indexName, Type collectionType, Type indexType);
 
     /// <summary>
     /// Registers a projection type that is produced by an index.
@@ -59,15 +66,20 @@ internal partial class IndexRegistry : IIndexRegistry
 
     public void RegisterIndex(Type indexType)
     {
-        var collectionType = GetCollectionTypeFromIndex(indexType);
+        // Try to extract the collection type from the first generic argument of the base class
+        var collectionType = GetGenericArgumentFromBaseClass(indexType);
         if (collectionType == null)
         {
             Console.WriteLine($"Warning: Could not determine collection type for index {indexType.Name}");
             return;
         }
 
-        var indexName = GetIndexName(indexType);
+        var indexName = indexType.Name;
+        RegisterIndex(indexName, collectionType, indexType);
+    }
 
+    public void RegisterIndex(string indexName, Type collectionType, Type indexType)
+    {
         lock (_lock)
         {
             if (_byIndexName.TryGetValue(indexName, out var existing))
@@ -92,7 +104,7 @@ internal partial class IndexRegistry : IIndexRegistry
 
     public void RegisterProjection(Type projectionType, Type indexType)
     {
-        var indexName = GetIndexName(indexType);
+        var indexName = indexType.Name;
 
         lock (_lock)
         {
@@ -140,28 +152,24 @@ internal partial class IndexRegistry : IIndexRegistry
         }
     }
 
-    private static Type? GetCollectionTypeFromIndex(Type indexType)
+    /// <summary>
+    /// Generic fallback: walks the type hierarchy looking for the first generic base class
+    /// and returns its first generic argument as the collection type.
+    /// Storage providers should prefer RegisterIndex(string, Type, Type) for precise control.
+    /// </summary>
+    private static Type? GetGenericArgumentFromBaseClass(Type indexType)
     {
-        var current = indexType;
+        var current = indexType.BaseType;
         while (current != null && current != typeof(object))
         {
             if (current.IsGenericType)
             {
-                var genericDef = current.GetGenericTypeDefinition();
-                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
-                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
-                {
-                    return current.GetGenericArguments()[0];
-                }
+                var args = current.GetGenericArguments();
+                if (args.Length > 0)
+                    return args[0];
             }
             current = current.BaseType;
         }
         return null;
-    }
-
-    private static string GetIndexName(Type indexType)
-    {
-        // RavenDB uses the class name as the index name
-        return indexType.Name;
     }
 }
