@@ -3,13 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
     <DockPanel>
-        <TextBlock Name="StatusText"
-                   DockPanel.Dock="Top"
-                   Padding="8"
-                   Text="Starting Spark Editor..."
-                   Visibility="Visible" />
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+            <Button Name="StartButton" Content="Start Spark Editor" Click="OnStartClick" Padding="8,4" />
+            <TextBlock Name="StatusText" VerticalAlignment="Center" Margin="12,0,0,0" Text="Click Start to launch the editor." />
+        </StackPanel>
         <wv2:WebView2 Name="WebView"
                       HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch" />
+                      VerticalAlignment="Stretch"
+                      Visibility="Collapsed" />
     </DockPanel>
 </UserControl>
