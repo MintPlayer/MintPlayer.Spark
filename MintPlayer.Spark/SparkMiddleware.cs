@@ -189,13 +189,6 @@ public partial class SparkMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Pre-processing logic
-        Console.WriteLine("Before the next middleware");
-
-        // Call the next middleware in the pipeline
         await next(context);
-
-        // Post-processing logic
-        Console.WriteLine("After the next middleware");
     }
 }

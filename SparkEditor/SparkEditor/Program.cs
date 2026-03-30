@@ -48,6 +48,7 @@ builder.Services.AddSpark(spark =>
     var tempPath = Path.Combine(Path.GetTempPath(), "SparkEditor", "data");
     spark.UseFileSystem(tempPath);
     spark.UseContext<SparkEditorContext>();
+    spark.AddActions();
 });
 
 builder.Services.AddSpaStaticFilesImproved(configuration =>

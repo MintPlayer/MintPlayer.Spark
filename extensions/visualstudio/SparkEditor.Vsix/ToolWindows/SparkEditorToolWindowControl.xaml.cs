@@ -1,6 +1,7 @@
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.IO;
@@ -8,6 +9,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,6 +20,7 @@ namespace SparkEditor.Vsix
     {
         private System.Diagnostics.Process _serverProcess;
         private int _port;
+        private IntPtr _jobHandle;
 
         public SparkEditorToolWindowControl()
         {
@@ -60,21 +63,28 @@ namespace SparkEditor.Vsix
                 var args = string.Join(" ", appDataPaths.Select(p => string.Format("--target-app-data \"{0}\"", p)));
                 args += string.Format(" --port {0}", _port);
 
-                // Start server process
+                // Derive the source project directory from the DLL path
+                // e.g. .../SparkEditor/SparkEditor/bin/Debug/net10.0/SparkEditor.dll -> .../SparkEditor/SparkEditor/
+                var sourceDir = Path.GetDirectoryName(dllPath);
+                for (int d = 0; d < 3; d++) // go up past bin/Debug/net10.0
+                    sourceDir = Path.GetDirectoryName(sourceDir);
+
+                // Start server process in Development mode (uses Angular CLI dev server)
                 _serverProcess = new System.Diagnostics.Process
                 {
                     StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = "dotnet",
                         Arguments = string.Format("\"{0}\" {1}", dllPath, args),
+                        WorkingDirectory = sourceDir,
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
                     }
                 };
+                _serverProcess.StartInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
 
                 _serverProcess.Start();
+                AssignProcessToJobObject(_serverProcess);
 
                 // Wait for server to be ready
                 StatusText.Text = "Waiting for server to be ready...";
@@ -96,8 +106,11 @@ namespace SparkEditor.Vsix
                 var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
                 await WebView.EnsureCoreWebView2Async(environment);
 
+                var url = string.Format("http://localhost:{0}", _port);
+                WriteToOutputWindow("Spark Editor URL: " + url);
+
                 WebView.Visibility = Visibility.Visible;
-                WebView.CoreWebView2.Navigate(string.Format("http://localhost:{0}", _port));
+                WebView.CoreWebView2.Navigate(url);
             }
             catch (Exception ex)
             {
@@ -111,7 +124,7 @@ namespace SparkEditor.Vsix
             StopServer();
         }
 
-        private void StopServer()
+        public void StopServer()
         {
             if (_serverProcess != null && !_serverProcess.HasExited)
             {
@@ -119,6 +132,92 @@ namespace SparkEditor.Vsix
                 _serverProcess.Dispose();
                 _serverProcess = null;
             }
+
+            if (_jobHandle != IntPtr.Zero)
+            {
+                CloseHandle(_jobHandle);
+                _jobHandle = IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// Assigns the process to a Windows Job Object configured with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+        /// This ensures the child process is killed by the OS when Visual Studio exits, even on crash.
+        /// </summary>
+        private void AssignProcessToJobObject(System.Diagnostics.Process process)
+        {
+            _jobHandle = CreateJobObject(IntPtr.Zero, null);
+            if (_jobHandle == IntPtr.Zero) return;
+
+            var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+            {
+                BasicLimitInformation = new JOBOBJECT_BASIC_LIMIT_INFORMATION
+                {
+                    LimitFlags = 0x2000 // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                }
+            };
+
+            int length = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+            var infoPtr = Marshal.AllocHGlobal(length);
+            try
+            {
+                Marshal.StructureToPtr(info, infoPtr, false);
+                SetInformationJobObject(_jobHandle, 9 /* JobObjectExtendedLimitInformation */, infoPtr, (uint)length);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(infoPtr);
+            }
+
+            AssignProcessToJobObject(_jobHandle, process.Handle);
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool SetInformationJobObject(IntPtr hJob, int jobObjectInfoClass, IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
         }
 
         private async Task<bool> WaitForServerReadyAsync()
@@ -214,6 +313,15 @@ namespace SparkEditor.Vsix
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
             return port;
+        }
+
+        private static void WriteToOutputWindow(string message)
+        {
+            var pane = SparkEditorPackage.OutputPane;
+            if (pane != null)
+            {
+                pane.OutputStringThreadSafe(message + Environment.NewLine);
+            }
         }
     }
 }

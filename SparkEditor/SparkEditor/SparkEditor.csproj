@@ -37,4 +37,9 @@
 		<ProjectReference Include="..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
+	<!-- Copy SPA dist files to output directory so static file serving works outside Development mode -->
+	<ItemGroup>
+		<None Include="$(SpaRoot)dist\**" CopyToOutputDirectory="PreserveNewest" LinkBase="ClientApp\dist" />
+	</ItemGroup>
+
 </Project>
