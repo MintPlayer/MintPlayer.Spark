@@ -10,6 +10,8 @@ public partial class AttributeDefinitionActions : DefaultPersistentObjectActions
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<AttributeDefinition> GetAll() => fileService.LoadAllAttributes();
+
     public override Task<IEnumerable<AttributeDefinition>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<AttributeDefinition>>(fileService.LoadAllAttributes());
 

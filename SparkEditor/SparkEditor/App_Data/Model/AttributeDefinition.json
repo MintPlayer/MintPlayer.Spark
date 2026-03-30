@@ -174,7 +174,7 @@
       "id": "c2b3d4e5-0001-0001-0001-000000000001",
       "name": "GetAttributeDefinitions",
       "description": { "en": "Attributes", "nl": "Attributen" },
-      "source": "Database.Attributes",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "PersistentObjectName", "direction": "asc" }, { "property": "Order", "direction": "asc" }]
     }
   ]

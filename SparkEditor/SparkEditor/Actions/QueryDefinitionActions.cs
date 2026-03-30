@@ -10,6 +10,8 @@ public partial class QueryDefinitionActions : DefaultPersistentObjectActions<Que
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<QueryDefinition> GetAll() => fileService.LoadAllQueries();
+
     public override Task<IEnumerable<QueryDefinition>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<QueryDefinition>>(fileService.LoadAllQueries());
 

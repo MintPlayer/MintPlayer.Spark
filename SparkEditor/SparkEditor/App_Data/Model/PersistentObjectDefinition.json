@@ -138,7 +138,7 @@
       "id": "b1a2c3d4-0001-0001-0001-000000000001",
       "name": "GetPersistentObjectDefinitions",
       "description": { "en": "Persistent Objects", "nl": "Persistent Objects" },
-      "source": "Database.PersistentObjects",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Name", "direction": "asc" }]
     }
   ]

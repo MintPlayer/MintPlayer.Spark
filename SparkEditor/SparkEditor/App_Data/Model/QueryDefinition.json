@@ -135,7 +135,7 @@
       "id": "d3c4e5f6-0001-0001-0001-000000000001",
       "name": "GetQueryDefinitions",
       "description": { "en": "Queries", "nl": "Queries" },
-      "source": "Database.Queries",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "PersistentObjectName", "direction": "asc" }, { "property": "Name", "direction": "asc" }]
     }
   ]

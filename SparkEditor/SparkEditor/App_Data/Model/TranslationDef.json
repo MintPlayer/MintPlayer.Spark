@@ -44,7 +44,7 @@
       "id": "d9e0f1a2-0001-0001-0001-000000000001",
       "name": "GetTranslationDefs",
       "description": { "en": "Translations", "nl": "Vertalingen" },
-      "source": "Database.Translations",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Key", "direction": "asc" }]
     }
   ]

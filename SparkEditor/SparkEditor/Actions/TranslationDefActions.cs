@@ -10,6 +10,8 @@ public partial class TranslationDefActions : DefaultPersistentObjectActions<Tran
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<TranslationDef> GetAll() => fileService.LoadAllTranslations();
+
     public override Task<IEnumerable<TranslationDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<TranslationDef>>(fileService.LoadAllTranslations());
 

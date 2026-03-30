@@ -135,7 +135,7 @@
       "id": "e4d5f6a7-0001-0001-0001-000000000001",
       "name": "GetCustomActionDefs",
       "description": { "en": "Custom Actions", "nl": "Aangepaste acties" },
-      "source": "Database.CustomActions",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Name", "direction": "asc" }]
     }
   ]

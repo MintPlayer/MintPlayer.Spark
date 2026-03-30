@@ -10,6 +10,8 @@ public partial class CustomActionDefActions : DefaultPersistentObjectActions<Cus
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<CustomActionDef> GetAll() => fileService.LoadAllCustomActions();
+
     public override Task<IEnumerable<CustomActionDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<CustomActionDef>>(fileService.LoadAllCustomActions());
 

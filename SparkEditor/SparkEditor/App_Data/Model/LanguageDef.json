@@ -44,7 +44,7 @@
       "id": "c8d9e0f1-0001-0001-0001-000000000001",
       "name": "GetLanguageDefs",
       "description": { "en": "Languages", "nl": "Talen" },
-      "source": "Database.Languages",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Culture", "direction": "asc" }]
     }
   ]

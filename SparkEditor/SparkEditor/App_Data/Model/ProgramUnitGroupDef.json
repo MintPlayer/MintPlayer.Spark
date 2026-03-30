@@ -57,7 +57,7 @@
       "id": "e5f6a7b8-0001-0001-0001-000000000001",
       "name": "GetProgramUnitGroupDefs",
       "description": { "en": "Program Unit Groups", "nl": "Programma-eenheidsgroepen" },
-      "source": "Database.ProgramUnitGroups",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Order", "direction": "asc" }]
     }
   ]

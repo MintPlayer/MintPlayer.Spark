@@ -10,6 +10,8 @@ public partial class SecurityRightDefActions : DefaultPersistentObjectActions<Se
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<SecurityRightDef> GetAll() => fileService.LoadAllSecurityRights();
+
     public override Task<IEnumerable<SecurityRightDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<SecurityRightDef>>(fileService.LoadAllSecurityRights());
 

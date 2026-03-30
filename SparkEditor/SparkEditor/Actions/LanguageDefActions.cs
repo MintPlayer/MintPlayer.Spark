@@ -10,6 +10,8 @@ public partial class LanguageDefActions : DefaultPersistentObjectActions<Languag
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<LanguageDef> GetAll() => fileService.LoadAllLanguages();
+
     public override Task<IEnumerable<LanguageDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<LanguageDef>>(fileService.LoadAllLanguages());
 

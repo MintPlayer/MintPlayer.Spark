@@ -10,6 +10,8 @@ public partial class PersistentObjectDefinitionActions : DefaultPersistentObject
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<PersistentObjectDefinition> GetAll() => fileService.LoadAllPersistentObjects();
+
     public override Task<IEnumerable<PersistentObjectDefinition>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<PersistentObjectDefinition>>(fileService.LoadAllPersistentObjects());
 

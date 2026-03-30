@@ -44,7 +44,7 @@
       "id": "a6b7c8d9-0001-0001-0001-000000000001",
       "name": "GetSecurityGroupDefs",
       "description": { "en": "Security Groups", "nl": "Beveiligingsgroepen" },
-      "source": "Database.SecurityGroups",
+      "source": "Custom.GetAll",
       "sortColumns": [{ "property": "Name", "direction": "asc" }]
     }
   ]

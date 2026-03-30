@@ -10,6 +10,8 @@ public partial class ProgramUnitDefActions : DefaultPersistentObjectActions<Prog
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<ProgramUnitDef> GetAll() => fileService.LoadAllProgramUnits();
+
     public override Task<IEnumerable<ProgramUnitDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<ProgramUnitDef>>(fileService.LoadAllProgramUnits());
 

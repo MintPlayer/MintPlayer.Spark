@@ -10,6 +10,8 @@ public partial class ProgramUnitGroupDefActions : DefaultPersistentObjectActions
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<ProgramUnitGroupDef> GetAll() => fileService.LoadAllProgramUnitGroups();
+
     public override Task<IEnumerable<ProgramUnitGroupDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<ProgramUnitGroupDef>>(fileService.LoadAllProgramUnitGroups());
 

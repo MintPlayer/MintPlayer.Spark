@@ -10,6 +10,8 @@ public partial class SecurityGroupDefActions : DefaultPersistentObjectActions<Se
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
+    public IEnumerable<SecurityGroupDef> GetAll() => fileService.LoadAllSecurityGroups();
+
     public override Task<IEnumerable<SecurityGroupDef>> OnQueryAsync(ISparkSession session)
         => Task.FromResult<IEnumerable<SecurityGroupDef>>(fileService.LoadAllSecurityGroups());
 
