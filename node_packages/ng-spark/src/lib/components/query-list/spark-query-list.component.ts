@@ -90,7 +90,17 @@ export class SparkQueryListComponent {
     let resolvedEntityTypes: EntityType[] = [];
 
     if (queryId) {
-      resolvedQuery = await this.sparkService.getQuery(queryId);
+      // First check if queryId matches a program unit alias, and use its queryId
+      let effectiveQueryId = queryId;
+      const config = await this.sparkService.getProgramUnits();
+      for (const group of config.programUnitGroups) {
+        const unit = group.programUnits.find(u => u.alias === queryId && u.type === 'query' && u.queryId);
+        if (unit) {
+          effectiveQueryId = unit.queryId!;
+          break;
+        }
+      }
+      resolvedQuery = await this.sparkService.getQuery(effectiveQueryId);
       if (resolvedQuery) {
         const result = await this.resolveEntityTypeForQuery(resolvedQuery);
         resolvedEntityType = result.entityType;
