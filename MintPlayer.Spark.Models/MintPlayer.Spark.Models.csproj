@@ -1,27 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<OutputType>Library</OutputType>
 
 		<!-- NuGet Package Metadata -->
-		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
-		<Version>10.0.0-preview.27</Version>
+		<PackageId>MintPlayer.Spark.Models</PackageId>
+		<Version>10.0.0-preview.26</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
-		<PackageTags>low-code;framework;ravendb;abstractions</PackageTags>
+		<Description>JSON transport models for MintPlayer.Spark low-code framework.</Description>
+		<PackageTags>low-code;framework;models;json</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
-
-
-	<ItemGroup>
-		<ProjectReference Include="..\MintPlayer.Spark.Models\MintPlayer.Spark.Models.csproj" />
-	</ItemGroup>
 
 </Project>

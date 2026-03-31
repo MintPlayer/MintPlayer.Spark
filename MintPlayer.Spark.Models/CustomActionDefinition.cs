@@ -7,6 +7,11 @@ namespace MintPlayer.Spark.Models;
 /// </summary>
 public class CustomActionDefinition
 {
+    /// <summary>
+    /// The action identifier (populated from the dictionary key in CustomActionsConfiguration).
+    /// </summary>
+    public string? Name { get; set; }
+
     public required TranslatedString DisplayName { get; set; }
     public string? Icon { get; set; }
     public string? Description { get; set; }

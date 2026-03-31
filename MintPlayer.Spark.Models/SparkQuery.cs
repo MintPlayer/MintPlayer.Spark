@@ -62,4 +62,11 @@ public sealed class SparkQuery
     /// and receives snapshot + patch messages instead of a single HTTP response.
     /// </summary>
     public bool IsStreamingQuery { get; set; }
+
+    /// <summary>
+    /// Optional back-reference to the parent entity type's name.
+    /// Set by loaders that flatten the hierarchy (e.g., SparkEditor).
+    /// Ignored during normal framework operation.
+    /// </summary>
+    public string? PersistentObjectName { get; set; }
 }

@@ -115,6 +115,12 @@ public sealed class EntityAttributeDefinition
     /// Example: { "width": 480, "height": 270, "autoplay": false }
     /// </summary>
     public Dictionary<string, object>? RendererOptions { get; set; }
+    /// <summary>
+    /// Optional back-reference to the parent entity type's name.
+    /// Set by loaders that flatten the hierarchy (e.g., SparkEditor).
+    /// Ignored during normal framework operation.
+    /// </summary>
+    public string? PersistentObjectName { get; set; }
 }
 
 public sealed class AttributeTab
