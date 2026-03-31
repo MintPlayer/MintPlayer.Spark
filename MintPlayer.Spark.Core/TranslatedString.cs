@@ -30,6 +30,11 @@ public class TranslatedString
         return Translations.Values.FirstOrDefault() ?? string.Empty;
     }
 
+    public override string ToString()
+    {
+        return GetDefaultValue();
+    }
+
     public static TranslatedString Create(string en, string? fr = null, string? nl = null)
     {
         var ts = new TranslatedString();
