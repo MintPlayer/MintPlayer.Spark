@@ -6,7 +6,7 @@
       "en": "Program Unit Group",
       "nl": "Programma-eenheidsgroep"
     },
-    "clrType": "SparkEditor.Entities.ProgramUnitGroupDef",
+    "clrType": "MintPlayer.Spark.Abstractions.ProgramUnitGroup",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

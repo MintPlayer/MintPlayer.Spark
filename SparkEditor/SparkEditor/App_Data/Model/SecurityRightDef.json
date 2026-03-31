@@ -6,7 +6,7 @@
       "en": "Security Right",
       "nl": "Beveiligingsrecht"
     },
-    "clrType": "SparkEditor.Entities.SecurityRightDef",
+    "clrType": "MintPlayer.Spark.Authorization.Models.Right",
     "displayAttribute": "Resource",
     "tabs": [],
     "groups": [],

@@ -1,11 +1,11 @@
 namespace MintPlayer.Spark.Abstractions;
 
-public sealed class EntityTypeDefinition
+public class EntityTypeDefinition
 {
-    public required Guid Id { get; set; }
-    public required string Name { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
     public TranslatedString? Description { get; set; }
-    public required string ClrType { get; set; }
+    public string? ClrType { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this entity type.
     /// Used as an alternative to the GUID in URLs (e.g., /po/car instead of /po/{guid}).
@@ -33,6 +33,8 @@ public sealed class EntityTypeDefinition
     /// (Fallback) Single attribute name to use as display value when DisplayFormat is not specified.
     /// </summary>
     public string? DisplayAttribute { get; set; }
+    public bool IsReadOnly { get; set; }
+    public bool IsHidden { get; set; }
     public AttributeTab[] Tabs { get; set; } = [];
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
@@ -41,12 +43,17 @@ public sealed class EntityTypeDefinition
     /// Each entry references a SparkQuery that accepts parent context.
     /// </summary>
     public string[] Queries { get; set; } = [];
+    /// <summary>
+    /// Back-reference to the source model file path.
+    /// Set by loaders that read from App_Data/Model/ files (e.g., SparkEditor).
+    /// </summary>
+    public string? SourceFile { get; set; }
 }
 
-public sealed class EntityAttributeDefinition
+public class EntityAttributeDefinition
 {
-    public required Guid Id { get; set; }
-    public required string Name { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
     public TranslatedString? Label { get; set; }
     public string DataType { get; set; } = "string";
     public bool IsRequired { get; set; }
@@ -123,10 +130,10 @@ public sealed class EntityAttributeDefinition
     public string? PersistentObjectName { get; set; }
 }
 
-public sealed class AttributeTab
+public class AttributeTab
 {
-    public required Guid Id { get; set; }
-    public required string Name { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
     public TranslatedString? Label { get; set; }
     public int Order { get; set; }
     /// <summary>
@@ -135,10 +142,10 @@ public sealed class AttributeTab
     public int? ColumnCount { get; set; }
 }
 
-public sealed class AttributeGroup
+public class AttributeGroup
 {
-    public required Guid Id { get; set; }
-    public required string Name { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
     public TranslatedString? Label { get; set; }
     /// <summary>
     /// References an AttributeTab.Id to assign this group to a tab.

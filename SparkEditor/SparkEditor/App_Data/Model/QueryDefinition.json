@@ -6,7 +6,7 @@
       "en": "Query Definition",
       "nl": "Querydefinitie"
     },
-    "clrType": "SparkEditor.Entities.QueryDefinition",
+    "clrType": "MintPlayer.Spark.Abstractions.SparkQuery",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

@@ -4,8 +4,13 @@ namespace MintPlayer.Spark.Abstractions;
 /// Standalone model for a language definition.
 /// Extracted from CultureConfiguration.Languages dictionary for use as a first-class entity.
 /// </summary>
-public sealed class LanguageDefinition
+public class LanguageDefinition
 {
+    /// <summary>
+    /// Document/entity identifier.
+    /// </summary>
+    public string? Id { get; set; }
+
     /// <summary>
     /// The culture code (e.g., "en", "nl", "fr").
     /// </summary>

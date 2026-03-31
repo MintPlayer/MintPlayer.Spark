@@ -1,20 +1,21 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Storage;
-using SparkEditor.Entities;
+
 using SparkEditor.Services;
 
 namespace SparkEditor.Actions;
 
-public partial class SecurityGroupDefActions : DefaultPersistentObjectActions<SecurityGroupDef>
+public partial class SecurityGroupDefActions : DefaultPersistentObjectActions<SecurityGroupDefinition>
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
-    public IEnumerable<SecurityGroupDef> GetAll() => fileService.LoadAllSecurityGroups();
+    public IEnumerable<SecurityGroupDefinition> GetAll() => fileService.LoadAllSecurityGroups();
 
-    public override Task<IEnumerable<SecurityGroupDef>> OnQueryAsync(ISparkSession session)
-        => Task.FromResult<IEnumerable<SecurityGroupDef>>(fileService.LoadAllSecurityGroups());
+    public override Task<IEnumerable<SecurityGroupDefinition>> OnQueryAsync(ISparkSession session)
+        => Task.FromResult<IEnumerable<SecurityGroupDefinition>>(fileService.LoadAllSecurityGroups());
 
-    public override Task<SecurityGroupDef?> OnLoadAsync(ISparkSession session, string id)
+    public override Task<SecurityGroupDefinition?> OnLoadAsync(ISparkSession session, string id)
         => Task.FromResult(fileService.LoadAllSecurityGroups().FirstOrDefault(g => g.Id == id));
 }

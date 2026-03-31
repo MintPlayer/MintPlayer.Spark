@@ -6,7 +6,7 @@
       "en": "Custom Action",
       "nl": "Aangepaste actie"
     },
-    "clrType": "SparkEditor.Entities.CustomActionDef",
+    "clrType": "MintPlayer.Spark.Models.CustomActionDefinition",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

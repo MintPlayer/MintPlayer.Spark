@@ -6,7 +6,7 @@
       "en": "Translation",
       "nl": "Vertaling"
     },
-    "clrType": "SparkEditor.Entities.TranslationDef",
+    "clrType": "MintPlayer.Spark.Abstractions.TranslationEntry",
     "displayAttribute": "Key",
     "tabs": [],
     "groups": [],

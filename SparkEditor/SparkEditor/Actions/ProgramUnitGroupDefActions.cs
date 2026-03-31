@@ -1,20 +1,21 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Storage;
-using SparkEditor.Entities;
+
 using SparkEditor.Services;
 
 namespace SparkEditor.Actions;
 
-public partial class ProgramUnitGroupDefActions : DefaultPersistentObjectActions<ProgramUnitGroupDef>
+public partial class ProgramUnitGroupDefActions : DefaultPersistentObjectActions<ProgramUnitGroup>
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
-    public IEnumerable<ProgramUnitGroupDef> GetAll() => fileService.LoadAllProgramUnitGroups();
+    public IEnumerable<ProgramUnitGroup> GetAll() => fileService.LoadAllProgramUnitGroups();
 
-    public override Task<IEnumerable<ProgramUnitGroupDef>> OnQueryAsync(ISparkSession session)
-        => Task.FromResult<IEnumerable<ProgramUnitGroupDef>>(fileService.LoadAllProgramUnitGroups());
+    public override Task<IEnumerable<ProgramUnitGroup>> OnQueryAsync(ISparkSession session)
+        => Task.FromResult<IEnumerable<ProgramUnitGroup>>(fileService.LoadAllProgramUnitGroups());
 
-    public override Task<ProgramUnitGroupDef?> OnLoadAsync(ISparkSession session, string id)
-        => Task.FromResult(fileService.LoadAllProgramUnitGroups().FirstOrDefault(g => g.Id == id));
+    public override Task<ProgramUnitGroup?> OnLoadAsync(ISparkSession session, string id)
+        => Task.FromResult(fileService.LoadAllProgramUnitGroups().FirstOrDefault(g => g.Id.ToString() == id));
 }

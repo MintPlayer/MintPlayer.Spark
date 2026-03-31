@@ -1,20 +1,21 @@
+using MintPlayer.Spark.Models;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Storage;
-using SparkEditor.Entities;
+
 using SparkEditor.Services;
 
 namespace SparkEditor.Actions;
 
-public partial class CustomActionDefActions : DefaultPersistentObjectActions<CustomActionDef>
+public partial class CustomActionDefActions : DefaultPersistentObjectActions<CustomActionDefinition>
 {
     [Inject] private readonly ISparkEditorFileService fileService;
 
-    public IEnumerable<CustomActionDef> GetAll() => fileService.LoadAllCustomActions();
+    public IEnumerable<CustomActionDefinition> GetAll() => fileService.LoadAllCustomActions();
 
-    public override Task<IEnumerable<CustomActionDef>> OnQueryAsync(ISparkSession session)
-        => Task.FromResult<IEnumerable<CustomActionDef>>(fileService.LoadAllCustomActions());
+    public override Task<IEnumerable<CustomActionDefinition>> OnQueryAsync(ISparkSession session)
+        => Task.FromResult<IEnumerable<CustomActionDefinition>>(fileService.LoadAllCustomActions());
 
-    public override Task<CustomActionDef?> OnLoadAsync(ISparkSession session, string id)
+    public override Task<CustomActionDefinition?> OnLoadAsync(ISparkSession session, string id)
         => Task.FromResult(fileService.LoadAllCustomActions().FirstOrDefault(a => a.Id == id));
 }

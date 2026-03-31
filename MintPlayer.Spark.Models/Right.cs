@@ -6,9 +6,9 @@ namespace MintPlayer.Spark.Authorization.Models;
 public class Right
 {
     /// <summary>
-    /// Unique identifier for this right assignment.
+    /// Document/entity identifier.
     /// </summary>
-    public Guid Id { get; set; }
+    public string? Id { get; set; }
 
     /// <summary>
     /// The resource this right applies to.
@@ -24,7 +24,7 @@ public class Right
     /// The ID of the group this right is assigned to.
     /// Must match a key in SecurityConfiguration.Groups.
     /// </summary>
-    public Guid GroupId { get; set; }
+    public string? GroupId { get; set; }
 
     /// <summary>
     /// When true, this explicitly denies the permission.

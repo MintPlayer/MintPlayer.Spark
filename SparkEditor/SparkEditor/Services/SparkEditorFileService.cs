@@ -1,5 +1,7 @@
 using System.Text.Json;
-using SparkEditor.Entities;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Models;
+using MintPlayer.Spark.Models;
 
 namespace SparkEditor.Services;
 
@@ -20,9 +22,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Persistent Objects
 
-    public List<PersistentObjectDefinition> LoadAllPersistentObjects()
+    public List<EntityTypeDefinition> LoadAllPersistentObjects()
     {
-        var result = new List<PersistentObjectDefinition>();
+        var result = new List<EntityTypeDefinition>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -42,11 +44,8 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public PersistentObjectDefinition? LoadPersistentObject(string id)
+    public EntityTypeDefinition? LoadPersistentObject(string id)
     {
-        // id format: "PersistentObjectDefinitions/{guid}"
-        var guid = id.Replace("PersistentObjectDefinitions/", "");
-
         foreach (var targetPath in TargetPaths)
         {
             var modelDir = Path.Combine(targetPath, "Model");
@@ -55,7 +54,7 @@ public class SparkEditorFileService : ISparkEditorFileService
             foreach (var file in Directory.GetFiles(modelDir, "*.json"))
             {
                 var po = ParsePersistentObject(file);
-                if (po != null && po.Id == id)
+                if (po != null && po.SourceFile == id)
                 {
                     return po;
                 }
@@ -65,7 +64,7 @@ public class SparkEditorFileService : ISparkEditorFileService
         return null;
     }
 
-    public void SavePersistentObject(PersistentObjectDefinition po)
+    public void SavePersistentObject(EntityTypeDefinition po)
     {
         // TODO: Implement save - serialize back to the Model/*.json format
         throw new NotImplementedException("SavePersistentObject is not yet implemented.");
@@ -77,7 +76,7 @@ public class SparkEditorFileService : ISparkEditorFileService
         throw new NotImplementedException("DeletePersistentObject is not yet implemented.");
     }
 
-    private PersistentObjectDefinition? ParsePersistentObject(string filePath)
+    private EntityTypeDefinition? ParsePersistentObject(string filePath)
     {
         try
         {
@@ -88,25 +87,22 @@ public class SparkEditorFileService : ISparkEditorFileService
             if (!root.TryGetProperty("persistentObject", out var poElement))
                 return null;
 
-            var po = new PersistentObjectDefinition
+            var po = new EntityTypeDefinition
             {
                 SourceFile = filePath,
                 Name = GetStringProperty(poElement, "name") ?? Path.GetFileNameWithoutExtension(filePath),
             };
 
-            // id -> PersistentObjectDefinitions/{guid}
-            var rawId = GetStringProperty(poElement, "id");
-            po.Id = rawId != null ? $"PersistentObjectDefinitions/{rawId}" : null;
+            if (TryGetGuid(poElement, "id", out var id))
+                po.Id = id;
 
-            po.Description = SerializeTranslatedString(poElement, "description");
-            po.Label = SerializeTranslatedString(poElement, "description"); // label defaults to description
+            po.Description = DeserializeTranslatedString(poElement, "description");
             po.ClrType = GetStringProperty(poElement, "clrType");
             po.QueryType = GetStringProperty(poElement, "queryType");
             po.IndexName = GetStringProperty(poElement, "indexName");
             po.DisplayAttribute = GetStringProperty(poElement, "displayAttribute");
             po.Alias = GetStringProperty(poElement, "alias");
-            po.Breadcrumb = GetStringProperty(poElement, "displayFormat");
-            po.ContextProperty = GetStringProperty(poElement, "contextProperty");
+            po.DisplayFormat = GetStringProperty(poElement, "displayFormat");
             po.IsReadOnly = GetBoolProperty(poElement, "isReadOnly");
             po.IsHidden = GetBoolProperty(poElement, "isHidden");
 
@@ -123,9 +119,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Attributes
 
-    public List<AttributeDefinition> LoadAllAttributes()
+    public List<EntityAttributeDefinition> LoadAllAttributes()
     {
-        var result = new List<AttributeDefinition>();
+        var result = new List<EntityAttributeDefinition>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -141,16 +137,16 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public List<AttributeDefinition> LoadAttributesForPO(string poName)
+    public List<EntityAttributeDefinition> LoadAttributesForPO(string poName)
     {
         return LoadAllAttributes()
             .Where(a => string.Equals(a.PersistentObjectName, poName, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private List<AttributeDefinition> ParseAttributes(string filePath)
+    private List<EntityAttributeDefinition> ParseAttributes(string filePath)
     {
-        var result = new List<AttributeDefinition>();
+        var result = new List<EntityAttributeDefinition>();
 
         try
         {
@@ -162,27 +158,22 @@ public class SparkEditorFileService : ISparkEditorFileService
                 return result;
 
             var poName = GetStringProperty(poElement, "name") ?? Path.GetFileNameWithoutExtension(filePath);
-            var poId = GetStringProperty(poElement, "id");
 
             if (!poElement.TryGetProperty("attributes", out var attrsElement) || attrsElement.ValueKind != JsonValueKind.Array)
                 return result;
 
             foreach (var attrElement in attrsElement.EnumerateArray())
             {
-                var attr = new AttributeDefinition
+                var attr = new EntityAttributeDefinition
                 {
                     PersistentObjectName = poName,
-                    PersistentObjectId = poId != null ? $"PersistentObjectDefinitions/{poId}" : null,
                     Name = GetStringProperty(attrElement, "name") ?? string.Empty,
-                    Label = SerializeTranslatedString(attrElement, "label"),
+                    Label = DeserializeTranslatedString(attrElement, "label"),
                     DataType = GetStringProperty(attrElement, "dataType") ?? "string",
                     IsRequired = GetBoolProperty(attrElement, "isRequired"),
                     IsVisible = GetBoolProperty(attrElement, "isVisible", defaultValue: true),
                     IsReadOnly = GetBoolProperty(attrElement, "isReadOnly"),
                     Order = GetIntProperty(attrElement, "order"),
-                    ShowedOn = GetStringProperty(attrElement, "showedOn"),
-                    Group = GetStringProperty(attrElement, "group"),
-                    ColumnSpan = GetIntProperty(attrElement, "columnSpan", defaultValue: 1),
                     Renderer = GetStringProperty(attrElement, "renderer"),
                     ReferenceType = GetStringProperty(attrElement, "referenceType"),
                     AsDetailType = GetStringProperty(attrElement, "asDetailType"),
@@ -191,9 +182,8 @@ public class SparkEditorFileService : ISparkEditorFileService
                     LookupReferenceType = GetStringProperty(attrElement, "lookupReferenceType"),
                 };
 
-                // id -> AttributeDefinitions/{guid}
-                var rawId = GetStringProperty(attrElement, "id");
-                attr.Id = rawId != null ? $"AttributeDefinitions/{rawId}" : null;
+                if (TryGetGuid(attrElement, "id", out var attrId))
+                    attr.Id = attrId;
 
                 result.Add(attr);
             }
@@ -210,9 +200,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Queries
 
-    public List<QueryDefinition> LoadAllQueries()
+    public List<SparkQuery> LoadAllQueries()
     {
-        var result = new List<QueryDefinition>();
+        var result = new List<SparkQuery>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -228,16 +218,16 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public List<QueryDefinition> LoadQueriesForPO(string poName)
+    public List<SparkQuery> LoadQueriesForPO(string poName)
     {
         return LoadAllQueries()
             .Where(q => string.Equals(q.PersistentObjectName, poName, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private List<QueryDefinition> ParseQueries(string filePath)
+    private List<SparkQuery> ParseQueries(string filePath)
     {
-        var result = new List<QueryDefinition>();
+        var result = new List<SparkQuery>();
 
         try
         {
@@ -257,22 +247,18 @@ public class SparkEditorFileService : ISparkEditorFileService
 
             foreach (var queryElement in queriesElement.EnumerateArray())
             {
-                var query = new QueryDefinition
+                var query = new SparkQuery
                 {
                     PersistentObjectName = poName,
                     Name = GetStringProperty(queryElement, "name") ?? string.Empty,
-                    Description = SerializeTranslatedString(queryElement, "description"),
-                    Label = SerializeTranslatedString(queryElement, "description"),
+                    Description = DeserializeTranslatedString(queryElement, "description"),
                     Source = GetStringProperty(queryElement, "source"),
                     Alias = GetStringProperty(queryElement, "alias"),
                     EntityType = GetStringProperty(queryElement, "entityType"),
-                    IsHidden = GetBoolProperty(queryElement, "isHidden"),
-                    RenderMode = GetStringProperty(queryElement, "renderMode"),
                 };
 
-                // id -> QueryDefinitions/{guid}
-                var rawId = GetStringProperty(queryElement, "id");
-                query.Id = rawId != null ? $"QueryDefinitions/{rawId}" : null;
+                if (TryGetGuid(queryElement, "id", out var queryId))
+                    query.Id = queryId;
 
                 result.Add(query);
             }
@@ -289,9 +275,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Custom Actions
 
-    public List<CustomActionDef> LoadAllCustomActions()
+    public List<CustomActionDefinition> LoadAllCustomActions()
     {
-        var result = new List<CustomActionDef>();
+        var result = new List<CustomActionDefinition>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -307,14 +293,14 @@ public class SparkEditorFileService : ISparkEditorFileService
                 foreach (var prop in root.EnumerateObject())
                 {
                     var actionElement = prop.Value;
-                    var action = new CustomActionDef
+                    var action = new CustomActionDefinition
                     {
                         Id = $"CustomActionDefs/{prop.Name}",
                         Name = prop.Name,
-                        DisplayName = SerializeTranslatedString(actionElement, "displayName"),
+                        DisplayName = DeserializeTranslatedString(actionElement, "displayName"),
                         Icon = GetStringProperty(actionElement, "icon"),
                         Description = GetStringProperty(actionElement, "description"),
-                        ShowedOn = GetStringProperty(actionElement, "showedOn"),
+                        ShowedOn = GetStringProperty(actionElement, "showedOn") ?? "both",
                         SelectionRule = GetStringProperty(actionElement, "selectionRule"),
                         RefreshOnCompleted = GetBoolProperty(actionElement, "refreshOnCompleted"),
                         ConfirmationMessageKey = GetStringProperty(actionElement, "confirmationMessageKey"),
@@ -333,7 +319,7 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public void SaveCustomAction(string name, CustomActionDef action)
+    public void SaveCustomAction(string name, CustomActionDefinition action)
     {
         // TODO: Implement save - update the customActions.json file
         throw new NotImplementedException("SaveCustomAction is not yet implemented.");
@@ -349,9 +335,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Program Units
 
-    public List<ProgramUnitGroupDef> LoadAllProgramUnitGroups()
+    public List<ProgramUnitGroup> LoadAllProgramUnitGroups()
     {
-        var result = new List<ProgramUnitGroupDef>();
+        var result = new List<ProgramUnitGroup>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -369,14 +355,15 @@ public class SparkEditorFileService : ISparkEditorFileService
 
                 foreach (var groupElement in groupsElement.EnumerateArray())
                 {
-                    var rawId = GetStringProperty(groupElement, "id");
-                    var group = new ProgramUnitGroupDef
+                    var group = new ProgramUnitGroup
                     {
-                        Id = rawId != null ? $"ProgramUnitGroupDefs/{rawId}" : null,
-                        Name = SerializeTranslatedString(groupElement, "name"),
+                        Name = DeserializeTranslatedString(groupElement, "name"),
                         Icon = GetStringProperty(groupElement, "icon"),
                         Order = GetIntProperty(groupElement, "order"),
                     };
+
+                    if (TryGetGuid(groupElement, "id", out var groupId))
+                        group.Id = groupId;
 
                     result.Add(group);
                 }
@@ -390,9 +377,9 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public List<ProgramUnitDef> LoadAllProgramUnits()
+    public List<ProgramUnit> LoadAllProgramUnits()
     {
-        var result = new List<ProgramUnitDef>();
+        var result = new List<ProgramUnit>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -410,27 +397,31 @@ public class SparkEditorFileService : ISparkEditorFileService
 
                 foreach (var groupElement in groupsElement.EnumerateArray())
                 {
-                    var groupId = GetStringProperty(groupElement, "id");
-                    var groupIdPrefixed = groupId != null ? $"ProgramUnitGroupDefs/{groupId}" : null;
+                    Guid? groupId = null;
+                    if (TryGetGuid(groupElement, "id", out var gid))
+                        groupId = gid;
 
                     if (!groupElement.TryGetProperty("programUnits", out var unitsElement) || unitsElement.ValueKind != JsonValueKind.Array)
                         continue;
 
                     foreach (var unitElement in unitsElement.EnumerateArray())
                     {
-                        var rawId = GetStringProperty(unitElement, "id");
-                        var unit = new ProgramUnitDef
+                        var unit = new ProgramUnit
                         {
-                            Id = rawId != null ? $"ProgramUnitDefs/{rawId}" : null,
-                            Name = SerializeTranslatedString(unitElement, "name"),
+                            Name = DeserializeTranslatedString(unitElement, "name"),
                             Icon = GetStringProperty(unitElement, "icon"),
                             Type = GetStringProperty(unitElement, "type") ?? "query",
-                            QueryId = GetStringProperty(unitElement, "queryId"),
-                            PersistentObjectId = GetStringProperty(unitElement, "persistentObjectId"),
                             Order = GetIntProperty(unitElement, "order"),
                             Alias = GetStringProperty(unitElement, "alias"),
-                            GroupId = groupIdPrefixed,
+                            GroupId = groupId,
                         };
+
+                        if (TryGetGuid(unitElement, "id", out var unitId))
+                            unit.Id = unitId;
+                        if (TryGetGuid(unitElement, "queryId", out var qid))
+                            unit.QueryId = qid;
+                        if (TryGetGuid(unitElement, "persistentObjectId", out var poid))
+                            unit.PersistentObjectId = poid;
 
                         result.Add(unit);
                     }
@@ -449,9 +440,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Security
 
-    public List<SecurityGroupDef> LoadAllSecurityGroups()
+    public List<SecurityGroupDefinition> LoadAllSecurityGroups()
     {
-        var result = new List<SecurityGroupDef>();
+        var result = new List<SecurityGroupDefinition>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -469,11 +460,11 @@ public class SparkEditorFileService : ISparkEditorFileService
 
                 foreach (var prop in groupsElement.EnumerateObject())
                 {
-                    var group = new SecurityGroupDef
+                    var group = new SecurityGroupDefinition
                     {
                         Id = $"SecurityGroupDefs/{prop.Name}",
                         Name = prop.Value.ValueKind == JsonValueKind.Object
-                            ? prop.Value.GetRawText()
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
                             : null,
                     };
 
@@ -489,9 +480,9 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
-    public List<SecurityRightDef> LoadAllSecurityRights()
+    public List<Right> LoadAllSecurityRights()
     {
-        var result = new List<SecurityRightDef>();
+        var result = new List<Right>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -510,7 +501,7 @@ public class SparkEditorFileService : ISparkEditorFileService
                 foreach (var rightElement in rightsElement.EnumerateArray())
                 {
                     var rawId = GetStringProperty(rightElement, "id");
-                    var right = new SecurityRightDef
+                    var right = new Right
                     {
                         Id = rawId != null ? $"SecurityRightDefs/{rawId}" : null,
                         Resource = GetStringProperty(rightElement, "resource") ?? string.Empty,
@@ -535,9 +526,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Culture
 
-    public List<LanguageDef> LoadAllLanguages()
+    public List<LanguageDefinition> LoadAllLanguages()
     {
-        var result = new List<LanguageDef>();
+        var result = new List<LanguageDefinition>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -555,12 +546,12 @@ public class SparkEditorFileService : ISparkEditorFileService
 
                 foreach (var prop in langsElement.EnumerateObject())
                 {
-                    var lang = new LanguageDef
+                    var lang = new LanguageDefinition
                     {
                         Id = $"LanguageDefs/{prop.Name}",
                         Culture = prop.Name,
                         Name = prop.Value.ValueKind == JsonValueKind.Object
-                            ? prop.Value.GetRawText()
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
                             : null,
                     };
 
@@ -580,9 +571,9 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #region Translations
 
-    public List<TranslationDef> LoadAllTranslations()
+    public List<TranslationEntry> LoadAllTranslations()
     {
-        var result = new List<TranslationDef>();
+        var result = new List<TranslationEntry>();
 
         foreach (var targetPath in TargetPaths)
         {
@@ -597,12 +588,12 @@ public class SparkEditorFileService : ISparkEditorFileService
 
                 foreach (var prop in root.EnumerateObject())
                 {
-                    var translation = new TranslationDef
+                    var translation = new TranslationEntry
                     {
                         Id = $"TranslationDefs/{prop.Name}",
                         Key = prop.Name,
                         Values = prop.Value.ValueKind == JsonValueKind.Object
-                            ? prop.Value.GetRawText()
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
                             : null,
                     };
 
@@ -650,15 +641,25 @@ public class SparkEditorFileService : ISparkEditorFileService
         return defaultValue;
     }
 
+    private static bool TryGetGuid(JsonElement element, string propertyName, out Guid result)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+        {
+            return Guid.TryParse(prop.GetString(), out result);
+        }
+        result = default;
+        return false;
+    }
+
     /// <summary>
-    /// Serializes a TranslatedString (dictionary object) property to its JSON string representation.
+    /// Deserializes a TranslatedString (dictionary object) property.
     /// Returns null if the property doesn't exist or isn't an object.
     /// </summary>
-    private static string? SerializeTranslatedString(JsonElement element, string propertyName)
+    private static TranslatedString? DeserializeTranslatedString(JsonElement element, string propertyName)
     {
         if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Object)
         {
-            return prop.GetRawText();
+            return JsonSerializer.Deserialize<TranslatedString>(prop.GetRawText(), JsonOptions);
         }
         return null;
     }

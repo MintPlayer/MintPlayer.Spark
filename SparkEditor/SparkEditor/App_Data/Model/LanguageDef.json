@@ -6,7 +6,7 @@
       "en": "Language",
       "nl": "Taal"
     },
-    "clrType": "SparkEditor.Entities.LanguageDef",
+    "clrType": "MintPlayer.Spark.Abstractions.LanguageDefinition",
     "displayAttribute": "Culture",
     "tabs": [],
     "groups": [],

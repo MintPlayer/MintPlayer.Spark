@@ -48,9 +48,9 @@ internal partial class AccessControlService : IAccessControl
         // Always include the "Everyone" group if it exists in the configuration
         var everyoneGroup = config.Groups
             .FirstOrDefault(g => string.Equals(g.Value.GetDefaultValue(), EveryoneGroupName, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrEmpty(everyoneGroup.Key) && Guid.TryParse(everyoneGroup.Key, out var everyoneGroupId))
+        if (!string.IsNullOrEmpty(everyoneGroup.Key))
         {
-            groupIds.Add(everyoneGroupId);
+            groupIds.Add(everyoneGroup.Key);
         }
 
         // No groups (not even Everyone) = no access (unless default allows)
@@ -97,9 +97,9 @@ internal partial class AccessControlService : IAccessControl
         return result;
     }
 
-    private HashSet<Guid> ResolveGroupIds(SecurityConfiguration config, IEnumerable<string> groupNames)
+    private HashSet<string> ResolveGroupIds(SecurityConfiguration config, IEnumerable<string> groupNames)
     {
-        var result = new HashSet<Guid>();
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var groupName in groupNames)
         {
@@ -108,9 +108,9 @@ internal partial class AccessControlService : IAccessControl
                 .FirstOrDefault(g => g.Value.Translations.Values
                     .Any(v => string.Equals(v, groupName, StringComparison.OrdinalIgnoreCase)));
 
-            if (!string.IsNullOrEmpty(matchingGroup.Key) && Guid.TryParse(matchingGroup.Key, out var groupId))
+            if (!string.IsNullOrEmpty(matchingGroup.Key))
             {
-                result.Add(groupId);
+                result.Add(matchingGroup.Key);
             }
         }
 

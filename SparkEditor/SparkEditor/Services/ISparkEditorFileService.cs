@@ -1,4 +1,6 @@
-using SparkEditor.Entities;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Models;
+using MintPlayer.Spark.Models;
 
 namespace SparkEditor.Services;
 
@@ -8,33 +10,33 @@ public interface ISparkEditorFileService
     IReadOnlyList<string> TargetPaths { get; }
 
     // Entity Model files
-    List<PersistentObjectDefinition> LoadAllPersistentObjects();
-    PersistentObjectDefinition? LoadPersistentObject(string id);
-    void SavePersistentObject(PersistentObjectDefinition po);
+    List<EntityTypeDefinition> LoadAllPersistentObjects();
+    EntityTypeDefinition? LoadPersistentObject(string id);
+    void SavePersistentObject(EntityTypeDefinition po);
     void DeletePersistentObject(string id);
 
-    List<AttributeDefinition> LoadAllAttributes();
-    List<AttributeDefinition> LoadAttributesForPO(string poName);
+    List<EntityAttributeDefinition> LoadAllAttributes();
+    List<EntityAttributeDefinition> LoadAttributesForPO(string poName);
 
-    List<QueryDefinition> LoadAllQueries();
-    List<QueryDefinition> LoadQueriesForPO(string poName);
+    List<SparkQuery> LoadAllQueries();
+    List<SparkQuery> LoadQueriesForPO(string poName);
 
     // Custom Actions
-    List<CustomActionDef> LoadAllCustomActions();
-    void SaveCustomAction(string name, CustomActionDef action);
+    List<CustomActionDefinition> LoadAllCustomActions();
+    void SaveCustomAction(string name, CustomActionDefinition action);
     void DeleteCustomAction(string name);
 
     // Program Units
-    List<ProgramUnitGroupDef> LoadAllProgramUnitGroups();
-    List<ProgramUnitDef> LoadAllProgramUnits();
+    List<ProgramUnitGroup> LoadAllProgramUnitGroups();
+    List<ProgramUnit> LoadAllProgramUnits();
 
     // Security
-    List<SecurityGroupDef> LoadAllSecurityGroups();
-    List<SecurityRightDef> LoadAllSecurityRights();
+    List<SecurityGroupDefinition> LoadAllSecurityGroups();
+    List<Right> LoadAllSecurityRights();
 
     // Culture
-    List<LanguageDef> LoadAllLanguages();
+    List<LanguageDefinition> LoadAllLanguages();
 
     // Translations
-    List<TranslationDef> LoadAllTranslations();
+    List<TranslationEntry> LoadAllTranslations();
 }

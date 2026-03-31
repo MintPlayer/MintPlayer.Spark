@@ -2,10 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
 
-public sealed class SparkQuery
+public class SparkQuery
 {
-    public required Guid Id { get; set; }
-    public required string Name { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
     public TranslatedString? Description { get; set; }
 
     /// <summary>
@@ -13,7 +13,7 @@ public sealed class SparkQuery
     /// - "Database.PropertyName" — resolves to an IRavenQueryable property on SparkContext
     /// - "Custom.MethodName" — resolves to a method on the entity's Actions class
     /// </summary>
-    public required string Source { get; set; }
+    public string? Source { get; set; }
 
     /// <summary>
     /// Optional URL-friendly alias for this query.

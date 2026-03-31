@@ -6,7 +6,7 @@
       "en": "Attribute Definition",
       "nl": "Attribuutdefinitie"
     },
-    "clrType": "SparkEditor.Entities.AttributeDefinition",
+    "clrType": "MintPlayer.Spark.Abstractions.EntityAttributeDefinition",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

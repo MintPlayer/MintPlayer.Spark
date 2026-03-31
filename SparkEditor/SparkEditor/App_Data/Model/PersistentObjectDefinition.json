@@ -6,7 +6,7 @@
       "en": "Persistent Object Definition",
       "nl": "Persistent Object Definitie"
     },
-    "clrType": "SparkEditor.Entities.PersistentObjectDefinition",
+    "clrType": "MintPlayer.Spark.Abstractions.EntityTypeDefinition",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

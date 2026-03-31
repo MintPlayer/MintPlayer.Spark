@@ -1,18 +1,20 @@
 using MintPlayer.Spark;
-using SparkEditor.Entities;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Models;
+using MintPlayer.Spark.Models;
 
 namespace SparkEditor;
 
 public class SparkEditorContext : SparkContext
 {
-    public IQueryable<PersistentObjectDefinition> PersistentObjects => Session.Query<PersistentObjectDefinition>();
-    public IQueryable<AttributeDefinition> Attributes => Session.Query<AttributeDefinition>();
-    public IQueryable<QueryDefinition> Queries => Session.Query<QueryDefinition>();
-    public IQueryable<CustomActionDef> CustomActions => Session.Query<CustomActionDef>();
-    public IQueryable<ProgramUnitGroupDef> ProgramUnitGroups => Session.Query<ProgramUnitGroupDef>();
-    public IQueryable<ProgramUnitDef> ProgramUnits => Session.Query<ProgramUnitDef>();
-    public IQueryable<SecurityGroupDef> SecurityGroups => Session.Query<SecurityGroupDef>();
-    public IQueryable<SecurityRightDef> SecurityRights => Session.Query<SecurityRightDef>();
-    public IQueryable<LanguageDef> Languages => Session.Query<LanguageDef>();
-    public IQueryable<TranslationDef> Translations => Session.Query<TranslationDef>();
+    public IQueryable<EntityTypeDefinition> PersistentObjects => Session.Query<EntityTypeDefinition>();
+    public IQueryable<EntityAttributeDefinition> Attributes => Session.Query<EntityAttributeDefinition>();
+    public IQueryable<SparkQuery> Queries => Session.Query<SparkQuery>();
+    public IQueryable<CustomActionDefinition> CustomActions => Session.Query<CustomActionDefinition>();
+    public IQueryable<ProgramUnitGroup> ProgramUnitGroups => Session.Query<ProgramUnitGroup>();
+    public IQueryable<ProgramUnit> ProgramUnits => Session.Query<ProgramUnit>();
+    public IQueryable<SecurityGroupDefinition> SecurityGroups => Session.Query<SecurityGroupDefinition>();
+    public IQueryable<Right> SecurityRights => Session.Query<Right>();
+    public IQueryable<LanguageDefinition> Languages => Session.Query<LanguageDefinition>();
+    public IQueryable<TranslationEntry> Translations => Session.Query<TranslationEntry>();
 }

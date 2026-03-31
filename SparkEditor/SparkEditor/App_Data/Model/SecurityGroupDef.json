@@ -6,7 +6,7 @@
       "en": "Security Group",
       "nl": "Beveiligingsgroep"
     },
-    "clrType": "SparkEditor.Entities.SecurityGroupDef",
+    "clrType": "MintPlayer.Spark.Abstractions.SecurityGroupDefinition",
     "displayAttribute": "Name",
     "tabs": [],
     "groups": [],

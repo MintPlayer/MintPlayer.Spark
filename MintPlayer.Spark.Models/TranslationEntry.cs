@@ -4,8 +4,13 @@ namespace MintPlayer.Spark.Abstractions;
 /// Standalone model for a translation key-value entry.
 /// Extracted from the translations.json flat dictionary for use as a first-class entity.
 /// </summary>
-public sealed class TranslationEntry
+public class TranslationEntry
 {
+    /// <summary>
+    /// Document/entity identifier.
+    /// </summary>
+    public string? Id { get; set; }
+
     /// <summary>
     /// The translation key (e.g., "save", "cancel", "error.notFound").
     /// </summary>

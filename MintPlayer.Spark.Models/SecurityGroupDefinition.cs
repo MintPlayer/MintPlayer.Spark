@@ -4,9 +4,13 @@ namespace MintPlayer.Spark.Abstractions;
 /// Standalone model for a security group definition.
 /// Extracted from SecurityConfiguration.Groups dictionary for use as a first-class entity.
 /// </summary>
-public sealed class SecurityGroupDefinition
+public class SecurityGroupDefinition
 {
-    public Guid Id { get; set; }
+    /// <summary>
+    /// Document/entity identifier.
+    /// </summary>
+    public string? Id { get; set; }
+
     public TranslatedString? Name { get; set; }
     public TranslatedString? Comment { get; set; }
 }
