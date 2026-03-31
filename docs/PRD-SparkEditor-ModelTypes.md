@@ -66,7 +66,7 @@ All 10 model JSON files in `SparkEditor/SparkEditor/App_Data/Model/`:
 | `Label` | `string` | `TranslatedString` | Attribute display label, must be translatable |
 | `DataType` | `string` | `string` + lookupReferenceType | Constrained to known values: `"string"`, `"number"`, `"decimal"`, `"boolean"`, `"datetime"`, `"date"`, `"guid"`, `"color"`, `"Reference"`, `"AsDetail"`. Add transient LookupReference. |
 | `ShowedOn` | `string` | `string` + lookupReferenceType | Constrained to: `"Query"`, `"PersistentObject"`, `"Query, PersistentObject"`. Add transient LookupReference. |
-| `LookupReferenceType` | `string` | `string` | OK for now - this is a name/key, no entity to reference against |
+| `LookupReferenceType` | `string` | `Reference` | Should reference available LookupReferences in the project. Needs a new `LookupReferenceDef` entity type backed by `LookupReferenceDiscoveryService`, with a custom query `GetLookupReferenceDefs` that enumerates all registered transient and dynamic lookup references. The stored value is the lookup reference name (e.g., `"CarStatus"`). Needs `referenceType` pointing to the new entity and `query: "GetLookupReferenceDefs"`. |
 
 ### 6. CustomActionDef.json
 
@@ -123,7 +123,7 @@ These attributes store multi-language text (`{"en": "...", "nl": "..."}`) and ne
 12. `LanguageDef.Name`
 13. `TranslationDef.Values`
 
-### Reference changes (7 attributes)
+### Reference changes (8 attributes)
 
 These attributes store foreign key IDs and need Reference dropdowns:
 
@@ -131,8 +131,9 @@ These attributes store foreign key IDs and need Reference dropdowns:
 2. `ProgramUnitDef.PersistentObjectId` -> PersistentObjectDefinition
 3. `ProgramUnitDef.GroupId` -> ProgramUnitGroupDef (also: remove `isReadOnly: true`)
 4. `QueryDefinition.EntityType` -> PersistentObjectDefinition
-5. `CustomActionDef.ConfirmationMessageKey` -> TranslationDef
-6. `SecurityRightDef.GroupId` -> SecurityGroupDef
+5. `AttributeDefinition.LookupReferenceType` -> LookupReferenceDef (new entity type, see below)
+6. `CustomActionDef.ConfirmationMessageKey` -> TranslationDef
+7. `SecurityRightDef.GroupId` -> SecurityGroupDef
 
 ### LookupReference changes (5 attributes)
 
@@ -388,6 +389,97 @@ All projects that currently reference `MintPlayer.Spark.Abstractions` will conti
 
 ---
 
+## New Entity Type: LookupReferenceDef
+
+The `AttributeDefinition.LookupReferenceType` attribute needs a Reference to the available lookup references in the project. Since lookup references are discovered at runtime (via `LookupReferenceDiscoveryService`) rather than stored as persistent objects, a new virtual entity type is needed.
+
+### Entity Definition
+
+A new model JSON file `LookupReferenceDef.json` in `App_Data/Model/`:
+
+```json
+{
+  "persistentObject": {
+    "id": "...",
+    "name": "LookupReferenceDef",
+    "description": { "en": "Lookup Reference", "nl": "Opzoekreferentie" },
+    "clrType": "MintPlayer.Spark.Abstractions.LookupReferenceDef",
+    "displayAttribute": "Name",
+    "attributes": [
+      { "name": "Name", "label": { "en": "Name", "nl": "Naam" }, "dataType": "string", "showedOn": "Query, PersistentObject" },
+      { "name": "IsTransient", "label": { "en": "Transient", "nl": "Transient" }, "dataType": "boolean", "showedOn": "Query, PersistentObject" },
+      { "name": "ValueCount", "label": { "en": "Values", "nl": "Waarden" }, "dataType": "number", "showedOn": "Query" }
+    ]
+  },
+  "queries": [
+    { "name": "GetLookupReferenceDefs", "description": { "en": "Lookup References", "nl": "Opzoekreferenties" }, "source": "Custom.GetAll" }
+  ]
+}
+```
+
+### C# Entity Class
+
+A lightweight class in `MintPlayer.Spark.Core` (or in SparkEditor entities):
+
+```csharp
+public class LookupReferenceDef
+{
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public bool IsTransient { get; set; }
+    public int ValueCount { get; set; }
+}
+```
+
+### Actions Class
+
+A new `LookupReferenceDefActions` in `SparkEditor/Actions/`:
+
+```csharp
+[Register(typeof(LookupReferenceDefActions), ServiceLifetime.Scoped)]
+public partial class LookupReferenceDefActions : DefaultPersistentObjectActions<LookupReferenceDef>
+{
+    [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;
+
+    public override Task<IEnumerable<LookupReferenceDef>> OnQueryAsync(ISparkSession session)
+    {
+        var infos = discoveryService.GetAllLookupReferences();
+        return Task.FromResult<IEnumerable<LookupReferenceDef>>(
+            infos.Select(info => new LookupReferenceDef
+            {
+                Id = info.Name,
+                Name = info.Name,
+                IsTransient = info.IsTransient,
+                ValueCount = /* resolve from service */
+            })
+        );
+    }
+}
+```
+
+### AttributeDefinition.json Change
+
+Update the `LookupReferenceType` attribute:
+
+```json
+{
+  "name": "LookupReferenceType",
+  "label": { "en": "Lookup Reference", "nl": "Opzoekreferentie" },
+  "dataType": "Reference",
+  "query": "GetLookupReferenceDefs",
+  "referenceType": "MintPlayer.Spark.Abstractions.LookupReferenceDef",
+  "isRequired": false,
+  "isVisible": true,
+  "isReadOnly": false,
+  "order": 11,
+  "showedOn": "PersistentObject"
+}
+```
+
+This approach is consistent with how other Reference attributes work in the SparkEditor (e.g., `ProgramUnitDef.GroupId` → `ProgramUnitGroupDef`). The `LookupReferenceDiscoveryService` already enumerates all available lookup references at startup, so the Actions class simply wraps that data into the entity format the Reference selector expects.
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Extract MintPlayer.Spark.Models library
@@ -419,6 +511,12 @@ Update model JSON files for:
 - All LookupReference attributes (add `lookupReferenceType`)
 - Register transient LookupReferences in SparkEditor startup
 - Fix `ProgramUnitDef.GroupId` readOnly flag
+
+**LookupReferenceDef entity (for `AttributeDefinition.LookupReferenceType`):**
+1. Create `LookupReferenceDef` C# class (Id, Name, IsTransient, ValueCount)
+2. Create `App_Data/Model/LookupReferenceDef.json` with entity definition and `GetLookupReferenceDefs` query
+3. Create `LookupReferenceDefActions` that uses `LookupReferenceDiscoveryService` to enumerate available lookups
+4. Update `AttributeDefinition.json`: change `LookupReferenceType` from `dataType: "string"` to `dataType: "Reference"` with `query: "GetLookupReferenceDefs"` and `referenceType` pointing to the new entity
 
 ### Phase 4: TranslatedString as first-class dataType
 

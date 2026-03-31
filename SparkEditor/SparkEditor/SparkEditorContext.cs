@@ -17,4 +17,5 @@ public class SparkEditorContext : SparkContext
     public IQueryable<Right> SecurityRights => Session.Query<Right>();
     public IQueryable<LanguageDefinition> Languages => Session.Query<LanguageDefinition>();
     public IQueryable<TranslationEntry> Translations => Session.Query<TranslationEntry>();
+    public IQueryable<LookupReferenceDef> LookupReferenceDefs => Session.Query<LookupReferenceDef>();
 }

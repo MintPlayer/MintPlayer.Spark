@@ -1,0 +1,64 @@
+{
+  "persistentObject": {
+    "id": "f1a2b3c4-d5e6-7890-abcd-ef1234567890",
+    "name": "LookupReferenceDef",
+    "description": {
+      "en": "Lookup Reference",
+      "nl": "Opzoekreferentie"
+    },
+    "clrType": "MintPlayer.Spark.Abstractions.LookupReferenceDef",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f1a20001-0001-0001-0001-000000000001",
+        "name": "Name",
+        "label": { "en": "Name", "nl": "Naam" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f1a20001-0001-0001-0001-000000000002",
+        "name": "IsTransient",
+        "label": { "en": "Transient", "nl": "Transient" },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f1a20001-0001-0001-0001-000000000003",
+        "name": "DisplayType",
+        "label": { "en": "Display Type", "nl": "Weergavetype" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "f1a2b3c4-0001-0001-0001-000000000001",
+      "name": "GetLookupReferenceDefs",
+      "description": { "en": "Lookup References", "nl": "Opzoekreferenties" },
+      "source": "Custom.GetAll",
+      "sortColumns": [{ "property": "Name", "direction": "asc" }]
+    }
+  ]
+}
