@@ -15,7 +15,7 @@
         "id": "e5f60001-0001-0001-0001-000000000001",
         "name": "Name",
         "label": { "en": "Name", "nl": "Naam" },
-        "dataType": "string",
+        "dataType": "translatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,

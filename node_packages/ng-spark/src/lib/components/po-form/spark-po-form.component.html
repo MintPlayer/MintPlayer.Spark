@@ -55,7 +55,25 @@
               (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">
             </bs-toggle-button>
           } @else if (attr.lookupReferenceType) {
-            @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
+            @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Multiselect) {
+              <bs-multiselect
+                [selectedItems]="getSelectedLookupItems(attr)"
+                (selectedItemsChange)="onMultiselectChange(attr, $event)">
+                <ng-template bsButtonTemplate let-count>
+                  {{ count }} {{ 'selected' | t }}
+                </ng-template>
+                <ng-template bsHeaderTemplate>
+                  <bs-toggle-button
+                    [ngModel]="isAllLookupSelected(attr)"
+                    (ngModelChange)="toggleAllLookup(attr, $event)" class="d-block">
+                    {{ 'selectAll' | t }}
+                  </bs-toggle-button>
+                </ng-template>
+                <ng-container *bsItemTemplate="let item of getLookupOptions(attr)">
+                  {{ item.values | resolveTranslation:item.key }}
+                </ng-container>
+              </bs-multiselect>
+            } @else if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
               <bs-input-group>
                 <input
                   type="text"
@@ -98,6 +116,22 @@
                 bsInputGroupBtn
                 [color]="colors.secondary"
                 (click)="openReferenceSelector(attr)">
+                ...
+              </button>
+            </bs-input-group>
+          } @else if (attr.dataType === 'translatedString') {
+            <bs-input-group>
+              <input
+                type="text"
+                [id]="attr.name"
+                [value]="getTranslatedStringDisplay(attr)"
+                readonly
+                [class.is-invalid]="hasError(attr.name)">
+              <button
+                type="button"
+                bsInputGroupBtn
+                [color]="colors.secondary"
+                (click)="openTranslatedStringEditor(attr)">
                 ...
               </button>
             </bs-input-group>
@@ -406,6 +440,38 @@
 
     <div bsModalFooter>
       <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'cancel' | t }}</button>
+    </div>
+  </div>
+</bs-modal>
+<!-- Modal for editing TranslatedString values -->
+<bs-modal [isOpen]="showTranslatedStringModal()" (isOpenChange)="!$event && closeTranslatedStringModal()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'edit' | t }} {{ editingTranslatedStringAttr()?.label | resolveTranslation:editingTranslatedStringAttr()?.name }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <bs-form>
+        <bs-grid>
+          @for (lang of availableLanguages(); track lang) {
+            <div bsRow class="mb-3">
+              <label [md]="3" bsColFormLabel [for]="'ts_' + lang">{{ lang }}</label>
+              <div [md]="9">
+                <input
+                  type="text"
+                  [id]="'ts_' + lang"
+                  [ngModel]="translatedStringFormData()[lang] ?? ''"
+                  (ngModelChange)="updateTranslatedStringValue(lang, $event)">
+              </div>
+            </div>
+          }
+        </bs-grid>
+      </bs-form>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="closeTranslatedStringModal()">{{ 'cancel' | t }}</button>
+      <button type="button" [color]="colors.primary" (click)="saveTranslatedString()">{{ 'save' | t }}</button>
     </div>
   </div>
 </bs-modal>

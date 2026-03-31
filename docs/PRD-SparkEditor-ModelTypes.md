@@ -427,8 +427,56 @@ Update model JSON files for:
 3. Add `TranslatedString` case to `GetDataType()` in `ModelSynchronizer.cs` and `EntityMapper.cs`
 4. Update model JSON files to use `dataType: "translatedString"` for the 13 identified attributes
 
-### Phase 5: Validation and UX polish
+### Phase 5: Flags enum support (EShowedOn as multiselect)
+
+The `EShowedOn` enum uses `[Flags]` and has values `Query = 1`, `PersistentObject = 2`. Attributes like `AttributeDefinition.ShowedOn` and `CustomActionDef.ShowedOn` serialize as comma-separated strings (e.g., `"Query, PersistentObject"`). Currently rendered as a plain text input.
+
+**Required changes:**
+1. Add a new dataType `"flagsEnum"` (or reuse LookupReference with a `displayType: "Multiselect"` option)
+2. The backend `GetDataType()` should detect `[Flags]` enums and return `"flagsEnum"`
+3. The ng-spark frontend needs a `<bs-multiselect>` (or checkbox group) component for flags enums
+4. The serialization should handle combining/splitting the comma-separated values
+5. Update SparkEditor model JSON `ShowedOn` attributes to use the new dataType
+
+**Approach considerations:**
+- A dedicated `"flagsEnum"` dataType is cleaner than overloading LookupReference
+- The backend can emit the available values via a new endpoint or embed them in the attribute definition
+- The frontend component should render checkboxes for each flag value, combining them into the comma-separated string
+
+### Phase 6: Validation and UX polish
 
 - Add appropriate validation rules to Reference attributes (e.g., `isRequired` where applicable)
 - Verify all queries referenced in Reference attributes exist and return correct data
 - Test end-to-end: create/edit all SparkEditor entity types through the WebView UI
+
+---
+
+## Issues Found During Implementation
+
+### Issue: PO detail page "Object not found" (fixed)
+
+**Symptom:** Clicking an item in a query list navigated to `/po/{alias}/{guid}` but returned "Object with ID {guid} not found".
+
+**Root cause:** When the `SparkEditorFileService` was rewritten to use shared models, `LoadPersistentObject(string id)` was comparing `po.SourceFile == id` (a file path) instead of `po.Id.ToString() == id` (the GUID). The framework passes the entity's GUID as the `id` parameter.
+
+**Fix:** Changed comparison to `po.Id.ToString() == id`.
+
+### Issue: TranslatedString attributes show `[object Object]` in query lists (fixed)
+
+**Symptom:** The Label column in `<bs-datatable>` query lists rendered as `[object Object]`.
+
+**Root cause:** Two-part problem:
+1. The SparkEditor model JSON files still had `"dataType": "string"` for TranslatedString attributes, so the `attributeValue` pipe didn't know to call `resolveTranslation()`.
+2. The `attributeValue` pipe had no handler for the `translatedString` dataType.
+
+**Fix:**
+1. Updated all 13 TranslatedString attributes across 9 model JSON files to `"dataType": "translatedString"`.
+2. Added `translatedString` handling to `attributeValue` pipe, `spark-po-detail.component.html`, and `spark-po-form.component.html` (with editing modal).
+
+### Issue: Model JSON `clrType` references stale entity class names (fixed earlier)
+
+**Symptom:** All queries returned empty results after deleting SparkEditor Entities folder.
+
+**Root cause:** The `clrType` fields in model JSON files still referenced `SparkEditor.Entities.*` but the entity classes were replaced by shared models in `MintPlayer.Spark.Abstractions.*`.
+
+**Fix:** Updated all 10 model JSON `clrType` fields to reference the shared model types.

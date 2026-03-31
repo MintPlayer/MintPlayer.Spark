@@ -44,7 +44,7 @@
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
-		<ProjectReference Include="..\MintPlayer.Spark.Models\MintPlayer.Spark.Models.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Core\MintPlayer.Spark.Core.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

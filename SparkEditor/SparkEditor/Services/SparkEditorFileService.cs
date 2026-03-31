@@ -54,7 +54,7 @@ public class SparkEditorFileService : ISparkEditorFileService
             foreach (var file in Directory.GetFiles(modelDir, "*.json"))
             {
                 var po = ParsePersistentObject(file);
-                if (po != null && po.SourceFile == id)
+                if (po != null && po.Id.ToString() == id)
                 {
                     return po;
                 }

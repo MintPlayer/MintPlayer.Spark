@@ -67,7 +67,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkEditor", "SparkEditor\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkEditor.Vsix", "extensions\visualstudio\SparkEditor.Vsix\SparkEditor.Vsix.csproj", "{FFC46C2A-21A8-742A-1338-79CB7A0C34C9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Models", "MintPlayer.Spark.Models\MintPlayer.Spark.Models.csproj", "{86CB29BD-4AF4-4111-B92C-2B360D95B327}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Core", "MintPlayer.Spark.Core\MintPlayer.Spark.Core.csproj", "{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -383,18 +383,18 @@ Global
 		{FFC46C2A-21A8-742A-1338-79CB7A0C34C9}.Release|x64.Build.0 = Release|Any CPU
 		{FFC46C2A-21A8-742A-1338-79CB7A0C34C9}.Release|x86.ActiveCfg = Release|Any CPU
 		{FFC46C2A-21A8-742A-1338-79CB7A0C34C9}.Release|x86.Build.0 = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|x64.Build.0 = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Debug|x86.Build.0 = Debug|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|Any CPU.Build.0 = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|x64.ActiveCfg = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|x64.Build.0 = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|x86.ActiveCfg = Release|Any CPU
-		{86CB29BD-4AF4-4111-B92C-2B360D95B327}.Release|x86.Build.0 = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|x64.Build.0 = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Debug|x86.Build.0 = Debug|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|x64.ActiveCfg = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|x64.Build.0 = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|x86.ActiveCfg = Release|Any CPU
+		{F3A8F639-E8B8-443A-92AB-9AC8721C81B9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

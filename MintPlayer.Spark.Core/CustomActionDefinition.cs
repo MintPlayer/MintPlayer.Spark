@@ -39,6 +39,7 @@ public class CustomActionDefinition
     /// <summary>
     /// Translation key for a confirmation dialog before execution.
     /// </summary>
+    [Reference(typeof(TranslationEntry), "GetTranslationDefs")]
     public string? ConfirmationMessageKey { get; set; }
 
     /// <summary>

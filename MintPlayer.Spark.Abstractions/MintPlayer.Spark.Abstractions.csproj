@@ -21,7 +21,7 @@
 
 
 	<ItemGroup>
-		<ProjectReference Include="..\MintPlayer.Spark.Models\MintPlayer.Spark.Models.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Core\MintPlayer.Spark.Core.csproj" />
 	</ItemGroup>
 
 </Project>

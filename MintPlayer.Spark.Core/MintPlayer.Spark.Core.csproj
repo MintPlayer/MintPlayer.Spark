@@ -6,12 +6,12 @@
 		<Nullable>enable</Nullable>
 
 		<!-- NuGet Package Metadata -->
-		<PackageId>MintPlayer.Spark.Models</PackageId>
+		<PackageId>MintPlayer.Spark.Core</PackageId>
 		<Version>10.0.0-preview.26</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>JSON transport models for MintPlayer.Spark low-code framework.</Description>
-		<PackageTags>low-code;framework;models;json</PackageTags>
+		<Description>Core types, models and attributes for MintPlayer.Spark low-code framework.</Description>
+		<PackageTags>low-code;framework;core;models;attributes</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>

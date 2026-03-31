@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Authorization.Models;
 
 /// <summary>
@@ -24,6 +26,7 @@ public class Right
     /// The ID of the group this right is assigned to.
     /// Must match a key in SecurityConfiguration.Groups.
     /// </summary>
+    [Reference(typeof(SecurityGroupDefinition), "GetSecurityGroupDefs")]
     public string? GroupId { get; set; }
 
     /// <summary>

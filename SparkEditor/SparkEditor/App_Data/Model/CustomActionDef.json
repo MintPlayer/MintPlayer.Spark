@@ -28,7 +28,7 @@
         "id": "e4d50001-0001-0001-0001-000000000002",
         "name": "DisplayName",
         "label": { "en": "Display Name", "nl": "Weergavenaam" },
-        "dataType": "string",
+        "dataType": "translatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
@@ -54,7 +54,7 @@
         "id": "e4d50001-0001-0001-0001-000000000004",
         "name": "Description",
         "label": { "en": "Description", "nl": "Beschrijving" },
-        "dataType": "string",
+        "dataType": "translatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
@@ -74,6 +74,7 @@
         "order": 5,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "lookupReferenceType": "ShowedOnOptions",
         "rules": []
       },
       {
@@ -87,6 +88,7 @@
         "order": 6,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "lookupReferenceType": "SelectionRuleOptions",
         "rules": []
       },
       {
@@ -106,13 +108,15 @@
         "id": "e4d50001-0001-0001-0001-000000000008",
         "name": "ConfirmationMessageKey",
         "label": { "en": "Confirmation Key", "nl": "Bevestigingssleutel" },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 8,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "referenceType": "MintPlayer.Spark.Abstractions.TranslationEntry",
+        "query": "GetTranslationDefs",
         "rules": []
       },
       {

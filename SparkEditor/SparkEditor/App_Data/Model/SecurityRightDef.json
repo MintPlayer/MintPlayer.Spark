@@ -28,13 +28,15 @@
         "id": "b7c80001-0001-0001-0001-000000000002",
         "name": "GroupId",
         "label": { "en": "Group", "nl": "Groep" },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
+        "referenceType": "MintPlayer.Spark.Abstractions.SecurityGroupDefinition",
+        "query": "GetSecurityGroupDefs",
         "rules": []
       },
       {

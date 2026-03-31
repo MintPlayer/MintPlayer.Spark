@@ -28,7 +28,7 @@
         "id": "d9e00001-0001-0001-0001-000000000002",
         "name": "Values",
         "label": { "en": "Values", "nl": "Waarden" },
-        "dataType": "string",
+        "dataType": "translatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,

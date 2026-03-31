@@ -20,7 +20,9 @@ public class ProgramUnit
     public TranslatedString? Name { get; set; }
     public string? Icon { get; set; }
     public string Type { get; set; } = "query";
+    [Reference(typeof(SparkQuery), "GetQueryDefinitions")]
     public Guid? QueryId { get; set; }
+    [Reference(typeof(EntityTypeDefinition), "GetPersistentObjectDefinitions")]
     public Guid? PersistentObjectId { get; set; }
     public int Order { get; set; }
     /// <summary>
@@ -32,5 +34,6 @@ public class ProgramUnit
     /// Optional back-reference to the parent group's ID.
     /// Set by loaders that flatten the hierarchy (e.g., SparkEditor).
     /// </summary>
+    [Reference(typeof(ProgramUnitGroup), "GetProgramUnitGroupDefs")]
     public Guid? GroupId { get; set; }
 }

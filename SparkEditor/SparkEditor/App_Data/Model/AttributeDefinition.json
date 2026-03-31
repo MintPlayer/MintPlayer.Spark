@@ -28,7 +28,7 @@
         "id": "c2b30001-0001-0001-0001-000000000002",
         "name": "Label",
         "label": { "en": "Label", "nl": "Label" },
-        "dataType": "string",
+        "dataType": "translatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
@@ -48,6 +48,7 @@
         "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
+        "lookupReferenceType": "AttributeDataType",
         "rules": []
       },
       {
@@ -113,6 +114,7 @@
         "order": 8,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "lookupReferenceType": "ShowedOnOptions",
         "rules": []
       },
       {

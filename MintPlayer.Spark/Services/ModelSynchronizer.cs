@@ -498,6 +498,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
             _ when underlying == typeof(System.Drawing.Color) => "color",
+            _ when underlying == typeof(TranslatedString) => "translatedString",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };

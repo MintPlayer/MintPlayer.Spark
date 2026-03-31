@@ -54,6 +54,7 @@ public class SparkQuery
     /// - For Database queries: from the IRavenQueryable generic parameter
     /// - For Custom queries: from the method return type's generic parameter
     /// </summary>
+    [Reference(typeof(EntityTypeDefinition), "GetPersistentObjectDefinitions")]
     public string? EntityType { get; set; }
 
     /// <summary>
