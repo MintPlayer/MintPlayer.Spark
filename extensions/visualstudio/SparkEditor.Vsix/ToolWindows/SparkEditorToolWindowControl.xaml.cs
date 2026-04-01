@@ -25,7 +25,6 @@ namespace SparkEditor.Vsix
         public SparkEditorToolWindowControl()
         {
             InitializeComponent();
-            Unloaded += OnUnloaded;
         }
 
         private async void OnStartClick(object sender, RoutedEventArgs e)
@@ -117,11 +116,6 @@ namespace SparkEditor.Vsix
                 StatusText.Text = string.Format("Error: {0}", ex.Message);
                 StartButton.IsEnabled = true;
             }
-        }
-
-        private void OnUnloaded(object sender, RoutedEventArgs e)
-        {
-            StopServer();
         }
 
         public void StopServer()

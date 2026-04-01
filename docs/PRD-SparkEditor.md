@@ -784,6 +784,63 @@ The editor reads/writes files that the developer may also edit manually. Strateg
 - Show a conflict notification if the file changed while the editor had unsaved modifications
 - Always pretty-print JSON with consistent formatting (2-space indent, sorted keys where applicable)
 
+### 9.1.1 Bug: VS Extension Webview Shows ERR_CONNECTION_REFUSED After Opening a JSON File
+
+**Observed behavior**: After clicking "Start Spark Editor", the webview renders correctly and can be refreshed multiple times. However, if the user opens a JSON file from the target app's `App_Data/Model/` directory (e.g., `Category.json`) in VS's text editor and *then* reloads the webview, the webview shows `ERR_CONNECTION_REFUSED` — the backend process is dead.
+
+**Root cause analysis**:
+
+`ERR_CONNECTION_REFUSED` means nothing is listening on the port, i.e., the `dotnet` backend process has terminated. File locking was ruled out as a cause: all 10 `File.ReadAllText()` calls in `SparkEditorFileService` are wrapped in `catch (Exception)` blocks that return `null`/empty collections on failure, and ASP.NET Core's request pipeline catches unhandled exceptions as 500 responses rather than crashing the process. The `MintPlayer.AspNetCore.SpaServices.Extensions` SPA middleware also does NOT terminate the host when the Angular CLI dev server dies.
+
+**Primary suspect — WPF `Unloaded` event prematurely kills the server process**:
+
+In `SparkEditorToolWindowControl.xaml.cs`, the constructor registers:
+```csharp
+Unloaded += OnUnloaded;
+```
+and the handler calls:
+```csharp
+private void OnUnloaded(object sender, RoutedEventArgs e) => StopServer();
+```
+`StopServer()` calls `_serverProcess.Kill()`.
+
+The WPF `Unloaded` event fires whenever the control is removed from the visual tree — **not** only when the tool window is explicitly closed. In Visual Studio, this can happen when:
+- The tool window is in auto-hide mode and collapses when focus moves to a document
+- VS reorganizes the layout/tab groups when a new document tab opens
+- The tool window frame is temporarily detached during docking changes
+
+Opening a JSON file creates a new document tab, which can trigger any of these layout changes. The `Unloaded` event fires, `StopServer()` kills the backend process, and the webview (still pointing at `http://localhost:{port}`) gets `ERR_CONNECTION_REFUSED` on the next navigation or reload.
+
+**Fix — Use `IVsSolutionEvents` instead of WPF `Unloaded`**:
+
+The `Unloaded` event is the wrong lifecycle hook — it fires on visual-tree changes, not on logical window/solution close. The correct approach is `IVsSolutionEvents.OnBeforeCloseSolution`, which fires exactly once when the solution is closing. This is cross-platform (works via the VS SDK on any OS VS runs on) and does not depend on Windows Job Objects.
+
+Implementation:
+1. **Remove** `Unloaded += OnUnloaded` from `SparkEditorToolWindowControl` constructor.
+2. **Implement `IVsSolutionEvents`** on `SparkEditorPackage`. In `InitializeAsync`, call `IVsSolution.AdviseSolutionEvents()` to subscribe. In `OnBeforeCloseSolution`, call `StopEditorServer()` (which finds the tool window and calls `control.StopServer()`). In `Dispose`, call `UnadviseSolutionEvents()` to unsubscribe and also call `StopEditorServer()` as a fallback for VS shutdown without solution close.
+
+**Additional improvements** (lower priority):
+
+1. **Add process-exit monitoring**. Subscribe to `_serverProcess.Exited` and update `StatusText` to inform the user the backend has stopped, with a restart option:
+   ```csharp
+   _serverProcess.EnableRaisingEvents = true;
+   _serverProcess.Exited += (s, e) =>
+       Dispatcher.BeginInvoke(() => StatusText.Text = "Server stopped unexpectedly. Click Start to restart.");
+   ```
+
+2. **Redirect stdout/stderr to the Output window**. The backend currently writes to stdout (`Console.WriteLine`), but the VS extension launches with `CreateNoWindow = true` and does not capture output. Redirecting to the VS Output pane ("Spark Editor" pane) would provide diagnostics when the process crashes:
+   ```csharp
+   _serverProcess.StartInfo.RedirectStandardOutput = true;
+   _serverProcess.StartInfo.RedirectStandardError = true;
+   _serverProcess.OutputDataReceived += (s, e) => WriteToOutputWindow(e.Data);
+   _serverProcess.ErrorDataReceived += (s, e) => WriteToOutputWindow(e.Data);
+   _serverProcess.Start();
+   _serverProcess.BeginOutputReadLine();
+   _serverProcess.BeginErrorReadLine();
+   ```
+
+3. **Re-enable the Start button when the server stops**. Currently, `StartButton.IsEnabled = false` is set once and never re-enabled if the server dies. The `Exited` handler should reset the UI to allow restarting.
+
 ### 9.2 No RavenDB Dependency
 
 The Spark Editor must NOT require RavenDB. The `SparkEditorContext` provides queryable collections backed by in-memory lists populated from JSON files. The `IDocumentStore` is replaced with a no-op implementation or the editor uses a custom `DatabaseAccess` that bypasses RavenDB entirely.
