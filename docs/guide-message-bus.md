@@ -52,7 +52,43 @@ public partial class LogPersonCreated : IRecipient<PersonCreatedMessage>
 }
 ```
 
-A single class can implement `IRecipient<T>` for multiple message types. Multiple recipients can handle the same message type -- all registered recipients are invoked for each message.
+A single class can implement `IRecipient<T>` for multiple message types. Multiple recipients can handle the same message type -- all registered recipients are invoked for each message. Each recipient's success or failure is tracked independently (see [Per-Handler Retry Isolation](#per-handler-retry-isolation) below).
+
+### Checkpoint Recipients
+
+When a handler processes a collection of items, failure partway through would normally cause the entire message to be retried from scratch. To avoid this, implement `ICheckpointRecipient<T>` and inject `IMessageCheckpoint`:
+
+```csharp
+using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.SourceGenerators.Attributes;
+
+public partial class NotifyEmployeesRecipient : ICheckpointRecipient<CompanyUpdatedMessage>
+{
+    [Inject] private readonly ILogger<NotifyEmployeesRecipient> _logger;
+    [Inject] private readonly IMessageCheckpoint _checkpoint;
+
+    public Task HandleAsync(CompanyUpdatedMessage message, CancellationToken cancellationToken)
+        => ProcessFromIndex(message, startIndex: 0, cancellationToken);
+
+    public Task HandleAsync(CompanyUpdatedMessage message, string checkpoint, CancellationToken cancellationToken)
+        => ProcessFromIndex(message, startIndex: int.Parse(checkpoint), cancellationToken);
+
+    private async Task ProcessFromIndex(CompanyUpdatedMessage message, int startIndex, CancellationToken ct)
+    {
+        for (var i = startIndex; i < message.EmployeeIds.Count; i++)
+        {
+            // Process each employee...
+            _logger.LogInformation("Notified employee {EmployeeId}", message.EmployeeIds[i]);
+
+            // Save progress. On retry, HandleAsync(message, checkpoint, ct) is called
+            // with the last saved value, so processing resumes from here.
+            await _checkpoint.SaveAsync((i + 1).ToString(), ct);
+        }
+    }
+}
+```
+
+The checkpoint is a free-form string -- use an index, offset, cursor, or any serialized state. Each call to `SaveAsync` overwrites the previous checkpoint and is persisted to RavenDB immediately.
 
 ## Step 3: Register Services
 
@@ -128,9 +164,25 @@ await messageBus.BroadcastAsync(message, "spark-sync-Cars");
 4. Different queues run concurrently and independently
 5. Each message is dispatched within a fresh DI scope
 
+### Per-Handler Retry Isolation
+
+When multiple recipients handle the same message type, each handler's success or failure is tracked independently. If handler A succeeds but handler B fails, only handler B is retried -- handler A is **not** re-executed.
+
+```
+Message M  →  LogCompanyUpdated ✓ (recorded)
+           →  NotifyEmployeesRecipient ✗ (failed)
+           →  retry
+           →  LogCompanyUpdated ⏭ (skipped -- already completed)
+           →  NotifyEmployeesRecipient ↻ (retried)
+```
+
+This prevents duplicate side effects in handlers that already completed (sending emails twice, creating duplicate records, etc.).
+
+Each handler has its own `AttemptCount`. When a handler exceeds `MaxAttempts`, it is individually **dead-lettered** while other handlers continue their retry cycles. The message is marked completed only when all handlers have reached a terminal state (completed or dead-lettered).
+
 ### Retry with Incremental Backoff
 
-When a recipient throws an exception, the message is retried with increasing delays:
+When a handler throws an exception, retries are scheduled with increasing delays:
 
 | Attempt | Delay |
 |---|---|
@@ -140,11 +192,13 @@ When a recipient throws an exception, the message is retried with increasing del
 | 4 | 10 minutes |
 | 5 | 1 hour |
 
-After the maximum number of attempts (default 5), the message is **dead-lettered** and the queue continues with the next message.
+After the maximum number of attempts (default 5), the handler is **dead-lettered** and the message continues processing remaining handlers.
+
+When multiple handlers have different attempt counts, the retry delay is based on the highest `AttemptCount` among failing handlers.
 
 ### Non-Retryable Errors
 
-If a recipient throws `NonRetryableException`, the message is dead-lettered immediately without any retries:
+If a recipient throws `NonRetryableException`, that handler is dead-lettered immediately without any retries:
 
 ```csharp
 public async Task HandleAsync(MyMessage message, CancellationToken cancellationToken)
@@ -157,6 +211,8 @@ public async Task HandleAsync(MyMessage message, CancellationToken cancellationT
     response.EnsureSuccessStatusCode();
 }
 ```
+
+Other handlers for the same message are unaffected -- they continue to execute normally.
 
 ### Queue Isolation
 
@@ -193,11 +249,49 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `PayloadJson` | `string` | JSON-serialized message payload |
 | `CreatedAtUtc` | `DateTime` | When the message was broadcast |
 | `NextAttemptAtUtc` | `DateTime?` | Earliest retry time (`null` = immediate) |
-| `AttemptCount` | `int` | Number of processing attempts |
-| `MaxAttempts` | `int` | Maximum attempts before dead-lettering |
+| `AttemptCount` | `int` | Number of times picked up for processing |
+| `MaxAttempts` | `int` | Maximum attempts per handler before dead-lettering |
 | `Status` | `EMessageStatus` | `Pending`, `Processing`, `Completed`, `Failed`, `DeadLettered` |
+| `CompletedAtUtc` | `DateTime?` | When the last handler completed |
+| `Handlers` | `HandlerExecution[]` | Per-handler execution state (see below) |
+
+Each entry in the `Handlers` array tracks an individual recipient:
+
+| Field | Type | Description |
+|---|---|---|
+| `HandlerType` | `string` | Assembly-qualified type name of the `IRecipient<T>` implementation |
+| `Status` | `EHandlerStatus` | `Pending`, `Completed`, `Failed`, `DeadLettered` |
+| `AttemptCount` | `int` | Number of attempts for this handler |
 | `LastError` | `string?` | Exception message from last failure |
-| `CompletedAtUtc` | `DateTime?` | When processing completed successfully |
+| `CompletedAtUtc` | `DateTime?` | When this handler completed successfully |
+| `Checkpoint` | `string?` | Last checkpoint saved by `ICheckpointRecipient<T>` handlers |
+
+Example document in RavenDB Studio:
+
+```json
+{
+  "QueueName": "CompanyEvents",
+  "Status": "Failed",
+  "AttemptCount": 2,
+  "Handlers": [
+    {
+      "HandlerType": "DemoApp.Recipients.LogCompanyUpdated, DemoApp",
+      "Status": "Completed",
+      "AttemptCount": 1,
+      "CompletedAtUtc": "2026-04-03T10:00:01Z"
+    },
+    {
+      "HandlerType": "DemoApp.Recipients.NotifyEmployeesRecipient, DemoApp",
+      "Status": "Failed",
+      "AttemptCount": 2,
+      "LastError": "HttpRequestException: 503 Service Unavailable",
+      "Checkpoint": "37"
+    }
+  ]
+}
+```
+
+In this example, `LogCompanyUpdated` completed on the first attempt and will not be re-executed. `NotifyEmployeesRecipient` failed twice and will resume from checkpoint `"37"` on the next retry.
 
 You can query message status directly in RavenDB Studio for observability. Completed and dead-lettered messages are automatically expired after `RetentionDays` (default 7) using RavenDB's built-in document expiration.
 
@@ -206,6 +300,10 @@ You can query message status directly in RavenDB Studio for observability. Compl
 See the DemoApp for a working example:
 
 - `Demo/DemoApp.Library/Messages/` -- message definitions with `[MessageQueue]`
-- `Demo/DemoApp/Recipients/` -- `LogPersonCreated`, `LogPersonDeleted` recipients
+- `Demo/DemoApp/Recipients/LogPersonCreated.cs` -- simple `IRecipient<T>` handler
+- `Demo/DemoApp/Recipients/LogPersonDeleted.cs` -- simple `IRecipient<T>` handler
+- `Demo/DemoApp/Recipients/LogCompanyUpdated.cs` -- demonstrates per-handler retry isolation
+- `Demo/DemoApp/Recipients/NotifyEmployeesRecipient.cs` -- `ICheckpointRecipient<T>` with batch progress tracking
 - `Demo/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from lifecycle hooks
+- `Demo/DemoApp/Actions/CompanyActions.cs` -- broadcasting batch messages with employee IDs
 - `Demo/DemoApp/Program.cs` -- service registration

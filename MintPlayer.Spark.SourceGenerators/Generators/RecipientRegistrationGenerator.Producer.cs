@@ -40,6 +40,10 @@ public class RecipientRegistrationProducer : Producer
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         writer.WriteLine($"global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::MintPlayer.Spark.Messaging.Abstractions.IRecipient<{recipientClass.MessageTypeName}>, {recipientClass.RecipientTypeName}>(builder.Services);");
+                        if (recipientClass.IsCheckpointRecipient)
+                        {
+                            writer.WriteLine($"global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::MintPlayer.Spark.Messaging.Abstractions.ICheckpointRecipient<{recipientClass.MessageTypeName}>, {recipientClass.RecipientTypeName}>(builder.Services);");
+                        }
                     }
                     writer.WriteLine("return builder;");
                 }
