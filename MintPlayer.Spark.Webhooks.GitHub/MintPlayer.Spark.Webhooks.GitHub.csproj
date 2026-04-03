@@ -26,11 +26,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.18.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.18.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Octokit" Version="14.0.0" />
 		<PackageReference Include="Octokit.Webhooks.AspNetCore" Version="3.2.1" />
