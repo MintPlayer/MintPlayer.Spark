@@ -87,7 +87,7 @@ MintPlayer.Spark/
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Authorization](docs/guide-authorization.md) | Optional security package, `security.json`, groups, permissions, XSRF |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
-| [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with scoped recipients and retry logic |
+| [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
 | [GitHub Webhooks](docs/guide-github-webhooks.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
