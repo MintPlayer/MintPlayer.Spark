@@ -70,6 +70,7 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
                 })
             .Where(static x => x != null)
             .SelectMany(static (x, ct) => x!)
+            .WithComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.Messaging.Abstractions

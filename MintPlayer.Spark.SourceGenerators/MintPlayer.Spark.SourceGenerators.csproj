@@ -24,11 +24,8 @@
 
     <ItemGroup>
         <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.16.0" PrivateAssets="all" GeneratePathProperty="true" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- Package the generator DLL as analyzer -->
-        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="10.13.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.13.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>

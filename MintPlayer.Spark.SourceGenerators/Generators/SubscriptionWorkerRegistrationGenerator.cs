@@ -48,6 +48,7 @@ public class SubscriptionWorkerRegistrationGenerator : IncrementalGenerator
                     return default;
                 })
             .Where(static x => x != null)
+            .WithNullableComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.SubscriptionWorker
