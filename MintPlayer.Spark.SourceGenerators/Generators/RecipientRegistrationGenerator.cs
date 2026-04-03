@@ -30,6 +30,21 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
                     if (classSymbol == null || classSymbol.IsAbstract)
                         return default;
 
+                    // Collect ICheckpointRecipient<T> message types for this class
+                    var checkpointMessageTypes = new HashSet<string>();
+                    foreach (var iface in classSymbol.AllInterfaces)
+                    {
+                        if (iface.IsGenericType &&
+                            iface.ConstructedFrom.ToDisplayString() == "MintPlayer.Spark.Messaging.Abstractions.ICheckpointRecipient<TMessage>")
+                        {
+                            var messageType = iface.TypeArguments.FirstOrDefault();
+                            if (messageType != null)
+                            {
+                                checkpointMessageTypes.Add(messageType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+                            }
+                        }
+                    }
+
                     // Walk AllInterfaces looking for IRecipient<TMessage>
                     var results = new List<RecipientClassInfo>();
                     foreach (var iface in classSymbol.AllInterfaces)
@@ -40,10 +55,12 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
                             var messageType = iface.TypeArguments.FirstOrDefault();
                             if (messageType != null)
                             {
+                                var messageTypeName = messageType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                                 results.Add(new RecipientClassInfo
                                 {
                                     RecipientTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                    MessageTypeName = messageType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                                    MessageTypeName = messageTypeName,
+                                    IsCheckpointRecipient = checkpointMessageTypes.Contains(messageTypeName)
                                 });
                             }
                         }
@@ -53,6 +70,7 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
                 })
             .Where(static x => x != null)
             .SelectMany(static (x, ct) => x!)
+            .WithComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.Messaging.Abstractions

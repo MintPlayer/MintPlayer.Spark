@@ -54,6 +54,7 @@ public class ActionsRegistrationGenerator : IncrementalGenerator
                     return default;
                 })
             .Where(static x => x != null)
+            .WithNullableComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark

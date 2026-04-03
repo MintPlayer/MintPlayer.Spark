@@ -1,6 +1,9 @@
+using MintPlayer.ValueComparerGenerator.Attributes;
+
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-public class SubscriptionWorkerClassInfo
+[AutoValueComparer]
+public partial class SubscriptionWorkerClassInfo
 {
     public string WorkerTypeName { get; set; } = string.Empty;
 }

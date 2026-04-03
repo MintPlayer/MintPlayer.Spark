@@ -1,0 +1,6 @@
+<Project>
+	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
+	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
+		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+	</PropertyGroup>
+</Project>

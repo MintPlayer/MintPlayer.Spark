@@ -47,6 +47,7 @@ public class CustomActionsRegistrationGenerator : IncrementalGenerator
                     };
                 })
             .Where(static x => x != null)
+            .WithNullableComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.Abstractions (where ICustomAction lives)

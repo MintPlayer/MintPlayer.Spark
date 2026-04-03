@@ -55,7 +55,7 @@ public class SendWelcomeEmail : IRecipient<PersonCreatedMessage>
 }
 ```
 
-A single class can implement `IRecipient<T>` for multiple message types. Multiple recipients can handle the same message type.
+A single class can implement `IRecipient<T>` for multiple message types. Multiple recipients can handle the same message type -- each handler's success or failure is tracked independently.
 
 ### 3. Register Services
 
@@ -113,9 +113,39 @@ Internally, the messaging library uses **RavenDB data subscriptions** (via `Mint
 5. Different queues are processed **concurrently and independently**
 6. Each message is dispatched within a **DI scope**, so recipients get fresh scoped services
 
+### Per-Handler Retry Isolation
+
+When multiple recipients handle the same message type, each handler is tracked independently. If handler A succeeds but handler B fails, only handler B is retried -- handler A is not re-executed. This prevents duplicate side effects.
+
+### Checkpoint Recipients
+
+For handlers that iterate over collections, implement `ICheckpointRecipient<T>` to save progress. On retry, the framework calls the checkpoint overload so the handler can resume where it left off:
+
+```csharp
+public partial class NotifyEmployeesRecipient : ICheckpointRecipient<CompanyUpdatedMessage>
+{
+    [Inject] private readonly IMessageCheckpoint _checkpoint;
+
+    public Task HandleAsync(CompanyUpdatedMessage message, CancellationToken ct)
+        => ProcessFromIndex(message, 0, ct);
+
+    public Task HandleAsync(CompanyUpdatedMessage message, string checkpoint, CancellationToken ct)
+        => ProcessFromIndex(message, int.Parse(checkpoint), ct);
+
+    private async Task ProcessFromIndex(CompanyUpdatedMessage message, int startIndex, CancellationToken ct)
+    {
+        for (var i = startIndex; i < message.EmployeeIds.Count; i++)
+        {
+            // Process item...
+            await _checkpoint.SaveAsync((i + 1).ToString(), ct);
+        }
+    }
+}
+```
+
 ### Retry with Incremental Backoff
 
-When a recipient throws an exception, the message is retried with increasing delays:
+When a handler throws an exception, retries are scheduled with increasing delays:
 
 | Attempt | Delay |
 |---------|-------|
@@ -125,7 +155,7 @@ When a recipient throws an exception, the message is retried with increasing del
 | 4 | 10 minutes |
 | 5 | 1 hour |
 
-After the maximum number of attempts (default 5), the message is **dead-lettered** and the queue continues with the next message.
+After the maximum number of attempts (default 5), the handler is individually **dead-lettered**. The message completes when all handlers reach a terminal state.
 
 ### Queue Isolation
 
@@ -161,11 +191,13 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `PayloadJson` | `string` | JSON-serialized message payload |
 | `CreatedAtUtc` | `DateTime` | When the message was broadcast |
 | `NextAttemptAtUtc` | `DateTime?` | Earliest retry time (`null` = immediate) |
-| `AttemptCount` | `int` | Number of processing attempts |
-| `MaxAttempts` | `int` | Maximum attempts before dead-lettering |
+| `AttemptCount` | `int` | Number of times picked up for processing |
+| `MaxAttempts` | `int` | Maximum attempts per handler before dead-lettering |
 | `Status` | `EMessageStatus` | `Pending`, `Processing`, `Completed`, `Failed`, `DeadLettered` |
-| `LastError` | `string?` | Exception message from last failure |
-| `CompletedAtUtc` | `DateTime?` | When processing completed successfully |
+| `CompletedAtUtc` | `DateTime?` | When the last handler completed |
+| `Handlers` | `HandlerExecution[]` | Per-handler execution state |
+
+Each `HandlerExecution` entry tracks: `HandlerType`, `Status` (`Pending`/`Completed`/`Failed`/`DeadLettered`), `AttemptCount`, `LastError`, `CompletedAtUtc`, and `Checkpoint` (for `ICheckpointRecipient<T>` handlers).
 
 You can query message status directly in RavenDB Studio for observability.
 
@@ -177,6 +209,8 @@ You can query message status directly in RavenDB Studio for observability.
 |------|-------------|
 | `IMessageBus` | `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()` |
 | `IRecipient<TMessage>` | `HandleAsync(TMessage, CancellationToken)` |
+| `ICheckpointRecipient<TMessage>` | Extends `IRecipient<T>` with `HandleAsync(TMessage, string checkpoint, CancellationToken)` for resume-from-checkpoint |
+| `IMessageCheckpoint` | `SaveAsync(string)` -- saves progress during handler execution |
 | `MessageQueueAttribute` | Assigns a message class to a named queue |
 
 ### Extension Methods (`MintPlayer.Spark.Messaging`)

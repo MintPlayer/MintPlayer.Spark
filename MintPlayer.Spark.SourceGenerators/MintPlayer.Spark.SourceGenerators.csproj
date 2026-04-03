@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
-		<Version>10.0.0-preview.26</Version>
+		<Version>10.0.0-preview.27</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
@@ -23,12 +23,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.16.0" PrivateAssets="all" GeneratePathProperty="true" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- Package the generator DLL as analyzer -->
-        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>

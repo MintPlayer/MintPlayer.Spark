@@ -1,6 +1,9 @@
+using MintPlayer.ValueComparerGenerator.Attributes;
+
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-public class CustomActionClassInfo
+[AutoValueComparer]
+public partial class CustomActionClassInfo
 {
     public string TypeName { get; set; } = string.Empty;
 

@@ -21,6 +21,8 @@ internal static class SparkMessagingExtensions
         services.AddScoped<IAsyncDocumentSession>(sp =>
             sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
         services.AddScoped<IMessageBus, MessageBus>();
+        services.AddScoped<MessageCheckpoint>();
+        services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());
 
         // Register IServiceCollectionAccessor so the manager can discover queues at runtime
         services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
