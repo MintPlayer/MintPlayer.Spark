@@ -96,6 +96,7 @@
           "nl": "Merkkleur"
         },
         "dataType": "string",
+        "renderer": "color-swatch",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
@@ -113,6 +114,7 @@
           "nl": "Accentkleur"
         },
         "dataType": "string",
+        "renderer": "color-swatch",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
