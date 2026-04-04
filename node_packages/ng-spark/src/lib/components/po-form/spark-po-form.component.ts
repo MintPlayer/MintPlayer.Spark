@@ -453,7 +453,8 @@ export class SparkPoFormComponent {
   }
 
   // TranslatedString methods
-  loadAvailableLanguages(): void {
+  async loadAvailableLanguages(): Promise<void> {
+    await this.translations.loadCulture();
     const langs = Object.keys(this.translations.languages());
     if (langs.length > 0) {
       this.availableLanguages.set(langs);

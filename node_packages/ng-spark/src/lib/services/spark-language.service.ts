@@ -25,7 +25,7 @@ export class SparkLanguageService {
     this.loadTranslations();
   }
 
-  private async loadCulture(): Promise<void> {
+  async loadCulture(): Promise<void> {
     const config = await firstValueFrom(this.http.get<CultureConfiguration>(`${this.baseUrl}/culture`));
     this.languages.set(config.languages);
     const saved = localStorage.getItem('spark-lang');
