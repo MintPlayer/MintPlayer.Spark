@@ -303,6 +303,17 @@ Then reference the projection in your SparkContext:
 public IRavenQueryable<VPerson> PeopleOverview => Session.Query<VPerson, People_Overview>();
 ```
 
+## Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](../docs/guide-getting-started.md) | Step-by-step setup walkthrough |
+| [Queries and Sorting](../docs/guide-queries-and-sorting.md) | Configure queries with sorting and filtering |
+| [Reference Attributes](../docs/guide-reference-attributes.md) | Foreign key relationships between entities |
+| [Authorization](../docs/guide-authorization.md) | Role-based access control with security.json |
+| [Debugging](../docs/guide-debugging.md) | Debug .NET apps with Claude Code using the debug MCP server |
+| [Docker Deployment](../docs/guide-docker-deployment.md) | Containerize and deploy Spark applications |
+
 ## Requirements
 
 - .NET 10.0+
