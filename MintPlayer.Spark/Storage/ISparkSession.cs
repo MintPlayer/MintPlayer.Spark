@@ -18,6 +18,12 @@ public interface ISparkSession : IDisposable
     IQueryable<T> Query<T>(string? indexName) where T : class;
 
     /// <summary>
+    /// Creates a queryable for the specified entity type using an index type.
+    /// In RavenDB this maps to session.Query&lt;T, TIndexCreator&gt;() which returns stored/computed index fields.
+    /// </summary>
+    IQueryable<T> Query<T>(Type indexType) where T : class;
+
+    /// <summary>
     /// Loads a single entity by its ID.
     /// </summary>
     Task<T?> LoadAsync<T>(string id) where T : class;

@@ -114,20 +114,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Check IndexRegistry for projection type - if so, query the index instead of the collection
         Type queryType = entityType;
-        string? indexName = null;
+        Type? indexType = null;
 
         var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
         if (registration?.ProjectionType != null)
         {
             queryType = registration.ProjectionType;
-            indexName = registration.IndexName;
+            indexType = registration.IndexType;
         }
 
         // Get reference properties — fall back to base entity type when projection lacks [Reference]
         var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
+        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexType, referenceProperties)).ToList();
 
         // Referenced documents are now in session cache - extract them
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
@@ -273,32 +273,41 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
         ISparkSession session,
         Type entityType,
-        string? indexName,
+        Type? indexType,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
     {
         object? query;
 
-        // Use ISparkSession.Query<T>(string? indexName) to get the queryable
-        var queryMethod = typeof(ISparkSession).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 1
-                && m.GetParameters()[0].ParameterType == typeof(string));
+        if (indexType != null)
+        {
+            // Use ISparkSession.Query<T>(Type indexType) — maps to session.Query<T, TIndex>()
+            var queryMethod = typeof(ISparkSession).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(Type));
 
-        if (queryMethod == null)
-            return [];
+            if (queryMethod == null)
+                return [];
 
-        var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
-        query = genericQueryMethod.Invoke(session, [indexName]);
+            query = queryMethod.MakeGenericMethod(entityType).Invoke(session, [indexType]);
+        }
+        else
+        {
+            // Use ISparkSession.Query<T>() without index
+            var queryMethod = typeof(ISparkSession).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 0);
+
+            if (queryMethod == null)
+                return [];
+
+            query = queryMethod.MakeGenericMethod(entityType).Invoke(session, []);
+        }
 
         if (query == null)
             return [];
-
-        // When querying an index, use provider-specific projection
-        if (!string.IsNullOrEmpty(indexName))
-        {
-            query = storageProvider.ApplyProjection(query, entityType);
-        }
 
         // Chain .Include(propertyName) so referenced documents are loaded in the same round-trip
         if (query != null && referenceProperties.Count > 0)

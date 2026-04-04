@@ -104,18 +104,19 @@ internal partial class IndexRegistry : IIndexRegistry
 
     public void RegisterProjection(Type projectionType, Type indexType)
     {
-        var indexName = indexType.Name;
-
         lock (_lock)
         {
-            if (_byIndexName.TryGetValue(indexName, out var registration))
+            // Look up by IndexType rather than name to avoid convention mismatches
+            // (e.g., RavenDB replaces underscores with slashes in index names)
+            var registration = _byIndexName.Values.FirstOrDefault(r => r.IndexType == indexType);
+            if (registration != null)
             {
                 registration.ProjectionType = projectionType;
-                Console.WriteLine($"Registered projection: {projectionType.Name} for index {indexName}");
+                Console.WriteLine($"Registered projection: {projectionType.Name} for index {registration.IndexName}");
             }
             else
             {
-                Console.WriteLine($"Warning: Cannot register projection {projectionType.Name} - index {indexName} not found");
+                Console.WriteLine($"Warning: Cannot register projection {projectionType.Name} - index type {indexType.Name} not found");
             }
         }
     }

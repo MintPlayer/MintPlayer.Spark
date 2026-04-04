@@ -40,6 +40,12 @@ public class FileSystemSparkSession : ISparkSession
         return Query<T>();
     }
 
+    public IQueryable<T> Query<T>(Type indexType) where T : class
+    {
+        // FileSystem provider has no index concept — just returns all entities
+        return Query<T>();
+    }
+
     public Task<T?> LoadAsync<T>(string id) where T : class
     {
         if (_loadedEntities.TryGetValue(id, out var cached) && cached is T typedCached)

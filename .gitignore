@@ -375,3 +375,4 @@ node_packages/ng-spark-auth/dist/
 
 # Claude Code
 .claude/worktrees/
+.playwright-mcp/

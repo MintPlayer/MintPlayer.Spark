@@ -140,14 +140,14 @@ internal partial class QueryExecutor : IQueryExecutor
             }
         }
 
-        if (!string.IsNullOrEmpty(indexName))
+        if (registration?.IndexType != null && resultType != entityType)
+        {
+            // Query<T>(Type indexType) returns stored/computed index fields via ProjectInto
+            queryable = ApplyIndexByType(session, resultType, registration.IndexType);
+        }
+        else if (!string.IsNullOrEmpty(indexName))
         {
             queryable = ApplyIndexByName(session, entityType, indexName);
-        }
-
-        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
-        {
-            queryable = storageProvider.ApplyProjection(queryable, resultType);
         }
 
         // Resolve reference properties before executing so we can chain .Include()
@@ -398,6 +398,25 @@ internal partial class QueryExecutor : IQueryExecutor
     #endregion
 
     #region Shared Helpers
+
+    private object ApplyIndexByType(ISparkSession session, Type resultType, Type indexType)
+    {
+        // Find the Query<T>(Type) method on ISparkSession via reflection
+        var sessionQueryMethod = typeof(ISparkSession).GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 1
+                && m.GetParameters()[0].ParameterType == typeof(Type));
+
+        if (sessionQueryMethod == null)
+        {
+            throw new InvalidOperationException("Could not find Query<T>(Type) method on ISparkSession");
+        }
+
+        var genericMethod = sessionQueryMethod.MakeGenericMethod(resultType);
+        return genericMethod.Invoke(session, [indexType])!;
+    }
 
     private object ApplyIndexByName(ISparkSession session, Type entityType, string indexName)
     {

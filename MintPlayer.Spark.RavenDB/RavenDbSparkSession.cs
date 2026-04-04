@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Storage;
+using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.RavenDB;
@@ -28,7 +29,25 @@ public class RavenDbSparkSession : ISparkSession
         if (string.IsNullOrEmpty(indexName))
             return InnerSession.Query<T>();
 
-        return InnerSession.Query<T>(indexName);
+        // RavenDB convention: underscores in class name become slashes in index name
+        var resolvedName = indexName.Replace("_", "/");
+        return InnerSession.Query<T>(resolvedName);
+    }
+
+    public IQueryable<T> Query<T>(Type indexType) where T : class
+    {
+        // Call InnerSession.Query<T, TIndex>() via reflection (TIndex is a runtime Type)
+        var method = typeof(IAsyncDocumentSession).GetMethods()
+            .First(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 2
+                && m.GetParameters().Length == 0);
+        var generic = method.MakeGenericMethod(typeof(T), indexType);
+        var queryable = (IQueryable<T>)generic.Invoke(InnerSession, [])!;
+
+        // ProjectInto tells RavenDB to return stored/computed index fields (e.g., FullName)
+        // rather than loading the underlying documents. Baked in here so callers can't forget it.
+        return LinqExtensions.ProjectInto<T>(queryable);
     }
 
     public async Task<T?> LoadAsync<T>(string id) where T : class

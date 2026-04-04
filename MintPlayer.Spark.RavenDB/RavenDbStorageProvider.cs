@@ -52,7 +52,8 @@ public class RavenDbStorageProvider : ISparkStorageProvider
                     continue;
                 }
 
-                var indexName = indexType.Name;
+                // RavenDB convention: underscores in class name become slashes in index name
+                var indexName = indexType.Name.Replace("_", "/");
                 indexRegistry.RegisterIndex(indexName, collectionType, indexType);
             }
 
