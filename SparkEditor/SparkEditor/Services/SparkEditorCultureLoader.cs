@@ -24,12 +24,6 @@ internal class SparkEditorCultureLoader : ICultureLoader
             config.Languages[lang.Culture] = lang.Name ?? TranslatedString.Create(lang.Culture);
         }
 
-        // Ensure "en" is always present
-        if (!config.Languages.ContainsKey("en"))
-        {
-            config.Languages["en"] = TranslatedString.Create("English");
-        }
-
         if (languages.Count > 0)
         {
             config.DefaultLanguage = languages[0].Culture;
