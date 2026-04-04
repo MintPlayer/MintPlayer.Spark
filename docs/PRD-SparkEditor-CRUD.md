@@ -222,6 +222,7 @@ void SavePersistentObject(EntityTypeDefinition po)
 - The `SourceFile` property tracks which file a PO was loaded from (already exists on `EntityTypeDefinition`)
 - When renaming a PO, rename the file (old file deleted, new file created)
 - Deleting a PO deletes the entire `.json` file (both PO and its queries)
+- **Preserve embedded arrays**: `SavePersistentObject` only updates PO-level metadata (name, description, clrType, etc.). The existing `tabs[]`, `groups[]`, and `attributes[]` arrays are carried over from the file, since those are managed by their own `SaveAttribute`/`DeleteAttribute` methods. The `queries[]` array at root level is similarly preserved.
 
 **SaveAttribute / DeleteAttribute**:
 - Read the parent PO's file
@@ -327,55 +328,28 @@ public override Task OnDeleteAsync(ISparkSession session, string id)
 
 #### 4.4.1 FileSystemWatcher Setup
 
-One `FileSystemWatcher` per target path, monitoring:
-- `App_Data/Model/*.json` -- PO/Attribute/Query changes
-- `App_Data/programUnits.json` -- Program unit changes
-- `App_Data/customActions.json` -- Custom action changes
-- `App_Data/security.json` -- Security changes
-- `App_Data/culture.json` -- Language changes
-- `App_Data/translations.json` -- Translation changes
+One recursive `FileSystemWatcher` per target path with `IncludeSubdirectories = true`. This catches all JSON files in `App_Data/` and `App_Data/Model/`, including files and directories created after the editor starts (e.g. `Model/` created later, or new files added via Notepad).
 
 ```csharp
-public class SparkEditorFileService : ISparkEditorFileService, IDisposable
+public void StartWatching()
 {
-    private readonly List<FileSystemWatcher> _watchers = new();
-
-    public event EventHandler<FileChangedEventArgs> FileChanged;
-
-    public void StartWatching()
+    foreach (var targetPath in TargetPaths)
     {
-        foreach (var targetPath in TargetPaths)
-        {
-            // Watch Model/ directory
-            var modelDir = Path.Combine(targetPath, "Model");
-            if (Directory.Exists(modelDir))
-            {
-                var modelWatcher = new FileSystemWatcher(modelDir, "*.json")
-                {
-                    NotifyFilter = NotifyFilters.LastWrite
-                                 | NotifyFilters.FileName
-                                 | NotifyFilters.CreationTime,
-                    EnableRaisingEvents = true
-                };
-                modelWatcher.Changed += OnFileChanged;
-                modelWatcher.Created += OnFileChanged;
-                modelWatcher.Deleted += OnFileChanged;
-                modelWatcher.Renamed += OnFileRenamed;
-                _watchers.Add(modelWatcher);
-            }
+        if (!Directory.Exists(targetPath)) continue;
 
-            // Watch root App_Data/ for single-object files
-            var rootWatcher = new FileSystemWatcher(targetPath, "*.json")
-            {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-                IncludeSubdirectories = false,
-                EnableRaisingEvents = true
-            };
-            rootWatcher.Changed += OnFileChanged;
-            rootWatcher.Created += OnFileChanged;
-            rootWatcher.Deleted += OnFileChanged;
-            _watchers.Add(rootWatcher);
-        }
+        var watcher = new FileSystemWatcher(targetPath, "*.json")
+        {
+            NotifyFilter = NotifyFilters.LastWrite
+                         | NotifyFilters.FileName
+                         | NotifyFilters.CreationTime,
+            IncludeSubdirectories = true,
+            EnableRaisingEvents = true
+        };
+        watcher.Changed += OnFileChanged;
+        watcher.Created += OnFileChanged;
+        watcher.Deleted += OnFileChanged;
+        watcher.Renamed += OnFileRenamed;
+        _watchers.Add(watcher);
     }
 }
 ```
@@ -416,23 +390,34 @@ private void OnFileChanged(object sender, FileSystemEventArgs e)
 
 #### 4.4.3 Self-Write Suppression
 
-When the editor itself writes a file, the `FileSystemWatcher` will fire. Suppress this:
+When the editor itself writes a file, the `FileSystemWatcher` will fire. Suppress only the specific file being written using a per-file tracking set (not a global flag, which would suppress unrelated external changes to other files):
 
 ```csharp
-private volatile bool _isWriting;
+private readonly ConcurrentDictionary<string, byte> _selfWrittenFiles = new();
 
-private void WriteFileWithSuppression(string path, string content)
+private void AtomicWriteFileWithSuppression(string path, string content)
 {
-    _isWriting = true;
+    var fullPath = Path.GetFullPath(path);
+    _selfWrittenFiles[fullPath] = 0;   // Mark this file as "being written by us"
     try
     {
-        File.WriteAllText(path, content);
+        var tempPath = path + ".tmp";
+        File.WriteAllText(tempPath, content);
+        File.Move(tempPath, path, overwrite: true);
     }
     finally
     {
-        // Delay re-enabling to account for async FSW events
-        Task.Delay(500).ContinueWith(_ => _isWriting = false);
+        // Remove suppression after FSW events settle
+        Task.Delay(500).ContinueWith(_ =>
+            _selfWrittenFiles.TryRemove(fullPath, out byte _));
     }
+}
+
+private void OnFileChanged(object sender, FileSystemEventArgs e)
+{
+    // Only suppress if THIS specific file is being written by the editor
+    if (_selfWrittenFiles.ContainsKey(Path.GetFullPath(e.FullPath))) return;
+    DebouncedNotify(e.FullPath, e.ChangeType);
 }
 ```
 
@@ -604,26 +589,77 @@ export interface FileChangedMessage {
 
 Components use `effect()` to react to file changes:
 
-```typescript
-// In SparkQueryListComponent or any list/detail component
-private fileWatchService = inject(SparkFileWatchService);
+##### Temp File Filtering
 
-constructor() {
-    effect(() => {
-        const event = this.fileWatchService.fileChanged();
-        if (event && event.affectedEntities.includes(this.entityTypeName())) {
-            // Refetch the query data
-            this.refresh();
-        }
-    });
+Editors like Notepad create backup files (e.g. `Category.json~RF9efb66.TMP`) that trigger `FileSystemWatcher` events. The WebSocket endpoint filters these out server-side before sending:
+
+```csharp
+private static bool ShouldSkipFile(string filePath)
+{
+    var fileName = Path.GetFileName(filePath);
+    if (fileName.Contains('~') || fileName.EndsWith(".TMP", StringComparison.OrdinalIgnoreCase))
+        return true;
+    if (!fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        return true;
+    return false;
 }
 ```
 
-The `ShellComponent` connects on init and disconnects on destroy:
+##### Component Refresh via `SparkDataRefreshService`
+
+The `@mintplayer/ng-spark` library provides `SparkDataRefreshService` -- a generic refresh mechanism that Spark components subscribe to. This avoids the need for components to know about file watching directly.
 
 ```typescript
-ngOnInit() { this.fileWatchService.connect(); }
-ngOnDestroy() { this.fileWatchService.disconnect(); }
+// In @mintplayer/ng-spark
+@Injectable({ providedIn: 'root' })
+export class SparkDataRefreshService {
+    readonly refreshTrigger = signal<DataRefreshEvent | null>(null);
+
+    refresh(affectedEntities: string[]): void {
+        this.refreshTrigger.set({ affectedEntities, timestamp: Date.now() });
+    }
+}
+```
+
+Components subscribe via `effect()`:
+
+```typescript
+// In SparkPoDetailComponent
+effect(() => {
+    const event = this.refreshService.refreshTrigger();
+    if (event && this.type && this.id) {
+        this.reloadItem(); // re-fetches entity types + item from server
+    }
+});
+
+// In SparkQueryListComponent
+effect(() => {
+    const event = this.refreshService.refreshTrigger();
+    if (event && this.query()) {
+        this.loadItems(); // re-executes the query
+    }
+});
+```
+
+The `ShellComponent` bridges file watching to the refresh service:
+
+```typescript
+private readonly fileWatchService = inject(SparkFileWatchService);
+private readonly refreshService = inject(SparkDataRefreshService);
+
+constructor() {
+    afterNextRender(() => this.fileWatchService.connect());
+    this.destroyRef.onDestroy(() => this.fileWatchService.disconnect());
+
+    effect(() => {
+        const event = this.fileWatchService.fileChanged();
+        if (event) {
+            if (event.affectedEntities.includes('ProgramUnitGroupDef'))
+                this.loadProgramUnits(); // refresh sidebar
+            this.refreshService.refresh(event.affectedEntities); // refresh page components
+        }
+    });
+}
 ```
 
 ### 4.5 Conflict Detection
@@ -899,41 +935,13 @@ For new entities, generate GUIDs automatically:
 
 ## 6. Technical Considerations
 
-### 6.1 File Locking
+### 6.1 File Write Concurrency
 
-Multiple threads may attempt to read/write the same file simultaneously (e.g., user saves while `FileSystemWatcher` triggers a reload). Use a per-file `SemaphoreSlim` to serialize access:
+File writes use atomic write-to-temp-then-rename (see 6.3) which is inherently safe against partial writes. The per-file self-write suppression set (`ConcurrentDictionary<string, byte>`) handles the interaction with `FileSystemWatcher` -- no separate locking is needed since:
 
-```csharp
-private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
-
-private SemaphoreSlim GetLock(string filePath)
-    => _fileLocks.GetOrAdd(Path.GetFullPath(filePath), _ => new SemaphoreSlim(1, 1));
-
-private async Task<string> ReadFileAsync(string filePath)
-{
-    var semaphore = GetLock(filePath);
-    await semaphore.WaitAsync();
-    try { return await File.ReadAllTextAsync(filePath); }
-    finally { semaphore.Release(); }
-}
-
-private async Task WriteFileAsync(string filePath, string content)
-{
-    var semaphore = GetLock(filePath);
-    await semaphore.WaitAsync();
-    try
-    {
-        _isWriting = true;
-        await File.WriteAllTextAsync(filePath, content);
-    }
-    finally
-    {
-        await Task.Delay(500); // Let FSW events settle
-        _isWriting = false;
-        semaphore.Release();
-    }
-}
-```
+- Write operations are synchronous and fast (JSON serialization + temp file + rename)
+- The `FileSystemWatcher` callback checks the suppression set, not a lock
+- Read operations don't need locking because they only run during HTTP request handling (single-threaded per request)
 
 ### 6.2 Multi-Path Entity Source Tracking
 
