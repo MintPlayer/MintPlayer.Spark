@@ -1071,7 +1071,12 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         var filePath = FindSingleFile("culture.json");
         var root = LoadOrCreateJsonObject(filePath);
 
-        var languages = root["languages"]?.AsObject() ?? new JsonObject();
+        var languages = root["languages"]?.AsObject();
+        if (languages == null)
+        {
+            languages = new JsonObject();
+            root["languages"] = languages;
+        }
 
         var code = language.Culture;
         if (string.IsNullOrEmpty(code))
@@ -1079,8 +1084,6 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 
         if (language.Name != null)
             languages[code] = SerializeTranslatedString(language.Name);
-
-        root["languages"] = languages;
 
         // Set defaultLanguage if not present
         if (root["defaultLanguage"] == null)
