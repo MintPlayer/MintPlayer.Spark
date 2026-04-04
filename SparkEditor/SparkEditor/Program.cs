@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.FileSystem;
+using MintPlayer.Spark.Services;
 using SparkEditor;
 using SparkEditor.Endpoints;
 using SparkEditor.Services;
@@ -52,6 +53,10 @@ builder.Services.AddSpark(spark =>
     spark.UseContext<SparkEditorContext>();
     spark.AddActions();
 });
+
+// Override the framework's CultureLoader so /spark/culture reads from the target app's culture.json
+// (not the SparkEditor's own App_Data) and reloads on every request to reflect newly added languages.
+builder.Services.AddScoped<ICultureLoader, SparkEditor.Services.SparkEditorCultureLoader>();
 
 builder.Services.AddSpaStaticFilesImproved(configuration =>
 {
