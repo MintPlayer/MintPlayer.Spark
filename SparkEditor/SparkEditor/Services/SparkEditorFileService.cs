@@ -111,7 +111,25 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             if (po.Id == Guid.Empty) po.Id = Guid.NewGuid();
         }
 
-        root["persistentObject"] = BuildPersistentObjectNode(po);
+        // Preserve existing embedded arrays (attributes, tabs, groups) from the file.
+        // SavePersistentObject only updates PO-level metadata properties.
+        var existingPo = root["persistentObject"]?.AsObject();
+        var poNode = BuildPersistentObjectNode(po);
+
+        if (existingPo != null)
+        {
+            // Carry over embedded arrays that are managed by their own Save methods
+            foreach (var arrayKey in new[] { "tabs", "groups", "attributes" })
+            {
+                if (existingPo[arrayKey] is JsonNode existingArray)
+                {
+                    var cloned = JsonNode.Parse(existingArray.ToJsonString());
+                    poNode[arrayKey] = cloned;
+                }
+            }
+        }
+
+        root["persistentObject"] = poNode;
 
         // Preserve existing queries array if present, otherwise create empty
         if (root["queries"] == null)
