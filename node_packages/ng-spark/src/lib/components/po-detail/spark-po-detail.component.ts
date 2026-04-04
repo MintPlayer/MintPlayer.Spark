@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -14,6 +14,7 @@ import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } f
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService } from '../../services/spark.service';
 import { SparkLanguageService } from '../../services/spark-language.service';
+import { SparkDataRefreshService } from '../../services/spark-data-refresh.service';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
 import { ResolveTranslationPipe } from '../../pipes/resolve-translation.pipe';
 import { AttributeValuePipe } from '../../pipes/attribute-value.pipe';
@@ -44,6 +45,7 @@ export class SparkPoDetailComponent {
   private readonly sparkService = inject(SparkService);
   private readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly refreshService = inject(SparkDataRefreshService);
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -69,6 +71,26 @@ export class SparkPoDetailComponent {
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+
+    // Re-fetch current item when external data changes
+    effect(() => {
+      const event = this.refreshService.refreshTrigger();
+      if (event && this.type && this.id) {
+        this.reloadItem();
+      }
+    });
+  }
+
+  private async reloadItem(): Promise<void> {
+    try {
+      const [entityTypes, item] = await Promise.all([
+        this.sparkService.getEntityTypes(),
+        this.sparkService.get(this.type, this.id)
+      ]);
+      this.allEntityTypes.set(entityTypes);
+      this.entityType.set(entityTypes.find(t => t.id === this.type || t.alias === this.type) || null);
+      this.item.set(item);
+    } catch { }
   }
 
   private async onParamsChange(params: any): Promise<void> {

@@ -31,6 +31,7 @@ public static class FileEventsEndpoint
         void handler(object? s, FileChangedEventArgs e)
         {
             if (ws.State != WebSocketState.Open) return;
+            if (ShouldSkipFile(e.FilePath)) return;
 
             var message = new FileChangedMessage
             {
@@ -81,6 +82,17 @@ public static class FileEventsEndpoint
                 catch { }
             }
         }
+    }
+
+    private static bool ShouldSkipFile(string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+        // Skip temp files created by editors (e.g. Notepad's ~RFxxxx.TMP backup files)
+        if (fileName.Contains('~') || fileName.EndsWith(".TMP", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
     }
 
     private static string[] ResolveAffectedEntities(string filePath)

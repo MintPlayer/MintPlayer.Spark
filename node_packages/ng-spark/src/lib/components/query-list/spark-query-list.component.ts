@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
@@ -16,6 +16,7 @@ import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '../../services/spark.service';
 import { SparkStreamingService } from '../../services/spark-streaming.service';
+import { SparkDataRefreshService } from '../../services/spark-data-refresh.service';
 import { StreamingMessage } from '../../models/streaming-message';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { TranslateKeyPipe } from '../../pipes/translate-key.pipe';
@@ -46,6 +47,7 @@ export class SparkQueryListComponent {
   private readonly streamingService = inject(SparkStreamingService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly refreshService = inject(SparkDataRefreshService);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
 
@@ -79,6 +81,14 @@ export class SparkQueryListComponent {
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
+
+    // Re-fetch query results when external data changes
+    effect(() => {
+      const event = this.refreshService.refreshTrigger();
+      if (event && this.query()) {
+        this.loadItems();
+      }
+    });
   }
 
   private async onParamsChange(params: any): Promise<void> {

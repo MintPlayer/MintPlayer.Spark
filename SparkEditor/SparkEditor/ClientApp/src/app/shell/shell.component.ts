@@ -7,7 +7,7 @@ import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggle
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
-import { SparkService, SparkLanguageService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark';
+import { SparkService, SparkLanguageService, SparkDataRefreshService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark';
 import { SparkFileWatchService } from '../services/spark-file-watch.service';
 
 @Component({
@@ -22,6 +22,7 @@ export class ShellComponent {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
   private readonly fileWatchService = inject(SparkFileWatchService);
+  private readonly refreshService = inject(SparkDataRefreshService);
 
   readonly lang = inject(SparkLanguageService);
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
@@ -39,11 +40,15 @@ export class ShellComponent {
 
     this.destroyRef.onDestroy(() => this.fileWatchService.disconnect());
 
-    // Reload program units sidebar when programUnits.json changes externally
+    // When external file changes arrive, refresh the sidebar and notify Spark components
     effect(() => {
       const event = this.fileWatchService.fileChanged();
-      if (event && event.affectedEntities.includes('ProgramUnitGroupDef')) {
-        this.loadProgramUnits();
+      if (event) {
+        if (event.affectedEntities.includes('ProgramUnitGroupDef')) {
+          this.loadProgramUnits();
+        }
+        // Notify all Spark components to re-fetch their data
+        this.refreshService.refresh(event.affectedEntities);
       }
     });
 
