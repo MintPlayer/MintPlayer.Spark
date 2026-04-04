@@ -1199,36 +1199,25 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
     {
         foreach (var targetPath in TargetPaths)
         {
-            // Watch Model/ directory for PO/Attribute/Query changes
-            var modelDir = Path.Combine(targetPath, "Model");
-            if (Directory.Exists(modelDir))
-            {
-                var modelWatcher = new FileSystemWatcher(modelDir, "*.json")
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
-                    EnableRaisingEvents = true
-                };
-                modelWatcher.Changed += OnFileChanged;
-                modelWatcher.Created += OnFileChanged;
-                modelWatcher.Deleted += OnFileChanged;
-                modelWatcher.Renamed += OnFileRenamed;
-                _watchers.Add(modelWatcher);
-            }
+            if (!Directory.Exists(targetPath)) continue;
 
-            // Watch root App_Data/ for single-object files
-            if (Directory.Exists(targetPath))
+            // Single watcher per target path with IncludeSubdirectories.
+            // This catches files in App_Data/ (programUnits.json, etc.)
+            // AND in App_Data/Model/ (PO files), including newly created
+            // files and directories (e.g. Model/ created after startup).
+            var watcher = new FileSystemWatcher(targetPath, "*.json")
             {
-                var rootWatcher = new FileSystemWatcher(targetPath, "*.json")
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-                    IncludeSubdirectories = false,
-                    EnableRaisingEvents = true
-                };
-                rootWatcher.Changed += OnFileChanged;
-                rootWatcher.Created += OnFileChanged;
-                rootWatcher.Deleted += OnFileChanged;
-                _watchers.Add(rootWatcher);
-            }
+                NotifyFilter = NotifyFilters.LastWrite
+                             | NotifyFilters.FileName
+                             | NotifyFilters.CreationTime,
+                IncludeSubdirectories = true,
+                EnableRaisingEvents = true
+            };
+            watcher.Changed += OnFileChanged;
+            watcher.Created += OnFileChanged;
+            watcher.Deleted += OnFileChanged;
+            watcher.Renamed += OnFileRenamed;
+            _watchers.Add(watcher);
         }
     }
 
