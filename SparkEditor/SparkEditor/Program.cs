@@ -3,6 +3,8 @@ using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.FileSystem;
 using SparkEditor;
+using SparkEditor.Endpoints;
+using SparkEditor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +66,9 @@ app.UseSpaStaticFilesImproved();
 app.UseRouting();
 app.UseSpark();
 
+// Map WebSocket endpoint for file change notifications
+app.MapFileEventsEndpoint();
+
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapControllers();
@@ -85,14 +90,23 @@ app.MapWhen(
         });
     });
 
-// Report the actual port
+// Start file watching and report the actual port
 app.Lifetime.ApplicationStarted.Register(() =>
 {
+    var fileService = app.Services.GetRequiredService<ISparkEditorFileService>();
+    fileService.StartWatching();
+
     var addresses = app.Urls;
     foreach (var address in addresses)
     {
         Console.WriteLine($"Spark Editor listening on: {address}");
     }
+});
+
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    var fileService = app.Services.GetRequiredService<ISparkEditorFileService>();
+    fileService.StopWatching();
 });
 
 app.Run();

@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, signal, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
@@ -8,6 +8,7 @@ import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/sele
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
 import { SparkService, SparkLanguageService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark';
+import { SparkFileWatchService } from '../services/spark-file-watch.service';
 
 @Component({
   selector: 'app-shell',
@@ -20,6 +21,7 @@ export class ShellComponent {
   private readonly sparkService = inject(SparkService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly fileWatchService = inject(SparkFileWatchService);
 
   readonly lang = inject(SparkLanguageService);
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
@@ -30,6 +32,19 @@ export class ShellComponent {
     afterNextRender(() => {
       this.setupResizeListener();
       this.updateSidebarVisibility();
+
+      // Connect to file watch WebSocket
+      this.fileWatchService.connect();
+    });
+
+    this.destroyRef.onDestroy(() => this.fileWatchService.disconnect());
+
+    // Reload program units sidebar when programUnits.json changes externally
+    effect(() => {
+      const event = this.fileWatchService.fileChanged();
+      if (event && event.affectedEntities.includes('ProgramUnitGroupDef')) {
+        this.loadProgramUnits();
+      }
     });
 
     this.loadProgramUnits();

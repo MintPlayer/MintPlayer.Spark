@@ -1,17 +1,37 @@
+using System.Collections.Concurrent;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Models;
 using MintPlayer.Spark.Models;
 
 namespace SparkEditor.Services;
 
-public class SparkEditorFileService : ISparkEditorFileService
+public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions ReadOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         WriteIndented = true
     };
+
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonDocumentOptions DocOptions = new() { AllowTrailingCommas = true };
+
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
+    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTokens = new();
+    private volatile bool _isWriting;
 
     public SparkEditorFileService(IReadOnlyList<string> targetPaths)
     {
@@ -19,6 +39,12 @@ public class SparkEditorFileService : ISparkEditorFileService
     }
 
     public IReadOnlyList<string> TargetPaths { get; }
+
+    public event EventHandler<FileChangedEventArgs>? FileChanged;
+
+    // ═══════════════════════════════════════════════════════════════
+    // Persistent Objects
+    // ═══════════════════════════════════════════════════════════════
 
     #region Persistent Objects
 
@@ -66,14 +92,51 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     public void SavePersistentObject(EntityTypeDefinition po)
     {
-        // TODO: Implement save - serialize back to the Model/*.json format
-        throw new NotImplementedException("SavePersistentObject is not yet implemented.");
+        var filePath = po.SourceFile
+            ?? Path.Combine(TargetPaths[0], "Model", $"{po.Name}.json");
+
+        // Ensure Model directory exists
+        var dir = Path.GetDirectoryName(filePath)!;
+        Directory.CreateDirectory(dir);
+
+        JsonObject root;
+        if (File.Exists(filePath))
+        {
+            var existing = File.ReadAllText(filePath);
+            root = JsonNode.Parse(existing, NodeOptions, DocOptions)?.AsObject() ?? new JsonObject();
+        }
+        else
+        {
+            root = new JsonObject();
+            if (po.Id == Guid.Empty) po.Id = Guid.NewGuid();
+        }
+
+        root["persistentObject"] = BuildPersistentObjectNode(po);
+
+        // Preserve existing queries array if present, otherwise create empty
+        if (root["queries"] == null)
+            root["queries"] = new JsonArray();
+
+        WriteJsonFile(filePath, root);
     }
 
     public void DeletePersistentObject(string id)
     {
-        // TODO: Implement delete - remove the Model/*.json file
-        throw new NotImplementedException("DeletePersistentObject is not yet implemented.");
+        foreach (var targetPath in TargetPaths)
+        {
+            var modelDir = Path.Combine(targetPath, "Model");
+            if (!Directory.Exists(modelDir)) continue;
+
+            foreach (var file in Directory.GetFiles(modelDir, "*.json"))
+            {
+                var po = ParsePersistentObject(file);
+                if (po != null && po.Id.ToString() == id)
+                {
+                    DeleteFileWithSuppression(file);
+                    return;
+                }
+            }
+        }
     }
 
     private EntityTypeDefinition? ParsePersistentObject(string filePath)
@@ -117,6 +180,10 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #endregion
 
+    // ═══════════════════════════════════════════════════════════════
+    // Attributes
+    // ═══════════════════════════════════════════════════════════════
+
     #region Attributes
 
     public List<EntityAttributeDefinition> LoadAllAttributes()
@@ -142,6 +209,60 @@ public class SparkEditorFileService : ISparkEditorFileService
         return LoadAllAttributes()
             .Where(a => string.Equals(a.PersistentObjectName, poName, StringComparison.OrdinalIgnoreCase))
             .ToList();
+    }
+
+    public void SaveAttribute(string poName, EntityAttributeDefinition attr)
+    {
+        var filePath = FindModelFileForPO(poName)
+            ?? throw new InvalidOperationException($"No model file found for PO '{poName}'");
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)!.AsObject();
+
+        var poNode = root["persistentObject"]?.AsObject()
+            ?? throw new InvalidOperationException($"No persistentObject in '{filePath}'");
+
+        var attrsArray = poNode["attributes"]?.AsArray() ?? new JsonArray();
+
+        if (attr.Id == Guid.Empty) attr.Id = Guid.NewGuid();
+
+        // Find existing by id, or append
+        var idStr = attr.Id.ToString();
+        var existingIndex = FindIndexById(attrsArray, idStr);
+        var node = BuildAttributeNode(attr);
+
+        if (existingIndex >= 0)
+        {
+            attrsArray[existingIndex] = node;
+        }
+        else
+        {
+            attrsArray.Add(node);
+        }
+
+        SortByName(attrsArray);
+        poNode["attributes"] = attrsArray;
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteAttribute(string poName, string attributeId)
+    {
+        var filePath = FindModelFileForPO(poName)
+            ?? throw new InvalidOperationException($"No model file found for PO '{poName}'");
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)!.AsObject();
+
+        var poNode = root["persistentObject"]?.AsObject();
+        var attrsArray = poNode?["attributes"]?.AsArray();
+        if (attrsArray == null) return;
+
+        var index = FindIndexById(attrsArray, attributeId);
+        if (index >= 0)
+        {
+            attrsArray.RemoveAt(index);
+            WriteJsonFile(filePath, root);
+        }
     }
 
     private List<EntityAttributeDefinition> ParseAttributes(string filePath)
@@ -198,6 +319,10 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     #endregion
 
+    // ═══════════════════════════════════════════════════════════════
+    // Queries
+    // ═══════════════════════════════════════════════════════════════
+
     #region Queries
 
     public List<SparkQuery> LoadAllQueries()
@@ -225,6 +350,55 @@ public class SparkEditorFileService : ISparkEditorFileService
             .ToList();
     }
 
+    public void SaveQuery(string poName, SparkQuery query)
+    {
+        var filePath = FindModelFileForPO(poName)
+            ?? throw new InvalidOperationException($"No model file found for PO '{poName}'");
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)!.AsObject();
+
+        var queriesArray = root["queries"]?.AsArray() ?? new JsonArray();
+
+        if (query.Id == Guid.Empty) query.Id = Guid.NewGuid();
+
+        var idStr = query.Id.ToString();
+        var existingIndex = FindIndexById(queriesArray, idStr);
+        var node = BuildQueryNode(query);
+
+        if (existingIndex >= 0)
+        {
+            queriesArray[existingIndex] = node;
+        }
+        else
+        {
+            queriesArray.Add(node);
+        }
+
+        SortByName(queriesArray);
+        root["queries"] = queriesArray;
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteQuery(string poName, string queryId)
+    {
+        var filePath = FindModelFileForPO(poName)
+            ?? throw new InvalidOperationException($"No model file found for PO '{poName}'");
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)!.AsObject();
+
+        var queriesArray = root["queries"]?.AsArray();
+        if (queriesArray == null) return;
+
+        var index = FindIndexById(queriesArray, queryId);
+        if (index >= 0)
+        {
+            queriesArray.RemoveAt(index);
+            WriteJsonFile(filePath, root);
+        }
+    }
+
     private List<SparkQuery> ParseQueries(string filePath)
     {
         var result = new List<SparkQuery>();
@@ -235,7 +409,6 @@ public class SparkEditorFileService : ISparkEditorFileService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Get PO name for back-reference
             string? poName = null;
             if (root.TryGetProperty("persistentObject", out var poElement))
             {
@@ -272,6 +445,10 @@ public class SparkEditorFileService : ISparkEditorFileService
     }
 
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Custom Actions
+    // ═══════════════════════════════════════════════════════════════
 
     #region Custom Actions
 
@@ -321,17 +498,36 @@ public class SparkEditorFileService : ISparkEditorFileService
 
     public void SaveCustomAction(string name, CustomActionDefinition action)
     {
-        // TODO: Implement save - update the customActions.json file
-        throw new NotImplementedException("SaveCustomAction is not yet implemented.");
+        var filePath = FindSingleFile("customActions.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        root[name] = BuildCustomActionNode(action);
+
+        // Re-sort keys alphabetically
+        var sorted = SortObjectKeys(root);
+        WriteJsonFile(filePath, sorted);
     }
 
     public void DeleteCustomAction(string name)
     {
-        // TODO: Implement delete - remove entry from customActions.json
-        throw new NotImplementedException("DeleteCustomAction is not yet implemented.");
+        var filePath = FindSingleFile("customActions.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        if (root == null) return;
+
+        if (root.Remove(name))
+        {
+            WriteJsonFile(filePath, root);
+        }
     }
 
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Program Units
+    // ═══════════════════════════════════════════════════════════════
 
     #region Program Units
 
@@ -375,6 +571,61 @@ public class SparkEditorFileService : ISparkEditorFileService
         }
 
         return result;
+    }
+
+    public void SaveProgramUnitGroup(ProgramUnitGroup group)
+    {
+        var filePath = FindSingleFile("programUnits.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        var groupsArray = root["programUnitGroups"]?.AsArray() ?? new JsonArray();
+
+        if (group.Id == Guid.Empty) group.Id = Guid.NewGuid();
+
+        var idStr = group.Id.ToString();
+        var existingIndex = FindIndexById(groupsArray, idStr);
+        var node = BuildProgramUnitGroupNode(group);
+
+        // Preserve existing programUnits inside the group
+        if (existingIndex >= 0)
+        {
+            var existingUnits = groupsArray[existingIndex]?["programUnits"];
+            if (existingUnits != null)
+            {
+                var cloned = JsonNode.Parse(existingUnits.ToJsonString());
+                node["programUnits"] = cloned;
+            }
+            groupsArray[existingIndex] = node;
+        }
+        else
+        {
+            node["programUnits"] = new JsonArray();
+            groupsArray.Add(node);
+        }
+
+        SortByOrder(groupsArray);
+        root["programUnitGroups"] = groupsArray;
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteProgramUnitGroup(string id)
+    {
+        var filePath = FindSingleFile("programUnits.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        var groupsArray = root?["programUnitGroups"]?.AsArray();
+        if (groupsArray == null) return;
+
+        // Parse the GUID from the id (may be prefixed)
+        var guidStr = ExtractGuid(id);
+        var index = FindIndexById(groupsArray, guidStr);
+        if (index >= 0)
+        {
+            groupsArray.RemoveAt(index);
+            WriteJsonFile(filePath, root!);
+        }
     }
 
     public List<ProgramUnit> LoadAllProgramUnits()
@@ -436,7 +687,101 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
+    public void SaveProgramUnit(ProgramUnit unit)
+    {
+        var filePath = FindSingleFile("programUnits.json");
+        var root = LoadOrCreateJsonObject(filePath);
+        var groupsArray = root["programUnitGroups"]?.AsArray() ?? new JsonArray();
+
+        if (unit.Id == Guid.Empty) unit.Id = Guid.NewGuid();
+
+        var groupIdStr = unit.GroupId?.ToString();
+        if (groupIdStr == null)
+            throw new InvalidOperationException("ProgramUnit.GroupId is required");
+
+        // Find the parent group
+        JsonObject? parentGroup = null;
+        for (int i = 0; i < groupsArray.Count; i++)
+        {
+            var g = groupsArray[i]?.AsObject();
+            if (g?["id"]?.GetValue<string>() == groupIdStr)
+            {
+                parentGroup = g;
+                break;
+            }
+        }
+
+        if (parentGroup == null)
+            throw new InvalidOperationException($"Parent group '{groupIdStr}' not found");
+
+        var unitsArray = parentGroup["programUnits"]?.AsArray() ?? new JsonArray();
+
+        // Remove from any other group first (in case GroupId changed)
+        RemoveProgramUnitFromAllGroups(groupsArray, unit.Id.ToString(), groupIdStr);
+
+        var idStr = unit.Id.ToString();
+        var existingIndex = FindIndexById(unitsArray, idStr);
+        var node = BuildProgramUnitNode(unit);
+
+        if (existingIndex >= 0)
+        {
+            unitsArray[existingIndex] = node;
+        }
+        else
+        {
+            unitsArray.Add(node);
+        }
+
+        SortByOrder(unitsArray);
+        parentGroup["programUnits"] = unitsArray;
+        root["programUnitGroups"] = groupsArray;
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteProgramUnit(string id)
+    {
+        var filePath = FindSingleFile("programUnits.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        var groupsArray = root?["programUnitGroups"]?.AsArray();
+        if (groupsArray == null) return;
+
+        var guidStr = ExtractGuid(id);
+        if (RemoveProgramUnitFromAllGroups(groupsArray, guidStr, null))
+        {
+            WriteJsonFile(filePath, root!);
+        }
+    }
+
+    private static bool RemoveProgramUnitFromAllGroups(JsonArray groupsArray, string unitId, string? excludeGroupId)
+    {
+        bool removed = false;
+        for (int i = 0; i < groupsArray.Count; i++)
+        {
+            var g = groupsArray[i]?.AsObject();
+            if (g == null) continue;
+            if (excludeGroupId != null && g["id"]?.GetValue<string>() == excludeGroupId) continue;
+
+            var units = g["programUnits"]?.AsArray();
+            if (units == null) continue;
+
+            var idx = FindIndexById(units, unitId);
+            if (idx >= 0)
+            {
+                units.RemoveAt(idx);
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Security
+    // ═══════════════════════════════════════════════════════════════
 
     #region Security
 
@@ -458,15 +803,25 @@ public class SparkEditorFileService : ISparkEditorFileService
                 if (!root.TryGetProperty("groups", out var groupsElement) || groupsElement.ValueKind != JsonValueKind.Object)
                     continue;
 
+                JsonElement commentsElement = default;
+                root.TryGetProperty("groupComments", out commentsElement);
+
                 foreach (var prop in groupsElement.EnumerateObject())
                 {
                     var group = new SecurityGroupDefinition
                     {
                         Id = $"SecurityGroupDefs/{prop.Name}",
                         Name = prop.Value.ValueKind == JsonValueKind.Object
-                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), ReadOptions)
                             : null,
                     };
+
+                    if (commentsElement.ValueKind == JsonValueKind.Object &&
+                        commentsElement.TryGetProperty(prop.Name, out var comment) &&
+                        comment.ValueKind == JsonValueKind.Object)
+                    {
+                        group.Comment = JsonSerializer.Deserialize<TranslatedString>(comment.GetRawText(), ReadOptions);
+                    }
 
                     result.Add(group);
                 }
@@ -478,6 +833,65 @@ public class SparkEditorFileService : ISparkEditorFileService
         }
 
         return result;
+    }
+
+    public void SaveSecurityGroup(SecurityGroupDefinition group)
+    {
+        var filePath = FindSingleFile("security.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        var groups = root["groups"]?.AsObject() ?? new JsonObject();
+        var comments = root["groupComments"]?.AsObject() ?? new JsonObject();
+
+        // Extract GUID from compound ID
+        var guid = ExtractGuid(group.Id ?? Guid.NewGuid().ToString());
+
+        if (group.Name != null)
+            groups[guid] = SerializeTranslatedString(group.Name);
+
+        if (group.Comment != null)
+            comments[guid] = SerializeTranslatedString(group.Comment);
+        else
+            comments.Remove(guid);
+
+        root["groups"] = SortObjectKeys(groups);
+        if (comments.Count > 0)
+            root["groupComments"] = SortObjectKeys(comments);
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteSecurityGroup(string id)
+    {
+        var filePath = FindSingleFile("security.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        if (root == null) return;
+
+        var guid = ExtractGuid(id);
+        var changed = false;
+
+        if (root["groups"]?.AsObject() is { } groups && groups.Remove(guid))
+            changed = true;
+        if (root["groupComments"]?.AsObject() is { } comments && comments.Remove(guid))
+            changed = true;
+
+        // Remove related rights
+        if (root["rights"]?.AsArray() is { } rights)
+        {
+            for (int i = rights.Count - 1; i >= 0; i--)
+            {
+                if (rights[i]?["groupId"]?.GetValue<string>() == guid)
+                {
+                    rights.RemoveAt(i);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed)
+            WriteJsonFile(filePath, root);
     }
 
     public List<Right> LoadAllSecurityRights()
@@ -522,7 +936,75 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
+    public void SaveSecurityRight(Right right)
+    {
+        var filePath = FindSingleFile("security.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        var rightsArray = root["rights"]?.AsArray() ?? new JsonArray();
+
+        // Generate ID if missing
+        var rawId = ExtractGuid(right.Id ?? Guid.NewGuid().ToString());
+
+        var existingIndex = -1;
+        for (int i = 0; i < rightsArray.Count; i++)
+        {
+            if (rightsArray[i]?["id"]?.GetValue<string>() == rawId)
+            {
+                existingIndex = i;
+                break;
+            }
+        }
+
+        var node = BuildSecurityRightNode(rawId, right);
+
+        if (existingIndex >= 0)
+        {
+            rightsArray[existingIndex] = node;
+        }
+        else
+        {
+            rightsArray.Add(node);
+        }
+
+        // Sort by resource, then groupId
+        SortRights(rightsArray);
+        root["rights"] = rightsArray;
+
+        // Ensure groups object exists
+        if (root["groups"] == null)
+            root["groups"] = new JsonObject();
+
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteSecurityRight(string id)
+    {
+        var filePath = FindSingleFile("security.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        var rightsArray = root?["rights"]?.AsArray();
+        if (rightsArray == null) return;
+
+        var rawId = ExtractGuid(id);
+        for (int i = rightsArray.Count - 1; i >= 0; i--)
+        {
+            if (rightsArray[i]?["id"]?.GetValue<string>() == rawId)
+            {
+                rightsArray.RemoveAt(i);
+                WriteJsonFile(filePath, root!);
+                return;
+            }
+        }
+    }
+
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Culture
+    // ═══════════════════════════════════════════════════════════════
 
     #region Culture
 
@@ -551,7 +1033,7 @@ public class SparkEditorFileService : ISparkEditorFileService
                         Id = $"LanguageDefs/{prop.Name}",
                         Culture = prop.Name,
                         Name = prop.Value.ValueKind == JsonValueKind.Object
-                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), ReadOptions)
                             : null,
                     };
 
@@ -567,7 +1049,58 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
+    public void SaveLanguage(LanguageDefinition language)
+    {
+        var filePath = FindSingleFile("culture.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        var languages = root["languages"]?.AsObject() ?? new JsonObject();
+
+        var code = language.Culture;
+        if (string.IsNullOrEmpty(code))
+            throw new InvalidOperationException("Language culture code is required");
+
+        if (language.Name != null)
+            languages[code] = SerializeTranslatedString(language.Name);
+
+        root["languages"] = SortObjectKeys(languages);
+
+        // Set defaultLanguage if not present
+        if (root["defaultLanguage"] == null)
+            root["defaultLanguage"] = code;
+
+        WriteJsonFile(filePath, root);
+    }
+
+    public void DeleteLanguage(string id)
+    {
+        var filePath = FindSingleFile("culture.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        if (root == null) return;
+
+        var code = ExtractSuffix(id, "LanguageDefs/");
+
+        var languages = root["languages"]?.AsObject();
+        if (languages == null || !languages.Remove(code)) return;
+
+        // Update defaultLanguage if it was the deleted one
+        if (root["defaultLanguage"]?.GetValue<string>() == code)
+        {
+            var firstRemaining = languages.FirstOrDefault();
+            root["defaultLanguage"] = firstRemaining.Key ?? "en";
+        }
+
+        WriteJsonFile(filePath, root);
+    }
+
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Translations
+    // ═══════════════════════════════════════════════════════════════
 
     #region Translations
 
@@ -593,7 +1126,7 @@ public class SparkEditorFileService : ISparkEditorFileService
                         Id = $"TranslationDefs/{prop.Name}",
                         Key = prop.Name,
                         Values = prop.Value.ValueKind == JsonValueKind.Object
-                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), JsonOptions)
+                            ? JsonSerializer.Deserialize<TranslatedString>(prop.Value.GetRawText(), ReadOptions)
                             : null,
                     };
 
@@ -609,7 +1142,515 @@ public class SparkEditorFileService : ISparkEditorFileService
         return result;
     }
 
+    public void SaveTranslation(TranslationEntry translation)
+    {
+        var filePath = FindSingleFile("translations.json");
+        var root = LoadOrCreateJsonObject(filePath);
+
+        var key = translation.Key;
+        if (string.IsNullOrEmpty(key))
+            throw new InvalidOperationException("Translation key is required");
+
+        if (translation.Values != null)
+            root[key] = SerializeTranslatedString(translation.Values);
+
+        var sorted = SortObjectKeys(root);
+        WriteJsonFile(filePath, sorted);
+    }
+
+    public void DeleteTranslation(string id)
+    {
+        var filePath = FindSingleFile("translations.json");
+        if (!File.Exists(filePath)) return;
+
+        var json = File.ReadAllText(filePath);
+        var root = JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject();
+        if (root == null) return;
+
+        var key = ExtractSuffix(id, "TranslationDefs/");
+        if (root.Remove(key))
+        {
+            WriteJsonFile(filePath, root);
+        }
+    }
+
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // File Watching
+    // ═══════════════════════════════════════════════════════════════
+
+    #region File Watching
+
+    public void StartWatching()
+    {
+        foreach (var targetPath in TargetPaths)
+        {
+            // Watch Model/ directory for PO/Attribute/Query changes
+            var modelDir = Path.Combine(targetPath, "Model");
+            if (Directory.Exists(modelDir))
+            {
+                var modelWatcher = new FileSystemWatcher(modelDir, "*.json")
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
+                    EnableRaisingEvents = true
+                };
+                modelWatcher.Changed += OnFileChanged;
+                modelWatcher.Created += OnFileChanged;
+                modelWatcher.Deleted += OnFileChanged;
+                modelWatcher.Renamed += OnFileRenamed;
+                _watchers.Add(modelWatcher);
+            }
+
+            // Watch root App_Data/ for single-object files
+            if (Directory.Exists(targetPath))
+            {
+                var rootWatcher = new FileSystemWatcher(targetPath, "*.json")
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                    IncludeSubdirectories = false,
+                    EnableRaisingEvents = true
+                };
+                rootWatcher.Changed += OnFileChanged;
+                rootWatcher.Created += OnFileChanged;
+                rootWatcher.Deleted += OnFileChanged;
+                _watchers.Add(rootWatcher);
+            }
+        }
+    }
+
+    public void StopWatching()
+    {
+        foreach (var watcher in _watchers)
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+        }
+        _watchers.Clear();
+
+        foreach (var kvp in _debounceTokens)
+        {
+            kvp.Value.Cancel();
+            kvp.Value.Dispose();
+        }
+        _debounceTokens.Clear();
+    }
+
+    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    {
+        if (_isWriting) return;
+        DebouncedNotify(e.FullPath, e.ChangeType);
+    }
+
+    private void OnFileRenamed(object sender, RenamedEventArgs e)
+    {
+        if (_isWriting) return;
+        DebouncedNotify(e.FullPath, WatcherChangeTypes.Renamed);
+    }
+
+    private void DebouncedNotify(string fullPath, WatcherChangeTypes changeType)
+    {
+        if (_debounceTokens.TryGetValue(fullPath, out var existingCts))
+        {
+            existingCts.Cancel();
+            existingCts.Dispose();
+        }
+
+        var cts = new CancellationTokenSource();
+        _debounceTokens[fullPath] = cts;
+
+        Task.Delay(300, cts.Token).ContinueWith(t =>
+        {
+            if (!t.IsCanceled)
+            {
+                _debounceTokens.TryRemove(fullPath, out _);
+                FileChanged?.Invoke(this, new FileChangedEventArgs
+                {
+                    FilePath = fullPath,
+                    ChangeType = changeType
+                });
+            }
+        }, TaskScheduler.Default);
+    }
+
+    #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // JSON Node Builder Helpers (stable property ordering)
+    // ═══════════════════════════════════════════════════════════════
+
+    #region Node Builders
+
+    private static JsonObject BuildPersistentObjectNode(EntityTypeDefinition po)
+    {
+        var node = new JsonObject();
+        node.Add("id", po.Id.ToString());
+        node.Add("name", po.Name);
+        if (po.Description != null) node.Add("description", SerializeTranslatedString(po.Description));
+        if (po.ClrType != null) node.Add("clrType", po.ClrType);
+        if (po.QueryType != null) node.Add("queryType", po.QueryType);
+        if (po.IndexName != null) node.Add("indexName", po.IndexName);
+        if (po.Alias != null) node.Add("alias", po.Alias);
+        if (po.DisplayFormat != null) node.Add("displayFormat", po.DisplayFormat);
+        if (po.DisplayAttribute != null) node.Add("displayAttribute", po.DisplayAttribute);
+        if (po.IsReadOnly) node.Add("isReadOnly", true);
+        if (po.IsHidden) node.Add("isHidden", true);
+        node.Add("tabs", new JsonArray());
+        node.Add("groups", new JsonArray());
+        node.Add("attributes", new JsonArray());
+        return node;
+    }
+
+    private static JsonObject BuildAttributeNode(EntityAttributeDefinition attr)
+    {
+        var node = new JsonObject();
+        node.Add("id", attr.Id.ToString());
+        node.Add("name", attr.Name);
+        if (attr.Label != null) node.Add("label", SerializeTranslatedString(attr.Label));
+        node.Add("dataType", attr.DataType);
+        node.Add("isRequired", attr.IsRequired);
+        node.Add("isVisible", attr.IsVisible);
+        node.Add("isReadOnly", attr.IsReadOnly);
+        node.Add("order", attr.Order);
+        node.Add("isArray", attr.IsArray);
+        if (attr.InCollectionType.HasValue) node.Add("inCollectionType", attr.InCollectionType.Value);
+        if (attr.InQueryType.HasValue) node.Add("inQueryType", attr.InQueryType.Value);
+        if (attr.Query != null) node.Add("query", attr.Query);
+        if (attr.ReferenceType != null) node.Add("referenceType", attr.ReferenceType);
+        if (attr.AsDetailType != null) node.Add("asDetailType", attr.AsDetailType);
+        if (attr.LookupReferenceType != null) node.Add("lookupReferenceType", attr.LookupReferenceType);
+        if (attr.EditMode != null) node.Add("editMode", attr.EditMode);
+        node.Add("showedOn", attr.ShowedOn.ToString());
+        node.Add("rules", SerializeRules(attr.Rules));
+        if (attr.Group.HasValue) node.Add("group", attr.Group.Value.ToString());
+        if (attr.ColumnSpan.HasValue) node.Add("columnSpan", attr.ColumnSpan.Value);
+        if (attr.Renderer != null) node.Add("renderer", attr.Renderer);
+        if (attr.RendererOptions != null)
+        {
+            node.Add("rendererOptions", JsonSerializer.SerializeToNode(attr.RendererOptions, WriteOptions));
+        }
+        return node;
+    }
+
+    private static JsonObject BuildQueryNode(SparkQuery query)
+    {
+        var node = new JsonObject();
+        node.Add("id", query.Id.ToString());
+        node.Add("name", query.Name);
+        if (query.Description != null) node.Add("description", SerializeTranslatedString(query.Description));
+        if (query.Source != null) node.Add("source", query.Source);
+        if (query.Alias != null) node.Add("alias", query.Alias);
+        if (query.SortColumns is { Length: > 0 })
+        {
+            var arr = new JsonArray();
+            foreach (var sc in query.SortColumns)
+            {
+                var scNode = new JsonObject();
+                scNode.Add("property", sc.Property);
+                scNode.Add("direction", sc.Direction);
+                arr.Add(scNode);
+            }
+            node.Add("sortColumns", arr);
+        }
+        if (query.RenderMode != SparkQueryRenderMode.Pagination)
+            node.Add("renderMode", query.RenderMode.ToString());
+        if (query.IndexName != null) node.Add("indexName", query.IndexName);
+        if (query.UseProjection) node.Add("useProjection", true);
+        if (query.EntityType != null) node.Add("entityType", query.EntityType);
+        if (query.IsStreamingQuery) node.Add("isStreamingQuery", true);
+        return node;
+    }
+
+    private static JsonObject BuildCustomActionNode(CustomActionDefinition action)
+    {
+        var node = new JsonObject();
+        if (action.DisplayName != null) node.Add("displayName", SerializeTranslatedString(action.DisplayName));
+        if (action.Icon != null) node.Add("icon", action.Icon);
+        if (action.Description != null) node.Add("description", action.Description);
+        node.Add("showedOn", action.ShowedOn);
+        if (action.SelectionRule != null) node.Add("selectionRule", action.SelectionRule);
+        node.Add("refreshOnCompleted", action.RefreshOnCompleted);
+        if (action.ConfirmationMessageKey != null) node.Add("confirmationMessageKey", action.ConfirmationMessageKey);
+        if (action.Offset != 0) node.Add("offset", action.Offset);
+        return node;
+    }
+
+    private static JsonObject BuildProgramUnitGroupNode(ProgramUnitGroup group)
+    {
+        var node = new JsonObject();
+        node.Add("id", group.Id.ToString());
+        if (group.Name != null) node.Add("name", SerializeTranslatedString(group.Name));
+        if (group.Icon != null) node.Add("icon", group.Icon);
+        node.Add("order", group.Order);
+        return node;
+    }
+
+    private static JsonObject BuildProgramUnitNode(ProgramUnit unit)
+    {
+        var node = new JsonObject();
+        node.Add("id", unit.Id.ToString());
+        if (unit.Name != null) node.Add("name", SerializeTranslatedString(unit.Name));
+        if (unit.Icon != null) node.Add("icon", unit.Icon);
+        node.Add("type", unit.Type);
+        if (unit.QueryId.HasValue) node.Add("queryId", unit.QueryId.Value.ToString());
+        if (unit.PersistentObjectId.HasValue) node.Add("persistentObjectId", unit.PersistentObjectId.Value.ToString());
+        node.Add("order", unit.Order);
+        if (unit.Alias != null) node.Add("alias", unit.Alias);
+        return node;
+    }
+
+    private static JsonObject BuildSecurityRightNode(string rawId, Right right)
+    {
+        var node = new JsonObject();
+        node.Add("id", rawId);
+        node.Add("resource", right.Resource);
+        if (right.GroupId != null) node.Add("groupId", right.GroupId);
+        if (right.IsDenied) node.Add("isDenied", true);
+        if (right.IsImportant) node.Add("isImportant", true);
+        return node;
+    }
+
+    #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Sorting Helpers
+    // ═══════════════════════════════════════════════════════════════
+
+    #region Sorting
+
+    private static void SortByName(JsonArray array)
+    {
+        var items = new List<JsonNode?>();
+        while (array.Count > 0)
+        {
+            items.Add(array[0]);
+            array.RemoveAt(0);
+        }
+
+        items.Sort((a, b) =>
+            string.Compare(
+                a?.AsObject()?["name"]?.GetValue<string>() ?? "",
+                b?.AsObject()?["name"]?.GetValue<string>() ?? "",
+                StringComparison.Ordinal));
+
+        foreach (var item in items)
+        {
+            if (item != null) array.Add(item);
+        }
+    }
+
+    private static void SortByOrder(JsonArray array)
+    {
+        var items = new List<JsonNode?>();
+        while (array.Count > 0)
+        {
+            items.Add(array[0]);
+            array.RemoveAt(0);
+        }
+
+        items.Sort((a, b) =>
+        {
+            var orderA = a?.AsObject()?["order"]?.GetValue<int>() ?? int.MaxValue;
+            var orderB = b?.AsObject()?["order"]?.GetValue<int>() ?? int.MaxValue;
+            var cmp = orderA.CompareTo(orderB);
+            if (cmp != 0) return cmp;
+            return string.Compare(
+                a?.AsObject()?["name"]?.ToString() ?? "",
+                b?.AsObject()?["name"]?.ToString() ?? "",
+                StringComparison.Ordinal);
+        });
+
+        foreach (var item in items)
+        {
+            if (item != null) array.Add(item);
+        }
+    }
+
+    private static void SortRights(JsonArray array)
+    {
+        var items = new List<JsonNode?>();
+        while (array.Count > 0)
+        {
+            items.Add(array[0]);
+            array.RemoveAt(0);
+        }
+
+        items.Sort((a, b) =>
+        {
+            var resA = a?.AsObject()?["resource"]?.GetValue<string>() ?? "";
+            var resB = b?.AsObject()?["resource"]?.GetValue<string>() ?? "";
+            var cmp = string.Compare(resA, resB, StringComparison.Ordinal);
+            if (cmp != 0) return cmp;
+            var grpA = a?.AsObject()?["groupId"]?.GetValue<string>() ?? "";
+            var grpB = b?.AsObject()?["groupId"]?.GetValue<string>() ?? "";
+            return string.Compare(grpA, grpB, StringComparison.Ordinal);
+        });
+
+        foreach (var item in items)
+        {
+            if (item != null) array.Add(item);
+        }
+    }
+
+    private static JsonObject SortObjectKeys(JsonObject obj)
+    {
+        var entries = obj.ToList().OrderBy(kvp => kvp.Key, StringComparer.Ordinal).ToList();
+        var sorted = new JsonObject();
+        foreach (var kvp in entries)
+        {
+            var value = kvp.Value;
+            obj.Remove(kvp.Key); // Detach from old parent
+            sorted.Add(kvp.Key, value);
+        }
+        return sorted;
+    }
+
+    #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Serialization Helpers
+    // ═══════════════════════════════════════════════════════════════
+
+    #region Serialization
+
+    private static JsonObject SerializeTranslatedString(TranslatedString ts)
+    {
+        var node = new JsonObject();
+        foreach (var kvp in ts.Translations.OrderBy(k => k.Key, StringComparer.Ordinal))
+            node.Add(kvp.Key, kvp.Value);
+        return node;
+    }
+
+    private static JsonArray SerializeRules(ValidationRule[]? rules)
+    {
+        var arr = new JsonArray();
+        if (rules == null) return arr;
+
+        foreach (var rule in rules)
+        {
+            var rNode = new JsonObject();
+            rNode.Add("type", rule.Type);
+            if (rule.Value != null)
+            {
+                rNode.Add("value", JsonSerializer.SerializeToNode(rule.Value, WriteOptions));
+            }
+            if (rule.Min.HasValue) rNode.Add("min", rule.Min.Value);
+            if (rule.Max.HasValue) rNode.Add("max", rule.Max.Value);
+            if (rule.Message != null) rNode.Add("message", SerializeTranslatedString(rule.Message));
+            arr.Add(rNode);
+        }
+
+        return arr;
+    }
+
+    #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // File I/O Helpers
+    // ═══════════════════════════════════════════════════════════════
+
+    #region File I/O
+
+    private void WriteJsonFile(string path, JsonNode root)
+    {
+        var json = root.ToJsonString(WriteOptions);
+        if (!json.EndsWith('\n')) json += "\n";
+        AtomicWriteFileWithSuppression(path, json);
+    }
+
+    private void AtomicWriteFileWithSuppression(string path, string content)
+    {
+        var semaphore = GetLock(path);
+        semaphore.Wait();
+        try
+        {
+            _isWriting = true;
+            var tempPath = path + ".tmp";
+            File.WriteAllText(tempPath, content);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        finally
+        {
+            // Delay re-enabling to let FSW events settle
+            Task.Delay(500).ContinueWith(_ =>
+            {
+                _isWriting = false;
+                semaphore.Release();
+            }, TaskScheduler.Default);
+        }
+    }
+
+    private void DeleteFileWithSuppression(string path)
+    {
+        var semaphore = GetLock(path);
+        semaphore.Wait();
+        try
+        {
+            _isWriting = true;
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        finally
+        {
+            Task.Delay(500).ContinueWith(_ =>
+            {
+                _isWriting = false;
+                semaphore.Release();
+            }, TaskScheduler.Default);
+        }
+    }
+
+    private SemaphoreSlim GetLock(string filePath)
+        => _fileLocks.GetOrAdd(Path.GetFullPath(filePath), _ => new SemaphoreSlim(1, 1));
+
+    private string FindSingleFile(string fileName)
+    {
+        foreach (var targetPath in TargetPaths)
+        {
+            var filePath = Path.Combine(targetPath, fileName);
+            if (File.Exists(filePath)) return filePath;
+        }
+        // Default to first target path for new files
+        return Path.Combine(TargetPaths[0], fileName);
+    }
+
+    private string? FindModelFileForPO(string poName)
+    {
+        foreach (var targetPath in TargetPaths)
+        {
+            var modelDir = Path.Combine(targetPath, "Model");
+            if (!Directory.Exists(modelDir)) continue;
+
+            // Try direct name match first
+            var filePath = Path.Combine(modelDir, $"{poName}.json");
+            if (File.Exists(filePath)) return filePath;
+
+            // Fall back to scanning files for matching PO name
+            foreach (var file in Directory.GetFiles(modelDir, "*.json"))
+            {
+                var po = ParsePersistentObject(file);
+                if (po != null && string.Equals(po.Name, poName, StringComparison.OrdinalIgnoreCase))
+                    return file;
+            }
+        }
+        return null;
+    }
+
+    private JsonObject LoadOrCreateJsonObject(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            var json = File.ReadAllText(filePath);
+            return JsonNode.Parse(json, NodeOptions, DocOptions)?.AsObject() ?? new JsonObject();
+        }
+        return new JsonObject();
+    }
+
+    #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // JSON Read Helpers
+    // ═══════════════════════════════════════════════════════════════
 
     #region JSON Helpers
 
@@ -651,18 +1692,49 @@ public class SparkEditorFileService : ISparkEditorFileService
         return false;
     }
 
-    /// <summary>
-    /// Deserializes a TranslatedString (dictionary object) property.
-    /// Returns null if the property doesn't exist or isn't an object.
-    /// </summary>
     private static TranslatedString? DeserializeTranslatedString(JsonElement element, string propertyName)
     {
         if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Object)
         {
-            return JsonSerializer.Deserialize<TranslatedString>(prop.GetRawText(), JsonOptions);
+            return JsonSerializer.Deserialize<TranslatedString>(prop.GetRawText(), ReadOptions);
         }
         return null;
     }
 
+    private static int FindIndexById(JsonArray array, string id)
+    {
+        for (int i = 0; i < array.Count; i++)
+        {
+            var obj = array[i]?.AsObject();
+            if (obj?["id"]?.GetValue<string>() == id)
+                return i;
+        }
+        return -1;
+    }
+
+    private static string ExtractGuid(string compoundId)
+    {
+        // Strip prefixes like "SecurityGroupDefs/", "SecurityRightDefs/", etc.
+        var slashIndex = compoundId.LastIndexOf('/');
+        return slashIndex >= 0 ? compoundId[(slashIndex + 1)..] : compoundId;
+    }
+
+    private static string ExtractSuffix(string id, string prefix)
+    {
+        return id.StartsWith(prefix, StringComparison.Ordinal) ? id[prefix.Length..] : id;
+    }
+
     #endregion
+
+    // ═══════════════════════════════════════════════════════════════
+    // Dispose
+    // ═══════════════════════════════════════════════════════════════
+
+    public void Dispose()
+    {
+        StopWatching();
+        foreach (var kvp in _fileLocks)
+            kvp.Value.Dispose();
+        _fileLocks.Clear();
+    }
 }
