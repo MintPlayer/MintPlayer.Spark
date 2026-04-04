@@ -54,9 +54,10 @@ builder.Services.AddSpark(spark =>
     spark.AddActions();
 });
 
-// Override the framework's CultureLoader so /spark/culture reads from the target app's culture.json
-// (not the SparkEditor's own App_Data) and reloads on every request to reflect newly added languages.
+// Override the framework's CultureLoader and TranslationsLoader so /spark/culture and /spark/translations
+// read from the target app's App_Data (not the SparkEditor's own) and reload on every request.
 builder.Services.AddScoped<ICultureLoader, SparkEditor.Services.SparkEditorCultureLoader>();
+builder.Services.AddScoped<ITranslationsLoader, SparkEditor.Services.SparkEditorTranslationsLoader>();
 
 builder.Services.AddSpaStaticFilesImproved(configuration =>
 {
