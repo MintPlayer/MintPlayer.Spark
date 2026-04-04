@@ -21,7 +21,7 @@
     "@mintplayer/dailymotion-player": "^19.0.0",
     "@mintplayer/file-player": "^19.0.0",
     "@mintplayer/ng-animations": "21.1.0",
-    "@mintplayer/ng-bootstrap": "^21.12.10",
+    "@mintplayer/ng-bootstrap": "^21.12.12",
     "@mintplayer/ng-spark-auth": "^0.0.7",
     "@mintplayer/ng-video-player": "^21.0.0",
     "@mintplayer/pagination": "^2.3.0",
