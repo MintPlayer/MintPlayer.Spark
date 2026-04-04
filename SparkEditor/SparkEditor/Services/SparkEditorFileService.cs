@@ -31,7 +31,8 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTokens = new();
-    private volatile bool _isWriting;
+    // Tracks files currently being written by the editor (per-file, not global)
+    private readonly ConcurrentDictionary<string, byte> _selfWrittenFiles = new();
 
     public SparkEditorFileService(IReadOnlyList<string> targetPaths)
     {
@@ -1250,13 +1251,14 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        if (_isWriting) return;
+        // Only suppress if THIS specific file is being written by the editor
+        if (_selfWrittenFiles.ContainsKey(Path.GetFullPath(e.FullPath))) return;
         DebouncedNotify(e.FullPath, e.ChangeType);
     }
 
     private void OnFileRenamed(object sender, RenamedEventArgs e)
     {
-        if (_isWriting) return;
+        if (_selfWrittenFiles.ContainsKey(Path.GetFullPath(e.FullPath))) return;
         DebouncedNotify(e.FullPath, WatcherChangeTypes.Renamed);
     }
 
@@ -1491,33 +1493,30 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 
     private void AtomicWriteFileWithSuppression(string path, string content)
     {
-        var semaphore = GetLock(path);
-        semaphore.Wait();
+        var fullPath = Path.GetFullPath(path);
+        _selfWrittenFiles[fullPath] = 0;
         try
         {
-            _isWriting = true;
             var tempPath = path + ".tmp";
             File.WriteAllText(tempPath, content);
             File.Move(tempPath, path, overwrite: true);
         }
         finally
         {
-            // Delay re-enabling to let FSW events settle
+            // Remove suppression after FSW events have settled
             Task.Delay(500).ContinueWith(_ =>
             {
-                _isWriting = false;
-                semaphore.Release();
+                _selfWrittenFiles.TryRemove(fullPath, out byte _);
             }, TaskScheduler.Default);
         }
     }
 
     private void DeleteFileWithSuppression(string path)
     {
-        var semaphore = GetLock(path);
-        semaphore.Wait();
+        var fullPath = Path.GetFullPath(path);
+        _selfWrittenFiles[fullPath] = 0;
         try
         {
-            _isWriting = true;
             if (File.Exists(path))
                 File.Delete(path);
         }
@@ -1525,8 +1524,7 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         {
             Task.Delay(500).ContinueWith(_ =>
             {
-                _isWriting = false;
-                semaphore.Release();
+                _selfWrittenFiles.TryRemove(fullPath, out byte _);
             }, TaskScheduler.Default);
         }
     }
