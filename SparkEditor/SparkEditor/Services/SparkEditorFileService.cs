@@ -237,10 +237,10 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         }
         else
         {
+            // New items are appended at the end, preserving existing order
             attrsArray.Add(node);
         }
 
-        SortByName(attrsArray);
         poNode["attributes"] = attrsArray;
         WriteJsonFile(filePath, root);
     }
@@ -375,7 +375,6 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             queriesArray.Add(node);
         }
 
-        SortByName(queriesArray);
         root["queries"] = queriesArray;
         WriteJsonFile(filePath, root);
     }
@@ -503,9 +502,9 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 
         root[name] = BuildCustomActionNode(action);
 
-        // Re-sort keys alphabetically
-        var sorted = SortObjectKeys(root);
-        WriteJsonFile(filePath, sorted);
+        // Existing key order is preserved by JsonObject (insertion order).
+        // New keys are naturally appended at the end.
+        WriteJsonFile(filePath, root);
     }
 
     public void DeleteCustomAction(string name)
@@ -603,7 +602,6 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             groupsArray.Add(node);
         }
 
-        SortByOrder(groupsArray);
         root["programUnitGroups"] = groupsArray;
         WriteJsonFile(filePath, root);
     }
@@ -732,7 +730,6 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             unitsArray.Add(node);
         }
 
-        SortByOrder(unitsArray);
         parentGroup["programUnits"] = unitsArray;
         root["programUnitGroups"] = groupsArray;
         WriteJsonFile(filePath, root);
@@ -854,9 +851,9 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         else
             comments.Remove(guid);
 
-        root["groups"] = SortObjectKeys(groups);
+        root["groups"] = groups;
         if (comments.Count > 0)
-            root["groupComments"] = SortObjectKeys(comments);
+            root["groupComments"] = comments;
         WriteJsonFile(filePath, root);
     }
 
@@ -967,8 +964,6 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             rightsArray.Add(node);
         }
 
-        // Sort by resource, then groupId
-        SortRights(rightsArray);
         root["rights"] = rightsArray;
 
         // Ensure groups object exists
@@ -1063,7 +1058,7 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         if (language.Name != null)
             languages[code] = SerializeTranslatedString(language.Name);
 
-        root["languages"] = SortObjectKeys(languages);
+        root["languages"] = languages;
 
         // Set defaultLanguage if not present
         if (root["defaultLanguage"] == null)
@@ -1154,8 +1149,7 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         if (translation.Values != null)
             root[key] = SerializeTranslatedString(translation.Values);
 
-        var sorted = SortObjectKeys(root);
-        WriteJsonFile(filePath, sorted);
+        WriteJsonFile(filePath, root);
     }
 
     public void DeleteTranslation(string id)
@@ -1418,92 +1412,11 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
 
     #region Sorting
 
-    private static void SortByName(JsonArray array)
-    {
-        var items = new List<JsonNode?>();
-        while (array.Count > 0)
-        {
-            items.Add(array[0]);
-            array.RemoveAt(0);
-        }
-
-        items.Sort((a, b) =>
-            string.Compare(
-                a?.AsObject()?["name"]?.GetValue<string>() ?? "",
-                b?.AsObject()?["name"]?.GetValue<string>() ?? "",
-                StringComparison.Ordinal));
-
-        foreach (var item in items)
-        {
-            if (item != null) array.Add(item);
-        }
-    }
-
-    private static void SortByOrder(JsonArray array)
-    {
-        var items = new List<JsonNode?>();
-        while (array.Count > 0)
-        {
-            items.Add(array[0]);
-            array.RemoveAt(0);
-        }
-
-        items.Sort((a, b) =>
-        {
-            var orderA = a?.AsObject()?["order"]?.GetValue<int>() ?? int.MaxValue;
-            var orderB = b?.AsObject()?["order"]?.GetValue<int>() ?? int.MaxValue;
-            var cmp = orderA.CompareTo(orderB);
-            if (cmp != 0) return cmp;
-            return string.Compare(
-                a?.AsObject()?["name"]?.ToString() ?? "",
-                b?.AsObject()?["name"]?.ToString() ?? "",
-                StringComparison.Ordinal);
-        });
-
-        foreach (var item in items)
-        {
-            if (item != null) array.Add(item);
-        }
-    }
-
-    private static void SortRights(JsonArray array)
-    {
-        var items = new List<JsonNode?>();
-        while (array.Count > 0)
-        {
-            items.Add(array[0]);
-            array.RemoveAt(0);
-        }
-
-        items.Sort((a, b) =>
-        {
-            var resA = a?.AsObject()?["resource"]?.GetValue<string>() ?? "";
-            var resB = b?.AsObject()?["resource"]?.GetValue<string>() ?? "";
-            var cmp = string.Compare(resA, resB, StringComparison.Ordinal);
-            if (cmp != 0) return cmp;
-            var grpA = a?.AsObject()?["groupId"]?.GetValue<string>() ?? "";
-            var grpB = b?.AsObject()?["groupId"]?.GetValue<string>() ?? "";
-            return string.Compare(grpA, grpB, StringComparison.Ordinal);
-        });
-
-        foreach (var item in items)
-        {
-            if (item != null) array.Add(item);
-        }
-    }
-
-    private static JsonObject SortObjectKeys(JsonObject obj)
-    {
-        var entries = obj.ToList().OrderBy(kvp => kvp.Key, StringComparer.Ordinal).ToList();
-        var sorted = new JsonObject();
-        foreach (var kvp in entries)
-        {
-            var value = kvp.Value;
-            obj.Remove(kvp.Key); // Detach from old parent
-            sorted.Add(kvp.Key, value);
-        }
-        return sorted;
-    }
+    // No array/object sorting is applied. Existing items preserve their
+    // position (keyed by ID for arrays, by property name for objects).
+    // New items are appended at the end. This produces minimal git diffs
+    // because changing an attribute's "order" field only modifies that
+    // one value — it does not reshuffle the array.
 
     #endregion
 

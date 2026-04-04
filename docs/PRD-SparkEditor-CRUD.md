@@ -691,66 +691,31 @@ private void WriteJsonFile(string path, JsonNode root)
 }
 ```
 
-#### 4.7.2 Stable Array Ordering
+#### 4.7.2 Preserve Existing Order, Append New Items
 
-The key design insight: **PersistentObjects and Attributes are not renamed** (the user confirmed this). Their `name` property is a stable, unique key within their parent scope. Use `name` as the sort key for arrays where it applies.
+**Key design insight**: Sorting arrays by `name`, `order`, or any field means that changing that field's value would reshuffle the entire array, producing a noisy git diff. Instead, **preserve the existing order of items as they appear in the file** and **append new items at the end**.
 
-| Array | Sort Key | Rationale |
-|-------|----------|-----------|
-| `persistentObject.attributes[]` | `name` (string, ascending) | Attribute names are stable identifiers; sorting by name keeps diffs localized to the insertion point |
-| `persistentObject.tabs[]` | `order` (int), then `name` | `order` is the user's intended sequence; `name` as tiebreaker |
-| `persistentObject.groups[]` | `order` (int), then `name` | Same as tabs |
-| `queries[]` | `name` (string, ascending) | Query names are stable; alphabetical keeps them predictable |
-| `programUnitGroups[]` | `order` (int) | Groups have explicit ordering |
-| `programUnitGroups[].programUnits[]` | `order` (int) | Units have explicit ordering |
-| `security.rights[]` | `resource` (string), then `groupId` | Sorting by resource groups related rights together |
-| `customActions` (object keys) | Alphabetical by key name | JSON object property order; alphabetical is conventional |
-| `translations` (object keys) | Alphabetical by key name | Same -- keeps translation keys in a predictable order for git |
-| `culture.languages` (object keys) | Alphabetical by code | `en`, `fr`, `nl` |
+**Strategy for JSON arrays** (attributes, queries, tabs, groups, program units, rights):
+- When **updating** an existing item: find it by `id` in the array, replace it in-place at its current position
+- When **creating** a new item: append it at the end of the array
+- When **deleting**: remove the item, other items keep their positions
 
-**Implementation**: After modifying any array, always re-sort before serializing:
+**Strategy for JSON objects** (customActions, translations, culture.languages, security.groups):
+- `System.Text.Json.Nodes.JsonObject` preserves insertion order from parsing
+- When **updating** an existing key: `root[key] = newValue` replaces in-place
+- When **creating** a new key: it is appended at the end naturally
 
-```csharp
-private static void SortAttributes(JsonArray attributes)
-{
-    var sorted = attributes
-        .Select(a => a!.AsObject())
-        .OrderBy(a => a["name"]?.GetValue<string>() ?? "")
-        .ToList();
+**Why this works**: The `id` (GUID) of an item never changes. Its position in the array is determined by when it was first created. Reordering the UI display order (via the `order` field) only changes that one property value -- not the item's position in the JSON array.
 
-    attributes.Clear();
-    foreach (var attr in sorted)
-        attributes.Add(attr);
-}
-
-private static void SortByOrder(JsonArray items)
-{
-    var sorted = items
-        .Select(i => i!.AsObject())
-        .OrderBy(i => i["order"]?.GetValue<int>() ?? int.MaxValue)
-        .ThenBy(i => i["name"]?.GetValue<string>() ?? "")
-        .ToList();
-
-    items.Clear();
-    foreach (var item in sorted)
-        items.Add(item);
-}
-```
-
-For JSON objects where key order matters (customActions, translations, culture.languages), rebuild the object with sorted keys:
+**Implementation**: No sorting helpers are needed. `LoadOrCreateJsonObject` parses the existing file (preserving order), save methods find-and-replace by `id` or append, and `WriteJsonFile` serializes back:
 
 ```csharp
-private static JsonObject SortObjectKeys(JsonObject obj)
-{
-    var sorted = new JsonObject();
-    foreach (var kvp in obj.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
-    {
-        var value = kvp.Value;
-        obj.Remove(kvp.Key);       // Detach from old parent
-        sorted.Add(kvp.Key, value);
-    }
-    return sorted;
-}
+// Update existing item in-place, or append new item at the end
+var existingIndex = FindIndexById(attrsArray, idStr);
+if (existingIndex >= 0)
+    attrsArray[existingIndex] = node;  // Replace in-place
+else
+    attrsArray.Add(node);              // Append at end
 ```
 
 #### 4.7.3 Stable Property Ordering Within Objects
@@ -843,22 +808,30 @@ Given this initial `Car.json`:
     "id": "facb6829-...",
     "name": "Car",
     "attributes": [
-      { "id": "...", "name": "Brand", ... },
-      { "id": "...", "name": "LicensePlate", ... }
+      { "id": "aaa-...", "name": "Brand", ... },
+      { "id": "bbb-...", "name": "LicensePlate", ... }
     ]
   },
   "queries": [...]
 }
 ```
 
-Adding an attribute named "Color" produces this diff:
+Adding a new attribute "Color" produces this diff:
 ```diff
-       { "id": "...", "name": "Brand", ... },
-+      { "id": "...", "name": "Color", ... },
-       { "id": "...", "name": "LicensePlate", ... }
+       { "id": "bbb-...", "name": "LicensePlate", ... }
++      { "id": "ccc-...", "name": "Color", ... }
+     ]
 ```
 
-Because attributes are sorted by `name`, "Color" slots between "Brand" and "LicensePlate". The rest of the file is untouched. Git shows a clean, minimal diff.
+The new attribute is appended at the end. Existing items are untouched. Git shows a clean, minimal diff.
+
+Changing the `order` field of "Brand" from 1 to 3 produces:
+```diff
+-      { "id": "aaa-...", "name": "Brand", "order": 1, ... },
++      { "id": "aaa-...", "name": "Brand", "order": 3, ... },
+```
+
+Only the changed value is modified. The item stays in the same position in the array.
 
 ### 4.8 GUID Auto-Generation
 
@@ -878,12 +851,12 @@ For new entities, generate GUIDs automatically:
 **Scope**: Get `SparkEditorFileService` writing files correctly with clean, git-friendly output.
 
 1. **Refactor parsing to use `JsonNode`** -- Replace `JsonDocument`-based read-only parsing with `JsonNode`-based mutable parsing. This enables modifying and writing back.
-2. **Implement stable serialization helpers** -- `BuildAttributeNode`, `BuildQueryNode`, `SerializeTranslatedString`, `SortAttributes` (by `name`), `SortByOrder`, `SortObjectKeys`. These ensure every write produces a deterministic, minimal-diff output (see 4.7).
-3. **Implement `SavePersistentObject`** -- Write/update `Model/{Name}.json`, handling both create (new file) and update (modify existing file). Sort `attributes[]` by `name`, `queries[]` by `name`, `tabs[]`/`groups[]` by `order`.
+2. **Implement stable serialization helpers** -- `BuildAttributeNode`, `BuildQueryNode`, `SerializeTranslatedString`. These ensure every write produces entity objects with a fixed property order (see 4.7.3).
+3. **Implement `SavePersistentObject`** -- Write/update `Model/{Name}.json`, handling both create (new file) and update (modify existing file). Existing items preserve their position; new items appended at end.
 4. **Implement `DeletePersistentObject`** -- Delete the `Model/{Name}.json` file
-5. **Implement `SaveAttribute` / `DeleteAttribute`** -- Read parent PO file, modify `attributes[]`, re-sort by `name`, write back
-6. **Implement `SaveQuery` / `DeleteQuery`** -- Read parent PO file, modify `queries[]`, re-sort by `name`, write back
-7. **Implement all single-file saves** -- `SaveCustomAction`, `SaveProgramUnitGroup`, `SaveProgramUnit`, `SaveSecurityGroup`, `SaveSecurityRight`, `SaveLanguage`, `SaveTranslation` and their delete counterparts. Sort object keys alphabetically for customActions.json, translations.json, culture.json. Sort arrays by `order` for programUnits.json, by `resource` for security rights.
+5. **Implement `SaveAttribute` / `DeleteAttribute`** -- Read parent PO file, find/replace in `attributes[]` by ID or append, write back
+6. **Implement `SaveQuery` / `DeleteQuery`** -- Read parent PO file, find/replace in `queries[]` by ID or append, write back
+7. **Implement all single-file saves** -- `SaveCustomAction`, `SaveProgramUnitGroup`, `SaveProgramUnit`, `SaveSecurityGroup`, `SaveSecurityRight`, `SaveLanguage`, `SaveTranslation` and their delete counterparts. All preserve existing item order; new items appended at end.
 8. **Add `AtomicWriteFile` + `WriteFileWithSuppression` helper** -- Central write method with temp-file-then-rename and file-watcher suppression
 9. **Unit tests** -- Test each save/delete method with a temp directory of JSON files. **Include round-trip tests**: load → save without changes → file content must be byte-identical. **Include diff tests**: add one attribute → only that attribute appears in the diff.
 
