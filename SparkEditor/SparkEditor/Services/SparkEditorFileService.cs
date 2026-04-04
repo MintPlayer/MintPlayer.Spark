@@ -178,7 +178,10 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
             if (TryGetGuid(poElement, "id", out var id))
                 po.Id = id;
 
+            po.Label = DeserializeTranslatedString(poElement, "label");
             po.Description = DeserializeTranslatedString(poElement, "description");
+            po.Breadcrumb = GetStringProperty(poElement, "breadcrumb");
+            po.ContextProperty = GetStringProperty(poElement, "contextProperty");
             po.ClrType = GetStringProperty(poElement, "clrType");
             po.QueryType = GetStringProperty(poElement, "queryType");
             po.IndexName = GetStringProperty(poElement, "indexName");
@@ -1289,7 +1292,10 @@ public class SparkEditorFileService : ISparkEditorFileService, IDisposable
         var node = new JsonObject();
         node.Add("id", po.Id.ToString());
         node.Add("name", po.Name);
+        if (po.Label != null) node.Add("label", SerializeTranslatedString(po.Label));
         if (po.Description != null) node.Add("description", SerializeTranslatedString(po.Description));
+        if (po.Breadcrumb != null) node.Add("breadcrumb", po.Breadcrumb);
+        if (po.ContextProperty != null) node.Add("contextProperty", po.ContextProperty);
         if (po.ClrType != null) node.Add("clrType", po.ClrType);
         if (po.QueryType != null) node.Add("queryType", po.QueryType);
         if (po.IndexName != null) node.Add("indexName", po.IndexName);

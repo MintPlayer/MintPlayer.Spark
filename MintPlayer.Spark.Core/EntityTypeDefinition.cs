@@ -4,7 +4,10 @@ public class EntityTypeDefinition
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public TranslatedString? Label { get; set; }
     public TranslatedString? Description { get; set; }
+    public string? Breadcrumb { get; set; }
+    public string? ContextProperty { get; set; }
     public string? ClrType { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this entity type.
