@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, resolveTranslation } from '../models';
+import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, TranslatedString, resolveTranslation } from '../models';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
 export class AttributeValuePipe implements PipeTransform {
@@ -11,6 +11,11 @@ export class AttributeValuePipe implements PipeTransform {
     if (attr.breadcrumb) return attr.breadcrumb;
 
     const attrDef = entityType?.attributes.find(a => a.name === attrName);
+
+    if (attrDef?.dataType === 'translatedString' && attr.value && typeof attr.value === 'object') {
+      return resolveTranslation(attr.value as TranslatedString);
+    }
+
     if (attrDef?.dataType === 'AsDetail' && attr.value) {
       if (Array.isArray(attr.value)) {
         return `${attr.value.length} item${attr.value.length !== 1 ? 's' : ''}`;

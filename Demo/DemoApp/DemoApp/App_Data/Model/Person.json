@@ -203,7 +203,7 @@
       "name": "GetPeople",
       "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }]
+      "sortColumns": [{ "property": "FullName", "direction": "asc" }]
     },
     {
       "id": "d40f9500-f39c-52e5-b827-557766551002",

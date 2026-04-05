@@ -13,7 +13,7 @@
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
-		<PackageTags>low-code;framework;ravendb;crud;persistentobject;angular</PackageTags>
+		<PackageTags>low-code;framework;crud;persistentobject;angular</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
@@ -45,6 +45,7 @@
 	<ItemGroup>
 	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
 	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	  <ProjectReference Include="..\MintPlayer.Spark.Core\MintPlayer.Spark.Core.csproj" />
 	</ItemGroup>
 
 </Project>

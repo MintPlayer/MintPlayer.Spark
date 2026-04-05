@@ -2,9 +2,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 using System.Collections.Concurrent;
 using System.Reflection;
 
@@ -18,7 +16,8 @@ public interface IQueryExecutor
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
 internal partial class QueryExecutor : IQueryExecutor
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSessionFactory sessionFactory;
+    [Inject] private readonly ISparkStorageProvider storageProvider;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
@@ -91,7 +90,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<IEnumerable<PersistentObject>> ExecuteDatabaseQueryAsync(SparkQuery query, string propertyName)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         var sparkContext = sparkContextResolver.ResolveContext(session);
         if (sparkContext == null)
@@ -141,19 +140,14 @@ internal partial class QueryExecutor : IQueryExecutor
             }
         }
 
-        Type? indexType = registration?.IndexType;
-        if (!string.IsNullOrEmpty(indexName) && indexType != null)
+        if (registration?.IndexType != null && resultType != entityType)
         {
-            queryable = ApplyIndexWithType(session, entityType, indexType);
+            // Query<T>(Type indexType) returns stored/computed index fields via ProjectInto
+            queryable = ApplyIndexByType(session, resultType, registration.IndexType);
         }
         else if (!string.IsNullOrEmpty(indexName))
         {
             queryable = ApplyIndexByName(session, entityType, indexName);
-        }
-
-        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
-        {
-            queryable = ApplyProjection(queryable, resultType);
         }
 
         // Resolve reference properties before executing so we can chain .Include()
@@ -163,7 +157,7 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = referenceResolver.ApplyIncludes(queryable, referenceProperties);
         }
 
-        var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
+        var sortType = (!string.IsNullOrEmpty(indexName) && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
         {
             queryable = ApplySorting(queryable, sortType, query.SortColumns);
@@ -186,7 +180,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private async Task<IEnumerable<PersistentObject>> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         // Resolve the entity type for this query
         var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
@@ -244,10 +238,10 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
-        // Without this, RavenDB loads full documents which lack computed index fields.
-        if (methodInfo.IsRavenQueryable && indexRegistry.IsProjectionType(methodInfo.ResultElementType))
+        // Without this, the storage provider loads full documents which lack computed index fields.
+        if (methodInfo.IsQueryable && indexRegistry.IsProjectionType(methodInfo.ResultElementType))
         {
-            result = ApplyProjection(result, methodInfo.ResultElementType);
+            result = storageProvider.ApplyProjection(result, methodInfo.ResultElementType);
         }
 
         // Apply sorting if the result is IQueryable
@@ -258,14 +252,9 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Materialize results
         IEnumerable<object> entities;
-        if (methodInfo.IsRavenQueryable)
+        if (methodInfo.IsQueryable)
         {
             entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType);
-        }
-        else if (result is IQueryable)
-        {
-            // In-memory IQueryable — materialize via LINQ ToList
-            entities = MaterializeQueryable(result, methodInfo.ResultElementType);
         }
         else if (result is System.Collections.IEnumerable enumerable)
         {
@@ -325,12 +314,11 @@ internal partial class QueryExecutor : IQueryExecutor
                 return null; // Invalid signature
             }
 
-            // Extract the element type from IQueryable<T> or IRavenQueryable<T>
+            // Extract the element type from IQueryable<T> or IEnumerable<T>
             var elementType = ExtractQueryableElementType(returnType);
             if (elementType == null)
                 return null;
 
-            var isRavenQueryable = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsAssignableFrom(returnType);
             var isQueryable = typeof(IQueryable).IsAssignableFrom(returnType);
 
             return new CustomQueryMethodInfo
@@ -339,7 +327,6 @@ internal partial class QueryExecutor : IQueryExecutor
                 AcceptsArgs = acceptsArgs,
                 ResultElementType = elementType,
                 IsQueryable = isQueryable,
-                IsRavenQueryable = isRavenQueryable,
             };
         });
     }
@@ -412,60 +399,43 @@ internal partial class QueryExecutor : IQueryExecutor
 
     #region Shared Helpers
 
-    private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
+    private object ApplyIndexByType(ISparkSession session, Type resultType, Type indexType)
     {
-        var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
+        // Find the Query<T>(Type) method on ISparkSession via reflection
+        var sessionQueryMethod = typeof(ISparkSession).GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
-                && m.IsGenericMethod
-                && m.GetGenericArguments().Length == 2
-                && m.GetParameters().Length == 0);
-
-        if (sessionQueryMethod == null)
-        {
-            throw new InvalidOperationException("Could not find Query<T, TIndexCreator> method on IAsyncDocumentSession");
-        }
-
-        var genericMethod = sessionQueryMethod.MakeGenericMethod(resultType, indexType);
-        return genericMethod.Invoke(session, [])!;
-    }
-
-    private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
-    {
-        var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
-                && m.IsGenericMethod
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 3
-                && m.GetParameters()[0].ParameterType == typeof(string)
-                && m.GetParameters()[1].ParameterType == typeof(string)
-                && m.GetParameters()[2].ParameterType == typeof(bool));
-
-        if (sessionQueryMethod == null)
-        {
-            throw new InvalidOperationException("Could not find Query<T>(string, string, bool) method on IAsyncDocumentSession");
-        }
-
-        var genericMethod = sessionQueryMethod.MakeGenericMethod(entityType);
-        var ravenIndexName = indexName.Replace("_", "/");
-        return genericMethod.Invoke(session, [ravenIndexName, null, false])!;
-    }
-
-    private object ApplyProjection(object queryable, Type resultType)
-    {
-        var projectIntoMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == "ProjectInto"
                 && m.IsGenericMethod
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 1
-                && m.GetParameters()[0].ParameterType == typeof(IQueryable));
+                && m.GetParameters()[0].ParameterType == typeof(Type));
 
-        if (projectIntoMethod == null)
+        if (sessionQueryMethod == null)
         {
-            return queryable;
+            throw new InvalidOperationException("Could not find Query<T>(Type) method on ISparkSession");
         }
 
-        var genericProjectMethod = projectIntoMethod.MakeGenericMethod(resultType);
-        return genericProjectMethod.Invoke(null, [queryable])!;
+        var genericMethod = sessionQueryMethod.MakeGenericMethod(resultType);
+        return genericMethod.Invoke(session, [indexType])!;
+    }
+
+    private object ApplyIndexByName(ISparkSession session, Type entityType, string indexName)
+    {
+        // Find the Query<T>(string?) method on ISparkSession via reflection:
+        // it has 1 generic type parameter and 1 string parameter.
+        var sessionQueryMethod = typeof(ISparkSession).GetMethods()
+            .FirstOrDefault(m => m.Name == "Query"
+                && m.IsGenericMethod
+                && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Length == 1
+                && m.GetParameters()[0].ParameterType == typeof(string));
+
+        if (sessionQueryMethod == null)
+        {
+            throw new InvalidOperationException("Could not find Query<T>(string?) method on ISparkSession");
+        }
+
+        var genericMethod = sessionQueryMethod.MakeGenericMethod(entityType);
+        return genericMethod.Invoke(session, [indexName])!;
     }
 
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns)
@@ -496,8 +466,10 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
     {
-        var toListMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
+        // Call storageProvider.ToListAsync<T>(queryable, CancellationToken) via reflection
+        var toListMethod = typeof(ISparkStorageProvider).GetMethods()
+            .FirstOrDefault(m => m.Name == nameof(ISparkStorageProvider.ToListAsync)
+                && m.IsGenericMethod
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 2);
 
@@ -507,7 +479,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
-        var task = genericToListMethod.Invoke(null, [queryable, CancellationToken.None]) as Task;
+        var task = genericToListMethod.Invoke(storageProvider, [queryable, CancellationToken.None]) as Task;
 
         if (task == null)
         {
@@ -536,5 +508,4 @@ internal sealed class CustomQueryMethodInfo
     public required bool AcceptsArgs { get; init; }
     public required Type ResultElementType { get; init; }
     public required bool IsQueryable { get; init; }
-    public required bool IsRavenQueryable { get; init; }
 }

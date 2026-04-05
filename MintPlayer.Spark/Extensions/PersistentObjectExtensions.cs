@@ -196,6 +196,7 @@ public static class PersistentObjectExtensions
             _ when underlying == typeof(DateTime) => "datetime",
             _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
+            _ when underlying == typeof(TranslatedString) => "translatedString",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };

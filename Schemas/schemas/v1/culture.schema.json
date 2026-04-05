@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/culture.schema.json",
+  "title": "Spark Culture Configuration",
+  "description": "Defines the supported languages and default language for a MintPlayer Spark application. Place this file at App_Data/culture.json.",
+  "type": "object",
+  "required": ["languages", "defaultLanguage"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    },
+    "languages": {
+      "type": "object",
+      "description": "Map of language codes to their translated display names. Each key is an ISO language code (e.g., 'en', 'fr', 'nl') and each value is a TranslatedString providing the language name in all supported languages.",
+      "additionalProperties": {
+        "$ref": "#/$defs/TranslatedString"
+      }
+    },
+    "defaultLanguage": {
+      "type": "string",
+      "description": "The default language code to use when no user preference is set (e.g., 'en')."
+    }
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -136,6 +136,8 @@
                 } @else {
                   -
                 }
+              } @else if (attr.dataType === 'translatedString') {
+                {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               } @else if (attr.dataType === 'Reference' && attr.referenceType) {
                 @let refRoute = (attr.referenceType | referenceLinkRoute:(attr.name | rawAttributeValue:item()):allEntityTypes());
                 @if (refRoute && (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes())) {

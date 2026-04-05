@@ -1,0 +1,79 @@
+{
+  "persistentObject": {
+    "id": "b7c8d9e0-f1a2-3456-bcde-567890123456",
+    "name": "SecurityRightDef",
+    "description": {
+      "en": "Security Right",
+      "nl": "Beveiligingsrecht"
+    },
+    "clrType": "MintPlayer.Spark.Authorization.Models.Right",
+    "displayAttribute": "Resource",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b7c80001-0001-0001-0001-000000000001",
+        "name": "Resource",
+        "label": { "en": "Resource", "nl": "Resource" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [{ "type": "minLength", "value": 1 }]
+      },
+      {
+        "id": "b7c80001-0001-0001-0001-000000000002",
+        "name": "GroupId",
+        "label": { "en": "Group", "nl": "Groep" },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "referenceType": "MintPlayer.Spark.Abstractions.SecurityGroupDefinition",
+        "query": "GetSecurityGroupDefs",
+        "rules": []
+      },
+      {
+        "id": "b7c80001-0001-0001-0001-000000000003",
+        "name": "IsDenied",
+        "label": { "en": "Denied", "nl": "Geweigerd" },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b7c80001-0001-0001-0001-000000000004",
+        "name": "IsImportant",
+        "label": { "en": "Important", "nl": "Belangrijk" },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "b7c8d9e0-0001-0001-0001-000000000001",
+      "name": "GetSecurityRightDefs",
+      "description": { "en": "Security Rights", "nl": "Beveiligingsrechten" },
+      "source": "Custom.GetAll",
+      "sortColumns": [{ "property": "Resource", "direction": "asc" }]
+    }
+  ]
+}

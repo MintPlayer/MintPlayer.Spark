@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable"
+              xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+
+  <Commands package="guidSparkEditorPackage">
+    <Groups>
+      <Group guid="guidCommandSet" id="SparkEditorMenuGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_VIEW" />
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <Button guid="guidCommandSet" id="OpenSparkEditorCommand" priority="0x0100" type="Button">
+        <Parent guid="guidCommandSet" id="SparkEditorMenuGroup" />
+        <Strings>
+          <ButtonText>Spark Editor</ButtonText>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidSparkEditorPackage" value="{b7e1a2c3-d4f5-6789-abcd-ef0123456789}" />
+    <GuidSymbol name="guidCommandSet" value="{c8f2b3d4-e5a6-7890-bcde-f01234567890}">
+      <IDSymbol name="SparkEditorMenuGroup" value="0x1020" />
+      <IDSymbol name="OpenSparkEditorCommand" value="0x0100" />
+    </GuidSymbol>
+  </Symbols>
+
+</CommandTable>

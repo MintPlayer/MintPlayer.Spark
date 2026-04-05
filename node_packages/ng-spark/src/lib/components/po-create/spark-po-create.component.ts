@@ -16,6 +16,7 @@ import { PersistentObject } from '../../models/persistent-object';
 import { PersistentObjectAttribute } from '../../models/persistent-object-attribute';
 import { ValidationError } from '../../models/validation-error';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
+import { resolveDisplayName } from '../../models/resolve-display-name';
 
 @Component({
   selector: 'spark-po-create',
@@ -93,7 +94,7 @@ export class SparkPoCreateComponent {
     }));
 
     const po: Partial<PersistentObject> = {
-      name: this.formData()['Name'] || 'New Item',
+      name: resolveDisplayName(this.entityType(), this.formData()),
       objectTypeId: this.entityType()!.id,
       attributes
     };
@@ -111,7 +112,7 @@ export class SparkPoCreateComponent {
       } else {
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          errorMessage: { en: error.error?.detail || error.error?.error || error.message || 'An unexpected error occurred' },
           ruleType: 'error'
         }]);
       }

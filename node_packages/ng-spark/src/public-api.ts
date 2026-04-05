@@ -24,6 +24,8 @@ export { SparkService } from './lib/services/spark.service';
 export { SparkStreamingService } from './lib/services/spark-streaming.service';
 export { SparkLanguageService } from './lib/services/spark-language.service';
 export { RetryActionService } from './lib/services/retry-action.service';
+export { SparkDataRefreshService } from './lib/services/spark-data-refresh.service';
+export type { DataRefreshEvent } from './lib/services/spark-data-refresh.service';
 
 // Components
 export { SparkPoFormComponent } from './lib/components/po-form/spark-po-form.component';

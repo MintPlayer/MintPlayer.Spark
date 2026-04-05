@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Storage;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Streaming;
 [Register(typeof(IStreamingQueryExecutor), ServiceLifetime.Scoped)]
 internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSessionFactory sessionFactory;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
@@ -71,7 +71,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         }
 
         // Open a session and invoke the streaming method
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         var args = new StreamingQueryArgs
         {
             Query = query,

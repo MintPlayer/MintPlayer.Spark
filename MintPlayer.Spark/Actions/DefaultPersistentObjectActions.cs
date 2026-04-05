@@ -2,8 +2,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 using System.Runtime.CompilerServices;
 
 namespace MintPlayer.Spark.Actions;
@@ -17,17 +16,18 @@ namespace MintPlayer.Spark.Actions;
 public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
 {
     [Inject] private readonly IEntityMapper entityMapper;
+    [Inject] private readonly ISparkStorageProvider? storageProvider = null;
 
     /// <inheritdoc />
-    public virtual async Task<IEnumerable<T>> OnQueryAsync(IAsyncDocumentSession session)
-        => await session.Query<T>().ToListAsync();
+    public virtual async Task<IEnumerable<T>> OnQueryAsync(ISparkSession session)
+        => await storageProvider!.ToListAsync(session.Query<T>());
 
     /// <inheritdoc />
-    public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
+    public virtual async Task<T?> OnLoadAsync(ISparkSession session, string id)
         => await session.LoadAsync<T>(id);
 
     /// <inheritdoc />
-    public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
+    public virtual async Task<T> OnSaveAsync(ISparkSession session, PersistentObject obj)
     {
         var entity = entityMapper.ToEntity<T>(obj);
         await OnBeforeSaveAsync(obj, entity);
@@ -38,7 +38,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     }
 
     /// <inheritdoc />
-    public virtual async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
+    public virtual async Task OnDeleteAsync(ISparkSession session, string id)
     {
         var entity = await session.LoadAsync<T>(id);
         if (entity != null)

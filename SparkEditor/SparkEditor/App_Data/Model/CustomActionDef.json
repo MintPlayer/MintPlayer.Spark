@@ -1,0 +1,146 @@
+{
+  "persistentObject": {
+    "id": "e4d5f6a7-b8c9-0123-defa-234567890123",
+    "name": "CustomActionDef",
+    "description": {
+      "en": "Custom Action",
+      "nl": "Aangepaste actie"
+    },
+    "clrType": "MintPlayer.Spark.Models.CustomActionDefinition",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e4d50001-0001-0001-0001-000000000001",
+        "name": "Name",
+        "label": { "en": "Name", "nl": "Naam" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [{ "type": "minLength", "value": 1 }]
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000002",
+        "name": "DisplayName",
+        "label": { "en": "Display Name", "nl": "Weergavenaam" },
+        "dataType": "translatedString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000003",
+        "name": "Icon",
+        "label": { "en": "Icon", "nl": "Icoon" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000004",
+        "name": "Description",
+        "label": { "en": "Description", "nl": "Beschrijving" },
+        "dataType": "translatedString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000005",
+        "name": "ShowedOn",
+        "label": { "en": "Showed On", "nl": "Getoond op" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "lookupReferenceType": "ShowedOnOptions",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000006",
+        "name": "SelectionRule",
+        "label": { "en": "Selection Rule", "nl": "Selectieregel" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "lookupReferenceType": "SelectionRuleOptions",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000007",
+        "name": "RefreshOnCompleted",
+        "label": { "en": "Refresh On Completed", "nl": "Vernieuwen na afloop" },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000008",
+        "name": "ConfirmationMessageKey",
+        "label": { "en": "Confirmation Key", "nl": "Bevestigingssleutel" },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "referenceType": "MintPlayer.Spark.Abstractions.TranslationEntry",
+        "query": "GetTranslationDefs",
+        "rules": []
+      },
+      {
+        "id": "e4d50001-0001-0001-0001-000000000009",
+        "name": "Offset",
+        "label": { "en": "Offset", "nl": "Positie" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "e4d5f6a7-0001-0001-0001-000000000001",
+      "name": "GetCustomActionDefs",
+      "description": { "en": "Custom Actions", "nl": "Aangepaste acties" },
+      "source": "Custom.GetAll",
+      "sortColumns": [{ "property": "Name", "direction": "asc" }]
+    }
+  ]
+}

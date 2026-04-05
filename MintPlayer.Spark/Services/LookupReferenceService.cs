@@ -1,6 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Storage;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -42,7 +42,7 @@ public class LookupReferenceValueDto
 internal partial class LookupReferenceService : ILookupReferenceService
 {
     [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSessionFactory sessionFactory;
 
     public async Task<IEnumerable<LookupReferenceListItem>> GetAllAsync()
     {
@@ -128,7 +128,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot add values to transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
@@ -163,7 +163,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot update values in transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
@@ -202,7 +202,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot delete values from transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
@@ -220,7 +220,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
     private async Task<DynamicLookupReferenceDocument?> LoadDynamicLookupAsync(string name)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         var documentId = $"LookupReferences/{name}";
         return await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
     }
@@ -286,8 +286,8 @@ internal partial class LookupReferenceService : ILookupReferenceService
 }
 
 /// <summary>
-/// RavenDB document for storing dynamic lookup reference values.
-/// Uses its own value type to match the stored format in RavenDB (Newtonsoft.Json).
+/// Document for storing dynamic lookup reference values.
+/// Uses its own value type to match the stored format in the database.
 /// </summary>
 internal class DynamicLookupReferenceDocument
 {

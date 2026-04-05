@@ -32,16 +32,17 @@ import { CanDeleteDetailRowPipe } from '../../pipes/can-delete-detail-row.pipe';
 import { InlineRefOptionsPipe } from '../../pipes/inline-ref-options.pipe';
 import { ReferenceAttrValuePipe } from '../../pipes/reference-attr-value.pipe';
 import { ErrorForAttributePipe } from '../../pipes/error-for-attribute.pipe';
-import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, ValidationError, resolveTranslation } from '../../models';
+import { ELookupDisplayType, EntityPermissions, EntityType, EntityAttributeDefinition, LookupReference, LookupReferenceValue, PersistentObject, PersistentObjectAttribute, TranslatedString, ValidationError, resolveTranslation } from '../../models';
 import { AttributeTab, AttributeGroup } from '../../models/entity-type';
 import { ShowedOn, hasShowedOnFlag } from '../../models/showed-on';
 import { SparkIconComponent } from '../icon/spark-icon.component';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { BsMultiselectComponent, BsButtonTemplateDirective, BsHeaderTemplateDirective, BsItemTemplateDirective } from '@mintplayer/ng-bootstrap/multiselect';
 import { SPARK_ATTRIBUTE_RENDERERS } from '../../providers/spark-attribute-renderer-registry';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsToggleButtonComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsMultiselectComponent, BsButtonTemplateDirective, BsHeaderTemplateDirective, BsItemTemplateDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -95,6 +96,12 @@ export class SparkPoFormComponent {
   lookupModalItems = signal<LookupReferenceValue[]>([]);
   lookupSearchTerm = signal('');
   ELookupDisplayType = ELookupDisplayType;
+
+  // Modal state for TranslatedString editing
+  editingTranslatedStringAttr = signal<EntityAttributeDefinition | null>(null);
+  translatedStringFormData = signal<Record<string, string>>({});
+  showTranslatedStringModal = signal(false);
+  availableLanguages = signal<string[]>(['en']);
 
   editableAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -158,6 +165,7 @@ export class SparkPoFormComponent {
         this.loadReferenceOptions();
         this.loadAsDetailTypes();
         this.loadLookupReferenceOptions();
+        this.loadAvailableLanguages();
       }
     });
   }
@@ -442,5 +450,76 @@ export class SparkPoFormComponent {
     this.referenceModalItems.set([]);
     this.referenceModalEntityType.set(null);
     this.referenceSearchTerm = '';
+  }
+
+  // TranslatedString methods
+  async loadAvailableLanguages(): Promise<void> {
+    await this.translations.loadCulture();
+    const langs = Object.keys(this.translations.languages());
+    if (langs.length > 0) {
+      this.availableLanguages.set(langs);
+    }
+  }
+
+  getTranslatedStringDisplay(attr: EntityAttributeDefinition): string {
+    const value = this.formData()[attr.name];
+    if (!value || typeof value !== 'object') return '';
+    return resolveTranslation(value as TranslatedString);
+  }
+
+  openTranslatedStringEditor(attr: EntityAttributeDefinition): void {
+    this.editingTranslatedStringAttr.set(attr);
+    const current = this.formData()[attr.name];
+    this.translatedStringFormData.set(current && typeof current === 'object' ? { ...current } : {});
+    this.showTranslatedStringModal.set(true);
+  }
+
+  updateTranslatedStringValue(lang: string, value: string): void {
+    this.translatedStringFormData.update(data => ({ ...data, [lang]: value }));
+  }
+
+  saveTranslatedString(): void {
+    const attr = this.editingTranslatedStringAttr();
+    if (attr) {
+      const data = { ...this.formData() };
+      data[attr.name] = { ...this.translatedStringFormData() };
+      this.formData.set(data);
+    }
+    this.closeTranslatedStringModal();
+  }
+
+  closeTranslatedStringModal(): void {
+    this.showTranslatedStringModal.set(false);
+    this.editingTranslatedStringAttr.set(null);
+    this.translatedStringFormData.set({});
+  }
+
+  // Multiselect lookup methods
+  getSelectedLookupItems(attr: EntityAttributeDefinition): LookupReferenceValue[] {
+    const value = this.formData()[attr.name];
+    if (!value || typeof value !== 'string') return [];
+    const selectedKeys = value.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+    const allOptions = this.getLookupOptions(attr);
+    return allOptions.filter(o => selectedKeys.includes(o.key));
+  }
+
+  onMultiselectChange(attr: EntityAttributeDefinition, selected: LookupReferenceValue[]): void {
+    const data = { ...this.formData() };
+    data[attr.name] = selected.map(s => s.key).join(', ');
+    this.formData.set(data);
+  }
+
+  isAllLookupSelected(attr: EntityAttributeDefinition): boolean {
+    return this.getSelectedLookupItems(attr).length === this.getLookupOptions(attr).length;
+  }
+
+  toggleAllLookup(attr: EntityAttributeDefinition, checked: boolean | null): void {
+    const data = { ...this.formData() };
+    if (checked) {
+      data[attr.name] = this.getLookupOptions(attr).map(o => o.key).join(', ');
+    } else {
+      data[attr.name] = '';
+    }
+    this.formData.set(data);
   }
 }

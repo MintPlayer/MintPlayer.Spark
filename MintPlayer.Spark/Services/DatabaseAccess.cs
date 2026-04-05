@@ -1,9 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -11,7 +9,8 @@ namespace MintPlayer.Spark.Services;
 [Register(typeof(IDatabaseAccess), ServiceLifetime.Scoped)]
 internal partial class DatabaseAccess : IDatabaseAccess
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSessionFactory sessionFactory;
+    [Inject] private readonly ISparkStorageProvider storageProvider;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
@@ -22,27 +21,26 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         return await session.LoadAsync<T>(id);
     }
 
     public async Task<IEnumerable<T>> GetDocumentsAsync<T>() where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
-        return await session.Query<T>().ToListAsync();
+        using var session = sessionFactory.OpenSession();
+        return await storageProvider.ToListAsync(session.Query<T>());
     }
 
     public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdAsync<T>(Guid objectTypeId) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
-        return await session.Query<T>()
-            .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
-            .ToListAsync();
+        using var session = sessionFactory.OpenSession();
+        return await storageProvider.ToListAsync(
+            session.Query<T>().Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId));
     }
 
     public async Task<T> SaveDocumentAsync<T>(T document) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
 
@@ -60,7 +58,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeleteDocumentAsync<T>(string id) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
         session.Delete(id);
         await session.SaveChangesAsync();
 
@@ -85,7 +83,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         // Get reference properties to include
         var referenceProperties = referenceResolver.GetReferenceProperties(entityType);
@@ -112,24 +110,24 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return [];
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         // Check IndexRegistry for projection type - if so, query the index instead of the collection
         Type queryType = entityType;
-        string? indexName = null;
+        Type? indexType = null;
 
         var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
         if (registration?.ProjectionType != null)
         {
             queryType = registration.ProjectionType;
-            indexName = registration.IndexName;
+            indexType = registration.IndexType;
         }
 
         // Get reference properties — fall back to base entity type when projection lacks [Reference]
         var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
+        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexType, referenceProperties)).ToList();
 
         // Referenced documents are now in session cache - extract them
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
@@ -149,7 +147,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         // Pass PO directly to actions — entity mapping happens inside the actions pipeline
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
@@ -181,7 +179,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return;
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = sessionFactory.OpenSession();
 
         // Delete locally first (includes before hook)
         await DeleteEntityViaActionsAsync(session, entityType, id);
@@ -194,12 +192,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
     }
 
-    private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private async Task<object?> LoadEntityAsync(ISparkSession session, Type entityType, string id)
     {
         // Use reflection to call the generic LoadAsync<T> method
-        var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
+        var method = typeof(ISparkSession).GetMethod(nameof(ISparkSession.LoadAsync), [typeof(string)]);
         var genericMethod = method?.MakeGenericMethod(entityType);
-        var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
+        var task = genericMethod?.Invoke(session, [id]) as Task;
 
         if (task == null) return null;
 
@@ -210,36 +208,31 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return resultProperty?.GetValue(task);
     }
 
-    private async Task<IEnumerable<object>> QueryEntitiesAsync(IAsyncDocumentSession session, Type entityType)
+    private async Task<IEnumerable<object>> QueryEntitiesAsync(ISparkSession session, Type entityType)
     {
-        // Use Query<T> directly on the session (not via Advanced)
-        // Query(string indexName, string collectionName, bool isMapReduce) with 1 generic param and 3 regular params
-        var sessionType = session.GetType();
-
-        var queryMethod = sessionType.GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
+        // Use reflection to call the generic Query<T>() method on ISparkSession
+        var queryMethod = typeof(ISparkSession).GetMethods()
+            .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
                 && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 3);
+                && m.GetParameters().Length == 0);
 
         if (queryMethod == null) return [];
 
         var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
-        // Pass null for indexName, null for collectionName, false for isMapReduce
-        var query = genericQueryMethod.Invoke(session, [null, null, false]);
+        var query = genericQueryMethod.Invoke(session, []);
 
         if (query == null) return [];
 
-        // Call ToListAsync on the IRavenQueryable<T>
-        // ToListAsync is an extension method in Raven.Client.Documents.Linq.LinqExtensions
-        var toListMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
+        // Call storageProvider.ToListAsync on the IQueryable<T>
+        var toListMethod = typeof(ISparkStorageProvider).GetMethods()
+            .FirstOrDefault(m => m.Name == nameof(ISparkStorageProvider.ToListAsync)
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 2);
 
         if (toListMethod == null) return [];
 
         var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
-        var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
+        var task = genericToListMethod.Invoke(storageProvider, [query, CancellationToken.None]) as Task;
 
         if (task == null) return [];
 
@@ -275,54 +268,46 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// <summary>
     /// Queries entities and uses .Include() for all reference properties so that
     /// referenced documents are loaded in a single database call.
-    /// When indexName is provided, queries the RavenDB index instead of the collection.
+    /// When indexName is provided, queries the index instead of the collection.
     /// </summary>
     private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         Type entityType,
-        string? indexName,
+        Type? indexType,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
     {
         object? query;
 
-        // Query method signature: Query<T>(string indexName, string collectionName, bool isMapReduce)
-        var sessionType = session.GetType();
-        var queryMethod = sessionType.GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 3);
+        if (indexType != null)
+        {
+            // Use ISparkSession.Query<T>(Type indexType) — maps to session.Query<T, TIndex>()
+            var queryMethod = typeof(ISparkSession).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 1
+                    && m.GetParameters()[0].ParameterType == typeof(Type));
 
-        if (queryMethod == null)
-            return [];
+            if (queryMethod == null)
+                return [];
 
-        var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
+            query = queryMethod.MakeGenericMethod(entityType).Invoke(session, [indexType]);
+        }
+        else
+        {
+            // Use ISparkSession.Query<T>() without index
+            var queryMethod = typeof(ISparkSession).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(ISparkSession.Query)
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 0);
 
-        // Pass indexName if querying an index, null for collection query
-        // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
-        var ravenIndexName = indexName?.Replace("_", "/");
-        query = genericQueryMethod.Invoke(session, [ravenIndexName, null, false]);
+            if (queryMethod == null)
+                return [];
+
+            query = queryMethod.MakeGenericMethod(entityType).Invoke(session, []);
+        }
 
         if (query == null)
             return [];
-
-        // When querying an index, use ProjectInto<T>() to project from stored fields
-        // This ensures computed/stored fields like FullName are populated from the index
-        // ProjectInto is an extension method on IQueryable (non-generic) in LinqExtensions
-        if (!string.IsNullOrEmpty(indexName))
-        {
-            var projectIntoMethod = typeof(LinqExtensions).GetMethods()
-                .FirstOrDefault(m => m.Name == "ProjectInto"
-                    && m.IsGenericMethod
-                    && m.GetGenericArguments().Length == 1
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(IQueryable));
-
-            if (projectIntoMethod != null)
-            {
-                var genericProjectIntoMethod = projectIntoMethod.MakeGenericMethod(entityType);
-                query = genericProjectIntoMethod.Invoke(null, [query])!;
-            }
-        }
 
         // Chain .Include(propertyName) so referenced documents are loaded in the same round-trip
         if (query != null && referenceProperties.Count > 0)
@@ -330,9 +315,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
             query = referenceResolver.ApplyIncludes(query, referenceProperties);
         }
 
-        // Call ToListAsync on the query
-        var toListMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
+        // Call storageProvider.ToListAsync on the query
+        var toListMethod = typeof(ISparkStorageProvider).GetMethods()
+            .FirstOrDefault(m => m.Name == nameof(ISparkStorageProvider.ToListAsync)
                 && m.GetGenericArguments().Length == 1
                 && m.GetParameters().Length == 2);
 
@@ -340,7 +325,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             return [];
 
         var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
-        var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
+        var task = genericToListMethod.Invoke(storageProvider, [query, CancellationToken.None]) as Task;
 
         if (task == null)
             return [];
@@ -360,7 +345,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     #region Actions Helper Methods
 
-    private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private async Task<object?> LoadEntityViaActionsAsync(ISparkSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onLoadMethod = actions.GetType().GetMethod("OnLoadAsync")!;
@@ -369,7 +354,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return task.GetType().GetProperty("Result")!.GetValue(task);
     }
 
-    private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(IAsyncDocumentSession session, Type entityType)
+    private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(ISparkSession session, Type entityType)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onQueryMethod = actions.GetType().GetMethod("OnQueryAsync")!;
@@ -385,7 +370,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return [];
     }
 
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
+    private async Task<object> SaveEntityViaActionsAsync(ISparkSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
@@ -394,7 +379,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
-    private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private async Task DeleteEntityViaActionsAsync(ISparkSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onDeleteMethod = actions.GetType().GetMethod("OnDeleteAsync")!;

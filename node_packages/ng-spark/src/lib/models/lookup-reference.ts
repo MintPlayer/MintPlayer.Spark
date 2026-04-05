@@ -2,7 +2,8 @@ import { TranslatedString } from './translated-string';
 
 export enum ELookupDisplayType {
   Dropdown = 0,
-  Modal = 1
+  Modal = 1,
+  Multiselect = 2
 }
 
 export interface LookupReferenceListItem {

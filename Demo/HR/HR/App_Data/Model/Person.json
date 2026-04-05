@@ -270,7 +270,7 @@
         "nl": "Personen"
       },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }],
+      "sortColumns": [{ "property": "FullName", "direction": "asc" }],
       "useProjection": false,
       "entityType": "Person"
     },

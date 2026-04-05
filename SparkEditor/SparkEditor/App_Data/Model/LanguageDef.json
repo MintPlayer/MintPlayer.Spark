@@ -1,0 +1,51 @@
+{
+  "persistentObject": {
+    "id": "c8d9e0f1-a2b3-4567-cdef-678901234567",
+    "name": "LanguageDef",
+    "description": {
+      "en": "Language",
+      "nl": "Taal"
+    },
+    "clrType": "MintPlayer.Spark.Abstractions.LanguageDefinition",
+    "displayAttribute": "Culture",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "c8d90001-0001-0001-0001-000000000001",
+        "name": "Culture",
+        "label": { "en": "Culture Code", "nl": "Cultuurcode" },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [{ "type": "minLength", "value": 2 }, { "type": "maxLength", "value": 10 }]
+      },
+      {
+        "id": "c8d90001-0001-0001-0001-000000000002",
+        "name": "Name",
+        "label": { "en": "Name", "nl": "Naam" },
+        "dataType": "translatedString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "c8d9e0f1-0001-0001-0001-000000000001",
+      "name": "GetLanguageDefs",
+      "description": { "en": "Languages", "nl": "Talen" },
+      "source": "Custom.GetAll",
+      "sortColumns": [{ "property": "Culture", "direction": "asc" }]
+    }
+  ]
+}

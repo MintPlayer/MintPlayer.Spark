@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/program-units.schema.json",
+  "title": "Spark Program Units",
+  "description": "Defines the navigation menu structure for a MintPlayer Spark application. Program units are grouped into categories and link to queries or persistent objects. Place this file at App_Data/programUnits.json.",
+  "type": "object",
+  "required": ["programUnitGroups"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    },
+    "programUnitGroups": {
+      "type": "array",
+      "description": "Top-level navigation groups. Each group contains related program units.",
+      "items": {
+        "$ref": "#/$defs/ProgramUnitGroup"
+      }
+    }
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "ProgramUnitGroup": {
+      "type": "object",
+      "description": "A navigation group that contains related program units. Rendered as a collapsible section in the sidebar.",
+      "required": ["id", "name", "programUnits"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this program unit group."
+        },
+        "name": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display name for the group."
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon class name for the group (e.g., 'bi-truck' for Bootstrap Icons)."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Sort order of the group in the navigation. Lower numbers appear first.",
+          "default": 0
+        },
+        "programUnits": {
+          "type": "array",
+          "description": "The program units (menu items) within this group.",
+          "items": {
+            "$ref": "#/$defs/ProgramUnit"
+          }
+        }
+      }
+    },
+    "ProgramUnit": {
+      "type": "object",
+      "description": "A single navigation item that links to a query result list or a persistent object view.",
+      "required": ["id", "name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this program unit."
+        },
+        "name": {
+          "$ref": "#/$defs/TranslatedString",
+          "description": "Translated display name for the menu item."
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon class name for the menu item (e.g., 'bi-car-front-fill', 'bi-people')."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of target this program unit navigates to.",
+          "enum": ["query", "persistentObject"]
+        },
+        "queryId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The GUID of the SparkQuery to display when type is 'query'."
+        },
+        "persistentObjectId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The GUID of the EntityTypeDefinition to display when type is 'persistentObject'."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Sort order of the program unit within its group. Lower numbers appear first.",
+          "default": 0
+        },
+        "alias": {
+          "type": "string",
+          "description": "URL-friendly alias for this program unit's route (e.g., 'cars', 'people')."
+        }
+      }
+    }
+  }
+}

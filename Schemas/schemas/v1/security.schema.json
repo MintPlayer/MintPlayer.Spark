@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json.spark.mintplayer.com/schemas/v1/security.schema.json",
+  "title": "Spark Security Configuration",
+  "description": "Defines the security groups and permission rights for a MintPlayer Spark application. Used by the MintPlayer.Spark.Authorization package. Place this file at App_Data/security.json.",
+  "type": "object",
+  "required": ["groups", "rights"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense."
+    },
+    "groups": {
+      "type": "object",
+      "description": "Map of group ID (GUID string) to the group's translated display name. The special GUID '00000000-0000-0000-0000-000000000000' typically represents the 'Everyone' group.",
+      "propertyNames": {
+        "format": "uuid"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/TranslatedString"
+      }
+    },
+    "groupComments": {
+      "type": "object",
+      "description": "Optional descriptions for groups. Key is the group ID (GUID), value is a translated human-readable description.",
+      "propertyNames": {
+        "format": "uuid"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/TranslatedString"
+      }
+    },
+    "rights": {
+      "type": "array",
+      "description": "List of rights (permissions) that grant or deny access to resources for specific groups.",
+      "items": {
+        "$ref": "#/$defs/Right"
+      }
+    }
+  },
+  "$defs": {
+    "TranslatedString": {
+      "type": "object",
+      "description": "A translated string where keys are ISO language codes (e.g., 'en', 'fr', 'nl') and values are the translated text.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "Right": {
+      "type": "object",
+      "description": "Represents a permission assignment linking a security group to a resource. Denials take precedence over grants.",
+      "required": ["id", "resource", "groupId"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier (GUID) for this right assignment."
+        },
+        "resource": {
+          "type": "string",
+          "description": "The resource this right applies to. Format: 'Action/EntityType' or 'Action/EntityType/Property'. Examples: 'QueryRead/Car', 'QueryReadEditNewDelete/Person', 'CarCopy/Car'.",
+          "pattern": "^[A-Za-z]+/[A-Za-z]+(/.+)?$"
+        },
+        "groupId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The ID of the security group this right is assigned to. Must match a key in the top-level 'groups' object."
+        },
+        "isDenied": {
+          "type": "boolean",
+          "description": "When true, this explicitly denies the permission. Denials take precedence over grants.",
+          "default": false
+        },
+        "isImportant": {
+          "type": "boolean",
+          "description": "When true, marks this as an important/sensitive permission. Can be used for enhanced logging or audit purposes.",
+          "default": false
+        }
+      }
+    }
+  }
+}

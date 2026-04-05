@@ -14,3 +14,4 @@ export * from './entity-permissions';
 export * from './custom-action';
 export * from './spark-config';
 export * from './streaming-message';
+export * from './resolve-display-name';

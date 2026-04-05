@@ -1,6 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Storage;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -17,13 +17,13 @@ internal interface IReferenceResolver
     List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType, Type fallbackType);
 
     /// <summary>
-    /// Chains .Include(propertyName) on a RavenDB IRavenQueryable so that referenced documents
+    /// Chains .Include(propertyName) on a queryable so that referenced documents
     /// are loaded in the same round-trip. Returns the (possibly wrapped) queryable.
     /// </summary>
     object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
 
     Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IEnumerable<object> entities,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
 }
@@ -31,6 +31,8 @@ internal interface IReferenceResolver
 [Register(typeof(IReferenceResolver), ServiceLifetime.Scoped)]
 internal partial class ReferenceResolver : IReferenceResolver
 {
+    [Inject] private readonly ISparkStorageProvider storageProvider;
+
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
         return entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -64,26 +66,12 @@ internal partial class ReferenceResolver : IReferenceResolver
 
     public object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
     {
-        foreach (var (property, _) in referenceProperties)
-        {
-            var queryType = queryable.GetType();
-
-            var includeMethod = queryType.GetMethods()
-                .FirstOrDefault(m => m.Name == "Include"
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(string));
-
-            if (includeMethod != null)
-            {
-                queryable = includeMethod.Invoke(queryable, [property.Name])!;
-            }
-        }
-
-        return queryable;
+        var propertyPaths = referenceProperties.Select(rp => rp.Property.Name);
+        return storageProvider.ApplyIncludes(queryable, propertyPaths);
     }
 
     public async Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IEnumerable<object> entities,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
     {
@@ -127,11 +115,11 @@ internal partial class ReferenceResolver : IReferenceResolver
         return includedDocuments;
     }
 
-    private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
+    private static async Task<object?> LoadEntityAsync(ISparkSession session, Type entityType, string id)
     {
-        var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
+        var method = typeof(ISparkSession).GetMethod(nameof(ISparkSession.LoadAsync), [typeof(string)]);
         var genericMethod = method?.MakeGenericMethod(entityType);
-        var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
+        var task = genericMethod?.Invoke(session, [id]) as Task;
 
         if (task == null) return null;
 

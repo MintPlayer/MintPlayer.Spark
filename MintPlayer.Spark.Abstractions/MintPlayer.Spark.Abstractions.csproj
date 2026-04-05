@@ -20,4 +20,8 @@
 	</PropertyGroup>
 
 
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Core\MintPlayer.Spark.Core.csproj" />
+	</ItemGroup>
+
 </Project>
