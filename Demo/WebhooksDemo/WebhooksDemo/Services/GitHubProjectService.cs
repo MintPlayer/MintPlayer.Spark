@@ -177,7 +177,6 @@ public partial class GitHubProjectService : IGitHubProjectService
 
     /// <summary>
     /// Cleans up GraphQL mutation queries to handle null values that cause errors.
-    /// Pattern from ProjectDashboard's GraphQLEx helper.
     /// </summary>
     private static async Task<string> RunCleanedUp<T>(Connection connection, IQueryableValue<T> expression)
     {
