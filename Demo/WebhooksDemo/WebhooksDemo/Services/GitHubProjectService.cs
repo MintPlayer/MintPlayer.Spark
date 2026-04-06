@@ -23,48 +23,39 @@ public partial class GitHubProjectService : IGitHubProjectService
     {
         var graphQL = await CreateGraphQLConnectionAsync();
 
-        // Use raw GraphQL query — the Octokit.GraphQL typed API has limited support
-        // for ProjectV2FieldConfiguration union types.
-        var rawQuery = $$"""
-            {
-              "query": "query { node(id: \"{{projectNodeId}}\") { ... on ProjectV2 { fields(first: 50) { nodes { ... on ProjectV2SingleSelectField { id name options { id name } } } } } } }"
-            }
-            """;
+        var fields = await graphQL.Run(
+            new Query()
+                .Node(new ID(projectNodeId))
+                .Cast<ProjectV2>()
+                .Fields()
+                .AllPages()
+                .Select(f => f.Switch<StatusFieldInfo?>(when => when
+                    .ProjectV2SingleSelectField(ssf => new StatusFieldInfo
+                    {
+                        Id = ssf.Id.Value,
+                        Name = ssf.Name,
+                        Options = ssf.Options(null).Select(o => new ProjectColumn
+                        {
+                            OptionId = o.Id,
+                            Name = o.Name,
+                        }).ToList(),
+                    }))));
 
-        var json = await graphQL.Run(rawQuery);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var fieldsArray = doc.RootElement
-            .GetProperty("node")
-            .GetProperty("fields")
-            .GetProperty("nodes");
+        var statusField = fields
+            .Where(f => f != null)
+            .FirstOrDefault(f => string.Equals(f!.Name, "Status", StringComparison.OrdinalIgnoreCase));
 
-        string statusFieldId = string.Empty;
-        var columns = new List<ProjectColumn>();
+        if (statusField == null)
+            return (string.Empty, []);
 
-        foreach (var field in fieldsArray.EnumerateArray())
-        {
-            // Skip nodes that didn't match the SingleSelectField fragment (they'll be empty objects)
-            if (!field.TryGetProperty("name", out var nameProp))
-                continue;
+        return (statusField.Id, statusField.Options.ToArray());
+    }
 
-            var fieldName = nameProp.GetString();
-            if (!string.Equals(fieldName, "Status", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            statusFieldId = field.GetProperty("id").GetString() ?? string.Empty;
-
-            foreach (var option in field.GetProperty("options").EnumerateArray())
-            {
-                columns.Add(new ProjectColumn
-                {
-                    OptionId = option.GetProperty("id").GetString() ?? string.Empty,
-                    Name = option.GetProperty("name").GetString() ?? string.Empty,
-                });
-            }
-            break;
-        }
-
-        return (statusFieldId, columns.ToArray());
+    private sealed class StatusFieldInfo
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public List<ProjectColumn> Options { get; init; } = [];
     }
 
     public async Task<bool> MoveIssueToColumnAsync(
@@ -102,8 +93,8 @@ public partial class GitHubProjectService : IGitHubProjectService
             new Query()
                 .Repository(owner: owner, name: repo)
                 .PullRequest(prNumber)
-                .ClosingIssuesReferences(first: 50)
-                .Nodes
+                .ClosingIssuesReferences()
+                .AllPages()
                 .Select(issue => new
                 {
                     issue.Number,
@@ -120,8 +111,8 @@ public partial class GitHubProjectService : IGitHubProjectService
             new Query()
                 .Repository(owner: owner, name: repo)
                 .Issue(issueNumber)
-                .ProjectItems(first: 10)
-                .Nodes
+                .ProjectItems()
+                .AllPages()
                 .Select(x => new
                 {
                     ProjectID = x.Project.Id,
@@ -139,8 +130,8 @@ public partial class GitHubProjectService : IGitHubProjectService
             new Query()
                 .Repository(owner: owner, name: repo)
                 .PullRequest(prNumber)
-                .ProjectItems(first: 10)
-                .Nodes
+                .ProjectItems()
+                .AllPages()
                 .Select(x => new
                 {
                     ProjectID = x.Project.Id,

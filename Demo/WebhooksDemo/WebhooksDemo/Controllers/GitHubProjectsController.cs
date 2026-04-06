@@ -34,28 +34,17 @@ public partial class GitHubProjectsController : ControllerBase
             new ProductHeaderValue("SparkWebhooksDemo", "1.0"),
             accessToken);
 
-        // Use raw GraphQL to avoid union type issues with IProjectV2Owner
-        var rawQuery = """
-            {
-              "query": "query { viewer { projectsV2(first: 50) { nodes { id title number owner { ... on User { login } ... on Organization { login } } } } } }"
-            }
-            """;
-
-        var json = await graphQL.Run(rawQuery);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var nodes = doc.RootElement
-            .GetProperty("viewer")
-            .GetProperty("projectsV2")
-            .GetProperty("nodes");
-
-        var projects = nodes.EnumerateArray().Select(p => new
-        {
-            Id = p.GetProperty("id").GetString(),
-            Title = p.GetProperty("title").GetString(),
-            Number = p.GetProperty("number").GetInt32(),
-            OwnerLogin = p.TryGetProperty("owner", out var owner) && owner.TryGetProperty("login", out var login)
-                ? login.GetString() : null,
-        }).ToList();
+        var projects = await graphQL.Run(
+            new Query()
+                .Viewer
+                .ProjectsV2()
+                .AllPages()
+                .Select(p => new
+                {
+                    Id = p.Id.Value,
+                    p.Title,
+                    p.Number,
+                }));
 
         return Ok(projects);
     }
