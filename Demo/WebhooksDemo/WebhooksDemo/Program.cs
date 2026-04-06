@@ -1,17 +1,34 @@
 using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 using WebhooksDemo;
+using WebhooksDemo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<IGitHubProjectService, GitHubProjectService>();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<WebhooksDemoSparkContext>();
+    spark.AddActions();
+    spark.AddAuthorization();
+    spark.AddAuthentication<SparkUser>(configureProviders: identity =>
+    {
+        identity.AddGitHub(options =>
+        {
+            options.ClientId = builder.Configuration["GitHub:ClientId"] ?? string.Empty;
+            options.ClientSecret = builder.Configuration["GitHub:ClientSecret"] ?? string.Empty;
+            options.Scope.Add("read:user");
+            options.Scope.Add("read:project");
+            options.SaveTokens = true;
+        });
+    });
     spark.AddMessaging();
     spark.AddRecipients();
     spark.AddGithubWebhooks(options =>
