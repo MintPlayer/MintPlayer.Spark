@@ -7,12 +7,10 @@ using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 using WebhooksDemo;
-using WebhooksDemo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddScoped<IGitHubProjectService, GitHubProjectService>();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<WebhooksDemoSparkContext>();

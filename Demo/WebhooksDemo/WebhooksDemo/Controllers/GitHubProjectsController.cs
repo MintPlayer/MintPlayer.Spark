@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
+using MintPlayer.SourceGenerators.Attributes;
 using Octokit.GraphQL;
 using Raven.Client.Documents.Session;
 using WebhooksDemo.Entities;
@@ -13,16 +14,10 @@ namespace WebhooksDemo.Controllers;
 [ApiController]
 [Route("api/github/projects")]
 [Authorize]
-public class GitHubProjectsController : ControllerBase
+public partial class GitHubProjectsController : ControllerBase
 {
-    private readonly IGitHubProjectService _projectService;
-    private readonly IAsyncDocumentSession _session;
-
-    public GitHubProjectsController(IGitHubProjectService projectService, IAsyncDocumentSession session)
-    {
-        _projectService = projectService;
-        _session = session;
-    }
+    [Inject] private readonly IGitHubProjectService _projectService;
+    [Inject] private readonly IAsyncDocumentSession _session;
 
     /// <summary>
     /// Lists the authenticated user's GitHub Projects V2.

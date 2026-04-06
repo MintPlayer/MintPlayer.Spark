@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit.GraphQL;
@@ -12,21 +12,12 @@ using ProjectColumn = WebhooksDemo.Entities.ProjectColumn;
 
 namespace WebhooksDemo.Services;
 
+[Register(typeof(IGitHubProjectService), ServiceLifetime.Scoped)]
 public partial class GitHubProjectService : IGitHubProjectService
 {
-    private readonly IGitHubInstallationService _installationService;
-    private readonly IOptions<GitHubWebhooksOptions> _options;
-    private readonly ILogger<GitHubProjectService> _logger;
-
-    public GitHubProjectService(
-        IGitHubInstallationService installationService,
-        IOptions<GitHubWebhooksOptions> options,
-        ILogger<GitHubProjectService> logger)
-    {
-        _installationService = installationService;
-        _options = options;
-        _logger = logger;
-    }
+    [Inject] private readonly IGitHubInstallationService _installationService;
+    [Options] private readonly Microsoft.Extensions.Options.IOptions<GitHubWebhooksOptions> _options;
+    [Inject] private readonly ILogger<GitHubProjectService> _logger;
 
     public async Task<(string StatusFieldId, ProjectColumn[] Columns)> GetProjectColumnsAsync(string projectNodeId)
     {
