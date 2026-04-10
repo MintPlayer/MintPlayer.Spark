@@ -1,0 +1,17 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  When consumed via ProjectReference (local development), analyzer references
+	  don't flow transitively. This targets file adds them for the consuming project.
+
+	  When consumed via NuGet, the analyzers/ folder in the package handles this
+	  automatically and this file is not needed.
+	-->
+	<ItemGroup>
+		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
+			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
+			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

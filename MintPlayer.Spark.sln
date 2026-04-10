@@ -57,6 +57,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Webhooks.G
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebhooksDemo", "Demo\WebhooksDemo\WebhooksDemo\WebhooksDemo.csproj", "{1D13BCEC-A00F-4DF4-BE73-986058378482}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures.SourceGenerators", "MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "{0B6CC068-7A99-4713-96AC-5C3945917E55}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures", "MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj", "{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -319,6 +323,30 @@ Global
 		{1D13BCEC-A00F-4DF4-BE73-986058378482}.Release|x64.Build.0 = Release|Any CPU
 		{1D13BCEC-A00F-4DF4-BE73-986058378482}.Release|x86.ActiveCfg = Release|Any CPU
 		{1D13BCEC-A00F-4DF4-BE73-986058378482}.Release|x86.Build.0 = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|x64.Build.0 = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Debug|x86.Build.0 = Debug|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|x64.ActiveCfg = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|x64.Build.0 = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|x86.ActiveCfg = Release|Any CPU
+		{0B6CC068-7A99-4713-96AC-5C3945917E55}.Release|x86.Build.0 = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|x64.Build.0 = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Debug|x86.Build.0 = Debug|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|x64.ActiveCfg = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|x64.Build.0 = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|x86.ActiveCfg = Release|Any CPU
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
