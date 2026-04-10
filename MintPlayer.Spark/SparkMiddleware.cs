@@ -4,6 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -166,6 +167,25 @@ public static class SparkExtensions
 
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app);
+
+        return app;
+    }
+
+    /// <summary>
+    /// Configures Spark middleware with additional options.
+    /// Call after UseRouting(). Do NOT call UseAuthentication/UseAuthorization/UseAntiforgery separately.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// app.UseSpark(o => o.SynchronizeModelsIfRequested&lt;MyContext&gt;(args));
+    /// </code>
+    /// </example>
+    public static IApplicationBuilder UseSpark(this IApplicationBuilder app, Action<UseSparkOptions> configure)
+    {
+        app.UseSpark();
+
+        var options = new UseSparkOptions { App = app };
+        configure(options);
 
         return app;
     }

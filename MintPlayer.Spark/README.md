@@ -10,21 +10,26 @@ dotnet add package MintPlayer.Spark
 
 ## Quick Start
 
+> **Tip:** For the fastest setup, use [`MintPlayer.Spark.AllFeatures`](../MintPlayer.Spark.AllFeatures/README.md) which source-generates `AddSparkFull` / `UseSparkFull` / `MapSparkFull` — three calls instead of the granular setup below.
+
 ### 1. Configure Services
 
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSpark(builder.Configuration);
-builder.Services.AddScoped<SparkContext, MySparkContext>();
-builder.Services.AddSparkActions(); // Auto-discovered Actions
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();       // Source-generated: registers all Actions classes
+    spark.AddMessaging();     // Optional: durable message bus
+    spark.AddRecipients();    // Source-generated: registers all IRecipient<T> classes
+});
 
 var app = builder.Build();
 
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);
-app.CreateSparkIndexes();
+app.UseRouting();
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {
@@ -175,6 +180,7 @@ The `MapSpark()` extension creates these REST endpoints:
 | `AddSparkActions()` | Register all entity-specific Actions classes |
 | `AddSparkActions<TActions, TEntity>()` | Register specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
+| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with options (e.g. `SynchronizeModelsIfRequested`) |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
 | `SynchronizeSparkModelsIfRequested<T>(args)` | Sync if `--spark-synchronize-model` flag present |

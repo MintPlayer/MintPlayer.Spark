@@ -48,8 +48,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<HRContext>(args);
+app.UseSpark(o => o.SynchronizeModelsIfRequested<HRContext>(args));
 
 app.UseEndpoints(endpoints =>
 {

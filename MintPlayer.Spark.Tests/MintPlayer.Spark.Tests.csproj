@@ -28,6 +28,8 @@
   <ItemGroup>
     <ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
   </ItemGroup>
 
 </Project>

@@ -10,11 +10,11 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 
         <!-- NuGet Package Metadata -->
-        <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
+        <PackageId>MintPlayer.Spark.AllFeatures.SourceGenerators</PackageId>
 		<Version>10.0.0-preview.28</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
-        <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
+        <Description>Source generators for MintPlayer.Spark.AllFeatures. Auto-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
         <PackageTags>low-code;framework;source-generator;roslyn</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

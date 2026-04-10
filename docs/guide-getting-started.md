@@ -103,7 +103,36 @@ The property names (`People`, `Companies`) are used to generate default query na
 
 ## Step 4: Configure Program.cs
 
-Register Spark services and middleware in your application startup:
+### Option A: AllFeatures (recommended)
+
+Reference `MintPlayer.Spark.AllFeatures` and use the source-generated convenience methods. The generator discovers your `SparkContext`, Actions, and Recipients at compile time:
+
+```csharp
+// Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddSparkFull(builder.Configuration);     // Everything in one call
+
+var app = builder.Build();
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseSparkFull(args);                                   // Middleware + model sync
+
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+    endpoints.MapSparkFull();                             // Map all Spark endpoints
+});
+
+app.Run();
+```
+
+### Option B: Granular setup
+
+If you only need a subset of features, reference individual packages and wire them up explicitly:
 
 ```csharp
 // Program.cs
@@ -113,40 +142,38 @@ using MintPlayer.Spark;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddSpark(builder.Configuration);                    // Register Spark + RavenDB
-builder.Services.AddScoped<SparkContext, MySparkContext>();           // Register your context
-builder.Services.AddSparkActions();                                  // Auto-discover Actions classes
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();                                   // Source-generated
+});
 
 var app = builder.Build();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseAuthorization();
-app.UseAntiforgery();
-app.UseSpark();                                                      // Add Spark middleware
-app.CreateSparkIndexes();                                            // Deploy RavenDB indexes
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);          // Model sync (dev only)
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapControllers();
-    endpoints.MapSpark();                                            // Map Spark REST endpoints
+    endpoints.MapSpark();                                 // Map Spark REST endpoints
 });
 
 app.Run();
 ```
 
-Key extension methods:
+### Key extension methods
 
 | Method | Purpose |
 |---|---|
-| `AddSpark(configuration)` | Registers Spark services and connects to RavenDB |
-| `AddSparkActions()` | Auto-discovers and registers Actions classes (source-generated) |
-| `UseSpark()` | Adds Spark middleware (XSRF token cookie, request pipeline) |
+| `AddSparkFull(configuration)` | **AllFeatures**: Registers all Spark services, actions, auth, messaging in one call |
+| `UseSparkFull(args)` | **AllFeatures**: Adds middleware + synchronizes models if `--spark-synchronize-model` is passed |
+| `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
+| `AddSpark(configuration, configure)` | Registers Spark services and connects to RavenDB with builder callback |
+| `UseSpark(o => ...)` | Adds Spark middleware with options (e.g. `o.SynchronizeModelsIfRequested<T>(args)`) |
 | `MapSpark()` | Maps all Spark REST endpoints (`/spark/...`) |
-| `CreateSparkIndexes()` | Deploys RavenDB indexes from the application assembly |
-| `SynchronizeSparkModelsIfRequested<T>(args)` | Generates model JSON when `--spark-synchronize-model` flag is present |
 
 ## Step 5: Configure RavenDB Connection
 

@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.AllFeatures</PackageId>
+		<Version>10.0.0-preview.28</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>All-in-one package for MintPlayer.Spark. References all Spark libraries and source-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
+		<PackageTags>low-code;framework;ravendb;crud;persistentobject;angular</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<!-- Reference all Spark packages (become transitive NuGet dependencies for consumers) -->
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
+	</ItemGroup>
+
+	<!-- Source generators (analyzer-only, no runtime assembly) -->
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<!--
+	  Pack the source generator DLLs into the NuGet package's analyzers/ folder.
+	  When consumers install the NuGet package, both generators run automatically.
+	-->
+	<ItemGroup>
+		<None Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll"
+			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+		<None Include="..\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll"
+			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+	</ItemGroup>
+
+	<!--
+	  Pack the targets file for NuGet consumers.
+	  buildTransitive ensures it flows to transitive consumers as well.
+	-->
+	<ItemGroup>
+		<None Include="Targets\spark-allfeatures.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+	</ItemGroup>
+
+</Project>

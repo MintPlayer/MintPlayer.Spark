@@ -19,10 +19,40 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 | Database | RavenDB 6.2+ |
 | UI Library | @mintplayer/ng-bootstrap |
 
-## Quick Start
+## Quick Start (AllFeatures)
+
+The fastest way to get started is with `MintPlayer.Spark.AllFeatures`. Reference this single package and three source-generated methods handle all the wiring:
 
 ```csharp
-// 1. Configure services
+builder.Services.AddSparkFull(builder.Configuration);
+
+app.UseRouting();
+app.UseSparkFull(args);
+app.MapSparkFull();
+```
+
+The source generator discovers your `SparkContext`, `SparkUser`, Actions, Recipients and Custom Actions at compile time — no generic type parameters needed.
+
+Configure individual features via `SparkFullOptions`:
+
+```csharp
+builder.Services.AddSparkFull(builder.Configuration, options =>
+{
+    options.Replication = opt =>
+    {
+        opt.ModuleName = "Fleet";
+        opt.ModuleUrl = "https://localhost:5003";
+    };
+});
+```
+
+See the [AllFeatures documentation](docs/PRD-AllFeatures.md) for details.
+
+### Granular Setup
+
+If you only need a subset of features, use the individual packages directly:
+
+```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
@@ -31,15 +61,14 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddRecipients();
 });
 
-// 2. Configure middleware
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 app.MapSpark();
 ```
 
+### Define Your Context
+
 ```csharp
-// 3. Define your context
 public class MySparkContext : SparkContext
 {
     public IRavenQueryable<Person> People => Session.Query<Person>();
@@ -47,7 +76,7 @@ public class MySparkContext : SparkContext
 ```
 
 ```bash
-# 4. Generate model files
+# Generate model files
 dotnet run --spark-synchronize-model
 ```
 
@@ -57,14 +86,22 @@ dotnet run --spark-synchronize-model
 MintPlayer.Spark/
 ├── MintPlayer.Spark/                            # Core framework library (CRUD)
 ├── MintPlayer.Spark.Abstractions/               # Shared interfaces and models
+├── MintPlayer.Spark.Authorization/              # Optional auth + group-based access control
 ├── MintPlayer.Spark.Messaging.Abstractions/     # Messaging interfaces (IMessageBus, IRecipient<T>)
 ├── MintPlayer.Spark.Messaging/                  # Durable message bus with RavenDB persistence
+├── MintPlayer.Spark.Replication/                # Cross-module ETL replication
+├── MintPlayer.Spark.Replication.Abstractions/   # Replication interfaces and models
+├── MintPlayer.Spark.SubscriptionWorker/         # RavenDB subscription-based background workers
 ├── MintPlayer.Spark.Webhooks.GitHub/            # GitHub webhook integration
 ├── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
 ├── MintPlayer.Spark.SourceGenerators/           # Compile-time DI code generation
+├── MintPlayer.Spark.AllFeatures/                # All-in-one package (references all + source generator)
+├── MintPlayer.Spark.AllFeatures.SourceGenerators/ # Generates AddSparkFull/UseSparkFull/MapSparkFull
 ├── MintPlayer.Dotnet.SocketExtensions/          # WebSocket read/write helpers
 ├── Demo/
 │   ├── DemoApp/                                 # Sample ASP.NET Core + Angular application
+│   ├── Fleet/                                   # Fleet management demo (auth, messaging, replication)
+│   ├── HR/                                      # HR demo (auth, messaging, replication)
 │   ├── WebhooksDemo/                            # GitHub webhooks demo application
 │   └── DemoApp.Library/                         # Shared entity definitions
 └── docs/                                        # Documentation

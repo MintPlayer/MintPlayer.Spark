@@ -1,27 +1,13 @@
 using System.Text.RegularExpressions;
 using Fleet;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
-using MintPlayer.Spark;
-using MintPlayer.Spark.Authorization.Extensions;
-using MintPlayer.Spark.Authorization.Identity;
-using MintPlayer.Spark.Messaging;
-using MintPlayer.Spark.Replication;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddSpark(builder.Configuration, spark =>
+builder.Services.AddSparkFull(builder.Configuration, options =>
 {
-    spark.UseContext<FleetContext>();
-    spark.AddActions();
-    spark.AddCustomActions();
-
-    spark.AddAuthorization();
-    spark.AddAuthentication<SparkUser>();
-
-    spark.AddMessaging();
-
-    spark.AddReplication(opt =>
+    options.Replication = opt =>
     {
         var section = builder.Configuration.GetSection("SparkReplication");
         opt.ModuleName = section["ModuleName"] ?? "Fleet";
@@ -29,7 +15,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         opt.SparkModulesUrls = section.GetSection("SparkModulesUrls").Get<string[]>() ?? ["http://localhost:8080"];
         opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
         opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
-    });
+    };
 });
 
 builder.Services.ConfigureApplicationCookie(options =>
@@ -49,13 +35,12 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<FleetContext>(args);
+app.UseSparkFull(args);
 
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapControllers();
-    endpoints.MapSpark();
+    endpoints.MapSparkFull();
 });
 
 app.MapWhen(
