@@ -153,8 +153,7 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseSpark();                                           // Add Spark middleware
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args); // Model sync (dev only)
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {
@@ -173,9 +172,8 @@ app.Run();
 | `UseSparkFull(args)` | **AllFeatures**: Adds middleware + synchronizes models if `--spark-synchronize-model` is passed |
 | `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
 | `AddSpark(configuration, configure)` | Registers Spark services and connects to RavenDB with builder callback |
-| `UseSpark()` | Adds Spark middleware (XSRF token cookie, auth, request pipeline) |
+| `UseSpark(o => ...)` | Adds Spark middleware with options (e.g. `o.SynchronizeModelsIfRequested<T>(args)`) |
 | `MapSpark()` | Maps all Spark REST endpoints (`/spark/...`) |
-| `SynchronizeSparkModelsIfRequested<T>(args)` | Generates model JSON when `--spark-synchronize-model` flag is present |
 
 ## Step 5: Configure RavenDB Connection
 

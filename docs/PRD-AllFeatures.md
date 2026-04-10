@@ -157,10 +157,18 @@ public static IApplicationBuilder UseSparkFull(
     this IApplicationBuilder app,
     string[] args)
 {
-    app.UseSpark();
-    app.SynchronizeSparkModelsIfRequested<FleetContext>(args);  // discovered context type
+    app.UseSpark(spark =>                                      // uses the new UseSpark overload
+    {
+        spark.SynchronizeModelsIfRequested<FleetContext>(args); // discovered context type
+    });
     return app;
 }
+```
+
+The generated code uses the `UseSpark(Action<UseSparkOptions>)` overload added to the core `MintPlayer.Spark` package. This overload is also available for granular setups:
+
+```csharp
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MyContext>(args));
 ```
 
 #### `MapSparkFull`

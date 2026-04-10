@@ -62,8 +62,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 app.MapSpark();
 ```
 

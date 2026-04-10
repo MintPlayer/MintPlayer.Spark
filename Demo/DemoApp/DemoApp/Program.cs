@@ -30,8 +30,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<DemoSparkContext>(args);
+app.UseSpark(o => o.SynchronizeModelsIfRequested<DemoSparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {

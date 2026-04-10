@@ -115,8 +115,11 @@ public class SparkFullProducer : Producer
         writer.WriteLine("/// </summary>");
         using (writer.OpenBlock("public static global::Microsoft.AspNetCore.Builder.IApplicationBuilder UseSparkFull(this global::Microsoft.AspNetCore.Builder.IApplicationBuilder app, string[] args)"))
         {
-            writer.WriteLine("global::MintPlayer.Spark.SparkExtensions.UseSpark(app);");
-            writer.WriteLine($"global::MintPlayer.Spark.SparkExtensions.SynchronizeSparkModelsIfRequested<{contextType}>(app, args);");
+            using (writer.OpenBlock("global::MintPlayer.Spark.SparkExtensions.UseSpark(app, spark =>"))
+            {
+                writer.WriteLine($"spark.SynchronizeModelsIfRequested<{contextType}>(args);");
+            }
+            writer.WriteLine(");");
             writer.WriteLine("return app;");
         }
     }

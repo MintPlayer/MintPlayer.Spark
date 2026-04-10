@@ -29,8 +29,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 var app = builder.Build();
 
 app.UseRouting();
-app.UseSpark();
-app.SynchronizeSparkModelsIfRequested<MySparkContext>(args);
+app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {
@@ -181,6 +180,7 @@ The `MapSpark()` extension creates these REST endpoints:
 | `AddSparkActions()` | Register all entity-specific Actions classes |
 | `AddSparkActions<TActions, TEntity>()` | Register specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
+| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with options (e.g. `SynchronizeModelsIfRequested`) |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
 | `SynchronizeSparkModelsIfRequested<T>(args)` | Sync if `--spark-synchronize-model` flag present |
