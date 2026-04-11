@@ -6,6 +6,7 @@ public class ExternalLoginOptions
     public ExternalProviderOptions? Microsoft { get; set; }
     public ExternalProviderOptions? Facebook { get; set; }
     public ExternalProviderOptions? Twitter { get; set; }
+    public ExternalProviderOptions? GitHub { get; set; }
 }
 
 public class ExternalProviderOptions

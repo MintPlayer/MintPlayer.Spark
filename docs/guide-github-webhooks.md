@@ -13,12 +13,55 @@ The DevTunnel package is only needed during development. Production deployments 
 
 ## Prerequisites
 
-You need a GitHub App with webhook events enabled. Manage your GitHub Apps here:
+You need a GitHub App with webhook events enabled. If you don't have one yet, follow the steps below.
 
-- **Personal account**: https://github.com/settings/apps
-- **Organization**: `https://github.com/organizations/{org_name}/settings/apps`
+### Creating a GitHub App
 
-When creating the app, configure the Webhook URL (your production endpoint or smee.io channel) and select the events you want to receive.
+1. Go to your GitHub App settings:
+   - **Personal account**: https://github.com/settings/apps
+   - **Organization**: `https://github.com/organizations/{org_name}/settings/apps`
+
+2. Click **"New GitHub App"** and fill in:
+
+   | Setting | Value |
+   |---|---|
+   | **GitHub App name** | Any unique name (e.g., `MyWebhooksBot`) |
+   | **Homepage URL** | `https://github.com` (any valid URL) |
+   | **Webhook URL** | Your production endpoint (e.g., `https://your-app.example.com/api/github/webhooks`) or a [smee.io](https://smee.io/) channel URL for local development |
+   | **Webhook secret** | Generate a strong random string (e.g., `openssl rand -hex 32`) |
+   | **Permissions** | Under "Repository permissions", grant access to the events you need (e.g., Issues → Read & write, Pull requests → Read & write) |
+   | **Subscribe to events** | Check the events you want to receive (e.g., Issues, Pull request, Check run) |
+   | **Where can this GitHub App be installed?** | "Any account" for public apps, or "Only on this account" for private use |
+
+3. Click **"Create GitHub App"**. On the resulting page, note the following values:
+   - **App ID** — displayed at the top of the page
+   - **Client ID** — shown in the "About" section
+
+4. Scroll down to **"Private keys"** and click **"Generate a private key"**. This downloads a `.pem` file needed for making authenticated GitHub API calls (e.g., commenting on issues, moving project board items).
+
+### Installing the GitHub App on repositories
+
+After creating the app, install it on the repositories you want to receive webhooks from:
+
+1. Navigate to your app's installation page:
+   - **Personal account**: `https://github.com/settings/apps/{app_slug}/installations`
+   - **Organization**: `https://github.com/organizations/{org_name}/settings/apps/{app_slug}/installations`
+
+2. Click **"Install"**, then choose either "All repositories" or "Only select repositories" and pick the repositories you want.
+
+3. Click **"Install"**.
+
+### Configuration values
+
+After setup, you should have these values ready for your `appsettings.json` or user secrets:
+
+| Value | Where to find it |
+|---|---|
+| **Webhook secret** | The string you entered when creating the app |
+| **App ID** | Top of the app's settings page |
+| **Client ID** | "About" section on the app's settings page |
+| **Client secret** | Generate one under "Client secrets" on the app's settings page (needed for OAuth login) |
+| **Private key** | The `.pem` file downloaded after generating a private key |
 
 ## Setup
 
@@ -221,3 +264,39 @@ Header-Name: Value
 ```
 
 Headers and body are separated by a blank line (`\n\n`).
+
+## GitHub OAuth & authenticated API calls
+
+If your webhook recipients need to call the GitHub API (e.g., move items on project boards, comment on issues), you need the GitHub App's private key and App ID configured. The `IGitHubInstallationService` creates authenticated clients using the app's installation token:
+
+```csharp
+public partial class MyRecipient : IRecipient<GitHubWebhookMessage<IssuesEvent>>
+{
+    [Inject] private readonly IGitHubInstallationService _installationService;
+
+    public async Task HandleAsync(GitHubWebhookMessage<IssuesEvent> message, CancellationToken ct)
+    {
+        var client = await _installationService.CreateClientAsync(message.InstallationId);
+        // Use client to make authenticated API calls
+    }
+}
+```
+
+For user-facing features that need the user's own GitHub token (e.g., listing their projects), configure GitHub OAuth via Spark Authorization:
+
+```csharp
+spark.AddAuthentication<SparkUser>(configureProviders: identity =>
+{
+    identity.AddGitHub(options =>
+    {
+        options.ClientId = builder.Configuration["GitHub:ClientId"]!;
+        options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
+        options.Scope.Add("read:user");
+        options.Scope.Add("read:org");      // Access organization memberships
+        options.Scope.Add("read:project");  // Access GitHub Projects V2
+        options.SaveTokens = true;
+    });
+});
+```
+
+This requires a **Client secret** generated on the GitHub App's settings page (under "Client secrets"). The user's OAuth token is then available via `HttpContext.GetTokenAsync("access_token")`.

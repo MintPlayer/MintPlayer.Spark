@@ -22,6 +22,7 @@ services:
       - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
       - GitHub__ClientId=${GITHUB_APP_CLIENT_ID}
       - GitHub__ProductionAppId=${GITHUB_PRODUCTION_APP_ID}
+      - GitHub__DevelopmentAppId=${GITHUB_DEVELOPMENT_APP_ID}
       - GitHub__PrivateKeyPath=/run/secrets/github-app.pem
     volumes:
       - ./github-app.pem:/run/secrets/github-app.pem:ro
