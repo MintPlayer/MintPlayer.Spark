@@ -43,7 +43,7 @@ app.UseEndpoints(endpoints =>
     endpoints.MapSparkFull();
 });
 
-app.MapWhen(
+app.UseWhen(
     context => !context.Request.Path.StartsWithSegments("/spark"),
     appBuilder =>
     {

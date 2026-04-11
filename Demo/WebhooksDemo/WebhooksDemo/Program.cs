@@ -79,7 +79,7 @@ app.UseEndpoints(endpoints =>
     endpoints.MapGet("/health", () => Results.Ok());
 });
 
-app.MapWhen(
+app.UseWhen(
     context => !context.Request.Path.StartsWithSegments("/spark")
         && !context.Request.Path.StartsWithSegments("/api"),
     appBuilder =>
