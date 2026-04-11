@@ -70,9 +70,9 @@ After setup, you should have these values ready for your `appsettings.json` or u
 Add project references (or NuGet package references) to your web application:
 
 ```xml
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.19" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.29" />
 <!-- Development only: -->
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.19" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.29" />
 ```
 
 ### 2. Register in Program.cs
@@ -151,21 +151,49 @@ Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
 
 ## Configuration
 
+### Storing secrets
+
+Use the .NET user secrets manager for local development — never commit secrets to `appsettings.json`:
+
+```bash
+cd YourApp
+dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
+dotnet user-secrets set "GitHub:ClientId" "Iv1.abc123"
+dotnet user-secrets set "GitHub:ClientSecret" "your-client-secret"
+dotnet user-secrets set "GitHub:PrivateKeyPath" "C:\path\to\app.pem"
+dotnet user-secrets set "GitHub:ProductionAppId" "123456"
+```
+
+For the WebSocket dev tunnel (Option B below):
+
+```bash
+dotnet user-secrets set "GitHub:DevelopmentAppId" "789012"
+dotnet user-secrets set "GitHub:DevWebSocketUrl" "wss://your-app.example.com/spark/github/dev-ws"
+dotnet user-secrets set "GitHub:DevGitHubToken" "ghp_..."
+```
+
 ### appsettings.json
+
+Only non-secret defaults belong here. Leave secret values empty — user secrets or environment variables override them at runtime:
 
 ```json
 {
   "GitHub": {
-    "WebhookSecret": "whsec_...",
-    "ClientId": "Iv1.abc123",
-    "PrivateKeyPath": "my-app.pem",
-    "ProductionAppId": "123456",
-    "DevelopmentAppId": "789012",
-    "SmeeChannelUrl": "https://smee.io/your-channel-id",
-    "DevWebSocketUrl": "wss://myapp.com/spark/github/dev-ws",
-    "DevGitHubToken": "ghp_..."
+    "WebhookSecret": "",
+    "SmeeChannelUrl": ""
   }
 }
+```
+
+For production (Docker), pass secrets via environment variables:
+
+```yaml
+environment:
+  - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
+  - GitHub__ClientId=${GITHUB_APP_CLIENT_ID}
+  - GitHub__ProductionAppId=${GITHUB_PRODUCTION_APP_ID}
+  - GitHub__DevelopmentAppId=${GITHUB_DEVELOPMENT_APP_ID}
+  - GitHub__PrivateKeyPath=/run/secrets/github-app.pem
 ```
 
 ### Options reference
@@ -181,6 +209,7 @@ Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
 | `ClientId` | `null` | GitHub App Client ID. Required for `IGitHubInstallationService` API calls. |
 | `PrivateKeyPem` | `null` | GitHub App private key PEM content (inline). Either this or `PrivateKeyPath` is required for API calls. |
 | `PrivateKeyPath` | `null` | Path to the GitHub App private key `.pem` file. Relative paths are resolved from the working directory. |
+| `ClientSecret` | `null` | GitHub App Client Secret. Required for GitHub OAuth login (not needed for webhook processing). |
 
 ## Local development
 
@@ -206,26 +235,66 @@ The `SmeeBackgroundService` connects to the smee.io channel via Server-Sent Even
 
 When your app is already deployed, you can create two GitHub Apps (e.g., **MyBot** and **MyBot-Dev**) pointing to the same production webhook URL. Production processes its own webhooks normally, and forwards dev-app webhooks to connected developers via WebSocket.
 
-**Production `Program.cs`:**
+#### 1. Create a development GitHub App
+
+Create a second GitHub App (e.g., `MyBot-Dev`) with:
+- **Same webhook URL** as the production app (e.g., `https://your-app.example.com/api/github/webhooks`)
+- **Same webhook secret** as the production app
+- **Same permissions and event subscriptions**
+- The dev app does **not** need a private key or client secret — it's only used to identify which webhooks to forward
+
+Install the dev app on the same repositories as the production app.
+
+#### 2. Configure production
+
+Production needs both App IDs so it knows which webhooks to process locally and which to forward:
+
 ```csharp
 spark.AddGithubWebhooks(options =>
 {
-    options.WebhookSecret = "...";
-    options.ProductionAppId = 123456;
-    options.DevelopmentAppId = 789012;
+    options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
+    options.ProductionAppId = long.Parse(builder.Configuration["GitHub:ProductionAppId"]!);
+    options.DevelopmentAppId = long.Parse(builder.Configuration["GitHub:DevelopmentAppId"]!);
 });
 ```
 
-**Developer's local `Program.cs`:**
+For Docker deployments, pass both App IDs via environment variables (see [appsettings.json](#appsettingsjson) section above).
+
+#### 3. Configure the local developer machine
+
+Set up user secrets:
+
+```bash
+dotnet user-secrets set "GitHub:WebhookSecret" "<same-as-production>"
+dotnet user-secrets set "GitHub:DevWebSocketUrl" "wss://your-app.example.com/spark/github/dev-ws"
+dotnet user-secrets set "GitHub:DevGitHubToken" "<github-personal-access-token>"
+```
+
+> **Important:** Do **not** set `DevelopmentAppId` on the local developer machine. That value is only needed on the production server (the forwarding side). If the local app has `DevelopmentAppId` configured, and the value corresponds to the AppID that sent the webhook, the webhook processor will see the dev app's ID in the forwarded webhook headers and try to forward it again instead of processing it — causing all recipients to be silently skipped.
+
+The `DevGitHubToken` is a [GitHub personal access token](https://github.com/settings/tokens) (classic, no scopes needed) — it's only used to verify your identity during the WebSocket handshake.
+
+Then in `Program.cs`, enable the WebSocket dev tunnel:
+
 ```csharp
 spark.AddGithubWebhooks(options =>
 {
-    options.WebhookSecret = "...";
-    options.AddWebSocketDevTunnel(
-        builder.Configuration["GitHub:DevWebSocketUrl"]!,
-        builder.Configuration["GitHub:DevGitHubToken"]!);
+    options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
+
+    var wsUrl = builder.Configuration["GitHub:DevWebSocketUrl"];
+    var wsToken = builder.Configuration["GitHub:DevGitHubToken"];
+    if (!string.IsNullOrEmpty(wsUrl) && !string.IsNullOrEmpty(wsToken))
+    {
+        options.AddWebSocketDevTunnel(wsUrl, wsToken);
+    }
 });
 ```
+
+#### How it works
+
+When a webhook arrives at production, the `SparkWebhookEventProcessor` checks the `X-GitHub-Hook-Installation-Target-ID` header:
+- If it matches `ProductionAppId` → process locally (broadcast to message bus)
+- If it matches `DevelopmentAppId` → forward to all connected WebSocket dev clients
 
 The WebSocket handshake validates the developer's GitHub token against the GitHub API to determine their username. If `AllowedDevUsers` is configured, only listed users can connect.
 
