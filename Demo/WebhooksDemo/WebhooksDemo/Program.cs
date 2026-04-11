@@ -43,20 +43,20 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         if (long.TryParse(builder.Configuration["GitHub:DevelopmentAppId"], out var devId))
             options.DevelopmentAppId = devId;
 
-        // Local development: smee.io tunnel
+        // Local development: smee.io tunnel (when no production deployment exists)
         var smeeUrl = builder.Configuration["GitHub:SmeeChannelUrl"];
         if (!string.IsNullOrEmpty(smeeUrl))
         {
             options.AddSmeeDevTunnel(smeeUrl);
         }
 
-        // Alternative: WebSocket from production (uncomment if deployed)
-        // var wsUrl = builder.Configuration["GitHub:DevWebSocketUrl"];
-        // var wsToken = builder.Configuration["GitHub:DevGitHubToken"];
-        // if (!string.IsNullOrEmpty(wsUrl) && !string.IsNullOrEmpty(wsToken))
-        // {
-        //     options.AddWebSocketDevTunnel(wsUrl, wsToken);
-        // }
+        // WebSocket dev tunnel: receive forwarded webhooks from production
+        var wsUrl = builder.Configuration["GitHub:DevWebSocketUrl"];
+        var wsToken = builder.Configuration["GitHub:DevGitHubToken"];
+        if (!string.IsNullOrEmpty(wsUrl) && !string.IsNullOrEmpty(wsToken))
+        {
+            options.AddWebSocketDevTunnel(wsUrl, wsToken);
+        }
     });
 });
 
@@ -67,6 +67,7 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 
 var app = builder.Build();
 
+app.Use(async (_, next) => await next());
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
