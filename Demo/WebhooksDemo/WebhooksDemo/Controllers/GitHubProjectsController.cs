@@ -20,7 +20,8 @@ public partial class GitHubProjectsController : ControllerBase
     [Inject] private readonly IAsyncDocumentSession _session;
 
     /// <summary>
-    /// Lists the authenticated user's GitHub Projects V2.
+    /// Lists the authenticated user's GitHub Projects V2,
+    /// including projects from organizations the user is a member of.
     /// Uses the user's stored OAuth access token.
     /// </summary>
     [HttpGet]
@@ -34,19 +35,65 @@ public partial class GitHubProjectsController : ControllerBase
             new ProductHeaderValue("SparkWebhooksDemo", "1.0"),
             accessToken);
 
-        var projects = await graphQL.Run(
+        // Fetch viewer login + own projects in one query
+        var viewerLogin = await graphQL.Run(
+            new Query()
+                .Viewer
+                .Select(v => v.Login));
+
+        var userProjects = await graphQL.Run(
             new Query()
                 .Viewer
                 .ProjectsV2()
                 .AllPages()
-                .Select(p => new
+                .Select(p => new ProjectInfo
                 {
                     Id = p.Id.Value,
-                    p.Title,
-                    p.Number,
+                    Title = p.Title,
+                    Number = p.Number,
+                    OwnerLogin = viewerLogin,
+                    OwnerType = "User",
                 }));
 
-        return Ok(projects);
+        // Fetch user's organizations
+        var orgs = await graphQL.Run(
+            new Query()
+                .Viewer
+                .Organizations()
+                .AllPages()
+                .Select(o => new { o.Login }));
+
+        // Fetch projects for each organization
+        var orgProjects = new List<ProjectInfo>();
+        foreach (var org in orgs)
+        {
+            var projects = await graphQL.Run(
+                new Query()
+                    .Organization(org.Login)
+                    .ProjectsV2()
+                    .AllPages()
+                    .Select(p => new ProjectInfo
+                    {
+                        Id = p.Id.Value,
+                        Title = p.Title,
+                        Number = p.Number,
+                        OwnerLogin = org.Login,
+                        OwnerType = "Organization",
+                    }));
+
+            orgProjects.AddRange(projects);
+        }
+
+        return Ok(userProjects.Concat(orgProjects));
+    }
+
+    private sealed class ProjectInfo
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public int Number { get; init; }
+        public string OwnerLogin { get; init; } = string.Empty;
+        public string OwnerType { get; init; } = string.Empty;
     }
 
     /// <summary>

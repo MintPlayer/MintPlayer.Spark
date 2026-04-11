@@ -23,6 +23,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             options.ClientId = builder.Configuration["GitHub:ClientId"] ?? string.Empty;
             options.ClientSecret = builder.Configuration["GitHub:ClientSecret"] ?? string.Empty;
             options.Scope.Add("read:user");
+            options.Scope.Add("read:org");
             options.Scope.Add("read:project");
             options.SaveTokens = true;
         });
@@ -90,9 +91,15 @@ app.UseWhen(
 
             if (app.Environment.IsDevelopment())
             {
-                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
+                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [openBrowserRegex()]);
             }
         });
     });
 
 app.Run();
+
+partial class Program
+{
+    [GeneratedRegex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]
+    private static partial Regex openBrowserRegex();
+}

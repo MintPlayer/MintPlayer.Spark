@@ -107,6 +107,7 @@ spark.AddAuthentication<SparkUser>(configureProviders: identity =>
         options.ClientId = builder.Configuration["GitHub:ClientId"]!;
         options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
         options.Scope.Add("read:user");
+        options.Scope.Add("read:org");
         options.Scope.Add("read:project");
         options.SaveTokens = true;  // Store access token for API calls
     });
@@ -350,7 +351,7 @@ This service wraps the GitHub GraphQL API for project board operations. It mirro
 
 | Method | Purpose | Token Used |
 |--------|---------|------------|
-| `ListUserProjectsAsync()` | List GitHub Projects V2 for the authenticated user | User OAuth token |
+| `ListUserProjectsAsync()` | List GitHub Projects V2 for the authenticated user and their organizations | User OAuth token |
 | `GetProjectColumnsAsync(projectNodeId)` | Fetch Status field ID + column options | User OAuth token |
 | `GetIssueProjectItemIdAsync(owner, repo, issueNumber, projectNodeId)` | Find issue's item ID on a specific project | Installation token |
 | `GetPullRequestProjectItemIdAsync(owner, repo, prNumber, projectNodeId)` | Find PR's item ID on a specific project | Installation token |
@@ -570,9 +571,9 @@ Following the pattern from ProjectDashboard's `IssuePlaceOnKanbanboard`:
 
 Two custom endpoints are needed for the frontend to interact with GitHub's API:
 
-#### 6a. `GET /api/github/projects` — List User's GitHub Projects
+#### 6a. `GET /api/github/projects` — List User's & Organization GitHub Projects
 
-Returns the authenticated user's GitHub Projects V2, fetched live from the GitHub API using the user's stored OAuth token.
+Returns the authenticated user's GitHub Projects V2 **and** projects from organizations the user is a member of, fetched live from the GitHub GraphQL API using the user's stored OAuth token. Each project includes `OwnerLogin` and `OwnerType` ("User" or "Organization") to distinguish personal from org projects.
 
 #### 6b. `GET /api/github/projects/{nodeId}/columns` — Get Project Columns
 
@@ -724,3 +725,23 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 4. **No `TargetColumnName` on `EventColumnMapping`.** The UI resolves display names from the parent `GitHubProject.Columns` array at render time. Avoids denormalization drift when columns are renamed on GitHub.
 
 5. **`MoveLinkedIssues` flag on `EventColumnMapping`** controls whether PR events also move closing issues. Issue events always just move the issue itself.
+
+---
+
+## Outstanding TODOs
+
+### Backend
+
+1. **External login challenge endpoint** — OAuth callback path `/signin-github` is configured, but no `/spark/auth/external-login?provider=GitHub` endpoint is exposed to initiate the flow. Users currently have no way to trigger the GitHub login from the frontend.
+
+2. **Retry & eventual consistency** — Items may not appear on a project board immediately after creation. The PRD specifies delayed message re-broadcasting (section 5d), but the current implementation is single-attempt with a log warning. Needs retry logic with ~5s intervals, capped at ~1 minute.
+
+### Frontend
+
+3. **Login UI** — No login page or GitHub login button. Needs `@mintplayer/ng-spark-auth` integration with an external login button for GitHub.
+
+4. **Project selection page** — No UI to list the user's GitHub projects (from `/api/github/projects`) and select which ones to automate.
+
+5. **Event mapping configuration UI** — No UI for configuring event-to-column mappings on the project detail page. The "Target Column" dropdown is context-dependent (options come from the parent entity's `Columns` array), requiring a custom attribute presenter.
+
+6. **Activity/audit log** — No logging of webhook-triggered project board movements visible to the user.

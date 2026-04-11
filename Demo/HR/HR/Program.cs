@@ -66,9 +66,15 @@ app.UseWhen(
 
             if (app.Environment.IsDevelopment())
             {
-                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [new Regex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]);
+                spa.UseAngularCliServer(npmScript: "start", cliRegexes: [openBrowserRegex()]);
             }
         });
     });
 
 app.Run();
+
+partial class Program
+{
+    [GeneratedRegex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]
+    private static partial Regex openBrowserRegex();
+}
