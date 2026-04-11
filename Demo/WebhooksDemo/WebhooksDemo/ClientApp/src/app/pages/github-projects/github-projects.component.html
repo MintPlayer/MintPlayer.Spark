@@ -1,0 +1,71 @@
+<bs-grid>
+  <div bsRow class="justify-content-center">
+    <div [md]="10">
+      <bs-card>
+        <bs-card-header>GitHub Projects</bs-card-header>
+        <div class="p-3">
+          @if (error(); as err) {
+            <bs-alert [type]="colors.danger">{{ err }}</bs-alert>
+          }
+
+          @if (loading()) {
+            <p class="text-muted">Loading projects...</p>
+          } @else if (projects().length === 0) {
+            <p class="text-muted">No GitHub Projects found. Make sure the GitHub App is installed on your repositories.</p>
+          } @else {
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Owner</th>
+                  <th>Type</th>
+                  <th class="text-center">Automation</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (project of projects(); track project.id) {
+                  <tr>
+                    <td>{{ project.title }} <span class="text-muted">#{{ project.number }}</span></td>
+                    <td>{{ project.ownerLogin }}</td>
+                    <td>
+                      @if (project.ownerType === 'Organization') {
+                        <i class="bi bi-building"></i>
+                      } @else {
+                        <i class="bi bi-person"></i>
+                      }
+                      {{ project.ownerType }}
+                    </td>
+                    <td class="text-center">
+                      <button class="btn btn-sm"
+                              [class.btn-success]="project.enabled"
+                              [class.btn-outline-secondary]="!project.enabled"
+                              [disabled]="project.loading"
+                              (click)="toggleProject(project)">
+                        @if (project.loading) {
+                          <span class="spinner-border spinner-border-sm"></span>
+                        } @else if (project.enabled) {
+                          <i class="bi bi-check-lg"></i> Enabled
+                        } @else {
+                          Enable
+                        }
+                      </button>
+                    </td>
+                    <td>
+                      @if (project.enabled && project.sparkDocumentId) {
+                        <a [routerLink]="['/po', 'GitHubProject', project.sparkDocumentId]"
+                           class="btn btn-sm btn-outline-primary">
+                          <i class="bi bi-gear"></i> Configure
+                        </a>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      </bs-card>
+    </div>
+  </div>
+</bs-grid>

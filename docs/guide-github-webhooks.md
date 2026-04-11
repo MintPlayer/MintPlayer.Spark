@@ -31,7 +31,10 @@ You need a GitHub App with webhook events enabled. If you don't have one yet, fo
    | **Webhook secret** | Generate a strong random string (e.g., `openssl rand -hex 32`) |
    | **Permissions** | Under "Repository permissions", grant access to the events you need (e.g., Issues → Read & write, Pull requests → Read & write) |
    | **Subscribe to events** | Check the events you want to receive (e.g., Issues, Pull request, Check run) |
+   | **Callback URL** | Add all OAuth redirect URIs: your production URL (e.g., `https://your-app.example.com/signin-github`) **and** your local development URL (e.g., `https://localhost:60493/signin-github`). GitHub requires exact matches including port. |
    | **Where can this GitHub App be installed?** | "Any account" for public apps, or "Only on this account" for private use |
+
+   > **Tip:** You can add multiple callback URLs. If you develop locally, add both the production and localhost URLs so OAuth login works in both environments.
 
 3. Click **"Create GitHub App"**. On the resulting page, note the following values:
    - **App ID** — displayed at the top of the page

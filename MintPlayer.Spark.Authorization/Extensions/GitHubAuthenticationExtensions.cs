@@ -1,4 +1,6 @@
+using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Identity;
@@ -27,11 +29,28 @@ public static class GitHubAuthenticationExtensions
             options.TokenEndpoint = "https://github.com/login/oauth/access_token";
             options.UserInformationEndpoint = "https://api.github.com/user";
             options.CallbackPath = "/signin-github";
+            options.SignInScheme = IdentityConstants.ExternalScheme;
 
             // Map GitHub user info to standard claims
             options.ClaimActions.MapJsonKey(ClaimTypes.NameIdentifier, "id");
             options.ClaimActions.MapJsonKey(ClaimTypes.Name, "login");
             options.ClaimActions.MapJsonKey(ClaimTypes.Email, "email");
+
+            // Fetch user info from GitHub API and apply claim mappings
+            // (AddOAuth doesn't do this automatically — unlike AddGoogle/AddFacebook)
+            options.Events.OnCreatingTicket = async context =>
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.AccessToken);
+                request.Headers.UserAgent.Add(new ProductInfoHeaderValue("SparkAuth", "1.0"));
+
+                using var response = await context.Backchannel.SendAsync(request, context.HttpContext.RequestAborted);
+                response.EnsureSuccessStatusCode();
+
+                using var user = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                context.RunClaimActions(user.RootElement);
+            };
 
             // Allow consumer to override/extend
             configureOptions(options);

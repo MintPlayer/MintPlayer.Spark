@@ -1,11 +1,12 @@
-import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef, NgZone } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { SparkService, SparkLanguageService, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, ProgramUnitGroup } from '@mintplayer/ng-spark';
+import { SparkAuthService } from '@mintplayer/ng-spark-auth';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
 
@@ -20,6 +21,9 @@ export class ShellComponent {
   private readonly sparkService = inject(SparkService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly router = inject(Router);
+  private readonly zone = inject(NgZone);
+  readonly authService = inject(SparkAuthService);
 
   readonly lang = inject(SparkLanguageService);
   programUnitGroups = signal<ProgramUnitGroup[]>([]);
@@ -32,12 +36,39 @@ export class ShellComponent {
       this.updateSidebarVisibility();
     });
 
-    this.loadProgramUnits();
+    effect(() => {
+      this.authService.user();
+      this.loadProgramUnits();
+    });
   }
 
   private async loadProgramUnits(): Promise<void> {
     const config = await this.sparkService.getProgramUnits();
     this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
+  }
+
+  loginWithGitHub(): void {
+    const url = '/spark/auth/external-login?provider=GitHub&returnUrl=/github-projects';
+    const popup = window.open(url, 'github-login', 'width=600,height=700');
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'external-login-success') return;
+
+      window.removeEventListener('message', onMessage);
+      popup?.close();
+
+      this.zone.run(async () => {
+        await this.authService.checkAuth();
+        this.router.navigate(['/github-projects']);
+      });
+    };
+
+    window.addEventListener('message', onMessage);
+  }
+
+  async logout(): Promise<void> {
+    await this.authService.logout();
   }
 
   toggleSidebar(open: boolean) {
@@ -71,7 +102,6 @@ export class ShellComponent {
     } else if (state === 'hide') {
       isVisible = false;
     } else {
-      // 'auto' mode - check if above breakpoint
       isVisible = this.isAboveBreakpoint();
     }
 

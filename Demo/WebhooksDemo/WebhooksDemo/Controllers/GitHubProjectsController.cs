@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authentication;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Identity;
 using Octokit.GraphQL;
 using Raven.Client.Documents.Session;
 using WebhooksDemo.Entities;
@@ -18,6 +19,7 @@ public partial class GitHubProjectsController : ControllerBase
 {
     [Inject] private readonly IGitHubProjectService _projectService;
     [Inject] private readonly IAsyncDocumentSession _session;
+    [Inject] private readonly UserManager<SparkUser> _userManager;
 
     /// <summary>
     /// Lists the authenticated user's GitHub Projects V2,
@@ -27,7 +29,11 @@ public partial class GitHubProjectsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> ListProjects()
     {
-        var accessToken = await HttpContext.GetTokenAsync("access_token");
+        var user = await _userManager.GetUserAsync(User);
+        if (user is null)
+            return Unauthorized();
+
+        var accessToken = await _userManager.GetAuthenticationTokenAsync(user, "GitHub", "access_token");
         if (string.IsNullOrEmpty(accessToken))
             return Unauthorized("No GitHub access token available. Please re-authenticate.");
 

@@ -732,16 +732,16 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 ### Backend
 
-1. **External login challenge endpoint** — OAuth callback path `/signin-github` is configured, but no `/spark/auth/external-login?provider=GitHub` endpoint is exposed to initiate the flow. Users currently have no way to trigger the GitHub login from the frontend.
+1. ~~**External login challenge endpoint**~~ — **Done.** Generic `GET /spark/auth/external-login` and `GET /spark/auth/external-login-callback` endpoints added to `MintPlayer.Spark.Authorization`. Supports any configured OAuth provider.
 
 2. **Retry & eventual consistency** — Items may not appear on a project board immediately after creation. The PRD specifies delayed message re-broadcasting (section 5d), but the current implementation is single-attempt with a log warning. Needs retry logic with ~5s intervals, capped at ~1 minute.
 
 ### Frontend
 
-3. **Login UI** — No login page or GitHub login button. Needs `@mintplayer/ng-spark-auth` integration with an external login button for GitHub.
+3. ~~**Login UI**~~ — **Done.** Custom "Sign in with GitHub" button in the shell navbar, integrated with `@mintplayer/ng-spark-auth` for auth state management (XSRF, interceptor, user signal).
 
-4. **Project selection page** — No UI to list the user's GitHub projects (from `/api/github/projects`) and select which ones to automate.
+4. ~~**Project selection page**~~ — **Done.** `/github-projects` page lists personal + org projects, toggle enable/disable, link to Spark detail page for configuration.
 
-5. **Event mapping configuration UI** — No UI for configuring event-to-column mappings on the project detail page. The "Target Column" dropdown is context-dependent (options come from the parent entity's `Columns` array), requiring a custom attribute presenter.
+5. **Event mapping configuration UI** — The Spark auto-generated detail page handles basic editing of event mappings. The "Target Column" dropdown is still a text field (shows `TargetColumnOptionId`). A custom attribute presenter is needed to show a dropdown populated from the parent entity's `Columns` array.
 
 6. **Activity/audit log** — No logging of webhook-triggered project board movements visible to the user.

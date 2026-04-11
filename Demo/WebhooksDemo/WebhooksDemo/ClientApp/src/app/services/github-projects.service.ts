@@ -1,0 +1,29 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { GitHubProjectInfo, ProjectColumn } from '../models/github-project';
+
+@Injectable({ providedIn: 'root' })
+export class GitHubProjectsService {
+  private readonly http = inject(HttpClient);
+
+  listProjects(): Promise<GitHubProjectInfo[]> {
+    return firstValueFrom(this.http.get<GitHubProjectInfo[]>('/api/github/projects'));
+  }
+
+  getColumns(nodeId: string): Promise<{ statusFieldId: string; columns: ProjectColumn[] }> {
+    return firstValueFrom(
+      this.http.get<{ statusFieldId: string; columns: ProjectColumn[] }>(
+        `/api/github/projects/${encodeURIComponent(nodeId)}/columns`
+      )
+    );
+  }
+
+  syncColumns(documentId: string): Promise<{ statusFieldId: string; columns: ProjectColumn[] }> {
+    return firstValueFrom(
+      this.http.post<{ statusFieldId: string; columns: ProjectColumn[] }>(
+        `/api/github/projects/${encodeURIComponent(documentId)}/sync-columns`, {}
+      )
+    );
+  }
+}
