@@ -465,9 +465,14 @@ public class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        return await Session.Query<TUser>()
-            .FirstOrDefaultAsync(u => u.Logins.Any(l =>
-                l.LoginProvider == loginProvider && l.ProviderKey == providerKey), cancellationToken);
+        // RavenDB can't auto-index .Any() with multiple fields.
+        // Filter by one field in the query, then verify the second in memory.
+        var candidates = await Session.Query<TUser>()
+            .Where(u => u.Logins.Any(l => l.ProviderKey == providerKey))
+            .ToListAsync(cancellationToken);
+
+        return candidates.FirstOrDefault(u =>
+            u.Logins.Any(l => l.LoginProvider == loginProvider && l.ProviderKey == providerKey));
     }
 
     #endregion
