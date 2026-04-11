@@ -11,6 +11,7 @@ using WebhooksDemo;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddWebhooksDemo();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<WebhooksDemoSparkContext>();
