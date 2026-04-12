@@ -216,7 +216,17 @@ export class SparkPoFormComponent {
   }
 
   async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.editableAttributes().filter(a => a.lookupReferenceType);
+    const lookupAttrs = [...this.editableAttributes().filter(a => a.lookupReferenceType)];
+
+    // Also scan AsDetail column definitions for lookupReferenceType
+    const asDetailTypes = this.asDetailTypes();
+    for (const attr of this.editableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType)) {
+      const detailType = asDetailTypes[attr.asDetailType!];
+      if (detailType?.attributes) {
+        lookupAttrs.push(...detailType.attributes.filter(a => a.lookupReferenceType));
+      }
+    }
+
     if (lookupAttrs.length === 0) return;
 
     const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
@@ -236,6 +246,16 @@ export class SparkPoFormComponent {
   getLookupOptions(attr: EntityAttributeDefinition): LookupReferenceValue[] {
     const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions()[attr.lookupReferenceType] : null;
     return lookupRef?.values.filter(v => v.isActive) || [];
+  }
+
+  // Contextual lookup: resolve options from parent form data
+  getContextualLookupOptions(col: EntityAttributeDefinition): { key: string; display: string }[] {
+    if (!col.contextualLookupSource || !col.contextualLookupKeyProperty || !col.contextualLookupDisplayProperty) return [];
+    const sourceArray = this.formData()[col.contextualLookupSource];
+    if (!Array.isArray(sourceArray)) return [];
+    return sourceArray
+      .map(item => ({ key: item[col.contextualLookupKeyProperty!], display: item[col.contextualLookupDisplayProperty!] }))
+      .filter(o => o.key != null);
   }
 
   // LookupReference modal methods

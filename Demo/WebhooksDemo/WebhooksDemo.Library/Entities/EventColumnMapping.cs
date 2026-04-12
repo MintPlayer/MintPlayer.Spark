@@ -10,6 +10,7 @@ public class EventColumnMapping
     public string? WebhookEvent { get; set; }
 
     /// <summary>The target column option ID on the project board.</summary>
+    [ContextualLookupReference("Columns", "OptionId", "Name")]
     public string? TargetColumnOptionId { get; set; }
 
     /// <summary>

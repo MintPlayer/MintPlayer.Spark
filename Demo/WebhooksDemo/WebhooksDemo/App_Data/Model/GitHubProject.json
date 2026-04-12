@@ -111,6 +111,7 @@
         "order": 7,
         "asDetailType": "WebhooksDemo.Entities.EventColumnMapping",
         "isArray": true,
+        "editMode": "inline",
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
@@ -130,6 +131,7 @@
       ],
       "renderMode": "Pagination",
       "useProjection": false,
+      "entityType": "GitHubProject",
       "isStreamingQuery": false
     }
   ]

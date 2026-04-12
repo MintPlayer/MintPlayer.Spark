@@ -36,7 +36,10 @@
         "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "contextualLookupSource": "Columns",
+        "contextualLookupKeyProperty": "OptionId",
+        "contextualLookupDisplayProperty": "Name"
       },
       {
         "id": "6b35ef4a-b1f3-4acb-9cc3-56db4dbc892a",

@@ -121,6 +121,28 @@
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
                           </bs-toggle-button>
+                        } @else if (col.contextualLookupSource) {
+                          <bs-select
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            @for (option of getContextualLookupOptions(col); track option.key) {
+                              <option [ngValue]="option.key">
+                                {{ option.display }}
+                              </option>
+                            }
+                          </bs-select>
+                        } @else if (col.lookupReferenceType) {
+                          <bs-select
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()">
+                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            @for (option of (col | lookupOptions:lookupReferenceOptions()); track option.key) {
+                              <option [ngValue]="option.key">
+                                {{ option.values | resolveTranslation:option.key }}
+                              </option>
+                            }
+                          </bs-select>
                         } @else if (col.dataType === 'Reference' && col.query) {
                           <bs-select
                             [(ngModel)]="row[col.name]"

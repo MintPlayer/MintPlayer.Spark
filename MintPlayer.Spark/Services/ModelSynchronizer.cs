@@ -346,6 +346,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
+            var contextualLookupAttr = property.GetCustomAttribute<ContextualLookupReferenceAttribute>();
+
             // Auto-resolve query name for reference attributes when not explicitly specified
             string? resolvedQuery = referenceAttr?.Query;
             if (resolvedQuery == null && referenceAttr != null && entityTypeToQueryName != null)
@@ -395,6 +397,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.LookupReferenceType = lookupReferenceType;
                 }
 
+                if (contextualLookupAttr != null)
+                {
+                    existingAttr.ContextualLookupSource = contextualLookupAttr.SourceProperty;
+                    existingAttr.ContextualLookupKeyProperty = contextualLookupAttr.KeyProperty;
+                    existingAttr.ContextualLookupDisplayProperty = contextualLookupAttr.DisplayProperty;
+                }
+
                 // Set InCollectionType/InQueryType flags only when projection type exists
                 if (projectionType != null)
                 {
@@ -429,6 +438,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     AsDetailType = asDetailType,
                     IsArray = isArray,
                     LookupReferenceType = lookupReferenceType,
+                    ContextualLookupSource = contextualLookupAttr?.SourceProperty,
+                    ContextualLookupKeyProperty = contextualLookupAttr?.KeyProperty,
+                    ContextualLookupDisplayProperty = contextualLookupAttr?.DisplayProperty,
                     // Set InCollectionType/InQueryType flags only when projection type exists
                     InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,
                     InQueryType = projectionType != null ? (inQueryType ? null : false) : null,

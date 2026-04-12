@@ -109,6 +109,21 @@ public sealed class EntityAttributeDefinition
     /// for read-only display (detail page and query list).
     /// Example: "video-player", "color-swatch", "markdown"
     /// </summary>
+    /// <summary>
+    /// For contextual lookup attributes: the name of the AsDetail array property
+    /// on the parent entity that provides the dropdown options.
+    /// </summary>
+    public string? ContextualLookupSource { get; set; }
+    /// <summary>
+    /// For contextual lookup attributes: the property name on the source element type
+    /// that provides the option key (stored value).
+    /// </summary>
+    public string? ContextualLookupKeyProperty { get; set; }
+    /// <summary>
+    /// For contextual lookup attributes: the property name on the source element type
+    /// that provides the display label.
+    /// </summary>
+    public string? ContextualLookupDisplayProperty { get; set; }
     public string? Renderer { get; set; }
     /// <summary>
     /// Optional configuration for the renderer (passed as-is to the frontend component).

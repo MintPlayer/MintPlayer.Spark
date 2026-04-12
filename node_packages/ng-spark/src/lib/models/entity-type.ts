@@ -33,6 +33,12 @@ export interface EntityAttributeDefinition {
   group?: string;
   /** Number of grid columns this attribute spans within a tab's column layout */
   columnSpan?: number;
+  /** For contextual lookup: parent AsDetail property providing dropdown options */
+  contextualLookupSource?: string;
+  /** For contextual lookup: property on source items used as key (stored value) */
+  contextualLookupKeyProperty?: string;
+  /** For contextual lookup: property on source items used as display label */
+  contextualLookupDisplayProperty?: string;
   /** Renderer component name for custom display in detail/list views */
   renderer?: string;
   /** Options passed to the renderer component */
