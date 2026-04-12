@@ -160,14 +160,13 @@ public partial class GitHubProjectService : IGitHubProjectService
 
     private async Task<Connection> CreateGraphQLConnectionAsync()
     {
-        var opts = _options.Value;
-        var installationId = opts.ProductionAppId
-            ?? throw new InvalidOperationException("ProductionAppId is required for GraphQL operations.");
+        // Use the App JWT to find the first installation, then create an installation token
+        var appClient = await _installationService.CreateAppClientAsync();
+        var installations = await appClient.GitHubApps.GetAllInstallationsForCurrent();
+        var installation = installations.FirstOrDefault()
+            ?? throw new InvalidOperationException("No GitHub App installations found.");
 
-        // Create a REST client to get the installation token, then extract it for GraphQL
-        var restClient = await _installationService.CreateInstallationClientAsync(installationId);
-
-        // Octokit stores token-based credentials in the Password field
+        var restClient = await _installationService.CreateInstallationClientAsync(installation.Id);
         var token = restClient.Connection.Credentials.Password;
 
         return new Connection(

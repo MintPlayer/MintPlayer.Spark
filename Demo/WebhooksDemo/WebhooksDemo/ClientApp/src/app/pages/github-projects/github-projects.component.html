@@ -53,7 +53,7 @@
                     </td>
                     <td>
                       @if (project.enabled && project.sparkDocumentId) {
-                        <a [routerLink]="['/po', 'GitHubProject', project.sparkDocumentId]"
+                        <a [routerLink]="['/po', entityTypeId, project.sparkDocumentId]"
                            class="btn btn-sm btn-outline-primary">
                           <i class="bi bi-gear"></i> Configure
                         </a>

@@ -4,7 +4,7 @@ import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { SparkService, PersistentObject } from '@mintplayer/ng-spark';
+import { SparkService, PersistentObject, EntityType } from '@mintplayer/ng-spark';
 import { GitHubProjectsService } from '../../services/github-projects.service';
 import { GitHubProjectInfo } from '../../models/github-project';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -26,6 +26,9 @@ export default class GitHubProjectsComponent implements OnInit {
   private readonly sparkService = inject(SparkService);
   readonly colors = Color;
 
+  private entityType: EntityType | undefined;
+  entityTypeId = '';
+
   projects = signal<ProjectRow[]>([]);
   loading = signal(true);
   error = signal<string | null>(null);
@@ -39,10 +42,13 @@ export default class GitHubProjectsComponent implements OnInit {
     this.error.set(null);
 
     try {
-      const [ghProjects, sparkEntities] = await Promise.all([
+      const [ghProjects, sparkEntities, entityType] = await Promise.all([
         this.ghService.listProjects(),
         this.sparkService.list('GitHubProject'),
+        this.sparkService.getEntityTypeByClrType('WebhooksDemo.Entities.GitHubProject'),
       ]);
+      this.entityType = entityType;
+      this.entityTypeId = entityType?.id ?? 'GitHubProject';
 
       const enabledMap = new Map<string, PersistentObject>();
       for (const entity of sparkEntities) {
@@ -79,14 +85,17 @@ export default class GitHubProjectsComponent implements OnInit {
         await this.sparkService.delete('GitHubProject', project.sparkDocumentId);
         this.updateProject(idx, { enabled: false, sparkDocumentId: undefined, loading: false });
       } else {
+        if (!this.entityType) throw new Error('Entity type not loaded');
+
+        const attrDef = (name: string) => this.entityType!.attributes.find(a => a.name === name);
         const created = await this.sparkService.create('GitHubProject', {
           name: '',
-          objectTypeId: 'GitHubProject',
+          objectTypeId: this.entityType.id,
           attributes: [
-            { id: '', name: 'Name', value: project.title, dataType: 'String', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [] },
-            { id: '', name: 'NodeId', value: project.id, dataType: 'String', isRequired: false, isVisible: true, isReadOnly: false, order: 1, rules: [] },
-            { id: '', name: 'OwnerLogin', value: project.ownerLogin, dataType: 'String', isRequired: false, isVisible: true, isReadOnly: false, order: 2, rules: [] },
-            { id: '', name: 'Number', value: project.number, dataType: 'Int32', isRequired: false, isVisible: true, isReadOnly: false, order: 3, rules: [] },
+            { ...attrDef('Name')!, value: project.title },
+            { ...attrDef('NodeId')!, value: project.id },
+            { ...attrDef('OwnerLogin')!, value: project.ownerLogin },
+            { ...attrDef('Number')!, value: project.number },
           ],
         });
         this.updateProject(idx, { enabled: true, sparkDocumentId: created.id, loading: false });
