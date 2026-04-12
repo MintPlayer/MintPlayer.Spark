@@ -48,17 +48,14 @@ public partial class GitHubProjectsController : ControllerBase
             httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SparkWebhooksDemo", "1.0"));
 
             // Query projects for this installation's owner
-            var query = ownerType == "Organization"
-                ? $"{{ organization(login: \"{ownerLogin}\") {{ projectsV2(first: 100) {{ nodes {{ id title number }} }} }} }}"
-                : $"{{ user(login: \"{ownerLogin}\") {{ projectsV2(first: 100) {{ nodes {{ id title number }} }} }} }}";
+            var ownerKey = ownerType == "Organization" ? "organization" : "user";
+            var query = $"{{ {ownerKey}(login: \"{ownerLogin}\") {{ projectsV2(first: 100) {{ nodes {{ id title number }} }} }} }}";
 
             var response = await httpClient.PostAsJsonAsync("https://api.github.com/graphql", new { query });
             var json = await response.Content.ReadAsStringAsync();
 
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("data", out var data)) continue;
-
-            var ownerKey = ownerType == "Organization" ? "organization" : "user";
             if (!data.TryGetProperty(ownerKey, out var owner) || owner.ValueKind == JsonValueKind.Null) continue;
             if (!owner.TryGetProperty("projectsV2", out var projectsV2)) continue;
 

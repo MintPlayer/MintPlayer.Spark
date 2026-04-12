@@ -711,6 +711,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 | OAuth token expiration | GitHub OAuth tokens don't expire by default for GitHub Apps; monitor for 401s and prompt re-auth |
 | "Target Column" dropdown is per-project, not a global LookupReference | UI resolves display name from parent `GitHubProject.Columns` at render time; custom presenter for the dropdown |
 | User must have admin/write access to the GitHub Project for column operations | Validate permissions when selecting a project; use installation token for mutations |
+| Personal (user-owned) Projects V2 not accessible via GitHub App installation tokens | GitHub API limitation — installation tokens can only access org projects. Personal projects require a classic PAT with `project` scope, which GitHub Apps don't support. Organization projects are the primary use case. |
 
 ---
 
