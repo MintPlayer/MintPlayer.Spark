@@ -1,0 +1,60 @@
+{
+  "persistentObject": {
+    "id": "93426213-155e-450d-94b4-22a44a0cf01b",
+    "name": "EventColumnMapping",
+    "clrType": "WebhooksDemo.Entities.EventColumnMapping",
+    "displayAttribute": "WebhookEvent",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "9b13fbd4-ca44-4c34-b6f9-71c950e0a23b",
+        "name": "WebhookEvent",
+        "label": {
+          "en": "Webhook Event"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "lookupReferenceType": "WebhookEventType",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ab791288-7d3c-42ce-bdd7-d0a37ae801b8",
+        "name": "TargetColumnOptionId",
+        "label": {
+          "en": "Target Column Option Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6b35ef4a-b1f3-4acb-9cc3-56db4dbc892a",
+        "name": "MoveLinkedIssues",
+        "label": {
+          "en": "Move Linked Issues"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

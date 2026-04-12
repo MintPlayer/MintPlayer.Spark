@@ -365,7 +365,7 @@ spark.AddAuthentication<SparkUser>(configureProviders: identity =>
         options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
         options.Scope.Add("read:user");
         options.Scope.Add("read:org");      // Access organization memberships
-        options.Scope.Add("read:project");  // Access GitHub Projects V2
+        options.Scope.Add("project");       // Access GitHub Projects V2 (read:project only covers classic projects)
         options.SaveTokens = true;
     });
 });

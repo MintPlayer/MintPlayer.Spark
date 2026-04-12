@@ -108,7 +108,7 @@ spark.AddAuthentication<SparkUser>(configureProviders: identity =>
         options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
         options.Scope.Add("read:user");
         options.Scope.Add("read:org");
-        options.Scope.Add("read:project");
+        options.Scope.Add("project");
         options.SaveTokens = true;  // Store access token for API calls
     });
 });
@@ -646,7 +646,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
                 options.ClientId = builder.Configuration["GitHub:ClientId"]!;
                 options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
                 options.Scope.Add("read:user");
-                options.Scope.Add("read:project");
+                options.Scope.Add("project");
                 options.SaveTokens = true;
             });
         });

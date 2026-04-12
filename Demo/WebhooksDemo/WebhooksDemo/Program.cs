@@ -16,7 +16,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<WebhooksDemoSparkContext>();
     spark.AddActions();
-    spark.AddAuthorization();
+    spark.AddAuthorization(options => options.DefaultBehavior = MintPlayer.Spark.Authorization.Configuration.DefaultAccessBehavior.AllowAll);
     spark.AddAuthentication<SparkUser>(configureProviders: identity =>
     {
         identity.AddGitHub(options =>
@@ -25,7 +25,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             options.ClientSecret = builder.Configuration["GitHub:ClientSecret"] ?? string.Empty;
             options.Scope.Add("read:user");
             options.Scope.Add("read:org");
-            options.Scope.Add("read:project");
+            options.Scope.Add("project");
             options.SaveTokens = true;
         });
     });
@@ -73,7 +73,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSpark();
+app.UseSpark(o => o.SynchronizeModelsIfRequested<WebhooksDemoSparkContext>(args));
 
 app.UseEndpoints(endpoints =>
 {

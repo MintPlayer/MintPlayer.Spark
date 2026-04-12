@@ -1,14 +1,13 @@
+using System.Net.Http.Headers;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
-using Octokit.GraphQL;
 using Raven.Client.Documents.Session;
 using WebhooksDemo.Entities;
 using WebhooksDemo.Services;
-using Connection = Octokit.GraphQL.Connection;
-using ProductHeaderValue = Octokit.GraphQL.ProductHeaderValue;
 
 namespace WebhooksDemo.Controllers;
 
@@ -37,60 +36,55 @@ public partial class GitHubProjectsController : ControllerBase
         if (string.IsNullOrEmpty(accessToken))
             return Unauthorized("No GitHub access token available. Please re-authenticate.");
 
-        var graphQL = new Connection(
-            new ProductHeaderValue("SparkWebhooksDemo", "1.0"),
-            accessToken);
+        // Use raw GraphQL to avoid Octokit.GraphQL deserialization issues with null nodes
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SparkWebhooksDemo", "1.0"));
 
-        // Fetch viewer login + own projects in one query
-        var viewerLogin = await graphQL.Run(
-            new Query()
-                .Viewer
-                .Select(v => v.Login));
+        var graphqlQuery = new { query = "{ viewer { login projectsV2(first: 100) { nodes { id title number } } organizations(first: 100) { nodes { login projectsV2(first: 100) { nodes { id title number } } } } } }" };
+        var response = await httpClient.PostAsJsonAsync("https://api.github.com/graphql", graphqlQuery);
+        var json = await response.Content.ReadAsStringAsync();
 
-        var userProjects = await graphQL.Run(
-            new Query()
-                .Viewer
-                .ProjectsV2()
-                .AllPages()
-                .Select(p => new ProjectInfo
-                {
-                    Id = p.Id.Value,
-                    Title = p.Title,
-                    Number = p.Number,
-                    OwnerLogin = viewerLogin,
-                    OwnerType = "User",
-                }));
+        using var doc = JsonDocument.Parse(json);
+        var viewer = doc.RootElement.GetProperty("data").GetProperty("viewer");
+        var viewerLogin = viewer.GetProperty("login").GetString() ?? "";
 
-        // Fetch user's organizations
-        var orgs = await graphQL.Run(
-            new Query()
-                .Viewer
-                .Organizations()
-                .AllPages()
-                .Select(o => new { o.Login }));
+        var results = new List<ProjectInfo>();
 
-        // Fetch projects for each organization
-        var orgProjects = new List<ProjectInfo>();
-        foreach (var org in orgs)
+        // User's own projects
+        foreach (var node in viewer.GetProperty("projectsV2").GetProperty("nodes").EnumerateArray())
         {
-            var projects = await graphQL.Run(
-                new Query()
-                    .Organization(org.Login)
-                    .ProjectsV2()
-                    .AllPages()
-                    .Select(p => new ProjectInfo
-                    {
-                        Id = p.Id.Value,
-                        Title = p.Title,
-                        Number = p.Number,
-                        OwnerLogin = org.Login,
-                        OwnerType = "Organization",
-                    }));
-
-            orgProjects.AddRange(projects);
+            if (node.ValueKind == JsonValueKind.Null) continue;
+            results.Add(new ProjectInfo
+            {
+                Id = node.GetProperty("id").GetString() ?? "",
+                Title = node.GetProperty("title").GetString() ?? "",
+                Number = node.GetProperty("number").GetInt32(),
+                OwnerLogin = viewerLogin,
+                OwnerType = "User",
+            });
         }
 
-        return Ok(userProjects.Concat(orgProjects));
+        // Organization projects
+        foreach (var org in viewer.GetProperty("organizations").GetProperty("nodes").EnumerateArray())
+        {
+            if (org.ValueKind == JsonValueKind.Null) continue;
+            var orgLogin = org.GetProperty("login").GetString() ?? "";
+            foreach (var node in org.GetProperty("projectsV2").GetProperty("nodes").EnumerateArray())
+            {
+                if (node.ValueKind == JsonValueKind.Null) continue;
+                results.Add(new ProjectInfo
+                {
+                    Id = node.GetProperty("id").GetString() ?? "",
+                    Title = node.GetProperty("title").GetString() ?? "",
+                    Number = node.GetProperty("number").GetInt32(),
+                    OwnerLogin = orgLogin,
+                    OwnerType = "Organization",
+                });
+            }
+        }
+
+        return Ok(results);
     }
 
     private sealed class ProjectInfo

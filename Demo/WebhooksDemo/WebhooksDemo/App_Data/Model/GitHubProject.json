@@ -1,0 +1,136 @@
+{
+  "persistentObject": {
+    "id": "f3563c06-65ff-448c-a1c0-bf02cda54301",
+    "name": "GitHubProject",
+    "clrType": "WebhooksDemo.Entities.GitHubProject",
+    "displayAttribute": "Name",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4db2469c-d314-438e-8ab4-54b2ac836ea3",
+        "name": "Name",
+        "label": {
+          "en": "Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e6756090-9547-49f0-97e0-a84d323012ad",
+        "name": "NodeId",
+        "label": {
+          "en": "Node Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1da662ce-4840-4d5d-acf6-6311d6f768f0",
+        "name": "OwnerLogin",
+        "label": {
+          "en": "Owner Login"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3b0d09fd-28d1-4eae-b507-16beca65bb97",
+        "name": "Number",
+        "label": {
+          "en": "Number"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "35d8cff1-44ec-48f6-882a-8f0068b94c8e",
+        "name": "StatusFieldId",
+        "label": {
+          "en": "Status Field Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0f6fb821-8ae1-4783-995c-d5a7d957e07b",
+        "name": "Columns",
+        "label": {
+          "en": "Columns"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "asDetailType": "WebhooksDemo.Entities.ProjectColumn",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1ae2bdbf-2286-4e6a-8fc1-3e8bb326d508",
+        "name": "EventMappings",
+        "label": {
+          "en": "Event Mappings"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "asDetailType": "WebhooksDemo.Entities.EventColumnMapping",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "c74f2a68-5225-41d4-9078-7055bf7ad794",
+      "name": "GetGitHubProjects",
+      "source": "Database.GitHubProjects",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "isStreamingQuery": false
+    }
+  ]
+}

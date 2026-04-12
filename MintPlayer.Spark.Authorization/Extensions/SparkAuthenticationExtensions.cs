@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Identity;
@@ -96,17 +95,9 @@ internal static class SparkAuthenticationExtensions
             IAntiforgery antiforgery,
             string? returnUrl) =>
         {
-            // Debug: try authenticating with the external scheme directly
-            var authResult = await context.AuthenticateAsync(IdentityConstants.ExternalScheme);
-            var debugInfo = $"ExternalScheme authenticated: {authResult.Succeeded}, " +
-                            $"Principal null: {authResult.Principal is null}, " +
-                            $"Properties null: {authResult.Properties is null}, " +
-                            $"Items: {(authResult.Properties?.Items is not null ? string.Join(", ", authResult.Properties.Items.Select(kv => $"{kv.Key}={kv.Value}")) : "null")}, " +
-                            $"Cookies: {string.Join(", ", context.Request.Cookies.Select(c => c.Key))}";
-
             var info = await signInManager.GetExternalLoginInfoAsync();
             if (info is null)
-                return Results.Content($"<html><body><h1>External login info is null</h1><pre>{debugInfo}</pre></body></html>", "text/html");
+                return Results.Redirect(returnUrl ?? "/");
 
             // Try signing in with existing external login
             var result = await signInManager.ExternalLoginSignInAsync(
