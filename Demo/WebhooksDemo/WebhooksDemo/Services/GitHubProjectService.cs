@@ -191,14 +191,20 @@ public partial class GitHubProjectService : IGitHubProjectService
                 .Select(r => new { ItemId = r.Item.Id }));
 
         // Parse the item ID from the response JSON
+        // Response format: {"data":{"addProjectV2ItemById":{"item":{"id":"..."}}}}
         using var doc = System.Text.Json.JsonDocument.Parse(result);
-        if (doc.RootElement.TryGetProperty("addProjectV2ItemById", out var payload)
-            && payload.TryGetProperty("item", out var item)
+        var root = doc.RootElement;
+        if (root.TryGetProperty("data", out var data))
+            root = data;
+
+        if (root.TryGetProperty("addProjectV2ItemById", out var payload)
+            && payload.TryGetProperty("itemId", out var item)
             && item.TryGetProperty("id", out var idProp))
         {
             return new ID(idProp.GetString()!);
         }
 
+        _logger.LogWarning("Failed to parse item ID from addProjectV2ItemById response: {Response}", result);
         return null;
     }
 
