@@ -21,7 +21,7 @@ public partial class LogIssues : IRecipient<GitHubWebhookMessage<IssuesEvent>>
 
         if (message.Event.Action == IssuesActionValue.Opened)
         {
-            var githubClient = await _gitHubInstallationService.CreateClientAsync(message.InstallationId);
+            var githubClient = await _gitHubInstallationService.CreateInstallationClientAsync(message.InstallationId);
             await githubClient.Issue.Comment.Create(
                 message.Event.Repository!.Id, (int)issue.Number, "Thanks for creating this issue");
         }

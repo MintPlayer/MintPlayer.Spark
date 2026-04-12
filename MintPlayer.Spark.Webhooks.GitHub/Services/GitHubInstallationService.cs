@@ -13,9 +13,34 @@ internal partial class GitHubInstallationService : IGitHubInstallationService
 {
     [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
 
-    public async Task<IGitHubClient> CreateClientAsync(long installationId)
+    public Task<IGitHubClient> CreateAppClientAsync()
     {
         var opts = _options.Value;
+        var privateKey = ResolvePrivateKey(opts);
+        var jwt = CreateJwt(opts.ClientId!, privateKey);
+
+        var header = new ProductHeaderValue("SparkWebhooks", "1.0");
+        IGitHubClient appClient = new GitHubClient(header)
+        {
+            Credentials = new Credentials(jwt, AuthenticationType.Bearer)
+        };
+
+        return Task.FromResult(appClient);
+    }
+
+    public async Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
+    {
+        var appClient = await CreateAppClientAsync();
+
+        var response = await appClient.GitHubApps.CreateInstallationToken(installationId);
+        return new GitHubClient(new ProductHeaderValue("SparkWebhooks", "1.0"))
+        {
+            Credentials = new Credentials(response.Token)
+        };
+    }
+
+    private static string ResolvePrivateKey(GitHubWebhooksOptions opts)
+    {
         var privateKey = opts.PrivateKeyPem;
         if (string.IsNullOrEmpty(privateKey))
         {
@@ -33,19 +58,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService
             throw new InvalidOperationException(
                 "GitHub App authentication requires ClientId to be configured.");
 
-        var jwt = CreateJwt(opts.ClientId, privateKey);
-
-        var header = new ProductHeaderValue("SparkWebhooks", "1.0");
-        var appClient = new GitHubClient(header)
-        {
-            Credentials = new Credentials(jwt, AuthenticationType.Bearer)
-        };
-
-        var response = await appClient.GitHubApps.CreateInstallationToken(installationId);
-        return new GitHubClient(header)
-        {
-            Credentials = new Credentials(response.Token)
-        };
+        return privateKey;
     }
 
     private static string CreateJwt(string clientId, string privateKey)

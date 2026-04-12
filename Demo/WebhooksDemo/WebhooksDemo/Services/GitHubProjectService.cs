@@ -165,7 +165,7 @@ public partial class GitHubProjectService : IGitHubProjectService
             ?? throw new InvalidOperationException("ProductionAppId is required for GraphQL operations.");
 
         // Create a REST client to get the installation token, then extract it for GraphQL
-        var restClient = await _installationService.CreateClientAsync(installationId);
+        var restClient = await _installationService.CreateInstallationClientAsync(installationId);
 
         // Octokit stores token-based credentials in the Password field
         var token = restClient.Connection.Credentials.Password;

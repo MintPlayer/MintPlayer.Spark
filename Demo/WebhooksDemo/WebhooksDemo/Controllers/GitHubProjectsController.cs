@@ -1,10 +1,10 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Webhooks.GitHub.Configuration;
+using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Raven.Client.Documents.Session;
 using WebhooksDemo.Entities;
 using WebhooksDemo.Services;
@@ -18,59 +18,51 @@ public partial class GitHubProjectsController : ControllerBase
 {
     [Inject] private readonly IGitHubProjectService _projectService;
     [Inject] private readonly IAsyncDocumentSession _session;
-    [Inject] private readonly UserManager<SparkUser> _userManager;
+    [Inject] private readonly IGitHubInstallationService _installationService;
+    [Options] private readonly Microsoft.Extensions.Options.IOptions<GitHubWebhooksOptions> _options;
 
     /// <summary>
-    /// Lists the authenticated user's GitHub Projects V2,
-    /// including projects from organizations the user is a member of.
-    /// Uses the user's stored OAuth access token.
+    /// Lists GitHub Projects V2 accessible to the GitHub App installation.
+    /// Uses the installation token (not user OAuth) for full project access.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> ListProjects()
     {
-        var user = await _userManager.GetUserAsync(User);
-        if (user is null)
-            return Unauthorized();
-
-        var accessToken = await _userManager.GetAuthenticationTokenAsync(user, "GitHub", "access_token");
-        if (string.IsNullOrEmpty(accessToken))
-            return Unauthorized("No GitHub access token available. Please re-authenticate.");
-
-        // Use raw GraphQL to avoid Octokit.GraphQL deserialization issues with null nodes
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SparkWebhooksDemo", "1.0"));
-
-        var graphqlQuery = new { query = "{ viewer { login projectsV2(first: 100) { nodes { id title number } } organizations(first: 100) { nodes { login projectsV2(first: 100) { nodes { id title number } } } } } }" };
-        var response = await httpClient.PostAsJsonAsync("https://api.github.com/graphql", graphqlQuery);
-        var json = await response.Content.ReadAsStringAsync();
-
-        using var doc = JsonDocument.Parse(json);
-        var viewer = doc.RootElement.GetProperty("data").GetProperty("viewer");
-        var viewerLogin = viewer.GetProperty("login").GetString() ?? "";
+        // Use the App JWT to list installations, then installation tokens to query projects
+        var appClient = await _installationService.CreateAppClientAsync();
+        var installations = await appClient.GitHubApps.GetAllInstallationsForCurrent();
 
         var results = new List<ProjectInfo>();
 
-        // User's own projects
-        foreach (var node in viewer.GetProperty("projectsV2").GetProperty("nodes").EnumerateArray())
+        foreach (var installation in installations)
         {
-            if (node.ValueKind == JsonValueKind.Null) continue;
-            results.Add(new ProjectInfo
-            {
-                Id = node.GetProperty("id").GetString() ?? "",
-                Title = node.GetProperty("title").GetString() ?? "",
-                Number = node.GetProperty("number").GetInt32(),
-                OwnerLogin = viewerLogin,
-                OwnerType = "User",
-            });
-        }
+            var ownerLogin = installation.Account.Login;
+            var ownerType = installation.TargetType.StringValue == "Organization" ? "Organization" : "User";
 
-        // Organization projects
-        foreach (var org in viewer.GetProperty("organizations").GetProperty("nodes").EnumerateArray())
-        {
-            if (org.ValueKind == JsonValueKind.Null) continue;
-            var orgLogin = org.GetProperty("login").GetString() ?? "";
-            foreach (var node in org.GetProperty("projectsV2").GetProperty("nodes").EnumerateArray())
+            // Create an installation token for this specific installation
+            var installClient = await _installationService.CreateInstallationClientAsync(installation.Id);
+            var installToken = installClient.Connection.Credentials.Password;
+
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", installToken);
+            httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SparkWebhooksDemo", "1.0"));
+
+            // Query projects for this installation's owner
+            var query = ownerType == "Organization"
+                ? $"{{ organization(login: \"{ownerLogin}\") {{ projectsV2(first: 100) {{ nodes {{ id title number }} }} }} }}"
+                : $"{{ user(login: \"{ownerLogin}\") {{ projectsV2(first: 100) {{ nodes {{ id title number }} }} }} }}";
+
+            var response = await httpClient.PostAsJsonAsync("https://api.github.com/graphql", new { query });
+            var json = await response.Content.ReadAsStringAsync();
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("data", out var data)) continue;
+
+            var ownerKey = ownerType == "Organization" ? "organization" : "user";
+            if (!data.TryGetProperty(ownerKey, out var owner) || owner.ValueKind == JsonValueKind.Null) continue;
+            if (!owner.TryGetProperty("projectsV2", out var projectsV2)) continue;
+
+            foreach (var node in projectsV2.GetProperty("nodes").EnumerateArray())
             {
                 if (node.ValueKind == JsonValueKind.Null) continue;
                 results.Add(new ProjectInfo
@@ -78,8 +70,8 @@ public partial class GitHubProjectsController : ControllerBase
                     Id = node.GetProperty("id").GetString() ?? "",
                     Title = node.GetProperty("title").GetString() ?? "",
                     Number = node.GetProperty("number").GetInt32(),
-                    OwnerLogin = orgLogin,
-                    OwnerType = "Organization",
+                    OwnerLogin = ownerLogin,
+                    OwnerType = ownerType,
                 });
             }
         }
