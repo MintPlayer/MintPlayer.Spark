@@ -156,8 +156,7 @@ export class SparkPoFormComponent {
       const et = this.entityType();
       if (et) {
         this.loadReferenceOptions();
-        this.loadAsDetailTypes();
-        this.loadLookupReferenceOptions();
+        this.loadAsDetailTypes().then(() => this.loadLookupReferenceOptions());
       }
     });
   }
@@ -221,7 +220,7 @@ export class SparkPoFormComponent {
     // Also scan AsDetail column definitions for lookupReferenceType
     const asDetailTypes = this.asDetailTypes();
     for (const attr of this.editableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType)) {
-      const detailType = asDetailTypes[attr.asDetailType!];
+      const detailType = asDetailTypes[attr.name];
       if (detailType?.attributes) {
         lookupAttrs.push(...detailType.attributes.filter(a => a.lookupReferenceType));
       }

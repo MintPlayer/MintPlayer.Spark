@@ -65,7 +65,14 @@ public partial class GitHubProjectService : IGitHubProjectService
 
         var itemId = await GetIssueProjectItemIdAsync(graphQL, owner, repo, issueNumber, project.NodeId);
         if (itemId == null)
-            return false;
+        {
+            // Issue is not on the board yet — add it first
+            var issueNodeId = await GetIssueNodeIdAsync(graphQL, owner, repo, issueNumber);
+            if (issueNodeId == null) return false;
+
+            itemId = await AddItemToProjectAsync(graphQL, project.NodeId, issueNodeId.Value);
+            if (itemId == null) return false;
+        }
 
         await MoveToColumnAsync(graphQL, project.NodeId, project.StatusFieldId, itemId.Value, columnOptionId);
         return true;
@@ -78,7 +85,14 @@ public partial class GitHubProjectService : IGitHubProjectService
 
         var itemId = await GetPullRequestProjectItemIdAsync(graphQL, owner, repo, prNumber, project.NodeId);
         if (itemId == null)
-            return false;
+        {
+            // PR is not on the board yet — add it first
+            var prNodeId = await GetPullRequestNodeIdAsync(graphQL, owner, repo, prNumber);
+            if (prNodeId == null) return false;
+
+            itemId = await AddItemToProjectAsync(graphQL, project.NodeId, prNodeId.Value);
+            if (itemId == null) return false;
+        }
 
         await MoveToColumnAsync(graphQL, project.NodeId, project.StatusFieldId, itemId.Value, columnOptionId);
         return true;
@@ -140,6 +154,52 @@ public partial class GitHubProjectService : IGitHubProjectService
 
         var projectItem = items.FirstOrDefault(it => it.ProjectID.Value == projectNodeId);
         return projectItem?.ItemID;
+    }
+
+    private async Task<ID?> GetIssueNodeIdAsync(Connection graphQL, string owner, string repo, int issueNumber)
+    {
+        var result = await graphQL.Run(
+            new Query()
+                .Repository(owner: owner, name: repo)
+                .Issue(issueNumber)
+                .Select(i => i.Id));
+
+        return result;
+    }
+
+    private async Task<ID?> GetPullRequestNodeIdAsync(Connection graphQL, string owner, string repo, int prNumber)
+    {
+        var result = await graphQL.Run(
+            new Query()
+                .Repository(owner: owner, name: repo)
+                .PullRequest(prNumber)
+                .Select(pr => pr.Id));
+
+        return result;
+    }
+
+    private async Task<ID?> AddItemToProjectAsync(Connection graphQL, string projectNodeId, ID contentId)
+    {
+        var result = await RunCleanedUp(graphQL,
+            new Mutation()
+                .AddProjectV2ItemById(new AddProjectV2ItemByIdInput
+                {
+                    ClientMutationId = Guid.NewGuid().ToString(),
+                    ProjectId = new ID(projectNodeId),
+                    ContentId = contentId,
+                })
+                .Select(r => new { ItemId = r.Item.Id }));
+
+        // Parse the item ID from the response JSON
+        using var doc = System.Text.Json.JsonDocument.Parse(result);
+        if (doc.RootElement.TryGetProperty("addProjectV2ItemById", out var payload)
+            && payload.TryGetProperty("item", out var item)
+            && item.TryGetProperty("id", out var idProp))
+        {
+            return new ID(idProp.GetString()!);
+        }
+
+        return null;
     }
 
     private async Task MoveToColumnAsync(
