@@ -93,6 +93,7 @@ export default class GitHubProjectsComponent implements OnInit {
           objectTypeId: this.entityType.id,
           attributes: [
             { ...attrDef('Name')!, value: project.title },
+            { ...attrDef('InstallationId')!, value: project.installationId },
             { ...attrDef('NodeId')!, value: project.id },
             { ...attrDef('OwnerLogin')!, value: project.ownerLogin },
             { ...attrDef('Number')!, value: project.number },

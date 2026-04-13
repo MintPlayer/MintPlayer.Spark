@@ -7,6 +7,9 @@ public class GitHubProject
     /// <summary>Display name of the GitHub project.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>GitHub App installation that owns this project (used to mint installation tokens).</summary>
+    public long InstallationId { get; set; }
+
     /// <summary>GitHub GraphQL node ID (e.g., "PVT_kwDO...").</summary>
     public string NodeId { get; set; } = string.Empty;
 

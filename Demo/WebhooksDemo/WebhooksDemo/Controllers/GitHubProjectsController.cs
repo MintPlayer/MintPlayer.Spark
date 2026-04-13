@@ -69,6 +69,7 @@ public partial class GitHubProjectsController : ControllerBase
                     Number = node.GetProperty("number").GetInt32(),
                     OwnerLogin = ownerLogin,
                     OwnerType = ownerType,
+                    InstallationId = installation.Id,
                 });
             }
         }
@@ -83,15 +84,16 @@ public partial class GitHubProjectsController : ControllerBase
         public int Number { get; init; }
         public string OwnerLogin { get; init; } = string.Empty;
         public string OwnerType { get; init; } = string.Empty;
+        public long InstallationId { get; init; }
     }
 
     /// <summary>
     /// Gets the Status field columns for a specific GitHub Project V2.
     /// </summary>
     [HttpGet("{nodeId}/columns")]
-    public async Task<IActionResult> GetColumns(string nodeId)
+    public async Task<IActionResult> GetColumns(string nodeId, [FromQuery] long installationId)
     {
-        var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(nodeId);
+        var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(installationId, nodeId);
         return Ok(new { statusFieldId, columns });
     }
 
@@ -105,7 +107,7 @@ public partial class GitHubProjectsController : ControllerBase
         if (project == null)
             return NotFound();
 
-        var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(project.NodeId);
+        var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(project.InstallationId, project.NodeId);
         project.StatusFieldId = statusFieldId;
         project.Columns = columns;
         await _session.SaveChangesAsync();

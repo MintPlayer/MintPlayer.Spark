@@ -16,7 +16,7 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
         // auto-fetch the Status field and column options from GitHub.
         if (entity.Columns.Length == 0 && !string.IsNullOrEmpty(entity.NodeId))
         {
-            var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(entity.NodeId);
+            var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(entity.InstallationId, entity.NodeId);
             entity.StatusFieldId = statusFieldId;
             entity.Columns = columns;
         }

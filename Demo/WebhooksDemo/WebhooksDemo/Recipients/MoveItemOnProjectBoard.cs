@@ -44,7 +44,7 @@ public partial class MoveItemOnProjectBoard : IRecipient<GitHubWebhookMessage>
                     if (isIssueEvent)
                     {
                         var moved = await _projectService.MoveIssueToColumnAsync(
-                            project, owner, repo, number, mapping.TargetColumnOptionId);
+                            message.InstallationId, project, owner, repo, number, mapping.TargetColumnOptionId);
 
                         if (moved)
                             _logger.LogInformation("Moved issue #{Number} to column {Column} on project {Project}",
@@ -53,7 +53,7 @@ public partial class MoveItemOnProjectBoard : IRecipient<GitHubWebhookMessage>
                     else if (isPullRequestEvent)
                     {
                         var moved = await _projectService.MovePullRequestToColumnAsync(
-                            project, owner, repo, number, mapping.TargetColumnOptionId);
+                            message.InstallationId, project, owner, repo, number, mapping.TargetColumnOptionId);
 
                         if (moved)
                             _logger.LogInformation("Moved PR #{Number} to column {Column} on project {Project}",
@@ -61,11 +61,11 @@ public partial class MoveItemOnProjectBoard : IRecipient<GitHubWebhookMessage>
 
                         if (mapping.MoveLinkedIssues)
                         {
-                            var linkedIssues = await _projectService.GetClosingIssuesAsync(owner, repo, number);
+                            var linkedIssues = await _projectService.GetClosingIssuesAsync(message.InstallationId, owner, repo, number);
                             foreach (var (linkedRepo, linkedNumber) in linkedIssues)
                             {
                                 var linkedMoved = await _projectService.MoveIssueToColumnAsync(
-                                    project, owner, linkedRepo, linkedNumber, mapping.TargetColumnOptionId);
+                                    message.InstallationId, project, owner, linkedRepo, linkedNumber, mapping.TargetColumnOptionId);
 
                                 if (linkedMoved)
                                     _logger.LogInformation("Moved linked issue #{Number} to column {Column} on project {Project}",

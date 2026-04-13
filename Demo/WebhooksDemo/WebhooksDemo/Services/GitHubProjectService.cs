@@ -7,7 +7,6 @@ using Octokit.GraphQL.Core;
 using Octokit.GraphQL.Model;
 using WebhooksDemo.Entities;
 using Connection = Octokit.GraphQL.Connection;
-using ProductHeaderValue = Octokit.GraphQL.ProductHeaderValue;
 using ProjectColumn = WebhooksDemo.Entities.ProjectColumn;
 
 namespace WebhooksDemo.Services;
@@ -19,36 +18,43 @@ public partial class GitHubProjectService : IGitHubProjectService
     [Options] private readonly Microsoft.Extensions.Options.IOptions<GitHubWebhooksOptions> _options;
     [Inject] private readonly ILogger<GitHubProjectService> _logger;
 
-    public async Task<(string StatusFieldId, ProjectColumn[] Columns)> GetProjectColumnsAsync(string projectNodeId)
+    public async Task<(string StatusFieldId, ProjectColumn[] Columns)> GetProjectColumnsAsync(long installationId, string projectNodeId)
     {
-        var graphQL = await CreateGraphQLConnectionAsync();
+        try
+        {
+            var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
-        var fields = await graphQL.Run(
-            new Query()
-                .Node(new ID(projectNodeId))
-                .Cast<ProjectV2>()
-                .Fields()
-                .AllPages()
-                .Select(f => f.Switch<StatusFieldInfo?>(when => when
-                    .ProjectV2SingleSelectField(ssf => new StatusFieldInfo
-                    {
-                        Id = ssf.Id.Value,
-                        Name = ssf.Name,
-                        Options = ssf.Options(null).Select(o => new ProjectColumn
+            var fields = await graphQL.Run(
+                new Query()
+                    .Node(new ID(projectNodeId))
+                    .Cast<ProjectV2>()
+                    .Fields()
+                    .AllPages()
+                    .Select(f => f.Switch<StatusFieldInfo?>(when => when
+                        .ProjectV2SingleSelectField(ssf => new StatusFieldInfo
                         {
-                            OptionId = o.Id,
-                            Name = o.Name,
-                        }).ToList(),
-                    }))));
+                            Id = ssf.Id.Value,
+                            Name = ssf.Name,
+                            Options = ssf.Options(null).Select(o => new ProjectColumn
+                            {
+                                OptionId = o.Id,
+                                Name = o.Name,
+                            }).ToList(),
+                        }))));
 
-        var statusField = fields
-            .Where(f => f != null)
-            .FirstOrDefault(f => string.Equals(f!.Name, "Status", StringComparison.OrdinalIgnoreCase));
+            var statusField = fields
+                .Where(f => f != null)
+                .FirstOrDefault(f => string.Equals(f!.Name, "Status", StringComparison.OrdinalIgnoreCase));
 
-        if (statusField == null)
-            return (string.Empty, []);
+            if (statusField == null)
+                return (string.Empty, []);
 
-        return (statusField.Id, statusField.Options.ToArray());
+            return (statusField.Id, statusField.Options.ToArray());
+        }
+        catch (Exception ex)
+        {
+            throw;
+        }
     }
 
     private sealed class StatusFieldInfo
@@ -59,9 +65,9 @@ public partial class GitHubProjectService : IGitHubProjectService
     }
 
     public async Task<bool> MoveIssueToColumnAsync(
-        GitHubProject project, string owner, string repo, int issueNumber, string columnOptionId)
+        long installationId, GitHubProject project, string owner, string repo, int issueNumber, string columnOptionId)
     {
-        var graphQL = await CreateGraphQLConnectionAsync();
+        var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var itemId = await GetIssueProjectItemIdAsync(graphQL, owner, repo, issueNumber, project.NodeId);
         if (itemId == null)
@@ -72,9 +78,9 @@ public partial class GitHubProjectService : IGitHubProjectService
     }
 
     public async Task<bool> MovePullRequestToColumnAsync(
-        GitHubProject project, string owner, string repo, int prNumber, string columnOptionId)
+        long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId)
     {
-        var graphQL = await CreateGraphQLConnectionAsync();
+        var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var itemId = await GetPullRequestProjectItemIdAsync(graphQL, owner, repo, prNumber, project.NodeId);
         if (itemId == null)
@@ -85,9 +91,9 @@ public partial class GitHubProjectService : IGitHubProjectService
     }
 
     public async Task<List<(string Repo, int Number)>> GetClosingIssuesAsync(
-        string owner, string repo, int prNumber)
+        long installationId, string owner, string repo, int prNumber)
     {
-        var graphQL = await CreateGraphQLConnectionAsync();
+        var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var results = await graphQL.Run(
             new Query()
@@ -158,21 +164,8 @@ public partial class GitHubProjectService : IGitHubProjectService
                 .Select(r => r.ClientMutationId));
     }
 
-    private async Task<Connection> CreateGraphQLConnectionAsync()
-    {
-        // Use the App JWT to find the first installation, then create an installation token
-        var appClient = await _installationService.CreateAppClientAsync();
-        var installations = await appClient.GitHubApps.GetAllInstallationsForCurrent();
-        var installation = installations.FirstOrDefault()
-            ?? throw new InvalidOperationException("No GitHub App installations found.");
-
-        var restClient = await _installationService.CreateInstallationClientAsync(installation.Id);
-        var token = restClient.Connection.Credentials.Password;
-
-        return new Connection(
-            new ProductHeaderValue("SparkWebhooks", "1.0"),
-            token);
-    }
+    private Task<Connection> CreateGraphQLConnectionAsync(long installationId)
+        => _installationService.CreateGraphQLConnectionAsync(installationId, EClientType.Installation);
 
     /// <summary>
     /// Cleans up GraphQL mutation queries to handle null values that cause errors.
