@@ -81,13 +81,14 @@ public partial class GitHubProjectService : IGitHubProjectService
     }
 
     public async Task<bool> MoveOrAddPullRequestToColumnAsync(
-        long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId)
+        long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId, bool add = true)
     {
         var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var itemId = await GetPullRequestProjectItemIdAsync(graphQL, owner, repo, prNumber, project.NodeId);
         if (itemId == null)
         {
+            if (!add) return false;
             itemId = await AddPullRequestToProjectAsync(graphQL, owner, repo, prNumber, project.NodeId);
         }
 

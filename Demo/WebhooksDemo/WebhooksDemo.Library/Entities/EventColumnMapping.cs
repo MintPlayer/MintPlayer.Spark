@@ -13,6 +13,12 @@ public class EventColumnMapping
     public string? TargetColumnOptionId { get; set; }
 
     /// <summary>
+    /// Automatically add the issue/PR to the project board if not already present.
+    /// When false, only items already on the board are moved.
+    /// </summary>
+    public bool AutoAddToProject { get; set; }
+
+    /// <summary>
     /// For pull request events: also move the issues that the PR closes/references.
     /// Ignored for issue events.
     /// </summary>

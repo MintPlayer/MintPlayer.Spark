@@ -51,7 +51,7 @@ public partial class HandleIssuesEvent : IRecipient<GitHubWebhookMessage<IssuesE
                 try
                 {
                     var moved = await _projectService.MoveOrAddIssueToColumnAsync(
-                        message.InstallationId, project, owner, repo, issueNumber, mapping.TargetColumnOptionId);
+                        message.InstallationId, project, owner, repo, issueNumber, mapping.TargetColumnOptionId, mapping.AutoAddToProject);
 
                     if (moved)
                         _logger.LogInformation("Moved issue #{Number} to column {Column} on project {Project}",

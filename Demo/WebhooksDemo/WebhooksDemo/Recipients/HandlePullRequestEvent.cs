@@ -50,7 +50,7 @@ public partial class HandlePullRequestEvent : IRecipient<GitHubWebhookMessage<Pu
                 try
                 {
                     var moved = await _projectService.MoveOrAddPullRequestToColumnAsync(
-                        message.InstallationId, project, owner, repo, prNumber, mapping.TargetColumnOptionId);
+                        message.InstallationId, project, owner, repo, prNumber, mapping.TargetColumnOptionId, mapping.AutoAddToProject);
 
                     if (moved)
                         _logger.LogInformation("Moved PR #{Number} to column {Column} on project {Project}",
@@ -64,7 +64,7 @@ public partial class HandlePullRequestEvent : IRecipient<GitHubWebhookMessage<Pu
                         foreach (var (linkedRepo, linkedNumber) in linkedIssues)
                         {
                             var linkedMoved = await _projectService.MoveOrAddIssueToColumnAsync(
-                                message.InstallationId, project, owner, linkedRepo, linkedNumber, mapping.TargetColumnOptionId);
+                                message.InstallationId, project, owner, linkedRepo, linkedNumber, mapping.TargetColumnOptionId, mapping.AutoAddToProject);
 
                             if (linkedMoved)
                                 _logger.LogInformation("Moved linked issue #{Number} to column {Column} on project {Project}",

@@ -11,7 +11,7 @@ public interface IGitHubProjectService
     Task<bool> MoveOrAddIssueToColumnAsync(long installationId, GitHubProject project, string owner, string repo, int issueNumber, string columnOptionId, bool add = true);
 
     /// <summary>Move a pull request to a column on a project board, adding it to the board first if needed.</summary>
-    Task<bool> MoveOrAddPullRequestToColumnAsync(long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId);
+    Task<bool> MoveOrAddPullRequestToColumnAsync(long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId, bool add = true);
 
     /// <summary>Get issues that a PR closes (via "Closes #123" references).</summary>
     Task<List<(string Repo, int Number)>> GetClosingIssuesAsync(long installationId, string owner, string repo, int prNumber);
