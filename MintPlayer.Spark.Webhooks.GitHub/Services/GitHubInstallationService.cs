@@ -178,6 +178,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
     private static string Base64UrlEncode(byte[] data)
         => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+    [NoInterfaceMember]
     public void Dispose()
     {
         if (_disposed) return;
