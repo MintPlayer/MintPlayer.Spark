@@ -372,3 +372,102 @@ spark.AddAuthentication<SparkUser>(configureProviders: identity =>
 ```
 
 This requires a **Client secret** generated on the GitHub App's settings page (under "Client secrets"). The user's OAuth token is then available via `HttpContext.GetTokenAsync("access_token")`.
+
+## WebhooksDemo: Project board automation
+
+The `Demo/WebhooksDemo` application demonstrates how to combine GitHub OAuth login with webhook-driven project board automation. Users log in with GitHub, select which GitHub Projects to automate, configure event-to-column mappings, and from that point on issues and pull requests are automatically moved on the project board.
+
+### How it works
+
+1. **Login with GitHub** — The app uses Spark's `AddAuthentication<SparkUser>` with `AddGitHub(...)` to let users sign in via GitHub OAuth. This grants the app access to the user's GitHub Projects V2.
+
+2. **Enable a project** — The `/github-projects` page lists all GitHub Projects accessible to the installed GitHub App. Clicking "Enable" creates a `GitHubProject` entity in RavenDB and automatically syncs the board's status columns from the GitHub GraphQL API.
+
+3. **Configure event mappings** — On the project's detail page, users configure which webhook events move items to which columns. Each mapping has:
+   - **Webhook Event** — the trigger (e.g., "Issue opened", "PR ready for review", "PR merged")
+   - **Target Column** — which board column to move the item to (selected from the synced columns via a dropdown picker)
+   - **Auto Add To Project** — whether to add the issue/PR to the board if it's not already there
+   - **Move Linked Issues** — for PR events, also move the issues that the PR closes
+
+4. **Automatic moves** — When a webhook arrives, typed message handlers (`HandleIssuesEvent`, `HandlePullRequestEvent`) match the event against the configured mappings and call the GitHub GraphQL API to move (or add) items on the project board.
+
+### Example configuration
+
+A typical `GitHubProject` document in RavenDB looks like this:
+
+```json
+{
+  "Name": "My project",
+  "InstallationId": 12345678,
+  "NodeId": "PVT_kwXXXXXXXXXXXX",
+  "OwnerLogin": "MyOrganization",
+  "Number": 1,
+  "StatusFieldId": "PVTSSF_XXXXXXXXXXXXXXXX",
+  "Columns": [
+    { "OptionId": "f75ad846", "Name": "Todo" },
+    { "OptionId": "47fc9ee4", "Name": "In Progress" },
+    { "OptionId": "284b7563", "Name": "To Review" },
+    { "OptionId": "98236657", "Name": "Done" }
+  ],
+  "EventMappings": [
+    {
+      "WebhookEvent": "IssuesOpened",
+      "TargetColumnOptionId": "f75ad846",
+      "AutoAddToProject": true,
+      "MoveLinkedIssues": false
+    },
+    {
+      "WebhookEvent": "PullRequestReadyForReview",
+      "TargetColumnOptionId": "284b7563",
+      "AutoAddToProject": false,
+      "MoveLinkedIssues": true
+    },
+    {
+      "WebhookEvent": "PullRequestConvertedToDraft",
+      "TargetColumnOptionId": "f75ad846",
+      "AutoAddToProject": false,
+      "MoveLinkedIssues": true
+    },
+    {
+      "WebhookEvent": "PullRequestReviewChangesRequested",
+      "TargetColumnOptionId": "f75ad846",
+      "AutoAddToProject": false,
+      "MoveLinkedIssues": true
+    },
+    {
+      "WebhookEvent": "PullRequestMerged",
+      "TargetColumnOptionId": "98236657",
+      "AutoAddToProject": false,
+      "MoveLinkedIssues": true
+    },
+    {
+      "WebhookEvent": "PullRequestClosed",
+      "TargetColumnOptionId": "98236657",
+      "AutoAddToProject": false,
+      "MoveLinkedIssues": true
+    }
+  ]
+}
+```
+
+This configuration:
+- Automatically adds new issues to the "Todo" column
+- Moves PRs to "To Review" when marked ready for review, and back to "Todo" when converted to draft or when changes are requested
+- Moves PRs (and their linked issues) to "Done" when merged or closed
+- Does **not** auto-add PRs to the board — only PRs already on the board are moved
+
+### Syncing columns
+
+Board columns are cached on the `GitHubProject` entity when it's first enabled. If you add or rename columns on the GitHub project board, use the **Sync Columns** button on the project's detail page to refresh them. This is implemented as a Spark custom action (`SyncColumnsAction`) that calls the GitHub GraphQL API.
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `Recipients/HandleIssuesEvent.cs` | Handles issue webhooks — maps event to column and moves/adds the issue |
+| `Recipients/HandlePullRequestEvent.cs` | Handles PR webhooks — maps event to column, moves/adds the PR, optionally moves linked issues |
+| `Services/GitHubProjectService.cs` | GraphQL calls: move items, add items to board, fetch columns |
+| `Actions/SyncColumnsAction.cs` | Custom action to refresh columns from GitHub |
+| `Actions/ProjectColumnActions.cs` | Custom query returning a project's columns for the reference picker |
+| `Controllers/GitHubProjectsController.cs` | REST API for listing GitHub projects and syncing columns |
+| `Pages/github-projects/` | Angular page for enabling/disabling project automation |
