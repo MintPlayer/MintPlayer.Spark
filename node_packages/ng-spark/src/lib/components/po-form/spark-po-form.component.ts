@@ -55,6 +55,8 @@ export class SparkPoFormComponent {
   validationErrors = input<ValidationError[]>([]);
   showButtons = input(false);
   isSaving = input(false);
+  parentId = input<string | undefined>(undefined);
+  parentType = input<string | undefined>(undefined);
 
   save = output<void>();
   cancel = output<void>();
@@ -154,6 +156,8 @@ export class SparkPoFormComponent {
   constructor() {
     effect(() => {
       const et = this.entityType();
+      const _pid = this.parentId();
+      const _ptype = this.parentType();
       if (et) {
         this.loadReferenceOptions();
         this.loadAsDetailTypes();
@@ -176,7 +180,10 @@ export class SparkPoFormComponent {
 
     const entries = await Promise.all(
       refAttrs.filter(a => a.query).map(async attr => {
-        const result = await this.sparkService.executeQueryByName(attr.query!);
+        const result = await this.sparkService.executeQueryByName(attr.query!, {
+          parentId: this.parentId(),
+          parentType: this.parentType(),
+        });
         return [attr.name, result.data] as [string, PersistentObject[]];
       })
     );
@@ -203,7 +210,10 @@ export class SparkPoFormComponent {
           if (refCols.length > 0) {
             const refEntries = await Promise.all(
               refCols.filter(c => c.query).map(async col => {
-                const result = await this.sparkService.executeQueryByName(col.query!);
+                const result = await this.sparkService.executeQueryByName(col.query!, {
+                  parentId: this.parentId(),
+                  parentType: this.parentType(),
+                });
                 return [col.name, result.data] as [string, PersistentObject[]];
               })
             );

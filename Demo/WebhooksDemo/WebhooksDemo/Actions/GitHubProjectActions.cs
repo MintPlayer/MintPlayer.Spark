@@ -23,4 +23,5 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
 
         await base.OnBeforeSaveAsync(obj, entity);
     }
+
 }

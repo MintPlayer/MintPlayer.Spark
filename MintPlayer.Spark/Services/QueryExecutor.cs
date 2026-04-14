@@ -238,6 +238,13 @@ internal partial class QueryExecutor : IQueryExecutor
             result = methodInfo.Method.Invoke(actionsInstance, []);
         }
 
+        // Await async methods (Task<IEnumerable<T>>, Task<IQueryable<T>>, etc.)
+        if (methodInfo.IsAsync && result is Task task)
+        {
+            await task;
+            result = task.GetType().GetProperty("Result")?.GetValue(task);
+        }
+
         if (result == null)
         {
             return [];
@@ -325,13 +332,21 @@ internal partial class QueryExecutor : IQueryExecutor
                 return null; // Invalid signature
             }
 
+            // Unwrap Task<T> for async methods
+            var isAsync = false;
+            if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            {
+                isAsync = true;
+                returnType = returnType.GetGenericArguments()[0];
+            }
+
             // Extract the element type from IQueryable<T> or IRavenQueryable<T>
             var elementType = ExtractQueryableElementType(returnType);
             if (elementType == null)
                 return null;
 
-            var isRavenQueryable = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsAssignableFrom(returnType);
-            var isQueryable = typeof(IQueryable).IsAssignableFrom(returnType);
+            var isRavenQueryable = !isAsync && typeof(IRavenQueryable<>).MakeGenericType(elementType).IsAssignableFrom(returnType);
+            var isQueryable = !isAsync && typeof(IQueryable).IsAssignableFrom(returnType);
 
             return new CustomQueryMethodInfo
             {
@@ -340,6 +355,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 ResultElementType = elementType,
                 IsQueryable = isQueryable,
                 IsRavenQueryable = isRavenQueryable,
+                IsAsync = isAsync,
             };
         });
     }
@@ -537,4 +553,5 @@ internal sealed class CustomQueryMethodInfo
     public required Type ResultElementType { get; init; }
     public required bool IsQueryable { get; init; }
     public required bool IsRavenQueryable { get; init; }
+    public required bool IsAsync { get; init; }
 }

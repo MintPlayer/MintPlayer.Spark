@@ -271,7 +271,9 @@
       <div bsModalBody>
         <spark-po-form
           [entityType]="attr | asDetailType:asDetailTypes()"
-          [(formData)]="asDetailFormData">
+          [(formData)]="asDetailFormData"
+          [parentId]="parentId()"
+          [parentType]="parentType()">
         </spark-po-form>
       </div>
     }

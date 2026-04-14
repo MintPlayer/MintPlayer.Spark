@@ -72,9 +72,12 @@ export class SparkService {
     ));
   }
 
-  async executeQueryByName(queryName: string): Promise<QueryResult> {
+  async executeQueryByName(queryName: string, options?: {
+    parentId?: string;
+    parentType?: string;
+  }): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
-    return query ? this.executeQuery(query.id) : { data: [], totalRecords: 0, skip: 0, take: 50 };
+    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { data: [], totalRecords: 0, skip: 0, take: 50 };
   }
 
   // Program Units

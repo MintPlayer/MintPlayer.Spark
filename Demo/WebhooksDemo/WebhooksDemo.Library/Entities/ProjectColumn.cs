@@ -2,6 +2,10 @@ namespace WebhooksDemo.Entities;
 
 public class ProjectColumn
 {
+    /// <summary>Exposes OptionId as the identifier for Spark reference pickers.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Id => OptionId;
+
     /// <summary>GitHub single-select option ID (e.g., "f75ad846").</summary>
     public string OptionId { get; set; } = string.Empty;
 

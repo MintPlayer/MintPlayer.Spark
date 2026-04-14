@@ -27,9 +27,11 @@
         "id": "ab791288-7d3c-42ce-bdd7-d0a37ae801b8",
         "name": "TargetColumnOptionId",
         "label": {
-          "en": "Target Column Option Id"
+          "en": "Target Column"
         },
-        "dataType": "string",
+        "dataType": "Reference",
+        "query": "GetProjectColumns",
+        "referenceType": "WebhooksDemo.Entities.ProjectColumn",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,

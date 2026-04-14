@@ -16,6 +16,8 @@
       [validationErrors]="validationErrors()"
       [showButtons]="true"
       [isSaving]="isSaving()"
+      [parentId]="id"
+      [parentType]="type"
       (save)="onSave()"
       (cancel)="onCancel()">
     </spark-po-form>
