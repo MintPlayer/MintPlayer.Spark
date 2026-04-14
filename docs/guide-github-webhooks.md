@@ -17,42 +17,87 @@ You need a GitHub App with webhook events enabled. If you don't have one yet, fo
 
 ### Creating a GitHub App
 
+GitHub Apps can be created under a **personal account** or an **organization account**. Organization-owned apps are recommended when the app needs access to organization-level resources like GitHub Projects V2.
+
 1. Go to your GitHub App settings:
    - **Personal account**: https://github.com/settings/apps
-   - **Organization**: `https://github.com/organizations/{org_name}/settings/apps`
+   - **Organization**: `https://github.com/organizations/{org_name}/settings/apps` (e.g., https://github.com/organizations/MintPlayer/settings/apps)
 
-2. Click **"New GitHub App"** and fill in:
+2. Click **"New GitHub App"** and fill in the basic settings:
 
    | Setting | Value |
    |---|---|
-   | **GitHub App name** | Any unique name (e.g., `MyWebhooksBot`) |
+   | **GitHub App name** | Any unique name (e.g., `MyWebhooksBot`). Must be globally unique across GitHub. |
    | **Homepage URL** | `https://github.com` (any valid URL) |
+   | **Callback URL** | Your OAuth redirect URI(s). Add one per environment — GitHub requires exact matches including port. For the WebhooksDemo: `https://localhost:60493/signin-github` (local dev) and your production URL if applicable. You can add multiple URLs. |
    | **Webhook URL** | Your production endpoint (e.g., `https://your-app.example.com/api/github/webhooks`) or a [smee.io](https://smee.io/) channel URL for local development |
-   | **Webhook secret** | Generate a strong random string (e.g., `openssl rand -hex 32`) |
-   | **Permissions** | Under "Repository permissions", grant access to the events you need (e.g., Issues → Read & write, Pull requests → Read & write) |
-   | **Subscribe to events** | Check the events you want to receive (e.g., Issues, Pull request, Check run) |
-   | **Callback URL** | Add all OAuth redirect URIs: your production URL (e.g., `https://your-app.example.com/signin-github`) **and** your local development URL (e.g., `https://localhost:60493/signin-github`). GitHub requires exact matches including port. |
-   | **Where can this GitHub App be installed?** | "Any account" for public apps, or "Only on this account" for private use |
+   | **Webhook secret** | Generate a strong random string: `openssl rand -hex 32` |
 
-   > **Tip:** You can add multiple callback URLs. If you develop locally, add both the production and localhost URLs so OAuth login works in both environments.
+3. Set **Permissions**. These control what the app can access:
 
-3. Click **"Create GitHub App"**. On the resulting page, note the following values:
-   - **App ID** — displayed at the top of the page
-   - **Client ID** — shown in the "About" section
+   **Repository permissions:**
 
-4. Scroll down to **"Private keys"** and click **"Generate a private key"**. This downloads a `.pem` file needed for making authenticated GitHub API calls (e.g., commenting on issues, moving project board items).
+   | Permission | Access | Needed for |
+   |---|---|---|
+   | **Issues** | Read & write | Receiving issue webhooks, commenting on issues |
+   | **Pull requests** | Read & write | Receiving PR webhooks, reading closing issue references |
+   | **Metadata** | Read-only | Automatically granted, required by GitHub |
 
-### Installing the GitHub App on repositories
+   **Organization permissions:**
 
-After creating the app, install it on the repositories you want to receive webhooks from:
+   | Permission | Access | Needed for |
+   |---|---|---|
+   | **Projects** | Read & write | Moving issues/PRs on GitHub Projects V2 boards |
+
+   > **Note:** Organization permissions require the app to be installed at the organization level. If the app only has repository permissions, it won't be able to access organization-owned project boards.
+
+4. **Subscribe to events.** Scroll down to "Subscribe to events" and check the events you want to handle:
+
+   | Event | Triggers on |
+   |---|---|
+   | **Issues** | Issue opened, closed, reopened, labeled, assigned, etc. |
+   | **Pull request** | PR opened, closed, merged, ready for review, converted to draft, etc. |
+   | **Pull request review** | Review submitted (approved, changes requested), dismissed |
+   | **Check run** | CI check completed |
+   | **Issue comment** | Comment added to an issue or PR |
+
+   Only subscribe to events you actually handle — unnecessary events create noise.
+
+5. Under **"Where can this GitHub App be installed?"**, choose:
+   - **"Any account"** — allows other organizations/users to install your app
+   - **"Only on this account"** — restricts to the owning account (recommended for private/internal apps)
+
+6. Click **"Create GitHub App"**.
+
+### After creation: collect credentials
+
+On the app's settings page after creation:
+
+1. **Note the App ID** — displayed at the top of the page (e.g., `123456`).
+
+2. **Note the Client ID** — shown in the "About" section (e.g., `Iv1.abc123def456`).
+
+3. **Generate a Client Secret** — scroll to "Client secrets" and click **"Generate a new client secret"**. Copy it immediately — GitHub only shows it once. This is needed for GitHub OAuth login.
+
+4. **Generate a Private Key** — scroll to "Private keys" and click **"Generate a private key"**. This downloads a `.pem` file. The private key is used to create installation tokens for authenticated API calls (e.g., moving items on project boards, commenting on issues).
+
+### Installing the GitHub App
+
+After creating the app, install it on the repositories/organizations you want to receive webhooks from:
 
 1. Navigate to your app's installation page:
    - **Personal account**: `https://github.com/settings/apps/{app_slug}/installations`
    - **Organization**: `https://github.com/organizations/{org_name}/settings/apps/{app_slug}/installations`
 
-2. Click **"Install"**, then choose either "All repositories" or "Only select repositories" and pick the repositories you want.
+   > **Tip:** The `{app_slug}` is the lowercase, hyphenated version of your app name (e.g., `my-webhooks-bot`).
+
+2. Click **"Install"**, then choose:
+   - **"All repositories"** — the app receives webhooks from every repository in the account
+   - **"Only select repositories"** — pick specific repositories
 
 3. Click **"Install"**.
+
+If you need the app on both a personal account and an organization, install it separately on each.
 
 ### Configuration values
 
@@ -63,7 +108,7 @@ After setup, you should have these values ready for your `appsettings.json` or u
 | **Webhook secret** | The string you entered when creating the app |
 | **App ID** | Top of the app's settings page |
 | **Client ID** | "About" section on the app's settings page |
-| **Client secret** | Generate one under "Client secrets" on the app's settings page (needed for OAuth login) |
+| **Client secret** | Generated under "Client secrets" on the app's settings page |
 | **Private key** | The `.pem` file downloaded after generating a private key |
 
 ## Setup
