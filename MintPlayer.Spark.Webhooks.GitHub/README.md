@@ -31,6 +31,20 @@ When creating the app, configure the **Webhook URL** (your production endpoint o
 
 For API calls (e.g. commenting on issues), you also need the app's **Client ID** and **private key** (.pem file).
 
+### Organization access for user OAuth login
+
+If your app also signs users in with GitHub OAuth (e.g. via `MintPlayer.Spark.Authorization`'s `AddGitHub(...)`) and authorizes access based on a user's GitHub organization memberships, be aware of **third-party OAuth application restrictions** at the organization level.
+
+When an organization enables OAuth app restrictions, `GET /user/orgs` will **omit** that organization from the response — even with the `read:org` scope granted — until an org owner approves the OAuth App for the organization. This means the user's org memberships appear incomplete from the app's perspective and any org-based authorization checks will fail for those organizations.
+
+To approve (or request approval for) the OAuth App on an organization, visit:
+
+```
+https://github.com/organizations/{org_name}/settings/oauth_application_policy
+```
+
+Note that this is a separate concern from GitHub **App** installations: a user can be an org member (and the GitHub App can be installed on the org) while the OAuth App is still unapproved. Both approvals are required for org-scoped user authorization to work end-to-end.
+
 ## Installation
 
 ```xml
