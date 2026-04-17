@@ -25,6 +25,7 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
     [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
     [Inject] private readonly ISignatureService _signatureService;
     [Inject] private readonly IServiceProvider _serviceProvider;
+    [Inject] private readonly IHostEnvironment _hostEnvironment;
     [Inject] private readonly ILogger<SparkWebhookEventProcessor> _logger;
 
     // Stashed per-request for catch-all message and dev forwarding
@@ -57,6 +58,14 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
                 var devSocketService = _serviceProvider.GetService<IDevWebSocketService>();
                 if (devSocketService != null)
                 {
+                    if (_hostEnvironment.IsDevelopment())
+                        _logger.LogWarning(
+                            """
+                            Received webhook, downstreaming to connected dev clients.
+                            Since GitHub:Development:AppId is configured, the webhook is NOT passed to the local WebhookEventProcessor.
+                            If you want to handle webhooks here, remove the GitHub:Development:AppId configuration value.
+                            """);
+
                     await devSocketService.SendToClients(caseInsensitiveHeaders, body);
                 }
                 return;
