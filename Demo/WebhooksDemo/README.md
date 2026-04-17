@@ -82,6 +82,31 @@ dotnet user-secrets set "GitHub:Development:PrivateKeyPath" "C:\path\to\dev-app.
 
 You can find the App ID and Client ID on each GitHub App's settings page. The private key is the `.pem` file downloaded for that app, and the client secret must be generated on the app's "Client secrets" section. For GitHub user login to work, enable **"Request user authorization (OAuth) during installation"** on the app settings page.
 
+For non-local environments (CI, production) where user-secrets aren't available, populate the same keys via environment variables or a local `appsettings.json` override — the expected shape is:
+
+```json
+{
+  "GitHub": {
+    "WebhookSecret": "",
+    "SmeeChannelUrl": "",
+    "Production": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    },
+    "Development": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    }
+  }
+}
+```
+
+The committed `appsettings.json` intentionally omits the `Production` and `Development` sections so empty placeholders don't shadow real values coming from user-secrets or environment variables.
+
 ### 6. Run the application
 
 ```bash
