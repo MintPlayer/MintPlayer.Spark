@@ -1,5 +1,17 @@
 # PRD: GitHub Project Board Automation for WebhooksDemo
 
+## Implementation note (2026-04-17)
+
+Parts of this PRD are historical. The feature shipped, but a few design points have since changed:
+
+- **Single GitHub App for webhooks + user login** (not a separate OAuth App). The `options.Scope.Add("read:user" / "read:org" / "project")` calls shown in the code samples below are silently ignored by GitHub Apps — their user access tokens take permissions from the app's installation, not from OAuth scopes. Remove them.
+- **Per-environment config keys.** `GitHub:ClientId` / `GitHub:ClientSecret` / `GitHub:PrivateKeyPath` / `GitHub:ProductionAppId` have moved under `GitHub:Production:*` and `GitHub:Development:*`. `Program.cs` picks the active environment via `IHostEnvironment.IsDevelopment()`.
+- **Org filtering** uses `GET /user/installations` at request time (see `OrganizationAccessService.cs`), not `/user/orgs` + claims. See `PRD-GitHubProject-OrgAuthorization.md` for the related deviation.
+
+The entity model, Actions hooks, webhook-handler design, and UI flow all match what shipped. Refer to the current `Demo/WebhooksDemo/WebhooksDemo/Program.cs` and `docs/guide-github-webhooks.md` for the authoritative config shape.
+
+---
+
 ## Overview
 
 Extend the WebhooksDemo application to allow users to log in with their GitHub account, select GitHub Projects (V2) they want to automate, and configure rules that map webhook events to project board column movements. When a matching webhook event fires, the system automatically moves the related issue/PR to the configured column on the project board.

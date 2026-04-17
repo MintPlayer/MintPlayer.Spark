@@ -1,8 +1,19 @@
 # PRD: Organization-Level Authorization for GitHubProject Entities
 
-**Status:** Draft
+**Status:** Superseded — implemented with a different data source
 **Date:** 2026-04-14
 **Scope:** `Demo/WebhooksDemo/` + targeted change in `MintPlayer.Spark.Authorization`
+
+---
+
+## Implementation note (2026-04-17)
+
+The row-level authorization shape described here (Actions overrides + `IOrganizationAccessService`) landed as designed. The data source for "which orgs can this user access?" was changed during implementation:
+
+- **Planned (this PRD):** Extract org memberships at login via `GET /user/orgs` and store them as `urn:github:org` claims on the user principal. Section 6.2, 8.1, 8.2 describe this.
+- **Shipped:** The app uses the **same GitHub App** for webhooks and user login. `OrganizationAccessService` calls `GET /user/installations` at request time using the stored user access token, deriving owners from `installations[].account.login` plus the user's own login. No `read:org` scope, no `urn:github:org` claims, no `SparkGitHubClaimTypes.Organization` constant, no changes in `GitHubAuthenticationExtensions.cs`.
+
+The `/user/installations` source avoids the third-party OAuth App approval gotcha described at the end of Section 9. See `Demo/WebhooksDemo/WebhooksDemo/Services/OrganizationAccessService.cs` for the current implementation. Everything else in this PRD — Actions overrides, controller filtering, webhook-handler carve-out, security considerations — still matches what was shipped.
 
 ---
 
