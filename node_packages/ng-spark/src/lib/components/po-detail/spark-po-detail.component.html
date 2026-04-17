@@ -94,7 +94,7 @@
                       }
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody class="align-middle">
                     @for (row of (attr.name | arrayValue:currentItem); track $index) {
                       <tr>
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {

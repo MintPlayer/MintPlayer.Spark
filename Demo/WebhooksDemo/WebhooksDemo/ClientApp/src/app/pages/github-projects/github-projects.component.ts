@@ -4,6 +4,7 @@ import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SparkService, PersistentObject, EntityType } from '@mintplayer/ng-spark';
 import { GitHubProjectsService } from '../../services/github-projects.service';
 import { GitHubProjectInfo } from '../../models/github-project';
@@ -17,7 +18,7 @@ interface ProjectRow extends GitHubProjectInfo {
 
 @Component({
   selector: 'app-github-projects',
-  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsAlertComponent],
+  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsAlertComponent, BsTableComponent],
   templateUrl: './github-projects.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

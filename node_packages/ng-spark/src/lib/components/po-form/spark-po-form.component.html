@@ -111,7 +111,7 @@
                   <th style="width: 50px"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="align-middle">
                 @for (row of formData()[attr.name] || []; track $index) {
                   <tr>
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
@@ -174,7 +174,7 @@
                   <th style="width: 80px"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="align-middle">
                 @for (row of formData()[attr.name] || []; track $index) {
                   <tr>
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
@@ -389,7 +389,7 @@
 
       <!-- List of items -->
       <bs-table [striped]="true" [hover]="true">
-        <tbody>
+        <tbody class="align-middle">
           @for (item of filteredLookupItems(); track item.key) {
             <tr
               [class.table-primary]="formData()[editingLookupAttr()?.name ?? ''] === item.key"

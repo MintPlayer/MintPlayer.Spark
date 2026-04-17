@@ -13,7 +13,7 @@
           } @else if (projects().length === 0) {
             <p class="text-muted">No GitHub Projects found. Make sure the GitHub App is installed on your repositories.</p>
           } @else {
-            <table class="table table-hover mb-0">
+            <bs-table [hover]="true" class="mb-0">
               <thead>
                 <tr>
                   <th>Project</th>
@@ -23,7 +23,7 @@
                   <th></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="align-middle">
                 @for (project of projects(); track project.id) {
                   <tr>
                     <td>{{ project.title }} <span class="text-muted">#{{ project.number }}</span></td>
@@ -62,7 +62,7 @@
                   </tr>
                 }
               </tbody>
-            </table>
+            </bs-table>
           }
         </div>
       </bs-card>
