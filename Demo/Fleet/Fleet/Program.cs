@@ -1,8 +1,16 @@
 using System.Text.RegularExpressions;
 using Fleet;
+using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddControllers();
 builder.Services.AddSparkFull(builder.Configuration, options =>
@@ -29,6 +37,8 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

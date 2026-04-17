@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -11,6 +12,13 @@ using WebhooksDemo;
 var builder = WebApplication.CreateBuilder(args);
 
 var envPrefix = builder.Environment.EnvironmentName;
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddControllers();
 builder.Services.AddWebhooksDemo();
@@ -65,6 +73,8 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 app.Use(async (_, next) => await next());
 app.UseHttpsRedirection();
