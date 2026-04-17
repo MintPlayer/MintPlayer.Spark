@@ -7,7 +7,7 @@ services:
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
     volumes:
-      - raven-data:/home/ravendb/RavenData
+      - raven-data:/opt/RavenDB/Server/RavenData
     networks:
       - web
     restart: unless-stopped
