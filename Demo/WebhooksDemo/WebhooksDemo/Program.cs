@@ -10,7 +10,7 @@ using WebhooksDemo;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var envPrefix = builder.Environment.IsDevelopment() ? "Development" : "Production";
+var envPrefix = builder.Environment.EnvironmentName;
 
 builder.Services.AddControllers();
 builder.Services.AddWebhooksDemo();
