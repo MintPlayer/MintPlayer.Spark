@@ -40,10 +40,10 @@ public partial class OrganizationAccessService : IOrganizationAccessService
             return _cachedOwners = [];
         }
 
-        var orgs = await QueryGitHubOrgsAsync(accessToken, cancellationToken);
+        var installationOwners = await QueryGitHubInstallationOwnersAsync(accessToken, cancellationToken);
         var username = principal.FindFirstValue(ClaimTypes.Name);
 
-        _cachedOwners = orgs
+        _cachedOwners = installationOwners
             .Concat(username is not null ? [username] : [])
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -57,39 +57,37 @@ public partial class OrganizationAccessService : IOrganizationAccessService
         return owners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task<string[]> QueryGitHubOrgsAsync(string accessToken, CancellationToken cancellationToken)
+    private async Task<string[]> QueryGitHubInstallationOwnersAsync(string accessToken, CancellationToken cancellationToken)
     {
         try
         {
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SparkWebhooksDemo", "1.0"));
 
-            const string query = "{ viewer { organizations(first: 100) { nodes { login } } } }";
-            var response = await httpClient.PostAsJsonAsync(
-                "https://api.github.com/graphql",
-                new { query },
+            var response = await httpClient.GetAsync(
+                "https://api.github.com/user/installations",
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("GitHub GraphQL org query failed: {StatusCode}", response.StatusCode);
+                _logger.LogWarning("GitHub /user/installations query failed: {StatusCode}", response.StatusCode);
                 return [];
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             using var doc = JsonDocument.Parse(json);
 
-            if (!doc.RootElement.TryGetProperty("data", out var data)) return [];
-            if (!data.TryGetProperty("viewer", out var viewer)) return [];
-            if (!viewer.TryGetProperty("organizations", out var orgsNode)) return [];
-            if (!orgsNode.TryGetProperty("nodes", out var nodes)) return [];
+            if (!doc.RootElement.TryGetProperty("installations", out var installations)) return [];
 
             var result = new List<string>();
-            foreach (var node in nodes.EnumerateArray())
+            foreach (var installation in installations.EnumerateArray())
             {
-                if (node.ValueKind == JsonValueKind.Null) continue;
-                var login = node.GetProperty("login").GetString();
+                if (!installation.TryGetProperty("account", out var account)) continue;
+                if (account.ValueKind == JsonValueKind.Null) continue;
+                if (!account.TryGetProperty("login", out var loginNode)) continue;
+                var login = loginNode.GetString();
                 if (!string.IsNullOrEmpty(login))
                     result.Add(login);
             }
@@ -97,7 +95,7 @@ public partial class OrganizationAccessService : IOrganizationAccessService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to query GitHub organizations");
+            _logger.LogError(ex, "Failed to query GitHub installations");
             return [];
         }
     }

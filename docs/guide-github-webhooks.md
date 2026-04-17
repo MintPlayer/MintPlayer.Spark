@@ -29,7 +29,9 @@ GitHub Apps can be created under a **personal account** or an **organization acc
    |---|---|
    | **GitHub App name** | Any unique name (e.g., `MyWebhooksBot`). Must be globally unique across GitHub. |
    | **Homepage URL** | `https://github.com` (any valid URL) |
-   | **Callback URL** | Your OAuth redirect URI(s). Add one per environment — GitHub requires exact matches including port. For the WebhooksDemo: `https://localhost:60493/signin-github` (local dev) and your production URL if applicable. You can add multiple URLs. |
+   | **Callback URL** | Your user-authorization redirect URI(s). Add one per environment — GitHub requires exact matches including port. For the WebhooksDemo: `https://localhost:60493/signin-github` (local dev) and your production URL if applicable. You can add multiple URLs. |
+   | **Request user authorization (OAuth) during installation** | Check this box if users will sign in with GitHub. Without it, the app only handles webhooks and cannot issue user access tokens. |
+   | **Expire user authorization tokens** | Leave unchecked for now — non-expiring user tokens avoid the need for refresh-token handling in your app. |
    | **Webhook URL** | Your production endpoint (e.g., `https://your-app.example.com/api/github/webhooks`) or a [smee.io](https://smee.io/) channel URL for local development |
    | **Webhook secret** | Generate a strong random string: `openssl rand -hex 32` |
 
@@ -203,19 +205,28 @@ Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
 
 Use the .NET user secrets manager for local development — never commit secrets to `appsettings.json`:
 
+App credentials are grouped by environment (`Production` / `Development`) so a single process can hold both sets at once. Which environment is active is decided by `IHostEnvironment.IsDevelopment()` in `Program.cs`.
+
 ```bash
 cd YourApp
 dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
-dotnet user-secrets set "GitHub:ClientId" "Iv1.abc123"
-dotnet user-secrets set "GitHub:ClientSecret" "your-client-secret"
-dotnet user-secrets set "GitHub:PrivateKeyPath" "C:\path\to\app.pem"
-dotnet user-secrets set "GitHub:ProductionAppId" "123456"
+
+# Production app credentials
+dotnet user-secrets set "GitHub:Production:AppId" "123456"
+dotnet user-secrets set "GitHub:Production:ClientId" "Iv1.abc123"
+dotnet user-secrets set "GitHub:Production:ClientSecret" "your-client-secret"
+dotnet user-secrets set "GitHub:Production:PrivateKeyPath" "C:\path\to\prod-app.pem"
+
+# Development app credentials (second GitHub App — see Option B below)
+dotnet user-secrets set "GitHub:Development:AppId" "789012"
+dotnet user-secrets set "GitHub:Development:ClientId" "Iv1.xyz789"
+dotnet user-secrets set "GitHub:Development:ClientSecret" "your-dev-client-secret"
+dotnet user-secrets set "GitHub:Development:PrivateKeyPath" "C:\path\to\dev-app.pem"
 ```
 
 For the WebSocket dev tunnel (Option B below):
 
 ```bash
-dotnet user-secrets set "GitHub:DevelopmentAppId" "789012"
 dotnet user-secrets set "GitHub:DevWebSocketUrl" "wss://your-app.example.com/spark/github/dev-ws"
 dotnet user-secrets set "GitHub:DevGitHubToken" "ghp_..."
 ```
@@ -228,7 +239,19 @@ Only non-secret defaults belong here. Leave secret values empty — user secrets
 {
   "GitHub": {
     "WebhookSecret": "",
-    "SmeeChannelUrl": ""
+    "SmeeChannelUrl": "",
+    "Production": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    },
+    "Development": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    }
   }
 }
 ```
@@ -238,10 +261,11 @@ For production (Docker), pass secrets via environment variables:
 ```yaml
 environment:
   - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
-  - GitHub__ClientId=${GITHUB_APP_CLIENT_ID}
-  - GitHub__ProductionAppId=${GITHUB_PRODUCTION_APP_ID}
-  - GitHub__DevelopmentAppId=${GITHUB_DEVELOPMENT_APP_ID}
-  - GitHub__PrivateKeyPath=/run/secrets/github-app.pem
+  - GitHub__Production__AppId=${GITHUB_PRODUCTION_APP_ID}
+  - GitHub__Production__ClientId=${GITHUB_PRODUCTION_CLIENT_ID}
+  - GitHub__Production__ClientSecret=${GITHUB_PRODUCTION_CLIENT_SECRET}
+  - GitHub__Production__PrivateKeyPath=/run/secrets/github-prod-app.pem
+  - GitHub__Development__AppId=${GITHUB_DEVELOPMENT_APP_ID}
 ```
 
 ### Options reference
@@ -301,8 +325,8 @@ Production needs both App IDs so it knows which webhooks to process locally and 
 spark.AddGithubWebhooks(options =>
 {
     options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
-    options.ProductionAppId = long.Parse(builder.Configuration["GitHub:ProductionAppId"]!);
-    options.DevelopmentAppId = long.Parse(builder.Configuration["GitHub:DevelopmentAppId"]!);
+    options.ProductionAppId = long.Parse(builder.Configuration["GitHub:Production:AppId"]!);
+    options.DevelopmentAppId = long.Parse(builder.Configuration["GitHub:Development:AppId"]!);
 });
 ```
 
@@ -399,24 +423,25 @@ public partial class MyRecipient : IRecipient<GitHubWebhookMessage<IssuesEvent>>
 }
 ```
 
-For user-facing features that need the user's own GitHub token (e.g., listing their projects), configure GitHub OAuth via Spark Authorization:
+For user-facing features that need the user's own GitHub token (e.g., listing their projects), configure GitHub user authorization via Spark Authorization:
 
 ```csharp
+var envPrefix = builder.Environment.IsDevelopment() ? "Development" : "Production";
+
 spark.AddAuthentication<SparkUser>(configureProviders: identity =>
 {
     identity.AddGitHub(options =>
     {
-        options.ClientId = builder.Configuration["GitHub:ClientId"]!;
-        options.ClientSecret = builder.Configuration["GitHub:ClientSecret"]!;
-        options.Scope.Add("read:user");
-        options.Scope.Add("read:org");      // Access organization memberships
-        options.Scope.Add("project");       // Access GitHub Projects V2 (read:project only covers classic projects)
+        options.ClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"]!;
+        options.ClientSecret = builder.Configuration[$"GitHub:{envPrefix}:ClientSecret"]!;
         options.SaveTokens = true;
     });
 });
 ```
 
-This requires a **Client secret** generated on the GitHub App's settings page (under "Client secrets"). The user's OAuth token is then available via `HttpContext.GetTokenAsync("access_token")`.
+This requires a **Client secret** generated on the GitHub App's settings page (under "Client secrets"), and the **"Request user authorization (OAuth) during installation"** option enabled on the app. The user's access token is then available via `HttpContext.GetTokenAsync("access_token")`.
+
+> **Note:** GitHub App user access tokens do **not** take OAuth scopes in the authorize URL — the token's permissions are derived from the app's installation permissions (set under "Permissions" on the app settings page). Calls to `options.Scope.Add(...)` are silently ignored.
 
 ## WebhooksDemo: Project board automation
 
