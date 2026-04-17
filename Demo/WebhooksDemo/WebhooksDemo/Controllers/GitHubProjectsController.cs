@@ -1,11 +1,11 @@
-using System.Net.Http.Headers;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Raven.Client.Documents.Session;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using WebhooksDemo.Entities;
 using WebhooksDemo.Services;
 
@@ -19,6 +19,7 @@ public partial class GitHubProjectsController : ControllerBase
     [Inject] private readonly IGitHubProjectService _projectService;
     [Inject] private readonly IAsyncDocumentSession _session;
     [Inject] private readonly IGitHubInstallationService _installationService;
+    [Inject] private readonly IOrganizationAccessService _orgAccess;
     [Options] private readonly Microsoft.Extensions.Options.IOptions<GitHubWebhooksOptions> _options;
 
     /// <summary>
@@ -37,6 +38,11 @@ public partial class GitHubProjectsController : ControllerBase
         foreach (var installation in installations)
         {
             var ownerLogin = installation.Account.Login;
+
+            // Only show installations for organizations/users the current user has access to
+            if (!await _orgAccess.IsOwnerAllowedAsync(ownerLogin))
+                continue;
+
             var ownerType = installation.TargetType.StringValue == "Organization" ? "Organization" : "User";
 
             // Create an installation token for this specific installation
@@ -93,6 +99,12 @@ public partial class GitHubProjectsController : ControllerBase
     [HttpGet("{nodeId}/columns")]
     public async Task<IActionResult> GetColumns(string nodeId, [FromQuery] long installationId)
     {
+        // Verify the user has access to the installation's organization
+        var appClient = await _installationService.CreateAppClientAsync();
+        var installation = await appClient.GitHubApps.GetInstallation(installationId);
+        if (!await _orgAccess.IsOwnerAllowedAsync(installation.Account.Login))
+            return Forbid();
+
         var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(installationId, nodeId);
         return Ok(new { statusFieldId, columns });
     }
@@ -106,6 +118,9 @@ public partial class GitHubProjectsController : ControllerBase
         var project = await _session.LoadAsync<GitHubProject>(documentId);
         if (project == null)
             return NotFound();
+
+        if (!await _orgAccess.IsOwnerAllowedAsync(project.OwnerLogin))
+            return Forbid();
 
         var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(project.InstallationId, project.NodeId);
         project.StatusFieldId = statusFieldId;

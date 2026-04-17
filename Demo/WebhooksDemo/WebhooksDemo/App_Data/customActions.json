@@ -1,0 +1,9 @@
+{
+  "SyncColumns": {
+    "displayName": { "en": "Sync Columns", "nl": "Kolommen synchroniseren" },
+    "icon": "ArrowRepeat",
+    "description": "Refreshes the project board columns from GitHub",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  }
+}

@@ -27,13 +27,30 @@
         "id": "ab791288-7d3c-42ce-bdd7-d0a37ae801b8",
         "name": "TargetColumnOptionId",
         "label": {
-          "en": "Target Column Option Id"
+          "en": "Target Column"
         },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 2,
+        "query": "GetProjectColumns",
+        "referenceType": "WebhooksDemo.Entities.ProjectColumn",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d4a7f1b3-8c62-4e95-a3d1-5b9e0f2c7d46",
+        "name": "AutoAddToProject",
+        "label": {
+          "en": "Auto Add To Project"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -48,7 +65,7 @@
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 3,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []

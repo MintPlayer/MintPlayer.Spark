@@ -64,15 +64,48 @@ dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
 dotnet user-secrets set "GitHub:SmeeChannelUrl" "https://smee.io/your-channel-id"
 ```
 
-Optionally, if your recipients need to make authenticated GitHub API calls (e.g., commenting on issues):
+Optionally, if your recipients need to make authenticated GitHub API calls (e.g., commenting on issues) or you want users to sign in with GitHub, configure the app credentials per environment. `Program.cs` picks `Production` or `Development` at runtime via `IHostEnvironment.IsDevelopment()`:
 
 ```bash
-dotnet user-secrets set "GitHub:AppId" "your-app-id"
-dotnet user-secrets set "GitHub:ClientId" "your-client-id"
-dotnet user-secrets set "GitHub:PrivateKeyPath" "C:\path\to\your-app.private-key.pem"
+# Production app credentials (active when not in Development)
+dotnet user-secrets set "GitHub:Production:AppId" "your-app-id"
+dotnet user-secrets set "GitHub:Production:ClientId" "your-client-id"
+dotnet user-secrets set "GitHub:Production:ClientSecret" "your-client-secret"
+dotnet user-secrets set "GitHub:Production:PrivateKeyPath" "C:\path\to\prod-app.private-key.pem"
+
+# Development app credentials (active when ASPNETCORE_ENVIRONMENT=Development)
+dotnet user-secrets set "GitHub:Development:AppId" "your-dev-app-id"
+dotnet user-secrets set "GitHub:Development:ClientId" "your-dev-client-id"
+dotnet user-secrets set "GitHub:Development:ClientSecret" "your-dev-client-secret"
+dotnet user-secrets set "GitHub:Development:PrivateKeyPath" "C:\path\to\dev-app.private-key.pem"
 ```
 
-You can find the App ID and Client ID on your GitHub App's settings page. The private key is the `.pem` file downloaded in step 2.
+You can find the App ID and Client ID on each GitHub App's settings page. The private key is the `.pem` file downloaded for that app, and the client secret must be generated on the app's "Client secrets" section. For GitHub user login to work, enable **"Request user authorization (OAuth) during installation"** on the app settings page.
+
+For non-local environments (CI, production) where user-secrets aren't available, populate the same keys via environment variables or a local `appsettings.json` override — the expected shape is:
+
+```json
+{
+  "GitHub": {
+    "WebhookSecret": "",
+    "SmeeChannelUrl": "",
+    "Production": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    },
+    "Development": {
+      "AppId": "",
+      "ClientId": "",
+      "ClientSecret": "",
+      "PrivateKeyPath": ""
+    }
+  }
+}
+```
+
+The committed `appsettings.json` intentionally omits the `Production` and `Development` sections so empty placeholders don't shadow real values coming from user-secrets or environment variables.
 
 ### 6. Run the application
 

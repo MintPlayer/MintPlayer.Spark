@@ -31,6 +31,22 @@ When creating the app, configure the **Webhook URL** (your production endpoint o
 
 For API calls (e.g. commenting on issues), you also need the app's **Client ID** and **private key** (.pem file).
 
+### Organization access for logged-in users
+
+If your app signs users in with GitHub and authorizes access based on which GitHub organizations they belong to, **use the same GitHub App for user login**. GitHub Apps support a user-authorization (sign-in) flow via their Client ID + Client Secret; enable **"Request user authorization (OAuth) during installation"** on the app's settings page.
+
+With that in place, query `GET https://api.github.com/user/installations` (authenticated with the user's access token) to discover which accounts — personal and organizational — the user has installed the app on. Each installation's `account.login` is an owner you can authorize the user to act on.
+
+```
+GET https://api.github.com/user/installations
+Authorization: Bearer {user_access_token}
+Accept: application/vnd.github+json
+```
+
+This sidesteps a classic footgun: if you use a **separate** OAuth App for login and read org memberships via `GET /user/orgs` or the GraphQL `viewer.organizations` query, GitHub **silently omits** any org that has enabled third-party OAuth App restrictions until an org owner approves the OAuth App at `https://github.com/organizations/{org_name}/settings/oauth_application_policy`. GitHub App installations don't have this restriction — installing the app on the org *is* the approval.
+
+**Recommendation:** one GitHub App, used for both webhooks and user login. Discover org access via `/user/installations`. No separate OAuth App, no approval dance.
+
 ## Installation
 
 ```xml

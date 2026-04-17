@@ -16,8 +16,23 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a1c3e8f2-7b54-4d19-b6e0-9f2a1d3c5e78",
+        "name": "InstallationId",
+        "label": {
+          "en": "Installation Id"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -31,8 +46,8 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 2,
+        "isReadOnly": true,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -46,8 +61,8 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
+        "isReadOnly": true,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -61,8 +76,8 @@
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
+        "isReadOnly": true,
+        "order": 5,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -76,8 +91,8 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 5,
+        "isReadOnly": true,
+        "order": 6,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -91,8 +106,8 @@
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 6,
+        "isReadOnly": true,
+        "order": 7,
         "asDetailType": "WebhooksDemo.Entities.ProjectColumn",
         "isArray": true,
         "showedOn": "Query, PersistentObject",
@@ -108,7 +123,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 7,
+        "order": 8,
         "asDetailType": "WebhooksDemo.Entities.EventColumnMapping",
         "isArray": true,
         "showedOn": "Query, PersistentObject",
@@ -130,6 +145,7 @@
       ],
       "renderMode": "Pagination",
       "useProjection": false,
+      "entityType": "GitHubProject",
       "isStreamingQuery": false
     }
   ]

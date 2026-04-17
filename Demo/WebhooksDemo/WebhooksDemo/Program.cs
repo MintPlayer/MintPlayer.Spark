@@ -10,6 +10,8 @@ using WebhooksDemo;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var envPrefix = builder.Environment.EnvironmentName;
+
 builder.Services.AddControllers();
 builder.Services.AddWebhooksDemo();
 builder.Services.AddSpark(builder.Configuration, spark =>
@@ -21,11 +23,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     {
         identity.AddGitHub(options =>
         {
-            options.ClientId = builder.Configuration["GitHub:ClientId"] ?? string.Empty;
-            options.ClientSecret = builder.Configuration["GitHub:ClientSecret"] ?? string.Empty;
-            options.Scope.Add("read:user");
-            options.Scope.Add("read:org");
-            options.Scope.Add("project");
+            options.ClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"] ?? string.Empty;
+            options.ClientSecret = builder.Configuration[$"GitHub:{envPrefix}:ClientSecret"] ?? string.Empty;
             options.SaveTokens = true;
         });
     });
@@ -34,13 +33,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
-        options.ClientId = builder.Configuration["GitHub:ClientId"];
-        options.PrivateKeyPath = builder.Configuration["GitHub:PrivateKeyPath"];
+        options.ClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"];
+        options.PrivateKeyPath = builder.Configuration[$"GitHub:{envPrefix}:PrivateKeyPath"];
 
-        if (long.TryParse(builder.Configuration["GitHub:ProductionAppId"], out var prodId))
+        if (long.TryParse(builder.Configuration["GitHub:Production:AppId"], out var prodId))
             options.ProductionAppId = prodId;
 
-        if (long.TryParse(builder.Configuration["GitHub:DevelopmentAppId"], out var devId))
+        if (long.TryParse(builder.Configuration["GitHub:Development:AppId"], out var devId))
             options.DevelopmentAppId = devId;
 
         // Local development: smee.io tunnel (when no production deployment exists)

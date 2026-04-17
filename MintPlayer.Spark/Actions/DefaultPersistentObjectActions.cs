@@ -44,7 +44,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (entity != null)
         {
             await OnBeforeDeleteAsync(entity);
-            session.Delete(id);
+            session.Delete(entity);
             await session.SaveChangesAsync();
         }
     }

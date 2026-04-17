@@ -64,27 +64,33 @@ public partial class GitHubProjectService : IGitHubProjectService
         public List<ProjectColumn> Options { get; init; } = [];
     }
 
-    public async Task<bool> MoveIssueToColumnAsync(
-        long installationId, GitHubProject project, string owner, string repo, int issueNumber, string columnOptionId)
+    public async Task<bool> MoveOrAddIssueToColumnAsync(
+        long installationId, GitHubProject project, string owner, string repo, int issueNumber, string columnOptionId, bool add = true)
     {
         var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var itemId = await GetIssueProjectItemIdAsync(graphQL, owner, repo, issueNumber, project.NodeId);
         if (itemId == null)
-            return false;
+        {
+            if (!add) return false;
+            itemId = await AddIssueToProjectAsync(graphQL, owner, repo, issueNumber, project.NodeId);
+        }
 
         await MoveToColumnAsync(graphQL, project.NodeId, project.StatusFieldId, itemId.Value, columnOptionId);
         return true;
     }
 
-    public async Task<bool> MovePullRequestToColumnAsync(
-        long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId)
+    public async Task<bool> MoveOrAddPullRequestToColumnAsync(
+        long installationId, GitHubProject project, string owner, string repo, int prNumber, string columnOptionId, bool add = true)
     {
         var graphQL = await CreateGraphQLConnectionAsync(installationId);
 
         var itemId = await GetPullRequestProjectItemIdAsync(graphQL, owner, repo, prNumber, project.NodeId);
         if (itemId == null)
-            return false;
+        {
+            if (!add) return false;
+            itemId = await AddPullRequestToProjectAsync(graphQL, owner, repo, prNumber, project.NodeId);
+        }
 
         await MoveToColumnAsync(graphQL, project.NodeId, project.StatusFieldId, itemId.Value, columnOptionId);
         return true;
@@ -108,6 +114,45 @@ public partial class GitHubProjectService : IGitHubProjectService
                 }));
 
         return results.Select(r => (r.RepoName, r.Number)).ToList();
+    }
+
+    private async Task<ID> AddIssueToProjectAsync(
+        Connection graphQL, string owner, string repo, int issueNumber, string projectNodeId)
+    {
+        var issueNodeId = await graphQL.Run(
+            new Query()
+                .Repository(owner: owner, name: repo)
+                .Issue(issueNumber)
+                .Select(i => i.Id));
+
+        return await AddItemToProjectAsync(graphQL, projectNodeId, issueNodeId);
+    }
+
+    private async Task<ID> AddPullRequestToProjectAsync(
+        Connection graphQL, string owner, string repo, int prNumber, string projectNodeId)
+    {
+        var prNodeId = await graphQL.Run(
+            new Query()
+                .Repository(owner: owner, name: repo)
+                .PullRequest(prNumber)
+                .Select(pr => pr.Id));
+
+        return await AddItemToProjectAsync(graphQL, projectNodeId, prNodeId);
+    }
+
+    private async Task<ID> AddItemToProjectAsync(Connection graphQL, string projectNodeId, ID contentNodeId)
+    {
+        var itemId = await graphQL.Run(
+            new Mutation()
+                .AddProjectV2ItemById(new AddProjectV2ItemByIdInput
+                {
+                    ClientMutationId = Guid.NewGuid().ToString(),
+                    ProjectId = new ID(projectNodeId),
+                    ContentId = contentNodeId,
+                })
+                .Select(r => r.Item.Id));
+
+        return itemId;
     }
 
     private async Task<ID?> GetIssueProjectItemIdAsync(

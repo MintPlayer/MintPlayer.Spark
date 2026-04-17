@@ -40,5 +40,21 @@
     ],
     "queries": []
   },
-  "queries": []
+  "queries": [
+    {
+      "id": "b8e4c2a1-3f67-4d89-a1b5-7c9e2d4f6a83",
+      "name": "GetProjectColumns",
+      "source": "Custom.GetProjectColumns",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "ProjectColumn",
+      "isStreamingQuery": false
+    }
+  ]
 }

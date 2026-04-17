@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.AllFeatures</PackageId>
-		<Version>10.0.0-preview.29</Version>
+		<Version>10.0.0-preview.30</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>All-in-one package for MintPlayer.Spark. References all Spark libraries and source-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
