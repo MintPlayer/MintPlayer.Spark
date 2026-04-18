@@ -5,8 +5,8 @@
     "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
     "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
     "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
-    "test:affected": "nx affected --target=test",
-    "test": "nx run-many --target=test --all"
+    "test:affected": "nx affected --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library",
+    "test": "nx run-many --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library"
   },
   "workspaces": [
     "node_packages/ng-spark",
@@ -46,6 +46,7 @@
     "@angular/build": "21.1.5",
     "@angular/cli": "21.1.5",
     "@angular/compiler-cli": "21.1.6",
+    "@nx-dotnet/core": "^3.0.2",
     "jsdom": "27.3.0",
     "ng-packagr": "21.1.0",
     "nx": "^20.8.4",

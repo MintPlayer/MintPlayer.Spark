@@ -487,42 +487,59 @@ The repo is already a hybrid (npm workspaces + .NET solution). Adopt **Nx** as t
 - **`nx affected --target=test`** — computes affected projects from `git diff base..HEAD` and runs only those, across both ecosystems. A PR that only touches `ng-spark-auth` won't run `MintPlayer.Spark.Tests`.
 - **Nx Cloud** — remote task cache keyed by `(project, target, input hash)`. Inputs include source files, deps, and tool versions. Cache hit on repeat runs of the same commit = 0 s. Free tier (500 computes/month) is typically enough for a solo/small-team OSS repo; pricing scales from there.
 
-### 8.3 Alternative if Nx is too invasive
+### 8.3 Repo setup — one-time, automatic after clone
 
-If adopting Nx is too large a repo change:
+Nx + `@nx-dotnet/core` are committed to the repo. Anyone cloning runs:
+
+```bash
+npm install
+```
+
+That's it — no interactive init. The `nx.json` file registers `@nx-dotnet/core` as a plugin; it automatically discovers every `.csproj` from the solution and surfaces it as an Nx project alongside the npm workspaces. `nx show projects` lists all 30 projects (20 .NET + 6 npm workspaces + 4 ng-packagr libs).
+
+**Component-level Angular tests** (the future ones needing `TestBed`) need `@analogjs/vite-plugin-angular` + `@analogjs/vitest-angular`. When that day comes: add them to `devDependencies` in the root `package.json` and run `npm install`. No other ceremony.
+
+### 8.4 Nx Cloud — remote task caching setup
+
+Nx Cloud turns the local cache into a team-wide cache, so repeat CI runs on unchanged code complete in ~0 s. It's optional but recommended.
+
+**First-time setup (one person, once per repo):**
+
+1. Run the interactive connect command locally:
+   ```bash
+   npx nx connect
+   ```
+   This launches a browser, asks you to sign in / create a workspace at `nx.app`, and writes an `"nxCloudId"` into `nx.json`. Commit that change.
+
+2. From the Nx Cloud web UI, create a read-write access token for CI.
+
+3. Add the token to GitHub Actions repo secrets as `NX_CLOUD_ACCESS_TOKEN`.
+
+**Per-developer setup (every contributor):** nothing. The committed `nxCloudId` is enough for read access; writes only happen when `NX_CLOUD_ACCESS_TOKEN` is present (CI).
+
+**Opt-out:** Nx Cloud is fully optional. If `nxCloudId` is absent, Nx falls back to the local-only cache, which still works across shell sessions on the same machine.
+
+### 8.5 Alternative if Nx is ever removed
 
 - **Turborepo** for the JS side (`turbo.json` with `inputs` globs). Works cleanly for `npm test`, less smart than Nx's graph analysis.
-- **Custom .NET affected script** — `scripts/affected-dotnet.sh` that:
-  1. Runs `git diff --name-only $BASE` to find changed files.
-  2. Maps files to `.csproj` via file-system walk.
-  3. Walks the reverse-dependency graph using `dotnet list <proj> reference` to find all test projects transitively depending on a changed project.
-  4. Runs `dotnet test <affected-test-project>` for each.
-- **GitHub Actions cache** on `~/.nuget/packages`, `bin/`, `obj/` keyed by `hashFiles('**/*.csproj', '**/packages.lock.json')` — covers build caching but not test-result caching.
+- **Custom .NET affected script** — `scripts/affected-dotnet.sh` that diffs git, maps to `.csproj`, walks the reverse-reference graph, and runs `dotnet test` on affected test projects.
+- **GitHub Actions cache** on `~/.nuget/packages`, `bin/`, `obj/` keyed by `hashFiles('**/*.csproj')` — covers build caching but not test-result caching.
 
-This route is workable but reinvents what Nx already does. Recommend Nx unless there's a strong aversion to it.
+Recorded for completeness; Nx + `@nx-dotnet/core` is the committed choice.
 
-### 8.4 Workflow — recommended (Nx-based)
+### 8.6 Workflow — GitHub Actions
 
 ```yaml
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      nx-base: ${{ steps.nx-base.outputs.base }}
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: nrwl/nx-set-shas@v4
-        id: nx-base  # computes base SHA for `nx affected`
-
   test-affected:
-    needs: setup
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: nrwl/nx-set-shas@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'npm' }
       - uses: actions/setup-dotnet@v4
@@ -543,7 +560,7 @@ jobs:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 ```
 
-### 8.5 Notes
+### 8.7 Notes
 
 - RavenDB.TestDriver is self-contained — no Docker in CI.
 - `dotnet test` parallelizes across classes but NOT within a Raven-backed class (the embedded server is per-class).
