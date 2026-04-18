@@ -10,11 +10,11 @@ public class AuthorizationOptionsTests
     {
         var options = new AuthorizationOptions();
 
-        Assert.Equal("App_Data/security.json", options.SecurityFilePath);
-        Assert.Equal(DefaultAccessBehavior.DenyAll, options.DefaultBehavior);
-        Assert.True(options.CacheRights);
-        Assert.Equal(5, options.CacheExpirationMinutes);
-        Assert.True(options.EnableHotReload);
+        options.SecurityFilePath.Should().Be("App_Data/security.json");
+        options.DefaultBehavior.Should().Be(DefaultAccessBehavior.DenyAll);
+        options.CacheRights.Should().BeTrue();
+        options.CacheExpirationMinutes.Should().Be(5);
+        options.EnableHotReload.Should().BeTrue();
     }
 
     [Fact]
@@ -29,11 +29,11 @@ public class AuthorizationOptionsTests
             EnableHotReload = false
         };
 
-        Assert.Equal("custom/path.json", options.SecurityFilePath);
-        Assert.Equal(DefaultAccessBehavior.AllowAll, options.DefaultBehavior);
-        Assert.False(options.CacheRights);
-        Assert.Equal(30, options.CacheExpirationMinutes);
-        Assert.False(options.EnableHotReload);
+        options.SecurityFilePath.Should().Be("custom/path.json");
+        options.DefaultBehavior.Should().Be(DefaultAccessBehavior.AllowAll);
+        options.CacheRights.Should().BeFalse();
+        options.CacheExpirationMinutes.Should().Be(30);
+        options.EnableHotReload.Should().BeFalse();
     }
 }
 
@@ -44,11 +44,11 @@ public class SparkFullOptionsTests
     {
         var options = new SparkFullOptions();
 
-        Assert.Null(options.Authorization);
-        Assert.Null(options.Identity);
-        Assert.Null(options.IdentityProviders);
-        Assert.Null(options.Messaging);
-        Assert.Null(options.Replication);
+        options.Authorization.Should().BeNull();
+        options.Identity.Should().BeNull();
+        options.IdentityProviders.Should().BeNull();
+        options.Messaging.Should().BeNull();
+        options.Replication.Should().BeNull();
     }
 
     [Fact]
@@ -58,9 +58,9 @@ public class SparkFullOptionsTests
         var invoked = false;
 
         options.Authorization = _ => invoked = true;
-        options.Authorization.Invoke(new AuthorizationOptions());
+        options.Authorization!.Invoke(new AuthorizationOptions());
 
-        Assert.True(invoked);
+        invoked.Should().BeTrue();
     }
 
     [Fact]
@@ -71,13 +71,13 @@ public class SparkFullOptionsTests
 
         options.Replication = _ => invoked = true;
 
-        Assert.NotNull(options.Replication);
-        options.Replication.Invoke(new MintPlayer.Spark.Replication.Abstractions.Configuration.SparkReplicationOptions
+        options.Replication.Should().NotBeNull();
+        options.Replication!.Invoke(new MintPlayer.Spark.Replication.Abstractions.Configuration.SparkReplicationOptions
         {
             ModuleName = "Test",
             ModuleUrl = "https://localhost:5000"
         });
-        Assert.True(invoked);
+        invoked.Should().BeTrue();
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public class SparkFullOptionsTests
 
         options.Messaging = _ => invoked = true;
 
-        Assert.NotNull(options.Messaging);
-        options.Messaging.Invoke(new MintPlayer.Spark.Messaging.SparkMessagingOptions());
-        Assert.True(invoked);
+        options.Messaging.Should().NotBeNull();
+        options.Messaging!.Invoke(new MintPlayer.Spark.Messaging.SparkMessagingOptions());
+        invoked.Should().BeTrue();
     }
 }

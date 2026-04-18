@@ -71,38 +71,34 @@ We need a consolidated plan before adding any tests, so the infrastructure is sh
 | HTTP mocking | `WireMock.Net` | 1.6.x |
 | ASP.NET Core integration | `Microsoft.AspNetCore.Mvc.Testing` (`WebApplicationFactory`) | 10.0.x |
 
-### 3.2 CronosCore test helper — adoption
+### 3.2 CronosCore test helper — design reference
 
-Location: `C:\Repos\CronosCore\CronosCore.RavenDB.UnitTests`. The library already publishes to NuGet (current `3.22.0`).
+Location: `C:\Repos\CronosCore\CronosCore.RavenDB.UnitTests`. Published as NuGet (current `3.22.0`).
 
-**Adopt only the RavenDB-generic surface — NOT the Vidyano-specific types:**
+**Treated as a design reference, NOT a runtime dependency.** Implementation finding during milestone 1:
 
-Reuse:
-- `RavenDBTestDriver` (base class: embedded server, license provisioning, per-test store lifecycle).
-- `ImportScopeCollection` + `ImportReader` (JSON fixture I/O; RavenDB Smuggler format — `{ "Results": [ { "@metadata": { "@id": "...", "@collection": "..." }, ... } ] }`).
-- Snapshot setup pattern (`DerivePathInfo` → `VerifyResults/{ClassName}/{MethodName}.verified.*`).
-- `.targets` file (auto-copies the RavenDB server binaries, cleans run artifacts).
+- `RavenDBTestDriver.cs` is NUnit-coupled (`[TestFixture]`, `[SetUp]`, `[TearDown]`) — direct `ProjectReference` from an xUnit project would pull a second test runner.
+- Its `GetLicenseAsync()` fetches a private CronosCore Azure blob, not accessible from Spark's CI.
 
-Do NOT reuse (Vidyano-coupled):
+**Therefore**: `MintPlayer.Spark.Testing` depends directly on `RavenDB.TestDriver` (framework-neutral `RavenTestDriver` base class) and re-implements the small amount of value-added code following CronosCore's *patterns*:
+
+- `SparkTestDriver : RavenTestDriver, IAsyncLifetime` — xUnit-native per-test lifecycle.
+- `JsonFixtureImporter` — reads the same `{ "Results": [ { "@metadata": { "@id": "…", "@collection": "…" }, … } ] }` JSON format used by CronosCore fixtures.
+- `VerifyDefaults.Initialize()` — sets `Verifier.DerivePathInfo(...)` → `VerifyResults/{ClassName}/{MethodName}.verified.*`, wired via `[ModuleInitializer]`.
+
+Explicitly NOT ported (Vidyano-coupled):
 - `VidyanoTestDriver` and its partials (`.Ex`, `.Exceptions`, `.Hooks`, `.ImportReader`, `.ImportScope`, `.Mockups`, `.Options`, `.VidyanoServer`).
 - `PersistentObject`, `PersistentObjectAttribute`, `PersistentObject.ViewModelBase` — those are Vidyano view-model wrappers; Spark has its own types.
 
-**Implementation**: introduce a small `MintPlayer.Spark.Testing` project (new) that exposes:
+Consuming from `MintPlayer.Spark.Tests`:
 
-```csharp
-public abstract class SparkTestDriver : RavenDBTestDriver
-{
-    protected WebApplicationFactory<Program> Factory { get; private set; } = null!;
-    protected HttpClient Client => Factory.CreateClient();
-
-    protected void SeedFixtures(params string[] jsonFiles) { /* uses ImportReader */ }
-    protected Task<T> SendAsync<T>(HttpRequestMessage req) { /* JSON round-trip */ }
-}
+```xml
+<ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
 ```
 
-This project is consumed as a `ProjectReference` by `MintPlayer.Spark.Tests` (and any future per-library test projects).
+Further `WebApplicationFactory`-based helpers (for HTTP endpoint tests) land on `SparkTestDriver` as they're needed — no premature abstraction.
 
-Reference for `CronosCore.RavenDB.UnitTests` details: [reference_cronoscore_raven_tests.md](../../.claude/projects/C--Repos-MintPlayer-Spark/memory/reference_cronoscore_raven_tests.md).
+Reference for CronosCore details: [reference_cronoscore_raven_tests.md](../../.claude/projects/C--Repos-MintPlayer-Spark/memory/reference_cronoscore_raven_tests.md).
 
 ### 3.3 Test project layout
 
