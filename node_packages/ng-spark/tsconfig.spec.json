@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "outDir": "./out-tsc/spec",
+    "types": ["node", "vitest/globals"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["**/*.spec.ts", "**/*.ts"],
+  "exclude": ["node_modules", "dist", "out-tsc"]
+}

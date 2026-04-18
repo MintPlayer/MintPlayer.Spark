@@ -3,6 +3,11 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Nx cache + build metadata
+.nx/
+out-tsc/
+*.tsbuildinfo
+
 # User-specific files
 *.rsuser
 *.suo

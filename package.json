@@ -1,6 +1,13 @@
 {
   "private": true,
   "description": "Root package.json - npm workspaces monorepo. Single node_modules for all Angular projects.",
+  "scripts": {
+    "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
+    "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
+    "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
+    "test:affected": "nx affected --target=test",
+    "test": "nx run-many --target=test --all"
+  },
   "workspaces": [
     "node_packages/ng-spark",
     "node_packages/ng-spark-auth",
@@ -41,6 +48,7 @@
     "@angular/compiler-cli": "21.1.6",
     "jsdom": "27.3.0",
     "ng-packagr": "21.1.0",
+    "nx": "^20.8.4",
     "typescript": "5.9.3",
     "vitest": "4.0.16"
   },
