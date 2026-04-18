@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { TranslateKeyPipe } from '@mintplayer/ng-spark';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 
 @Component({
   selector: 'app-home',

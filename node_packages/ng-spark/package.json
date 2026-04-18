@@ -1,7 +1,7 @@
 {
   "name": "@mintplayer/ng-spark",
   "private": false,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Angular component library for MintPlayer.Spark CRUD applications",
   "repository": {
     "type": "git",
@@ -9,7 +9,8 @@
     "directory": "node_packages/ng-spark"
   },
   "scripts": {
-    "build": "ng-packagr -p ng-package.json"
+    "build": "ng-packagr -p ng-package.json",
+    "test": "vitest run --config vitest.config.ts"
   },
   "peerDependencies": {
     "@angular/core": "^21.0.0",

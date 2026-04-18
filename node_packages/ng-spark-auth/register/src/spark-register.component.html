@@ -1,0 +1,68 @@
+<div class="d-flex justify-content-center">
+  <bs-card style="width: 100%; max-width: 400px;">
+    <bs-card-header>
+      <h3 class="mb-0 text-center">{{ 'auth.register' | t }}</h3>
+    </bs-card-header>
+    <div class="p-4">
+      @if (errorMessage()) {
+        <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
+      }
+
+      <bs-form>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+          <div class="mb-3">
+            <label for="email" class="form-label">{{ 'auth.email' | t }}</label>
+            <input
+              type="email"
+              id="email"
+              formControlName="email"
+              autocomplete="email"
+            />
+            @if (form.get('email')?.touched && form.get('email')?.hasError('email')) {
+              <div class="text-danger mt-1">{{ 'auth.invalidEmail' | t }}</div>
+            }
+          </div>
+
+          <div class="mb-3">
+            <label for="password" class="form-label">{{ 'auth.password' | t }}</label>
+            <input
+              type="password"
+              id="password"
+              formControlName="password"
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label for="confirmPassword" class="form-label">{{ 'auth.confirmPassword' | t }}</label>
+            <input
+              type="password"
+              id="confirmPassword"
+              formControlName="confirmPassword"
+              autocomplete="new-password"
+            />
+            @if (form.touched && form.hasError('passwordMismatch')) {
+              <div class="text-danger mt-1">{{ 'auth.passwordMismatch' | t }}</div>
+            }
+          </div>
+
+          <button
+            type="submit"
+            class="btn btn-primary w-100"
+            [disabled]="loading()"
+          >
+            @if (loading()) {
+              <bs-spinner class="me-1" />
+            }
+            {{ 'auth.register' | t }}
+          </button>
+        </form>
+      </bs-form>
+
+      <div class="mt-3 text-center">
+        <span>{{ 'auth.alreadyHaveAccount' | t }} </span>
+        <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
+      </div>
+    </div>
+  </bs-card>
+</div>

@@ -5,8 +5,12 @@ import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintpl
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { SparkService, SparkLanguageService, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, ProgramUnitGroup } from '@mintplayer/ng-spark';
-import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark/pipes';
+import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
 

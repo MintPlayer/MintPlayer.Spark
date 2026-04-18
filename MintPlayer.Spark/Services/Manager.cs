@@ -32,8 +32,8 @@ internal sealed partial class Manager : IManager
 
     public string GetMessage(string key, string language, params object[] parameters)
     {
-        var translations = translationsLoader.GetTranslations();
-        if (!translations.TryGetValue(key, out var translatedString))
+        var translatedString = translationsLoader.Resolve(key);
+        if (translatedString is null)
             return key;
 
         var template = translatedString.GetValue(language);

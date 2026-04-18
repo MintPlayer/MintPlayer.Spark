@@ -2,6 +2,11 @@
   "persistentObject": {
     "id": "f3563c06-65ff-448c-a1c0-bf02cda54301",
     "name": "GitHubProject",
+    "description": {
+      "en": "GitHub Project",
+      "fr": "Projet GitHub",
+      "nl": "GitHub-project"
+    },
     "clrType": "WebhooksDemo.Entities.GitHubProject",
     "displayAttribute": "Name",
     "tabs": [],
@@ -11,7 +16,9 @@
         "id": "4db2469c-d314-438e-8ab4-54b2ac836ea3",
         "name": "Name",
         "label": {
-          "en": "Name"
+          "en": "Name",
+          "fr": "Nom",
+          "nl": "Naam"
         },
         "dataType": "string",
         "isRequired": false,
@@ -26,7 +33,9 @@
         "id": "a1c3e8f2-7b54-4d19-b6e0-9f2a1d3c5e78",
         "name": "InstallationId",
         "label": {
-          "en": "Installation Id"
+          "en": "Installation Id",
+          "fr": "ID d'installation",
+          "nl": "Installatie-ID"
         },
         "dataType": "number",
         "isRequired": true,
@@ -41,7 +50,9 @@
         "id": "e6756090-9547-49f0-97e0-a84d323012ad",
         "name": "NodeId",
         "label": {
-          "en": "Node Id"
+          "en": "Node Id",
+          "fr": "ID du nœud",
+          "nl": "Node-ID"
         },
         "dataType": "string",
         "isRequired": false,
@@ -56,7 +67,9 @@
         "id": "1da662ce-4840-4d5d-acf6-6311d6f768f0",
         "name": "OwnerLogin",
         "label": {
-          "en": "Owner Login"
+          "en": "Owner Login",
+          "fr": "Identifiant du propriétaire",
+          "nl": "Gebruikersnaam eigenaar"
         },
         "dataType": "string",
         "isRequired": false,
@@ -71,7 +84,9 @@
         "id": "3b0d09fd-28d1-4eae-b507-16beca65bb97",
         "name": "Number",
         "label": {
-          "en": "Number"
+          "en": "Number",
+          "fr": "Numéro",
+          "nl": "Nummer"
         },
         "dataType": "number",
         "isRequired": true,
@@ -86,7 +101,9 @@
         "id": "35d8cff1-44ec-48f6-882a-8f0068b94c8e",
         "name": "StatusFieldId",
         "label": {
-          "en": "Status Field Id"
+          "en": "Status Field Id",
+          "fr": "ID du champ de statut",
+          "nl": "ID van statusveld"
         },
         "dataType": "string",
         "isRequired": false,
@@ -101,7 +118,9 @@
         "id": "0f6fb821-8ae1-4783-995c-d5a7d957e07b",
         "name": "Columns",
         "label": {
-          "en": "Columns"
+          "en": "Columns",
+          "fr": "Colonnes",
+          "nl": "Kolommen"
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -117,7 +136,9 @@
         "id": "1ae2bdbf-2286-4e6a-8fc1-3e8bb326d508",
         "name": "EventMappings",
         "label": {
-          "en": "Event Mappings"
+          "en": "Event Mappings",
+          "fr": "Mappages d'événements",
+          "nl": "Gebeurtenismappings"
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -136,6 +157,11 @@
     {
       "id": "c74f2a68-5225-41d4-9078-7055bf7ad794",
       "name": "GetGitHubProjects",
+      "description": {
+        "en": "GitHub Projects",
+        "fr": "Projets GitHub",
+        "nl": "GitHub-projecten"
+      },
       "source": "Database.GitHubProjects",
       "sortColumns": [
         {

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { SparkPoEditComponent } from '@mintplayer/ng-spark';
+import { SparkPoEditComponent } from '@mintplayer/ng-spark/po-edit';
 
 @Component({
   selector: 'app-po-edit',

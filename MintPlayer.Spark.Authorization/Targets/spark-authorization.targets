@@ -48,6 +48,54 @@
 	</Target>
 
 	<!--
+	  Target: SparkAuthValidateSourceGeneratorsReference
+	  Validates that MintPlayer.Spark.SourceGenerators is referenced correctly.
+	  MintPlayer.Spark.Authorization ships source generators as a companion package; the
+	  consuming project must wire them up as analyzers, otherwise the generated DI
+	  registration code will be missing at compile time.
+
+	  Diagnostics:
+	    SPARK001 — companion PackageReference is missing.
+	    SPARK002 — companion PackageReference is present but PrivateAssets is not "all".
+	    SPARK003 — companion PackageReference is present but IncludeAssets does not include "analyzers".
+
+	  The $(MintPlayerSparkSourceGeneratorsReferenceValidated) property dedupes with
+	  MintPlayer.Spark's equivalent target — first to run wins, second skips silently.
+	  Flag is set before the Error tasks so it's set even when the validation fails.
+	-->
+	<Target Name="SparkAuthValidateSourceGeneratorsReference"
+	        BeforeTargets="CoreCompile"
+	        Condition="'$(MintPlayerSparkSourceGeneratorsReferenceValidated)' != 'true'">
+
+		<PropertyGroup>
+			<MintPlayerSparkSourceGeneratorsReferenceValidated>true</MintPlayerSparkSourceGeneratorsReferenceValidated>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_SparkSourceGeneratorsRef Include="@(PackageReference)"
+			                           Condition="'%(Identity)' == 'MintPlayer.Spark.SourceGenerators'" />
+		</ItemGroup>
+
+		<PropertyGroup Condition="'@(_SparkSourceGeneratorsRef)' != ''">
+			<_SparkSourceGeneratorsPrivateAssets>%(_SparkSourceGeneratorsRef.PrivateAssets)</_SparkSourceGeneratorsPrivateAssets>
+			<_SparkSourceGeneratorsIncludeAssets>%(_SparkSourceGeneratorsRef.IncludeAssets)</_SparkSourceGeneratorsIncludeAssets>
+		</PropertyGroup>
+
+		<Error Code="SPARK001"
+		       Text="MintPlayer.Spark.Authorization requires a PackageReference to MintPlayer.Spark.SourceGenerators. Add the following to your project:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
+		       Condition="'@(_SparkSourceGeneratorsRef)' == ''" />
+
+		<Error Code="SPARK002"
+		       Text="MintPlayer.Spark.SourceGenerators PackageReference is missing PrivateAssets=&quot;all&quot; (found: '$(_SparkSourceGeneratorsPrivateAssets)'). Update the entry to:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
+		       Condition="'@(_SparkSourceGeneratorsRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' != 'all'" />
+
+		<Error Code="SPARK003"
+		       Text="MintPlayer.Spark.SourceGenerators PackageReference IncludeAssets must include 'analyzers' (found: '$(_SparkSourceGeneratorsIncludeAssets)'). Update the entry to:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
+		       Condition="'@(_SparkSourceGeneratorsRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' == 'all' AND !$(_SparkSourceGeneratorsIncludeAssets.Contains('analyzers'))" />
+
+	</Target>
+
+	<!--
 	  Target: SparkAuthGenerateSetupFile
 	  Generates a TypeScript setup/scaffolding file if it doesn't already exist.
 	  The file is generated ONCE and never overwritten, so developers can customize it.

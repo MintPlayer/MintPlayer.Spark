@@ -5,7 +5,8 @@ import { vimeoPlugin } from '@mintplayer/vimeo-player';
 import { dailymotionPlugin } from '@mintplayer/dailymotion-player';
 import { soundCloudPlugin } from '@mintplayer/soundcloud-player';
 import { filePlugin } from '@mintplayer/file-player';
-import { EntityAttributeDefinition, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-video-player-detail-renderer',

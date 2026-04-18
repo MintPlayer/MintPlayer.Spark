@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { sparkRoutes } from '@mintplayer/ng-spark';
+import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { ShellComponent } from './shell/shell.component';
 
 export const routes: Routes = [

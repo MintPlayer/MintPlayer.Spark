@@ -26,10 +26,10 @@ public class IndexRegistryTests
 
         var registration = _registry.GetRegistrationForCollectionType(typeof(TestCar));
 
-        Assert.NotNull(registration);
-        Assert.Equal(typeof(TestCar), registration.CollectionType);
-        Assert.Equal(typeof(TestCar_Overview), registration.IndexType);
-        Assert.Equal("TestCar_Overview", registration.IndexName);
+        registration.Should().NotBeNull();
+        registration!.CollectionType.Should().Be(typeof(TestCar));
+        registration.IndexType.Should().Be(typeof(TestCar_Overview));
+        registration.IndexName.Should().Be("TestCar_Overview");
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class IndexRegistryTests
 
         var registration = _registry.GetRegistrationByIndexName("TestCar_Overview");
 
-        Assert.NotNull(registration);
+        registration.Should().NotBeNull();
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class IndexRegistryTests
 
         var registration = _registry.GetRegistrationByIndexName("testcar_overview");
 
-        Assert.NotNull(registration);
+        registration.Should().NotBeNull();
     }
 
     [Fact]
@@ -58,9 +58,7 @@ public class IndexRegistryTests
         _registry.RegisterIndex(typeof(TestCar_Overview));
         _registry.RegisterIndex(typeof(TestCar_Overview));
 
-        var all = _registry.GetAllRegistrations().ToList();
-
-        Assert.Single(all);
+        _registry.GetAllRegistrations().Should().ContainSingle();
     }
 
     [Fact]
@@ -71,8 +69,8 @@ public class IndexRegistryTests
 
         var registration = _registry.GetRegistrationForCollectionType(typeof(TestCar));
 
-        Assert.NotNull(registration);
-        Assert.Equal(typeof(VTestCar), registration.ProjectionType);
+        registration.Should().NotBeNull();
+        registration!.ProjectionType.Should().Be(typeof(VTestCar));
     }
 
     [Fact]
@@ -81,40 +79,38 @@ public class IndexRegistryTests
         _registry.RegisterIndex(typeof(TestCar_Overview));
         _registry.RegisterProjection(typeof(VTestCar), typeof(TestCar_Overview));
 
-        Assert.True(_registry.IsProjectionType(typeof(VTestCar)));
+        _registry.IsProjectionType(typeof(VTestCar)).Should().BeTrue();
     }
 
     [Fact]
     public void IsProjectionType_ReturnsFalseForUnknownType()
     {
-        Assert.False(_registry.IsProjectionType(typeof(string)));
+        _registry.IsProjectionType(typeof(string)).Should().BeFalse();
     }
 
     [Fact]
     public void GetRegistrationForCollectionType_ReturnsNull_WhenNotRegistered()
     {
-        Assert.Null(_registry.GetRegistrationForCollectionType(typeof(string)));
+        _registry.GetRegistrationForCollectionType(typeof(string)).Should().BeNull();
     }
 
     [Fact]
     public void GetRegistrationByIndexName_ReturnsNull_WhenNotRegistered()
     {
-        Assert.Null(_registry.GetRegistrationByIndexName("NonExistent"));
+        _registry.GetRegistrationByIndexName("NonExistent").Should().BeNull();
     }
 
     [Fact]
     public void GetAllRegistrations_ReturnsEmpty_WhenNoneRegistered()
     {
-        Assert.Empty(_registry.GetAllRegistrations());
+        _registry.GetAllRegistrations().Should().BeEmpty();
     }
 
     [Fact]
     public void RegisterProjection_BeforeIndex_DoesNotThrow()
     {
-        // Registers projection for an index not yet known — should not throw
         _registry.RegisterProjection(typeof(VTestCar), typeof(TestCar_Overview));
 
-        // Projection is not associated (index wasn't registered)
-        Assert.False(_registry.IsProjectionType(typeof(VTestCar)));
+        _registry.IsProjectionType(typeof(VTestCar)).Should().BeFalse();
     }
 }

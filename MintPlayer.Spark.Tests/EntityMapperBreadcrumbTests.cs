@@ -4,10 +4,6 @@ using NSubstitute;
 
 namespace MintPlayer.Spark.Tests;
 
-/// <summary>
-/// Regression tests: ensures reference attributes on query results
-/// are resolved to breadcrumbs (not raw document IDs).
-/// </summary>
 public class EntityMapperBreadcrumbTests
 {
     private static readonly Guid PersonTypeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -73,8 +69,8 @@ public class EntityMapperBreadcrumbTests
         var result = _mapper.ToPersistentObject(person, PersonTypeId, includedDocuments);
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
-        Assert.Equal("Companies/abc-123", companyAttr.Value);
-        Assert.Equal("Acme Corp", companyAttr.Breadcrumb);
+        companyAttr.Value.Should().Be("Companies/abc-123");
+        companyAttr.Breadcrumb.Should().Be("Acme Corp");
     }
 
     [Fact]
@@ -88,13 +84,11 @@ public class EntityMapperBreadcrumbTests
             Company = "Companies/abc-123",
         };
 
-        // This is the bug: when includedDocuments is null (as it was in QueryExecutor),
-        // the breadcrumb is not set, and the raw ID is shown in the UI.
         var result = _mapper.ToPersistentObject(person, PersonTypeId);
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
-        Assert.Equal("Companies/abc-123", companyAttr.Value);
-        Assert.Null(companyAttr.Breadcrumb);
+        companyAttr.Value.Should().Be("Companies/abc-123");
+        companyAttr.Breadcrumb.Should().BeNull();
     }
 
     [Fact]
@@ -111,7 +105,7 @@ public class EntityMapperBreadcrumbTests
         var result = _mapper.ToPersistentObject(person, PersonTypeId, new Dictionary<string, object>());
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
-        Assert.Null(companyAttr.Breadcrumb);
+        companyAttr.Breadcrumb.Should().BeNull();
     }
 
     [Fact]
@@ -125,12 +119,10 @@ public class EntityMapperBreadcrumbTests
             Company = null,
         };
 
-        var includedDocuments = new Dictionary<string, object>();
-
-        var result = _mapper.ToPersistentObject(person, PersonTypeId, includedDocuments);
+        var result = _mapper.ToPersistentObject(person, PersonTypeId, new Dictionary<string, object>());
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
-        Assert.Null(companyAttr.Value);
-        Assert.Null(companyAttr.Breadcrumb);
+        companyAttr.Value.Should().BeNull();
+        companyAttr.Breadcrumb.Should().BeNull();
     }
 }

@@ -27,6 +27,10 @@
 		<ProjectReference Include="..\..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<AdditionalFiles Include="App_Data\translations.json" />
+	</ItemGroup>
+
 	<!-- Angular build during publish -->
 	<!-- <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
 		<Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />

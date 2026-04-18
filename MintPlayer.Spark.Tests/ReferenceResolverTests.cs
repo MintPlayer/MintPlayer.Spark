@@ -12,45 +12,38 @@ public class ReferenceResolverTests
     {
         var props = _resolver.GetReferenceProperties(typeof(TestPerson));
 
-        Assert.Single(props);
-        Assert.Equal("Company", props[0].Property.Name);
-        Assert.Equal(typeof(TestCompany), props[0].Attribute.TargetType);
+        props.Should().ContainSingle();
+        props[0].Property.Name.Should().Be("Company");
+        props[0].Attribute.TargetType.Should().Be(typeof(TestCompany));
     }
 
     [Fact]
     public void GetReferenceProperties_ReturnsEmptyForTypeWithoutReferences()
     {
-        var props = _resolver.GetReferenceProperties(typeof(TestCompany));
-
-        Assert.Empty(props);
+        _resolver.GetReferenceProperties(typeof(TestCompany)).Should().BeEmpty();
     }
 
     [Fact]
     public void GetReferenceProperties_ProjectionFallsBackToBaseType()
     {
-        // VTestPerson has no [Reference] on Company, but TestPerson does.
-        // The fallback should return VTestPerson's PropertyInfo + TestPerson's ReferenceAttribute.
         var props = _resolver.GetReferenceProperties(typeof(VTestPerson), typeof(TestPerson));
 
-        Assert.Single(props);
-        Assert.Equal("Company", props[0].Property.Name);
-        Assert.Equal(typeof(TestCompany), props[0].Attribute.TargetType);
-        // PropertyInfo must be from the projection type (VTestPerson), not the base type
-        Assert.Equal(typeof(VTestPerson), props[0].Property.DeclaringType);
+        props.Should().ContainSingle();
+        props[0].Property.Name.Should().Be("Company");
+        props[0].Attribute.TargetType.Should().Be(typeof(TestCompany));
+        props[0].Property.DeclaringType.Should().Be(typeof(VTestPerson));
     }
 
     [Fact]
     public void GetReferenceProperties_ProjectionWithOwnReferenceDoesNotFallBack()
     {
-        // If the projection type has its own [Reference], use it directly.
         var props = _resolver.GetReferenceProperties(typeof(TestPerson), typeof(TestPerson));
 
-        Assert.Single(props);
-        Assert.Equal(typeof(TestPerson), props[0].Property.DeclaringType);
+        props.Should().ContainSingle();
+        props[0].Property.DeclaringType.Should().Be(typeof(TestPerson));
     }
 }
 
-// Test entity types for reference resolution tests
 public class TestCompany
 {
     public string? Id { get; set; }
@@ -67,10 +60,6 @@ public class TestPerson
     public string? Company { get; set; }
 }
 
-/// <summary>
-/// Simulates a projection type (like VPerson) that has the same property names
-/// but lacks [Reference] attributes.
-/// </summary>
 public class VTestPerson
 {
     public string? Id { get; set; }

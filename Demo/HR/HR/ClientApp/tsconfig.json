@@ -1,6 +1,7 @@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
 {
+  "extends": "../../../../tsconfig.base.json",
   "compileOnSave": false,
   "compilerOptions": {
     "strict": true,
@@ -13,11 +14,7 @@
     "experimentalDecorators": true,
     "importHelpers": true,
     "target": "ES2022",
-    "module": "preserve",
-    "paths": {
-      "@mintplayer/ng-spark": ["../../../../node_packages/ng-spark/src/public-api"],
-      "@mintplayer/ng-spark-auth": ["../../../../node_packages/ng-spark-auth/src/public-api"]
-    }
+    "module": "preserve"
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

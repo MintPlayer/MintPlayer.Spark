@@ -2,16 +2,14 @@
 // This file was generated once and will NOT be overwritten.
 // Feel free to customize it to match your application's needs.
 
-import {
-  provideSparkAuth,
-  withSparkAuth,
-  sparkAuthRoutes,
-  sparkAuthGuard,
-  SparkAuthBarComponent,
-  SparkAuthService,
-} from '@mintplayer/ng-spark-auth';
+import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
+import { sparkAuthRoutes } from '@mintplayer/ng-spark-auth/routes';
+import { sparkAuthGuard } from '@mintplayer/ng-spark-auth/guards';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 
-import type { SparkAuthConfig, SparkAuthRouteConfig } from '@mintplayer/ng-spark-auth';
+import type { SparkAuthConfig } from '@mintplayer/ng-spark-auth';
+import type { SparkAuthRouteConfig } from '@mintplayer/ng-spark-auth/models';
 
 /**
  * Provides Spark authentication services.

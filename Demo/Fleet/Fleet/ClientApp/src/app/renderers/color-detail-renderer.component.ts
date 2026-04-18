@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-color-detail-renderer',

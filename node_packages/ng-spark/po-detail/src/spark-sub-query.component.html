@@ -1,0 +1,92 @@
+@if (query(); as q) {
+  <bs-card style="display: block; margin: 1rem 0;">
+    <bs-card-header>{{ (q.description | resolveTranslation) || q.name }}</bs-card-header>
+    @if (loading()) {
+      <div class="text-center p-3">
+        <bs-spinner />
+      </div>
+    } @else if (q.renderMode === 'VirtualScrolling') {
+      @if (virtualDataSource(); as vds) {
+        <div class="p-3 d-flex flex-column" style="height: 400px;">
+          <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
+              [(settings)]="virtualSettings"
+              [dataSource]="vds"
+              [isResponsive]="true"
+              (settingsChange)="onSettingsChange()">
+            @for (attr of visibleAttributes(); track attr.id) {
+              <div *bsDatatableColumn="attr.name; sortable: true">
+                {{ (attr.label | resolveTranslation) || attr.name }}
+              </div>
+            }
+
+            <ng-template bsVirtualRowTemplate let-item>
+              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+                <td>
+                  @if (item) {
+                    @if (first && canRead()) {
+                      <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
+                        <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                      </a>
+                    } @else {
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                    }
+                  } @else {
+                    &nbsp;
+                  }
+                </td>
+              }
+            </ng-template>
+          </bs-virtual-datatable>
+        </div>
+      }
+    } @else {
+      <div class="p-3">
+        @if (!paginationData() || paginationData()!.totalRecords === 0) {
+          <div class="text-center text-muted">
+            {{ 'common.noItemsFound' | t }}
+          </div>
+        } @else {
+          <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
+            @for (attr of visibleAttributes(); track attr.id) {
+              <div *bsDatatableColumn="attr.name; sortable: true">
+                {{ (attr.label | resolveTranslation) || attr.name }}
+              </div>
+            }
+
+            <tr *bsRowTemplate="let item of paginationData()">
+              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+                <td>
+                  @if (first && canRead()) {
+                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                    </a>
+                  } @else {
+                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
+                  }
+                </td>
+              }
+            </tr>
+          </bs-datatable>
+        }
+      </div>
+    }
+  </bs-card>
+}
+
+<ng-template #cellContent let-item let-attr="attr">
+  @if (getColumnRendererComponent(attr); as rendererType) {
+    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
+  } @else if (attr.dataType === 'boolean') {
+    <input type="checkbox"
+      [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+      disabled
+      onclick="return false;">
+  } @else if (attr.dataType === 'color') {
+    @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+    @if (colorVal) {
+      <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+    }
+  } @else {
+    {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
+  }
+</ng-template>

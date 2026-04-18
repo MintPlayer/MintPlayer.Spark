@@ -29,4 +29,8 @@
 		<ProjectReference Include="..\WebhooksDemo.Library\WebhooksDemo.Library.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<AdditionalFiles Include="App_Data\translations.json" />
+	</ItemGroup>
+
 </Project>

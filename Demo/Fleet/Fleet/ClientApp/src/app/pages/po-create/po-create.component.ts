@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { SparkPoCreateComponent } from '@mintplayer/ng-spark';
+import { SparkPoCreateComponent } from '@mintplayer/ng-spark/po-create';
 
 @Component({
   selector: 'app-po-create',

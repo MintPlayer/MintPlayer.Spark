@@ -5,7 +5,9 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { SparkService, PersistentObject, EntityType } from '@mintplayer/ng-spark';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { PersistentObject, EntityType } from '@mintplayer/ng-spark/models';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { GitHubProjectsService } from '../../services/github-projects.service';
 import { GitHubProjectInfo } from '../../models/github-project';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -18,13 +20,14 @@ interface ProjectRow extends GitHubProjectInfo {
 
 @Component({
   selector: 'app-github-projects',
-  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsAlertComponent, BsTableComponent],
+  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsAlertComponent, BsTableComponent, TranslateKeyPipe],
   templateUrl: './github-projects.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class GitHubProjectsComponent implements OnInit {
   private readonly ghService = inject(GitHubProjectsService);
   private readonly sparkService = inject(SparkService);
+  private readonly lang = inject(SparkLanguageService);
   readonly colors = Color;
 
   private entityType: EntityType | undefined;
@@ -69,7 +72,7 @@ export default class GitHubProjectsComponent implements OnInit {
         };
       }));
     } catch (err: any) {
-      this.error.set(err.message || 'Failed to load projects');
+      this.error.set(err.message || this.lang.t('app.failedToLoadProjects'));
     } finally {
       this.loading.set(false);
     }
@@ -86,7 +89,7 @@ export default class GitHubProjectsComponent implements OnInit {
         await this.sparkService.delete('GitHubProject', project.sparkDocumentId);
         this.updateProject(idx, { enabled: false, sparkDocumentId: undefined, loading: false });
       } else {
-        if (!this.entityType) throw new Error('Entity type not loaded');
+        if (!this.entityType) throw new Error(this.lang.t('entityTypeNotLoaded'));
 
         const attrDef = (name: string) => this.entityType!.attributes.find(a => a.name === name);
         const created = await this.sparkService.create('GitHubProject', {
@@ -104,7 +107,7 @@ export default class GitHubProjectsComponent implements OnInit {
       }
     } catch (err: any) {
       this.updateProject(idx, { loading: false });
-      this.error.set(err.message || 'Operation failed');
+      this.error.set(err.message || this.lang.t('operationFailed'));
     }
   }
 

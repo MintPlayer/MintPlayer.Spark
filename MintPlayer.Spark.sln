@@ -67,6 +67,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WebhooksDemo", "WebhooksDem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebhooksDemo.Library", "Demo\WebhooksDemo\WebhooksDemo.Library\WebhooksDemo.Library.csproj", "{6604858D-A285-485F-8191-EE9368348AA1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Testing", "MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj", "{39C9BFC8-F370-4837-825B-2704D60E1F9F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -365,6 +367,18 @@ Global
 		{6604858D-A285-485F-8191-EE9368348AA1}.Release|x64.Build.0 = Release|Any CPU
 		{6604858D-A285-485F-8191-EE9368348AA1}.Release|x86.ActiveCfg = Release|Any CPU
 		{6604858D-A285-485F-8191-EE9368348AA1}.Release|x86.Build.0 = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|x64.Build.0 = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Debug|x86.Build.0 = Debug|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|x64.ActiveCfg = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|x64.Build.0 = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|x86.ActiveCfg = Release|Any CPU
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

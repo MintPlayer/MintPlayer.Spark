@@ -1,0 +1,27 @@
+<bs-container>
+<div class="container">
+  @if (entityType(); as et) {
+    <h2 class="mb-4">{{ 'common.create' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
+
+    @for (error of generalErrors(); track error.errorMessage) {
+      <bs-alert [type]="colors.danger" class="mb-3">
+        {{ error.errorMessage }}
+      </bs-alert>
+    }
+
+    <spark-po-form
+      [entityType]="et"
+      [(formData)]="formData"
+      [validationErrors]="validationErrors()"
+      [showButtons]="true"
+      [isSaving]="isSaving()"
+      (save)="onSave()"
+      (cancel)="onCancel()">
+    </spark-po-form>
+  } @else {
+    <div class="text-center p-5">
+      <bs-spinner />
+    </div>
+  }
+</div>
+</bs-container>
