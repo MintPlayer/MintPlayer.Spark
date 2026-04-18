@@ -104,6 +104,3 @@ jobs:
         token: ${{ github.token }}
         access: 'public'
         provenance: true
-
-    - run: npx nx fix-ci
-      if: always()

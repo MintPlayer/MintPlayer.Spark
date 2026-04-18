@@ -5,6 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!--
+      This is a test-utilities library (SparkTestDriver, JsonFixtureImporter, VerifyDefaults),
+      not a test project. It references xunit for IAsyncLifetime types but has no [Fact] tests.
+      Without this flag, `dotnet test <sln>` invokes VSTest on it, fails to discover tests,
+      and exits non-zero even though there are no actual errors.
+    -->
+    <IsTestProject>false</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
