@@ -26,6 +26,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!--
+		Validates consumer wiring of MintPlayer.Spark.SourceGenerators.
+		buildTransitive/ makes this flow to transitive consumers as well.
+		-->
+		<None Include="Targets\spark.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
 	</ItemGroup>
 
