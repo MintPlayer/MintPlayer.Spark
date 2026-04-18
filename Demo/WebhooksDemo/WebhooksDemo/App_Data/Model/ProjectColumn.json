@@ -2,6 +2,11 @@
   "persistentObject": {
     "id": "9e027ba6-3e37-4cea-bdf5-72d1eb7bfbc8",
     "name": "ProjectColumn",
+    "description": {
+      "en": "Project Column",
+      "fr": "Colonne de projet",
+      "nl": "Projectkolom"
+    },
     "clrType": "WebhooksDemo.Entities.ProjectColumn",
     "displayAttribute": "Name",
     "tabs": [],
@@ -11,7 +16,9 @@
         "id": "321ad915-7e10-4e72-b565-4c99a3cea470",
         "name": "OptionId",
         "label": {
-          "en": "Option Id"
+          "en": "Option Id",
+          "fr": "ID d'option",
+          "nl": "Optie-ID"
         },
         "dataType": "string",
         "isRequired": false,
@@ -26,7 +33,9 @@
         "id": "6fee34b8-1271-40a8-92aa-18d1ca9229a3",
         "name": "Name",
         "label": {
-          "en": "Name"
+          "en": "Name",
+          "fr": "Nom",
+          "nl": "Naam"
         },
         "dataType": "string",
         "isRequired": false,
@@ -44,6 +53,11 @@
     {
       "id": "b8e4c2a1-3f67-4d89-a1b5-7c9e2d4f6a83",
       "name": "GetProjectColumns",
+      "description": {
+        "en": "Project Columns",
+        "fr": "Colonnes de projet",
+        "nl": "Projectkolommen"
+      },
       "source": "Custom.GetProjectColumns",
       "sortColumns": [
         {

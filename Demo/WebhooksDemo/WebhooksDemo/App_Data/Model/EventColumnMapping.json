@@ -2,6 +2,11 @@
   "persistentObject": {
     "id": "93426213-155e-450d-94b4-22a44a0cf01b",
     "name": "EventColumnMapping",
+    "description": {
+      "en": "Event Column Mapping",
+      "fr": "Mappage colonne-événement",
+      "nl": "Gebeurtenis-kolommapping"
+    },
     "clrType": "WebhooksDemo.Entities.EventColumnMapping",
     "displayAttribute": "WebhookEvent",
     "tabs": [],
@@ -11,7 +16,9 @@
         "id": "9b13fbd4-ca44-4c34-b6f9-71c950e0a23b",
         "name": "WebhookEvent",
         "label": {
-          "en": "Webhook Event"
+          "en": "Webhook Event",
+          "fr": "Événement webhook",
+          "nl": "Webhook-gebeurtenis"
         },
         "dataType": "string",
         "isRequired": false,
@@ -27,7 +34,9 @@
         "id": "ab791288-7d3c-42ce-bdd7-d0a37ae801b8",
         "name": "TargetColumnOptionId",
         "label": {
-          "en": "Target Column"
+          "en": "Target Column",
+          "fr": "Colonne cible",
+          "nl": "Doelkolom"
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -44,7 +53,9 @@
         "id": "d4a7f1b3-8c62-4e95-a3d1-5b9e0f2c7d46",
         "name": "AutoAddToProject",
         "label": {
-          "en": "Auto Add To Project"
+          "en": "Auto Add To Project",
+          "fr": "Ajouter automatiquement au projet",
+          "nl": "Automatisch toevoegen aan project"
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -59,7 +70,9 @@
         "id": "6b35ef4a-b1f3-4acb-9cc3-56db4dbc892a",
         "name": "MoveLinkedIssues",
         "label": {
-          "en": "Move Linked Issues"
+          "en": "Move Linked Issues",
+          "fr": "Déplacer les tickets liés",
+          "nl": "Gelinkte issues verplaatsen"
         },
         "dataType": "boolean",
         "isRequired": true,
