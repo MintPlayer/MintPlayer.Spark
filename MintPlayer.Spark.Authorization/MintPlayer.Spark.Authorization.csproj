@@ -44,6 +44,11 @@
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AdditionalFiles Include="App_Data\translations.json" />
 	</ItemGroup>
 
 	<ItemGroup>

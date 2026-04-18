@@ -1,0 +1,35 @@
+{
+  "common": {
+    "save":        { "en": "Save",       "fr": "Enregistrer",    "nl": "Opslaan" },
+    "cancel":      { "en": "Cancel",     "fr": "Annuler",        "nl": "Annuleren" },
+    "edit":        { "en": "Edit",       "fr": "Modifier",       "nl": "Bewerken" },
+    "delete":      { "en": "Delete",     "fr": "Supprimer",      "nl": "Verwijderen" },
+    "new":         { "en": "New",        "fr": "Nouveau",        "nl": "Nieuw" },
+    "create":      { "en": "Create",     "fr": "Créer",          "nl": "Aanmaken" },
+    "back":        { "en": "Back",       "fr": "Retour",         "nl": "Terug" },
+    "select":      { "en": "Select",     "fr": "Sélectionner",   "nl": "Selecteer" },
+    "add":         { "en": "Add",        "fr": "Ajouter",        "nl": "Toevoegen" },
+    "search":      { "en": "Search...",  "fr": "Rechercher...",  "nl": "Zoeken..." },
+    "loading":     { "en": "Loading...", "fr": "Chargement...",  "nl": "Laden..." },
+    "details":     { "en": "Details",    "fr": "Détails",        "nl": "Details" },
+    "properties":  { "en": "Properties", "fr": "Propriétés",     "nl": "Eigenschappen" },
+    "selectPlaceholder": { "en": "-- Select --",     "fr": "-- Sélectionner --", "nl": "-- Selecteer --" },
+    "noItemsFound":      { "en": "No items found",   "fr": "Aucun élément trouvé", "nl": "Geen items gevonden" },
+    "notSet":            { "en": "(not set)",        "fr": "(non défini)",      "nl": "(niet ingesteld)" },
+    "notSelected":       { "en": "(not selected)",   "fr": "(non sélectionné)", "nl": "(niet geselecteerd)" },
+    "clickToEdit":       { "en": "(click to edit)",  "fr": "(cliquer pour modifier)", "nl": "(klik om te bewerken)" },
+    "resultFound":       { "en": "result found",     "fr": "résultat trouvé",   "nl": "resultaat gevonden" },
+    "resultsFound":      { "en": "results found",    "fr": "résultats trouvés", "nl": "resultaten gevonden" },
+    "confirmDelete":     { "en": "Are you sure you want to delete this item?", "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?", "nl": "Weet u zeker dat u dit item wilt verwijderen?" }
+  },
+  "validation": {
+    "required":      { "en": "{0} is required.", "fr": "{0} est obligatoire.", "nl": "{0} is verplicht." },
+    "minLength":     { "en": "{0} must be at least {1} characters.", "fr": "{0} doit contenir au moins {1} caractères.", "nl": "{0} moet minstens {1} tekens bevatten." },
+    "maxLength":     { "en": "{0} must be at most {1} characters.",  "fr": "{0} doit contenir au plus {1} caractères.", "nl": "{0} mag maximaal {1} tekens bevatten." },
+    "rangeMin":      { "en": "{0} must be at least {1}.", "fr": "{0} doit être au moins {1}.", "nl": "{0} moet minstens {1} zijn." },
+    "rangeMax":      { "en": "{0} must be at most {1}.",  "fr": "{0} doit être au plus {1}.",  "nl": "{0} mag maximaal {1} zijn." },
+    "invalidFormat": { "en": "{0} has an invalid format.", "fr": "{0} a un format invalide.", "nl": "{0} heeft een ongeldig formaat." },
+    "invalidEmail":  { "en": "{0} must be a valid email address.", "fr": "{0} doit être une adresse e-mail valide.", "nl": "{0} moet een geldig e-mailadres zijn." },
+    "invalidUrl":    { "en": "{0} must be a valid URL.", "fr": "{0} doit être une URL valide.", "nl": "{0} moet een geldige URL zijn." }
+  }
+}

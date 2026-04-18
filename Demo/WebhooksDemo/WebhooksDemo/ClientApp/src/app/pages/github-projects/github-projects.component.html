@@ -2,24 +2,24 @@
   <div bsRow class="justify-content-center">
     <div [md]="10">
       <bs-card>
-        <bs-card-header>GitHub Projects</bs-card-header>
+        <bs-card-header>{{ 'app.githubProjects' | t }}</bs-card-header>
         <div class="p-3">
           @if (error(); as err) {
             <bs-alert [type]="colors.danger">{{ err }}</bs-alert>
           }
 
           @if (loading()) {
-            <p class="text-muted">Loading projects...</p>
+            <p class="text-muted">{{ 'app.loadingProjects' | t }}</p>
           } @else if (projects().length === 0) {
-            <p class="text-muted">No GitHub Projects found. Make sure the GitHub App is installed on your repositories.</p>
+            <p class="text-muted">{{ 'app.noProjectsFound' | t }}</p>
           } @else {
-            <bs-table [hover]="true" class="mb-0">
+            <bs-table [hover]="true" [isResponsive]="true" class="mb-0">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Owner</th>
-                  <th>Type</th>
-                  <th class="text-center">Automation</th>
+                  <th>{{ 'app.project' | t }}</th>
+                  <th>{{ 'app.owner' | t }}</th>
+                  <th>{{ 'app.type' | t }}</th>
+                  <th class="text-center">{{ 'app.automation' | t }}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -45,9 +45,9 @@
                         @if (project.loading) {
                           <span class="spinner-border spinner-border-sm"></span>
                         } @else if (project.enabled) {
-                          <i class="bi bi-check-lg"></i> Enabled
+                          <i class="bi bi-check-lg"></i> {{ 'app.enabled' | t }}
                         } @else {
-                          Enable
+                          {{ 'app.enable' | t }}
                         }
                       </button>
                     </td>
@@ -55,7 +55,7 @@
                       @if (project.enabled && project.sparkDocumentId) {
                         <a [routerLink]="['/po', entityTypeId, project.sparkDocumentId]"
                            class="btn btn-sm btn-outline-primary">
-                          <i class="bi bi-gear"></i> Configure
+                          <i class="bi bi-gear"></i> {{ 'app.configure' | t }}
                         </a>
                       }
                     </td>

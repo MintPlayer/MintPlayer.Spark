@@ -1,7 +1,7 @@
 <bs-container>
 <div class="container">
   @if (entityType(); as et) {
-    <h2 class="mb-4">{{ 'create' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
+    <h2 class="mb-4">{{ 'common.create' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
 
     @for (error of generalErrors(); track error.errorMessage) {
       <bs-alert [type]="colors.danger" class="mb-3">

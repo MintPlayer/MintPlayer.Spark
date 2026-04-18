@@ -1,7 +1,7 @@
 <div class="d-flex justify-content-center">
   <bs-card style="width: 100%; max-width: 400px;">
     <bs-card-header>
-      <h3 class="mb-0 text-center">{{ 'authRegister' | t }}</h3>
+      <h3 class="mb-0 text-center">{{ 'auth.register' | t }}</h3>
     </bs-card-header>
     <div class="p-4">
       @if (errorMessage()) {
@@ -11,7 +11,7 @@
       <bs-form>
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="mb-3">
-            <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
+            <label for="email" class="form-label">{{ 'auth.email' | t }}</label>
             <input
               type="email"
               id="email"
@@ -19,12 +19,12 @@
               autocomplete="email"
             />
             @if (form.get('email')?.touched && form.get('email')?.hasError('email')) {
-              <div class="text-danger mt-1">{{ 'authInvalidEmail' | t }}</div>
+              <div class="text-danger mt-1">{{ 'auth.invalidEmail' | t }}</div>
             }
           </div>
 
           <div class="mb-3">
-            <label for="password" class="form-label">{{ 'authPassword' | t }}</label>
+            <label for="password" class="form-label">{{ 'auth.password' | t }}</label>
             <input
               type="password"
               id="password"
@@ -34,7 +34,7 @@
           </div>
 
           <div class="mb-3">
-            <label for="confirmPassword" class="form-label">{{ 'authConfirmPassword' | t }}</label>
+            <label for="confirmPassword" class="form-label">{{ 'auth.confirmPassword' | t }}</label>
             <input
               type="password"
               id="confirmPassword"
@@ -42,7 +42,7 @@
               autocomplete="new-password"
             />
             @if (form.touched && form.hasError('passwordMismatch')) {
-              <div class="text-danger mt-1">{{ 'authPasswordMismatch' | t }}</div>
+              <div class="text-danger mt-1">{{ 'auth.passwordMismatch' | t }}</div>
             }
           </div>
 
@@ -54,14 +54,14 @@
             @if (loading()) {
               <bs-spinner class="me-1" />
             }
-            {{ 'authRegister' | t }}
+            {{ 'auth.register' | t }}
           </button>
         </form>
       </bs-form>
 
       <div class="mt-3 text-center">
-        <span>{{ 'authAlreadyHaveAccount' | t }} </span>
-        <a [routerLink]="routePaths.login">{{ 'authLogin' | t }}</a>
+        <span>{{ 'auth.alreadyHaveAccount' | t }} </span>
+        <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
       </div>
     </div>
   </bs-card>

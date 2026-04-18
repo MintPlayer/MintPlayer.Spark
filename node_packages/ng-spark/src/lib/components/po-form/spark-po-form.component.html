@@ -77,7 +77,7 @@
                 (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
                 [id]="attr.name"
                 [class.is-invalid]="hasError(attr.name)">
-                <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                 @for (option of (attr | lookupOptions:lookupReferenceOptions()); track option.key) {
                   <option [ngValue]="option.key">
                     {{ option.values | resolveTranslation:option.key }}
@@ -125,7 +125,7 @@
                           <bs-select
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
-                            <option [ngValue]="null">{{ 'selectPlaceholder' | t }}</option>
+                            <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                             @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
                               <option [ngValue]="option.id">
                                 {{ option.breadcrumb || option.name || option.id }}
@@ -153,7 +153,7 @@
                 } @empty {
                   <tr>
                     <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
-                      {{ 'noItemsFound' | t }}
+                      {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>
                 }
@@ -161,7 +161,7 @@
             </bs-table>
             @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addInlineRow(attr)">
-                <spark-icon name="plus" /> {{ 'add' | t }}
+                <spark-icon name="plus" /> {{ 'common.add' | t }}
               </button>
             }
           } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
@@ -194,7 +194,7 @@
                 } @empty {
                   <tr>
                     <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
-                      {{ 'noItemsFound' | t }}
+                      {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>
                 }
@@ -202,7 +202,7 @@
             </bs-table>
             @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
-                <spark-icon name="plus" /> {{ 'add' | t }}
+                <spark-icon name="plus" /> {{ 'common.add' | t }}
               </button>
             }
           } @else if (attr.dataType === 'AsDetail') {
@@ -247,12 +247,12 @@
       <div bsRow class="mt-4">
         <div [md]="4"></div>
         <div [md]="8" class="d-flex justify-content-end gap-2">
-          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving()">{{ 'cancel' | t }}</button>
+          <button type="button" [color]="colors.secondary" (click)="onCancel()" [disabled]="isSaving()">{{ 'common.cancel' | t }}</button>
           <button type="submit" [color]="colors.primary" [disabled]="isSaving()" (click)="onSave()">
             @if (isSaving()) {
               <bs-spinner class="me-1" />
             }
-            {{ 'save' | t }}
+            {{ 'common.save' | t }}
           </button>
         </div>
       </div>
@@ -264,7 +264,7 @@
 <bs-modal [isOpen]="showAsDetailModal()" (isOpenChange)="!$event && closeAsDetailModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">{{ 'edit' | t }} {{ editingAsDetailAttr()?.label | resolveTranslation:editingAsDetailAttr()?.name }}</h5>
+      <h5 class="modal-title">{{ 'common.edit' | t }} {{ editingAsDetailAttr()?.label | resolveTranslation:editingAsDetailAttr()?.name }}</h5>
     </div>
 
     @if (editingAsDetailAttr(); as attr) {
@@ -279,8 +279,8 @@
     }
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'cancel' | t }}</button>
-      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'save' | t }}</button>
+      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'common.cancel' | t }}</button>
+      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'common.save' | t }}</button>
     </div>
   </div>
 </bs-modal>
@@ -289,7 +289,7 @@
 <bs-modal [isOpen]="showReferenceModal()" (isOpenChange)="!$event && closeReferenceModal()">
   <div *bsModal class="reference-modal">
     <div bsModalHeader>
-      <h5 class="modal-title">{{ 'select' | t }} {{ editingReferenceAttr()?.label | resolveTranslation:editingReferenceAttr()?.name }}</h5>
+      <h5 class="modal-title">{{ 'common.select' | t }} {{ editingReferenceAttr()?.label | resolveTranslation:editingReferenceAttr()?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -304,7 +304,7 @@
                 </span>
                 <input
                   type="text"
-                  [placeholder]="'search' | t"
+                  [placeholder]="'common.search' | t"
                   [(ngModel)]="referenceSearchTerm"
                   (ngModelChange)="onReferenceSearchChange()">
                 @if (referenceSearchTerm) {
@@ -320,7 +320,7 @@
             <div [md]="6" class="text-end">
               @if (referenceSearchTerm && referenceModalPagination()) {
                 <span class="text-muted">
-                  {{ referenceModalPagination()!.totalRecords }} {{ referenceModalPagination()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                  {{ referenceModalPagination()!.totalRecords }} {{ referenceModalPagination()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
                 </span>
               }
             </div>
@@ -348,7 +348,7 @@
     </div>
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">{{ 'cancel' | t }}</button>
+      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">{{ 'common.cancel' | t }}</button>
     </div>
   </div>
 </bs-modal>
@@ -357,7 +357,7 @@
 <bs-modal [isOpen]="showLookupModal()" (isOpenChange)="!$event && closeLookupModal()">
   <div *bsModal>
     <div bsModalHeader>
-      <h5 class="modal-title">{{ 'select' | t }} {{ editingLookupAttr()?.label | resolveTranslation:editingLookupAttr()?.name }}</h5>
+      <h5 class="modal-title">{{ 'common.select' | t }} {{ editingLookupAttr()?.label | resolveTranslation:editingLookupAttr()?.name }}</h5>
     </div>
 
     <div bsModalBody>
@@ -371,7 +371,7 @@
               </span>
               <input
                 type="text"
-                [placeholder]="'search' | t"
+                [placeholder]="'common.search' | t"
                 [ngModel]="lookupSearchTerm()"
                 (ngModelChange)="lookupSearchTerm.set($event)">
               @if (lookupSearchTerm()) {
@@ -399,7 +399,7 @@
             </tr>
           } @empty {
             <tr>
-              <td class="text-center text-muted">{{ 'noItemsFound' | t }}</td>
+              <td class="text-center text-muted">{{ 'common.noItemsFound' | t }}</td>
             </tr>
           }
         </tbody>
@@ -407,7 +407,7 @@
     </div>
 
     <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'cancel' | t }}</button>
+      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'common.cancel' | t }}</button>
     </div>
   </div>
 </bs-modal>

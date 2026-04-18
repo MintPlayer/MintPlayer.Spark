@@ -43,7 +43,7 @@
       <div class="p-3">
         @if (!paginationData() || paginationData()!.totalRecords === 0) {
           <div class="text-center text-muted">
-            {{ 'noItemsFound' | t }}
+            {{ 'common.noItemsFound' | t }}
           </div>
         } @else {
           <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">

@@ -1,7 +1,7 @@
 <div class="d-flex justify-content-center">
   <bs-card style="width: 100%; max-width: 400px;">
     <bs-card-header>
-      <h3 class="mb-0 text-center">{{ 'authLogin' | t }}</h3>
+      <h3 class="mb-0 text-center">{{ 'auth.login' | t }}</h3>
     </bs-card-header>
     <div class="p-4">
       @if (errorMessage()) {
@@ -11,7 +11,7 @@
       <bs-form>
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="mb-3">
-            <label for="email" class="form-label">{{ 'authEmail' | t }}</label>
+            <label for="email" class="form-label">{{ 'auth.email' | t }}</label>
             <input
               type="text"
               id="email"
@@ -21,7 +21,7 @@
           </div>
 
           <div class="mb-3">
-            <label for="password" class="form-label">{{ 'authPassword' | t }}</label>
+            <label for="password" class="form-label">{{ 'auth.password' | t }}</label>
             <input
               type="password"
               id="password"
@@ -31,7 +31,7 @@
           </div>
 
           <div class="mb-3">
-            <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">{{ 'authRememberMe' | t }}</bs-toggle-button>
+            <bs-toggle-button [type]="'checkbox'" formControlName="rememberMe" [name]="'rememberMe'">{{ 'auth.rememberMe' | t }}</bs-toggle-button>
           </div>
 
           <button
@@ -42,16 +42,16 @@
             @if (loading()) {
               <bs-spinner class="me-1" />
             }
-            {{ 'authLogin' | t }}
+            {{ 'auth.login' | t }}
           </button>
         </form>
       </bs-form>
 
       <div class="mt-3 text-center">
-        <a [routerLink]="routePaths.register">{{ 'authCreateAccount' | t }}</a>
+        <a [routerLink]="routePaths.register">{{ 'auth.createAccount' | t }}</a>
       </div>
       <div class="mt-2 text-center">
-        <a [routerLink]="routePaths.forgotPassword">{{ 'authForgotPassword' | t }}</a>
+        <a [routerLink]="routePaths.forgotPassword">{{ 'auth.forgotPassword' | t }}</a>
       </div>
     </div>
   </bs-card>

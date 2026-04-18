@@ -1,0 +1,52 @@
+{
+  "app": {
+    "welcomeTitle": {
+      "en": "Welcome to Webhooks Demo",
+      "fr": "Bienvenue dans la démo Webhooks",
+      "nl": "Welkom bij de Webhooks-demo"
+    },
+    "welcomeSubtitle": {
+      "en": "Inspect GitHub webhook events and project boards.",
+      "fr": "Inspectez les événements webhook GitHub et les tableaux de projet.",
+      "nl": "Bekijk GitHub-webhookgebeurtenissen en projectborden."
+    },
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+    },
+    "webhooksDemo": {
+      "en": "Webhooks Demo",
+      "fr": "Démo Webhooks",
+      "nl": "Webhooks-demo"
+    },
+    "signInWithGitHub": {
+      "en": "Sign in with GitHub",
+      "fr": "Se connecter avec GitHub",
+      "nl": "Aanmelden met GitHub"
+    },
+    "githubProjects": {
+      "en": "GitHub Projects",
+      "fr": "Projets GitHub",
+      "nl": "GitHub-projecten"
+    },
+    "loadingProjects": {
+      "en": "Loading projects...",
+      "fr": "Chargement des projets...",
+      "nl": "Projecten laden..."
+    },
+    "noProjectsFound": {
+      "en": "No projects found",
+      "fr": "Aucun projet trouvé",
+      "nl": "Geen projecten gevonden"
+    },
+    "project":    { "en": "Project",    "fr": "Projet",        "nl": "Project" },
+    "owner":      { "en": "Owner",      "fr": "Propriétaire",  "nl": "Eigenaar" },
+    "type":       { "en": "Type",       "fr": "Type",          "nl": "Type" },
+    "automation": { "en": "Automation", "fr": "Automatisation","nl": "Automatisering" },
+    "enabled":    { "en": "Enabled",    "fr": "Activé",        "nl": "Ingeschakeld" },
+    "enable":     { "en": "Enable",     "fr": "Activer",       "nl": "Inschakelen" },
+    "configure":  { "en": "Configure",  "fr": "Configurer",    "nl": "Configureren" },
+    "failedToLoadProjects": { "en": "Failed to load projects", "fr": "Impossible de charger les projets", "nl": "Projecten laden mislukt" }
+  }
+}

@@ -44,7 +44,7 @@ internal partial class ValidationService : IValidationService
                 {
                     AttributeName = attrDef.Name,
                     RuleType = "required",
-                    ErrorMessage = FormatTranslatedMessage("validationRequired", attrDef.Label, attrDef.Name)
+                    ErrorMessage = FormatTranslatedMessage("validation.required", attrDef.Label, attrDef.Name)
                 });
                 continue; // Skip other validations if required field is empty
             }
@@ -96,7 +96,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "maxLength",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationMaxLength", attrDef.Label, attrDef.Name, maxLength)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.maxLength", attrDef.Label, attrDef.Name, maxLength)
             };
         }
         return null;
@@ -113,7 +113,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "minLength",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationMinLength", attrDef.Label, attrDef.Name, minLength)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.minLength", attrDef.Label, attrDef.Name, minLength)
             };
         }
         return null;
@@ -132,7 +132,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationRangeMin", attrDef.Label, attrDef.Name, rule.Min.Value)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.rangeMin", attrDef.Label, attrDef.Name, rule.Min.Value)
             };
         }
 
@@ -142,7 +142,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "range",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationRangeMax", attrDef.Label, attrDef.Name, rule.Max.Value)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.rangeMax", attrDef.Label, attrDef.Name, rule.Max.Value)
             };
         }
 
@@ -163,7 +163,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "regex",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidFormat", attrDef.Label, attrDef.Name)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.invalidFormat", attrDef.Label, attrDef.Name)
             };
         }
         return null;
@@ -177,7 +177,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "email",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidEmail", attrDef.Label, attrDef.Name)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.invalidEmail", attrDef.Label, attrDef.Name)
             };
         }
         return null;
@@ -191,7 +191,7 @@ internal partial class ValidationService : IValidationService
             {
                 AttributeName = attrDef.Name,
                 RuleType = "url",
-                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validationInvalidUrl", attrDef.Label, attrDef.Name)
+                ErrorMessage = rule.Message ?? FormatTranslatedMessage("validation.invalidUrl", attrDef.Label, attrDef.Name)
             };
         }
         return null;
@@ -203,9 +203,9 @@ internal partial class ValidationService : IValidationService
     /// </summary>
     private TranslatedString FormatTranslatedMessage(string translationKey, TranslatedString? label, string attributeName, params object[] extraParams)
     {
-        var translations = translationsLoader.GetTranslations();
+        var templateString = translationsLoader.Resolve(translationKey);
 
-        if (translations.TryGetValue(translationKey, out var templateString))
+        if (templateString is not null)
         {
             var result = new TranslatedString();
             foreach (var (language, template) in templateString.Translations)

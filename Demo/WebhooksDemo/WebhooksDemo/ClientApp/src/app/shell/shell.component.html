@@ -15,24 +15,24 @@
     }
     @if (authService.user()?.isAuthenticated) {
       <span class="text-light">{{ authService.user()?.userName }}</span>
-      <button class="btn btn-outline-light btn-sm" (click)="logout()">Logout</button>
+      <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
     } @else {
       <button class="btn btn-outline-light btn-sm" (click)="loginWithGitHub()">
-        <i class="bi bi-github"></i> Sign in with GitHub
+        <i class="bi bi-github"></i> {{ 'app.signInWithGitHub' | t }}
       </button>
     }
   </div>
 </div>
 <bs-shell [state]="shellState()" [breakpoint]="'md'">
   <nav *bsShellSidebar class="sidebar-inner text-light p-2">
-    <h5 class="p-3 border-bottom">Webhooks Demo</h5>
+    <h5 class="p-3 border-bottom">{{ 'app.webhooksDemo' | t }}</h5>
     @if (authService.user()?.isAuthenticated) {
       <a routerLink="/github-projects"
          routerLinkActive="active"
          (click)="onMenuItemClick()"
          class="d-block px-3 py-2 text-light text-decoration-none nav-link">
         <i class="bi bi-kanban"></i>
-        <span class="ms-2">GitHub Projects</span>
+        <span class="ms-2">{{ 'app.githubProjects' | t }}</span>
       </a>
       <hr class="border-secondary my-1">
     }

@@ -12,7 +12,7 @@ internal sealed partial class GetTranslations : IGetEndpoint, IMemberOf<SparkGro
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var translations = translationsLoader.GetTranslations();
+        var translations = translationsLoader.GetAll();
         return Results.Json(translations);
     }
 }

@@ -2,7 +2,7 @@
   <!-- Title + Actions row -->
   <div class="d-flex justify-content-between align-items-center mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     <h2>
-      {{ (query()?.description | resolveTranslation) || query()?.name || ('loading' | t) }}
+      {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
       @if (isStreaming()) {
         <span class="badge bg-success ms-2" style="font-size: 0.5em; vertical-align: middle;">LIVE</span>
       }
@@ -13,7 +13,7 @@
       }
       @if (canCreate()) {
         <button class="btn btn-primary" (click)="onCreate()">
-          <spark-icon name="plus-lg" /> {{ 'new' | t }}
+          <spark-icon name="plus-lg" /> {{ 'common.new' | t }}
         </button>
       }
     </div>
@@ -32,7 +32,7 @@
                 </span>
                 <input
                   type="text"
-                  [placeholder]="'search' | t"
+                  [placeholder]="'common.search' | t"
                   [(ngModel)]="searchTerm"
                   (ngModelChange)="onSearchChange()">
                 @if (searchTerm) {
@@ -48,7 +48,7 @@
             <div [md]="8" class="text-end">
               @if (searchTerm && paginationData()) {
                 <span class="text-muted">
-                  {{ paginationData()!.totalRecords }} {{ paginationData()!.totalRecords === 1 ? ('resultFound' | t) : ('resultsFound' | t) }}
+                  {{ paginationData()!.totalRecords }} {{ paginationData()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
                 </span>
               }
             </div>

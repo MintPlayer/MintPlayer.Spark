@@ -10,11 +10,11 @@
       <h2>{{ currentItem.breadcrumb || currentItem.name }}</h2>
       <bs-button-group>
         <button class="btn btn-outline-secondary" (click)="onBack()">
-          <spark-icon name="arrow-left" /> {{ 'back' | t }}
+          <spark-icon name="arrow-left" /> {{ 'common.back' | t }}
         </button>
         @if (canEdit()) {
           <button class="btn btn-primary" (click)="onEdit()">
-            <spark-icon name="pencil" /> {{ 'edit' | t }}
+            <spark-icon name="pencil" /> {{ 'common.edit' | t }}
           </button>
         }
         @if (extraActionsTemplate(); as extraActionsTpl) {
@@ -29,7 +29,7 @@
         }
         @if (canDelete()) {
           <button class="btn btn-danger" (click)="onDelete()">
-            <spark-icon name="trash" /> {{ 'delete' | t }}
+            <spark-icon name="trash" /> {{ 'common.delete' | t }}
           </button>
         }
       </bs-button-group>
@@ -115,7 +115,7 @@
                     } @empty {
                       <tr>
                         <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length" class="text-center text-muted">
-                          {{ 'noItemsFound' | t }}
+                          {{ 'common.noItemsFound' | t }}
                         </td>
                       </tr>
                     }

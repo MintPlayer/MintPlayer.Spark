@@ -34,6 +34,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<AdditionalFiles Include="App_Data\translations.json" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
