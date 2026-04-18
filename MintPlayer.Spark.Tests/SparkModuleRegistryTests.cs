@@ -18,7 +18,7 @@ public class SparkModuleRegistryTests
         registry.AddMiddleware(_ => callCount++);
         registry.ApplyMiddleware(app);
 
-        Assert.Equal(2, callCount);
+        callCount.Should().Be(2);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class SparkModuleRegistryTests
         registry.AddEndpoints(_ => callCount++);
         registry.MapEndpoints(endpoints);
 
-        Assert.Equal(3, callCount);
+        callCount.Should().Be(3);
     }
 
     [Fact]
@@ -42,7 +42,9 @@ public class SparkModuleRegistryTests
         var registry = new SparkModuleRegistry();
         var app = Substitute.For<IApplicationBuilder>();
 
-        registry.ApplyMiddleware(app);
+        var act = () => registry.ApplyMiddleware(app);
+
+        act.Should().NotThrow();
     }
 
     [Fact]
@@ -51,7 +53,9 @@ public class SparkModuleRegistryTests
         var registry = new SparkModuleRegistry();
         var endpoints = Substitute.For<IEndpointRouteBuilder>();
 
-        registry.MapEndpoints(endpoints);
+        var act = () => registry.MapEndpoints(endpoints);
+
+        act.Should().NotThrow();
     }
 
     [Fact]
@@ -64,7 +68,7 @@ public class SparkModuleRegistryTests
         registry.AddMiddleware(a => captured = a);
         registry.ApplyMiddleware(app);
 
-        Assert.Same(app, captured);
+        captured.Should().BeSameAs(app);
     }
 
     [Fact]
@@ -77,7 +81,7 @@ public class SparkModuleRegistryTests
         registry.AddEndpoints(e => captured = e);
         registry.MapEndpoints(endpoints);
 
-        Assert.Same(endpoints, captured);
+        captured.Should().BeSameAs(endpoints);
     }
 
     [Fact]
@@ -85,7 +89,7 @@ public class SparkModuleRegistryTests
     {
         var registry = new SparkModuleRegistry();
 
-        Assert.Null(registry.IdentityUserType);
+        registry.IdentityUserType.Should().BeNull();
     }
 
     [Fact]
@@ -95,7 +99,7 @@ public class SparkModuleRegistryTests
 
         registry.IdentityUserType = typeof(string);
 
-        Assert.Equal(typeof(string), registry.IdentityUserType);
+        registry.IdentityUserType.Should().Be(typeof(string));
     }
 
     [Fact]
@@ -110,6 +114,6 @@ public class SparkModuleRegistryTests
         registry.AddMiddleware(_ => order.Add(3));
         registry.ApplyMiddleware(app);
 
-        Assert.Equal([1, 2, 3], order);
+        order.Should().Equal(1, 2, 3);
     }
 }

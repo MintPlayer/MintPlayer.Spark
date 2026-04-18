@@ -9,21 +9,21 @@ public class PersistentObjectAttributeTests
     {
         var attr = new PersistentObjectAttribute { Name = "Test" };
 
-        Assert.Equal("string", attr.DataType);
-        Assert.True(attr.IsVisible);
-        Assert.False(attr.IsReadOnly);
-        Assert.False(attr.IsRequired);
-        Assert.False(attr.IsArray);
-        Assert.False(attr.IsValueChanged);
-        Assert.Equal(0, attr.Order);
-        Assert.Null(attr.Value);
-        Assert.Null(attr.Breadcrumb);
-        Assert.Null(attr.Query);
-        Assert.Null(attr.Group);
-        Assert.Null(attr.Renderer);
-        Assert.Null(attr.RendererOptions);
-        Assert.Equal(EShowedOn.Query | EShowedOn.PersistentObject, attr.ShowedOn);
-        Assert.Empty(attr.Rules);
+        attr.DataType.Should().Be("string");
+        attr.IsVisible.Should().BeTrue();
+        attr.IsReadOnly.Should().BeFalse();
+        attr.IsRequired.Should().BeFalse();
+        attr.IsArray.Should().BeFalse();
+        attr.IsValueChanged.Should().BeFalse();
+        attr.Order.Should().Be(0);
+        attr.Value.Should().BeNull();
+        attr.Breadcrumb.Should().BeNull();
+        attr.Query.Should().BeNull();
+        attr.Group.Should().BeNull();
+        attr.Renderer.Should().BeNull();
+        attr.RendererOptions.Should().BeNull();
+        attr.ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
+        attr.Rules.Should().BeEmpty();
     }
 
     [Fact]
@@ -31,9 +31,9 @@ public class PersistentObjectAttributeTests
     {
         var attr = new PersistentObjectAttribute { Name = "Test", Value = null };
 
-        Assert.Null(attr.GetValue<string>());
-        Assert.Equal(0, attr.GetValue<int>());
-        Assert.False(attr.GetValue<bool>());
+        attr.GetValue<string>().Should().BeNull();
+        attr.GetValue<int>().Should().Be(0);
+        attr.GetValue<bool>().Should().BeFalse();
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class PersistentObjectAttributeTests
     {
         var attr = new PersistentObjectAttribute { Name = "Test", Value = 42 };
 
-        Assert.Equal(42, attr.GetValue<int>());
+        attr.GetValue<int>().Should().Be(42);
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public class PersistentObjectAttributeTests
     {
         var attr = new PersistentObjectAttribute { Name = "Test", Value = 42 };
 
-        Assert.Equal(42L, attr.GetValue<long>());
-        Assert.Equal(42.0, attr.GetValue<double>());
+        attr.GetValue<long>().Should().Be(42L);
+        attr.GetValue<double>().Should().Be(42.0);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class PersistentObjectAttributeTests
 
         attr.SetValue("hello");
 
-        Assert.Equal("hello", attr.Value);
+        attr.Value.Should().Be("hello");
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class PersistentObjectAttributeTests
 
         attr.SetValue<string?>(null);
 
-        Assert.Null(attr.Value);
+        attr.Value.Should().BeNull();
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class PersistentObjectAttributeTests
 
         attr.SetValue(3.14m);
 
-        Assert.Equal(3.14m, attr.GetValue<decimal>());
+        attr.GetValue<decimal>().Should().Be(3.14m);
     }
 }
 
@@ -95,7 +95,7 @@ public class PersistentObjectTests
             ObjectTypeId = Guid.NewGuid()
         };
 
-        Assert.Empty(po.Attributes);
+        po.Attributes.Should().BeEmpty();
     }
 
     [Fact]
@@ -110,9 +110,9 @@ public class PersistentObjectTests
             Breadcrumb = "Test #1"
         };
 
-        Assert.Equal("Test/1", po.Id);
-        Assert.Equal("Test", po.Name);
-        Assert.Equal(typeId, po.ObjectTypeId);
-        Assert.Equal("Test #1", po.Breadcrumb);
+        po.Id.Should().Be("Test/1");
+        po.Name.Should().Be("Test");
+        po.ObjectTypeId.Should().Be(typeId);
+        po.Breadcrumb.Should().Be("Test #1");
     }
 }

@@ -51,9 +51,10 @@ public class CustomQueryArgsTests
     {
         var args = CreateArgs(parent: null);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => args.EnsureParent("Company"));
-        Assert.Contains("requires a parent", ex.Message);
-        Assert.Contains("TestQuery", ex.Message);
+        var act = () => args.EnsureParent("Company");
+
+        act.Should().Throw<InvalidOperationException>()
+            .Where(e => e.Message.Contains("requires a parent") && e.Message.Contains("TestQuery"));
     }
 
     [Fact]
@@ -61,9 +62,10 @@ public class CustomQueryArgsTests
     {
         var args = CreateArgs(CreateParent(), "Person");
 
-        var ex = Assert.Throws<InvalidOperationException>(() => args.EnsureParent("Company"));
-        Assert.Contains("expects parent of type 'Company'", ex.Message);
-        Assert.Contains("got 'Person'", ex.Message);
+        var act = () => args.EnsureParent("Company");
+
+        act.Should().Throw<InvalidOperationException>()
+            .Where(e => e.Message.Contains("expects parent of type 'Company'") && e.Message.Contains("got 'Person'"));
     }
 
     [Fact]
@@ -87,10 +89,10 @@ public class CustomQueryArgsTests
     {
         var args = CreateArgs(CreateParent(), "Car");
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            args.EnsureParent("Company", "Person"));
-        Assert.Contains("Company, Person", ex.Message);
-        Assert.Contains("got 'Car'", ex.Message);
+        var act = () => args.EnsureParent("Company", "Person");
+
+        act.Should().Throw<InvalidOperationException>()
+            .Where(e => e.Message.Contains("Company, Person") && e.Message.Contains("got 'Car'"));
     }
 
     [Fact]
@@ -98,8 +100,9 @@ public class CustomQueryArgsTests
     {
         var args = CreateArgs(parent: null);
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            args.EnsureParent("Company", "Person"));
-        Assert.Contains("requires a parent", ex.Message);
+        var act = () => args.EnsureParent("Company", "Person");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*requires a parent*");
     }
 }
