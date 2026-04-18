@@ -4,11 +4,10 @@ import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
-import {
-  SparkService, SparkIconComponent,
-  ResolveTranslationPipe, IconNamePipe, RouterLinkPipe,
-  ProgramUnitGroup
-} from '@mintplayer/ng-spark';
+import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark/pipes';
+import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
 
 @Component({
   selector: 'app-shell',

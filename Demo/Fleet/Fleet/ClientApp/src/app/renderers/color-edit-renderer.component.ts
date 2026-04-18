@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, effect, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BsColorPickerComponent } from '@mintplayer/ng-bootstrap/color-picker';
-import { EntityAttributeDefinition, SparkAttributeEditRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeEditRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-color-edit-renderer',

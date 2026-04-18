@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { EntityAttributeDefinition, SparkAttributeColumnRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-video-player-column-renderer',

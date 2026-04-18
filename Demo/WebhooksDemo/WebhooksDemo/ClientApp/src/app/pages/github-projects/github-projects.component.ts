@@ -5,7 +5,9 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { SparkService, SparkLanguageService, PersistentObject, EntityType, TranslateKeyPipe } from '@mintplayer/ng-spark';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { PersistentObject, EntityType } from '@mintplayer/ng-spark/models';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { GitHubProjectsService } from '../../services/github-projects.service';
 import { GitHubProjectInfo } from '../../models/github-project';
 import { Color } from '@mintplayer/ng-bootstrap';

@@ -5,10 +5,14 @@ import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintpl
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { SparkAuthBarComponent, SparkAuthService } from '@mintplayer/ng-spark-auth';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { FormsModule } from '@angular/forms';
 import { KeyValuePipe } from '@angular/common';
-import { SparkService, SparkLanguageService, ProgramUnitGroup, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark/pipes';
 
 @Component({
   selector: 'app-shell',
