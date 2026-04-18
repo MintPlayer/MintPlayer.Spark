@@ -54,10 +54,17 @@
 	  consuming project must wire them up as analyzers, otherwise the generated DI
 	  registration code will be missing at compile time.
 
+	  Two valid reference forms:
+	    A) PackageReference (NuGet consumers) — checked for PrivateAssets="all" and
+	       IncludeAssets containing "analyzers".
+	    B) ProjectReference with OutputItemType="Analyzer" and ReferenceOutputAssembly="false"
+	       (local monorepo consumers, e.g. Demo apps). The MSBuild item semantics already
+	       enforce analyzer-only flow, so no extra metadata checks needed.
+
 	  Diagnostics:
-	    SPARK001 — companion PackageReference is missing.
-	    SPARK002 — companion PackageReference is present but PrivateAssets is not "all".
-	    SPARK003 — companion PackageReference is present but IncludeAssets does not include "analyzers".
+	    SPARK001 — neither reference form is present.
+	    SPARK002 — PackageReference is present but PrivateAssets is not "all".
+	    SPARK003 — PackageReference is present but IncludeAssets does not include "analyzers".
 
 	  The $(MintPlayerSparkSourceGeneratorsReferenceValidated) property dedupes with
 	  MintPlayer.Spark's equivalent target — first to run wins, second skips silently.
@@ -72,26 +79,28 @@
 		</PropertyGroup>
 
 		<ItemGroup>
-			<_SparkSourceGeneratorsRef Include="@(PackageReference)"
-			                           Condition="'%(Identity)' == 'MintPlayer.Spark.SourceGenerators'" />
+			<_SparkSourceGeneratorsPackageRef Include="@(PackageReference)"
+			                                  Condition="'%(Identity)' == 'MintPlayer.Spark.SourceGenerators'" />
+			<_SparkSourceGeneratorsProjectRef Include="@(ProjectReference)"
+			                                  Condition="$([System.String]::new('%(Identity)').Replace('\', '/').EndsWith('MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj')) AND '%(OutputItemType)' == 'Analyzer'" />
 		</ItemGroup>
 
-		<PropertyGroup Condition="'@(_SparkSourceGeneratorsRef)' != ''">
-			<_SparkSourceGeneratorsPrivateAssets>%(_SparkSourceGeneratorsRef.PrivateAssets)</_SparkSourceGeneratorsPrivateAssets>
-			<_SparkSourceGeneratorsIncludeAssets>%(_SparkSourceGeneratorsRef.IncludeAssets)</_SparkSourceGeneratorsIncludeAssets>
+		<PropertyGroup Condition="'@(_SparkSourceGeneratorsPackageRef)' != ''">
+			<_SparkSourceGeneratorsPrivateAssets>%(_SparkSourceGeneratorsPackageRef.PrivateAssets)</_SparkSourceGeneratorsPrivateAssets>
+			<_SparkSourceGeneratorsIncludeAssets>%(_SparkSourceGeneratorsPackageRef.IncludeAssets)</_SparkSourceGeneratorsIncludeAssets>
 		</PropertyGroup>
 
 		<Error Code="SPARK001"
-		       Text="MintPlayer.Spark.Authorization requires a PackageReference to MintPlayer.Spark.SourceGenerators. Add the following to your project:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
-		       Condition="'@(_SparkSourceGeneratorsRef)' == ''" />
+		       Text="MintPlayer.Spark.Authorization requires a reference to MintPlayer.Spark.SourceGenerators. Add one of the following:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;%0A  OR (for local monorepo projects)%0A  &lt;ProjectReference Include=&quot;...\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj&quot; OutputItemType=&quot;Analyzer&quot; ReferenceOutputAssembly=&quot;false&quot; /&gt;"
+		       Condition="'@(_SparkSourceGeneratorsPackageRef)' == '' AND '@(_SparkSourceGeneratorsProjectRef)' == ''" />
 
 		<Error Code="SPARK002"
 		       Text="MintPlayer.Spark.SourceGenerators PackageReference is missing PrivateAssets=&quot;all&quot; (found: '$(_SparkSourceGeneratorsPrivateAssets)'). Update the entry to:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
-		       Condition="'@(_SparkSourceGeneratorsRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' != 'all'" />
+		       Condition="'@(_SparkSourceGeneratorsPackageRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' != 'all'" />
 
 		<Error Code="SPARK003"
 		       Text="MintPlayer.Spark.SourceGenerators PackageReference IncludeAssets must include 'analyzers' (found: '$(_SparkSourceGeneratorsIncludeAssets)'). Update the entry to:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
-		       Condition="'@(_SparkSourceGeneratorsRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' == 'all' AND !$(_SparkSourceGeneratorsIncludeAssets.Contains('analyzers'))" />
+		       Condition="'@(_SparkSourceGeneratorsPackageRef)' != '' AND '$(_SparkSourceGeneratorsPrivateAssets)' == 'all' AND !$(_SparkSourceGeneratorsIncludeAssets.Contains('analyzers'))" />
 
 	</Target>
 
