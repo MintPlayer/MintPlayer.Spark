@@ -57,6 +57,8 @@ jobs:
 
     - name: Test
       run: dotnet test --no-restore --verbosity normal
+      env:
+        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
     - name: Pack
       run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true

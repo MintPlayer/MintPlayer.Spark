@@ -35,6 +35,8 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
 	</ItemGroup>
 
 	<ItemGroup>
