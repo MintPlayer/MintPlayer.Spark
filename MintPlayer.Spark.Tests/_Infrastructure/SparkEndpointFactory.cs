@@ -71,6 +71,48 @@ public sealed class SparkEndpointFactory : IAsyncDisposable
 
     public T GetService<T>() where T : notnull => _host.Services.GetRequiredService<T>();
 
+    /// <summary>
+    /// Performs a warmup GET so Spark's antiforgery middleware writes both the antiforgery
+    /// validation cookie (.AspNetCore.Antiforgery.*) and the readable XSRF-TOKEN cookie.
+    /// Returns the raw <c>Cookie</c> header value (combining both cookies) and the
+    /// X-XSRF-TOKEN request token to attach to mutating requests.
+    /// TestServer's HttpClient does not auto-manage cookies, so callers must thread these
+    /// through explicitly — see <see cref="SparkTestClient"/> for a wrapper that does this.
+    /// </summary>
+    public async Task<(string CookieHeader, string XsrfToken)> MintAntiforgeryAsync()
+    {
+        using var client = CreateClient();
+        var response = await client.GetAsync("/spark/po/__warmup__");
+
+        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+            throw new InvalidOperationException("Warmup request did not return any Set-Cookie headers.");
+
+        string? antiforgeryCookie = null;
+        string? xsrfToken = null;
+
+        foreach (var raw in setCookies)
+        {
+            var nameValue = raw.Split(';', 2)[0];
+            var eq = nameValue.IndexOf('=');
+            if (eq < 0) continue;
+            var name = nameValue[..eq];
+            var value = nameValue[(eq + 1)..];
+
+            if (name.StartsWith(".AspNetCore.Antiforgery", StringComparison.Ordinal))
+                antiforgeryCookie = nameValue;
+            else if (name == "XSRF-TOKEN")
+            {
+                xsrfToken = Uri.UnescapeDataString(value);
+            }
+        }
+
+        if (antiforgeryCookie is null || xsrfToken is null)
+            throw new InvalidOperationException(
+                $"Warmup did not yield both antiforgery cookies. Got: '{string.Join(" | ", setCookies)}'");
+
+        return (antiforgeryCookie + "; XSRF-TOKEN=" + Uri.EscapeDataString(xsrfToken), xsrfToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _host.StopAsync();
