@@ -90,4 +90,20 @@ public static class TestModels
             ],
         }
     };
+
+    public static EntityTypeFile PersonWithRequiredLastName(Guid id) => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = id,
+            Name = "Person",
+            ClrType = typeof(Person).FullName!,
+            DisplayAttribute = "LastName",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LastName", DataType = "string", IsRequired = true },
+            ],
+        }
+    };
 }
