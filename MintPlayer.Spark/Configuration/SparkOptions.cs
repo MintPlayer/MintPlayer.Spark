@@ -7,7 +7,15 @@ public class SparkOptions
 
 public class RavenDbOptions
 {
-    public string[] Urls { get; set; } = ["http://localhost:8080"];
+    /// <summary>
+    /// RavenDB cluster URLs. Empty means "use the default" — see <see cref="SparkExtensions"/>
+    /// where an unset value falls back to <c>http://localhost:8080</c>. The default must stay
+    /// empty so <see cref="Microsoft.Extensions.Configuration.ConfigurationBinder"/> can replace
+    /// it: array binding APPENDS config values to an existing array rather than overwriting,
+    /// so a non-empty default would prevent <c>appsettings.{env}.json</c> or env-var overrides
+    /// from taking effect for the first URL.
+    /// </summary>
+    public string[] Urls { get; set; } = [];
     public string Database { get; set; } = "Spark";
 
     /// <summary>
