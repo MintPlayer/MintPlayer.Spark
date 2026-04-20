@@ -17,8 +17,14 @@ export class SparkAuthBarComponent {
   private readonly router = inject(Router);
 
   async onLogout(): Promise<void> {
-    await this.authService.logout();
-    this.router.navigateByUrl('/');
+    try {
+      await this.authService.logout();
+    } finally {
+      // Always navigate away from the authenticated area, even if the server-side
+      // logout call fails (network error, session already expired, etc.). The local
+      // session state has been cleared by SparkAuthService regardless.
+      this.router.navigateByUrl('/');
+    }
   }
 }
 
