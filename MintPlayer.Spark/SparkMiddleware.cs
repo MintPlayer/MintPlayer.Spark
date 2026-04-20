@@ -137,8 +137,46 @@ public static class SparkExtensions
             app.UseAuthentication();
         }
 
-        // Always add authorization and antiforgery
         app.UseAuthorization();
+
+        // Antiforgery validation for mutating requests that carry IAntiforgeryMetadata.
+        //
+        // Runs BEFORE the built-in UseAntiforgery() so this middleware can call
+        // IAntiforgery.ValidateRequestAsync before FormFeature's "unvalidated" guard
+        // gets set. After successful validation we set IAntiforgeryValidationFeature to
+        // "validated" so (a) the built-in middleware and FormFeature treat the request
+        // as already checked and (b) EndpointMiddleware doesn't throw
+        // "contains anti-forgery metadata, but a middleware was not found".
+        //
+        // The built-in UseAntiforgery() was narrowed in 8.0.1 to validate ONLY form-content
+        // bodies — Spark's JSON API is not protected by it alone. This middleware closes
+        // that gap for any mutating HTTP method (POST/PUT/PATCH/DELETE) whose endpoint has
+        // IAntiforgeryMetadata.RequiresValidation = true.
+        app.Use(async (context, next) =>
+        {
+            var endpoint = context.GetEndpoint();
+            var metadata = endpoint?.Metadata.GetMetadata<IAntiforgeryMetadata>();
+            if (metadata is { RequiresValidation: true } && IsMutatingMethod(context.Request.Method))
+            {
+                var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+                try
+                {
+                    await antiforgery.ValidateRequestAsync(context);
+                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: true));
+                }
+                catch (AntiforgeryValidationException ex)
+                {
+                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: false, error: ex));
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    return;
+                }
+            }
+            await next(context);
+        });
+
+        // Keep the built-in middleware registered — EndpointMiddleware uses its presence as a
+        // "antiforgery was wired" probe when the endpoint has IAntiforgeryMetadata. For
+        // non-form mutating requests that pass Spark's validation above, it's a no-op.
         app.UseAntiforgery();
 
         app.UseWebSockets();
@@ -342,6 +380,24 @@ public static class SparkExtensions
             current = current.BaseType;
         }
         return false;
+    }
+
+    private static bool IsMutatingMethod(string method) =>
+        HttpMethods.IsPost(method)
+        || HttpMethods.IsPut(method)
+        || HttpMethods.IsPatch(method)
+        || HttpMethods.IsDelete(method);
+
+    /// <summary>
+    /// Spark's implementation of <see cref="IAntiforgeryValidationFeature"/> used to record
+    /// the outcome of <see cref="IAntiforgery.ValidateRequestAsync"/>. The concrete class
+    /// in <c>Microsoft.AspNetCore.Antiforgery</c> is internal, so we provide our own.
+    /// </summary>
+    private sealed class SparkAntiforgeryValidationFeature(bool isValid, AntiforgeryValidationException? error = null)
+        : IAntiforgeryValidationFeature
+    {
+        public bool IsValid { get; } = isValid;
+        public Exception? Error { get; } = error;
     }
 }
 
