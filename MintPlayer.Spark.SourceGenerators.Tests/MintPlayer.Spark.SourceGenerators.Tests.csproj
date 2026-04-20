@@ -40,6 +40,9 @@
     <ProjectReference Include="..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
@@ -62,8 +65,7 @@
     </ItemGroup>
     <Copy SourceFiles="@(GeneratorOutputs)"
           DestinationFolder="$(OutputPath)Generators\"
-          SkipUnchangedFiles="true"
-          ContinueOnError="true" />
+          SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
