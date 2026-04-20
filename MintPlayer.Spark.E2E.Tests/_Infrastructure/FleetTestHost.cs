@@ -19,11 +19,23 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 public sealed class FleetTestHost : IAsyncLifetime
 {
     private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
+    private readonly string _password = GeneratePassword();
     private string TestDatabase => $"SparkFleetE2E-{_suffix}";
     private string TestModulesDatabase => $"SparkModulesE2E-{_suffix}";
     private string AdminUserName => $"admin-{_suffix}";
     private string AdminEmail => $"admin-{_suffix}@e2e.local";
-    private const string AdminPassword = "E2e-Admin-Pa$$w0rd!";
+    private string AdminPassword => _password;
+
+    /// <summary>
+    /// Per-fixture random password that satisfies ASP.NET Identity's default validator
+    /// (1 lowercase, 1 uppercase, 1 digit, 1 non-alphanumeric, 6+ chars). Randomizing
+    /// per run keeps static-analysis scanners from flagging the source as a leaked secret.
+    /// </summary>
+    private static string GeneratePassword()
+    {
+        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=');
+        return $"Aa1!{token}";
+    }
 
     private SparkTestDriverHost? _raven;
     private Process? _fleetProcess;
