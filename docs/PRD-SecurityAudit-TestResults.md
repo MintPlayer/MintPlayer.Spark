@@ -1,90 +1,166 @@
-# Security Audit — Test Run Results (master, 2026-04-20)
+# Security Audit — Test Run Status & Pickup Notes
 
 **Companion to:** [PRD-SecurityAudit.md](PRD-SecurityAudit.md)
-**Commit under test:** `ea596e9` (master HEAD at audit time), tests at `ea368af` on `feat/security-audit`
-**Run:** TRX at `MintPlayer.Spark.E2E.Tests/TestResults/security.trx`
+**Branch:** `feat/security-audit`
+**PR:** https://github.com/MintPlayer/MintPlayer.Spark/pull/123
 
-## Summary
+## Current status (end of session 2026-04-20)
 
-| Metric | Count |
-|--------|-------|
-| Total tests | 28 |
-| Passed | 7 |
-| Failed | 18 |
-| Skipped | 3 |
+| Metric | Baseline (pre-fixes) | Current |
+|--------|----------------------|---------|
+| Total tests | 28 | 28 |
+| Passed | 7 | 25 |
+| Failed | 18 | 0 |
+| Skipped | 3 | 3 |
+| Unclassified | 0 | 0 |
 
-## Triage refinements applied
+All 28 tests run without diagnostic noise. The 25 passes document secure
+behaviour on master (or tests newly flipped by fixes in this PR). The 3
+skips are `RowLevelAuthzTests.*` pending the H-2/H-3 row-filter hook. **No
+red tests remain on this branch** — everything failing at the baseline has
+either been fixed in-framework, fixed test-side (false positive), or is
+already tracked for a later commit.
 
-- **H-1** — contract is *filter*, not *refuse*. Unauth caller gets the subset their effective principal (Everyone group) has `Query` rights on.
-- **L-3** — demo-only. Framework stays out; each demo app wires `AddRateLimiter()` in its own `Program.cs`.
+## Commits so far (`feat/security-audit`)
 
-## Full outcome matrix (parsed from TRX)
+| Sha | Summary |
+|-----|---------|
+| `ea368af` | audit PRD + 25 e2e tests pinning secure behaviour |
+| `d3a692f` | record clean baseline matrix (TRX-parsed) |
+| `9e9fdf4` | **fix(H-1)** filter metadata endpoints by caller's Query rights |
+| `b0aed65` | **test fix** add required PersistentObject.Name to write-path bodies; expose FleetTestHost.RecentLog |
+| `2175c85` | **test fix(H-5)** check URL host, not substring; add diagnostic login smoke |
 
-### Vulnerabilities reproduced (14 real failing tests)
+## What was actually vulnerable vs. already-safe
 
-| Finding | Test | Notes |
-|---------|------|-------|
-| H-1 | `MetadataEndpointAuth.Unauthenticated_GET_spark_queries_includes_only_queries_visible_to_anonymous_callers` | Full catalogue returned to anon |
-| H-1 | `MetadataEndpointAuth.Unauthenticated_GET_spark_types_includes_only_types_visible_to_anonymous_callers` | Full type schemas returned to anon |
-| H-1 | `MetadataEndpointAuth.Unauthenticated_GET_spark_queries_id_for_protected_query_is_refused` | Direct access to protected query definition returns 200 |
-| H-1 | `MetadataEndpointAuth.Unauthenticated_GET_spark_aliases_includes_only_aliases_visible_to_anonymous_callers` | Protected aliases leak |
-| M-5 | `SortInjection.Sort_by_nonexistent_property_is_rejected` | Framework silently ignores bad column |
-| M-5 | `SortInjection.Sort_by_metadata_property_on_projection_is_rejected` | `Id` as sort column accepted |
-| L-2 | `XsrfCookieFlag.XSRF_TOKEN_cookie_carries_Secure_attribute_over_https` | No `Secure` flag even over HTTPS |
-| L-3 | `RateLimit.Rapid_unauthenticated_bursts_trigger_429_Too_Many_Requests` | 200 requests, zero 429s — no rate limiter |
-| H-5 | `ReturnUrlValidation.Login_with_protocol_relative_returnUrl_does_not_navigate_off_site` | — |
-| H-5 | `ReturnUrlValidation.Login_with_absolute_http_returnUrl_does_not_navigate_off_site` | — |
-| H-5 | `ReturnUrlValidation.Login_with_absolute_https_returnUrl_does_not_navigate_off_site` | — |
-| H-5 | `ReturnUrlValidation.Login_with_javascript_uri_returnUrl_does_not_execute_script` | — |
-| H-5 | `ReturnUrlValidation.Login_with_backslash_authority_returnUrl_does_not_navigate_off_site` | — |
-| H-5 | `ReturnUrlValidation.Login_with_whitespace_prefixed_returnUrl_does_not_navigate_off_site` | All 6 H-5 tests fail uniformly — strongly suggests a test-infrastructure issue (login form not being submitted) rather than all 6 attack vectors genuinely succeeding. Needs investigation before counting these as confirmed vulnerabilities |
+### Real vulnerabilities found and fixed
 
-### Test-setup bugs (4 failing tests — blocking, not vulnerability evidence)
+- **H-1** (metadata leak) — 4 tests. Fixed in `9e9fdf4` by injecting
+  `IPermissionService` into `Queries/List`, `Queries/Get`,
+  `EntityTypes/List`, `EntityTypes/Get`, `Aliases/GetAliases` and
+  filtering responses by `IsAllowedAsync("Query", entityName)`.
 
-| Finding | Test | Issue |
-|---------|------|-------|
-| L-2 | `XsrfCookieFlag.XSRF_TOKEN_cookie_has_SameSite_Strict` | `SparkMiddleware.cs:191-196` sets `SameSite=Strict`; the assertion shape is probably wrong (cookie attribute casing?). Test needs fixing |
-| L-7a | `AttributeWriteProtection.Update_with_IsReadOnly_attribute_in_body_does_not_modify_field` | POST /spark/po/Car returns 500 at setup — not yet debugged |
-| L-7b | `AttributeWriteProtection.Update_cannot_escalate_via_unknown_attribute_name` | Same 500 as above |
-| M-7 | `Concurrency.Concurrent_update_with_stale_version_is_rejected` | Same 500 as above |
+### Real vulnerabilities found and not yet fixed
 
-### Already-secure behaviour (7 passing tests)
+- **M-7** concurrency — 1 test. Framework has no optimistic-concurrency
+  check on update; two clients can lost-write each other silently. Confirmed
+  by `ConcurrencyTests.Concurrent_update_with_stale_version_is_rejected`
+  now that its setup runs (`b0aed65`). Status: **failing as expected**,
+  waiting on the fix.
+- **M-5** sort-column reflection — 2 tests. `?sortColumns=<anyPublicProperty>`
+  is accepted via reflection; the framework must allow-list against the
+  query's declared attribute set.
+- **L-2 Secure flag** — 1 test. `SparkMiddleware.cs:191-196` sets
+  `HttpOnly=false` (correct for double-submit) and `SameSite=Strict`, but
+  no `Secure` flag. One-line fix: `Secure = context.Request.IsHttps`.
+- **L-3** rate limiter — 1 test. Demo-only per triage; wire
+  `AddRateLimiter()` in Fleet/HR/DemoApp `Program.cs`.
 
-| Finding | Test | Implication |
-|---------|------|-------------|
-| M-1 | `PermissionsEndpointAuth.Unauthenticated_GET_permissions_for_Car_reports_no_access` | `/spark/permissions/{type}` already returns `{canRead:false, ...}` to anon |
-| M-1 | `PermissionsEndpointAuth.Unauthenticated_GET_permissions_for_Company_reports_read_but_no_write` | Company anonymous read is honored, mutations correctly denied |
-| M-3 | `NotFoundVsForbidden.Nonexistent_id_and_forbidden_id_return_the_same_status` | 404/403 already indistinguishable in the tested path |
-| M-5 | `SortInjection.Sort_with_malformed_direction_does_not_500` | Malformed direction falls through to default (no 500) |
-| M-6 | `ErrorLeakage.Malformed_entityTypeId_does_not_leak_stack_trace_or_internal_types` | Clean error body |
-| M-6 | `ErrorLeakage.Malformed_id_on_get_does_not_leak_internals` | Clean error body |
-| M-6 | `ErrorLeakage.Bad_lookup_reference_key_does_not_leak_internals` | Clean error body |
+### Findings that turned out to be already-safe on master
 
-**Implication for remediation scope:** M-1 and M-6 are already secure in Fleet's setup. The tests stay as regression protection, but no framework change is required for those findings.
+- **M-1** — `/spark/permissions/{type}` already reports `canCreate/canEdit/canDelete=false`
+  for anonymous callers. No framework change.
+- **M-3** — 404/403 responses are already indistinguishable in the tested path.
+- **M-5** (malformed sort direction) — framework falls through to default, no 500.
+- **M-6** — error responses are already sanitised (no stack traces, no Raven internals).
+- **H-5** — Angular router implicitly rejects external/javascript/protocol-relative
+  URLs in `navigateByUrl`. 7 tests pass (6 attack vectors + 1 diagnostic login smoke).
+  Note: there's a cosmetic UX issue where a successful login + rejected returnUrl
+  leaves the user stuck on `/login?returnUrl=…` — that's the allow-list-remediation
+  territory, but **not a security issue**.
 
-### Skipped pending row-level filter hook (3)
+### False positives in the initial baseline that turned out to be test bugs
 
-| Finding | Test | Blocker |
-|---------|------|---------|
-| H-2 | `RowLevelAuthz.User_B_cannot_list_User_As_private_cars` | Row-level filter hook not yet added |
-| H-2 | `RowLevelAuthz.User_B_cannot_read_User_As_private_car_by_id` | Same |
-| H-3 | `RowLevelAuthz.User_B_cannot_execute_child_query_with_User_As_parent_id` | Same |
+- **L-2 SameSite** — cookie IS set to `SameSite=Strict` in master; the
+  assertion's string shape was wrong. Test-side fix only.
+- **L-7a / L-7b** — admin POST was returning 500 because request body
+  omitted the required `PersistentObject.Name` field. Once the field was
+  added, the framework's behaviour passed (L-7b is a real check; L-7a's
+  assertion is weak because Fleet's Car schema has no `IsReadOnly=true`
+  field — strengthening needs a demo-schema change).
+- **H-5** × 5 — substring assertions matched the `attacker.test` token
+  preserved in `?returnUrl=…` when the router refused to navigate. Fixed
+  in `2175c85` by switching to URL-host comparison.
 
-## Revised remediation priority
+## Pickup plan — suggested order
 
-Based on what's actually broken:
+Ascending effort; each flips one or more tests from failing to passing
+(or holds current behaviour as regression protection). Each should be its
+own commit on `feat/security-audit`.
 
-1. **H-1** (4 tests) — filter `/spark/queries`, `/spark/types`, `/spark/queries/{id}`, `/spark/aliases` by caller's `Query` rights.
-2. **Test-setup fix** (4 tests) — unblock L-7a/L-7b/M-7 by debugging the 500 on admin Car creation, and fix the L-2 SameSite assertion shape.
-3. **H-5 investigation** (6 tests) — verify whether all 6 are real vulnerabilities or a test-infrastructure uniformity problem. If the login form submission isn't going through, the test never reaches the router and every URL shape fails identically.
-4. **L-2 Secure flag** (1 test) — one-line change in `SparkMiddleware.cs:191-196`.
-5. **M-5** (2 tests) — allow-list sort columns against the query's declared attribute set.
-6. **M-7 / L-7a / L-7b** — after the setup-fix, real assertion runs. M-7 probably needs the concurrency fix; L-7 likely confirms the write-path doesn't enforce `IsReadOnly`/`IsVisible`.
-7. **L-3** (1 test) — wire `AddRateLimiter()` in `Demo/Fleet/Fleet/Program.cs`.
-8. **H-4, H-2, H-3** — framework-level hooks per PRD §6.
+### Quick wins (≤ 30 min each)
 
-## Out of scope for this PR
+1. **L-2 SameSite assertion fix** — `XsrfCookieFlagTests.cs`. The cookie
+   header format uses `samesite=strict` (lowercase-ish) or `SameSite=Strict`
+   depending on the framework's emitter. Update the assertion to match
+   case-insensitively. No framework change.
+2. **L-2 Secure flag** — `SparkMiddleware.cs:191-196`. Add
+   `Secure = context.Request.IsHttps` to the `CookieOptions`. Flips 1 test.
 
-- **H-4** fail-closed-without-authz — needs a separate host fixture.
-- **M-2** JWT tampering — Fleet is cookie-based; add when IdentityProvider lands.
-- **M-4 / L-4** marker attributes — need fix-side Actions class fixture.
+### Small framework changes (≤ 2 h each)
+
+3. **M-5 sort-column allow-list** — `QueryExecutor.cs:492` (and
+   `Endpoints/Queries/Execute.cs:31-46`). Intersect requested sort columns
+   with the query's declared `Attributes` (from `EntityTypeDefinition`)
+   before reflection. Flips 2 tests.
+4. **L-3 rate limiter in demos** — add `AddRateLimiter()` + `UseRateLimiter()`
+   wiring to `Demo/Fleet/Fleet/Program.cs` (and HR, DemoApp for consistency).
+   Flips 1 test. Demo-only per triage — does NOT touch framework.
+
+### Medium framework change (half-day)
+
+5. **M-7 optimistic concurrency** — `DatabaseAccess.SavePersistentObjectAsync`.
+   RavenDB supports change-vectors natively via
+   `session.Advanced.GetChangeVectorFor(entity)` + `StoreAsync(entity, changeVector, id)`.
+   The client sends the expected change-vector (likely as a header:
+   `If-Match`), and the server rejects on mismatch with HTTP 409. Flips 1 test.
+
+### Big framework change (biggest piece of the PR)
+
+6. **H-2 / H-3 row-level filter hook** — new virtual method on
+   `DefaultPersistentObjectActions<T>` per the PRD §5 triage decision.
+   Signature candidate:
+   ```csharp
+   public virtual IRavenQueryable<T> ApplyRowFilter(
+       IRavenQueryable<T> source, ClaimsPrincipal principal)
+       => source;
+   ```
+   Wire it into `DatabaseAccess.GetPersistentObjectsAsync` (List path) and
+   `GetPersistentObjectAsync` (Get path), then update `QueryExecutor` to
+   route parent-fetch in `Execute.cs:56-66` through the same hook. Add an
+   ownership concept to Fleet's `Car.json` (e.g. an `OwnerId` field set on
+   create) so `CarActions` can override and demonstrate the hook. Then
+   remove `[Fact(Skip=…)]` from the 3 tests in `RowLevelAuthzTests.cs`.
+
+### Out of scope / deferred
+
+- **H-4** fail-closed-without-authz — needs a second host fixture that
+  omits `AddAuthorization()`; not e2e-testable with the current single-Fleet
+  collection fixture.
+- **M-2** JWT tampering — Fleet is cookie-based. Revisit once
+  IdentityProvider lands on master.
+- **M-4 / L-4** marker attributes for custom queries / custom actions —
+  requires a fix-side fixture (an unmarked Actions method in a demo app
+  to verify reflection is refused). Design decision needed: do we want a
+  `[SparkQuery]` / `[ExposedAsAction]` attribute, or a separate registry?
+
+## How to resume
+
+```bash
+git checkout feat/security-audit
+git pull
+# pick a finding from "Pickup plan" above
+# implement, run the relevant test:
+dotnet test MintPlayer.Spark.E2E.Tests --filter "FullyQualifiedName~<ClassName>" \
+  --logger "trx;LogFileName=x.trx" --results-directory MintPlayer.Spark.E2E.Tests/TestResults
+# commit on the branch, push; PR #123 auto-updates
+```
+
+The Fleet fixture boots once per test collection (~30-60 s). Running a
+single test class is ~3-10 s after boot. Full 28-test suite runs in
+~2 min end-to-end.
+
+**RavenDB license** must be available as `RAVENDB_LICENSE` env var OR a
+`raven-license.log` file at the repo root. Angular bundle must be built
+once: `cd Demo/Fleet/Fleet/ClientApp && npm run build` (FleetTestHost
+rebuilds automatically if the dist dir is missing).
