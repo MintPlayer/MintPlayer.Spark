@@ -16,7 +16,7 @@ public class TokenRefreshingDecoratorsTests
     private const long InstallationId = 42L;
 
     private static GitHubInstallationService NewService()
-        => new(Options.Create(new GitHubWebhooksOptions()));
+        => new(new GitHubClientFactory(), Options.Create(new GitHubWebhooksOptions()));
 
     private static ConcurrentDictionary<long, AccessToken> GetCache(GitHubInstallationService service)
     {
