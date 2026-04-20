@@ -1,4 +1,3 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   HttpTestingController,
@@ -9,16 +8,13 @@ import {
   provideHttpClient,
   withInterceptors,
 } from '@angular/common/http';
-import { NavigationEnd, provideRouter, Router, Routes } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { filter, firstValueFrom } from 'rxjs';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { sparkAuthInterceptor } from './spark-auth.interceptor';
 import { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const routes: Routes = [
   { path: '', pathMatch: 'full', component: StubComponent },
@@ -26,11 +22,6 @@ const routes: Routes = [
   { path: 'protected/page', component: StubComponent },
   { path: 'current/page', component: StubComponent },
 ];
-
-function nextNavigationEnd(): Promise<NavigationEnd> {
-  const router = TestBed.inject(Router);
-  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
-}
 
 describe('sparkAuthInterceptor', () => {
   let http: HttpClient;
