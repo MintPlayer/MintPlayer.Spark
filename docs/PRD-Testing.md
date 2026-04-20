@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 1.3 |
 | **Date** | 2026-04-20 |
-| **Status** | In progress (481 tests landed, see §12) |
+| **Status** | In progress (505 tests landed, see §12) |
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
@@ -610,7 +610,7 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**481 tests passing across the monorepo** — 268 .NET (`MintPlayer.Spark.Tests`) + 4 E2E (`MintPlayer.Spark.E2E.Tests`, Playwright-driven) + 53 ng-spark-auth + 156 ng-spark.
+**505 tests passing across the monorepo** — 268 .NET (`MintPlayer.Spark.Tests`) + 24 source-generator (`MintPlayer.Spark.SourceGenerators.Tests`) + 4 E2E (`MintPlayer.Spark.E2E.Tests`, Playwright-driven) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
@@ -620,14 +620,13 @@ jobs:
 - **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8); `SocketExtensions` (6, via TestServer WebSocket pair); `GitHubWebhooksDevTunnelExtensions` (4, `AddSmeeDevTunnel` + `AddWebSocketDevTunnel` composition).
 - **M3 subscription-worker E2E** — `MessageSubscriptionWorker` driven by real RavenDB subscriptions via `SparkTestDriver` (7: happy path, empty-recipients rollup, NonRetryable handler, MaxAttempts=1 dead-letter, single-pickup retry scheduling, unresolvable MessageType, mixed handler rollup); `SyncActionSubscriptionWorker` with co-located `SparkModulesTest` db + stub `IHttpClientFactory` (5: 200/400/404/500 paths, unknown owner module via `RetryNumerator`).
 - **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
+- **M3 source generators** — New `MintPlayer.Spark.SourceGenerators.Tests` project with a reusable `GeneratorHarness` that loads the generator DLL via `Assembly.LoadFrom` (avoiding the netstandard2.0 polyfill collision with .NET 10's BCL) and drives `CSharpGeneratorDriver` directly. Covers: `ActionsRegistrationGenerator` (5), `CustomActionsRegistrationGenerator` (3), `SubscriptionWorkerRegistrationGenerator` (2), `RecipientRegistrationGenerator` (3), `LibraryTranslationsGenerator` (4, including malformed-JSON diagnostic path via `AdditionalFiles`), `ProjectionPropertyAnalyzer` (4, via the `DiagnosticAnalyzer` API — happy path + `SPARK001` type-mismatch + `SPARK002` missing-`[Reference]`), and `SparkFullGenerator` from the AllFeatures project (3, loaded from a second generator assembly in the same harness). 24 tests total. Also did a small architectural split alongside: moved `SparkSubscriptionWorker<T>` + `RetryNumerator` + `SparkSubscriptionOptions` into a new `MintPlayer.Spark.SubscriptionWorker.Abstractions` project (mirroring `Spark.Abstractions` / `Messaging.Abstractions` / `Replication.Abstractions`) so libraries that only DEFINE workers can reference the abstractions without pulling in the DI extension surface.
 - **M4 Playwright E2E** — New `MintPlayer.Spark.E2E.Tests` project driving the existing `Fleet` Demo app end-to-end (per relaxation of the "no-Demo-app testing" rule). `FleetTestHost` fixture owns: (a) an embedded RavenDB via `SparkTestDriver`, (b) Fleet launched as a `dotnet run` subprocess in the `E2E` environment with a `appsettings.E2E.json` override pointing at the embedded server, (c) admin-user seeding via the real `/spark/auth/register` endpoint + a direct Raven patch to add the `Administrators` group claim, (d) Playwright Chromium installation and per-test `BrowserContext`. 4 tests: SPA shell is served (Angular bundle + ng-spark), `/spark/auth/me` reports anonymous, cookie-based login → authenticated `/me` (Authorization + CSRF), `/login` route renders the ng-spark-auth sign-in form (ng-spark-auth components). Touches every browser-visible library.
 
 ### Deferred (handoff for next sessions)
 
 | Item | Why scoped out | Notes for the next batch |
 |---|---|---|
-| **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session with pinned `Microsoft.CodeAnalysis.Testing` versions across the dep graph. |
-| **AllFeatures source generator** | Smaller, included with the source-generator session above | |
 
 ## 13. Implementation notes (real-world findings, not in original PRD)
 
@@ -687,17 +686,17 @@ These are non-obvious things discovered while implementing. They cost real time 
 - **Demo apps must be excluded from `nx affected --target=test`** because they have no `test` target. Root `package.json` script: `nx affected --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library`.
 - **`nxCloudId` in `nx.json` is a public identifier** (safe to commit). Only `NX_CLOUD_ACCESS_TOKEN` (read-write API key) is a secret. Older Nx versions supported `nxCloudAccessToken` directly in `nx.json` — never do that.
 
-### 13.4 Source-generator testing blocker (unresolved)
+### 13.4 Source-generator testing — what finally worked
 
-Attempted to test `ActionsRegistrationGenerator` and `CustomActionsRegistrationGenerator` via `Verify.SourceGenerators` snapshots. Sequence of problems hit:
+Earlier attempts blocked on two things: the netstandard2.0 generator's polyfill types (from `MintPlayer.SourceGenerators.Tools`) colliding with `net10.0`'s BCL when added as a `ProjectReference`, and `Verify.SourceGenerators` shipping an older `Microsoft.CodeAnalysis.CSharp` than the generator was compiled against. What unblocked it:
 
-1. `ProjectReference` to `MintPlayer.Spark.SourceGenerators` (netstandard2.0) into the net10.0 test project leaks `MintPlayer.SourceGenerators.Tools`'s `ModuleInitializerAttribute` polyfill, colliding with `System.Runtime`.
-2. `Assembly.LoadFrom(generatorDll)` at test time avoided the compile-time leak BUT failed because `MintPlayer.SourceGenerators.Tools` runtime types weren't on the load path.
-3. Adding `MintPlayer.SourceGenerators.Tools` as a `PackageReference` with `ExcludeAssets="compile"` solved the runtime-load issue.
-4. Then hit `Microsoft.CodeAnalysis.CSharp` version conflict — `Verify.SourceGenerators` ships with 4.14.0 but the generator was compiled against 5.3.0; bypassing one breaks the other.
-5. RS1035 ("Don't do file IO in analyzers") flowed through transitively and rejected the test helper code.
+1. **Skip `Verify.SourceGenerators` entirely.** Drive `CSharpGeneratorDriver` by hand and snapshot the produced strings with plain `FluentAssertions.Should().Contain(...)` / `.ContainSingle()` assertions. No wrapper → no version conflict.
+2. **Pin the test project to the same `Microsoft.CodeAnalysis.CSharp` version the generator was compiled against** (currently `5.3.0`). Visible via `dotnet list package --include-transitive`.
+3. **Reference the generator as `<ProjectReference ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />`.** That stops MSBuild from complaining about the netstandard2.0 ↔ net10.0 framework mismatch and stops the generator's compile-time types from leaking into the test project.
+4. **Copy the two runtime-needed DLLs into the test bin via a `<Target AfterTargets="Build">`:** the generator DLL (from `bin/$(Configuration)/netstandard2.0/`) AND `MintPlayer.SourceGenerators.Tools.dll` (from `$(NuGetPackageRoot)mintplayer.sourcegenerators.tools/10.19.0/lib/netstandard2.0/`). `Assembly.LoadFrom` of the generator DLL triggers a Tools load via the probing path.
+5. **Analyzers use a different API than generators:** `Compilation.WithAnalyzers(...).GetAnalyzerDiagnosticsAsync()`. The `GeneratorHarness.RunAnalyzerAsync` helper filters the result to only the analyzer's own rules (by ID), so generic test-fixture compile errors don't pollute assertions.
 
-A dedicated focused session (with the latest `Microsoft.CodeAnalysis.Testing` versions and explicit version-pinning across the dep graph) should crack this. Until then, generator regression testing is via the actual Demo app builds — a generator regression breaks one of the Demo apps' compilation.
+One translation aggregator generator (`HostTranslationsAggregatorGenerator`) is left untested — it requires a multi-compilation setup with pre-built libraries carrying `[assembly: SparkTranslations(...)]` attributes, which is more plumbing than the other 6 generators needed. Deferred; the Demo apps' builds still exercise it.
 
 ## 11. Success Criteria
 
