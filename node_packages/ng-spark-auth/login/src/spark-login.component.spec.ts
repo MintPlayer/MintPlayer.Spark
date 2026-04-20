@@ -1,10 +1,7 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Location } from '@angular/common';
-import { NavigationEnd, provideRouter, Router, Routes } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { HttpErrorResponse } from '@angular/common/http';
-import { filter, firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkLoginComponent } from './spark-login.component';
@@ -14,9 +11,7 @@ import {
   SPARK_AUTH_ROUTE_PATHS,
   defaultSparkAuthConfig,
 } from '@mintplayer/ng-spark-auth/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const routePaths = {
   login: '/login',
@@ -32,17 +27,6 @@ const routes: Routes = [
   { path: 'login/two-factor', component: StubComponent },
   { path: 'protected', component: StubComponent },
 ];
-
-/**
- * Components fire-and-forget router.navigate*(...) without awaiting the returned Promise,
- * so onSubmit resolves before the navigation completes. This helper subscribes BEFORE the
- * navigation is triggered and waits for the next NavigationEnd to fire — reliable across
- * route configs and zoneless mode.
- */
-function nextNavigationEnd(): Promise<NavigationEnd> {
-  const router = TestBed.inject(Router);
-  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
-}
 
 async function setup(authOverrides: Partial<SparkAuthService> = {}) {
   const auth: any = { login: vi.fn().mockResolvedValue(undefined), ...authOverrides };
@@ -117,7 +101,7 @@ describe('SparkLoginComponent', () => {
     await component.onSubmit();
     await navigated;
 
-    expect(TestBed.inject(Location).path()).toBe('/protected');
+    expect(TestBed.inject(Router).url).toBe('/protected');
   });
 
   it('redirects to the two-factor route on 401 with RequiresTwoFactor detail', async () => {
@@ -130,7 +114,7 @@ describe('SparkLoginComponent', () => {
     await component.onSubmit();
     await navigated;
 
-    expect(TestBed.inject(Location).path()).toBe('/login/two-factor?returnUrl=%2Fprotected');
+    expect(TestBed.inject(Router).url).toBe('/login/two-factor?returnUrl=%2Fprotected');
   });
 
   it('shows the invalid-credentials error on a generic 401 (no navigation)', async () => {
@@ -143,6 +127,6 @@ describe('SparkLoginComponent', () => {
     await component.onSubmit();
 
     expect(component.errorMessage()).toBe('auth.invalidCredentials');
-    expect(TestBed.inject(Location).path()).toBe('/login');
+    expect(TestBed.inject(Router).url).toBe('/login');
   });
 });

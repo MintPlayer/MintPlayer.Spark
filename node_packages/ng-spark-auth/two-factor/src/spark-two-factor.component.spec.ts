@@ -1,8 +1,6 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NavigationEnd, provideRouter, Router, Routes } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { filter, firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkTwoFactorComponent } from './spark-two-factor.component';
@@ -12,9 +10,7 @@ import {
   SPARK_AUTH_ROUTE_PATHS,
   defaultSparkAuthConfig,
 } from '@mintplayer/ng-spark-auth/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const routePaths = {
   login: '/login', twoFactor: '/login/two-factor', register: '/register',
@@ -25,11 +21,6 @@ const routes: Routes = [
   { path: 'login/two-factor', component: SparkTwoFactorComponent },
   { path: 'dashboard', component: StubComponent },
 ];
-
-function nextNavigationEnd(): Promise<NavigationEnd> {
-  const router = TestBed.inject(Router);
-  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
-}
 
 async function setup(authOverrides: Partial<SparkAuthService> = {}) {
   const auth: any = { loginTwoFactor: vi.fn().mockResolvedValue(undefined), ...authOverrides };

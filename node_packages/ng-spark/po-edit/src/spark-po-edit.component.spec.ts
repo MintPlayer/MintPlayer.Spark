@@ -1,18 +1,14 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Router, Routes, NavigationEnd } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
-import { filter, firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkPoEditComponent } from './spark-po-edit.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
   id: 't-person',
@@ -47,11 +43,6 @@ const routes: Routes = [
   { path: 'po/:type/:id/edit', component: SparkPoEditComponent },
   { path: 'po/:type/:id', component: StubComponent },
 ];
-
-function nextNavigationEnd(): Promise<NavigationEnd> {
-  const router = TestBed.inject(Router);
-  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
-}
 
 async function setup(serviceOverrides: Partial<SparkService> = {}) {
   const service: any = {

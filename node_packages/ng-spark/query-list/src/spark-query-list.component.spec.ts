@@ -1,4 +1,3 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -11,9 +10,7 @@ import { SparkQueryListComponent } from './spark-query-list.component';
 import { SparkService, SparkStreamingService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, PersistentObject, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
   id: 't-person',

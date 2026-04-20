@@ -1,26 +1,17 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NavigationEnd, provideRouter, Router, Routes } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { filter, firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkAuthBarComponent } from './spark-auth-bar.component';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
-
-@Component({ standalone: true, template: '' })
-class StubComponent {}
+import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const routes: Routes = [
   { path: '', pathMatch: 'full', component: StubComponent },
   { path: 'somewhere', component: SparkAuthBarComponent },
 ];
-
-function nextNavigationEnd(): Promise<NavigationEnd> {
-  const router = TestBed.inject(Router);
-  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
-}
 
 async function setup() {
   const auth: any = {
