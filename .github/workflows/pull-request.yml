@@ -48,6 +48,22 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
 
+    - name: Resolve Playwright version
+      id: playwright
+      run: |
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+        echo "Playwright version: ${version}"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
     - name: Run affected tests (.NET + Angular via Nx)
       run: npx nx affected --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library
       env:
