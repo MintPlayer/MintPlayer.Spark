@@ -25,7 +25,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="RavenDB.Client" Version="7.2.1" />
+		<ProjectReference Include="..\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
 	</ItemGroup>
 
 </Project>

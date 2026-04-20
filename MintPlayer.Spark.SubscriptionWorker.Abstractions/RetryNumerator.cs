@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.SubscriptionWorker;
