@@ -9,5 +9,11 @@ export default defineConfig({
     setupFiles: ['src/test-setup.ts'],
     include: ['**/*.spec.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/out-tsc/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['cobertura', 'text'],
+      reportsDirectory: './coverage',
+      exclude: ['**/*.spec.ts', '**/test-setup.ts', '**/test-utils.ts', '**/public-api.ts', '**/*.d.ts', '**/index.ts', '**/dist/**', '**/node_modules/**'],
+    },
   },
 });

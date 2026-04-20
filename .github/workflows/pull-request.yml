@@ -69,3 +69,14 @@ jobs:
       env:
         NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+
+    - name: Upload coverage to Codecov
+      if: always()
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: |
+          **/coverage/**/coverage.cobertura.xml
+          **/coverage/cobertura-coverage.xml
+        fail_ci_if_error: false
+        verbose: true

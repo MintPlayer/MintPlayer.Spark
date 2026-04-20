@@ -698,6 +698,21 @@ Earlier attempts blocked on two things: the netstandard2.0 generator's polyfill 
 
 One translation aggregator generator (`HostTranslationsAggregatorGenerator`) is left untested — it requires a multi-compilation setup with pre-built libraries carrying `[assembly: SparkTranslations(...)]` attributes, which is more plumbing than the other 6 generators needed. Deferred; the Demo apps' builds still exercise it.
 
+### 13.5 Coverage reporting
+
+- **.NET — `coverlet.collector` is enough.** Present in all three .NET test csprojs (`MintPlayer.Spark.Tests`, `MintPlayer.Spark.E2E.Tests`, `MintPlayer.Spark.SourceGenerators.Tests`). No MSBuild props, no separate tool install.
+- **.NET — Nx `@nx-dotnet/core:test` executor passes collector flags through its `options`** (`collect: "XPlat Code Coverage"`, `resultsDirectory: "coverage"`). Set them under an **executor-scoped** `targetDefaults` entry in `nx.json` (`"@nx-dotnet/core:test": { "options": { ... } }`), **not** a target-name one. A target-name entry (`test: { options: { ... } }`) would also inject those keys into the Angular libs' `nx:run-commands` test targets, which forwards unknown keys to the underlying command as `--collect=...` / `--resultsDirectory=...` — and vitest then aborts on unrecognized flags. Scoping by executor applies the options only to .NET test projects.
+- **Angular — `@vitest/coverage-v8` pinned to the same version as `vitest` (`4.0.16`).** Version mismatch between vitest and its coverage provider blows up at runtime. Each `vitest.config.ts` (`ng-spark` and `ng-spark-auth`) has a `test.coverage` block with `provider: 'v8'`, `reporter: ['cobertura', 'text']`, `reportsDirectory: './coverage'`. `--coverage` is appended to the `vitest run` command in each `project.json`.
+- **Do NOT set `coverage.include` in vitest configs.** Without an explicit `include`, v8 instruments only the source files actually imported by the tests — the coverage numbers reflect the test suite's real reach. With an explicit `include`, v8 tries to resolve every matched file up front; for Angular components that import bare module specifiers (e.g. `@mintplayer/ng-bootstrap`), those resolutions happen outside the vitest plugin pipeline and throw `Failed to load url @mintplayer/ng-bootstrap`. Relying on `exclude` only (skip specs, test-setup, public-api, index barrels, d.ts, dist, node_modules) avoids that class of failure.
+- **Output paths differ by toolchain.** .NET emits `{projectRoot}/coverage/<guid>/coverage.cobertura.xml`; vitest emits `{projectRoot}/coverage/cobertura-coverage.xml`. The Codecov action's `files:` input takes both patterns on separate lines:
+  ```yaml
+  files: |
+    **/coverage/**/coverage.cobertura.xml
+    **/coverage/cobertura-coverage.xml
+  ```
+- **CI secret: `CODECOV_TOKEN`.** Needed on both `pull-request.yml` and `dotnet-build-master.yml`. Master runs `dotnet test --collect:"XPlat Code Coverage" --results-directory coverage` directly plus `npx nx run-many --target=test --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth` for Angular — both required so the master-driven badge reflects both stacks.
+- **Cache interaction:** The test target already declares `outputs: ["{projectRoot}/coverage"]`, so Nx treats coverage as part of the cached artifact — a cache hit replays the last coverage files, which is exactly what we want for Codecov uploads on unchanged projects.
+
 ## 11. Success Criteria
 
 - Green CI on `master` and all PRs for 2 consecutive weeks after milestone 4.
