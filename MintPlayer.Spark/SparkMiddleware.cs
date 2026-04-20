@@ -50,7 +50,7 @@ public static class SparkExtensions
         {
             var store = new DocumentStore
             {
-                Urls = options.RavenDb.Urls,
+                Urls = options.RavenDb.Urls.Length > 0 ? options.RavenDb.Urls : ["http://localhost:8080"],
                 Database = options.RavenDb.Database,
             };
 

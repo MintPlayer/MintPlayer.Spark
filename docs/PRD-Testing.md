@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 1.3 |
 | **Date** | 2026-04-20 |
-| **Status** | In progress (477 tests landed, see §12) |
+| **Status** | In progress (481 tests landed, see §12) |
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
@@ -610,7 +610,7 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**477 tests passing across the monorepo** — 268 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
+**481 tests passing across the monorepo** — 268 .NET (`MintPlayer.Spark.Tests`) + 4 E2E (`MintPlayer.Spark.E2E.Tests`, Playwright-driven) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
@@ -620,6 +620,7 @@ jobs:
 - **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8); `SocketExtensions` (6, via TestServer WebSocket pair); `GitHubWebhooksDevTunnelExtensions` (4, `AddSmeeDevTunnel` + `AddWebSocketDevTunnel` composition).
 - **M3 subscription-worker E2E** — `MessageSubscriptionWorker` driven by real RavenDB subscriptions via `SparkTestDriver` (7: happy path, empty-recipients rollup, NonRetryable handler, MaxAttempts=1 dead-letter, single-pickup retry scheduling, unresolvable MessageType, mixed handler rollup); `SyncActionSubscriptionWorker` with co-located `SparkModulesTest` db + stub `IHttpClientFactory` (5: 200/400/404/500 paths, unknown owner module via `RetryNumerator`).
 - **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
+- **M4 Playwright E2E** — New `MintPlayer.Spark.E2E.Tests` project driving the existing `Fleet` Demo app end-to-end (per relaxation of the "no-Demo-app testing" rule). `FleetTestHost` fixture owns: (a) an embedded RavenDB via `SparkTestDriver`, (b) Fleet launched as a `dotnet run` subprocess in the `E2E` environment with a `appsettings.E2E.json` override pointing at the embedded server, (c) admin-user seeding via the real `/spark/auth/register` endpoint + a direct Raven patch to add the `Administrators` group claim, (d) Playwright Chromium installation and per-test `BrowserContext`. 4 tests: SPA shell is served (Angular bundle + ng-spark), `/spark/auth/me` reports anonymous, cookie-based login → authenticated `/me` (Authorization + CSRF), `/login` route renders the ng-spark-auth sign-in form (ng-spark-auth components). Touches every browser-visible library.
 
 ### Deferred (handoff for next sessions)
 
@@ -627,7 +628,6 @@ jobs:
 |---|---|---|
 | **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session with pinned `Microsoft.CodeAnalysis.Testing` versions across the dep graph. |
 | **AllFeatures source generator** | Smaller, included with the source-generator session above | |
-| **E2E test host + Playwright** (M4) | All M3 should be done first to avoid duplicating coverage | New `MintPlayer.Spark.E2E.TestHost` ASP.NET Core + Angular app. Playwright for .NET runs against it. |
 
 ## 13. Implementation notes (real-world findings, not in original PRD)
 
@@ -653,6 +653,9 @@ These are non-obvious things discovered while implementing. They cost real time 
 - **`RavenTestDriver` runs one shared embedded server across test instances.** Any DB created directly via `Store.Maintenance.Server.Send(new CreateDatabaseOperation(...))` persists between tests in the same xUnit process. `SyncActionSubscriptionWorkerE2ETests` addresses the co-located `SparkModules` DB by using a per-instance GUID suffix (`$"SparkModulesTest-{Guid.NewGuid():N}"`). Don't hard-code DB names when you need isolation from prior test runs.
 - **Test-found production bug (fixed in this slice):** when a handler invoked via reflection throws `NonRetryableException`, it's wrapped in `TargetInvocationException`. In `MessageSubscriptionWorker`'s catch chain the two `when`-filtered catches must be ordered `TargetInvocationException`-first, then `Exception`. The original order let `IsNonRetryable(ex)` pass on the outer exception (via `InnerException is NonRetryable`) and stored the wrapped `.Message` ("Exception has been thrown by the target of an invocation.") instead of the real one. More-specific catches first, always.
 - **Test-found production bug #2 (fixed in this slice):** `SyncActionSubscriptionWorker`'s retry loop was running at subscription-change-vector speed instead of the configured linear backoff. The original query `from SparkSyncActions where Status = 'Pending'` re-matched the document every time the worker saved it back — and `@refresh` metadata alone does NOT gate subscription delivery (it's consulted by Raven's Refresh *cleaner*, not by subscription queries). So `RetryNumerator` burned through `MaxAttempts` (default 5) in milliseconds, losing the intended 30s/60s/90s/... pacing entirely. A local run caught `counter=1`, CI caught `counter=4`, neither with any real cooldown. **Fix**: (a) added `NextAttemptAtUtc` to `SparkSyncAction`, (b) changed the subscription query to `... and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())` — the same pattern `MessageSubscriptionWorker` already used for its own backoff, (c) `RetryNumerator.TrackRetryAsync` now returns a `RetryOutcome` record (WillRetry, AttemptCount, NextAttemptAtUtc) so callers can project the scheduled time onto an entity field that the subscription query can see. The worker clears `NextAttemptAtUtc` on success and terminal failure. E2E assertions are now deterministic on both local and CI: first attempt fires, counter=1, `NextAttemptAtUtc` in the future, no re-delivery within the test window.
+
+- **Test-found production bug #3 (fixed in this slice):** `ConfigurationBinder.Bind()` APPENDS array values from config to a non-empty default — it does NOT replace by index. `RavenDbOptions.Urls = ["http://localhost:8080"]` (C# default) meant an `appsettings.{env}.json` override like `["http://my-raven:8080"]` produced `["http://localhost:8080", "http://my-raven:8080"]` after binding, and Raven's client used the FIRST URL → always connected to `localhost:8080`. **Fix**: `RavenDbOptions.Urls` default is now `[]`; `SparkExtensions.AddSpark` falls back to `["http://localhost:8080"]` only when the bound array is empty. Overrides actually override now. Discovered because the E2E fixture's override couldn't redirect Fleet from a dev-machine Raven on 8080 to the embedded test Raven.
+- **E2E test fixture for Fleet** (`MintPlayer.Spark.E2E.Tests._Infrastructure.FleetTestHost`): boots embedded Raven via `SparkTestDriver`, creates GUID-suffixed `SparkFleetE2E-{...}` + `SparkModulesE2E-{...}` databases on it, writes `appsettings.E2E.json` into Fleet's **project dir** (not `bin/Debug/net10.0/` — ASP.NET Core's content root resolves from CWD, and we set `WorkingDirectory=fleetDir`), spawns `dotnet run --project Fleet.csproj --configuration Debug --no-launch-profile` with `ASPNETCORE_ENVIRONMENT=E2E` and `ASPNETCORE_URLS=https://localhost:{ephemeral};http://...`. Admin is seeded via the real `/spark/auth/register` endpoint (so password hashing matches Identity's configured `PasswordHasher`) then patched directly in Raven to add a `"group": "Administrators"` claim that `ClaimsGroupMembershipProvider` reads. Playwright Chromium is installed via `Microsoft.Playwright.Program.Main(["install", "chromium", "--with-deps"])`; per-test `BrowserContext` with `IgnoreHTTPSErrors=true` accepts the Kestrel dev cert.
 
 ### 13.2 Angular / Vitest infrastructure
 
