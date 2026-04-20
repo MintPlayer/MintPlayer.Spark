@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | 2026-04-20 |
-| **Status** | In progress (322/?? tests landed, see §12) |
+| **Status** | In progress (454 tests landed, see §12) |
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
@@ -610,26 +610,23 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**365 tests passing across the monorepo** — 156 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
+**454 tests passing across the monorepo** — 245 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
 - **M1 (infrastructure)** — `MintPlayer.Spark.Testing` project, FluentAssertions everywhere, Vitest + `@analogjs/vite-plugin-angular` in both Angular libs, Nx + `@nx-dotnet/core` + Nx Cloud, license env-var wiring, CI workflow rewritten.
 - **M2 partial** — `AccessControlService` (15), `ClaimsGroupMembershipProvider` (10), `ValidationService` (18), `SecurityConfigurationLoader` (11), `QueryExecutor` (9 unit + 7 integration via `SparkTestDriver`).
-- **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12).
+- **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12); `Authorization` — `GetCurrentUser` + `Logout` + `CsrfRefresh` + `SparkAuthGroup` (10); `Custom Actions` — `ListCustomActions` + `ExecuteCustomAction` (16); `StreamExecuteQuery` WebSocket (7) + `StreamingDiffEngine` (9).
+- **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8).
 - **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
 
 ### Deferred (handoff for next sessions)
 
 | Item | Why scoped out | Notes for the next batch |
 |---|---|---|
-| **`StreamExecuteQuery` WebSocket endpoint** | TestServer supports WebSockets via `Server.CreateWebSocketClient()` but the diff-engine + `IAsyncEnumerable` + cancellation deserves its own focused batch | Build on the existing `SparkEndpointFactory`. The `IStreamingQueryExecutor` returns `IAsyncEnumerable<T>` — mock or seed Raven. |
-| **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session. |
-| **Authorization endpoints** (`/spark/auth/*`) | Small batch (~6–8 tests), didn't fit the "biggest impact" prioritization | `GetCurrentUser`, `Logout`, `CsrfRefresh`, `Groups`. Reuse `SparkEndpointFactory` and the antiforgery wiring from `SparkTestClient`. |
-| **Custom Actions endpoint** (`/spark/actions/*`) | ~5–6 tests, deferred for the same reason | `Execute` + `List`. Same factory pattern. |
-| **`GitHubInstallationService` concurrency** | Needs WireMock.Net infra | Locks in the contract from [PRD-GitHubAppClientCache.md](./PRD-GitHubAppClientCache.md): cache hit, refresh, `SemaphoreSlim` serialization, 401-retry, no infinite-retry, signature verification. |
-| **Messaging / Replication / SubscriptionWorker** | Substantial new infra (real RavenDB subscriptions, message bus simulation) | Each gets its own batch per the §4 plan. `SparkTestDriver` is the foundation. |
-| **DevTunnel + SocketExtensions** | Smaller, both should fit one batch | Per §4.9 / §4.11. |
+| **Subscription-worker end-to-end flows** | `MessageSubscriptionWorker` + `SyncActionSubscriptionWorker` happy path, retry, dead-letter, non-retryable exception routing — require a real running RavenDB subscription | Seed `SparkMessage` / `SparkSyncAction` docs via `SparkTestDriver.Store`, start the worker, poll for terminal status with `WaitFor(...)`. `MaxDocsPerBatch = 1` keeps assertions deterministic. `RollupMessageStatus` + handler-level retry/backoff are the high-value paths. |
+| **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session with pinned `Microsoft.CodeAnalysis.Testing` versions across the dep graph. |
+| **DevTunnel + SocketExtensions** | Smaller, both should fit one batch | `MintPlayer.Spark.Webhooks.GitHub.DevTunnel` helpers + `MintPlayer.Dotnet.SocketExtensions` utilities. Unit-testable, no external infra. |
 | **AllFeatures source generator** | Smaller, included with the source-generator session above | |
 | **E2E test host + Playwright** (M4) | All M3 should be done first to avoid duplicating coverage | New `MintPlayer.Spark.E2E.TestHost` ASP.NET Core + Angular app. Playwright for .NET runs against it. |
 
@@ -644,8 +641,15 @@ These are non-obvious things discovered while implementing. They cost real time 
 - **`InternalsVisibleTo("DynamicProxyGenAssembly2")`** must be on every project whose internal interfaces NSubstitute needs to mock. Currently set on `MintPlayer.Spark` and `MintPlayer.Spark.Authorization`.
 - **`<IsTestProject>false</IsTestProject>`** must be set on `MintPlayer.Spark.Testing.csproj` — it has an xunit reference (for `IAsyncLifetime` types) but is NOT a test project. Without this, `dotnet test <sln>` tries to discover tests in it and exits non-zero with a confusing "0 Error(s), Build FAILED".
 - **`WebApplicationFactory<T>` doesn't work** when the host assembly has no `Main` entry point. `MintPlayer.Spark.Tests/_Infrastructure/SparkEndpointFactory.cs` uses `TestServer + IHost` directly instead.
-- **Spark's antiforgery middleware does NOT block JSON POST requests** without an `X-XSRF-TOKEN` header in the test setup, despite `RequireAntiforgeryTokenAttribute(true)` metadata. The token-mint pattern in `SparkTestClient` works for positive cases (mirrors what the SPA sends in production), but the negative-case "POST without token → rejected" assertion was removed because the middleware accepted it. May or may not be intended Spark behavior — flagged for separate investigation.
+- **Built-in `app.UseAntiforgery()` only validates form-content bodies** (ASP.NET Core 8.0.1 breaking change). Spark's JSON API was therefore unprotected — `RequireAntiforgeryTokenAttribute(true)` metadata was effectively dead code. **Fixed** by adding a supplemental middleware in `UseSpark()` that runs BEFORE `UseAntiforgery()`, calls `IAntiforgery.ValidateRequestAsync` on any mutating method whose endpoint has `IAntiforgeryMetadata.RequiresValidation=true`, and sets a custom `IAntiforgeryValidationFeature` so (a) `FormFeature`'s "unvalidated" guard doesn't trip on later form reads and (b) `EndpointMiddleware` doesn't throw "contains anti-forgery metadata but no middleware was found". Covered by `AntiforgerySecurityTests`.
 - **`SPARK001` validation must accept `<ProjectReference OutputItemType="Analyzer">`**, not just `<PackageReference>`. The original implementation only checked PackageReference and broke monorepo Demo apps.
+- **Endpoint-level `IEndpointBase.Configure` metadata** (e.g., `RequireAntiforgeryTokenAttribute` on `Logout` / `ExecuteCustomAction`) is applied via a *convention*, not directly on the builder. The metadata only materializes into the `EndpointDataSource` after `app.StartAsync()`. Test shape: boot a `WebApplication`, `MapPost` a dummy endpoint, invoke the static `Configure` through a generic helper (`static void InvokeConfigure<TEndpoint>(RouteHandlerBuilder) where TEndpoint : IEndpointBase => TEndpoint.Configure(b)`), `StartAsync`, then enumerate `IEnumerable<EndpointDataSource>`.
+- **Octokit base-URL quirk:** `new GitHubClient(header, uri)` treats a custom base URL as GitHub Enterprise and prepends `/api/v3/` to every request; `new Connection(header, uri, credentialStore, httpClient, serializer)` does NOT. WireMock stubs need to account for both shapes — the App client (token minting) hits `/api/v3/app/installations/.../access_tokens` but the installation REST client hits `/repos/...` directly.
+- **NSubstitute can't record the "last call"** for methods whose parameter list includes a `Func<object, object>` (e.g., Octokit's `IHttpClient.Send(IRequest, CancellationToken, Func<object, object>)`). `Returns(...)` after such a call fails with `CouldNotSetReturnDueToNoLastCallException`. Workaround: use plain stub classes (`internal sealed class StubOctokitHttpClient : IHttpClient`) instead of `Substitute.For<IHttpClient>()`. This affected the `TokenRefreshingHttpClient` tests.
+- **`DateTime.Parse("2026-04-20T10:00:00Z")` drops the `Z` and returns a `Local`-kind `DateTime`.** Subtracting `DateTime.UtcNow` (UTC kind) then double-counts the machine's UTC offset, inflating "delay" assertions by hours. Parse with `DateTimeStyles.RoundtripKind` to preserve UTC kind. This hit the `RetryNumerator` linear-backoff test.
+- **WireMock.Net end-to-end flows use *scenarios* for sequenced responses.** For a 401 → refresh → retry test, use `.InScenario("retry").WhenStateIs(null).WillSetStateTo("after-401")` for the first call and `.WhenStateIs("after-401")` for the retry. State machine over header-matching is more robust — the stub keeps working across refactors.
+- **`TestServer.CreateWebSocketClient()` pre-upgrade failures** surface as `InvalidOperationException: Incomplete handshake, status code: NNN`, NOT as `WebSocketException`. When the endpoint returns `404`/`400` before calling `AcceptWebSocketAsync` (e.g., `StreamExecuteQuery`'s "unknown query" or "non-streaming query" paths), assert on the exception message's status-code substring rather than the exception type.
+- **`Microsoft.NET.Sdk.Web` implicitly stages `App_Data/**` as `Content` with `CopyToPublishDirectory=PreserveNewest`.** That propagates through `ProjectReference` chains. For libraries whose `App_Data/translations.json` only needs to be an `AdditionalFiles` input for the source generator (and NOT copied to the consuming app's publish output), add `<Content Remove="App_Data\translations.json" />`. Without it, apps that reference multiple Spark libraries hit `NETSDK1152` at publish time.
 
 ### 13.2 Angular / Vitest infrastructure
 
@@ -667,7 +671,7 @@ These are non-obvious things discovered while implementing. They cost real time 
   ```
   Three ticks is usually enough; five is a cheap upper bound.
 - **`RouterLink` in a non-router test setup** needs `provideRouter([])`. `SparkSubQueryComponent`'s template imports `RouterModule` for anchor-style links even though the component itself has no route, so any TestBed that renders it must include `provideRouter([])`.
-- **`SparkAuthBarComponent.onLogout()` has no try/catch** — if `logout()` rejects, `router.navigateByUrl('/')` is skipped. The test documents that as the current behavior. Worth fixing in a follow-up if logout-on-network-error should still log the user out locally.
+- **`SparkAuthBarComponent.onLogout()` now wraps the service call in `try { ... } finally { router.navigateByUrl('/') }`** so navigation runs even when `authService.logout()` rejects (network error, already expired session). The local session state is cleared by `SparkAuthService` regardless, and the user is returned to the anonymous area. The spec asserts this behavior on both success and rejection paths.
 
 ### 13.3 CI / Nx
 

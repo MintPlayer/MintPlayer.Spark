@@ -50,12 +50,15 @@ describe('SparkAuthBarComponent', () => {
     expect(TestBed.inject(Router).url).toBe('/');
   });
 
-  it('does not navigate when logout rejects (current implementation has no try/catch)', async () => {
+  it('still navigates back to root when authService.logout rejects', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
     c.authService.logout = vi.fn().mockRejectedValue(new Error('network'));
 
-    await expect(c.onLogout()).rejects.toThrow();
-    expect(TestBed.inject(Router).url).toBe('/somewhere');
+    const navigated = nextNavigationEnd();
+    await expect(c.onLogout()).rejects.toThrow('network');
+    await navigated;
+
+    expect(TestBed.inject(Router).url).toBe('/');
   });
 });

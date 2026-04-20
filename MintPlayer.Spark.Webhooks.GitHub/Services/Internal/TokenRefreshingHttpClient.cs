@@ -29,7 +29,10 @@ internal sealed class TokenRefreshingHttpClient : IHttpClient
 
         _service.InvalidateInstallation(_installationId);
         var fresh = await _service.GetOrCreateInstallationTokenAsync(_installationId, cancellationToken);
-        request.Headers["Authorization"] = $"token {fresh.Token}";
+        // Align with Octokit's Credentials serialization ("Token xxx" with capital T) so
+        // WireMock scenarios / logs / packet captures see a single consistent header shape
+        // across the initial call and the retry.
+        request.Headers["Authorization"] = $"Token {fresh.Token}";
         return await _inner.Send(request, cancellationToken, preprocessResponseBody);
     }
 
