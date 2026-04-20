@@ -34,6 +34,8 @@
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+    <ProjectReference Include="..\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj" />
