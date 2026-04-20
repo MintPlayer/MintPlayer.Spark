@@ -610,20 +610,19 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**322 tests passing across the monorepo** — 156 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 113 ng-spark.
+**365 tests passing across the monorepo** — 156 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
 - **M1 (infrastructure)** — `MintPlayer.Spark.Testing` project, FluentAssertions everywhere, Vitest + `@analogjs/vite-plugin-angular` in both Angular libs, Nx + `@nx-dotnet/core` + Nx Cloud, license env-var wiring, CI workflow rewritten.
 - **M2 partial** — `AccessControlService` (15), `ClaimsGroupMembershipProvider` (10), `ValidationService` (18), `SecurityConfigurationLoader` (11), `QueryExecutor` (9 unit + 7 integration via `SparkTestDriver`).
 - **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12).
-- **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21).
+- **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
 
 ### Deferred (handoff for next sessions)
 
 | Item | Why scoped out | Notes for the next batch |
 |---|---|---|
-| **`SparkPoFormComponent`**, `SparkPoDetailComponent`, `SparkSubQueryComponent` | Deepest ng-spark components — signals + effects + multi-way binding + sub-queries + custom actions | Use the `nextNavigationEnd` + `StubComponent` helpers in `node_packages/ng-spark/src/test-utils.ts`. Mock `SparkService` with `vi.fn()`. Add `provideNoopAnimations()` and `provideHttpClient()/provideHttpClientTesting()` to the providers list. |
 | **`StreamExecuteQuery` WebSocket endpoint** | TestServer supports WebSockets via `Server.CreateWebSocketClient()` but the diff-engine + `IAsyncEnumerable` + cancellation deserves its own focused batch | Build on the existing `SparkEndpointFactory`. The `IStreamingQueryExecutor` returns `IAsyncEnumerable<T>` — mock or seed Raven. |
 | **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session. |
 | **Authorization endpoints** (`/spark/auth/*`) | Small batch (~6–8 tests), didn't fit the "biggest impact" prioritization | `GetCurrentUser`, `Logout`, `CsrfRefresh`, `Groups`. Reuse `SparkEndpointFactory` and the antiforgery wiring from `SparkTestClient`. |
@@ -660,6 +659,14 @@ These are non-obvious things discovered while implementing. They cost real time 
 - **Sequential awaited HTTP via `firstValueFrom` needs a microtask flush between `expectOne` calls.** Pattern in `spark-auth.service.spec.ts`'s `flush()` helper: `await new Promise<void>(r => setTimeout(r, 0))`.
 - **Stub `Router` with `vi.fn()` is broken** because `RouterLink` directive subscribes to `Router.events` (which is undefined on a bare stub). Always use `provideRouter([])` even when you don't care about navigation, just for the directive's DI.
 - **Angular 21 signal inputs** (`input.required<T>()`) are set in tests via `fixture.componentRef.setInput(name, value)` + `fixture.detectChanges()`.
+- **Zoneless `fixture.whenStable()` does NOT await `effect()`-spawned async work.** Components like `SparkPoFormComponent` / `SparkSubQueryComponent` kick off `Promise.all(...)` loaders from an `effect()` and set signals when they resolve. Use a multi-tick microtask flush after `detectChanges()`:
+  ```typescript
+  async function flush() {
+    for (let i = 0; i < 5; i++) await new Promise<void>(r => setTimeout(r, 0));
+  }
+  ```
+  Three ticks is usually enough; five is a cheap upper bound.
+- **`RouterLink` in a non-router test setup** needs `provideRouter([])`. `SparkSubQueryComponent`'s template imports `RouterModule` for anchor-style links even though the component itself has no route, so any TestBed that renders it must include `provideRouter([])`.
 - **`SparkAuthBarComponent.onLogout()` has no try/catch** — if `logout()` rejects, `router.navigateByUrl('/')` is skipped. The test documents that as the current behavior. Worth fixing in a follow-up if logout-on-network-error should still log the user out locally.
 
 ### 13.3 CI / Nx
