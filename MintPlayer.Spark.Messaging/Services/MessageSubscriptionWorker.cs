@@ -164,15 +164,6 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
 
                             Logger.LogDebug("Handler {HandlerType} completed for message {MessageId}", handlerType.Name, sparkMessage.Id);
                         }
-                        catch (Exception ex) when (IsNonRetryable(ex))
-                        {
-                            Logger.LogWarning(ex, "Non-retryable error in handler {HandlerType} for message {MessageId}, dead-lettering handler",
-                                handlerType.Name, sparkMessage.Id);
-
-                            handler.Status = EHandlerStatus.DeadLettered;
-                            handler.LastError = ex.Message;
-                            await session.SaveChangesAsync(cancellationToken);
-                        }
                         catch (TargetInvocationException ex) when (IsNonRetryable(ex.InnerException!))
                         {
                             Logger.LogWarning(ex.InnerException, "Non-retryable error in handler {HandlerType} for message {MessageId}, dead-lettering handler",
@@ -180,6 +171,15 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
 
                             handler.Status = EHandlerStatus.DeadLettered;
                             handler.LastError = ex.InnerException!.Message;
+                            await session.SaveChangesAsync(cancellationToken);
+                        }
+                        catch (Exception ex) when (IsNonRetryable(ex))
+                        {
+                            Logger.LogWarning(ex, "Non-retryable error in handler {HandlerType} for message {MessageId}, dead-lettering handler",
+                                handlerType.Name, sparkMessage.Id);
+
+                            handler.Status = EHandlerStatus.DeadLettered;
+                            handler.LastError = ex.Message;
                             await session.SaveChangesAsync(cancellationToken);
                         }
                         catch (Exception ex)
