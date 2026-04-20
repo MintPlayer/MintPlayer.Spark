@@ -9,17 +9,14 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using GraphQLConnection = Octokit.GraphQL.Connection;
-using GraphQLProductHeaderValue = Octokit.GraphQL.ProductHeaderValue;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 
 [Register(typeof(IGitHubInstallationService), ServiceLifetime.Singleton)]
 internal partial class GitHubInstallationService : IGitHubInstallationService, IDisposable
 {
-    private static readonly ProductHeaderValue ProductHeader = new("SparkWebhooks", "1.0");
-    private static readonly GraphQLProductHeaderValue GraphQLProductHeader = new("SparkWebhooks", "1.0");
-
     [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
+    [Inject] private readonly IGitHubClientFactory _clientFactory;
 
     private readonly ConcurrentDictionary<long, AccessToken> _installationTokens = new();
     private readonly ConcurrentDictionary<long, IGitHubClient> _installationClients = new();
@@ -75,11 +72,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         var opts = _options.Value;
         var privateKey = await ResolvePrivateKeyAsync(opts);
         var jwt = CreateJwt(opts.ClientId!, privateKey);
-
-        return new GitHubClient(ProductHeader)
-        {
-            Credentials = new Credentials(jwt, AuthenticationType.Bearer),
-        };
+        return _clientFactory.CreateAppClient(jwt);
     }
 
     public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
@@ -88,13 +81,8 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
     private IGitHubClient BuildInstallationClient(long installationId)
     {
         var refreshing = new TokenRefreshingHttpClient(_sharedRestHttpClient, installationId, this);
-        var connection = new Connection(
-            ProductHeader,
-            GitHubClient.GitHubApiUrl,
-            new DynamicInstallationCredentialStore(installationId, this),
-            refreshing,
-            new SimpleJsonSerializer());
-        return new GitHubClient(connection);
+        var credentialStore = new DynamicInstallationCredentialStore(installationId, this);
+        return _clientFactory.CreateInstallationClient(refreshing, credentialStore);
     }
 
     public async Task<GraphQLConnection> CreateGraphQLConnectionAsync(long installationId, EClientType clientType)
@@ -105,7 +93,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
                 // App-mode GraphQL is rare and never cached — mint a fresh JWT-bearing connection per call.
                 var appClient = await CreateAppClientAsync();
                 var appToken = appClient.Connection.Credentials.Password;
-                return new GraphQLConnection(GraphQLProductHeader, appToken);
+                return _clientFactory.CreateAppGraphQLConnection(appToken);
             case EClientType.Installation:
                 return _installationGraphQLConnections.GetOrAdd(installationId, BuildInstallationGraphQLConnection);
             default:
@@ -119,8 +107,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         var httpClient = new HttpClient(handler);
         lock (_ownedDisposables) { _ownedDisposables.Add(httpClient); }
 
-        return new GraphQLConnection(
-            GraphQLProductHeader,
+        return _clientFactory.CreateInstallationGraphQLConnection(
             new DynamicInstallationGraphQLCredentialStore(installationId, this),
             httpClient);
     }

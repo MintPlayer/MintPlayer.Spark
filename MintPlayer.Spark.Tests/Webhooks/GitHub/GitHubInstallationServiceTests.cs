@@ -15,8 +15,7 @@ public class GitHubInstallationServiceTests
     private static GitHubInstallationService NewService(GitHubWebhooksOptions? options = null)
     {
         var opts = Options.Create(options ?? new GitHubWebhooksOptions());
-        // Source generator writes the [Options] field via the public ctor
-        return new GitHubInstallationService(opts);
+        return new GitHubInstallationService(new GitHubClientFactory(), opts);
     }
 
     private static ConcurrentDictionary<long, AccessToken> GetTokenCache(GitHubInstallationService service)
