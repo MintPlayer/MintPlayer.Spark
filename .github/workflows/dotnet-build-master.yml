@@ -75,12 +75,17 @@ jobs:
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
+    - name: Test Angular libraries
+      run: npx nx run-many --target=test --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
+
     - name: Upload coverage to Codecov
       if: always()
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: '**/coverage/**/coverage.cobertura.xml'
+        files: |
+          **/coverage/**/coverage.cobertura.xml
+          **/coverage/cobertura-coverage.xml
         fail_ci_if_error: false
         verbose: true
 
