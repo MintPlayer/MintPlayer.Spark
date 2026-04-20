@@ -25,6 +25,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj" />
