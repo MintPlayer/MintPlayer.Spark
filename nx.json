@@ -21,7 +21,11 @@
     "test": {
       "inputs": ["default", "^production"],
       "cache": true,
-      "outputs": ["{projectRoot}/coverage"]
+      "outputs": ["{projectRoot}/coverage"],
+      "options": {
+        "collect": "XPlat Code Coverage",
+        "resultsDirectory": "coverage"
+      }
     },
     "build": {
       "inputs": ["production", "^production"],

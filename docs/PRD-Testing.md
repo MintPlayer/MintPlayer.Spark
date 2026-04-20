@@ -698,6 +698,15 @@ Earlier attempts blocked on two things: the netstandard2.0 generator's polyfill 
 
 One translation aggregator generator (`HostTranslationsAggregatorGenerator`) is left untested — it requires a multi-compilation setup with pre-built libraries carrying `[assembly: SparkTranslations(...)]` attributes, which is more plumbing than the other 6 generators needed. Deferred; the Demo apps' builds still exercise it.
 
+### 13.5 Coverage reporting — .NET wiring
+
+- **`coverlet.collector` is enough.** Present in all three .NET test csprojs (`MintPlayer.Spark.Tests`, `MintPlayer.Spark.E2E.Tests`, `MintPlayer.Spark.SourceGenerators.Tests`). No MSBuild props, no separate tool install.
+- **Nx `@nx-dotnet/core:test` executor passes collector flags through its `options`** (`collect: "XPlat Code Coverage"`, `resultsDirectory: "coverage"`). Set once at `targetDefaults.test.options` in `nx.json` — applies to every .NET test project without per-project `project.json` files. Angular libs use `nx:run-commands` with `vitest` and silently ignore the extra keys (they don't forward them to the command), so the shared default doesn't break them.
+- **Output path is `{projectRoot}/coverage/<guid>/coverage.cobertura.xml`.** Collector always emits into a GUID subfolder; don't try to flatten it. `codecov/codecov-action@v5` with `files: '**/coverage/**/coverage.cobertura.xml'` picks all three up in one upload.
+- **CI secret: `CODECOV_TOKEN`.** Needed on both `pull-request.yml` and `dotnet-build-master.yml`. Master uses `dotnet test --collect:"XPlat Code Coverage" --results-directory coverage` directly (no Nx there).
+- **Cache interaction:** The test target already declares `outputs: ["{projectRoot}/coverage"]`, so Nx treats coverage as part of the cached artifact — a cache hit replays the last coverage files, which is exactly what we want for Codecov uploads on unchanged projects.
+- **Angular coverage is not wired yet.** `@vitest/coverage-v8` + a `coverage` block in each `vitest.config.ts` + `--coverage` on the `vitest run` command is the follow-up. Not in this PR to keep the change narrow.
+
 ## 11. Success Criteria
 
 - Green CI on `master` and all PRs for 2 consecutive weeks after milestone 4.
