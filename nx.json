@@ -21,7 +21,9 @@
     "test": {
       "inputs": ["default", "^production"],
       "cache": true,
-      "outputs": ["{projectRoot}/coverage"],
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "@nx-dotnet/core:test": {
       "options": {
         "collect": "XPlat Code Coverage",
         "resultsDirectory": "coverage"
