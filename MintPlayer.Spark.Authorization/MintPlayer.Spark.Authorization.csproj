@@ -53,6 +53,14 @@
 
 	<ItemGroup>
 		<AdditionalFiles Include="App_Data\translations.json" />
+		<!--
+		App_Data is implicitly included as Content by Microsoft.NET.Sdk.Web with
+		CopyToPublishDirectory=PreserveNewest, which propagates through ProjectReferences
+		and causes NETSDK1152 in consuming apps (multiple publish outputs with the same
+		relative path). This library only needs the file at build time as an
+		AdditionalFiles input for the translations source generator.
+		-->
+		<Content Remove="App_Data\translations.json" />
 	</ItemGroup>
 
 	<ItemGroup>
