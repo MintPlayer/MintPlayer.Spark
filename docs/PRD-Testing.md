@@ -610,14 +610,14 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**454 tests passing across the monorepo** — 245 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
+**464 tests passing across the monorepo** — 256 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
 - **M1 (infrastructure)** — `MintPlayer.Spark.Testing` project, FluentAssertions everywhere, Vitest + `@analogjs/vite-plugin-angular` in both Angular libs, Nx + `@nx-dotnet/core` + Nx Cloud, license env-var wiring, CI workflow rewritten.
 - **M2 partial** — `AccessControlService` (15), `ClaimsGroupMembershipProvider` (10), `ValidationService` (18), `SecurityConfigurationLoader` (11), `QueryExecutor` (9 unit + 7 integration via `SparkTestDriver`).
 - **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12); `Authorization` — `GetCurrentUser` + `Logout` + `CsrfRefresh` + `SparkAuthGroup` (10); `Custom Actions` — `ListCustomActions` + `ExecuteCustomAction` (16); `StreamExecuteQuery` WebSocket (7) + `StreamingDiffEngine` (9).
-- **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8).
+- **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8); `SocketExtensions` (6, via TestServer WebSocket pair); `GitHubWebhooksDevTunnelExtensions` (4, `AddSmeeDevTunnel` + `AddWebSocketDevTunnel` composition).
 - **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
 
 ### Deferred (handoff for next sessions)
@@ -626,7 +626,6 @@ jobs:
 |---|---|---|
 | **Subscription-worker end-to-end flows** | `MessageSubscriptionWorker` + `SyncActionSubscriptionWorker` happy path, retry, dead-letter, non-retryable exception routing — require a real running RavenDB subscription | Seed `SparkMessage` / `SparkSyncAction` docs via `SparkTestDriver.Store`, start the worker, poll for terminal status with `WaitFor(...)`. `MaxDocsPerBatch = 1` keeps assertions deterministic. `RollupMessageStatus` + handler-level retry/backoff are the high-value paths. |
 | **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session with pinned `Microsoft.CodeAnalysis.Testing` versions across the dep graph. |
-| **DevTunnel + SocketExtensions** | Smaller, both should fit one batch | `MintPlayer.Spark.Webhooks.GitHub.DevTunnel` helpers + `MintPlayer.Dotnet.SocketExtensions` utilities. Unit-testable, no external infra. |
 | **AllFeatures source generator** | Smaller, included with the source-generator session above | |
 | **E2E test host + Playwright** (M4) | All M3 should be done first to avoid duplicating coverage | New `MintPlayer.Spark.E2E.TestHost` ASP.NET Core + Angular app. Playwright for .NET runs against it. |
 
