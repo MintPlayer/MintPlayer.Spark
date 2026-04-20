@@ -55,6 +55,21 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release --no-restore
 
+    - name: Resolve Playwright version
+      id: playwright
+      run: |
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
     - name: Test
       run: dotnet test --no-restore --verbosity normal
       env:
