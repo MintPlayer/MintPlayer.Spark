@@ -30,4 +30,11 @@ public class SparkSyncAction
 
     /// <summary>Last error message if processing failed.</summary>
     public string? LastError { get; set; }
+
+    /// <summary>
+    /// When the next processing attempt should occur. Null means deliver immediately.
+    /// Populated when a retry is scheduled so the subscription query can gate re-delivery
+    /// on the backoff window rather than the document's change vector.
+    /// </summary>
+    public DateTime? NextAttemptAtUtc { get; set; }
 }

@@ -33,7 +33,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
     {
         return new SubscriptionCreationOptions
         {
-            Query = "from SparkSyncActions where Status = 'Pending'",
+            Query = "from SparkSyncActions where Status = 'Pending' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())",
         };
     }
 
@@ -73,6 +73,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
                         syncAction.OwnerModuleName, response.StatusCode);
 
                     syncAction.Status = ESyncActionStatus.Completed;
+                    syncAction.NextAttemptAtUtc = null;
                     await _retryNumerator.ClearRetryAsync(session, syncAction);
                     await session.SaveChangesAsync(cancellationToken);
                     continue;
@@ -85,6 +86,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
                 {
                     syncAction.Status = ESyncActionStatus.Failed;
                     syncAction.LastError = $"Rejected with {response.StatusCode}: {body}";
+                    syncAction.NextAttemptAtUtc = null;
                     await session.SaveChangesAsync(cancellationToken);
 
                     Logger.LogError(
@@ -99,9 +101,10 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
                 syncAction.LastError = error.Message;
                 syncAction.Status = ESyncActionStatus.Pending;
-                var willRetry = await _retryNumerator.TrackRetryAsync(session, syncAction, error, Logger);
+                var retry = await _retryNumerator.TrackRetryAsync(session, syncAction, error, Logger);
+                syncAction.NextAttemptAtUtc = retry.NextAttemptAtUtc;
 
-                if (!willRetry)
+                if (!retry.WillRetry)
                 {
                     syncAction.Status = ESyncActionStatus.Failed;
                 }
@@ -114,9 +117,10 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
                 syncAction.LastError = ex.Message;
                 syncAction.Status = ESyncActionStatus.Pending;
-                var willRetry = await _retryNumerator.TrackRetryAsync(session, syncAction, ex, Logger);
+                var retry = await _retryNumerator.TrackRetryAsync(session, syncAction, ex, Logger);
+                syncAction.NextAttemptAtUtc = retry.NextAttemptAtUtc;
 
-                if (!willRetry)
+                if (!retry.WillRetry)
                 {
                     syncAction.Status = ESyncActionStatus.Failed;
                 }

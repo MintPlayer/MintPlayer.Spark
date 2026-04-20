@@ -19,37 +19,38 @@ public class RetryNumeratorTests
     }
 
     [Fact]
-    public async Task TrackRetryAsync_schedules_refresh_and_returns_true_when_under_MaxAttempts()
+    public async Task TrackRetryAsync_schedules_refresh_and_returns_WillRetry_true_when_under_MaxAttempts()
     {
         var (session, counters, metadata) = MakeSession(currentCounterValue: 0);
         var numerator = new RetryNumerator { MaxAttempts = 5 };
         var entity = new FakeEntity();
 
-        var willRetry = await numerator.TrackRetryAsync(session, entity, new Exception("boom"));
+        var outcome = await numerator.TrackRetryAsync(session, entity, new Exception("boom"));
 
-        willRetry.Should().BeTrue();
+        outcome.WillRetry.Should().BeTrue();
+        outcome.AttemptCount.Should().Be(1);
+        outcome.NextAttemptAtUtc.Should().BeAfter(DateTime.UtcNow);
         counters.Received(1).Increment("SparkRetryAttempts", 1);
         counters.DidNotReceive().Delete("SparkRetryAttempts");
         metadata.Should().ContainKey("@refresh");
-        // @refresh is a near-future timestamp (within the linear-backoff window)
         var refreshAt = DateTime.Parse((string)metadata["@refresh"]!, null, System.Globalization.DateTimeStyles.RoundtripKind);
-        refreshAt.Should().BeAfter(DateTime.UtcNow);
+        refreshAt.Should().BeCloseTo(outcome.NextAttemptAtUtc, TimeSpan.FromMilliseconds(10));
     }
 
     [Fact]
-    public async Task TrackRetryAsync_parks_the_document_and_returns_false_when_MaxAttempts_reached()
+    public async Task TrackRetryAsync_parks_the_document_and_returns_WillRetry_false_when_MaxAttempts_reached()
     {
         var (session, counters, metadata) = MakeSession(currentCounterValue: 5);
         var numerator = new RetryNumerator { MaxAttempts = 5, ExhaustedDelay = TimeSpan.FromDays(1) };
         var entity = new FakeEntity();
 
-        var willRetry = await numerator.TrackRetryAsync(session, entity, new Exception("boom"));
+        var outcome = await numerator.TrackRetryAsync(session, entity, new Exception("boom"));
 
-        willRetry.Should().BeFalse();
+        outcome.WillRetry.Should().BeFalse();
+        outcome.AttemptCount.Should().Be(6);
+        outcome.NextAttemptAtUtc.Should().BeOnOrAfter(DateTime.UtcNow.AddHours(23));
         counters.Received(1).Delete("SparkRetryAttempts");
         metadata.Should().ContainKey("@refresh");
-        var refreshAt = DateTime.Parse((string)metadata["@refresh"]!, null, System.Globalization.DateTimeStyles.RoundtripKind);
-        refreshAt.Should().BeOnOrAfter(DateTime.UtcNow.AddHours(23)); // ~1 day park
     }
 
     [Fact]

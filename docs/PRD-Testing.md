@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 1.3 |
 | **Date** | 2026-04-20 |
-| **Status** | In progress (454 tests landed, see §12) |
+| **Status** | In progress (477 tests landed, see §12) |
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
@@ -610,7 +610,7 @@ jobs:
 
 ## 12. Implementation status (as of 2026-04-20)
 
-**464 tests passing across the monorepo** — 256 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
+**477 tests passing across the monorepo** — 268 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 156 ng-spark.
 
 ### Done ✅
 
@@ -618,13 +618,13 @@ jobs:
 - **M2 partial** — `AccessControlService` (15), `ClaimsGroupMembershipProvider` (10), `ValidationService` (18), `SecurityConfigurationLoader` (11), `QueryExecutor` (9 unit + 7 integration via `SparkTestDriver`).
 - **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12); `Authorization` — `GetCurrentUser` + `Logout` + `CsrfRefresh` + `SparkAuthGroup` (10); `Custom Actions` — `ListCustomActions` + `ExecuteCustomAction` (16); `StreamExecuteQuery` WebSocket (7) + `StreamingDiffEngine` (9).
 - **M3 services** — `GitHubInstallationService` cache + JWT + decorators via reflection (15); WireMock.Net-backed end-to-end token refresh + 401-retry (5, behind a new `IGitHubClientFactory` seam); `RetryNumerator` (6); `MessageBus` (5) + `MessageCheckpoint` (3); `EtlScriptCollector` (5) + `SyncActionInterceptor` (8); `SocketExtensions` (6, via TestServer WebSocket pair); `GitHubWebhooksDevTunnelExtensions` (4, `AddSmeeDevTunnel` + `AddWebSocketDevTunnel` composition).
+- **M3 subscription-worker E2E** — `MessageSubscriptionWorker` driven by real RavenDB subscriptions via `SparkTestDriver` (7: happy path, empty-recipients rollup, NonRetryable handler, MaxAttempts=1 dead-letter, single-pickup retry scheduling, unresolvable MessageType, mixed handler rollup); `SyncActionSubscriptionWorker` with co-located `SparkModulesTest` db + stub `IHttpClientFactory` (5: 200/400/404/500 paths, unknown owner module via `RetryNumerator`).
 - **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21), `SparkPoFormComponent` + `SparkPoDetailComponent` + `SparkSubQueryComponent` (43).
 
 ### Deferred (handoff for next sessions)
 
 | Item | Why scoped out | Notes for the next batch |
 |---|---|---|
-| **Subscription-worker end-to-end flows** | `MessageSubscriptionWorker` + `SyncActionSubscriptionWorker` happy path, retry, dead-letter, non-retryable exception routing — require a real running RavenDB subscription | Seed `SparkMessage` / `SparkSyncAction` docs via `SparkTestDriver.Store`, start the worker, poll for terminal status with `WaitFor(...)`. `MaxDocsPerBatch = 1` keeps assertions deterministic. `RollupMessageStatus` + handler-level retry/backoff are the high-value paths. |
 | **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session with pinned `Microsoft.CodeAnalysis.Testing` versions across the dep graph. |
 | **AllFeatures source generator** | Smaller, included with the source-generator session above | |
 | **E2E test host + Playwright** (M4) | All M3 should be done first to avoid duplicating coverage | New `MintPlayer.Spark.E2E.TestHost` ASP.NET Core + Angular app. Playwright for .NET runs against it. |
@@ -649,6 +649,10 @@ These are non-obvious things discovered while implementing. They cost real time 
 - **WireMock.Net end-to-end flows use *scenarios* for sequenced responses.** For a 401 → refresh → retry test, use `.InScenario("retry").WhenStateIs(null).WillSetStateTo("after-401")` for the first call and `.WhenStateIs("after-401")` for the retry. State machine over header-matching is more robust — the stub keeps working across refactors.
 - **`TestServer.CreateWebSocketClient()` pre-upgrade failures** surface as `InvalidOperationException: Incomplete handshake, status code: NNN`, NOT as `WebSocketException`. When the endpoint returns `404`/`400` before calling `AcceptWebSocketAsync` (e.g., `StreamExecuteQuery`'s "unknown query" or "non-streaming query" paths), assert on the exception message's status-code substring rather than the exception type.
 - **`Microsoft.NET.Sdk.Web` implicitly stages `App_Data/**` as `Content` with `CopyToPublishDirectory=PreserveNewest`.** That propagates through `ProjectReference` chains. For libraries whose `App_Data/translations.json` only needs to be an `AdditionalFiles` input for the source generator (and NOT copied to the consuming app's publish output), add `<Content Remove="App_Data\translations.json" />`. Without it, apps that reference multiple Spark libraries hit `NETSDK1152` at publish time.
+- **Subscription-worker E2E tests drive the worker directly — not through `MessageSubscriptionManager`.** Each test instantiates `MessageSubscriptionWorker` with a single queue name + a small `ServiceProvider` holding the desired `IRecipient<T>` registrations, calls `StartAsync`, and polls `SparkMessage`/`SparkSyncAction` state via `Store.OpenAsyncSession().LoadAsync(id)` until terminal. `MaxDocsPerBatch = 1` (baked into the worker) makes transitions deterministic. Nested `public record` message types work because `typeof(T).FullName` uses the same `+` separator that `Type.GetType` (via `AssemblyQualifiedName`) round-trips.
+- **`RavenTestDriver` runs one shared embedded server across test instances.** Any DB created directly via `Store.Maintenance.Server.Send(new CreateDatabaseOperation(...))` persists between tests in the same xUnit process. `SyncActionSubscriptionWorkerE2ETests` addresses the co-located `SparkModules` DB by using a per-instance GUID suffix (`$"SparkModulesTest-{Guid.NewGuid():N}"`). Don't hard-code DB names when you need isolation from prior test runs.
+- **Test-found production bug (fixed in this slice):** when a handler invoked via reflection throws `NonRetryableException`, it's wrapped in `TargetInvocationException`. In `MessageSubscriptionWorker`'s catch chain the two `when`-filtered catches must be ordered `TargetInvocationException`-first, then `Exception`. The original order let `IsNonRetryable(ex)` pass on the outer exception (via `InnerException is NonRetryable`) and stored the wrapped `.Message` ("Exception has been thrown by the target of an invocation.") instead of the real one. More-specific catches first, always.
+- **Test-found production bug #2 (fixed in this slice):** `SyncActionSubscriptionWorker`'s retry loop was running at subscription-change-vector speed instead of the configured linear backoff. The original query `from SparkSyncActions where Status = 'Pending'` re-matched the document every time the worker saved it back — and `@refresh` metadata alone does NOT gate subscription delivery (it's consulted by Raven's Refresh *cleaner*, not by subscription queries). So `RetryNumerator` burned through `MaxAttempts` (default 5) in milliseconds, losing the intended 30s/60s/90s/... pacing entirely. A local run caught `counter=1`, CI caught `counter=4`, neither with any real cooldown. **Fix**: (a) added `NextAttemptAtUtc` to `SparkSyncAction`, (b) changed the subscription query to `... and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())` — the same pattern `MessageSubscriptionWorker` already used for its own backoff, (c) `RetryNumerator.TrackRetryAsync` now returns a `RetryOutcome` record (WillRetry, AttemptCount, NextAttemptAtUtc) so callers can project the scheduled time onto an entity field that the subscription query can see. The worker clears `NextAttemptAtUtc` on success and terminal failure. E2E assertions are now deterministic on both local and CI: first attempt fires, counter=1, `NextAttemptAtUtc` in the future, no re-delivery within the test window.
 
 ### 13.2 Angular / Vitest infrastructure
 
