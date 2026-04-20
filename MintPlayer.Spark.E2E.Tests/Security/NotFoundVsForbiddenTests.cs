@@ -48,6 +48,7 @@ public class NotFoundVsForbiddenTests
         {
             persistentObject = new
             {
+                name = "Car",
                 objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                 attributes = new object[]
                 {

@@ -49,6 +49,16 @@ public sealed class FleetTestHost : IAsyncLifetime
     public string AdminEmailAddress => AdminEmail;
     public string AdminPass => AdminPassword;
 
+    /// <summary>
+    /// Returns the last <paramref name="maxLines"/> lines captured from Fleet's stdout/stderr.
+    /// Useful for surfacing server-side exception details inside an assertion failure message
+    /// when the HTTP response body doesn't include them (production 500, etc.).
+    /// </summary>
+    public string RecentLog(int maxLines = 60)
+    {
+        lock (_logLock) return string.Join('\n', _fleetLog.TakeLast(maxLines));
+    }
+
     public async Task InitializeAsync()
     {
         _raven = new SparkTestDriverHost();

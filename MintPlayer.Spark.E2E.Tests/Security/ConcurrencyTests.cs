@@ -27,6 +27,7 @@ public class ConcurrencyTests
         {
             persistentObject = new
             {
+                name = "Car",
                 objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                 attributes = new object[]
                 {
@@ -36,7 +37,8 @@ public class ConcurrencyTests
                 },
             },
         });
-        create.Status.Should().BeOneOf(new[] { 200, 201 }, $"create failed: {await create.TextAsync()}");
+        create.Status.Should().BeOneOf(new[] { 200, 201 },
+            $"create failed ({create.Status}): body=[{await create.TextAsync()}]\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
         var body = await create.JsonAsync();
         var id = body!.Value.GetProperty("id").GetString()!;
 
@@ -52,6 +54,7 @@ public class ConcurrencyTests
                 persistentObject = new
                 {
                     id,
+                    name = "Car",
                     objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                     attributes = new object[]
                     {
@@ -72,6 +75,7 @@ public class ConcurrencyTests
                 persistentObject = new
                 {
                     id,
+                    name = "Car",
                     objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                     attributes = new object[]
                     {
