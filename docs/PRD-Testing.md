@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.1 |
-| **Date** | 2026-04-18 |
-| **Status** | Proposed |
+| **Version** | 1.2 |
+| **Date** | 2026-04-20 |
+| **Status** | In progress (322/?? tests landed, see §12) |
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
@@ -607,6 +607,79 @@ jobs:
 6. **Nx Cloud tier** — proposed: free tier initially; upgrade when free computes run out. Self-hosted remote cache (`@nx/nx-cloud` on-prem) is a fallback if commercial pricing is blocking.
 
 ---
+
+## 12. Implementation status (as of 2026-04-20)
+
+**322 tests passing across the monorepo** — 156 .NET (`MintPlayer.Spark.Tests`) + 53 ng-spark-auth + 113 ng-spark.
+
+### Done ✅
+
+- **M1 (infrastructure)** — `MintPlayer.Spark.Testing` project, FluentAssertions everywhere, Vitest + `@analogjs/vite-plugin-angular` in both Angular libs, Nx + `@nx-dotnet/core` + Nx Cloud, license env-var wiring, CI workflow rewritten.
+- **M2 partial** — `AccessControlService` (15), `ClaimsGroupMembershipProvider` (10), `ValidationService` (18), `SecurityConfigurationLoader` (11), `QueryExecutor` (9 unit + 7 integration via `SparkTestDriver`).
+- **M3 endpoints** — `PersistentObject` GET/LIST/CREATE/UPDATE/DELETE (18) via `SparkEndpointFactory`; `Queries` GET/LIST/EXECUTE (12).
+- **M3 Angular** — `SparkAuthService` + guard + interceptor (15), all 6 ng-spark-auth components (27), all 22 ng-spark pipes (70), `RetryActionService` + `IconRegistry` + `IconComponent` + `RetryActionModal` (17), `SparkPoCreate` + `SparkPoEdit` + `SparkQueryList` (21).
+
+### Deferred (handoff for next sessions)
+
+| Item | Why scoped out | Notes for the next batch |
+|---|---|---|
+| **`SparkPoFormComponent`**, `SparkPoDetailComponent`, `SparkSubQueryComponent` | Deepest ng-spark components — signals + effects + multi-way binding + sub-queries + custom actions | Use the `nextNavigationEnd` + `StubComponent` helpers in `node_packages/ng-spark/src/test-utils.ts`. Mock `SparkService` with `vi.fn()`. Add `provideNoopAnimations()` and `provideHttpClient()/provideHttpClientTesting()` to the providers list. |
+| **`StreamExecuteQuery` WebSocket endpoint** | TestServer supports WebSockets via `Server.CreateWebSocketClient()` but the diff-engine + `IAsyncEnumerable` + cancellation deserves its own focused batch | Build on the existing `SparkEndpointFactory`. The `IStreamingQueryExecutor` returns `IAsyncEnumerable<T>` — mock or seed Raven. |
+| **Source-generator snapshot tests** | Generator targets `netstandard2.0` and pulls `MintPlayer.SourceGenerators.Tools` polyfills (esp. `ModuleInitializerAttribute`) that collide with `net10.0`'s `System.Runtime` at test load time | A first attempt with `Assembly.LoadFrom` from a separate `MintPlayer.Spark.SourceGenerators.Tests` project + `ExcludeAssets="compile"` on Tools got further but still hit `Microsoft.CodeAnalysis.CSharp` version mismatch. Worth a dedicated focused session. |
+| **Authorization endpoints** (`/spark/auth/*`) | Small batch (~6–8 tests), didn't fit the "biggest impact" prioritization | `GetCurrentUser`, `Logout`, `CsrfRefresh`, `Groups`. Reuse `SparkEndpointFactory` and the antiforgery wiring from `SparkTestClient`. |
+| **Custom Actions endpoint** (`/spark/actions/*`) | ~5–6 tests, deferred for the same reason | `Execute` + `List`. Same factory pattern. |
+| **`GitHubInstallationService` concurrency** | Needs WireMock.Net infra | Locks in the contract from [PRD-GitHubAppClientCache.md](./PRD-GitHubAppClientCache.md): cache hit, refresh, `SemaphoreSlim` serialization, 401-retry, no infinite-retry, signature verification. |
+| **Messaging / Replication / SubscriptionWorker** | Substantial new infra (real RavenDB subscriptions, message bus simulation) | Each gets its own batch per the §4 plan. `SparkTestDriver` is the foundation. |
+| **DevTunnel + SocketExtensions** | Smaller, both should fit one batch | Per §4.9 / §4.11. |
+| **AllFeatures source generator** | Smaller, included with the source-generator session above | |
+| **E2E test host + Playwright** (M4) | All M3 should be done first to avoid duplicating coverage | New `MintPlayer.Spark.E2E.TestHost` ASP.NET Core + Angular app. Playwright for .NET runs against it. |
+
+## 13. Implementation notes (real-world findings, not in original PRD)
+
+These are non-obvious things discovered while implementing. They cost real time to figure out — capture them here so future contributors don't re-hit them.
+
+### 13.1 .NET infrastructure
+
+- **RavenDB 7.x requires a license even for embedded TestDriver.** `MintPlayer.Spark.Testing/SparkTestDriver.cs` loads it from `RAVENDB_LICENSE` env var (CI) or a gitignored `raven-license.log` at the repo root (local). Throws an actionable error if neither is present. Both `pull-request.yml` and `dotnet-build-master.yml` pass the secret.
+- **CronosCore.RavenDB.UnitTests is a design reference, NOT a runtime dependency.** Its base class is NUnit-coupled (`[TestFixture]`, `[SetUp]`) and its license fetch targets a private Cronos Azure blob. We re-implemented the small amount of value-added code in `MintPlayer.Spark.Testing` using xUnit's `IAsyncLifetime` pattern.
+- **`InternalsVisibleTo("DynamicProxyGenAssembly2")`** must be on every project whose internal interfaces NSubstitute needs to mock. Currently set on `MintPlayer.Spark` and `MintPlayer.Spark.Authorization`.
+- **`<IsTestProject>false</IsTestProject>`** must be set on `MintPlayer.Spark.Testing.csproj` — it has an xunit reference (for `IAsyncLifetime` types) but is NOT a test project. Without this, `dotnet test <sln>` tries to discover tests in it and exits non-zero with a confusing "0 Error(s), Build FAILED".
+- **`WebApplicationFactory<T>` doesn't work** when the host assembly has no `Main` entry point. `MintPlayer.Spark.Tests/_Infrastructure/SparkEndpointFactory.cs` uses `TestServer + IHost` directly instead.
+- **Spark's antiforgery middleware does NOT block JSON POST requests** without an `X-XSRF-TOKEN` header in the test setup, despite `RequireAntiforgeryTokenAttribute(true)` metadata. The token-mint pattern in `SparkTestClient` works for positive cases (mirrors what the SPA sends in production), but the negative-case "POST without token → rejected" assertion was removed because the middleware accepted it. May or may not be intended Spark behavior — flagged for separate investigation.
+- **`SPARK001` validation must accept `<ProjectReference OutputItemType="Analyzer">`**, not just `<PackageReference>`. The original implementation only checked PackageReference and broke monorepo Demo apps.
+
+### 13.2 Angular / Vitest infrastructure
+
+- **`@angular/router/testing`'s `RouterTestingHarness` is the official recommended pattern** ([angular.dev/guide/routing/testing](https://angular.dev/guide/routing/testing)) — *"Avoid mocking Angular Router."* Spies on `router.navigate*` are anti-pattern; use `provideRouter([routes])` + assert via `TestBed.inject(Router).url` after navigation completes.
+- **Components in this repo fire-and-forget `router.navigate*(...)`** without awaiting the returned `Promise`. `harness.fixture.whenStable()` alone is not reliable in zoneless mode — use `nextNavigationEnd()` from `node_packages/{ng-spark,ng-spark-auth}/src/test-utils.ts` (subscribes to `Router.events` BEFORE the trigger and awaits the next `NavigationEnd`).
+- **`TestBed.runInInjectionContext`** for invoking `CanActivateFn` — NOT the imported `runInInjectionContext` function from `@angular/core` (the `TestBed` itself is not a valid `Injector`).
+- **Test-utility files (`src/test-setup.ts`, `src/test-utils.ts`) MUST be excluded from `tsconfig.lib.json`** in both Angular libraries. Otherwise ng-packagr type-checks them and trips on `vitest` / `@angular/router/testing` not being declared as deps. Already excluded; new test-utility files need the same treatment.
+- **`vitest.config.ts` `resolve.alias` mirrors `tsconfig.base.json`** so source files keep using their `@mintplayer/ng-spark/services`-style imports at test time without needing a built `dist/`. Pattern in `node_packages/ng-spark/vitest.config.ts`.
+- **`provideNoopAnimations()`** is required for components using synthetic animations (`@fadeInOut` etc.). Without it: `NG05105: Unexpected synthetic listener`.
+- **`provideHttpClient() + provideHttpClientTesting()`** is required when any tree-shakable `providedIn: 'root'` service in the injector tree auto-fetches on construction (e.g. `SparkLanguageService` hits `/spark/culture` and `/spark/translations`). Without it, unhandled rejections flood the test output even though assertions pass.
+- **Sequential awaited HTTP via `firstValueFrom` needs a microtask flush between `expectOne` calls.** Pattern in `spark-auth.service.spec.ts`'s `flush()` helper: `await new Promise<void>(r => setTimeout(r, 0))`.
+- **Stub `Router` with `vi.fn()` is broken** because `RouterLink` directive subscribes to `Router.events` (which is undefined on a bare stub). Always use `provideRouter([])` even when you don't care about navigation, just for the directive's DI.
+- **Angular 21 signal inputs** (`input.required<T>()`) are set in tests via `fixture.componentRef.setInput(name, value)` + `fixture.detectChanges()`.
+- **`SparkAuthBarComponent.onLogout()` has no try/catch** — if `logout()` rejects, `router.navigateByUrl('/')` is skipped. The test documents that as the current behavior. Worth fixing in a follow-up if logout-on-network-error should still log the user out locally.
+
+### 13.3 CI / Nx
+
+- **`npx nx fix-ci` is NOT a generic CI-healing command.** It analyzes failed Nx Cloud CIPE runs and needs explicit `<project>:<target>` args without CIPE context. Don't add it as a workflow step.
+- **`@nx-dotnet/core` works with Nx 20–22** — confirmed in production. `nx.json` registers it as a plugin; it auto-discovers every `.csproj` in the solution.
+- **Demo apps must be excluded from `nx affected --target=test`** because they have no `test` target. Root `package.json` script: `nx affected --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library`.
+- **`nxCloudId` in `nx.json` is a public identifier** (safe to commit). Only `NX_CLOUD_ACCESS_TOKEN` (read-write API key) is a secret. Older Nx versions supported `nxCloudAccessToken` directly in `nx.json` — never do that.
+
+### 13.4 Source-generator testing blocker (unresolved)
+
+Attempted to test `ActionsRegistrationGenerator` and `CustomActionsRegistrationGenerator` via `Verify.SourceGenerators` snapshots. Sequence of problems hit:
+
+1. `ProjectReference` to `MintPlayer.Spark.SourceGenerators` (netstandard2.0) into the net10.0 test project leaks `MintPlayer.SourceGenerators.Tools`'s `ModuleInitializerAttribute` polyfill, colliding with `System.Runtime`.
+2. `Assembly.LoadFrom(generatorDll)` at test time avoided the compile-time leak BUT failed because `MintPlayer.SourceGenerators.Tools` runtime types weren't on the load path.
+3. Adding `MintPlayer.SourceGenerators.Tools` as a `PackageReference` with `ExcludeAssets="compile"` solved the runtime-load issue.
+4. Then hit `Microsoft.CodeAnalysis.CSharp` version conflict — `Verify.SourceGenerators` ships with 4.14.0 but the generator was compiled against 5.3.0; bypassing one breaks the other.
+5. RS1035 ("Don't do file IO in analyzers") flowed through transitively and rejected the test helper code.
+
+A dedicated focused session (with the latest `Microsoft.CodeAnalysis.Testing` versions and explicit version-pinning across the dep graph) should crack this. Until then, generator regression testing is via the actual Demo app builds — a generator regression breaks one of the Demo apps' compilation.
 
 ## 11. Success Criteria
 
