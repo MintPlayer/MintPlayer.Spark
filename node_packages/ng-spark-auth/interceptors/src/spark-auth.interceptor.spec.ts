@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   HttpTestingController,
@@ -8,34 +9,53 @@ import {
   provideHttpClient,
   withInterceptors,
 } from '@angular/common/http';
-import { Router } from '@angular/router';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { NavigationEnd, provideRouter, Router, Routes } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { filter, firstValueFrom } from 'rxjs';
+import { describe, expect, it, beforeEach } from 'vitest';
 
 import { sparkAuthInterceptor } from './spark-auth.interceptor';
 import { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
 
+@Component({ standalone: true, template: '' })
+class StubComponent {}
+
+const routes: Routes = [
+  { path: '', pathMatch: 'full', component: StubComponent },
+  { path: 'login', component: StubComponent },
+  { path: 'protected/page', component: StubComponent },
+  { path: 'current/page', component: StubComponent },
+];
+
+function nextNavigationEnd(): Promise<NavigationEnd> {
+  const router = TestBed.inject(Router);
+  return firstValueFrom(router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)));
+}
+
 describe('sparkAuthInterceptor', () => {
   let http: HttpClient;
   let httpTesting: HttpTestingController;
-  let router: { navigate: ReturnType<typeof vi.fn>; url: string };
+  let harness: RouterTestingHarness;
 
-  beforeEach(() => {
-    router = { navigate: vi.fn(), url: '/current/page' };
-
+  beforeEach(async () => {
     TestBed.configureTestingModule({
       providers: [
+        provideRouter(routes),
         provideHttpClient(withInterceptors([sparkAuthInterceptor])),
         provideHttpClientTesting(),
         { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
-        { provide: Router, useValue: router },
       ],
     });
+    harness = await RouterTestingHarness.create();
+    // Drive the harness to a known starting URL so router.url has the value
+    // the interceptor will store as returnUrl.
+    await harness.navigateByUrl('/current/page');
 
     http = TestBed.inject(HttpClient);
     httpTesting = TestBed.inject(HttpTestingController);
   });
 
-  it('passes successful responses through untouched', async () => {
+  it('passes successful responses through untouched (no navigation)', async () => {
     const promise = new Promise<unknown>((resolve, reject) => {
       http.get('/some/data').subscribe({ next: resolve, error: reject });
     });
@@ -43,20 +63,20 @@ describe('sparkAuthInterceptor', () => {
     httpTesting.expectOne('/some/data').flush({ ok: true });
 
     await expect(promise).resolves.toEqual({ ok: true });
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(Router).url).toBe('/current/page');
   });
 
-  it('navigates to the login URL on a 401 from a non-api endpoint', () => {
+  it('navigates to the login URL on a 401 from a non-api endpoint', async () => {
+    const navigated = nextNavigationEnd();
     http.get('/some/protected/page').subscribe({ error: () => undefined });
 
     httpTesting.expectOne('/some/protected/page')
       .flush(null, { status: 401, statusText: 'Unauthorized' });
 
-    expect(router.navigate).toHaveBeenCalledTimes(1);
-    expect(router.navigate).toHaveBeenCalledWith(
-      ['/login'],
-      { queryParams: { returnUrl: '/current/page' } },
-    );
+    await navigated;
+
+    // returnUrl is the URL the user was on when the 401 fired
+    expect(TestBed.inject(Router).url).toBe('/login?returnUrl=%2Fcurrent%2Fpage');
   });
 
   it('does NOT navigate on a 401 from an api endpoint (no redirect loop)', () => {
@@ -65,7 +85,7 @@ describe('sparkAuthInterceptor', () => {
     httpTesting.expectOne('/spark/auth/me')
       .flush(null, { status: 401, statusText: 'Unauthorized' });
 
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(Router).url).toBe('/current/page');
   });
 
   it('does not navigate on non-401 errors (e.g. 500)', () => {
@@ -74,7 +94,7 @@ describe('sparkAuthInterceptor', () => {
     httpTesting.expectOne('/some/data')
       .flush(null, { status: 500, statusText: 'Server Error' });
 
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(Router).url).toBe('/current/page');
   });
 
   it('does not navigate on 403 (forbidden, not auth-required)', () => {
@@ -83,6 +103,6 @@ describe('sparkAuthInterceptor', () => {
     httpTesting.expectOne('/some/data')
       .flush(null, { status: 403, statusText: 'Forbidden' });
 
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(Router).url).toBe('/current/page');
   });
 });
