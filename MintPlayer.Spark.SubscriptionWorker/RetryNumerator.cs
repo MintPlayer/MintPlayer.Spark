@@ -3,6 +3,14 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.SubscriptionWorker;
 
 /// <summary>
+/// Outcome of a single <see cref="RetryNumerator.TrackRetryAsync"/> call.
+/// </summary>
+/// <param name="WillRetry">True if the document has budget remaining; false if max attempts were exhausted and the document is parked.</param>
+/// <param name="AttemptCount">The attempt number that this failure represents (1-based).</param>
+/// <param name="NextAttemptAtUtc">The absolute UTC time after which redelivery should happen. Callers MUST project this onto a subscription-query-visible field (e.g. an entity property) — the <c>@refresh</c> metadata alone doesn't gate change-vector-driven re-delivery.</param>
+public readonly record struct RetryOutcome(bool WillRetry, long AttemptCount, DateTime NextAttemptAtUtc);
+
+/// <summary>
 /// Tracks per-document retry attempts using RavenDB counters and schedules
 /// redelivery via the @refresh metadata mechanism.
 /// </summary>
@@ -28,8 +36,8 @@ public class RetryNumerator
     /// <param name="entity">The entity that failed processing.</param>
     /// <param name="exception">The exception that caused the failure.</param>
     /// <param name="logger">Optional logger for structured logging.</param>
-    /// <returns>True if the document will be retried; false if max attempts are exhausted.</returns>
-    public async Task<bool> TrackRetryAsync(
+    /// <returns>A <see cref="RetryOutcome"/> describing whether the retry will happen and when.</returns>
+    public async Task<RetryOutcome> TrackRetryAsync(
         IAsyncDocumentSession session,
         object entity,
         Exception exception,
@@ -55,7 +63,7 @@ public class RetryNumerator
                 MaxAttempts,
                 refreshAt);
 
-            return true;
+            return new RetryOutcome(WillRetry: true, AttemptCount: currentCount, NextAttemptAtUtc: refreshAt);
         }
         else
         {
@@ -71,7 +79,7 @@ public class RetryNumerator
                 MaxAttempts,
                 parkUntil);
 
-            return false;
+            return new RetryOutcome(WillRetry: false, AttemptCount: currentCount, NextAttemptAtUtc: parkUntil);
         }
     }
 

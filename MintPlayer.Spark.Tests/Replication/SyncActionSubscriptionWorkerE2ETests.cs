@@ -174,6 +174,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Completed);
 
             final.LastError.Should().BeNull();
+            final.NextAttemptAtUtc.Should().BeNull("happy path clears any previously scheduled retry window");
             handler.CallCount.Should().Be(1);
             handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
             handler.LastRequest.RequestUri!.ToString().Should().Be($"{OwnerUrl}/spark/sync/apply");
@@ -241,7 +242,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
     }
 
     [Fact]
-    public async Task ServerError_500_drives_syncAction_through_the_RetryNumerator_path()
+    public async Task ServerError_500_schedules_retry_via_RetryNumerator_with_NextAttemptAtUtc_gating_redelivery()
     {
         var handler = new StubHttpMessageHandler
         {
@@ -257,21 +258,22 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         await worker.StartAsync(CancellationToken.None);
         try
         {
-            // Environmental ambiguity: on CI, change-vector-driven re-delivery burns through
-            // MaxAttempts quickly; on a slower embedded Raven, the subscription may still be
-            // mid-loop when we sample. Wait for either terminal state + assert invariants that
-            // hold across both outcomes.
-            var final = await WaitForAsync(id, s =>
-                (s.Status == ESyncActionStatus.Pending && s.LastError != null)
-                || s.Status == ESyncActionStatus.Failed);
+            var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
 
             final.LastError.Should().Contain("InternalServerError").And.Contain("boom");
-            handler.CallCount.Should().BeGreaterThanOrEqualTo(1, "the HTTP handler was invoked at least once on the retry path");
+            final.NextAttemptAtUtc.Should().NotBeNull("the subscription query gates re-delivery on this field");
+            final.NextAttemptAtUtc!.Value.Should().BeAfter(DateTime.UtcNow, "backoff schedules the next attempt into the future");
+
+            // Give the subscription a moment to redeliver; NextAttemptAtUtc should keep the
+            // document out of the query, so the handler stays at a single call.
+            await Task.Delay(500);
+            handler.CallCount.Should().Be(1, "NextAttemptAtUtc prevents change-vector-driven immediate re-delivery");
+            (await GetRetryCounterAsync(id)).Should().Be(1);
 
             using var session = Store.OpenAsyncSession();
             var doc = await session.LoadAsync<SparkSyncAction>(id);
             var metadata = session.Advanced.GetMetadataFor(doc);
-            metadata.ContainsKey("@refresh").Should().BeTrue("RetryNumerator schedules (or parks) via @refresh on every failure");
+            metadata.ContainsKey("@refresh").Should().BeTrue("RetryNumerator still writes @refresh for Raven's Refresh feature");
         }
         finally
         {
@@ -280,7 +282,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Unknown_owner_module_triggers_retry_path_without_ever_hitting_the_http_handler()
+    public async Task Unknown_owner_module_schedules_retry_and_never_hits_the_http_handler()
     {
         // ResolveModuleUrlAsync throws before any HTTP call can be made.
         var handler = new StubHttpMessageHandler();
@@ -290,19 +292,13 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         await worker.StartAsync(CancellationToken.None);
         try
         {
-            var final = await WaitForAsync(id, s =>
-                (s.Status == ESyncActionStatus.Pending && s.LastError != null)
-                || s.Status == ESyncActionStatus.Failed);
+            var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
 
             final.LastError.Should().Contain("GhostModule").And.Contain("not found");
+            final.NextAttemptAtUtc.Should().NotBeNull();
             handler.CallCount.Should().Be(0);
 
-            // Counter is either mid-retry (>=1) or cleared on exhaustion (null when Status=Failed).
-            var counter = await GetRetryCounterAsync(id);
-            if (final.Status == ESyncActionStatus.Failed)
-                counter.Should().BeNull("RetryNumerator deletes the counter on exhaustion");
-            else
-                counter.Should().BeGreaterThanOrEqualTo(1, "RetryNumerator incremented at least once mid-retry");
+            (await GetRetryCounterAsync(id)).Should().Be(1);
         }
         finally
         {
