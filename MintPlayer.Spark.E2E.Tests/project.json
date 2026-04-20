@@ -1,0 +1,9 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "MintPlayer.Spark.E2E.Tests",
+  "targets": {
+    "test": {
+      "cache": false
+    }
+  }
+}
