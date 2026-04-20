@@ -32,6 +32,7 @@
     <ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
   </ItemGroup>
