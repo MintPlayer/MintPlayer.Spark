@@ -49,6 +49,31 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         }
     }
 
+    /// <summary>
+    /// Row-level authorization hook. Answers whether the current principal may perform the
+    /// given <paramref name="action"/> on this specific <paramref name="entity"/> instance.
+    /// The entity-type-level check (<see cref="Abstractions.Authorization.IPermissionService"/>)
+    /// has already succeeded by the time this is called — this is the second layer that
+    /// enforces ownership, tenant isolation, or any other per-row policy.
+    ///
+    /// Returning false translates to 404 for single-entity reads (so existence isn't
+    /// leaked; see security audit M-3), a filtered-out row in list responses, or a
+    /// rejected write. The default is permissive — override in an application-specific
+    /// Actions class to enforce row-level policy. Overriding is a clear signal to code
+    /// reviewers that the class takes responsibility for row-level security.
+    ///
+    /// Intentionally distinct from <see cref="OnQueryAsync"/>: the latter describes
+    /// *where* to find entities of this type; this hook answers *whether* the caller
+    /// may act on each one. Keeping the concerns apart keeps row-level security explicit.
+    ///
+    /// Inject <c>IHttpContextAccessor</c> into your Actions class to reach the current
+    /// <c>ClaimsPrincipal</c>.
+    /// </summary>
+    /// <param name="action">One of "Read" / "Query" / "Edit" / "Delete" / "New" — the
+    /// same vocabulary used by <c>IPermissionService.IsAllowedAsync</c>.</param>
+    /// <param name="entity">The specific row being evaluated.</param>
+    public virtual Task<bool> IsAllowedAsync(string action, T entity) => Task.FromResult(true);
+
     /// <inheritdoc />
     public virtual Task OnBeforeSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;
 

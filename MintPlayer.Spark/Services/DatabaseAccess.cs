@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Exceptions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -95,10 +96,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (entity == null) return null;
 
+        // Row-level read gate. Entity-type "Read" passed; now let the Actions class decide
+        // whether this specific instance is visible to the current caller. Returning null
+        // here propagates as 404 through the endpoint — same shape as a genuinely missing
+        // record, per M-3 (authorized-but-forbidden must be indistinguishable from not-found).
+        if (!await IsAllowedEntityViaActionsAsync(entityType, "Read", entity))
+            return null;
+
         // Load included documents for breadcrumb resolution
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, [entity], referenceProperties);
 
-        return entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
+        var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
+        // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
+        persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
+        return persistentObject;
     }
 
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
@@ -131,11 +142,53 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Query entities - use index if projection is registered, otherwise query collection
         var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
 
+        // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
+        // to rows the Actions class says the caller may see. For projection queries, the row
+        // filter takes the base entity (CarActions typed on Car, not VCar) so we load the
+        // matching base docs through the session cache. Callers that need a query-level
+        // filter for large collections can override OnQueryAsync directly.
+        entities = (await FilterByRowLevelAuthAsync(session, entities, entityType, queryType)).ToList();
+
         // Referenced documents are now in session cache - extract them
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
 
         // Convert each entity to PersistentObject with breadcrumb resolution
         return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, includedDocuments));
+    }
+
+    /// <summary>
+    /// Applies the Actions class's row-level read gate to a materialized list. When the
+    /// query ran against a projection type, we load the corresponding base entities from
+    /// the session (Raven reuses its cache, so this is cheap for documents already seen)
+    /// and evaluate the filter against those — the Actions class is typed on the base
+    /// entity, not the projection.
+    /// </summary>
+    private async Task<IEnumerable<object>> FilterByRowLevelAuthAsync(
+        IAsyncDocumentSession session,
+        IReadOnlyList<object> entities,
+        Type entityType,
+        Type queryType)
+    {
+        if (entities.Count == 0) return entities;
+
+        var idProperty = queryType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        if (idProperty is null) return entities; // Can't resolve IDs — fail open.
+
+        var visible = new List<object>(entities.Count);
+        foreach (var entity in entities)
+        {
+            object? subject = entity;
+            if (queryType != entityType)
+            {
+                var id = idProperty.GetValue(entity)?.ToString();
+                if (string.IsNullOrEmpty(id)) { visible.Add(entity); continue; }
+                subject = await LoadEntityAsync(session, entityType, id);
+                if (subject is null) { visible.Add(entity); continue; }
+            }
+            if (await IsAllowedEntityViaActionsAsync(entityType, "Query", subject))
+                visible.Add(entity);
+        }
+        return visible;
     }
 
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
@@ -151,6 +204,23 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         using var session = documentStore.OpenAsyncSession();
 
+        // Optimistic-concurrency check: if the caller sent an Etag on an existing entity,
+        // verify it matches the current server-side change vector before the actions
+        // pipeline runs. A mismatch means the entity has been updated since the caller
+        // read it — reject instead of silently overwriting. We load into a side session so
+        // the tracking on the main session is clean for the actions pipeline's StoreAsync.
+        if (!string.IsNullOrEmpty(persistentObject.Id) && !string.IsNullOrEmpty(persistentObject.Etag))
+        {
+            using var checkSession = documentStore.OpenAsyncSession();
+            var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
+            if (existing is not null)
+            {
+                var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
+                if (!string.Equals(currentEtag, persistentObject.Etag, StringComparison.Ordinal))
+                    throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
+            }
+        }
+
         // Pass PO directly to actions — entity mapping happens inside the actions pipeline
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
 
@@ -159,6 +229,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var generatedId = idProperty?.GetValue(savedEntity)?.ToString();
 
         persistentObject.Id = generatedId;
+        // Return the fresh change vector so the client can round-trip it to the next update.
+        persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
 
         // If this is a replicated entity, also broadcast the changes to the owner module
         var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
@@ -367,6 +439,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var task = (Task)onLoadMethod.Invoke(actions, [session, id])!;
         await task;
         return task.GetType().GetProperty("Result")!.GetValue(task);
+    }
+
+    /// <summary>
+    /// Dispatches to the Actions class's virtual <c>IsAllowedAsync(string, T)</c> via reflection,
+    /// so H-2/H-3 row-level authorization fires regardless of entity type.
+    /// </summary>
+    private async Task<bool> IsAllowedEntityViaActionsAsync(Type entityType, string action, object entity)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var method = actions.GetType().GetMethod("IsAllowedAsync", [typeof(string), entityType]);
+        if (method is null)
+            return true; // Unknown shape — fail open rather than dropping valid rows.
+        var task = (Task)method.Invoke(actions, [action, entity])!;
+        await task;
+        return (bool)task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
     private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(IAsyncDocumentSession session, Type entityType)

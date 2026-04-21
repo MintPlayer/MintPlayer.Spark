@@ -71,6 +71,10 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return Results.Json(result);
         }
+        catch (SparkConcurrencyException ex)
+        {
+            return Results.Json(new { error = ex.Message }, statusCode: 409);
+        }
         catch (SparkRetryActionException ex)
         {
             return Results.Json(new

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Raven.Client.Documents;
 using Raven.Embedded;
 using Raven.TestDriver;
@@ -36,11 +37,23 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 
     protected IDocumentStore Store { get; private set; } = null!;
 
-    public virtual Task InitializeAsync()
+    /// <summary>
+    /// Assemblies whose <c>AbstractIndexCreationTask</c> types should be deployed automatically
+    /// at <see cref="InitializeAsync"/> and waited on for completion. Default: empty. Override
+    /// in a subclass to guarantee that every test in the fixture sees its indexes live before
+    /// the first <c>[Fact]</c> runs — the Spark equivalent of CronosCore's
+    /// <c>IndexHelper.Register + RunAll</c> pattern.
+    /// </summary>
+    protected virtual IEnumerable<Assembly> IndexAssemblies { get; } = Array.Empty<Assembly>();
+
+    public virtual async Task InitializeAsync()
     {
         LicenseHelper.EnsureAvailable();
         Store = GetDocumentStore();
-        return Task.CompletedTask;
+
+        var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
+        if (assemblies.Length > 0)
+            await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
     }
 
     public virtual Task DisposeAsync()
@@ -48,6 +61,24 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         Store.Dispose();
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Imports one or more JSON fixture files into <see cref="Store"/> and waits for indexes
+    /// to settle. Relative paths resolve against <see cref="AppContext.BaseDirectory"/> so
+    /// fixtures copied to the test output directory via <c>&lt;Content Include="Data\**\*" /&gt;</c>
+    /// resolve naturally (e.g. <c>"Data/Seed/people.json"</c>).
+    /// </summary>
+    protected Task SeedFromJsonAsync(params string[] relativeOrAbsolutePaths)
+    {
+        var resolved = relativeOrAbsolutePaths
+            .Select(p => Path.IsPathRooted(p) ? p : Path.Combine(AppContext.BaseDirectory, p))
+            .ToArray();
+        return JsonFixtureImporter.ImportAsync(Store, resolved);
+    }
+
+    /// <summary>Deploys additional indexes at runtime (e.g., per-test). Also waits for them to settle.</summary>
+    protected Task DeployIndexesAsync(params Assembly[] assemblies)
+        => RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
 }
 
 internal static class LicenseHelper

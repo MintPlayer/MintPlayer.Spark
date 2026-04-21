@@ -43,6 +43,39 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                         };
                     })
                     .ToArray();
+
+                // Allow-list sort columns against the query's declared attribute set. Without
+                // this check, a caller could sort by any public property on the projection
+                // type via reflection (including fields the developer didn't expose as an
+                // attribute), leaking ordering as a side channel. The query's own declared
+                // sort columns are always allowed, so a query can opt in to otherwise-private
+                // sort keys by declaring them up-front.
+                var allowedProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (query.EntityType is not null)
+                {
+                    var entityType = modelLoader.ResolveEntityType(query.EntityType);
+                    if (entityType is not null)
+                    {
+                        foreach (var attr in entityType.Attributes)
+                            allowedProperties.Add(attr.Name);
+                    }
+                }
+                if (query.SortColumns is not null)
+                {
+                    foreach (var declared in query.SortColumns)
+                        allowedProperties.Add(declared.Property);
+                }
+
+                var invalid = sortOverrides
+                    .Where(c => !allowedProperties.Contains(c.Property))
+                    .Select(c => c.Property)
+                    .ToArray();
+                if (invalid.Length > 0)
+                {
+                    return Results.Json(
+                        new { error = $"Unknown sort column(s): {string.Join(", ", invalid)}" },
+                        statusCode: 400);
+                }
             }
 
             // Read pagination parameters
@@ -63,6 +96,11 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                 {
                     parent = await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, parentId);
                 }
+                // Parent was asked for but we couldn't resolve or couldn't authorize it.
+                // Return 404 rather than silently running the query unscoped — that would
+                // leak data the caller shouldn't see (H-3).
+                if (parent is null)
+                    return Results.Json(new { error = "Parent not found" }, statusCode: 404);
             }
 
             // Clone query with sort overrides if provided

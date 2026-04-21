@@ -102,6 +102,13 @@ public class SparkFullProducer : Producer
                         writer.WriteLine("global::MintPlayer.Spark.Replication.SparkBuilderReplicationExtensions.AddReplication(spark, options.Replication);");
                     }
                 }
+
+                // Rate limiter is opt-in per security audit finding L-3 — framework stays
+                // out of rate-limiting policy; apps enable it via options.RateLimiter.
+                using (writer.OpenBlock("if (options.RateLimiter != null)"))
+                {
+                    writer.WriteLine("global::MintPlayer.Spark.Extensions.SparkBuilderRateLimiterExtensions.AddRateLimiter(spark, options.RateLimiter);");
+                }
             }
             writer.WriteLine(");");
             writer.WriteLine("return services;");

@@ -24,6 +24,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
         opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
     };
+    options.RateLimiter = _ => { };
 });
 
 builder.Services.ConfigureApplicationCookie(options =>

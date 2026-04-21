@@ -1,11 +1,12 @@
 using System.Net.Http.Json;
+using MintPlayer.Spark.Abstractions;
 
-namespace MintPlayer.Spark.Tests._Infrastructure;
+namespace MintPlayer.Spark.Testing;
 
 /// <summary>
-/// Convenience wrapper around an HttpClient that attaches the cached antiforgery
-/// cookie + X-XSRF-TOKEN header to every mutating request. Get a configured
-/// instance via <see cref="SparkEndpointFactory.CreateAuthorizedClientAsync"/>.
+/// Convenience wrapper around an <see cref="HttpClient"/> that attaches the cached
+/// antiforgery cookie + <c>X-XSRF-TOKEN</c> header to every mutating request. Obtain a
+/// pre-configured instance via <see cref="SparkEndpointFactoryExtensions.CreateAuthorizedClientAsync"/>.
 /// </summary>
 public sealed class SparkTestClient : IDisposable
 {
@@ -48,7 +49,9 @@ public static class SparkEndpointFactoryExtensions
     /// Returns a <see cref="SparkTestClient"/> that has already done a warmup GET to mint
     /// antiforgery tokens and will attach them to every Post/Put/Delete request.
     /// </summary>
-    public static async Task<SparkTestClient> CreateAuthorizedClientAsync(this SparkEndpointFactory factory)
+    public static async Task<SparkTestClient> CreateAuthorizedClientAsync<TContext>(
+        this SparkEndpointFactory<TContext> factory)
+        where TContext : SparkContext
     {
         var (cookieHeader, xsrfToken) = await factory.MintAntiforgeryAsync();
         return new SparkTestClient(factory.CreateClient(), cookieHeader, xsrfToken);

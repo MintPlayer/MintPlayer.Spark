@@ -190,8 +190,13 @@ public static class SparkExtensions
             {
                 context.Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken, new CookieOptions
                 {
+                    // HttpOnly=false is intentional — the Angular client reads this cookie
+                    // and echoes it back in X-XSRF-TOKEN (double-submit pattern).
                     HttpOnly = false,
                     SameSite = SameSiteMode.Strict,
+                    // Secure=IsHttps so the token is never sent over plain HTTP in production,
+                    // but local HTTP development still works.
+                    Secure = context.Request.IsHttps,
                     Path = "/"
                 });
             }

@@ -203,6 +203,24 @@
         "lookupReferenceType": "CarBrand",
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "b8a4d2f1-1c3e-4a7b-9d5e-6c8f2a4b3d1e",
+        "name": "CreatedBy",
+        "label": {
+          "en": "Created By",
+          "fr": "Créé par",
+          "nl": "Aangemaakt door"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 100,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
       }
     ]
   },

@@ -40,6 +40,7 @@
     <ProjectReference Include="..\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
   </ItemGroup>
 
