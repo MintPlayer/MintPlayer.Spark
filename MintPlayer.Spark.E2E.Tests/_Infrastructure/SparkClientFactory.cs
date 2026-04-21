@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Client;
+using MintPlayer.Spark.Client.Authorization;
 
 namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 

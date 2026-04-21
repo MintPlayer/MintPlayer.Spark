@@ -1,4 +1,4 @@
-namespace MintPlayer.Spark.Client;
+namespace MintPlayer.Spark.Client.Authorization;
 
 /// <summary>
 /// Shape of <c>GET /spark/auth/me</c>. <see cref="IsAuthenticated"/> is the only non-null

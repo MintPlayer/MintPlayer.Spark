@@ -1,6 +1,7 @@
 using System.Net;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Client;
+using MintPlayer.Spark.Client.Authorization;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.E2E.Tests.Security;

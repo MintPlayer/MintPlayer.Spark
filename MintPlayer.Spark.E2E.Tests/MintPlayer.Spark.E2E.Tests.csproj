@@ -34,6 +34,8 @@
     <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <!-- Typed HTTP client used by Security/*.cs tests in place of hand-built JSON. -->
     <ProjectReference Include="..\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
+    <!-- Auth extensions (LoginAsync/LogoutAsync/RegisterAsync/GetCurrentUserAsync). -->
+    <ProjectReference Include="..\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj" />
   </ItemGroup>
 
 </Project>
