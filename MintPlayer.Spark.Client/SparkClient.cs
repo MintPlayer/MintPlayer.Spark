@@ -139,8 +139,9 @@ public class SparkClient : IDisposable
         string? search = null,
         string? parentId = null,
         string? parentType = null,
+        string? sortColumns = null,
         CancellationToken cancellationToken = default)
-        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, cancellationToken);
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, cancellationToken);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
     public Task<QueryResult> ExecuteQueryAsync(
@@ -150,14 +151,15 @@ public class SparkClient : IDisposable
         string? search = null,
         string? parentId = null,
         string? parentType = null,
+        string? sortColumns = null,
         CancellationToken cancellationToken = default)
-        => ExecuteQueryCoreAsync(Uri.EscapeDataString(queryAlias), skip, take, search, parentId, parentType, cancellationToken);
+        => ExecuteQueryCoreAsync(Uri.EscapeDataString(queryAlias), skip, take, search, parentId, parentType, sortColumns, cancellationToken);
 
     private async Task<QueryResult> ExecuteQueryCoreAsync(
-        string idSegment, int skip, int take, string? search, string? parentId, string? parentType,
+        string idSegment, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns,
         CancellationToken cancellationToken)
     {
-        var url = BuildQueryUrl(idSegment, skip, take, search, parentId, parentType);
+        var url = BuildQueryUrl(idSegment, skip, take, search, parentId, parentType, sortColumns);
         using var request = BuildRequest(HttpMethod.Get, url);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         UpdateCookiesFromResponse(response);
@@ -203,12 +205,13 @@ public class SparkClient : IDisposable
         return list ?? Array.Empty<SparkQuery>();
     }
 
-    private static string BuildQueryUrl(string idSegment, int skip, int take, string? search, string? parentId, string? parentType)
+    private static string BuildQueryUrl(string idSegment, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns)
     {
         var qs = new List<string> { $"skip={skip}", $"take={take}" };
         if (!string.IsNullOrEmpty(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (!string.IsNullOrEmpty(parentId)) qs.Add($"parentId={Uri.EscapeDataString(parentId)}");
         if (!string.IsNullOrEmpty(parentType)) qs.Add($"parentType={Uri.EscapeDataString(parentType)}");
+        if (!string.IsNullOrEmpty(sortColumns)) qs.Add($"sortColumns={Uri.EscapeDataString(sortColumns)}");
         return $"/spark/queries/{idSegment}/execute?{string.Join('&', qs)}";
     }
 
