@@ -31,5 +31,12 @@ public class RateLimitTests
 
         observedStatuses.Should().Contain(429,
             "a rapid burst of 200 anonymous requests to /spark/auth/me should hit the rate limiter");
+
+        // Fleet's rate limiter is a fixed window partitioned by IP. Every test in this
+        // collection shares 127.0.0.1 as its partition key, so leaving the bucket saturated
+        // would cause the next test to inherit our 429 state (PermissionsEndpointAuth was
+        // the first casualty). Wait slightly longer than the configured 10 s window so the
+        // bucket rolls over before the next test runs.
+        await Task.Delay(TimeSpan.FromSeconds(11));
     }
 }
