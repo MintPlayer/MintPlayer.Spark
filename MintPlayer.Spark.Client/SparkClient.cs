@@ -22,8 +22,13 @@ public class SparkClient : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly bool _ownsClient;
-    private string? _cookieHeader;
+
+    // Cookie jar + CSRF token. TestServer's HttpClient doesn't auto-manage cookies, so we
+    // track them ourselves — this also lets real-HTTP mode work identically without flipping
+    // a CookieContainer on/off.
+    private readonly Dictionary<string, string> _cookies = new(StringComparer.Ordinal);
     private string? _xsrfToken;
+    private bool _antiforgeryPrimed;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -43,9 +48,23 @@ public class SparkClient : IDisposable
     // --------------------------------------------------------------------------------
 
     /// <summary>Returns the PersistentObject with its <see cref="PersistentObject.Etag"/> populated, or null on 404.</summary>
-    public async Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
+    public Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
+        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, cancellationToken);
+
+    /// <summary>
+    /// Alias-based overload. <paramref name="aliasOrName"/> is resolved server-side to an
+    /// entity type, so callers that only know the type by name (e.g. <c>"Person"</c>) don't
+    /// need to look up its Guid first. Returns null on 404 (entity missing or row-level
+    /// denied — the endpoint conflates these per security audit M-3).
+    /// </summary>
+    public Task<PersistentObject?> GetPersistentObjectAsync(string aliasOrName, string id, CancellationToken cancellationToken = default)
+        => GetPersistentObjectCoreAsync(Uri.EscapeDataString(aliasOrName), id, cancellationToken);
+
+    private async Task<PersistentObject?> GetPersistentObjectCoreAsync(string typeSegment, string id, CancellationToken cancellationToken)
     {
-        var response = await _httpClient.GetAsync($"/spark/po/{objectTypeId}/{Uri.EscapeDataString(id)}", cancellationToken);
+        using var request = BuildRequest(HttpMethod.Get, $"/spark/po/{typeSegment}/{Uri.EscapeDataString(id)}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         await ThrowIfNotSuccessAsync(response, cancellationToken);
@@ -81,9 +100,9 @@ public class SparkClient : IDisposable
     public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
     {
         await EnsureAntiforgeryAsync(cancellationToken);
-        var request = new HttpRequestMessage(HttpMethod.Delete, $"/spark/po/{objectTypeId}/{Uri.EscapeDataString(id)}");
-        AttachAntiforgery(request);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var request = BuildRequest(HttpMethod.Delete, $"/spark/po/{objectTypeId}/{Uri.EscapeDataString(id)}", attachAntiforgery: true);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
         await ThrowIfNotSuccessAsync(response, cancellationToken);
     }
 
@@ -91,7 +110,7 @@ public class SparkClient : IDisposable
     // Query endpoints
     // --------------------------------------------------------------------------------
 
-    public async Task<QueryResult> ExecuteQueryAsync(
+    public Task<QueryResult> ExecuteQueryAsync(
         Guid queryId,
         int skip = 0,
         int take = 50,
@@ -99,13 +118,10 @@ public class SparkClient : IDisposable
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default)
-    {
-        var url = BuildQueryUrl(queryId.ToString(), skip, take, search, parentId, parentType);
-        return await ExecuteQueryAsyncCore(url, cancellationToken);
-    }
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, cancellationToken);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
-    public async Task<QueryResult> ExecuteQueryAsync(
+    public Task<QueryResult> ExecuteQueryAsync(
         string queryAlias,
         int skip = 0,
         int take = 50,
@@ -113,14 +129,16 @@ public class SparkClient : IDisposable
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default)
-    {
-        var url = BuildQueryUrl(Uri.EscapeDataString(queryAlias), skip, take, search, parentId, parentType);
-        return await ExecuteQueryAsyncCore(url, cancellationToken);
-    }
+        => ExecuteQueryCoreAsync(Uri.EscapeDataString(queryAlias), skip, take, search, parentId, parentType, cancellationToken);
 
-    private async Task<QueryResult> ExecuteQueryAsyncCore(string url, CancellationToken cancellationToken)
+    private async Task<QueryResult> ExecuteQueryCoreAsync(
+        string idSegment, int skip, int take, string? search, string? parentId, string? parentType,
+        CancellationToken cancellationToken)
     {
-        var response = await _httpClient.GetAsync(url, cancellationToken);
+        var url = BuildQueryUrl(idSegment, skip, take, search, parentId, parentType);
+        using var request = BuildRequest(HttpMethod.Get, url);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
         await ThrowIfNotSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QueryResult>(JsonOptions, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty query response body.");
@@ -136,39 +154,179 @@ public class SparkClient : IDisposable
     }
 
     // --------------------------------------------------------------------------------
-    // CSRF / internals
+    // Action endpoints
+    // --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// POSTs to <c>/spark/actions/{objectTypeId}/{actionName}</c>. Returns a
+    /// <see cref="SparkActionResult"/> that distinguishes the server's in-protocol responses:
+    /// empty-200 (action completed), 449 (retry-action — server is asking the caller a
+    /// question). Actual failures (401/403/404/500) throw <see cref="SparkClientException"/>.
+    /// </summary>
+    public async Task<SparkActionResult> ExecuteActionAsync(
+        Guid objectTypeId,
+        string actionName,
+        PersistentObject? parent = null,
+        IReadOnlyList<PersistentObject>? selectedItems = null,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureAntiforgeryAsync(cancellationToken);
+        using var request = BuildRequest(HttpMethod.Post, $"/spark/actions/{objectTypeId}/{Uri.EscapeDataString(actionName)}", attachAntiforgery: true);
+        request.Content = JsonContent.Create(new { parent, selectedItems }, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+
+        // 449 (Retry With) is in-protocol; translate to a populated SparkActionResult rather
+        // than throwing, because it's not an error — the server is asking a question.
+        if ((int)response.StatusCode == 449)
+        {
+            var retry = await response.Content.ReadFromJsonAsync<RetryActionPayload>(JsonOptions, cancellationToken)
+                ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty retry-action response body.");
+            return SparkActionResult.ForRetry(retry);
+        }
+
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        return SparkActionResult.ForSuccess((int)response.StatusCode);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Auth endpoints
+    // --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Signs in via <c>POST /spark/auth/login?useCookies=true</c>. The identity API endpoint
+    /// is outside Spark's antiforgery surface, so no CSRF header is sent. After login, the
+    /// client re-primes its XSRF token via <see cref="GetCurrentUserAsync"/> — the token
+    /// is bound to the authenticated principal and the pre-login one is no longer valid.
+    /// </summary>
+    public async Task LoginAsync(string email, string password, CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Post, "/spark/auth/login?useCookies=true");
+        request.Content = JsonContent.Create(new { email, password }, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+
+        // Post-login: the XSRF token that was minted pre-auth is no longer valid for mutating
+        // calls. Drop it and re-prime by hitting /me — the warmup logic will pick up the
+        // fresh token from the response.
+        _xsrfToken = null;
+        _cookies.Remove("XSRF-TOKEN");
+        _antiforgeryPrimed = false;
+        await GetCurrentUserAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Registers a new user via <c>POST /spark/auth/register</c>. Outside Spark's antiforgery
+    /// surface. Does not automatically sign the user in — call <see cref="LoginAsync"/> if that's
+    /// the intent.
+    /// </summary>
+    public async Task RegisterAsync(string email, string password, CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Post, "/spark/auth/register");
+        request.Content = JsonContent.Create(new { email, password }, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+    }
+
+    /// <summary>
+    /// Signs out via <c>POST /spark/auth/logout</c>. The logout endpoint is inside Spark's
+    /// antiforgery surface, so the client attaches the X-XSRF-TOKEN header.
+    /// </summary>
+    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureAntiforgeryAsync(cancellationToken);
+        using var request = BuildRequest(HttpMethod.Post, "/spark/auth/logout", attachAntiforgery: true);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+
+        // Server should have cleared the auth cookie via Set-Cookie on response; in addition,
+        // drop any cached principal-bound XSRF token so the next mutating call re-primes.
+        _xsrfToken = null;
+        _cookies.Remove("XSRF-TOKEN");
+        _antiforgeryPrimed = false;
+    }
+
+    /// <summary>
+    /// Returns <c>GET /spark/auth/me</c> — the lightweight "who am I" payload. Also serves as
+    /// the warmup that mints the XSRF token bound to whatever principal the current cookies
+    /// represent (authenticated or anonymous).
+    /// </summary>
+    public async Task<SparkUserInfo> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Get, "/spark/auth/me");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+
+        // /me may or may not set the XSRF cookie depending on middleware order, but when it
+        // does, UpdateCookiesFromResponse already captured _xsrfToken — mark us primed.
+        if (_xsrfToken is not null) _antiforgeryPrimed = true;
+
+        return await response.Content.ReadFromJsonAsync<SparkUserInfo>(JsonOptions, cancellationToken)
+            ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty /me response.");
+    }
+
+    // --------------------------------------------------------------------------------
+    // CSRF / request assembly
     // --------------------------------------------------------------------------------
 
     private async Task<PersistentObject> SendPersistentObjectAsync(HttpMethod method, string url, PersistentObject obj, CancellationToken cancellationToken)
     {
         await EnsureAntiforgeryAsync(cancellationToken);
-        var request = new HttpRequestMessage(method, url)
-        {
-            Content = JsonContent.Create(new { persistentObject = obj }, options: JsonOptions),
-        };
-        AttachAntiforgery(request);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var request = BuildRequest(method, url, attachAntiforgery: true);
+        request.Content = JsonContent.Create(new { persistentObject = obj }, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
         await ThrowIfNotSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<PersistentObject>(JsonOptions, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
     }
 
     /// <summary>
-    /// Lazily primes <see cref="_cookieHeader"/> and <see cref="_xsrfToken"/> by hitting the
-    /// framework's antiforgery warmup endpoint. Only called before the first mutating request —
-    /// reads don't need CSRF.
+    /// Lazily primes <see cref="_xsrfToken"/> by hitting the framework's antiforgery warmup
+    /// endpoint. Only called before the first mutating request — reads don't need CSRF.
     /// </summary>
     private async Task EnsureAntiforgeryAsync(CancellationToken cancellationToken)
     {
-        if (_xsrfToken is not null) return;
+        if (_antiforgeryPrimed && _xsrfToken is not null) return;
 
-        var response = await _httpClient.GetAsync("/spark/po/__warmup__", cancellationToken);
-        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+        using var request = BuildRequest(HttpMethod.Get, "/spark/po/__warmup__");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+
+        if (_xsrfToken is null)
             throw new SparkClientException(response.StatusCode, responseBody: null,
-                "Warmup did not return any Set-Cookie headers — is this endpoint a Spark backend?");
+                "Warmup did not yield an XSRF-TOKEN cookie — is this endpoint a Spark backend?");
 
-        string? antiforgeryCookie = null;
-        string? xsrfToken = null;
+        _antiforgeryPrimed = true;
+    }
+
+    private HttpRequestMessage BuildRequest(HttpMethod method, string url, bool attachAntiforgery = false)
+    {
+        var request = new HttpRequestMessage(method, url);
+        var cookieHeader = BuildCookieHeader();
+        if (cookieHeader is not null)
+            request.Headers.Add("Cookie", cookieHeader);
+        if (attachAntiforgery)
+        {
+            if (_xsrfToken is null)
+                throw new InvalidOperationException("Antiforgery token not initialized — call EnsureAntiforgeryAsync first.");
+            request.Headers.Add("X-XSRF-TOKEN", _xsrfToken);
+        }
+        return request;
+    }
+
+    private string? BuildCookieHeader()
+        => _cookies.Count == 0
+            ? null
+            : string.Join("; ", _cookies.Select(kv => $"{kv.Key}={kv.Value}"));
+
+    private void UpdateCookiesFromResponse(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies)) return;
         foreach (var raw in setCookies)
         {
             var nameValue = raw.Split(';', 2)[0];
@@ -177,26 +335,19 @@ public class SparkClient : IDisposable
             var name = nameValue[..eq];
             var value = nameValue[(eq + 1)..];
 
-            if (name.StartsWith(".AspNetCore.Antiforgery", StringComparison.Ordinal))
-                antiforgeryCookie = nameValue;
-            else if (name == "XSRF-TOKEN")
-                xsrfToken = Uri.UnescapeDataString(value);
+            // A Set-Cookie with an empty value + a past Expires/Max-Age=0 is a deletion.
+            // Simple heuristic: treat an explicitly empty cookie value as deletion; real
+            // deletion also carries Max-Age=0 but that's redundant signal for our needs.
+            if (string.IsNullOrEmpty(value))
+            {
+                _cookies.Remove(name);
+            }
+            else
+            {
+                _cookies[name] = value;
+                if (name == "XSRF-TOKEN") _xsrfToken = Uri.UnescapeDataString(value);
+            }
         }
-
-        if (antiforgeryCookie is null || xsrfToken is null)
-            throw new SparkClientException(response.StatusCode, responseBody: null,
-                $"Warmup did not yield both antiforgery cookies. Got: '{string.Join(" | ", setCookies)}'");
-
-        _cookieHeader = antiforgeryCookie + "; XSRF-TOKEN=" + Uri.EscapeDataString(xsrfToken);
-        _xsrfToken = xsrfToken;
-    }
-
-    private void AttachAntiforgery(HttpRequestMessage request)
-    {
-        if (_cookieHeader is null || _xsrfToken is null)
-            throw new InvalidOperationException("Antiforgery tokens not initialized — call EnsureAntiforgeryAsync first.");
-        request.Headers.Add("Cookie", _cookieHeader);
-        request.Headers.Add("X-XSRF-TOKEN", _xsrfToken);
     }
 
     private static async Task ThrowIfNotSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
