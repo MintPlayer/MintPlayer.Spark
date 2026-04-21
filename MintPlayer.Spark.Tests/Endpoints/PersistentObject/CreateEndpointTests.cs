@@ -1,11 +1,11 @@
 using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
-using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using PO = MintPlayer.Spark.Abstractions.PersistentObject;
+using POA = MintPlayer.Spark.Abstractions.PersistentObjectAttribute;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
@@ -14,13 +14,13 @@ public class CreateEndpointTests : SparkTestDriver
     private static readonly Guid PersonTypeId = Guid.Parse("33333333-cccc-cccc-cccc-333333333333");
 
     private SparkEndpointFactory _factory = null!;
-    private SparkTestClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
-        _client = await _factory.CreateAuthorizedClientAsync();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -30,80 +30,84 @@ public class CreateEndpointTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private static object NewPersonRequest(string firstName, string lastName) => new
+    private static PO NewPerson(Guid typeId, string firstName, string lastName) => new()
     {
-        persistentObject = new
-        {
-            name = "Person",
-            objectTypeId = PersonTypeId,
-            attributes = new[]
-            {
-                new { name = "FirstName", value = (object)firstName },
-                new { name = "LastName", value = (object)lastName },
-            }
-        }
+        Name = "Person",
+        ObjectTypeId = typeId,
+        Attributes =
+        [
+            new POA { Name = "FirstName", Value = firstName },
+            new POA { Name = "LastName", Value = lastName },
+        ],
     };
 
     [Fact]
-    public async Task Create_returns_404_when_entity_type_is_unknown()
+    public async Task Create_throws_404_when_entity_type_is_unknown()
     {
-        var unknownTypeId = Guid.NewGuid();
+        // Create endpoint routes on PO.Name as the URL segment — override both Name and
+        // ObjectTypeId so neither resolves server-side, proving the 404 path.
+        var unknownName = $"unknown-type-{Guid.NewGuid():N}";
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => _client.CreatePersistentObjectAsync(new PO
+            {
+                Name = unknownName,
+                ObjectTypeId = Guid.NewGuid(),
+                Attributes = [],
+            }));
 
-        var response = await _client.PostJsonAsync($"/spark/po/{unknownTypeId}", NewPersonRequest("Alice", "Smith"));
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Create_returns_201_and_persists_a_new_document()
+    public async Task Create_persists_a_new_document()
     {
-        var response = await _client.PostJsonAsync($"/spark/po/{PersonTypeId}", NewPersonRequest("Alice", "Smith"));
+        var created = await _client.CreatePersistentObjectAsync(NewPerson(PersonTypeId, "Alice", "Smith"));
+        created.Id.Should().NotBeNullOrEmpty();
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("Alice");
-        body.Should().Contain("Smith");
-
-        // Verify the document made it to RavenDB
         WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<Person>().ToListAsync();
-        stored.Should().ContainSingle()
-            .Which.FirstName.Should().Be("Alice");
+        stored.Should().ContainSingle().Which.FirstName.Should().Be("Alice");
     }
 
     [Fact]
     public async Task Create_resolves_entity_type_by_alias()
     {
-        var response = await _client.PostJsonAsync("/spark/po/person", NewPersonRequest("Bob", "Jones"));
+        // Build the PO with Name="person" (lowercase) — the endpoint route uses {name} as alias.
+        var created = await _client.CreatePersistentObjectAsync(new PO
+        {
+            Name = "person",  // alias
+            ObjectTypeId = PersonTypeId,
+            Attributes =
+            [
+                new POA { Name = "FirstName", Value = "Bob" },
+                new POA { Name = "LastName", Value = "Jones" },
+            ],
+        });
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        created.Id.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public async Task Create_returns_400_when_request_body_fails_validation()
+    public async Task Create_throws_400_when_request_body_fails_validation()
     {
-        // Required field missing — validation pipeline rejects before persisting
+        // Required LastName missing — validation rejects before persisting.
         var typeWithRequired = TestModels.PersonWithRequiredLastName(Guid.Parse("44444444-cccc-cccc-cccc-444444444444"));
         await using var factory = new SparkEndpointFactory(Store, [typeWithRequired]);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.PostJsonAsync(
-            $"/spark/po/{typeWithRequired.PersistentObject.Id}",
-            new
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => client.CreatePersistentObjectAsync(new PO
             {
-                persistentObject = new
-                {
-                    name = "Person",
-                    objectTypeId = typeWithRequired.PersistentObject.Id,
-                    attributes = new[]
-                    {
-                        new { name = "FirstName", value = (object)"Alice" },
-                        // LastName intentionally missing
-                    },
-                },
-            });
+                Name = "Person",
+                ObjectTypeId = typeWithRequired.PersistentObject.Id,
+                Attributes =
+                [
+                    new POA { Name = "FirstName", Value = "Alice" },
+                    // LastName intentionally omitted
+                ],
+            }));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

@@ -1,6 +1,5 @@
-using System.Net;
-using System.Text.Json;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
@@ -18,14 +17,11 @@ public class ListQueriesEndpointTests : SparkTestDriver
     {
         var personType = TestModels.Person(Guid.NewGuid()); // no Queries
         await using var factory = new SparkEndpointFactory(Store, [personType]);
-        using var client = factory.CreateClient();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.GetAsync("/spark/queries");
+        var queries = await client.ListQueriesAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetArrayLength().Should().Be(0);
+        queries.Should().BeEmpty();
     }
 
     [Fact]
@@ -39,15 +35,10 @@ public class ListQueriesEndpointTests : SparkTestDriver
         ];
 
         await using var factory = new SparkEndpointFactory(Store, [personType]);
-        using var client = factory.CreateClient();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.GetAsync("/spark/queries");
+        var queries = await client.ListQueriesAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetArrayLength().Should().Be(2);
-        body.Should().Contain("AllPeople");
-        body.Should().Contain("OnlyAdmins");
+        queries.Select(q => q.Name).Should().BeEquivalentTo(new[] { "AllPeople", "OnlyAdmins" });
     }
 }

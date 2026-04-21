@@ -1,6 +1,6 @@
 using System.Net;
-using System.Text.Json;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
@@ -14,7 +14,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb3333-3333-3333-3333-bbbbbbbbbbbb");
 
     private SparkEndpointFactory _factory = null!;
-    private HttpClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
@@ -32,7 +32,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
         ];
 
         _factory = new SparkEndpointFactory(Store, [personType]);
-        _client = _factory.CreateClient();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -52,11 +52,12 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Execute_returns_404_when_query_unknown()
+    public async Task Execute_throws_404_when_query_unknown()
     {
-        var response = await _client.GetAsync($"/spark/queries/{Guid.NewGuid()}/execute");
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => _client.ExecuteQueryAsync(Guid.NewGuid()));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -66,24 +67,18 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
             ("people/1", "Alice", "Smith"),
             ("people/2", "Bob", "Jones"));
 
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}/execute");
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetProperty("totalRecords").GetInt32().Should().Be(2);
+        result.TotalRecords.Should().Be(2);
     }
 
     [Fact]
     public async Task Execute_returns_empty_envelope_with_no_data()
     {
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}/execute");
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetProperty("totalRecords").GetInt32().Should().Be(0);
-        parsed.RootElement.GetProperty("data").GetArrayLength().Should().Be(0);
+        result.TotalRecords.Should().Be(0);
+        result.Data.Should().BeEmpty();
     }
 
     [Fact]
@@ -94,31 +89,25 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
             ("people/2", "Bob", "Jones"),
             ("people/3", "Carol", "Davis"));
 
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}/execute?search=ALICE");
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId, search: "ALICE");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetProperty("totalRecords").GetInt32().Should().Be(1);
+        result.TotalRecords.Should().Be(1);
     }
 
     [Fact]
-    public async Task Execute_honors_skip_and_take_query_parameters()
+    public async Task Execute_honors_skip_and_take_parameters()
     {
         await SeedAsync(
             Enumerable.Range(1, 10)
                 .Select(i => ($"people/{i}", $"First{i}", $"Last{i}"))
                 .ToArray());
 
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}/execute?skip=3&take=4");
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId, skip: 3, take: 4);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetProperty("totalRecords").GetInt32().Should().Be(10);
-        parsed.RootElement.GetProperty("skip").GetInt32().Should().Be(3);
-        parsed.RootElement.GetProperty("take").GetInt32().Should().Be(4);
-        parsed.RootElement.GetProperty("data").GetArrayLength().Should().Be(4);
+        result.TotalRecords.Should().Be(10);
+        result.Skip.Should().Be(3);
+        result.Take.Should().Be(4);
+        result.Data.Should().HaveCount(4);
     }
 
     [Fact]
@@ -126,11 +115,10 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     {
         await SeedAsync(("people/1", "A", "B"));
 
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}/execute");
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId);
 
-        var parsed = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        parsed.RootElement.GetProperty("skip").GetInt32().Should().Be(0);
-        parsed.RootElement.GetProperty("take").GetInt32().Should().Be(50);
+        result.Skip.Should().Be(0);
+        result.Take.Should().Be(50);
     }
 
     [Fact]
@@ -138,8 +126,8 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     {
         await SeedAsync(("people/1", "Alice", "Smith"));
 
-        var response = await _client.GetAsync("/spark/queries/allpeople/execute");
+        var result = await _client.ExecuteQueryAsync("allpeople");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        result.TotalRecords.Should().Be(1);
     }
 }

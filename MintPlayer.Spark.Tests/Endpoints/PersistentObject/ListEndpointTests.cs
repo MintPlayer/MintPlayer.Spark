@@ -1,8 +1,8 @@
 using System.Net;
-using System.Text.Json;
-using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
@@ -11,13 +11,13 @@ public class ListEndpointTests : SparkTestDriver
     private static readonly Guid PersonTypeId = Guid.Parse("22222222-bbbb-bbbb-bbbb-222222222222");
 
     private SparkEndpointFactory _factory = null!;
-    private HttpClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
-        _client = _factory.CreateClient();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -28,24 +28,20 @@ public class ListEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task List_returns_404_when_entity_type_is_unknown()
+    public async Task List_throws_404_when_entity_type_is_unknown()
     {
-        var unknownTypeId = Guid.NewGuid();
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => _client.ListPersistentObjectsAsync(Guid.NewGuid()));
 
-        var response = await _client.GetAsync($"/spark/po/{unknownTypeId}");
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task List_returns_empty_array_when_no_documents_exist()
     {
-        var response = await _client.GetAsync($"/spark/po/{PersonTypeId}");
+        var result = await _client.ListPersistentObjectsAsync(PersonTypeId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetArrayLength().Should().Be(0);
+        result.Should().BeEmpty();
     }
 
     [Fact]
@@ -60,15 +56,10 @@ public class ListEndpointTests : SparkTestDriver
         }
         WaitForIndexing(Store);
 
-        var response = await _client.GetAsync($"/spark/po/{PersonTypeId}");
+        var result = await _client.ListPersistentObjectsAsync(PersonTypeId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        var parsed = JsonDocument.Parse(body);
-        parsed.RootElement.GetArrayLength().Should().Be(3);
-        body.Should().Contain("\"id\":\"people/1\"");
-        body.Should().Contain("\"id\":\"people/2\"");
-        body.Should().Contain("\"id\":\"people/3\"");
+        result.Should().HaveCount(3);
+        result.Select(p => p.Id).Should().BeEquivalentTo(new[] { "people/1", "people/2", "people/3" });
     }
 
     [Fact]
@@ -81,10 +72,9 @@ public class ListEndpointTests : SparkTestDriver
         }
         WaitForIndexing(Store);
 
-        var response = await _client.GetAsync("/spark/po/person");
+        var result = await _client.ListPersistentObjectsAsync("person");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("Alice");
+        result.Should().ContainSingle()
+            .Which.Attributes.Should().Contain(a => a.Name == "FirstName" && a.Value!.ToString() == "Alice");
     }
 }

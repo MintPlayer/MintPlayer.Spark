@@ -166,6 +166,43 @@ public class SparkClient : IDisposable
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty query response body.");
     }
 
+    /// <summary>
+    /// Returns the full definition of a single query (name, source, sort columns, etc.), or
+    /// <c>null</c> on 404. Counterpart to the list variant — useful when a caller already knows
+    /// the query id and just needs its shape.
+    /// </summary>
+    public Task<SparkQuery?> GetQueryAsync(Guid queryId, CancellationToken cancellationToken = default)
+        => GetQueryCoreAsync(queryId.ToString(), cancellationToken);
+
+    /// <summary>Alias-based overload for <see cref="GetQueryAsync(Guid,CancellationToken)"/>.</summary>
+    public Task<SparkQuery?> GetQueryAsync(string alias, CancellationToken cancellationToken = default)
+        => GetQueryCoreAsync(Uri.EscapeDataString(alias), cancellationToken);
+
+    private async Task<SparkQuery?> GetQueryCoreAsync(string idSegment, CancellationToken cancellationToken)
+    {
+        using var request = BuildRequest(HttpMethod.Get, $"/spark/queries/{idSegment}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<SparkQuery>(JsonOptions, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns every query the caller is allowed to see. Row-level visibility for queries is
+    /// enforced server-side — the result is already the caller's filtered set.
+    /// </summary>
+    public async Task<IReadOnlyList<SparkQuery>> ListQueriesAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Get, "/spark/queries");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        var list = await response.Content.ReadFromJsonAsync<SparkQuery[]>(JsonOptions, cancellationToken);
+        return list ?? Array.Empty<SparkQuery>();
+    }
+
     private static string BuildQueryUrl(string idSegment, int skip, int take, string? search, string? parentId, string? parentType)
     {
         var qs = new List<string> { $"skip={skip}", $"take={take}" };
