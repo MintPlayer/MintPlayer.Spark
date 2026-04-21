@@ -10,7 +10,24 @@ namespace MintPlayer.Spark.Testing;
 /// </summary>
 public static class JsonFixtureImporter
 {
-    public static async Task ImportAsync(IDocumentStore store, params string[] filePaths)
+    /// <summary>
+    /// Convenience overload that waits for indexes to settle after import.
+    /// Equivalent to <c>ImportAsync(store, waitForIndexing: true, filePaths)</c>.
+    /// </summary>
+    public static Task ImportAsync(IDocumentStore store, params string[] filePaths)
+        => ImportAsync(store, waitForIndexing: true, filePaths);
+
+    /// <summary>
+    /// Imports the supplied fixture files into <paramref name="store"/>. When
+    /// <paramref name="waitForIndexing"/> is <c>true</c> (default), blocks until the database
+    /// reports no stale indexes — so the next query a test runs is guaranteed to see the seed
+    /// data even if static indexes are involved. Pass <c>false</c> only when you intentionally
+    /// want to assert on stale-read behaviour.
+    /// </summary>
+    public static async Task ImportAsync(
+        IDocumentStore store,
+        bool waitForIndexing,
+        params string[] filePaths)
     {
         if (filePaths.Length == 0) return;
 
@@ -53,5 +70,8 @@ public static class JsonFixtureImporter
         }
 
         await session.SaveChangesAsync();
+
+        if (waitForIndexing)
+            await RavenIndexHelper.WaitForNonStaleAsync(store);
     }
 }
