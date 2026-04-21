@@ -59,6 +59,43 @@ public sealed class FleetTestHost : IAsyncLifetime
         lock (_logLock) return string.Join('\n', _fleetLog.TakeLast(maxLines));
     }
 
+    /// <summary>
+    /// Registers an additional user and patches the Raven document so the user is email-confirmed
+    /// and belongs to the given group (matching a name declared in Fleet's App_Data/security.json).
+    /// Used by row-level-authz tests to seed a second non-admin account.
+    /// </summary>
+    public async Task SeedUserAsync(string email, string password, string groupName)
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri(_fleetUrl!) };
+
+        var registerResp = await client.PostAsJsonAsync("/spark/auth/register", new { email, password });
+        if (!registerResp.IsSuccessStatusCode)
+        {
+            var body = await registerResp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Seed register for '{email}' failed ({(int)registerResp.StatusCode}): {body}");
+        }
+
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+
+        using var session = appStore.OpenAsyncSession();
+        var user = await session.Query<SparkUser>()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == email.ToUpperInvariant())
+            ?? throw new InvalidOperationException($"Seeded user '{email}' not visible in '{TestDatabase}' after register.");
+
+        user.EmailConfirmed = true;
+        user.UserName ??= email;
+        user.NormalizedUserName ??= email.ToUpperInvariant();
+        if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
+            user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
+
+        await session.SaveChangesAsync();
+    }
+
     public async Task InitializeAsync()
     {
         _raven = new SparkTestDriverHost();

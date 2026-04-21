@@ -18,4 +18,12 @@ public class Car
 
     [LookupReference(typeof(LookupReferences.CarBrand))]
     public string? Brand { get; set; }
+
+    /// <summary>
+    /// User id of the account that created the record. Set on create by CarActions; used
+    /// by the row-level auth hook to restrict non-admin callers to their own cars.
+    /// Demo field: wouldn't necessarily live on the entity in a production app (could be
+    /// a metadata field), but keeping it on the entity is the simplest illustration.
+    /// </summary>
+    public string? CreatedBy { get; set; }
 }

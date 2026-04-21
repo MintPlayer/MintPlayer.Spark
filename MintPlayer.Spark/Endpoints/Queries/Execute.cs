@@ -96,6 +96,11 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                 {
                     parent = await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, parentId);
                 }
+                // Parent was asked for but we couldn't resolve or couldn't authorize it.
+                // Return 404 rather than silently running the query unscoped — that would
+                // leak data the caller shouldn't see (H-3).
+                if (parent is null)
+                    return Results.Json(new { error = "Parent not found" }, statusCode: 404);
             }
 
             // Clone query with sort overrides if provided

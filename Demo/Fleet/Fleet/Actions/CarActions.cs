@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Fleet.Entities;
 using Fleet.Indexes;
 using Fleet.LookupReferences;
+using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
@@ -12,9 +14,34 @@ namespace Fleet.Actions;
 public partial class CarActions : DefaultPersistentObjectActions<Car>
 {
     [Inject] private readonly IManager manager;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    private const string AdminRole = "Administrators";
+
+    private ClaimsPrincipal? CurrentUser => httpContextAccessor.HttpContext?.User;
+    private string? CurrentUserId => CurrentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    private bool CurrentUserIsAdmin => CurrentUser?.IsInRole(AdminRole) == true;
+
+    /// <summary>
+    /// Row-level auth (H-2): administrators see/edit/delete everything; other authenticated
+    /// users only act on cars they created. An unauthenticated caller (which would already be
+    /// blocked by entity-type authz in Fleet's security.json) falls through to deny.
+    /// </summary>
+    public override Task<bool> IsAllowedAsync(string action, Car entity)
+    {
+        if (CurrentUserIsAdmin) return Task.FromResult(true);
+        var userId = CurrentUserId;
+        if (string.IsNullOrEmpty(userId)) return Task.FromResult(false);
+        return Task.FromResult(string.Equals(entity.CreatedBy, userId, StringComparison.Ordinal));
+    }
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
     {
+        // Stamp the creator id on first save. Preserve it on subsequent updates so the
+        // row-level auth check stays consistent even if the owner changes password/email.
+        if (string.IsNullOrEmpty(entity.CreatedBy))
+            entity.CreatedBy = CurrentUserId;
+
         var statusAttr = obj.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
         if (statusAttr?.IsValueChanged == true && entity.Status == CarStatus.Stolen)
         {
