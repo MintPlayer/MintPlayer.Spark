@@ -205,6 +205,56 @@ public class SparkClient : IDisposable
         return list ?? Array.Empty<SparkQuery>();
     }
 
+    // --------------------------------------------------------------------------------
+    // Metadata + permissions endpoints
+    // --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns every entity type definition the caller is allowed to see. The server applies
+    /// the <c>Query</c> permission check per entity type before including it, so an anonymous
+    /// caller gets only the subset exposed to Everyone.
+    /// </summary>
+    public async Task<IReadOnlyList<EntityTypeDefinition>> ListEntityTypesAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Get, "/spark/types");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        var list = await response.Content.ReadFromJsonAsync<EntityTypeDefinition[]>(JsonOptions, cancellationToken);
+        return list ?? Array.Empty<EntityTypeDefinition>();
+    }
+
+    /// <summary>
+    /// Returns the alias maps (entity types + queries). Aliases are filtered server-side to
+    /// the set the caller has <c>Query</c> rights on — absent entries don't reveal existence.
+    /// </summary>
+    public async Task<SparkAliases> ListAliasesAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Get, "/spark/aliases");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<SparkAliases>(JsonOptions, cancellationToken)
+            ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty /spark/aliases response.");
+    }
+
+    /// <summary>
+    /// Returns the permission flags for a single entity type, addressed by Guid id, name, or
+    /// alias. Null on 404 (entity type unknown). Anonymous callers still get a response with
+    /// all-false flags for types they can't access — consistent with the Angular SPA's need
+    /// to render "view-only" UI without throwing.
+    /// </summary>
+    public async Task<SparkPermissions?> GetPermissionsAsync(string entityTypeIdOrNameOrAlias, CancellationToken cancellationToken = default)
+    {
+        using var request = BuildRequest(HttpMethod.Get, $"/spark/permissions/{Uri.EscapeDataString(entityTypeIdOrNameOrAlias)}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        UpdateCookiesFromResponse(response);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await ThrowIfNotSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<SparkPermissions>(JsonOptions, cancellationToken);
+    }
+
     private static string BuildQueryUrl(string idSegment, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns)
     {
         var qs = new List<string> { $"skip={skip}", $"take={take}" };

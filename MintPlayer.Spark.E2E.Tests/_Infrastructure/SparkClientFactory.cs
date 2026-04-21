@@ -16,19 +16,27 @@ internal static class SparkClientFactory
     /// callers should wrap it in a <c>using</c>.
     /// </summary>
     public static SparkClient ForFleet(FleetTestHost host)
+        => new(CreateHttpClient(host), ownsClient: true);
+
+    /// <summary>
+    /// Returns a raw <see cref="HttpClient"/> configured to talk to Fleet (self-signed cert
+    /// validator + base address). For the tiny subset of tests that need to inspect
+    /// transport-level artefacts <see cref="SparkClient"/> drops — <c>Set-Cookie</c>
+    /// attributes like <c>Secure</c>/<c>SameSite</c>, in particular.
+    /// </summary>
+    public static HttpClient CreateHttpClient(FleetTestHost host)
     {
         var handler = new HttpClientHandler
         {
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
         };
-        var http = new HttpClient(handler) { BaseAddress = new Uri(host.FleetUrl) };
-        return new SparkClient(http, ownsClient: true);
+        return new HttpClient(handler) { BaseAddress = new Uri(host.FleetUrl) };
     }
 
     /// <summary>
     /// Same as <see cref="ForFleet"/> but immediately signs the client in with the admin
     /// credentials the <see cref="FleetTestHost"/> seeded. Matches the common
-    /// <c>SparkApi.LoginAsync(...)</c> pattern the tests used to call.
+    /// "log in first, then drive the API" pattern every Security/*.cs test follows.
     /// </summary>
     public static async Task<SparkClient> ForFleetAsAdminAsync(FleetTestHost host)
     {
