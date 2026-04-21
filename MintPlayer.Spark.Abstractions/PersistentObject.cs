@@ -7,6 +7,14 @@ public sealed class PersistentObject
     public required Guid ObjectTypeId { get; set; }
     public string? Breadcrumb { get; set; }
     public PersistentObjectAttribute[] Attributes { get; set; } = [];
+
+    /// <summary>
+    /// Optimistic-concurrency token. Populated by the server on read (RavenDB's change
+    /// vector for the underlying entity). Clients should echo the value back on update —
+    /// if the server's current change vector differs, the update is rejected with HTTP 409.
+    /// Null on create and when the caller doesn't opt in.
+    /// </summary>
+    public string? Etag { get; set; }
 }
 
 public sealed class PersistentObjectAttribute

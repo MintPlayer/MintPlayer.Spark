@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Exceptions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -98,7 +99,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Load included documents for breadcrumb resolution
         var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, [entity], referenceProperties);
 
-        return entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
+        var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
+        // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
+        persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
+        return persistentObject;
     }
 
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
@@ -151,6 +155,23 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         using var session = documentStore.OpenAsyncSession();
 
+        // Optimistic-concurrency check: if the caller sent an Etag on an existing entity,
+        // verify it matches the current server-side change vector before the actions
+        // pipeline runs. A mismatch means the entity has been updated since the caller
+        // read it — reject instead of silently overwriting. We load into a side session so
+        // the tracking on the main session is clean for the actions pipeline's StoreAsync.
+        if (!string.IsNullOrEmpty(persistentObject.Id) && !string.IsNullOrEmpty(persistentObject.Etag))
+        {
+            using var checkSession = documentStore.OpenAsyncSession();
+            var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
+            if (existing is not null)
+            {
+                var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
+                if (!string.Equals(currentEtag, persistentObject.Etag, StringComparison.Ordinal))
+                    throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
+            }
+        }
+
         // Pass PO directly to actions — entity mapping happens inside the actions pipeline
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
 
@@ -159,6 +180,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var generatedId = idProperty?.GetValue(savedEntity)?.ToString();
 
         persistentObject.Id = generatedId;
+        // Return the fresh change vector so the client can round-trip it to the next update.
+        persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
 
         // If this is a replicated entity, also broadcast the changes to the owner module
         var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();

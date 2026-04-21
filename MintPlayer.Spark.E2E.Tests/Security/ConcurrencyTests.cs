@@ -42,11 +42,13 @@ public class ConcurrencyTests
         var body = await create.JsonAsync();
         var id = body!.Value.GetProperty("id").GetString()!;
 
-        // Read v1 twice — simulating two clients both looking at the same snapshot.
+        // Read v1 and capture its etag — the stale snapshot both clients will be working from.
         var readA = await api.GetAsync($"/spark/po/Car/{Uri.EscapeDataString(id)}");
         readA.Status.Should().Be(200);
+        var etagV1 = (await readA.JsonAsync())!.Value.GetProperty("etag").GetString();
+        etagV1.Should().NotBeNullOrEmpty("server must surface the change vector as Etag for optimistic concurrency");
 
-        // Client A writes first (Year=2025).
+        // Client A writes first with the v1 etag → succeeds, server moves to v2.
         var writeA = await api.PutJsonAsync(
             $"/spark/po/Car/{Uri.EscapeDataString(id)}",
             new
@@ -54,6 +56,7 @@ public class ConcurrencyTests
                 persistentObject = new
                 {
                     id,
+                    etag = etagV1,
                     name = "Car",
                     objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                     attributes = new object[]
@@ -66,8 +69,8 @@ public class ConcurrencyTests
             });
         writeA.Status.Should().BeOneOf(new[] { 200, 201 }, $"first write failed: {await writeA.TextAsync()}");
 
-        // Client B writes based on the stale v1 snapshot (Year=2026).
-        // With optimistic concurrency, this should be rejected — the expected status is 409.
+        // Client B writes based on the stale v1 snapshot (Year=2026) — same etagV1 as A used.
+        // Server's current change vector is now v2, so the v1 etag no longer matches. 409 expected.
         var writeB = await api.PutJsonAsync(
             $"/spark/po/Car/{Uri.EscapeDataString(id)}",
             new
@@ -75,6 +78,7 @@ public class ConcurrencyTests
                 persistentObject = new
                 {
                     id,
+                    etag = etagV1,
                     name = "Car",
                     objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
                     attributes = new object[]
