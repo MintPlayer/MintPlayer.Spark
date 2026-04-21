@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 
@@ -35,4 +36,11 @@ public class SparkFullOptions
     /// When null, replication is not enabled.
     /// </summary>
     public Action<SparkReplicationOptions>? Replication { get; set; }
+
+    /// <summary>
+    /// Configures the Spark rate limiter (partitioned by client IP, scoped to <c>/spark/</c>).
+    /// When null, the limiter is not wired — demo/production apps opt in.
+    /// Set to <c>_ =&gt; { }</c> to enable with default limits (150 requests / 10 s).
+    /// </summary>
+    public Action<SparkRateLimiterOptions>? RateLimiter { get; set; }
 }
