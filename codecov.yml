@@ -1,0 +1,37 @@
+coverage:
+  status:
+    project:
+      default:
+        # Tolerate small regressions — new framework surface arrives faster than
+        # dedicated tests in practice, and the e2e suite exercises code that
+        # coverlet can't instrument (out-of-process Fleet subprocess, etc).
+        # If a PR adds lots of uncovered production code the patch check still
+        # catches it.
+        target: auto
+        threshold: 2%
+        informational: false
+    patch:
+      default:
+        target: 40%
+        threshold: 0%
+        informational: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true
+
+ignore:
+  - "Demo/**"                                 # excluded from CI test runs — not production
+  - "**/obj/**"
+  - "**/bin/**"
+  - "**/*.Designer.cs"
+  - "**/*.Generated.cs"
+  - "**/Generated/**"
+  - "MintPlayer.Spark.SourceGenerators/**"    # tested by its own .Tests project
+  - "MintPlayer.Spark.AllFeatures.SourceGenerators/**"
+  - "MintPlayer.Spark.Testing/**"             # test helper library, not production
+  - "MintPlayer.Spark.Tests/**"
+  - "MintPlayer.Spark.SourceGenerators.Tests/**"
+  - "MintPlayer.Spark.E2E.Tests/**"
+  - "node_packages/**"                        # Angular libs measured separately
