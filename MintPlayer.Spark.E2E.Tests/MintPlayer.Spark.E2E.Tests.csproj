@@ -32,6 +32,8 @@
     <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <!-- SparkUser / SparkUserClaim types for direct admin seeding -->
     <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <!-- Typed HTTP client used by Security/*.cs tests in place of hand-built JSON. -->
+    <ProjectReference Include="..\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
   </ItemGroup>
 
 </Project>
