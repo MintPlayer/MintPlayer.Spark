@@ -72,7 +72,12 @@ internal partial class SyncActionHandler : ISyncActionHandler
             ? new HashSet<string>(properties, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        var attributes = new List<PersistentObjectAttribute>();
+        var po = new PersistentObject
+        {
+            Id = documentId,
+            ObjectTypeId = entityTypeDef?.Id ?? Guid.Empty,
+            Name = entityTypeDef?.Name ?? entityType.Name,
+        };
 
         if (entityTypeDef?.Attributes != null)
         {
@@ -84,7 +89,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
                     ? propertySet.Contains(attrDef.Name)
                     : hasValue;
 
-                attributes.Add(new PersistentObjectAttribute
+                po.AddAttribute(new PersistentObjectAttribute
                 {
                     Name = attrDef.Name,
                     Label = attrDef.Label,
@@ -114,7 +119,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
                     ? propertySet.Contains(prop.Name)
                     : hasValue;
 
-                attributes.Add(new PersistentObjectAttribute
+                po.AddAttribute(new PersistentObjectAttribute
                 {
                     Name = prop.Name,
                     Value = hasValue ? NormalizeValue(value) : null,
@@ -123,13 +128,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             }
         }
 
-        return new PersistentObject
-        {
-            Id = documentId,
-            ObjectTypeId = entityTypeDef?.Id ?? Guid.Empty,
-            Name = entityTypeDef?.Name ?? entityType.Name,
-            Attributes = attributes.ToArray(),
-        };
+        return po;
     }
 
     private EntityTypeDefinition? FindEntityTypeDefinition(Type entityType)

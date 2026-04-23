@@ -76,7 +76,7 @@ internal sealed class StreamingDiffEngine
 
         foreach (var currentAttr in current.Attributes)
         {
-            var previousAttr = Array.Find(previous.Attributes, a => a.Name == currentAttr.Name);
+            var previousAttr = previous.Attributes.FirstOrDefault(a => a.Name == currentAttr.Name);
             if (previousAttr is null)
             {
                 // New attribute
