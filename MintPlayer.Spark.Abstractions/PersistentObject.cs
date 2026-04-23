@@ -43,6 +43,14 @@ public sealed class PersistentObject
     }
 
     /// <summary>
+    /// Looks up an attribute by name. Throws <see cref="KeyNotFoundException"/>
+    /// if no attribute with that name is on this PO.
+    /// </summary>
+    public PersistentObjectAttribute this[string name]
+        => _attributes.FirstOrDefault(a => a.Name == name)
+           ?? throw new KeyNotFoundException($"Attribute '{name}' not on PersistentObject '{Name}'.");
+
+    /// <summary>
     /// Single mutation point for the attributes collection. Sets the child's
     /// <see cref="PersistentObjectAttribute.Parent"/> back-reference and appends
     /// to the backing list. Called by framework code (EntityMapper, SyncActionHandler),
@@ -93,4 +101,37 @@ public sealed class PersistentObjectAttribute
     }
 
     public void SetValue<T>(T? value) => Value = value;
+
+    /// <summary>
+    /// Deep-copies this attribute under a new name (and optional new label), adds
+    /// the clone to the same <see cref="Parent"/> PO's attributes, and returns it
+    /// for inline mutation. The clone's <see cref="Id"/> is cleared,
+    /// <see cref="IsValueChanged"/> is reset, and <see cref="Value"/> is nulled.
+    /// <see cref="Rules"/> and <see cref="RendererOptions"/> are deep-copied so
+    /// mutation on the clone does not bleed to the source attribute.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if this attribute has not yet been attached to a PO (no <see cref="Parent"/>).
+    /// </exception>
+    public PersistentObjectAttribute CloneAndAdd(string name, TranslatedString? label = null)
+    {
+        if (Parent is null)
+            throw new InvalidOperationException(
+                "CloneAndAdd requires the source attribute to be attached to a PersistentObject.");
+
+        var clone = (PersistentObjectAttribute)MemberwiseClone();
+        clone.Parent = null!;                                      // cleared; AddAttribute will set it on the target
+        clone.Id = null;                                           // new attribute, server issues Id on persistence
+        clone.Name = name;
+        if (label is not null) clone.Label = label;
+        clone.Value = null;
+        clone.IsValueChanged = false;
+        clone.Rules = Rules is { Length: > 0 } ? [.. Rules] : [];  // array: value-copy
+        clone.RendererOptions = RendererOptions is null            // dict: value-copy
+            ? null
+            : new Dictionary<string, object>(RendererOptions);
+
+        Parent.AddAttribute(clone);
+        return clone;
+    }
 }
