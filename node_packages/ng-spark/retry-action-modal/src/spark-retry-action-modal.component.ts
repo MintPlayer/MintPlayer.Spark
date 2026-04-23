@@ -7,6 +7,7 @@ import { RetryActionService, SparkService } from '@mintplayer/ng-spark/services'
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import {
   dictToNestedPo,
+  EntityAttributeDefinition,
   EntityType,
   EntityTypeResolver,
   nestedPoToDict,
@@ -92,14 +93,21 @@ export class SparkRetryActionModalComponent {
   }
 
   private async seedForm(po: PersistentObject): Promise<void> {
+    // Virtual POs used for retry prompts (e.g. ConfirmDeleteCar) typically have no
+    // security.json grant — so `getEntityTypes()` filters them out for the current user
+    // and the lookup-by-id would return null, leaving the form blank. The scaffolded PO
+    // already carries full attribute metadata (label / dataType / rules / renderer / etc.),
+    // so we synthesize an EntityType from the attributes directly and skip the HTTP
+    // lookup altogether. `getEntityTypes()` is still fetched once (cached on the
+    // component) because the embedded spark-po-form needs the full list to resolve
+    // nested AsDetail / Reference types the retry PO might point at.
     if (this.allEntityTypes.length === 0) {
       try { this.allEntityTypes = await this.sparkService.getEntityTypes(); }
       catch { this.allEntityTypes = []; }
     }
-    const type = this.allEntityTypes.find(t => t.id === po.objectTypeId) ?? null;
-    this.entityType.set(type);
-    // Same flattening the po-edit form uses — so the shared spark-po-form receives the
-    // exact shape it already renders for plain edit flows.
+    this.entityType.set(entityTypeFromPo(po));
+    // Flatten the nested PO into the Record<string, any> shape the shared form uses
+    // throughout the rest of ng-spark — same transformation po-edit applies.
     this.formData.set(nestedPoToDict(po));
   }
 
@@ -134,6 +142,46 @@ export class SparkRetryActionModalComponent {
     };
     return populated;
   }
+}
+
+/**
+ * Builds a synthetic <see cref="EntityType"/> from the PO's own scaffolded attributes so
+ * the embedded spark-po-form can render without having to locate the matching server-side
+ * EntityType registration. Used for Virtual POs that are schema-registered but not
+ * security-granted (retry-action popups).
+ */
+function entityTypeFromPo(po: PersistentObject): EntityType {
+  return {
+    id: po.objectTypeId,
+    name: po.name,
+    clrType: '', // Not needed by the form's rendering path; the PO's attributes carry the schema.
+    displayAttribute: undefined,
+    tabs: [],
+    groups: [],
+    attributes: (po.attributes ?? []).map(attrToDefinition),
+    queries: [],
+  };
+}
+
+function attrToDefinition(attr: PersistentObjectAttribute): EntityAttributeDefinition {
+  return {
+    id: attr.id ?? '',
+    name: attr.name,
+    label: attr.label,
+    dataType: attr.dataType,
+    isArray: attr.isArray,
+    isRequired: attr.isRequired,
+    isVisible: attr.isVisible,
+    isReadOnly: attr.isReadOnly,
+    order: attr.order,
+    query: attr.query,
+    asDetailType: attr.asDetailType,
+    showedOn: attr.showedOn,
+    rules: attr.rules ?? [],
+    group: attr.group,
+    renderer: attr.renderer,
+    rendererOptions: attr.rendererOptions,
+  };
 }
 
 /**

@@ -91,7 +91,10 @@ describe('SparkRetryActionModalComponent', () => {
 });
 
 describe('SparkRetryActionModalComponent with PersistentObject', () => {
-  it('seeds formData from the scaffolded PO and resolves the matching EntityType', async () => {
+  it('seeds formData from the scaffolded PO and synthesizes an EntityType from its attributes', async () => {
+    // Note: the synthesized EntityType is built from the PO's attributes rather than
+    // looked up via getEntityTypes() — Virtual POs used for retry prompts typically
+    // have no security grant and would be filtered out of the types list otherwise.
     const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
     const promise = service.show({
       step: 'confirm',
@@ -105,6 +108,7 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     expect(component.entityType()?.id).toBe('t/confirm-delete-car');
+    expect(component.entityType()?.attributes.map(a => a.name)).toEqual(['LicensePlate', 'Confirmation']);
     expect(component.formData()).toEqual({ LicensePlate: 'ABC123', Confirmation: null });
 
     component.onOption('Cancel'); // drain the promise
@@ -136,7 +140,11 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     expect(confirmationAttr?.id).toBe('a-conf');
   });
 
-  it('forwards the incoming PO unmodified when no EntityType resolves', async () => {
+  it('round-trips scaffold values unchanged when the user does not edit the form', async () => {
+    // Even when the types endpoint returns nothing (typical for Virtual POs that lack
+    // an explicit security grant), the modal synthesizes an EntityType from the PO's
+    // own attributes — so the PO is always rebuilt via dictToNestedPo, and scaffold
+    // values flow through formData → back onto the outgoing PO.
     const { component, service, fixture } = setupWithTypes([]);
     const promise = service.show({
       step: 'confirm',
@@ -146,11 +154,13 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     } as any);
     fixture.detectChanges();
     await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     component.onOption('Delete');
 
     const result = await promise;
-    // No rebuild — incoming passthrough (values unchanged from scaffold).
-    expect(result.persistentObject?.attributes.find(a => a.name === 'Confirmation')?.value).toBeNull();
+    const confirmationAttr = result.persistentObject?.attributes.find(a => a.name === 'Confirmation');
+    expect(confirmationAttr?.value).toBeNull();
+    expect(result.persistentObject?.attributes.find(a => a.name === 'LicensePlate')?.value).toBe('ABC123');
   });
 });
