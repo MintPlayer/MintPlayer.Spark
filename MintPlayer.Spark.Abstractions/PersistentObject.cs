@@ -65,7 +65,8 @@ public sealed class PersistentObject
     }
 }
 
-public sealed class PersistentObjectAttribute
+[JsonConverter(typeof(PersistentObjectAttributeJsonConverter))]
+public class PersistentObjectAttribute
 {
     public string? Id { get; set; }
     public required string Name { get; set; }
@@ -134,4 +135,38 @@ public sealed class PersistentObjectAttribute
         Parent.AddAttribute(clone);
         return clone;
     }
+}
+
+/// <summary>
+/// Attribute variant for <c>DataType == "AsDetail"</c>: instead of a flat scalar value,
+/// holds one (or many, when <see cref="PersistentObjectAttribute.IsArray"/> is true) fully
+/// scaffolded nested <see cref="PersistentObject"/>(s) that mirror the CLR entity type
+/// the detail attribute points at (e.g. <c>Person.Address</c>, <c>Person.Jobs[]</c>).
+/// The nested PO carries the full attribute metadata — Rules, Renderer, Label, DataType —
+/// so UIs can render a proper form per detail row rather than guessing from a flat dict.
+/// </summary>
+public sealed class PersistentObjectAttributeAsDetail : PersistentObjectAttribute
+{
+    /// <summary>
+    /// For <see cref="PersistentObjectAttribute.IsArray"/> = <c>false</c>: the single nested
+    /// PO (or <c>null</c> when the CLR field is null). The mapper always scaffolds this on
+    /// <c>NewPersistentObject</c> so UIs can start from an empty-but-structured form.
+    /// </summary>
+    public PersistentObject? Object { get; set; }
+
+    /// <summary>
+    /// For <see cref="PersistentObjectAttribute.IsArray"/> = <c>true</c>: the nested PO
+    /// collection. Each element is a fully scaffolded PO for the detail entity type.
+    /// <c>null</c> before the populate phase runs; never <c>null</c> afterward (empty list
+    /// instead).
+    /// </summary>
+    public IReadOnlyList<PersistentObject>? Objects { get; set; }
+
+    /// <summary>
+    /// CLR type name of the nested entity (e.g. <c>"HR.Entities.Address"</c>), copied from
+    /// the schema's <see cref="EntityAttributeDefinition.AsDetailType"/> at scaffold time.
+    /// Carried on the attribute itself so the inverse path can instantiate the right type
+    /// during recursion without re-resolving the outer entity's schema.
+    /// </summary>
+    public string? AsDetailType { get; set; }
 }

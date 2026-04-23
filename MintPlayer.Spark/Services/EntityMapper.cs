@@ -118,23 +118,11 @@ internal partial class EntityMapper : IEntityMapper
         var entity = Activator.CreateInstance(entityType)
             ?? throw new InvalidOperationException($"Could not create instance of type '{entityTypeDefinition.ClrType}'");
 
-        // Set the Id if provided
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        if (idProperty != null && !string.IsNullOrEmpty(persistentObject.Id))
-        {
-            SetPropertyValue(idProperty, entity, persistentObject.Id);
-        }
-
-        // Map attributes to entity properties
-        foreach (var attribute in persistentObject.Attributes)
-        {
-            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
-            if (property != null && property.CanWrite)
-            {
-                SetPropertyValue(property, entity, attribute.Value);
-            }
-        }
-
+        // Route through PopulateObjectValues so AsDetail attributes recurse into nested
+        // CLR instances and scalar attributes go through the canonical coercion path.
+        // PopulateObjectValues with includedDocuments=null throws on complex-typed
+        // Reference attributes — callers in that shape need the async overload.
+        PopulateObjectValues(persistentObject, entity);
         return entity;
     }
 
@@ -200,8 +188,9 @@ internal partial class EntityMapper : IEntityMapper
 
         foreach (var attribute in po.Attributes)
         {
-            // Vidyano parity: dot-notation names (nested paths) are not populated
-            // here — reserved for future PersistentObjectAttributeAsDetail support.
+            // Dot-notation names (nested paths) are not populated here — reserved for
+            // cross-field path access where PersistentObjectAttributeAsDetail isn't the
+            // right fit.
             if (attribute.Name.Contains('.'))
                 continue;
 
@@ -210,6 +199,15 @@ internal partial class EntityMapper : IEntityMapper
                 continue; // silent skip — attribute may be projection-only
 
             var raw = property.GetValue(entity);
+
+            // AsDetail attributes carry full nested PersistentObject(s) instead of a scalar
+            // Value; delegate to the recursive populator.
+            if (attribute is PersistentObjectAttributeAsDetail asDetail)
+            {
+                PopulateAsDetail(asDetail, raw, property.PropertyType, includedDocuments);
+                continue;
+            }
+
             attribute.Value = ConvertValueForWire(raw, property.PropertyType, attribute);
 
             // Reference attributes: resolve the display name of the referenced entity
@@ -230,11 +228,100 @@ internal partial class EntityMapper : IEntityMapper
     }
 
     /// <summary>
+    /// Forward-path recursion for AsDetail attributes: scaffold a nested PO per element of
+    /// the entity's collection (array case) or one nested PO for the single field, and
+    /// <see cref="PopulateAttributeValues"/> the child entity into it. The pre-scaffolded
+    /// <see cref="PersistentObjectAttributeAsDetail.Object"/> from <see cref="ScaffoldFrom"/>
+    /// is discarded when a populated one is available — keeping stale values from the empty
+    /// scaffold would poison the wire value.
+    /// </summary>
+    private void PopulateAsDetail(PersistentObjectAttributeAsDetail attr, object? raw, Type propertyType,
+        Dictionary<string, object>? includedDocuments)
+    {
+        attr.Value = null; // AsDetail no longer carries a flat Value.
+
+        if (attr.IsArray)
+        {
+            var elementType = GetCollectionElementType(propertyType);
+            if (elementType is null)
+            {
+                attr.Objects = [];
+                return;
+            }
+            var elementDef = modelLoader.GetEntityTypeByClrType(elementType.FullName ?? elementType.Name);
+            if (elementDef is null)
+            {
+                attr.Objects = [];
+                return;
+            }
+
+            var children = new List<PersistentObject>();
+            if (raw is System.Collections.IEnumerable enumerable && raw is not string)
+            {
+                foreach (var item in enumerable)
+                {
+                    var child = ScaffoldFrom(elementDef);
+                    if (item is not null)
+                        PopulateAttributeValues(child, item, includedDocuments);
+                    children.Add(child);
+                }
+            }
+            attr.Objects = children;
+            return;
+        }
+
+        if (raw is null)
+        {
+            attr.Object = null;
+            return;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        var childDefSingle = modelLoader.GetEntityTypeByClrType(targetType.FullName ?? targetType.Name);
+        if (childDefSingle is null)
+        {
+            attr.Object = null;
+            return;
+        }
+
+        var nested = ScaffoldFrom(childDefSingle);
+        PopulateAttributeValues(nested, raw, includedDocuments);
+        attr.Object = nested;
+    }
+
+    /// <summary>
+    /// Returns the element type for an array (<c>T[]</c>), a generic <see cref="IEnumerable{T}"/>,
+    /// or a <c>List&lt;T&gt;</c>. Returns <c>null</c> for non-collection types.
+    /// </summary>
+    private static Type? GetCollectionElementType(Type propertyType)
+    {
+        if (propertyType.IsArray)
+            return propertyType.GetElementType();
+
+        if (propertyType.IsGenericType)
+        {
+            var genericArgs = propertyType.GetGenericArguments();
+            if (genericArgs.Length == 1) return genericArgs[0];
+        }
+
+        foreach (var itf in propertyType.GetInterfaces())
+        {
+            if (itf.IsGenericType && itf.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return itf.GetGenericArguments()[0];
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Builds a scaffold PO (metadata only, values null) from an entity type definition.
     /// Shared by <see cref="NewPersistentObject(string)"/>, <see cref="NewPersistentObject(Guid)"/>,
     /// and <see cref="ToPersistentObject(object, Guid, Dictionary{string, object}?)"/>.
+    /// Recurses through AsDetail attributes: for single AsDetail, the nested child PO is
+    /// pre-scaffolded so UIs render an empty-but-structured form; for array AsDetail,
+    /// <see cref="PersistentObjectAttributeAsDetail.Objects"/> starts as an empty list.
     /// </summary>
-    private static PersistentObject ScaffoldFrom(EntityTypeDefinition def)
+    private PersistentObject ScaffoldFrom(EntityTypeDefinition def)
     {
         var po = new PersistentObject
         {
@@ -253,12 +340,52 @@ internal partial class EntityMapper : IEntityMapper
     }
 
     /// <summary>
-    /// Pure function: 14-field metadata copy from an <see cref="EntityAttributeDefinition"/>
-    /// into a blank <see cref="PersistentObjectAttribute"/>. Single canonical owner of
-    /// "which fields travel from schema to wire". Value stays null; populate step fills it.
+    /// 14-field metadata copy from an <see cref="EntityAttributeDefinition"/> into a blank
+    /// <see cref="PersistentObjectAttribute"/>. Single canonical owner of "which fields
+    /// travel from schema to wire". Value stays null; populate step fills it.
+    /// When <c>def.DataType == "AsDetail"</c>, returns a
+    /// <see cref="PersistentObjectAttributeAsDetail"/> with the nested child PO pre-scaffolded
+    /// (single) or an empty list (array).
     /// </summary>
-    private static PersistentObjectAttribute FromDefinition(EntityAttributeDefinition def)
-        => new()
+    private PersistentObjectAttribute FromDefinition(EntityAttributeDefinition def)
+    {
+        if (def.DataType == "AsDetail")
+        {
+            var asDetail = new PersistentObjectAttributeAsDetail
+            {
+                Name = def.Name,
+                Label = def.Label,
+                DataType = def.DataType,
+                IsArray = def.IsArray,
+                IsRequired = def.IsRequired,
+                IsVisible = def.IsVisible,
+                IsReadOnly = def.IsReadOnly,
+                Order = def.Order,
+                ShowedOn = def.ShowedOn,
+                Rules = def.Rules ?? [],
+                Group = def.Group,
+                Renderer = def.Renderer,
+                RendererOptions = def.RendererOptions,
+                Query = null,
+                Value = null,
+                AsDetailType = def.AsDetailType,
+            };
+
+            if (!def.IsArray && def.AsDetailType is not null)
+            {
+                var childDef = modelLoader.GetEntityTypeByClrType(def.AsDetailType);
+                if (childDef is not null)
+                    asDetail.Object = ScaffoldFrom(childDef);
+            }
+            else if (def.IsArray)
+            {
+                asDetail.Objects = [];
+            }
+
+            return asDetail;
+        }
+
+        return new PersistentObjectAttribute
         {
             Name = def.Name,
             Label = def.Label,
@@ -276,16 +403,13 @@ internal partial class EntityMapper : IEntityMapper
             Query = def.DataType == "Reference" ? def.Query : null,
             Value = null,
         };
+    }
 
     /// <summary>
-    /// Converts a raw property value to its wire representation:
-    /// <list type="bullet">
-    ///   <item>enums → string name</item>
-    ///   <item><see cref="Color"/> → <c>#RRGGBB</c> (or null if Empty)</item>
-    ///   <item>AsDetail single → dictionary</item>
-    ///   <item>AsDetail array → list of dictionaries</item>
-    ///   <item>everything else → passthrough</item>
-    /// </list>
+    /// Converts a raw scalar property value to its wire representation: enums → string name,
+    /// <see cref="Color"/> → <c>#RRGGBB</c>, everything else → passthrough. AsDetail values
+    /// are no longer routed through here — <see cref="PopulateAsDetail"/> owns that path,
+    /// producing a nested <see cref="PersistentObject"/> instead of a flat dictionary.
     /// </summary>
     private static object? ConvertValueForWire(object? raw, Type propertyType, PersistentObjectAttribute attribute)
     {
@@ -298,19 +422,6 @@ internal partial class EntityMapper : IEntityMapper
 
         if (underlying == typeof(Color) && raw is Color colorValue)
             return colorValue.IsEmpty ? null : $"#{colorValue.R:x2}{colorValue.G:x2}{colorValue.B:x2}";
-
-        if (attribute.DataType == "AsDetail")
-        {
-            if (attribute.IsArray && raw is System.Collections.IEnumerable enumerable && raw is not string)
-            {
-                var list = new List<Dictionary<string, object?>>();
-                foreach (var item in enumerable)
-                    list.Add(ConvertToSerializableDictionary(item));
-                return list;
-            }
-            if (!attribute.IsArray)
-                return ConvertToSerializableDictionary(raw);
-        }
 
         return raw;
     }
@@ -373,6 +484,15 @@ internal partial class EntityMapper : IEntityMapper
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
+        // AsDetail: instantiate the nested CLR entity type and recurse. Single vs array
+        // dispatch on the attribute (schema) rather than the property shape — an AsDetail
+        // attribute should always find a matching collection/scalar on the entity.
+        if (attribute is PersistentObjectAttributeAsDetail asDetail)
+        {
+            await WriteAsDetailAsync(asDetail, property, entity, session, includedDocuments, cancellationToken);
+            return;
+        }
+
         // TranslatedString merge — per-language overlay so partial updates don't drop
         // translations the client didn't send.
         if (targetType == typeof(TranslatedString))
@@ -416,6 +536,81 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         SetPropertyValue(property, entity, attribute.Value);
+    }
+
+    /// <summary>
+    /// Inverse recursion for AsDetail attributes: instantiate the AsDetailType once per
+    /// incoming nested PO and populate it via <see cref="PopulateObjectValuesAsync"/>. For
+    /// <see cref="PersistentObjectAttributeAsDetail.IsArray"/>, assembles the resulting
+    /// entities into the property's concrete collection shape (<c>T[]</c> vs <c>List&lt;T&gt;</c>
+    /// vs <see cref="IEnumerable{T}"/>). Null / empty incoming clears the property.
+    /// </summary>
+    private async Task WriteAsDetailAsync(PersistentObjectAttributeAsDetail attr, PropertyInfo property,
+        object entity, IAsyncDocumentSession? session, Dictionary<string, object>? includedDocuments,
+        CancellationToken cancellationToken)
+    {
+        var propertyType = property.PropertyType;
+
+        if (attr.IsArray)
+        {
+            var elementType = GetCollectionElementType(propertyType)
+                ?? throw new InvalidOperationException(
+                    $"PopulateObjectValues: AsDetail array attribute '{attr.Name}' targets non-collection property '{property.Name}' of type '{propertyType.FullName}'.");
+
+            var incoming = attr.Objects ?? [];
+            var items = new List<object?>(incoming.Count);
+            foreach (var childPo in incoming)
+            {
+                if (childPo is null)
+                {
+                    items.Add(null);
+                    continue;
+                }
+                var childEntity = Activator.CreateInstance(elementType)
+                    ?? throw new InvalidOperationException(
+                        $"PopulateObjectValues: could not instantiate AsDetail element type '{elementType.FullName}'.");
+                await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
+                items.Add(childEntity);
+            }
+            property.SetValue(entity, BuildCollection(items, propertyType, elementType));
+            return;
+        }
+
+        if (attr.Object is null)
+        {
+            property.SetValue(entity, null);
+            return;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        var child = Activator.CreateInstance(targetType)
+            ?? throw new InvalidOperationException(
+                $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
+        await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
+        property.SetValue(entity, child);
+    }
+
+    /// <summary>
+    /// Assembles <paramref name="items"/> into the collection shape declared by
+    /// <paramref name="propertyType"/>: a typed array when the property is <c>T[]</c>,
+    /// a <c>List&lt;T&gt;</c> when the property is List/IList/ICollection/IEnumerable,
+    /// otherwise falls through to a typed array. Preserves element order.
+    /// </summary>
+    private static object BuildCollection(List<object?> items, Type propertyType, Type elementType)
+    {
+        if (propertyType.IsArray)
+        {
+            var array = Array.CreateInstance(elementType, items.Count);
+            for (var i = 0; i < items.Count; i++)
+                array.SetValue(items[i], i);
+            return array;
+        }
+
+        var listType = typeof(List<>).MakeGenericType(elementType);
+        var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+        foreach (var item in items)
+            list.Add(item);
+        return list;
     }
 
     private static void MergeTranslatedString(PropertyInfo property, object entity, object? raw)
@@ -666,28 +861,6 @@ internal partial class EntityMapper : IEntityMapper
         // Check if it's a class with public properties
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
         return properties.Length > 0;
-    }
-
-    private static Dictionary<string, object?> ConvertToSerializableDictionary(object obj)
-    {
-        var result = new Dictionary<string, object?>();
-        var type = obj.GetType();
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-        foreach (var property in properties)
-        {
-            var value = property.GetValue(obj);
-
-            // Recursively convert nested complex types
-            if (value != null && IsComplexType(property.PropertyType))
-            {
-                value = ConvertToSerializableDictionary(value);
-            }
-
-            result[property.Name] = value;
-        }
-
-        return result;
     }
 
     private string GetEntityDisplayName(object entity, Type entityType, EntityTypeDefinition? entityTypeDef = null)
