@@ -4,44 +4,21 @@ using System.Reflection;
 namespace MintPlayer.Spark.Extensions;
 
 /// <summary>
-/// Extension methods for bidirectional mapping between entities and PersistentObjects.
+/// Extension methods for the <see cref="PersistentObject"/> → entity direction
+/// (populating a CLR entity from a PO's attribute values).
 /// </summary>
+/// <remarks>
+/// The forward direction (entity → PO) is owned by <c>IEntityMapper</c>, which is
+/// schema-aware (metadata from <c>EntityTypeDefinition</c>, enum/Color/AsDetail
+/// conversions, Reference breadcrumb resolution). The previous extension-based
+/// forward mappers (<c>ToPersistentObject&lt;T&gt;</c>, <c>PopulateAttributeValues&lt;T&gt;</c>)
+/// were removed as part of the PersistentObject factory refactor — they bypassed
+/// the schema and produced POs with only a handful of metadata fields set,
+/// diverging from what <c>EntityMapper</c> produces. See
+/// <c>docs/PRD-PersistentObjectFactory.md</c>.
+/// </remarks>
 public static class PersistentObjectExtensions
 {
-    /// <summary>
-    /// Populates the PersistentObject's attribute values from an entity's properties.
-    /// </summary>
-    /// <typeparam name="T">The entity type</typeparam>
-    /// <param name="persistentObject">The PersistentObject to populate</param>
-    /// <param name="entity">The entity to read values from</param>
-    public static void PopulateAttributeValues<T>(this PersistentObject persistentObject, T entity) where T : class
-    {
-        if (entity == null) throw new ArgumentNullException(nameof(entity));
-
-        var entityType = typeof(T);
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-
-        // Set the ID if available
-        if (idProperty != null)
-        {
-            persistentObject.Id = idProperty.GetValue(entity)?.ToString();
-        }
-
-        // Map entity properties to PersistentObject attributes
-        foreach (var attribute in persistentObject.Attributes)
-        {
-            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
-            if (property != null && property.CanRead)
-            {
-                attribute.Value = property.GetValue(entity);
-            }
-        }
-
-        // Set display name
-        persistentObject.Name = GetEntityDisplayName(entity, entityType);
-        persistentObject.Breadcrumb = persistentObject.Name;
-    }
-
     /// <summary>
     /// Populates an entity's properties from the PersistentObject's attribute values.
     /// </summary>
@@ -88,47 +65,6 @@ public static class PersistentObjectExtensions
         return entity;
     }
 
-    /// <summary>
-    /// Creates a new PersistentObject from an entity.
-    /// </summary>
-    /// <typeparam name="T">The entity type</typeparam>
-    /// <param name="entity">The entity to convert</param>
-    /// <param name="objectTypeId">The object type ID for the PersistentObject</param>
-    /// <returns>A new PersistentObject with attribute values populated from the entity</returns>
-    public static PersistentObject ToPersistentObject<T>(this T entity, Guid objectTypeId) where T : class
-    {
-        if (entity == null) throw new ArgumentNullException(nameof(entity));
-
-        var entityType = typeof(T);
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-
-        var displayName = GetEntityDisplayName(entity, entityType);
-        var po = new PersistentObject
-        {
-            Id = idProperty?.GetValue(entity)?.ToString(),
-            Name = displayName,
-            Breadcrumb = displayName,
-            ObjectTypeId = objectTypeId,
-        };
-
-        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.Name != "Id" && p.CanRead);
-
-        foreach (var property in properties)
-        {
-            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
-            po.AddAttribute(new PersistentObjectAttribute
-            {
-                Name = property.Name,
-                Value = property.GetValue(entity),
-                DataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType),
-                Query = referenceAttr?.Query
-            });
-        }
-
-        return po;
-    }
-
     private static void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         if (value == null)
@@ -173,83 +109,5 @@ public static class PersistentObjectExtensions
         {
             // Skip properties that can't be converted
         }
-    }
-
-    private static string GetDataType(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type) ?? type;
-
-        // Check for array/collection of complex types
-        var elementType = GetCollectionElementType(underlying);
-        if (elementType != null && IsComplexType(elementType))
-        {
-            return "AsDetail";
-        }
-
-        return underlying switch
-        {
-            _ when underlying == typeof(string) => "string",
-            _ when underlying == typeof(int) || underlying == typeof(long) => "number",
-            _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "decimal",
-            _ when underlying == typeof(bool) => "boolean",
-            _ when underlying == typeof(DateTime) => "datetime",
-            _ when underlying == typeof(DateOnly) => "date",
-            _ when underlying == typeof(Guid) => "guid",
-            _ when IsComplexType(underlying) => "AsDetail",
-            _ => "string"
-        };
-    }
-
-    private static Type? GetCollectionElementType(Type type)
-    {
-        if (type.IsArray)
-            return type.GetElementType();
-
-        if (type.IsGenericType)
-        {
-            var genericDef = type.GetGenericTypeDefinition();
-            if (genericDef == typeof(List<>) ||
-                genericDef == typeof(IList<>) ||
-                genericDef == typeof(ICollection<>) ||
-                genericDef == typeof(IEnumerable<>) ||
-                genericDef == typeof(IReadOnlyList<>) ||
-                genericDef == typeof(IReadOnlyCollection<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-        }
-
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                var elType = iface.GetGenericArguments()[0];
-                if (elType != typeof(char))
-                    return elType;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool IsComplexType(Type type)
-    {
-        // A complex type is a class (not string) that has its own properties
-        if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
-            return false;
-
-        // Check if it's a class with public properties
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        return properties.Length > 0;
-    }
-
-    private static string GetEntityDisplayName(object entity, Type entityType)
-    {
-        // Try common display name properties
-        var nameProperty = entityType.GetProperty("Name")
-            ?? entityType.GetProperty("FullName")
-            ?? entityType.GetProperty("Title");
-
-        return nameProperty?.GetValue(entity)?.ToString() ?? entityType.Name;
     }
 }
