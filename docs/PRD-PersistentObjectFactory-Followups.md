@@ -95,24 +95,36 @@ touch references (or that pre-loaded the referenced documents via
 
 ### Acceptance criteria
 
+**Unit-level**
+
 - [ ] `IEntityMapper.PopulateObjectValuesAsync(po, entity, session)` sets every writable entity property whose name matches an attribute. Non-matching attributes are silent skips. Dot-notation attribute names are skipped.
 - [ ] Reference attributes (`DataType == "Reference"` with `Value` = refId string): `session.LoadAsync<T>(refId)` resolves the referenced entity and assigns it to the property. Null-or-empty refId assigns null.
 - [ ] `TranslatedString` attributes: incoming language dict merges with existing entity value (no lost translations on partial updates).
 - [ ] `Guid` / `DateTime` / `DateOnly` / `Color` / enum coercion preserved (parity with existing `SetPropertyValue`).
 - [ ] The sync `PopulateObjectValues` overload works identically for non-Reference attributes; throws `InvalidOperationException` if called on a PO containing Reference attributes (avoid silent data loss).
 - [ ] `PersistentObjectExtensions.PopulateObjectValues<T>` and `ToEntity<T>` deleted; remaining framework call sites updated to inject `IEntityMapper`.
-- [ ] Unit tests: reference resolution (existing + missing), TranslatedString merge (new + preserved), enum/Color/DateOnly coercion, dot-notation skip, concurrency-etag propagation.
+- [ ] Unit tests in `MintPlayer.Spark.Tests/EntityMapperInverseTests.cs` (new file): reference resolution (existing + missing), TranslatedString merge (new + preserved), enum/Color/DateOnly coercion, dot-notation skip, concurrency-etag propagation.
+
+**Live / E2E scenarios** (so behavior can actually be verified against a running server)
+
+- [ ] **Fleet reference-attribute round-trip**: Fleet's `Car` has no reference attribute today — extend `Demo/Fleet/Fleet/App_Data/Model/Car.json` with a `Manager` reference to `Person` (or reuse an existing Fleet reference if one lands before this work). Add `MintPlayer.Spark.E2E.Tests/Mapper/ReferenceRoundTripTests.cs` driving the scenario via `SparkClient`: (1) create Car with `Manager = people/alice`, (2) re-fetch, assert Manager breadcrumb shows "Alice", (3) update Manager to `people/bob`, (4) re-fetch, assert Manager breadcrumb shows "Bob". Fails today because the inverse path doesn't resolve references.
+- [ ] **HR TranslatedString merge round-trip**: `Demo/HR/HR/App_Data/Model/Profession.json` declares a `Label` or `Description` field typed as `TranslatedString` (if it doesn't, add one). E2E test: create Profession with `{"en": "Doctor", "fr": "Médecin"}`, PATCH-style update carrying only `{"en": "Physician"}`, re-fetch, assert `fr` entry is still `"Médecin"` and `en` is `"Physician"`. This is the partial-update-preservation behavior.
+- [ ] **Manual smoke test (browser)**: start Fleet demo via `npm run start` inside `Demo/Fleet/Fleet/ClientApp`, create a Car that references a Person, edit it, save, reload the page — the reference should survive and render with the right breadcrumb. Put a `dotnet run` + `npm run start` quickstart note in the PR description so reviewers can repeat.
 
 ### Estimated size
 
-Medium. ~200 lines of production code (mapper changes) + ~150 lines of tests + ~30 lines of extension-deletion migration. One PR.
+Medium. ~200 lines of production code (mapper changes) + ~150 lines of unit tests + ~100 lines of E2E tests + Fleet/HR schema tweaks + ~30 lines of extension-deletion migration. One PR.
 
 ### Files to touch
 
 - `MintPlayer.Spark.Abstractions/IManager.cs` — NO changes (inverse is mapper-scope, not user-facing)
 - `MintPlayer.Spark/Services/EntityMapper.cs` — add new methods + helper enhancements
 - `MintPlayer.Spark/Extensions/PersistentObjectExtensions.cs` — delete `PopulateObjectValues<T>` + `ToEntity<T>`, prune orphaned helpers
-- `MintPlayer.Spark.Tests/EntityMapperInverseTests.cs` — new test file (or extend `EntityMapperFactoryTests`)
+- `MintPlayer.Spark.Tests/EntityMapperInverseTests.cs` — new unit-test file (or extend `EntityMapperFactoryTests`)
+- `MintPlayer.Spark.E2E.Tests/Mapper/ReferenceRoundTripTests.cs` — new E2E file for the Fleet scenario
+- `MintPlayer.Spark.E2E.Tests/Mapper/TranslatedStringMergeTests.cs` — new E2E file for the HR scenario
+- `Demo/Fleet/Fleet/App_Data/Model/Car.json` — add the Manager reference attribute if not already present (plus matching CLR property on the `Car` entity)
+- `Demo/HR/HR/App_Data/Model/Profession.json` — ensure it has a `TranslatedString` field for the merge scenario (plus matching CLR property)
 
 ---
 
@@ -175,16 +187,24 @@ recurses into the child PO(s) when filling values.
 
 ### Acceptance criteria
 
+**Unit-level**
+
 - [ ] `PersistentObjectAttributeAsDetail` lives in Abstractions; subclass of `PersistentObjectAttribute`; wire-compatible (attributes without nested content still serialize identically).
 - [ ] `EntityMapper.NewPersistentObject<T>()` for a `T` that has an AsDetail property returns a PO whose corresponding attribute is a `PersistentObjectAttributeAsDetail` with a pre-scaffolded empty child (IsArray=false) or empty list (IsArray=true).
 - [ ] `PopulateAttributeValues` recursively fills nested POs. Parent back-reference on nested attributes points to the nested PO, not the outer one.
 - [ ] `PopulateObjectValuesAsync` recursively fills nested entities (requires §1).
-- [ ] Round-trip test: typed entity with a nested `Address` + a `List<CarreerJob>` — scaffold → populate → serialize → deserialize → `ToEntity` → assert deep equality with the original.
-- [ ] Demo: HR's `CarreerJob[]` or `Address` on `Person` visibly uses the new type after migration.
+- [ ] Unit round-trip test: typed entity with a nested `Address` + a `List<CarreerJob>` — scaffold → populate → serialize → deserialize → `ToEntity` → assert deep equality with the original.
+
+**Live / E2E scenarios**
+
+- [ ] **HR nested-PO E2E round-trip**: add `MintPlayer.Spark.E2E.Tests/Mapper/AsDetailRoundTripTests.cs` that runs against the HR demo app (existing `Demo/HR/HR/App_Data/Model/Person.json` has `Address` + `CarreerJob[]`). Scenario: create Person with `Address = {Street: "Main 1"}` + `CarreerJobs = [{Title: "Intern", Year: 2020}, {Title: "Dev", Year: 2024}]`. Re-fetch, assert Address survives and CarreerJobs preserve both entries with their metadata attached (each nested attribute has its Rules / Renderer / Label populated, not just Name+Value).
+- [ ] **Add-nested scenario**: update the existing Person with a new CarreerJob appended, leaving the existing ones intact. Re-fetch, assert the array now has three entries. Catches "update wipes the array" bugs.
+- [ ] **Switch `E2E.Tests` target host** (or add a second host): the Security tests target Fleet today. The AsDetail tests target HR. May need an `HrE2ECollection` fixture parallel to `FleetE2ECollection`, or a shared base that spawns either. Prefer a dedicated `HrE2ECollection` so the two demos keep their own fixtures.
+- [ ] **Manual smoke test (browser)**: run HR demo, open the Person detail page, edit Address + add/remove CarreerJobs through the UI, save, reload — nested content survives. Put a quickstart `dotnet run` + `npm run start` note in the PR description.
 
 ### Estimated size
 
-Large. ~400 lines including the new DTO type + recursive mapper changes + frontend-data round-trip tests + a demo migration. Probably two PRs (DTO + mapper; then demo + round-trip tests).
+Large. ~400 lines for the DTO type + recursive mapper changes + round-trip tests + HR demo E2E + the `HrE2ECollection` fixture. Probably two PRs: (a) DTO + mapper + unit round-trip, (b) HR E2E fixture + AsDetail E2E scenarios + demo migration.
 
 ### Depends on
 
@@ -229,11 +249,18 @@ Recommend **A** — reuse is the whole point of the ng-spark extraction work.
 
 ### Acceptance criteria
 
+**Component-level**
+
 - [ ] `SparkRetryActionModalComponent` accepts a PO input and renders its attributes as form fields (one field per attribute, dispatching on `DataType`, honoring `IsRequired` / `IsReadOnly` / `Rules`).
 - [ ] Submit collects current values + returns them along with the selected option to the server.
 - [ ] `manager.Retry.Action` on the server sees the user's values on the returned `PersistentObject`.
-- [ ] Worked example in a demo app: a `MergeWith`-style or `ConfirmDelete`-style CustomAction that opens the modal, user types a confirmation value, server acts on the submitted value.
-- [ ] Playwright e2e test covering the full round-trip (open modal → fill field → submit → server sees value).
+- [ ] Angular unit tests on the modal component (TestBed): renders each supported `DataType` correctly, emits the selected option + populated PO on submit, disables submit when required fields are empty.
+
+**Live / E2E scenarios**
+
+- [ ] **Worked demo example**: add a `ConfirmDeleteCar` Virtual PO to Fleet (new `Demo/Fleet/Fleet/App_Data/Model/ConfirmDeleteCar.json` — follows the parent PRD §8 example shape). Wire a `CarActions.OnBeforeDeleteAsync` (or similar hook) that calls `manager.Retry.Action(title, ["Delete", "Cancel"], manager.NewPersistentObject(PersistentObjectNames.ConfirmDeleteCar))`. Users deleting a Car in the UI get the confirmation modal.
+- [ ] **Playwright E2E**: `MintPlayer.Spark.E2E.Tests/Playwright/RetryActionModalTests.cs` drives the full round-trip: navigate to Fleet's Cars page, click Delete on a row, modal appears, type the confirmation plate, click "Delete", verify the car is gone. Second test: click "Cancel", verify the car survives.
+- [ ] **Manual smoke test**: with Fleet running (browser + server), execute the Delete action on a Car, verify the modal renders a LicensePlate + Confirmation field with the expected labels, required-marker, and rules. Submit triggers the server-side delete.
 
 ### Estimated size
 
@@ -274,7 +301,10 @@ return CustomActionResult
 
 ### Acceptance criteria
 
-Deferred until CustomActions PRD is further along. Revisit after §1–§3.
+Deferred until CustomActions PRD is further along. Revisit after §1–§3. When designing, lock in both:
+
+- **Unit coverage** — builder produces expected `CustomActionResult` shapes (Ok / Error / WithNotification / WithFollowupAction). Round-trip through serialization.
+- **Live / E2E scenarios** — at least one demo app gets a worked CustomAction that exercises the builder end-to-end, with a Playwright test that invokes it from the UI and verifies the server-side PO payload reaches the user. Pick a demo that makes sense for the action (e.g. Fleet has natural "Merge duplicate Cars" / "Archive Car" candidates; HR has "Promote Employee").
 
 ### Estimated size
 
@@ -314,7 +344,8 @@ Because this is a preview-mode project (NuGet `10.0.0-preview.31` per memory), n
 ### Acceptance criteria
 
 - [ ] `grep -rn "NewPersistentObject" MintPlayer.Spark*/ --include='*.cs'` returns only the parent PRD's outdated references and this PRD (to be updated in the same commit).
-- [ ] All 330+ tests still pass.
+- [ ] All 330+ unit tests still pass; all E2E tests still pass.
+- [ ] Demo apps (`DemoApp`, `HR`, `Fleet`, `WebhooksDemo`) still build and run with no behavior change. Smoke-test at least one: run it, exercise a create/update flow, confirm nothing broke. Any demo that picked up a call site from §1–§4 must use the new `GetPersistentObject` name.
 - [ ] `docs/PRD-PersistentObjectFactory.md` (parent) and this PRD updated to use the new name.
 - [ ] CHANGELOG / preview-version notes mention the breaking rename if such a file exists.
 
@@ -326,8 +357,16 @@ Small. ~50 lines of diff across maybe 10 files — mostly mechanical. Single-com
 
 ## Cross-cutting notes
 
+- **Every item ships with a live-test scenario**, not just unit tests. Each §1–§5 acceptance list has a "Live / E2E scenarios" subsection calling out the demo-app / E2E changes needed so the behavior can be verified end-to-end against a running server (or browser). Don't ship any of the five with unit tests alone.
+- **Demo-app coverage matrix** — these are the demos each item leans on:
+  - §1 (inverse populate): Fleet for reference-round-trip, HR for TranslatedString merge
+  - §2 (AsDetail): HR (`Person.Address`, `Person.CarreerJobs[]`) — adds an `HrE2ECollection` fixture paired with the existing `FleetE2ECollection`
+  - §3 (modal form): Fleet — adds a `ConfirmDeleteCar` Virtual PO + a delete-confirmation flow
+  - §4 (CustomAction builder): TBD with CustomActions PRD — pick the demo that fits the chosen worked example
+  - §5 (rename): all four demos must still build + run cleanly post-rename
+- **E2E.Tests host fixtures** — today only `FleetE2ECollection` exists. §1 stays on Fleet; §2 needs HR host spin-up; §3 stays on Fleet. Factor shared host scaffolding before the second demo-target item lands.
 - **Branch naming convention** — keep the `feat/`, `docs/`, `fix/` pattern established in PRs #125–#129. Suggested names: `feat/po-populate-object-values-async` (§1), `feat/po-as-detail` (§2), `feat/spark-retry-modal-form` (§3), `feat/custom-action-result-builder` (§4), `refactor/get-persistent-object-rename` (§5).
-- **PR size discipline** — the parent PRD's phases averaged +300/-100 line diffs. Keep the same discipline here — if §2 gets big, split DTO/mapper changes from the demo migration into two PRs.
-- **Test count after parent PRD** — 330 unit tests green on master at the time of writing. Each follow-up should hold or grow this number with no regressions.
+- **PR size discipline** — the parent PRD's phases averaged +300/-100 line diffs. Keep the same discipline here — §2 explicitly suggests splitting into two PRs (DTO/mapper, then HR demo + E2E) for this reason.
+- **Test count after parent PRD** — 330 unit tests green on master at the time of writing. Each follow-up should hold or grow this number. E2E-test growth is also expected as each item adds its live scenarios.
 - **Codecov carryforward** — PR #129 fixed the spurious `-33%` gate. Test-only or docs-only PRs in this series won't re-trigger it.
 - **Memory** — `~/.claude/projects/C--Repos-MintPlayer-Spark/memory/feedback_oos_followthrough.md` records the preference that drove this PRD: out-of-scope items get explicit follow-through, not silent deferral. Future sessions should cycle back to any remaining §1–§5 item after the current one ships.
