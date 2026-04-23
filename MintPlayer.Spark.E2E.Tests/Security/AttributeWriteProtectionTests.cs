@@ -13,8 +13,6 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class AttributeWriteProtectionTests
 {
-    private static readonly Guid CarTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
-
     private readonly FleetE2ECollectionFixture _fixture;
     public AttributeWriteProtectionTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
@@ -23,18 +21,8 @@ public class AttributeWriteProtectionTests
         var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
         try
         {
-            var plate = $"RO{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant();
-            var created = await client.CreatePersistentObjectAsync(new PersistentObject
-            {
-                Name = "Car",
-                ObjectTypeId = CarTypeId,
-                Attributes =
-                [
-                    new PersistentObjectAttribute { Name = "LicensePlate", Value = plate },
-                    new PersistentObjectAttribute { Name = "Model",        Value = "X1" },
-                    new PersistentObjectAttribute { Name = "Year",         Value = 2024 },
-                ],
-            });
+            var created = await client.CreatePersistentObjectAsync(
+                CarFixture.New(CarFixture.RandomLicensePlate(), model: "X1"));
             created.Id.Should().NotBeNullOrEmpty($"admin car create must return id\n--- Fleet log ---\n{_fixture.Host.RecentLog()}");
             return (client, created.Id!);
         }
@@ -54,12 +42,12 @@ public class AttributeWriteProtectionTests
             // Fleet's default Car schema has no IsReadOnly=true attribute. This test pins
             // shape: the server must never 500 on such a request. Success (2xx, silently
             // ignoring the field) or 4xx (explicit rejection) are both acceptable per PRD.
-            var po = await client.GetPersistentObjectAsync(CarTypeId, id);
+            var po = await client.GetPersistentObjectAsync(CarFixture.TypeId, id);
             po.Should().NotBeNull();
-            SetAttribute(po!, "LicensePlate", "ROMOD123");
+            po![CarFixture.AttributeNames.LicensePlate].Value = "ROMOD123";
 
             // Update succeeds (no read-only field on schema today) → no throw.
-            var saved = await client.UpdatePersistentObjectAsync(po!);
+            var saved = await client.UpdatePersistentObjectAsync(po);
             saved.Should().NotBeNull();
         }
     }
@@ -70,7 +58,7 @@ public class AttributeWriteProtectionTests
         var (client, id) = await LoginAndCreateCarAsync();
         using (client)
         {
-            var po = await client.GetPersistentObjectAsync(CarTypeId, id);
+            var po = await client.GetPersistentObjectAsync(CarFixture.TypeId, id);
             po.Should().NotBeNull();
 
             // Smuggle in an attribute that isn't in the Car schema. The framework must
@@ -91,16 +79,9 @@ public class AttributeWriteProtectionTests
             }
 
             // No throw → 2xx path. Re-fetch and assert the rogue field isn't echoed back.
-            var reread = await client.GetPersistentObjectAsync(CarTypeId, id);
+            var reread = await client.GetPersistentObjectAsync(CarFixture.TypeId, id);
             reread!.Attributes.Should().NotContain(a => a.Name == "IsAdmin",
                 "server must not echo back unknown client-supplied attributes");
         }
-    }
-
-    private static void SetAttribute(PersistentObject po, string name, object value)
-    {
-        var attr = po.Attributes.FirstOrDefault(a => a.Name == name)
-            ?? throw new InvalidOperationException($"Attribute '{name}' not on PO '{po.Id}'.");
-        attr.Value = value;
     }
 }
