@@ -48,10 +48,10 @@
     "@angular/build": "21.1.5",
     "@angular/cli": "21.1.5",
     "@angular/compiler-cli": "21.1.6",
-    "@nx-dotnet/core": "^3.0.2",
+    "@nx/angular": "22.6.5",
     "jsdom": "27.3.0",
     "ng-packagr": "21.1.0",
-    "nx": "^20.8.4",
+    "nx": "22.6.5",
     "typescript": "5.9.3",
     "vitest": "4.0.16",
     "@vitest/coverage-v8": "4.0.16"
