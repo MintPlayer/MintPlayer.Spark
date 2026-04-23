@@ -25,7 +25,7 @@ public class Car
     /// sets the id, round-trip re-fetch resolves the breadcrumb via the Person
     /// replication collection.
     /// </summary>
-    [Reference(typeof(Fleet.Replicated.Person), "GetPeople")]
+    [Reference(typeof(Fleet.Replicated.Person))]
     public string? Manager { get; set; }
 
     /// <summary>
