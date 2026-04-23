@@ -10,6 +10,39 @@ public interface IEntityMapper
 {
     object ToEntity(PersistentObject persistentObject);
     T ToEntity<T>(PersistentObject persistentObject) where T : class;
+
+    /// <summary>
+    /// Scaffolds a blank PersistentObject from the schema named <paramref name="name"/>:
+    /// every declared attribute is created with full metadata (DataType, Label, Rules,
+    /// Renderer, ShowedOn, Order, Group, IsRequired/Visible/ReadOnly/Array, Query),
+    /// Value = null, Parent set. Throws <see cref="KeyNotFoundException"/> on unknown
+    /// or ambiguous name.
+    /// </summary>
+    PersistentObject NewPersistentObject(string name);
+
+    /// <summary>
+    /// Scaffolds a blank PersistentObject by ObjectTypeId. Preferred over the name
+    /// overload for apps that declare entities across multiple database schemas,
+    /// since IDs are unambiguous by construction.
+    /// </summary>
+    PersistentObject NewPersistentObject(Guid id);
+
+    /// <summary>
+    /// Fills <paramref name="po"/> with values reflected from <paramref name="entity"/>:
+    /// Id / Name / Breadcrumb on the PO itself, and Value on every attribute that has
+    /// a matching public readable property. Applies enum→string, <see cref="System.Drawing.Color"/>→
+    /// <c>#RRGGBB</c> hex, and AsDetail→dictionary conversions. When
+    /// <paramref name="includedDocuments"/> is supplied, Reference attributes gain a
+    /// Breadcrumb resolved from the target document. Attributes whose name has no
+    /// matching property on the entity are left with Value = null (Vidyano parity);
+    /// attributes whose name contains '.' are skipped.
+    /// </summary>
+    void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null);
+
+    /// <summary>
+    /// Convenience wrapper: <see cref="NewPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
+    /// Existing call sites (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) keep this signature.
+    /// </summary>
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
 }
 
@@ -52,109 +85,165 @@ internal partial class EntityMapper : IEntityMapper
         return entity;
     }
 
+    public PersistentObject NewPersistentObject(string name)
+    {
+        var def = modelLoader.GetEntityTypeByName(name)
+            ?? throw new KeyNotFoundException($"No entity type with Name '{name}' is registered.");
+        return ScaffoldFrom(def);
+    }
+
+    public PersistentObject NewPersistentObject(Guid id)
+    {
+        var def = modelLoader.GetEntityType(id)
+            ?? throw new KeyNotFoundException($"No entity type with ObjectTypeId '{id}' is registered.");
+        return ScaffoldFrom(def);
+    }
+
     public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null)
+    {
+        // `GetEntityType` may legitimately return null for projection / anonymous types
+        // that don't have a declared EntityTypeDefinition. In that case we produce an
+        // empty PO shell and let PopulateAttributeValues fill Id/Name.
+        var def = modelLoader.GetEntityType(objectTypeId);
+        var po = def is not null
+            ? ScaffoldFrom(def)
+            : new PersistentObject
+            {
+                Id = null,
+                Name = entity.GetType().Name,
+                ObjectTypeId = objectTypeId,
+            };
+
+        PopulateAttributeValues(po, entity, includedDocuments);
+        return po;
+    }
+
+    public void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null)
     {
         var entityType = entity.GetType();
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        var id = idProperty?.GetValue(entity)?.ToString();
+        po.Id = idProperty?.GetValue(entity)?.ToString();
 
-        // Get the entity type definition for attribute metadata
-        var entityTypeDef = modelLoader.GetEntityType(objectTypeId);
-
+        var entityTypeDef = modelLoader.GetEntityType(po.ObjectTypeId);
         var displayName = GetEntityDisplayName(entity, entityType, entityTypeDef);
+        po.Name = displayName;
+        po.Breadcrumb = displayName;
+
+        foreach (var attribute in po.Attributes)
+        {
+            // Vidyano parity: dot-notation names (nested paths) are not populated
+            // here — reserved for future PersistentObjectAttributeAsDetail support.
+            if (attribute.Name.Contains('.'))
+                continue;
+
+            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            if (property is null || !property.CanRead)
+                continue; // silent skip — attribute may be projection-only
+
+            var raw = property.GetValue(entity);
+            attribute.Value = ConvertValueForWire(raw, property.PropertyType, attribute);
+
+            // Reference attributes: resolve the display name of the referenced entity
+            // from the preloaded includedDocuments dict so the client can render a
+            // breadcrumb without a second round-trip.
+            if (attribute.DataType == "Reference"
+                && attribute.Value is string refId && !string.IsNullOrEmpty(refId)
+                && includedDocuments is not null
+                && includedDocuments.TryGetValue(refId, out var referencedEntity)
+                && referencedEntity is not null)
+            {
+                var referencedEntityType = referencedEntity.GetType();
+                var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(
+                    referencedEntityType.FullName ?? referencedEntityType.Name);
+                attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds a scaffold PO (metadata only, values null) from an entity type definition.
+    /// Shared by <see cref="NewPersistentObject(string)"/>, <see cref="NewPersistentObject(Guid)"/>,
+    /// and <see cref="ToPersistentObject(object, Guid, Dictionary{string, object}?)"/>.
+    /// </summary>
+    private static PersistentObject ScaffoldFrom(EntityTypeDefinition def)
+    {
         var po = new PersistentObject
         {
-            Id = id,
-            Name = displayName,
-            Breadcrumb = displayName,
-            ObjectTypeId = objectTypeId,
+            Id = null,
+            Name = def.Name,
+            ObjectTypeId = def.Id,
         };
 
-        // Iterate over the entity type definition's attributes (merged from collection + projection types)
-        // This ensures all attributes are included even if the entity doesn't have all properties
-        if (entityTypeDef?.Attributes != null)
+        if (def.Attributes is not null)
         {
-            foreach (var attrDef in entityTypeDef.Attributes)
-            {
-                // Try to get the property from the entity (may not exist if entity is a projection type)
-                var property = entityType.GetProperty(attrDef.Name, BindingFlags.Public | BindingFlags.Instance);
-                object? value = null;
-
-                if (property != null && property.CanRead)
-                {
-                    value = property.GetValue(entity);
-
-                    // Convert enum values to their string name for proper serialization
-                    var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                    if (propType.IsEnum && value != null)
-                    {
-                        value = value.ToString();
-                    }
-
-                    // Convert Color to hex string for frontend compatibility
-                    if (propType == typeof(Color) && value is Color colorValue)
-                    {
-                        value = colorValue.IsEmpty ? null : $"#{colorValue.R:x2}{colorValue.G:x2}{colorValue.B:x2}";
-                    }
-
-                    // For complex types (AsDetail), convert to dictionary for proper JSON serialization
-                    if (attrDef.DataType == "AsDetail" && value != null)
-                    {
-                        if (attrDef.IsArray && value is System.Collections.IEnumerable enumerable && value is not string)
-                        {
-                            var list = new List<Dictionary<string, object?>>();
-                            foreach (var item in enumerable)
-                            {
-                                list.Add(ConvertToSerializableDictionary(item));
-                            }
-                            value = list;
-                        }
-                        else if (!attrDef.IsArray)
-                        {
-                            value = ConvertToSerializableDictionary(value);
-                        }
-                    }
-                }
-
-                var attribute = new PersistentObjectAttribute
-                {
-                    Name = attrDef.Name,
-                    Label = attrDef.Label,
-                    Value = value,
-                    DataType = attrDef.DataType,
-                    IsArray = attrDef.IsArray,
-                    IsRequired = attrDef.IsRequired,
-                    IsVisible = attrDef.IsVisible,
-                    IsReadOnly = attrDef.IsReadOnly,
-                    Order = attrDef.Order,
-                    ShowedOn = attrDef.ShowedOn,
-                    Rules = attrDef.Rules ?? [],
-                    Group = attrDef.Group,
-                    Renderer = attrDef.Renderer,
-                    RendererOptions = attrDef.RendererOptions,
-                };
-
-                // Handle reference attributes - resolve breadcrumb from included documents
-                if (attrDef.DataType == "Reference" && value is string refId && !string.IsNullOrEmpty(refId) && includedDocuments != null)
-                {
-                    if (includedDocuments.TryGetValue(refId, out var referencedEntity) && referencedEntity != null)
-                    {
-                        var referencedEntityType = referencedEntity.GetType();
-                        var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(referencedEntityType.FullName ?? referencedEntityType.Name);
-                        attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
-                    }
-                    attribute.Query = attrDef.Query;
-                }
-                else if (attrDef.DataType == "Reference")
-                {
-                    attribute.Query = attrDef.Query;
-                }
-
-                po.AddAttribute(attribute);
-            }
+            foreach (var attrDef in def.Attributes)
+                po.AddAttribute(FromDefinition(attrDef));
         }
 
         return po;
+    }
+
+    /// <summary>
+    /// Pure function: 14-field metadata copy from an <see cref="EntityAttributeDefinition"/>
+    /// into a blank <see cref="PersistentObjectAttribute"/>. Single canonical owner of
+    /// "which fields travel from schema to wire". Value stays null; populate step fills it.
+    /// </summary>
+    private static PersistentObjectAttribute FromDefinition(EntityAttributeDefinition def)
+        => new()
+        {
+            Name = def.Name,
+            Label = def.Label,
+            DataType = def.DataType,
+            IsArray = def.IsArray,
+            IsRequired = def.IsRequired,
+            IsVisible = def.IsVisible,
+            IsReadOnly = def.IsReadOnly,
+            Order = def.Order,
+            ShowedOn = def.ShowedOn,
+            Rules = def.Rules ?? [],
+            Group = def.Group,
+            Renderer = def.Renderer,
+            RendererOptions = def.RendererOptions,
+            Query = def.DataType == "Reference" ? def.Query : null,
+            Value = null,
+        };
+
+    /// <summary>
+    /// Converts a raw property value to its wire representation:
+    /// <list type="bullet">
+    ///   <item>enums → string name</item>
+    ///   <item><see cref="Color"/> → <c>#RRGGBB</c> (or null if Empty)</item>
+    ///   <item>AsDetail single → dictionary</item>
+    ///   <item>AsDetail array → list of dictionaries</item>
+    ///   <item>everything else → passthrough</item>
+    /// </list>
+    /// </summary>
+    private static object? ConvertValueForWire(object? raw, Type propertyType, PersistentObjectAttribute attribute)
+    {
+        if (raw is null) return null;
+
+        var underlying = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+        if (underlying.IsEnum)
+            return raw.ToString();
+
+        if (underlying == typeof(Color) && raw is Color colorValue)
+            return colorValue.IsEmpty ? null : $"#{colorValue.R:x2}{colorValue.G:x2}{colorValue.B:x2}";
+
+        if (attribute.DataType == "AsDetail")
+        {
+            if (attribute.IsArray && raw is System.Collections.IEnumerable enumerable && raw is not string)
+            {
+                var list = new List<Dictionary<string, object?>>();
+                foreach (var item in enumerable)
+                    list.Add(ConvertToSerializableDictionary(item));
+                return list;
+            }
+            if (!attribute.IsArray)
+                return ConvertToSerializableDictionary(raw);
+        }
+
+        return raw;
     }
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
