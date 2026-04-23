@@ -65,8 +65,8 @@
       "options": {
         "parallel": true,
         "commands": [
-          "nx run @mintplayer/ng-spark:watch",
-          "nx run @mintplayer/ng-spark-auth:watch",
+          { "command": "nx watch --projects=@mintplayer/ng-spark --includeDependentProjects=false -- nx run @mintplayer/ng-spark:build", "forwardAllArgs": false },
+          { "command": "nx watch --projects=@mintplayer/ng-spark-auth --includeDependentProjects=false -- nx run @mintplayer/ng-spark-auth:build", "forwardAllArgs": false },
           "nx run @spark-demo/hr-demo:serve"
         ]
       }
