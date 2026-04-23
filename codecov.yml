@@ -10,11 +10,39 @@ coverage:
         target: auto
         threshold: 2%
         informational: false
+        # Each flag below has carryforward: true. If a PR's CI run only covers
+        # a subset of flags (nx affected skipped the others), codecov reuses
+        # those flags' last-known coverage when computing the project total.
+        # Without this, project coverage tanks whenever nx skips any test
+        # project, even though no production code regressed.
+        carryforward_behavior: include
     patch:
       default:
         target: 40%
         threshold: 0%
         informational: false
+
+# Each test project uploads its coverage tagged with one of these flags.
+# The `pull-request.yml` workflow maps:
+#   MintPlayer.Spark.Tests                  → unit
+#   MintPlayer.Spark.SourceGenerators.Tests → sourcegen
+#   MintPlayer.Spark.Client.Tests           → client
+#   MintPlayer.Spark.E2E.Tests              → e2e
+# `carryforward: true` means "when this flag isn't uploaded on a given commit,
+# reuse the last commit's coverage under this flag" — which is exactly what's
+# needed to keep project coverage stable across nx-affected partial runs.
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unit
+      carryforward: true
+    - name: sourcegen
+      carryforward: true
+    - name: client
+      carryforward: true
+    - name: e2e
+      carryforward: true
 
 comment:
   layout: "reach, diff, flags, files"
@@ -33,5 +61,6 @@ ignore:
   - "MintPlayer.Spark.Testing/**"             # test helper library, not production
   - "MintPlayer.Spark.Tests/**"
   - "MintPlayer.Spark.SourceGenerators.Tests/**"
+  - "MintPlayer.Spark.Client.Tests/**"
   - "MintPlayer.Spark.E2E.Tests/**"
   - "node_packages/**"                        # Angular libs measured separately

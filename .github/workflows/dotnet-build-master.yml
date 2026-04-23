@@ -70,22 +70,74 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-playwright-
 
+    # Per-project test invocation so each coverage file lands at
+    # `{ProjectName}/coverage/{guid}/coverage.cobertura.xml` — matches the layout
+    # nx produces on PRs, and matches the glob pattern each flagged codecov
+    # upload step below uses.
     - name: Test
-      run: dotnet test --no-restore --verbosity normal --collect:"XPlat Code Coverage" --results-directory coverage
+      run: |
+        set -e
+        for proj in \
+          MintPlayer.Spark.Tests \
+          MintPlayer.Spark.SourceGenerators.Tests \
+          MintPlayer.Spark.Client.Tests \
+          MintPlayer.Spark.E2E.Tests; do
+          echo "::group::dotnet test ${proj}"
+          dotnet test "${proj}" \
+            --no-restore \
+            --configuration Release \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory "${proj}/coverage"
+          echo "::endgroup::"
+        done
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
     - name: Test Angular libraries
       run: npx nx run-many --target=test --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
 
-    - name: Upload coverage to Codecov
-      if: always()
+    # Master runs every test project unconditionally — all four coverage files
+    # are present. Each uploads under its own flag so codecov's carryforward
+    # logic has a full, fresh baseline to serve to PRs where `nx affected`
+    # skipped one or more projects. See codecov.yml `flag_management`.
+    - name: Upload coverage (unit)
+      if: always() && hashFiles('MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: |
-          **/coverage/**/coverage.cobertura.xml
-          **/coverage/cobertura-coverage.xml
+        files: MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
+        flags: unit
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (sourcegen)
+      if: always() && hashFiles('MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
+        flags: sourcegen
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (client)
+      if: always() && hashFiles('MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
+        flags: client
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (e2e)
+      if: always() && hashFiles('MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
+        flags: e2e
         fail_ci_if_error: false
         verbose: true
 

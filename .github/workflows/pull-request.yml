@@ -70,13 +70,50 @@ jobs:
         NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
-    - name: Upload coverage to Codecov
-      if: always()
+    # One codecov upload per test project, each tagged with its own flag.
+    # codecov.yml has `carryforward: true` on every flag — when nx affected
+    # skips a project on a given PR, codecov reuses that flag's last-known
+    # coverage instead of treating the missing lines as uncovered. That
+    # keeps `codecov/project` accurate on test-only / single-suite PRs.
+    # Each step gates on the presence of the corresponding coverage file
+    # (nx affected may have skipped the project, leaving no file) so a
+    # missing file is a no-op rather than a failure.
+    - name: Upload coverage (unit)
+      if: always() && hashFiles('MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: |
-          **/coverage/**/coverage.cobertura.xml
-          **/coverage/cobertura-coverage.xml
+        files: MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
+        flags: unit
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (sourcegen)
+      if: always() && hashFiles('MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
+        flags: sourcegen
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (client)
+      if: always() && hashFiles('MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
+        flags: client
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage (e2e)
+      if: always() && hashFiles('MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
+        flags: e2e
         fail_ci_if_error: false
         verbose: true
