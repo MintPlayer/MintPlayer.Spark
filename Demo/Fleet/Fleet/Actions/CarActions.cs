@@ -8,6 +8,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace Fleet.Actions;
 
@@ -69,18 +70,36 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         await base.OnBeforeSaveAsync(obj, entity);
     }
 
-    public override async Task OnBeforeDeleteAsync(Car entity)
+    public override async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
     {
+        var entity = await session.LoadAsync<Car>(id);
+        if (entity is null) return;
+
+        // Virtual PO confirmation form — user must retype the plate. The Virtual PO is
+        // scaffolded from Demo/Fleet/Fleet/App_Data/Model/ConfirmDeleteCar.json; the
+        // populated values come back through manager.Retry.Result.PersistentObject.
+        var popup = manager.NewPersistentObject(Guid.Parse(PersistentObjectIds.Default.ConfirmDeleteCar));
+        popup["LicensePlate"].Value = entity.LicensePlate;
+
         manager.Retry.Action(
-            title: "Confirm deletion",
-            options: ["Delete"],
-            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+            title: "Delete car",
+            options: ["Delete", "Cancel"],
+            persistentObject: popup,
+            message: $"Type the license plate to confirm deletion of {entity.LicensePlate}."
         );
 
-        if (manager.Retry.Result!.Option == "Cancel")
-            return;
+        var result = manager.Retry.Result!;
+        if (result.Option == "Cancel")
+            return; // silent no-op — endpoint returns NoContent without actually deleting
 
-        await base.OnBeforeDeleteAsync(entity);
+        var typed = result.PersistentObject?["Confirmation"].Value?.ToString();
+        if (!string.Equals(typed, entity.LicensePlate, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Confirmation '{typed}' does not match license plate '{entity.LicensePlate}'.");
+
+        await OnBeforeDeleteAsync(entity);
+        session.Delete(entity);
+        await session.SaveChangesAsync();
     }
 
     /// <summary>

@@ -1,0 +1,52 @@
+{
+  "persistentObject": {
+    "id": "2e9b7c64-4d35-4f1a-8e8c-7d6a1f3b5c29",
+    "name": "ConfirmDeleteCar",
+    "description": {
+      "en": "Confirm car deletion",
+      "fr": "Confirmer la suppression",
+      "nl": "Verwijdering bevestigen"
+    },
+    "clrType": "Fleet.VirtualObjects.ConfirmDeleteCar",
+    "displayAttribute": "Confirmation",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "a1f4d38e-2b6c-4d7f-9e82-3c5a1f2b8d40",
+        "name": "LicensePlate",
+        "label": {
+          "en": "License Plate",
+          "fr": "Plaque d'immatriculation",
+          "nl": "Nummerplaat"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b2e5c49f-3d7e-5e8f-af93-4d6b2f3c9e51",
+        "name": "Confirmation",
+        "label": {
+          "en": "Type the plate to confirm",
+          "fr": "Saisissez la plaque pour confirmer",
+          "nl": "Typ de nummerplaat om te bevestigen"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

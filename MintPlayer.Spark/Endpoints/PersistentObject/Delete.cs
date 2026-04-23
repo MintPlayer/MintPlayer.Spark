@@ -33,8 +33,11 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
             return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
         }
 
-        // Read retry state from body if present (body is normally empty for DELETE)
-        if (httpContext.Request.ContentLength > 0)
+        // Read retry state from body if present. Body is normally empty for DELETE; retry
+        // resubmissions arrive as JSON. Use Content-Type rather than Content-Length — a
+        // JSON body sent with chunked transfer-encoding has a null ContentLength, which
+        // the previous `> 0` check silently dropped.
+        if (httpContext.Request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true)
         {
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
             if (request?.RetryResults is { Length: > 0 } retryResults)
