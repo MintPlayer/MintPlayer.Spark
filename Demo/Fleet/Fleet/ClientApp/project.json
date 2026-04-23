@@ -47,6 +47,9 @@
     },
     "serve": {
       "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
       "configurations": {
         "production": {
           "buildTarget": "@spark-demo/fleet-demo:build:production"
