@@ -21,5 +21,62 @@
     "rxjs": "~7.8.0"
   },
   "devDependencies": {},
-  "sideEffects": false
+  "sideEffects": false,
+  "module": "./dist/fesm2022/mintplayer-ng-spark-auth.mjs",
+  "typings": "./dist/types/mintplayer-ng-spark-auth.d.ts",
+  "exports": {
+    "./package.json": { "default": "./package.json" },
+    ".": {
+      "types": "./dist/types/mintplayer-ng-spark-auth.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth.mjs"
+    },
+    "./auth-bar": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-auth-bar.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-auth-bar.mjs"
+    },
+    "./core": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-core.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-core.mjs"
+    },
+    "./forgot-password": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-forgot-password.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-forgot-password.mjs"
+    },
+    "./guards": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-guards.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-guards.mjs"
+    },
+    "./interceptors": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-interceptors.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-interceptors.mjs"
+    },
+    "./login": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-login.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-login.mjs"
+    },
+    "./models": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-models.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-models.mjs"
+    },
+    "./pipes": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-pipes.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-pipes.mjs"
+    },
+    "./register": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-register.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-register.mjs"
+    },
+    "./reset-password": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-reset-password.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-reset-password.mjs"
+    },
+    "./routes": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-routes.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-routes.mjs"
+    },
+    "./two-factor": {
+      "types": "./dist/types/mintplayer-ng-spark-auth-two-factor.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-auth-two-factor.mjs"
+    }
+  }
 }

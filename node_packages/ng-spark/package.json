@@ -21,5 +21,62 @@
     "@mintplayer/pagination": "*",
     "rxjs": "~7.8.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "module": "./dist/fesm2022/mintplayer-ng-spark.mjs",
+  "typings": "./dist/types/mintplayer-ng-spark.d.ts",
+  "exports": {
+    "./package.json": { "default": "./package.json" },
+    ".": {
+      "types": "./dist/types/mintplayer-ng-spark.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark.mjs"
+    },
+    "./icon": {
+      "types": "./dist/types/mintplayer-ng-spark-icon.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-icon.mjs"
+    },
+    "./models": {
+      "types": "./dist/types/mintplayer-ng-spark-models.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-models.mjs"
+    },
+    "./pipes": {
+      "types": "./dist/types/mintplayer-ng-spark-pipes.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-pipes.mjs"
+    },
+    "./po-create": {
+      "types": "./dist/types/mintplayer-ng-spark-po-create.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-po-create.mjs"
+    },
+    "./po-detail": {
+      "types": "./dist/types/mintplayer-ng-spark-po-detail.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-po-detail.mjs"
+    },
+    "./po-edit": {
+      "types": "./dist/types/mintplayer-ng-spark-po-edit.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-po-edit.mjs"
+    },
+    "./po-form": {
+      "types": "./dist/types/mintplayer-ng-spark-po-form.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-po-form.mjs"
+    },
+    "./query-list": {
+      "types": "./dist/types/mintplayer-ng-spark-query-list.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-query-list.mjs"
+    },
+    "./renderers": {
+      "types": "./dist/types/mintplayer-ng-spark-renderers.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-renderers.mjs"
+    },
+    "./retry-action-modal": {
+      "types": "./dist/types/mintplayer-ng-spark-retry-action-modal.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-retry-action-modal.mjs"
+    },
+    "./routes": {
+      "types": "./dist/types/mintplayer-ng-spark-routes.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-routes.mjs"
+    },
+    "./services": {
+      "types": "./dist/types/mintplayer-ng-spark-services.d.ts",
+      "default": "./dist/fesm2022/mintplayer-ng-spark-services.mjs"
+    }
+  }
 }
