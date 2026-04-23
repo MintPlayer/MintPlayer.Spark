@@ -28,6 +28,14 @@ public interface IEntityMapper
     PersistentObject NewPersistentObject(Guid id);
 
     /// <summary>
+    /// Scaffolds a blank PersistentObject for <typeparamref name="T"/>, resolving the
+    /// ObjectTypeId via <see cref="IModelLoader.GetEntityTypeByClrType"/>. Throws
+    /// <see cref="KeyNotFoundException"/> when no entity type is registered under
+    /// <c>typeof(T).FullName</c>.
+    /// </summary>
+    PersistentObject NewPersistentObject<T>() where T : class;
+
+    /// <summary>
     /// Fills <paramref name="po"/> with values reflected from <paramref name="entity"/>:
     /// Id / Name / Breadcrumb on the PO itself, and Value on every attribute that has
     /// a matching public readable property. Applies enum→string, <see cref="System.Drawing.Color"/>→
@@ -40,10 +48,25 @@ public interface IEntityMapper
     void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null);
 
     /// <summary>
+    /// Typed convenience overload of
+    /// <see cref="PopulateAttributeValues(PersistentObject, object, Dictionary{string, object}?)"/>.
+    /// </summary>
+    void PopulateAttributeValues<T>(PersistentObject po, T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
+
+    /// <summary>
     /// Convenience wrapper: <see cref="NewPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
     /// Existing call sites (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) keep this signature.
     /// </summary>
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
+
+    /// <summary>
+    /// Typed convenience overload that derives the ObjectTypeId from
+    /// <c>typeof(T).FullName</c> via <see cref="IModelLoader.GetEntityTypeByClrType"/>.
+    /// Throws <see cref="KeyNotFoundException"/> when no entity type is registered
+    /// for the CLR type. Callers in framework internals that already have a Guid
+    /// (DatabaseAccess, QueryExecutor) continue to use the non-generic overload.
+    /// </summary>
+    PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
 }
 
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped)]
@@ -97,6 +120,22 @@ internal partial class EntityMapper : IEntityMapper
         var def = modelLoader.GetEntityType(id)
             ?? throw new KeyNotFoundException($"No entity type with ObjectTypeId '{id}' is registered.");
         return ScaffoldFrom(def);
+    }
+
+    public PersistentObject NewPersistentObject<T>() where T : class
+        => ScaffoldFrom(ResolveDefByClrType(typeof(T)));
+
+    public PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class
+        => ToPersistentObject(entity, ResolveDefByClrType(typeof(T)).Id, includedDocuments);
+
+    public void PopulateAttributeValues<T>(PersistentObject po, T entity, Dictionary<string, object>? includedDocuments = null) where T : class
+        => PopulateAttributeValues(po, (object)entity, includedDocuments);
+
+    private EntityTypeDefinition ResolveDefByClrType(Type clrType)
+    {
+        var name = clrType.FullName ?? clrType.Name;
+        return modelLoader.GetEntityTypeByClrType(name)
+            ?? throw new KeyNotFoundException($"No entity type registered for CLR type '{name}'.");
     }
 
     public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null)

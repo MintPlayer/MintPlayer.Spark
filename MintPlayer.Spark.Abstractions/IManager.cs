@@ -5,10 +5,36 @@ namespace MintPlayer.Spark.Abstractions;
 public interface IManager
 {
     /// <summary>
-    /// Creates a virtual PersistentObject (not backed by a DB entity).
-    /// Useful for building custom dialogs in Retry.Action().
+    /// Scaffolds a blank PersistentObject for the entity type registered under
+    /// <paramref name="name"/>. All declared attributes are created with full
+    /// metadata (DataType, Label, Rules, Renderer, ShowedOn, Order, Group,
+    /// IsRequired/Visible/ReadOnly/Array, Query for References); Value is null.
+    /// Throws <see cref="KeyNotFoundException"/> on unknown or ambiguous name —
+    /// prefer the <see cref="NewPersistentObject(Guid)"/> overload in apps that
+    /// declare entities across multiple database schemas.
     /// </summary>
-    PersistentObject NewPersistentObject(string name, params PersistentObjectAttribute[] attributes);
+    /// <remarks>
+    /// This is the idiomatic way to build a PO for a popup / dialog / form —
+    /// declare the shape as a Virtual PO in <c>App_Data/Model/*.json</c> and
+    /// look it up by name, rather than constructing the PO and its attributes
+    /// by hand.
+    /// </remarks>
+    PersistentObject NewPersistentObject(string name);
+
+    /// <summary>
+    /// Scaffolds a blank PersistentObject by ObjectTypeId. Unambiguous — preferred
+    /// over the name overload whenever the caller already has the Guid
+    /// (e.g. from the source-generated <c>PersistentObjectIds</c> constants).
+    /// </summary>
+    PersistentObject NewPersistentObject(Guid id);
+
+    /// <summary>
+    /// Scaffolds a blank PersistentObject for <typeparamref name="T"/>, resolving the
+    /// ObjectTypeId by looking up <c>typeof(T).FullName</c> against the registered
+    /// EntityTypeDefinitions. The cleanest path when the caller has a typed entity
+    /// class — no Guid plumbing, no string names.
+    /// </summary>
+    PersistentObject NewPersistentObject<T>() where T : class;
 
     /// <summary>
     /// Access to the Retry Action subsystem.

@@ -2,6 +2,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Services;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -10,47 +11,47 @@ public class ManagerTests
     private readonly IRetryAccessor _retry = Substitute.For<IRetryAccessor>();
     private readonly ITranslationsLoader _translations = Substitute.For<ITranslationsLoader>();
     private readonly IRequestCultureResolver _culture = Substitute.For<IRequestCultureResolver>();
+    private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
 
-    private Manager CreateManager() => new(_retry, _translations, _culture);
+    private Manager CreateManager() => new(_retry, _translations, _culture, _entityMapper);
 
     [Fact]
-    public void NewPersistentObject_Synthetic_ReturnsPoWithSuppliedAttributes()
+    public void NewPersistentObject_ByName_ForwardsToEntityMapper()
     {
+        var expected = new PersistentObject { Name = "Car", ObjectTypeId = Guid.NewGuid() };
+        _entityMapper.NewPersistentObject("Car").Returns(expected);
         var manager = CreateManager();
-        var plate = new PersistentObjectAttribute { Name = "LicensePlate", Value = "ABC-123" };
-        var model = new PersistentObjectAttribute { Name = "Model" };
 
-        var po = manager.NewPersistentObject("ConfirmDelete", plate, model);
+        var actual = manager.NewPersistentObject("Car");
 
-        po.Name.Should().Be("ConfirmDelete");
-        po.ObjectTypeId.Should().Be(Guid.Empty);
-        po.Id.Should().BeNull();
-        po.Attributes.Should().HaveCount(2);
-        po.Attributes.Should().ContainInOrder(plate, model);
+        actual.Should().BeSameAs(expected);
+        _entityMapper.Received(1).NewPersistentObject("Car");
     }
 
     [Fact]
-    public void NewPersistentObject_Synthetic_AttachesParentOnEverySuppliedAttribute()
+    public void NewPersistentObject_ByGuid_ForwardsToEntityMapper()
     {
+        var carId = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        var expected = new PersistentObject { Name = "Car", ObjectTypeId = carId };
+        _entityMapper.NewPersistentObject(carId).Returns(expected);
         var manager = CreateManager();
-        var plate = new PersistentObjectAttribute { Name = "LicensePlate" };
-        var model = new PersistentObjectAttribute { Name = "Model" };
 
-        var po = manager.NewPersistentObject("ConfirmDelete", plate, model);
+        var actual = manager.NewPersistentObject(carId);
 
-        plate.Parent.Should().BeSameAs(po, "AddAttribute sets Parent on each supplied attribute");
-        model.Parent.Should().BeSameAs(po);
+        actual.Should().BeSameAs(expected);
+        _entityMapper.Received(1).NewPersistentObject(carId);
     }
 
     [Fact]
-    public void NewPersistentObject_Synthetic_WithNoAttributes_ReturnsEmptyPo()
+    public void NewPersistentObject_UnknownName_PropagatesEntityMapperException()
     {
+        _entityMapper.NewPersistentObject("Unknown")
+            .Throws(new KeyNotFoundException("No entity type with Name 'Unknown' is registered."));
         var manager = CreateManager();
 
-        var po = manager.NewPersistentObject("Ping");
+        var act = () => manager.NewPersistentObject("Unknown");
 
-        po.Name.Should().Be("Ping");
-        po.ObjectTypeId.Should().Be(Guid.Empty);
-        po.Attributes.Should().BeEmpty();
+        act.Should().Throw<KeyNotFoundException>()
+            .WithMessage("*Unknown*");
     }
 }
