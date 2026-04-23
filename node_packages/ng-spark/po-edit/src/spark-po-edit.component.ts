@@ -17,6 +17,9 @@ import {
   ValidationError,
   ShowedOn,
   hasShowedOnFlag,
+  nestedPoToDict,
+  dictToNestedPo,
+  EntityTypeResolver,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -41,6 +44,9 @@ export class SparkPoEditComponent {
   formData = signal<Record<string, any>>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
+  // Cached list of every entity type — needed by the AsDetail save path to resolve
+  // nested type schemas when rebuilding the nested PO wire shape from the flat form dict.
+  private allEntityTypes = signal<EntityType[]>([]);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
 
   constructor() {
@@ -59,6 +65,7 @@ export class SparkPoEditComponent {
 
       const entityType = types.find(t => t.id === this.type || t.alias === this.type) || null;
       this.entityType.set(entityType);
+      this.allEntityTypes.set(types);
       this.item.set(item);
       this.initFormData();
     } catch (e) {
@@ -79,7 +86,14 @@ export class SparkPoEditComponent {
       if (attr.dataType === 'Reference') {
         data[attr.name] = itemAttr?.value ?? null;
       } else if (attr.dataType === 'AsDetail') {
-        data[attr.name] = itemAttr?.value ?? (attr.isArray ? [] : {});
+        // Server emits nested PO(s) in attr.object / attr.objects. Flatten back into the
+        // Record<string, any> shape the form has always used so the rest of the component
+        // tree stays unchanged.
+        if (attr.isArray) {
+          data[attr.name] = (itemAttr?.objects ?? []).map(po => nestedPoToDict(po));
+        } else {
+          data[attr.name] = itemAttr?.object ? nestedPoToDict(itemAttr.object) : {};
+        }
       } else if (attr.dataType === 'boolean') {
         data[attr.name] = itemAttr?.value ?? false;
       } else {
@@ -87,6 +101,11 @@ export class SparkPoEditComponent {
       }
     });
     this.formData.set(data);
+  }
+
+  private resolveEntityType(): EntityTypeResolver {
+    const cache = this.allEntityTypes();
+    return (clrName: string) => cache.find(t => t.clrType === clrName);
   }
 
   getEditableAttributes() {
@@ -102,8 +121,39 @@ export class SparkPoEditComponent {
     this.validationErrors.set([]);
     this.isSaving.set(true);
 
+    const resolver = this.resolveEntityType();
     const attributes: PersistentObjectAttribute[] = currentItem.attributes.map(attr => {
       const editableAttr = this.getEditableAttributes().find(a => a.name === attr.name);
+
+      // AsDetail: formData[name] is a flat dict (single) or array of dicts (array). Rebuild
+      // the nested PO wire shape so the server's polymorphic converter hydrates it into a
+      // PersistentObjectAttributeAsDetail.
+      if (editableAttr?.dataType === 'AsDetail' && editableAttr.asDetailType) {
+        const nestedType = resolver(editableAttr.asDetailType);
+        if (nestedType) {
+          const raw = this.formData()[attr.name];
+          if (editableAttr.isArray) {
+            const items: any[] = Array.isArray(raw) ? raw : [];
+            return {
+              ...attr,
+              value: null,
+              object: null,
+              objects: items.map(item => dictToNestedPo((item ?? {}) as Record<string, any>, nestedType, resolver)),
+              asDetailType: editableAttr.asDetailType,
+              isValueChanged: true,
+            };
+          }
+          return {
+            ...attr,
+            value: null,
+            object: raw ? dictToNestedPo(raw as Record<string, any>, nestedType, resolver) : null,
+            objects: null,
+            asDetailType: editableAttr.asDetailType,
+            isValueChanged: true,
+          };
+        }
+      }
+
       const newValue = editableAttr ? this.formData()[attr.name] : attr.value;
       return {
         ...attr,

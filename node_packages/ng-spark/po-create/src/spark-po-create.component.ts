@@ -17,6 +17,8 @@ import {
   ValidationError,
   ShowedOn,
   hasShowedOnFlag,
+  dictToNestedPo,
+  EntityTypeResolver,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -39,6 +41,7 @@ export class SparkPoCreateComponent {
   formData = signal<Record<string, any>>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
+  private allEntityTypes = signal<EntityType[]>([]);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
 
   constructor() {
@@ -50,6 +53,7 @@ export class SparkPoCreateComponent {
     const types = await this.sparkService.getEntityTypes();
     const entityType = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
     this.entityType.set(entityType);
+    this.allEntityTypes.set(types);
     this.initFormData();
   }
 
@@ -81,18 +85,42 @@ export class SparkPoCreateComponent {
     this.validationErrors.set([]);
     this.isSaving.set(true);
 
-    const attributes: PersistentObjectAttribute[] = this.getEditableAttributes().map(attr => ({
-      id: attr.id,
-      name: attr.name,
-      value: this.formData()[attr.name],
-      dataType: attr.dataType,
-      isRequired: attr.isRequired,
-      isVisible: attr.isVisible,
-      isReadOnly: attr.isReadOnly,
-      isValueChanged: true,
-      order: attr.order,
-      rules: attr.rules
-    }));
+    const resolver: EntityTypeResolver = (clrName) => this.allEntityTypes().find(t => t.clrType === clrName);
+    const attributes: PersistentObjectAttribute[] = this.getEditableAttributes().map(attr => {
+      const base: PersistentObjectAttribute = {
+        id: attr.id,
+        name: attr.name,
+        value: this.formData()[attr.name],
+        dataType: attr.dataType,
+        isArray: attr.isArray,
+        isRequired: attr.isRequired,
+        isVisible: attr.isVisible,
+        isReadOnly: attr.isReadOnly,
+        isValueChanged: true,
+        order: attr.order,
+        rules: attr.rules,
+      };
+
+      // AsDetail: pack the flat form dict into nested PO wire shape. Server's polymorphic
+      // converter ignores attr.value for AsDetail and reads attr.object / attr.objects.
+      if (attr.dataType === 'AsDetail' && attr.asDetailType) {
+        const nestedType = resolver(attr.asDetailType);
+        if (nestedType) {
+          const raw = this.formData()[attr.name];
+          base.value = null;
+          base.asDetailType = attr.asDetailType;
+          if (attr.isArray) {
+            const items: any[] = Array.isArray(raw) ? raw : [];
+            base.objects = items.map(item => dictToNestedPo((item ?? {}) as Record<string, any>, nestedType, resolver));
+            base.object = null;
+          } else {
+            base.object = raw ? dictToNestedPo(raw as Record<string, any>, nestedType, resolver) : null;
+            base.objects = null;
+          }
+        }
+      }
+      return base;
+    });
 
     const po: Partial<PersistentObject> = {
       name: this.formData()['Name'] || 'New Item',
