@@ -1,0 +1,75 @@
+{
+  "name": "@spark-demo/webhooks-demo",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "Demo/WebhooksDemo/WebhooksDemo/ClientApp",
+  "sourceRoot": "Demo/WebhooksDemo/WebhooksDemo/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": ["{workspaceRoot}/Demo/WebhooksDemo/WebhooksDemo/ClientApp/dist/ClientApp"],
+      "options": {
+        "outputPath": "Demo/WebhooksDemo/WebhooksDemo/ClientApp/dist/ClientApp",
+        "browser": "Demo/WebhooksDemo/WebhooksDemo/ClientApp/src/main.ts",
+        "tsConfig": "Demo/WebhooksDemo/WebhooksDemo/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "Demo/WebhooksDemo/WebhooksDemo/ClientApp/public"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "Demo/WebhooksDemo/WebhooksDemo/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
+            { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-demo/webhooks-demo:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-demo/webhooks-demo:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "parallel": true,
+        "commands": [
+          "nx run @mintplayer/ng-spark:watch",
+          "nx run @mintplayer/ng-spark-auth:watch",
+          "nx run @spark-demo/webhooks-demo:serve"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "name": "@spark-demo/demo-app",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "Demo/DemoApp/DemoApp/ClientApp",
+  "sourceRoot": "Demo/DemoApp/DemoApp/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": ["{workspaceRoot}/Demo/DemoApp/DemoApp/ClientApp/dist/ClientApp"],
+      "options": {
+        "outputPath": "Demo/DemoApp/DemoApp/ClientApp/dist/ClientApp",
+        "browser": "Demo/DemoApp/DemoApp/ClientApp/src/main.ts",
+        "tsConfig": "Demo/DemoApp/DemoApp/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "Demo/DemoApp/DemoApp/ClientApp/public"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "Demo/DemoApp/DemoApp/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            { "type": "initial", "maximumWarning": "500kB", "maximumError": "1MB" },
+            { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-demo/demo-app:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-demo/demo-app:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "parallel": true,
+        "commands": [
+          "nx run @mintplayer/ng-spark:watch",
+          "nx run @mintplayer/ng-spark-auth:watch",
+          "nx run @spark-demo/demo-app:serve"
+        ]
+      }
+    }
+  }
+}
