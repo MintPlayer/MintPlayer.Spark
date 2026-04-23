@@ -16,7 +16,6 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class RowLevelAuthzTests
 {
-    private static readonly Guid CarTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
     private static readonly Guid GetCarsQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440001");
 
     private readonly FleetE2ECollectionFixture _fixture;
@@ -34,19 +33,8 @@ public class RowLevelAuthzTests
         // Admin creates a car — CarActions stamps CreatedBy with the admin's id.
         using (var adminClient = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host))
         {
-            var plate = $"RL{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant();
-            var newCar = new PersistentObject
-            {
-                Name = "Car",
-                ObjectTypeId = CarTypeId,
-                Attributes =
-                [
-                    new PersistentObjectAttribute { Name = "LicensePlate", Value = plate },
-                    new PersistentObjectAttribute { Name = "Model", Value = "RL1" },
-                    new PersistentObjectAttribute { Name = "Year", Value = 2024 },
-                ],
-            };
-            var created = await adminClient.CreatePersistentObjectAsync(newCar);
+            var created = await adminClient.CreatePersistentObjectAsync(
+                CarFixture.New(CarFixture.RandomLicensePlate("RL"), model: "RL1"));
             created.Id.Should().NotBeNullOrEmpty(
                 $"admin car create must return id\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
@@ -74,7 +62,7 @@ public class RowLevelAuthzTests
             // User B has QueryReadEditNew/Car (entity-type check passes) but is not the
             // creator → row-level filter returns null (surfaced as 404 on the endpoint,
             // surfaced as null PO on the client — both shapes mean "invisible" per M-3).
-            var po = await userBClient.GetPersistentObjectAsync(CarTypeId, adminCarId);
+            var po = await userBClient.GetPersistentObjectAsync(CarFixture.TypeId, adminCarId);
             po.Should().BeNull("user B is not the creator and must not be able to load admin's car by id");
         }
     }
@@ -85,7 +73,7 @@ public class RowLevelAuthzTests
         var (userBClient, adminCarId) = await SeedTwoUsersAndAdminCarAsync();
         using (userBClient)
         {
-            var cars = await userBClient.ListPersistentObjectsAsync(CarTypeId);
+            var cars = await userBClient.ListPersistentObjectsAsync(CarFixture.TypeId);
 
             cars.Should().NotContain(po => po.Id == adminCarId,
                 "admin's car must be absent from user B's list response");
@@ -101,7 +89,7 @@ public class RowLevelAuthzTests
             // GetCars scoped to admin's car as the parent — the parent fetch must fail the
             // row-level gate and surface as 404 rather than silently run the query unscoped.
             var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => userBClient.ExecuteQueryAsync(GetCarsQueryId, parentId: adminCarId, parentType: "Car"));
+                () => userBClient.ExecuteQueryAsync(GetCarsQueryId, parentId: adminCarId, parentType: CarFixture.TypeName));
             ex.StatusCode.Should().Be(HttpStatusCode.NotFound,
                 "parent fetch must apply the row-level gate — cannot scope a query to an inaccessible parent");
         }

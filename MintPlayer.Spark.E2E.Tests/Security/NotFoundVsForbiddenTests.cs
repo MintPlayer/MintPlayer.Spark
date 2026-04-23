@@ -19,8 +19,6 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class NotFoundVsForbiddenTests
 {
-    private static readonly Guid CarTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
-
     private readonly FleetE2ECollectionFixture _fixture;
     public NotFoundVsForbiddenTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
@@ -31,18 +29,8 @@ public class NotFoundVsForbiddenTests
         string adminCarId;
         using (var adminClient = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host))
         {
-            var plate = $"NF{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant();
-            var created = await adminClient.CreatePersistentObjectAsync(new PersistentObject
-            {
-                Name = "Car",
-                ObjectTypeId = CarTypeId,
-                Attributes =
-                [
-                    new PersistentObjectAttribute { Name = "LicensePlate", Value = plate },
-                    new PersistentObjectAttribute { Name = "Model",        Value = "M3" },
-                    new PersistentObjectAttribute { Name = "Year",         Value = 2024 },
-                ],
-            });
+            var created = await adminClient.CreatePersistentObjectAsync(
+                CarFixture.New(CarFixture.RandomLicensePlate("NF"), model: "M3"));
             adminCarId = created.Id
                 ?? throw new InvalidOperationException(
                     $"admin create returned no id\n--- Fleet log ---\n{_fixture.Host.RecentLog()}");
@@ -61,9 +49,9 @@ public class NotFoundVsForbiddenTests
         catch (SparkClientException) { /* email-confirmation gate is out of scope for this test */ }
 
         var nonExistent = await CaptureOutcomeAsync(() =>
-            plainClient.GetPersistentObjectAsync(CarTypeId, $"cars/definitely-does-not-exist-{Guid.NewGuid():N}"));
+            plainClient.GetPersistentObjectAsync(CarFixture.TypeId, $"cars/definitely-does-not-exist-{Guid.NewGuid():N}"));
         var forbidden = await CaptureOutcomeAsync(() =>
-            plainClient.GetPersistentObjectAsync(CarTypeId, adminCarId));
+            plainClient.GetPersistentObjectAsync(CarFixture.TypeId, adminCarId));
 
         forbidden.Should().Be(nonExistent,
             "the real-but-forbidden id and the nonexistent id must produce identical client outcomes — " +

@@ -36,6 +36,14 @@
     <ProjectReference Include="..\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <!-- Auth extensions (LoginAsync/LogoutAsync/RegisterAsync/GetCurrentUserAsync). -->
     <ProjectReference Include="..\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj" />
+    <!-- Runs the PersistentObjectIds generator against Fleet's Model JSONs so Security
+         tests can reference `PersistentObjectIds.Default.Car` instead of hardcoding the Guid. -->
+    <ProjectReference Include="..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Feeds the PersistentObjectIds generator. E2E tests target Fleet, so we surface its schemas. -->
+    <AdditionalFiles Include="..\Demo\Fleet\Fleet\App_Data\Model\*.json" />
   </ItemGroup>
 
 </Project>
