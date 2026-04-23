@@ -23,7 +23,8 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "ng-packagr -p ng-package.json --watch",
-        "cwd": "node_packages/ng-spark"
+        "cwd": "node_packages/ng-spark",
+        "forwardAllArgs": false
       }
     }
   }
