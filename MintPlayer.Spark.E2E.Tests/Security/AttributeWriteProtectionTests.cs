@@ -76,11 +76,7 @@ public class AttributeWriteProtectionTests
             // Smuggle in an attribute that isn't in the Car schema. The framework must
             // either reject the request (4xx) or silently drop the unknown attribute —
             // never blindly set it on the entity.
-            po!.Attributes =
-            [
-                .. po.Attributes,
-                new PersistentObjectAttribute { Name = "IsAdmin", Value = true },
-            ];
+            po!.AddAttribute(new PersistentObjectAttribute { Name = "IsAdmin", Value = true });
 
             try
             {
