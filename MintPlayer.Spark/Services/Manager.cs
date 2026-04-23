@@ -10,21 +10,18 @@ internal sealed partial class Manager : IManager
     [Inject] private readonly IRetryAccessor retry;
     [Inject] private readonly ITranslationsLoader translationsLoader;
     [Inject] private readonly IRequestCultureResolver requestCultureResolver;
+    [Inject] private readonly IEntityMapper entityMapper;
 
     public IRetryAccessor Retry => retry;
 
-    public PersistentObject NewPersistentObject(string name, params PersistentObjectAttribute[] attributes)
-    {
-        var po = new PersistentObject
-        {
-            Id = null,
-            Name = name,
-            ObjectTypeId = Guid.Empty,
-        };
-        foreach (var attr in attributes)
-            po.AddAttribute(attr);
-        return po;
-    }
+    public PersistentObject NewPersistentObject(string name)
+        => entityMapper.NewPersistentObject(name);
+
+    public PersistentObject NewPersistentObject(Guid id)
+        => entityMapper.NewPersistentObject(id);
+
+    public PersistentObject NewPersistentObject<T>() where T : class
+        => entityMapper.NewPersistentObject<T>();
 
     public string GetTranslatedMessage(string key, params object[] parameters)
     {

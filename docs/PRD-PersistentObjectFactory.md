@@ -248,6 +248,11 @@ public interface IManager
     // legally repeat). Throws KeyNotFoundException if the id is unknown.
     PersistentObject NewPersistentObject(Guid id);
 
+    // NEW — typed convenience: derives ObjectTypeId from typeof(T).FullName
+    // via IModelLoader.GetEntityTypeByClrType. Cleanest call site when the
+    // caller has a typed entity class — no Guid plumbing, no string names.
+    PersistentObject NewPersistentObject<T>() where T : class;
+
     // existing
     IRetryAccessor Retry { get; }
     string GetTranslatedMessage(string key, params object[] parameters);
@@ -278,10 +283,21 @@ public interface IEntityMapper
     // NEW — schema-backed factory keyed by ObjectTypeId. Never ambiguous.
     PersistentObject NewPersistentObject(Guid id);
 
+    // NEW — typed overload: resolves ObjectTypeId via
+    // IModelLoader.GetEntityTypeByClrType(typeof(T).FullName).
+    PersistentObject NewPersistentObject<T>() where T : class;
+
     // Existing surface — unchanged signature. Reimplemented internally as
     // NewPersistentObject(objectTypeId) + PopulateAttributeValues.
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId,
         Dictionary<string, object>? includedDocuments = null);
+
+    // NEW — typed convenience that derives ObjectTypeId from typeof(T).FullName.
+    // Eliminates the Guid parameter at typed call sites. Framework internals
+    // (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) continue to use
+    // the non-generic overload because they work with RavenDB-returned `object`.
+    PersistentObject ToPersistentObject<T>(T entity,
+        Dictionary<string, object>? includedDocuments = null) where T : class;
 
     // NEW — populate an already-scaffolded PO from an entity. Handles:
     //   - Id extraction (entity.Id → po.Id)
@@ -294,6 +310,11 @@ public interface IEntityMapper
     // Attributes whose name contains '.' are skipped (Vidyano parity).
     void PopulateAttributeValues(PersistentObject po, object entity,
         Dictionary<string, object>? includedDocuments = null);
+
+    // NEW — typed overload. Thin wrapper; PO already knows its ObjectTypeId,
+    // so <T> is purely call-site ergonomic.
+    void PopulateAttributeValues<T>(PersistentObject po, T entity,
+        Dictionary<string, object>? includedDocuments = null) where T : class;
 }
 ```
 
@@ -319,6 +340,9 @@ internal sealed partial class Manager : IManager
 
     public PersistentObject NewPersistentObject(Guid id)
         => entityMapper.NewPersistentObject(id);
+
+    public PersistentObject NewPersistentObject<T>() where T : class
+        => entityMapper.NewPersistentObject<T>();
 }
 ```
 
@@ -643,17 +667,26 @@ never introduce a second schema — zero migration cost.
    self-call, no `IManager` dependency.
 5. Add `IEntityMapper` injection to `Manager`; drop `IModelLoader` injection
    (no longer needed there).
-6. Implement `Manager.NewPersistentObject(string)` and
-   `Manager.NewPersistentObject(Guid)` as thin forwards.
-7. Tests:
-   - `ManagerTests.NewPersistentObjectTests` — both overloads copy all 14
-     metadata fields; throw on unknown name / id; name overload throws on
-     ambiguity (two schemas, same entity name).
-   - `EntityMapperTests.ToPersistentObject` — enum/Color/AsDetail conversions
-     (currently uncovered in `EntityMapperBreadcrumbTests`); existing 4
-     breadcrumb tests still pass.
-   - `EntityMapperTests.PopulateAttributeValues` — direct unit test of the
-     new method on a scaffold with various property shapes.
+6. Implement `Manager.NewPersistentObject(string)`,
+   `Manager.NewPersistentObject(Guid)`, and `Manager.NewPersistentObject<T>()`
+   as thin forwards to `IEntityMapper`.
+7. **Generic overloads** (added during Phase 2 implementation after a mid-flight
+   design check): `IEntityMapper.NewPersistentObject<T>()`,
+   `IEntityMapper.ToPersistentObject<T>(entity, includedDocuments?)`, and
+   `IEntityMapper.PopulateAttributeValues<T>(po, entity, includedDocuments?)`.
+   Resolve `ObjectTypeId` via `IModelLoader.GetEntityTypeByClrType(typeof(T).FullName)`,
+   with `KeyNotFoundException` on unknown/ambiguous CLR type. Eliminate the
+   Guid plumbing at typed call sites. The non-generic `object` overloads
+   stay for framework internals (`DatabaseAccess`, `QueryExecutor`,
+   `StreamingQueryExecutor`) that work with RavenDB-returned `object`.
+8. Tests:
+   - `ManagerTests` — forwarding to `IEntityMapper` via mock (3 tests).
+   - `EntityMapperFactoryTests` — all three `NewPersistentObject` overloads
+     (name / Guid / generic), `PopulateAttributeValues` happy/edge paths
+     (silent skip, dot-notation skip, enum→string, Color→hex), and
+     `ToPersistentObject<T>` parity with the Guid overload (13 tests).
+   - Existing `EntityMapperBreadcrumbTests` (4) still pass — the refactor
+     preserves byte-identical output for the 6 existing callers.
 
 **Phase 2b — `PersistentObjectIds` generator**
 
@@ -675,13 +708,13 @@ never introduce a second schema — zero migration cost.
    `entityMapper.NewPersistentObject(entityTypeDef.Id)` + value loop
    (inject `IEntityMapper` directly; no need to go through `IManager`).
    Keep CLR-fallback as a separate method.
-2. `PersistentObjectExtensions.ToPersistentObject<T>` — delete.
-3. `PersistentObjectExtensions.PopulateAttributeValues<T>` — delete (or
-   rewrite as a sugar wrapper that DI-resolves `IEntityMapper`; prefer
-   delete given preview-mode project state).
-4. Update any caller of the deleted extensions (grep first — the
-   call-site inventory agent found none inside the framework, but public
-   API may have external Demo-app callers).
+2. ~~`PersistentObjectExtensions.ToPersistentObject<T>` — delete.~~
+   **Done in PR #125** (pulled forward from Phase 3 to bump patch coverage
+   on the Phase 1 PR).
+3. ~~`PersistentObjectExtensions.PopulateAttributeValues<T>` — delete.~~
+   **Done in PR #125.**
+4. ~~Update any caller of the deleted extensions.~~ **Done in PR #125** —
+   grep confirmed zero framework callers before deletion.
 
 **Phase 4 — Test migration**
 
