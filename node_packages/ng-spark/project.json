@@ -13,8 +13,16 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/dist"],
       "options": {
         "command": "ng-packagr -p ng-package.json",
+        "cwd": "node_packages/ng-spark"
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ng-packagr -p ng-package.json --watch",
         "cwd": "node_packages/ng-spark"
       }
     }
