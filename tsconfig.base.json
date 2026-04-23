@@ -3,10 +3,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@mintplayer/ng-spark": ["node_packages/ng-spark/dist"],
-      "@mintplayer/ng-spark/*": ["node_packages/ng-spark/dist/*"],
-      "@mintplayer/ng-spark-auth": ["node_packages/ng-spark-auth/dist"],
-      "@mintplayer/ng-spark-auth/*": ["node_packages/ng-spark-auth/dist/*"]
+      "@mintplayer/ng-spark": ["node_packages/ng-spark/src/public-api.ts"],
+      "@mintplayer/ng-spark/*": ["node_packages/ng-spark/*/index.ts"],
+      "@mintplayer/ng-spark-auth": ["node_packages/ng-spark-auth/src/public-api.ts"],
+      "@mintplayer/ng-spark-auth/*": ["node_packages/ng-spark-auth/*/index.ts"]
     }
   }
 }

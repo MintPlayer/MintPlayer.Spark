@@ -2,7 +2,7 @@
   "name": "@spark-demo/fleet-demo",
   "version": "0.0.0",
   "scripts": {
-    "start": "nx run @spark-demo/fleet-demo:dev",
+    "start": "nx run @spark-demo/fleet-demo:serve",
     "build": "nx run @spark-demo/fleet-demo:build",
     "test": "nx run @spark-demo/fleet-demo:test"
   },

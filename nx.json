@@ -28,7 +28,7 @@
       "outputs": ["{projectRoot}/coverage"]
     },
     "serve": {
-      "dependsOn": ["^build"]
+      "dependsOn": []
     }
   },
   "parallel": 3

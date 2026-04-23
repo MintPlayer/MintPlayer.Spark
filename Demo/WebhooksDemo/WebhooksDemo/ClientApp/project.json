@@ -59,17 +59,6 @@
     },
     "test": {
       "executor": "@nx/angular:unit-test"
-    },
-    "dev": {
-      "executor": "nx:run-commands",
-      "options": {
-        "parallel": true,
-        "commands": [
-          { "command": "nx watch --projects=@mintplayer/ng-spark --includeDependentProjects=false -- nx run @mintplayer/ng-spark:build", "forwardAllArgs": false },
-          { "command": "nx watch --projects=@mintplayer/ng-spark-auth --includeDependentProjects=false -- nx run @mintplayer/ng-spark-auth:build", "forwardAllArgs": false },
-          "nx run @spark-demo/webhooks-demo:serve"
-        ]
-      }
     }
   }
 }
