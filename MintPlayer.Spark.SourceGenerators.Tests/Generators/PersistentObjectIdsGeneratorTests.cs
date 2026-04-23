@@ -29,18 +29,19 @@ public class PersistentObjectIdsGeneratorTests
 
     private static string Model(string id, string name, string? schema = null)
     {
-        var schemaLine = schema is null ? "" : $"    \"schema\": \"{schema}\",\n";
-        return "{\n"
-             + "  \"persistentObject\": {\n"
-             + $"    \"id\": \"{id}\",\n"
-             + $"    \"name\": \"{name}\",\n"
-             + schemaLine
-             + $"    \"description\": {{ \"en\": \"{name}\" }},\n"
-             + "    \"attributes\": [\n"
-             + "      { \"id\": \"11111111-1111-1111-1111-111111111111\", \"name\": \"Foo\" }\n"
-             + "    ]\n"
-             + "  }\n"
-             + "}\n";
+        var schemaField = schema is null ? "" : $$""", "schema": "{{schema}}" """;
+        return $$"""
+            {
+              "persistentObject": {
+                "id": "{{id}}",
+                "name": "{{name}}"{{schemaField}},
+                "description": { "en": "{{name}}" },
+                "attributes": [
+                  { "id": "11111111-1111-1111-1111-111111111111", "name": "Foo" }
+                ]
+              }
+            }
+            """;
     }
 
     [Fact]
