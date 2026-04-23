@@ -1,8 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
 using MintPlayer.SourceGenerators.Tools.ValueComparers;
+using System.IO;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
@@ -115,6 +117,47 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
-        context.ProduceCode(namesProvider, attributeNamesProvider);
+        // Harvest PersistentObjectIdInfo from App_Data/Model/*.json AdditionalFiles.
+        // Files that don't parse as Spark Model JSON (missing "persistentObject" wrapper,
+        // missing id/name, bad Guid) are silently skipped — they may be other auxiliary
+        // JSON files the host includes.
+        var idsProvider = context.AdditionalTextsProvider
+            .Where(static t =>
+            {
+                var file = Path.GetFileName(t.Path);
+                if (!file.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+                    return false;
+                // Path convention: <anything>/App_Data/Model/<EntityName>.json
+                // Accept both absolute paths from csproj globs and relative paths from tests.
+                var normalized = t.Path.Replace('\\', '/');
+                return normalized.Contains("App_Data/Model/");
+            })
+            .Select(static (t, ct) =>
+            {
+                var text = t.GetText(ct)?.ToString();
+                return text is not null && ModelJsonReader.TryRead(text, out var info)
+                    ? info
+                    : null;
+            })
+            .Where(static info => info != null)
+            .WithNullableComparer()
+            .Collect();
+
+        var idsSourceProvider = idsProvider
+            .Combine(knowsSparkProvider)
+            .Combine(settingsProvider)
+            .Select(static (providers, ct) =>
+            {
+                var ids = providers.Left.Left;
+                var knowsSpark = providers.Left.Right;
+                var settings = providers.Right;
+
+                return (Producer)new PersistentObjectIdsProducer(
+                    ids.Where(x => x != null).Cast<PersistentObjectIdInfo>(),
+                    knowsSpark,
+                    settings.RootNamespace ?? "GeneratedCode");
+            });
+
+        context.ProduceCode(namesProvider, attributeNamesProvider, idsSourceProvider);
     }
 }

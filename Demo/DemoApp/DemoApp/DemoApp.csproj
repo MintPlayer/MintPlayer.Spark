@@ -29,6 +29,7 @@
 
 	<ItemGroup>
 		<AdditionalFiles Include="App_Data\translations.json" />
+		<AdditionalFiles Include="App_Data\Model\*.json" />
 	</ItemGroup>
 
 	<!-- Angular build during publish -->
