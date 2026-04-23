@@ -21,6 +21,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
 
     // Cache: collection name → CLR entity type
@@ -60,72 +61,69 @@ internal partial class SyncActionHandler : ISyncActionHandler
     }
 
     /// <summary>
-    /// Builds a PersistentObject from the incoming sync action data dictionary.
-    /// Marks attributes as IsValueChanged based on the Properties array.
-    /// Uses the EntityTypeDefinition to construct proper attribute metadata.
+    /// Builds a PersistentObject from the incoming sync action data dictionary,
+    /// marking attributes as <c>IsValueChanged</c> based on the <paramref name="properties"/> list.
+    /// When an <see cref="EntityTypeDefinition"/> is registered for the entity type the
+    /// schema path runs through <see cref="IEntityMapper.NewPersistentObject(Guid)"/>, so
+    /// every attribute gets the canonical 14-field metadata; otherwise the CLR-reflection
+    /// fallback inventories the entity's public read/write properties (no schema available).
     /// </summary>
-    private PersistentObject BuildPersistentObject(Type entityType, string? documentId, Dictionary<string, object?> data, string[]? properties)
+    internal PersistentObject BuildPersistentObject(Type entityType, string? documentId, Dictionary<string, object?> data, string[]? properties)
     {
-        // Find the entity type definition for attribute metadata
         var entityTypeDef = FindEntityTypeDefinition(entityType);
         var propertySet = properties != null
             ? new HashSet<string>(properties, StringComparer.OrdinalIgnoreCase)
             : null;
 
+        if (entityTypeDef is null)
+            return BuildFromClrReflection(entityType, documentId, data, propertySet);
+
+        // Schema path — full metadata scaffolded by IEntityMapper, values overlaid from data dict.
+        var po = entityMapper.NewPersistentObject(entityTypeDef.Id);
+        po.Id = documentId;
+
+        foreach (var attribute in po.Attributes)
+        {
+            var hasValue = TryGetValue(data, attribute.Name, out var value);
+            attribute.Value = hasValue ? NormalizeValue(value) : null;
+            attribute.IsValueChanged = propertySet != null
+                ? propertySet.Contains(attribute.Name)
+                : hasValue;
+        }
+
+        return po;
+    }
+
+    /// <summary>
+    /// CLR-reflection fallback for entity types that have no registered
+    /// <see cref="EntityTypeDefinition"/>. No schema metadata is available, so attributes
+    /// carry only <c>Name</c>, <c>Value</c>, and <c>IsValueChanged</c>.
+    /// </summary>
+    private static PersistentObject BuildFromClrReflection(Type entityType, string? documentId, Dictionary<string, object?> data, HashSet<string>? propertySet)
+    {
         var po = new PersistentObject
         {
             Id = documentId,
-            ObjectTypeId = entityTypeDef?.Id ?? Guid.Empty,
-            Name = entityTypeDef?.Name ?? entityType.Name,
+            ObjectTypeId = Guid.Empty,
+            Name = entityType.Name,
         };
 
-        if (entityTypeDef?.Attributes != null)
+        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            foreach (var attrDef in entityTypeDef.Attributes)
+            if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
+            if (!prop.CanRead || !prop.CanWrite) continue;
+
+            var hasValue = TryGetValue(data, prop.Name, out var value);
+            var isChanged = propertySet != null
+                ? propertySet.Contains(prop.Name)
+                : hasValue;
+
+            po.AddAttribute(new PersistentObjectAttribute
             {
-                var hasValue = TryGetValue(data, attrDef.Name, out var value);
-
-                var isChanged = propertySet != null
-                    ? propertySet.Contains(attrDef.Name)
-                    : hasValue;
-
-                po.AddAttribute(new PersistentObjectAttribute
-                {
-                    Name = attrDef.Name,
-                    Label = attrDef.Label,
-                    Value = hasValue ? NormalizeValue(value) : null,
-                    IsValueChanged = isChanged,
-                    DataType = attrDef.DataType,
-                    IsRequired = attrDef.IsRequired,
-                    IsVisible = attrDef.IsVisible,
-                    IsReadOnly = attrDef.IsReadOnly,
-                    Order = attrDef.Order,
-                    ShowedOn = attrDef.ShowedOn,
-                    Rules = attrDef.Rules ?? [],
-                });
-            }
-        }
-        else
-        {
-            // Fallback: build attributes from entity type's CLR properties
-            foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            {
-                if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
-                if (!prop.CanRead || !prop.CanWrite) continue;
-
-                var hasValue = TryGetValue(data, prop.Name, out var value);
-
-                var isChanged = propertySet != null
-                    ? propertySet.Contains(prop.Name)
-                    : hasValue;
-
-                po.AddAttribute(new PersistentObjectAttribute
-                {
-                    Name = prop.Name,
-                    Value = hasValue ? NormalizeValue(value) : null,
-                    IsValueChanged = isChanged,
-                });
-            }
+                Name = prop.Name,
+                Value = hasValue ? NormalizeValue(value) : null,
+                IsValueChanged = isChanged,
+            });
         }
 
         return po;
