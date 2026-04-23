@@ -12,11 +12,10 @@
       }
     },
     "build": {
-      "executor": "nx:run-commands",
+      "executor": "@nx/angular:package",
       "outputs": ["{projectRoot}/dist"],
       "options": {
-        "command": "ng-packagr -p ng-package.json",
-        "cwd": "node_packages/ng-spark"
+        "project": "node_packages/ng-spark/ng-package.json"
       }
     },
     "watch": {
