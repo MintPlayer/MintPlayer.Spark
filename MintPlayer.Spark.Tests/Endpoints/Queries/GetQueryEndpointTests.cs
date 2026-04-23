@@ -1,6 +1,5 @@
-using System.Net;
-using System.Text.Json;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
@@ -13,7 +12,7 @@ public class GetQueryEndpointTests : SparkTestDriver
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb1111-1111-1111-1111-bbbbbbbbbbbb");
 
     private SparkEndpointFactory _factory = null!;
-    private HttpClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
@@ -31,7 +30,7 @@ public class GetQueryEndpointTests : SparkTestDriver
         ];
 
         _factory = new SparkEndpointFactory(Store, [personType]);
-        _client = _factory.CreateClient();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -42,32 +41,30 @@ public class GetQueryEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Get_returns_404_when_query_id_unknown()
+    public async Task Get_returns_null_when_query_id_unknown()
     {
-        var response = await _client.GetAsync($"/spark/queries/{Guid.NewGuid()}");
+        var result = await _client.GetQueryAsync(Guid.NewGuid());
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        result.Should().BeNull();
     }
 
     [Fact]
     public async Task Get_returns_query_definition_by_GUID()
     {
-        var response = await _client.GetAsync($"/spark/queries/{AllPeopleQueryId}");
+        var query = await _client.GetQueryAsync(AllPeopleQueryId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"name\":\"AllPeople\"");
-        body.Should().Contain("\"source\":\"Database.People\"");
+        query.Should().NotBeNull();
+        query!.Name.Should().Be("AllPeople");
+        query.Source.Should().Be("Database.People");
     }
 
     [Fact]
     public async Task Get_resolves_query_by_alias()
     {
         // Auto-generated alias: "GetX" → "x"; for "AllPeople" the alias is "allpeople"
-        var response = await _client.GetAsync("/spark/queries/allpeople");
+        var query = await _client.GetQueryAsync("allpeople");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"name\":\"AllPeople\"");
+        query.Should().NotBeNull();
+        query!.Name.Should().Be("AllPeople");
     }
 }

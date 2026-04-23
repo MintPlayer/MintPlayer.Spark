@@ -1,4 +1,5 @@
-using System.Text.Json;
+using System.Net;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.E2E.Tests.Security;
@@ -18,41 +19,43 @@ public class PermissionsEndpointAuthTests
     [Fact]
     public async Task Unauthenticated_GET_permissions_for_Car_reports_no_access()
     {
-        await using var pages = new PageFactory(_fixture);
-        var page = await pages.NewPageAsync();
+        using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // Car is granted to Administrators + Fleet managers, not Everyone.
-        var response = await page.APIRequest.GetAsync($"{_fixture.Host.FleetUrl}/spark/permissions/Car");
-
-        // Either 401 (secure) or 200 with all flags false.
-        if (response.Status == 401)
-            return;
-
-        response.Status.Should().Be(200);
-        var body = await response.JsonAsync();
-        body!.Value.GetProperty("canRead").GetBoolean().Should().BeFalse("anonymous should not read Car");
-        body.Value.GetProperty("canCreate").GetBoolean().Should().BeFalse("anonymous should not create Car");
-        body.Value.GetProperty("canEdit").GetBoolean().Should().BeFalse("anonymous should not edit Car");
-        body.Value.GetProperty("canDelete").GetBoolean().Should().BeFalse("anonymous should not delete Car");
+        // Car is granted to Administrators + Fleet managers, not Everyone. Either the server
+        // throws (401/403, also secure) or returns permissions with every flag false.
+        try
+        {
+            var perms = await client.GetPermissionsAsync("Car");
+            perms.Should().NotBeNull();
+            perms!.CanRead.Should().BeFalse("anonymous should not read Car");
+            perms.CanCreate.Should().BeFalse("anonymous should not create Car");
+            perms.CanEdit.Should().BeFalse("anonymous should not edit Car");
+            perms.CanDelete.Should().BeFalse("anonymous should not delete Car");
+        }
+        catch (SparkClientException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            // Fail-closed: also acceptable — anonymous caller simply doesn't reach the endpoint.
+        }
     }
 
     [Fact]
     public async Task Unauthenticated_GET_permissions_for_Company_reports_read_but_no_write()
     {
-        await using var pages = new PageFactory(_fixture);
-        var page = await pages.NewPageAsync();
+        using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // Company has QueryRead/Company granted to Everyone — anon should see canRead=true
-        // but must not see any mutation permissions.
-        var response = await page.APIRequest.GetAsync($"{_fixture.Host.FleetUrl}/spark/permissions/Company");
-
-        if (response.Status == 401)
-            return;
-
-        response.Status.Should().Be(200);
-        var body = await response.JsonAsync();
-        body!.Value.GetProperty("canCreate").GetBoolean().Should().BeFalse();
-        body.Value.GetProperty("canEdit").GetBoolean().Should().BeFalse();
-        body.Value.GetProperty("canDelete").GetBoolean().Should().BeFalse();
+        // Company has QueryRead/Company granted to Everyone — anon can read, but must not
+        // see any mutation permissions.
+        try
+        {
+            var perms = await client.GetPermissionsAsync("Company");
+            perms.Should().NotBeNull();
+            perms!.CanCreate.Should().BeFalse();
+            perms.CanEdit.Should().BeFalse();
+            perms.CanDelete.Should().BeFalse();
+        }
+        catch (SparkClientException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            // Acceptable: server chose to fail-closed rather than return permissions to anon.
+        }
     }
 }

@@ -1,5 +1,5 @@
 using System.Net;
-using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
@@ -11,13 +11,13 @@ public class DeleteEndpointTests : SparkTestDriver
     private static readonly Guid PersonTypeId = Guid.Parse("66666666-eeee-eeee-eeee-666666666666");
 
     private SparkEndpointFactory _factory = null!;
-    private SparkTestClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
-        _client = await _factory.CreateAuthorizedClientAsync();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -28,25 +28,25 @@ public class DeleteEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Delete_returns_404_when_entity_type_is_unknown()
+    public async Task Delete_throws_404_when_entity_type_is_unknown()
     {
-        var unknownTypeId = Guid.NewGuid();
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => _client.DeletePersistentObjectAsync(Guid.NewGuid(), "people/1"));
 
-        var response = await _client.DeleteAsync($"/spark/po/{unknownTypeId}/people%2F1");
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Delete_returns_404_when_id_does_not_exist()
+    public async Task Delete_throws_404_when_id_does_not_exist()
     {
-        var response = await _client.DeleteAsync($"/spark/po/{PersonTypeId}/people%2Fdoes-not-exist");
+        var ex = await Assert.ThrowsAsync<SparkClientException>(
+            () => _client.DeletePersistentObjectAsync(PersonTypeId, "people/does-not-exist"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Delete_returns_204_and_removes_the_document()
+    public async Task Delete_removes_the_document()
     {
         using (var session = Store.OpenAsyncSession())
         {
@@ -54,9 +54,7 @@ public class DeleteEndpointTests : SparkTestDriver
             await session.SaveChangesAsync();
         }
 
-        var response = await _client.DeleteAsync($"/spark/po/{PersonTypeId}/people%2F1");
-
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await _client.DeletePersistentObjectAsync(PersonTypeId, "people/1");
 
         WaitForIndexing(Store);
         using var verify = Store.OpenAsyncSession();

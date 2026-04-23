@@ -1,14 +1,18 @@
-using System.Linq;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
-/// L-2 — the XSRF-TOKEN cookie must carry the <c>Secure</c> attribute when the response
-/// is served over HTTPS, and must pin <c>SameSite=Strict</c>. The fixture runs Fleet over
+/// L-2 — the XSRF-TOKEN cookie must carry the <c>Secure</c> attribute when the response is
+/// served over HTTPS, and must pin <c>SameSite=Strict</c>. The fixture runs Fleet over
 /// https://localhost:{random-port}, so every response should mint a cookie with both.
 /// HttpOnly is intentionally false (double-submit pattern requires JS to read the cookie)
 /// and is not asserted here.
+///
+/// Uses <see cref="SparkClientFactory.CreateHttpClient"/> instead of <see cref="SparkClient"/>
+/// proper because the assertions inspect <c>Set-Cookie</c> *attributes* (Secure, SameSite) —
+/// SparkClient's cookie jar parses name+value and drops the rest. A raw
+/// <see cref="HttpClient"/> preserves the full header for inspection.
 /// </summary>
 [Collection(FleetE2ECollection.Name)]
 public class XsrfCookieFlagTests
@@ -37,26 +41,21 @@ public class XsrfCookieFlagTests
 
     /// <summary>
     /// Returns the full Set-Cookie line for the XSRF-TOKEN cookie, or null if absent.
-    /// Playwright's <c>IAPIResponse.Headers</c> joins multiple set-cookie values with '\n',
-    /// so we split first and then look for the one starting with XSRF-TOKEN=.
+    /// <see cref="HttpResponseMessage.Headers"/> exposes each Set-Cookie as its own value;
+    /// a multi-value match yields multiple strings, so we scan for the one starting with
+    /// <c>XSRF-TOKEN=</c>.
     /// </summary>
     private async Task<string?> FetchXsrfCookieAsync()
     {
-        await using var pages = new PageFactory(_fixture);
-        var page = await pages.NewPageAsync();
+        using var http = SparkClientFactory.CreateHttpClient(_fixture.Host);
+        using var response = await http.GetAsync("/spark/auth/me");
+        ((int)response.StatusCode).Should().Be(200);
 
-        var response = await page.APIRequest.GetAsync($"{_fixture.Host.FleetUrl}/spark/auth/me");
-        response.Status.Should().Be(200);
+        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+            return null;
 
-        var rawSetCookie = response.Headers
-            .Where(h => string.Equals(h.Key, "set-cookie", StringComparison.OrdinalIgnoreCase))
-            .Select(h => h.Value)
-            .FirstOrDefault() ?? "";
-
-        return rawSetCookie
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim())
-            .FirstOrDefault(line => line.StartsWith("XSRF-TOKEN=", StringComparison.Ordinal));
+        return setCookies.FirstOrDefault(line =>
+            line.StartsWith("XSRF-TOKEN=", StringComparison.Ordinal));
     }
 
     /// <summary>Case-insensitive "does this cookie have the given flag attribute?" (e.g. Secure, HttpOnly).</summary>

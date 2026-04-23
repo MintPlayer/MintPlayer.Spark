@@ -1,5 +1,5 @@
-using System.Net;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 
@@ -10,13 +10,13 @@ public class GetEndpointTests : SparkTestDriver
     private static readonly Guid PersonTypeId = Guid.Parse("11111111-aaaa-aaaa-aaaa-111111111111");
 
     private SparkEndpointFactory _factory = null!;
-    private HttpClient _client = null!;
+    private SparkClient _client = null!;
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
-        _client = _factory.CreateClient();
+        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
     public override async Task DisposeAsync()
@@ -27,30 +27,30 @@ public class GetEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Get_returns_404_when_entity_type_is_unknown()
+    public async Task Get_returns_null_when_entity_type_is_unknown()
     {
         var unknownTypeId = Guid.NewGuid();
 
-        var response = await _client.GetAsync($"/spark/po/{unknownTypeId}/people%2F1");
+        var result = await _client.GetPersistentObjectAsync(unknownTypeId, "people/1");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        result.Should().BeNull();
     }
 
     [Fact]
-    public async Task Get_returns_404_when_entity_type_is_known_but_id_does_not_exist()
+    public async Task Get_returns_null_when_entity_type_is_known_but_id_does_not_exist()
     {
-        var response = await _client.GetAsync($"/spark/po/{PersonTypeId}/people%2Fdoes-not-exist");
+        var result = await _client.GetPersistentObjectAsync(PersonTypeId, "people/does-not-exist");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        result.Should().BeNull();
     }
 
     [Fact]
     public async Task Get_resolves_entity_type_by_alias()
     {
-        var response = await _client.GetAsync($"/spark/po/person/people%2Fdoes-not-exist");
+        // Alias resolves → entity type known → falls through to "id not found" → null.
+        var result = await _client.GetPersistentObjectAsync("person", "people/does-not-exist");
 
-        // Alias resolves → entity type known → falls through to "id not found"
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        result.Should().BeNull();
     }
 
     [Fact]
@@ -61,15 +61,16 @@ public class GetEndpointTests : SparkTestDriver
             await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
             await session.SaveChangesAsync();
         }
-        WaitForIndexing(Store);
+        await RavenIndexHelper.WaitForNonStaleAsync(Store);
 
-        var response = await _client.GetAsync($"/spark/po/{PersonTypeId}/people%2F1");
+        var po = await _client.GetPersistentObjectAsync(PersonTypeId, "people/1");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"id\":\"people/1\"");
-        body.Should().Contain("Alice");
-        body.Should().Contain("Smith");
+        po.Should().NotBeNull();
+        po!.Id.Should().Be("people/1");
+        // Value deserializes as JsonElement when the declared type is object?, so compare via
+        // ToString() which works for both a plain string and a JsonElement string.
+        po.Attributes.Should().Contain(a => a.Name == "FirstName" && a.Value!.ToString() == "Alice");
+        po.Attributes.Should().Contain(a => a.Name == "LastName" && a.Value!.ToString() == "Smith");
     }
 }
 

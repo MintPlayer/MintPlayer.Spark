@@ -1,125 +1,110 @@
-using System.Text.Json;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
 /// L-7a / L-7b — an attribute with <c>IsReadOnly=true</c> or <c>IsVisible=false</c> in the
-/// schema must not be writable via PUT/POST. Today the framework maps any attribute present
-/// in the body onto the entity; this test pins the expected secure behaviour.
-///
-/// Strategy: this test dynamically promotes one of Car's attributes to IsReadOnly (via a
-/// local override of the model JSON isn't possible from the test), so instead we exercise
-/// the Car.Brand or Car.Status field which is driven by a lookupReferenceType — the
-/// framework *should* reject values that aren't in the lookup, but separately should also
-/// reject attempts to set fields whose schema definition marks them IsReadOnly.
-///
-/// Because Fleet's default Car schema has no IsReadOnly=true field, these tests will be
-/// meaningful only once the remediation PR adds a representative read-only field. For now
-/// they assert that a clearly synthetic client-only field ("Id" posted as an attribute
-/// value) is ignored on update.
+/// schema must not be writable via PUT/POST. These tests assert that the framework either
+/// rejects or silently drops such attempts, never producing a 500 or blindly mapping a
+/// client-supplied attribute onto the entity.
 /// </summary>
 [Collection(FleetE2ECollection.Name)]
 public class AttributeWriteProtectionTests
 {
+    private static readonly Guid CarTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
+
     private readonly FleetE2ECollectionFixture _fixture;
     public AttributeWriteProtectionTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
-    private async Task<(SparkApi api, string carId)> LoginAndCreateCarAsync(Microsoft.Playwright.IPage page)
+    private async Task<(SparkClient client, string carId)> LoginAndCreateCarAsync()
     {
-        var api = await SparkApi.LoginAsync(page, _fixture.Host, _fixture.Host.AdminEmailAddress, _fixture.Host.AdminPass);
-
-        var plate = $"RO{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant();
-        var createResp = await api.PostJsonAsync("/spark/po/Car", new
+        var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
+        try
         {
-            persistentObject = new
+            var plate = $"RO{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant();
+            var created = await client.CreatePersistentObjectAsync(new PersistentObject
             {
-                name = "Car",
-                objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
-                attributes = new object[]
-                {
-                    new { name = "LicensePlate", value = plate },
-                    new { name = "Model",        value = "X1" },
-                    new { name = "Year",         value = 2024 },
-                },
-            },
-        });
-        createResp.Status.Should().BeOneOf(new[] { 200, 201 }, $"create failed: {await createResp.TextAsync()}");
-
-        var body = await createResp.JsonAsync();
-        var id = body!.Value.GetProperty("id").GetString()!;
-        return (api, id);
+                Name = "Car",
+                ObjectTypeId = CarTypeId,
+                Attributes =
+                [
+                    new PersistentObjectAttribute { Name = "LicensePlate", Value = plate },
+                    new PersistentObjectAttribute { Name = "Model",        Value = "X1" },
+                    new PersistentObjectAttribute { Name = "Year",         Value = 2024 },
+                ],
+            });
+            created.Id.Should().NotBeNullOrEmpty($"admin car create must return id\n--- Fleet log ---\n{_fixture.Host.RecentLog()}");
+            return (client, created.Id!);
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     [Fact]
-    public async Task Update_with_IsReadOnly_attribute_in_body_does_not_modify_field()
+    public async Task Update_with_IsReadOnly_attribute_in_body_does_not_500()
     {
-        await using var pages = new PageFactory(_fixture);
-        var page = await pages.NewPageAsync();
+        var (client, id) = await LoginAndCreateCarAsync();
+        using (client)
+        {
+            // Fleet's default Car schema has no IsReadOnly=true attribute. This test pins
+            // shape: the server must never 500 on such a request. Success (2xx, silently
+            // ignoring the field) or 4xx (explicit rejection) are both acceptable per PRD.
+            var po = await client.GetPersistentObjectAsync(CarTypeId, id);
+            po.Should().NotBeNull();
+            SetAttribute(po!, "LicensePlate", "ROMOD123");
 
-        var (api, id) = await LoginAndCreateCarAsync(page);
-
-        // Send an update that includes an attribute the schema marks IsReadOnly=true.
-        // Fleet's default schema has no IsReadOnly=true attribute on Car, so for this
-        // test to be meaningful the remediation PR must introduce one (e.g. CreatedAt).
-        var putResp = await api.PutJsonAsync(
-            $"/spark/po/Car/{Uri.EscapeDataString(id)}",
-            new
-            {
-                persistentObject = new
-                {
-                    id,
-                    name = "Car",
-                    objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
-                    attributes = new object[]
-                    {
-                        new { name = "LicensePlate", value = "ROMOD123" },
-                        new { name = "Model",        value = "X1" },
-                        new { name = "Year",         value = 2024 },
-                    },
-                },
-            });
-
-        putResp.Status.Should().BeLessThan(500,
-            "update with read-only attribute should produce a 2xx (ignoring the field) or a 4xx (rejecting the request), not 500");
+            // Update succeeds (no read-only field on schema today) → no throw.
+            var saved = await client.UpdatePersistentObjectAsync(po!);
+            saved.Should().NotBeNull();
+        }
     }
 
     [Fact]
     public async Task Update_cannot_escalate_via_unknown_attribute_name()
     {
-        await using var pages = new PageFactory(_fixture);
-        var page = await pages.NewPageAsync();
+        var (client, id) = await LoginAndCreateCarAsync();
+        using (client)
+        {
+            var po = await client.GetPersistentObjectAsync(CarTypeId, id);
+            po.Should().NotBeNull();
 
-        var (api, id) = await LoginAndCreateCarAsync(page);
+            // Smuggle in an attribute that isn't in the Car schema. The framework must
+            // either reject the request (4xx) or silently drop the unknown attribute —
+            // never blindly set it on the entity.
+            po!.Attributes =
+            [
+                .. po.Attributes,
+                new PersistentObjectAttribute { Name = "IsAdmin", Value = true },
+            ];
 
-        // Attempt to set an attribute that isn't in the Car schema at all — e.g. "IsAdmin".
-        // The framework must either reject the request or silently drop the unknown attribute,
-        // never blindly set it on the entity.
-        var putResp = await api.PutJsonAsync(
-            $"/spark/po/Car/{Uri.EscapeDataString(id)}",
-            new
+            try
             {
-                persistentObject = new
-                {
-                    id,
-                    name = "Car",
-                    objectTypeId = "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
-                    attributes = new object[]
-                    {
-                        new { name = "LicensePlate", value = "ROESCL12" },
-                        new { name = "Model",        value = "X1" },
-                        new { name = "Year",         value = 2024 },
-                        new { name = "IsAdmin",      value = true },
-                    },
-                },
-            });
+                await client.UpdatePersistentObjectAsync(po);
+            }
+            catch (SparkClientException ex)
+            {
+                // 4xx is acceptable — explicit rejection of unknown attribute.
+                ((int)ex.StatusCode).Should().BeLessThan(500,
+                    "unknown attributes should surface as 4xx, not 500");
+                return;
+            }
 
-        putResp.Status.Should().BeLessThan(500,
-            "unknown attributes should be rejected (400) or dropped, not cause a server error");
+            // No throw → 2xx path. Re-fetch and assert the rogue field isn't echoed back.
+            var reread = await client.GetPersistentObjectAsync(CarTypeId, id);
+            reread!.Attributes.Should().NotContain(a => a.Name == "IsAdmin",
+                "server must not echo back unknown client-supplied attributes");
+        }
+    }
 
-        // Re-fetch and assert the rogue field isn't echoed back.
-        var getResp = await api.GetAsync($"/spark/po/Car/{Uri.EscapeDataString(id)}");
-        var body = await getResp.TextAsync();
-        body.Should().NotContain("IsAdmin", "server must not echo back unknown client-supplied attributes");
+    private static void SetAttribute(PersistentObject po, string name, object value)
+    {
+        var attr = po.Attributes.FirstOrDefault(a => a.Name == name)
+            ?? throw new InvalidOperationException($"Attribute '{name}' not on PO '{po.Id}'.");
+        attr.Value = value;
     }
 }
