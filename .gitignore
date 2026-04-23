@@ -5,6 +5,7 @@
 
 # Nx cache + build metadata
 .nx/
+.angular/
 out-tsc/
 *.tsbuildinfo
 
