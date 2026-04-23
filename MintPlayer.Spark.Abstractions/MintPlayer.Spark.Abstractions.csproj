@@ -19,5 +19,11 @@
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Authorization" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.E2E.Tests" />
+	</ItemGroup>
 
 </Project>

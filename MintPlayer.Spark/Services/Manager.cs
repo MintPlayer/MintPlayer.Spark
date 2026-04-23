@@ -15,13 +15,15 @@ internal sealed partial class Manager : IManager
 
     public PersistentObject NewPersistentObject(string name, params PersistentObjectAttribute[] attributes)
     {
-        return new PersistentObject
+        var po = new PersistentObject
         {
             Id = null,
             Name = name,
             ObjectTypeId = Guid.Empty,
-            Attributes = attributes,
         };
+        foreach (var attr in attributes)
+            po.AddAttribute(attr);
+        return po;
     }
 
     public string GetTranslatedMessage(string key, params object[] parameters)

@@ -102,14 +102,22 @@ public static class PersistentObjectExtensions
         var entityType = typeof(T);
         var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
 
-        var attributes = new List<PersistentObjectAttribute>();
+        var displayName = GetEntityDisplayName(entity, entityType);
+        var po = new PersistentObject
+        {
+            Id = idProperty?.GetValue(entity)?.ToString(),
+            Name = displayName,
+            Breadcrumb = displayName,
+            ObjectTypeId = objectTypeId,
+        };
+
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.Name != "Id" && p.CanRead);
 
         foreach (var property in properties)
         {
             var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
-            attributes.Add(new PersistentObjectAttribute
+            po.AddAttribute(new PersistentObjectAttribute
             {
                 Name = property.Name,
                 Value = property.GetValue(entity),
@@ -118,16 +126,7 @@ public static class PersistentObjectExtensions
             });
         }
 
-        var displayName = GetEntityDisplayName(entity, entityType);
-
-        return new PersistentObject
-        {
-            Id = idProperty?.GetValue(entity)?.ToString(),
-            Name = displayName,
-            Breadcrumb = displayName,
-            ObjectTypeId = objectTypeId,
-            Attributes = attributes.ToArray()
-        };
+        return po;
     }
 
     private static void SetPropertyValue(PropertyInfo property, object entity, object? value)

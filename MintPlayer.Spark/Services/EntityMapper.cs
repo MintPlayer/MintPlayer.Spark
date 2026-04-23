@@ -61,7 +61,14 @@ internal partial class EntityMapper : IEntityMapper
         // Get the entity type definition for attribute metadata
         var entityTypeDef = modelLoader.GetEntityType(objectTypeId);
 
-        var attributes = new List<PersistentObjectAttribute>();
+        var displayName = GetEntityDisplayName(entity, entityType, entityTypeDef);
+        var po = new PersistentObject
+        {
+            Id = id,
+            Name = displayName,
+            Breadcrumb = displayName,
+            ObjectTypeId = objectTypeId,
+        };
 
         // Iterate over the entity type definition's attributes (merged from collection + projection types)
         // This ensures all attributes are included even if the entity doesn't have all properties
@@ -143,18 +150,11 @@ internal partial class EntityMapper : IEntityMapper
                     attribute.Query = attrDef.Query;
                 }
 
-                attributes.Add(attribute);
+                po.AddAttribute(attribute);
             }
         }
 
-        return new PersistentObject
-        {
-            Id = id,
-            Name = GetEntityDisplayName(entity, entityType, entityTypeDef),
-            Breadcrumb = GetEntityDisplayName(entity, entityType, entityTypeDef),
-            ObjectTypeId = objectTypeId,
-            Attributes = attributes.ToArray(),
-        };
+        return po;
     }
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
