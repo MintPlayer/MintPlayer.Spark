@@ -93,6 +93,8 @@ touch references (or that pre-loaded the referenced documents via
 
 **Extension cleanup** — delete `PersistentObjectExtensions.PopulateObjectValues<T>` and `ToEntity<T>` after migrating callers to `IEntityMapper` (same pattern as PR #125's deletion of the forward extensions). Note: internal `SetPropertyValue` in `EntityMapper.cs` is the existing source of truth for per-property coercion — enhance it with `TranslatedString` + reference branches, keep as the single coercion site.
 
+**Save-flow change** — the merge behavior only takes effect if the save flow stops discarding the existing entity. Today `DefaultPersistentObjectActions<T>.OnSaveAsync` always does `entityMapper.ToEntity<T>(obj)` (brand-new instance, populated from PO, stored — wipes every field not carried on the PO). The inverse PRD flips it: on update (non-empty `obj.Id`), `session.LoadAsync<T>(obj.Id)` + `entityMapper.PopulateObjectValuesAsync(obj, existing, session)` so server-managed metadata (e.g. `CreatedBy`) and untouched `TranslatedString` languages survive. Create (empty Id) still goes through `ToEntity`. This is the end-to-end hook that makes the HR/Fleet merge E2E pass; unit tests alone would pass without this change.
+
 ### Acceptance criteria
 
 **Unit-level**
@@ -101,14 +103,15 @@ touch references (or that pre-loaded the referenced documents via
 - [ ] Reference attributes (`DataType == "Reference"` with `Value` = refId string): `session.LoadAsync<T>(refId)` resolves the referenced entity and assigns it to the property. Null-or-empty refId assigns null.
 - [ ] `TranslatedString` attributes: incoming language dict merges with existing entity value (no lost translations on partial updates).
 - [ ] `Guid` / `DateTime` / `DateOnly` / `Color` / enum coercion preserved (parity with existing `SetPropertyValue`).
-- [ ] The sync `PopulateObjectValues` overload works identically for non-Reference attributes; throws `InvalidOperationException` if called on a PO containing Reference attributes (avoid silent data loss).
+- [ ] The sync `PopulateObjectValues` overload works identically for non-Reference attributes AND for Reference attributes targeting string-typed CLR properties (the Spark convention — refId passes through as-is). It throws `InvalidOperationException` only when a Reference attribute targets a complex-typed CLR property (e.g. `public Person Manager`) AND the referenced document wasn't pre-loaded via `includedDocuments` — failing loud instead of silently dropping the reference.
 - [ ] `PersistentObjectExtensions.PopulateObjectValues<T>` and `ToEntity<T>` deleted; remaining framework call sites updated to inject `IEntityMapper`.
+- [ ] `DefaultPersistentObjectActions<T>.OnSaveAsync` uses the load-existing-then-populate flow for updates (non-empty `obj.Id`); fields absent from the incoming PO survive.
 - [ ] Unit tests in `MintPlayer.Spark.Tests/EntityMapperInverseTests.cs` (new file): reference resolution (existing + missing), TranslatedString merge (new + preserved), enum/Color/DateOnly coercion, dot-notation skip, concurrency-etag propagation.
 
 **Live / E2E scenarios** (so behavior can actually be verified against a running server)
 
 - [ ] **Fleet reference-attribute round-trip**: Fleet's `Car` has no reference attribute today — extend `Demo/Fleet/Fleet/App_Data/Model/Car.json` with a `Manager` reference to `Person` (or reuse an existing Fleet reference if one lands before this work). Add `MintPlayer.Spark.E2E.Tests/Mapper/ReferenceRoundTripTests.cs` driving the scenario via `SparkClient`: (1) create Car with `Manager = people/alice`, (2) re-fetch, assert Manager breadcrumb shows "Alice", (3) update Manager to `people/bob`, (4) re-fetch, assert Manager breadcrumb shows "Bob". Fails today because the inverse path doesn't resolve references.
-- [ ] **HR TranslatedString merge round-trip**: `Demo/HR/HR/App_Data/Model/Profession.json` declares a `Label` or `Description` field typed as `TranslatedString` (if it doesn't, add one). E2E test: create Profession with `{"en": "Doctor", "fr": "Médecin"}`, PATCH-style update carrying only `{"en": "Physician"}`, re-fetch, assert `fr` entry is still `"Médecin"` and `en` is `"Physician"`. This is the partial-update-preservation behavior.
+- [ ] **TranslatedString merge round-trip**: originally planned against HR's `Profession`, but §2 owns the HR host-fixture work — until then the scenario rides on Fleet's `Car.Description` (new `TranslatedString?` field + matching `Demo/Fleet/Fleet/App_Data/Model/Car.json` entry). `MintPlayer.Spark.E2E.Tests/Mapper/TranslatedStringMergeTests.cs` exercises the behavior: create Car with `{en,fr,nl}`, PATCH-style update carrying only `{en}`, re-fetch, assert `fr` + `nl` survive and `en` reflects the new value. Once §2 lands `HrE2ECollection`, consider porting the scenario onto HR's `Profession`/`Person` for closer PRD parity.
 - [ ] **Manual smoke test (browser)**: start Fleet demo via `npm run start` inside `Demo/Fleet/Fleet/ClientApp`, create a Car that references a Person, edit it, save, reload the page — the reference should survive and render with the right breadcrumb. Put a `dotnet run` + `npm run start` quickstart note in the PR description so reviewers can repeat.
 
 ### Estimated size
@@ -119,12 +122,12 @@ Medium. ~200 lines of production code (mapper changes) + ~150 lines of unit test
 
 - `MintPlayer.Spark.Abstractions/IManager.cs` — NO changes (inverse is mapper-scope, not user-facing)
 - `MintPlayer.Spark/Services/EntityMapper.cs` — add new methods + helper enhancements
+- `MintPlayer.Spark/Actions/DefaultPersistentObjectActions.cs` — switch the update branch of `OnSaveAsync` to load-then-populate
 - `MintPlayer.Spark/Extensions/PersistentObjectExtensions.cs` — delete `PopulateObjectValues<T>` + `ToEntity<T>`, prune orphaned helpers
 - `MintPlayer.Spark.Tests/EntityMapperInverseTests.cs` — new unit-test file (or extend `EntityMapperFactoryTests`)
-- `MintPlayer.Spark.E2E.Tests/Mapper/ReferenceRoundTripTests.cs` — new E2E file for the Fleet scenario
-- `MintPlayer.Spark.E2E.Tests/Mapper/TranslatedStringMergeTests.cs` — new E2E file for the HR scenario
-- `Demo/Fleet/Fleet/App_Data/Model/Car.json` — add the Manager reference attribute if not already present (plus matching CLR property on the `Car` entity)
-- `Demo/HR/HR/App_Data/Model/Profession.json` — ensure it has a `TranslatedString` field for the merge scenario (plus matching CLR property)
+- `MintPlayer.Spark.E2E.Tests/Mapper/ReferenceRoundTripTests.cs` — new E2E file for the Fleet reference scenario
+- `MintPlayer.Spark.E2E.Tests/Mapper/TranslatedStringMergeTests.cs` — new E2E file for the merge scenario (Fleet `Car.Description` until §2 lands HR)
+- `Demo/Fleet/Fleet/App_Data/Model/Car.json` — add Manager reference + Description (`TranslatedString`) attributes (plus matching CLR properties)
 
 ---
 
@@ -359,7 +362,7 @@ Small. ~50 lines of diff across maybe 10 files — mostly mechanical. Single-com
 
 - **Every item ships with a live-test scenario**, not just unit tests. Each §1–§5 acceptance list has a "Live / E2E scenarios" subsection calling out the demo-app / E2E changes needed so the behavior can be verified end-to-end against a running server (or browser). Don't ship any of the five with unit tests alone.
 - **Demo-app coverage matrix** — these are the demos each item leans on:
-  - §1 (inverse populate): Fleet for reference-round-trip, HR for TranslatedString merge
+  - §1 (inverse populate): Fleet for both the reference-round-trip and (pragmatically) the TranslatedString merge — HR targeting was deferred into §2 so §1 could ship without the HR host-fixture work
   - §2 (AsDetail): HR (`Person.Address`, `Person.CarreerJobs[]`) — adds an `HrE2ECollection` fixture paired with the existing `FleetE2ECollection`
   - §3 (modal form): Fleet — adds a `ConfirmDeleteCar` Virtual PO + a delete-confirmation flow
   - §4 (CustomAction builder): TBD with CustomActions PRD — pick the demo that fits the chosen worked example

@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using Raven.Client.Documents.Session;
 using System.Drawing;
 using System.Reflection;
 using System.Text.Json;
@@ -67,6 +68,35 @@ public interface IEntityMapper
     /// (DatabaseAccess, QueryExecutor) continue to use the non-generic overload.
     /// </summary>
     PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
+
+    /// <summary>
+    /// Populates <paramref name="entity"/> in-place from <paramref name="po"/>'s attribute
+    /// values. Entity properties whose name is absent from the PO's attributes are left
+    /// untouched — which is what enables PATCH-style updates (load-existing then merge
+    /// incoming values; fields not on the PO survive).
+    /// <list type="bullet">
+    ///   <item>Dot-notation attribute names are skipped (reserved for nested AsDetail).</item>
+    ///   <item><see cref="TranslatedString"/> properties merge per-language — languages on
+    ///   the existing entity but absent from the incoming dict survive.</item>
+    ///   <item>Reference attributes whose CLR property targets a complex entity type are
+    ///   resolved via <paramref name="session"/>.LoadAsync. String-typed reference properties
+    ///   get the refId written through directly (no resolution required).</item>
+    ///   <item>Guid / DateTime / DateOnly / Color / enum coercion via the canonical path.</item>
+    /// </list>
+    /// </summary>
+    Task PopulateObjectValuesAsync(PersistentObject po, object entity,
+        IAsyncDocumentSession? session = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sync counterpart of <see cref="PopulateObjectValuesAsync"/>. Uses
+    /// <paramref name="includedDocuments"/> (same pre-load shape as the forward path) to
+    /// resolve complex-typed Reference attributes. Throws <see cref="InvalidOperationException"/>
+    /// when a Reference attribute targets a complex-typed CLR property and the referenced
+    /// document is not present in the dict — failing loud avoids silent data loss.
+    /// String-typed reference properties need no resolution and always work here.
+    /// </summary>
+    void PopulateObjectValues(PersistentObject po, object entity,
+        Dictionary<string, object>? includedDocuments = null);
 }
 
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped)]
@@ -283,6 +313,222 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         return raw;
+    }
+
+    public async Task PopulateObjectValuesAsync(PersistentObject po, object entity,
+        IAsyncDocumentSession? session = null, CancellationToken cancellationToken = default)
+    {
+        var entityType = entity.GetType();
+
+        TryWriteId(entityType, entity, po.Id);
+
+        foreach (var attribute in po.Attributes)
+        {
+            if (attribute.Name.Contains('.'))
+                continue;
+
+            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            if (property is null || !property.CanWrite)
+                continue;
+
+            await WritePropertyAsync(property, entity, attribute, session, includedDocuments: null, cancellationToken);
+        }
+    }
+
+    public void PopulateObjectValues(PersistentObject po, object entity,
+        Dictionary<string, object>? includedDocuments = null)
+    {
+        var entityType = entity.GetType();
+
+        TryWriteId(entityType, entity, po.Id);
+
+        foreach (var attribute in po.Attributes)
+        {
+            if (attribute.Name.Contains('.'))
+                continue;
+
+            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            if (property is null || !property.CanWrite)
+                continue;
+
+            // Sync path: delegate to the async core with a null session. Complex-typed
+            // References that can't resolve from includedDocuments throw synchronously
+            // before any await point, so GetAwaiter().GetResult() won't deadlock.
+            WritePropertyAsync(property, entity, attribute, session: null, includedDocuments, CancellationToken.None)
+                .GetAwaiter().GetResult();
+        }
+    }
+
+    private void TryWriteId(Type entityType, object entity, string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        if (idProperty is null || !idProperty.CanWrite) return;
+        SetPropertyValue(idProperty, entity, id);
+    }
+
+    private async Task WritePropertyAsync(PropertyInfo property, object entity,
+        PersistentObjectAttribute attribute, IAsyncDocumentSession? session,
+        Dictionary<string, object>? includedDocuments, CancellationToken cancellationToken)
+    {
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        // TranslatedString merge — per-language overlay so partial updates don't drop
+        // translations the client didn't send.
+        if (targetType == typeof(TranslatedString))
+        {
+            MergeTranslatedString(property, entity, attribute.Value);
+            return;
+        }
+
+        // Reference attributes pointing at a complex entity type need resolution to
+        // an actual entity instance. String-typed reference properties fall through
+        // to the generic coercion path below — the refId is written as-is.
+        if (attribute.DataType == "Reference"
+            && targetType != typeof(string)
+            && IsComplexType(targetType))
+        {
+            var refId = ExtractReferenceId(attribute.Value);
+            if (string.IsNullOrEmpty(refId))
+            {
+                property.SetValue(entity, null);
+                return;
+            }
+
+            if (includedDocuments is not null && includedDocuments.TryGetValue(refId, out var preloaded))
+            {
+                property.SetValue(entity, preloaded);
+                return;
+            }
+
+            if (session is not null)
+            {
+                var loaded = await LoadReferenceAsync(session, targetType, refId, cancellationToken);
+                property.SetValue(entity, loaded);
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"PopulateObjectValues: reference attribute '{attribute.Name}' targets complex CLR type " +
+                $"'{targetType.FullName}' and refId '{refId}' could not be resolved. " +
+                "Pass a session to PopulateObjectValuesAsync, or pre-load the referenced document and " +
+                "hand it in via includedDocuments.");
+        }
+
+        SetPropertyValue(property, entity, attribute.Value);
+    }
+
+    private static void MergeTranslatedString(PropertyInfo property, object entity, object? raw)
+    {
+        var incoming = ParseTranslatedString(raw);
+
+        if (incoming is null)
+        {
+            // Explicit null / empty incoming clears the property — matches "write null to erase".
+            property.SetValue(entity, null);
+            return;
+        }
+
+        var existing = property.GetValue(entity) as TranslatedString;
+        if (existing is null)
+        {
+            property.SetValue(entity, incoming);
+            return;
+        }
+
+        // Merge: incoming languages overwrite; languages absent from the incoming dict
+        // survive on the existing entity.
+        foreach (var (lang, value) in incoming.Translations)
+            existing.Translations[lang] = value;
+    }
+
+    private static TranslatedString? ParseTranslatedString(object? raw)
+    {
+        if (raw is null) return null;
+        if (raw is TranslatedString ts) return ts;
+
+        if (raw is JsonElement je)
+        {
+            if (je.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+            if (je.ValueKind == JsonValueKind.Object)
+            {
+                var parsed = new TranslatedString();
+                foreach (var prop in je.EnumerateObject())
+                {
+                    var text = prop.Value.ValueKind == JsonValueKind.String
+                        ? prop.Value.GetString()
+                        : prop.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+                            ? null
+                            : prop.Value.ToString();
+                    if (text is not null) parsed.Translations[prop.Name] = text;
+                }
+                return parsed.Translations.Count == 0 ? null : parsed;
+            }
+            return null;
+        }
+
+        if (raw is IDictionary<string, string> stringDict)
+        {
+            if (stringDict.Count == 0) return null;
+            var parsed = new TranslatedString();
+            foreach (var (k, v) in stringDict) parsed.Translations[k] = v;
+            return parsed;
+        }
+
+        if (raw is IDictionary<string, object?> objDict)
+        {
+            var parsed = new TranslatedString();
+            foreach (var (k, v) in objDict)
+            {
+                if (v is null) continue;
+                parsed.Translations[k] = v is string s ? s : v.ToString()!;
+            }
+            return parsed.Translations.Count == 0 ? null : parsed;
+        }
+
+        if (raw is string json && !string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                return ParseTranslatedString(doc.RootElement.Clone());
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ExtractReferenceId(object? value)
+    {
+        if (value is null) return null;
+        if (value is string s) return string.IsNullOrEmpty(s) ? null : s;
+        if (value is JsonElement je)
+        {
+            return je.ValueKind switch
+            {
+                JsonValueKind.String => je.GetString(),
+                JsonValueKind.Null or JsonValueKind.Undefined => null,
+                _ => je.ToString(),
+            };
+        }
+        return value.ToString();
+    }
+
+    private static async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
+        Type targetType, string refId, CancellationToken cancellationToken)
+    {
+        var method = typeof(IAsyncDocumentSession).GetMethod(
+            nameof(IAsyncDocumentSession.LoadAsync),
+            [typeof(string), typeof(CancellationToken)])
+            ?? throw new InvalidOperationException("Could not resolve IAsyncDocumentSession.LoadAsync<T>(string, CancellationToken).");
+        var generic = method.MakeGenericMethod(targetType);
+        var task = (Task)generic.Invoke(session, [refId, cancellationToken])!;
+        await task.ConfigureAwait(false);
+        return task.GetType().GetProperty("Result")?.GetValue(task);
     }
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
