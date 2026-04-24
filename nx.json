@@ -31,6 +31,16 @@
       "inputs": [
         "production",
         "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/bin",
+        "{projectRoot}/obj"
+      ]
+    },
+    "build:release": {
+      "outputs": [
+        "{projectRoot}/bin",
+        "{projectRoot}/obj"
       ]
     },
     "test": {
