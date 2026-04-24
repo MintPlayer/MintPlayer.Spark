@@ -12,10 +12,18 @@
       }
     },
     "build": {
+      "executor": "@nx/angular:package",
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "project": "node_packages/ng-spark-auth/ng-package.json"
+      }
+    },
+    "watch": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "ng-packagr -p ng-package.json",
-        "cwd": "node_packages/ng-spark-auth"
+        "command": "ng-packagr -p ng-package.json --watch",
+        "cwd": "node_packages/ng-spark-auth",
+        "forwardAllArgs": false
       }
     }
   }

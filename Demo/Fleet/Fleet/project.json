@@ -1,0 +1,5 @@
+{
+  "name": "Fleet",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "implicitDependencies": ["@spark-demo/fleet-demo"]
+}

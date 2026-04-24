@@ -1,0 +1,67 @@
+{
+  "name": "@spark-demo/hr-demo",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "Demo/HR/HR/ClientApp",
+  "sourceRoot": "Demo/HR/HR/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": ["{workspaceRoot}/Demo/HR/HR/ClientApp/dist/ClientApp"],
+      "options": {
+        "outputPath": "Demo/HR/HR/ClientApp/dist/ClientApp",
+        "browser": "Demo/HR/HR/ClientApp/src/main.ts",
+        "tsConfig": "Demo/HR/HR/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "Demo/HR/HR/ClientApp/public"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "Demo/HR/HR/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
+            { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-demo/hr-demo:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-demo/hr-demo:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    }
+  }
+}

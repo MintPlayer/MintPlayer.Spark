@@ -149,32 +149,52 @@ MintPlayer.Spark/
 
 ### Building the Project
 
+The repo is an **Nx 22 workspace** spanning all .NET and Angular projects. Task graph and caching work across both stacks.
+
 ```bash
 # Clone the repository
 git clone https://github.com/MintPlayer/MintPlayer.Spark.git
 cd MintPlayer.Spark
 
-# Build the solution
-dotnet build MintPlayer.Spark.sln
-
-# Build the Angular frontend
-cd Demo/DemoApp/ClientApp
+# Install JS dependencies (once; npm workspaces for all ClientApps and libraries)
 npm install
-npm run build
+
+# Build everything the Nx graph knows about (.NET + Angular, cached)
+npx nx run-many -t build
+
+# Or just what's changed since the last green main
+npx nx affected -t build
+```
+
+Individual projects:
+
+```bash
+# Build a specific .csproj
+npx nx build Fleet
+
+# Build an Angular library (ng-packagr)
+npx nx build @mintplayer/ng-spark
+
+# Visualize the graph
+npx nx graph
 ```
 
 ### Running the Demo Application
+
+F5 from Visual Studio or plain `dotnet run` still works — each demo's `Program.cs` uses `MintPlayer.AspNetCore.SpaServices.UseAngularCliServer`, which spawns `npm run start` in `ClientApp/`. That script now delegates to `nx run <app>:serve`, so Nx orchestrates the dev-server behind the scenes:
 
 ```bash
 # Start RavenDB (using Docker)
 docker run -d -p 8080:8080 -e RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork ravendb/ravendb
 
 # Run the demo application
-cd Demo/DemoApp
+cd Demo/DemoApp/DemoApp
 dotnet run
 ```
 
 The application will be available at `https://localhost:5001`.
+
+**Library HMR:** edit any file under `node_packages/ng-spark/src/**` or `node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
 
 ### Model Synchronization
 

@@ -1,15 +1,20 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "defaultBase": "master",
-  "plugins": ["@nx-dotnet/core"],
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
     "production": [
       "default",
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/**/*.test.ts",
       "!{projectRoot}/**/vitest.config.ts",
-      "!{projectRoot}/**/tsconfig.spec.json"
+      "!{projectRoot}/**/tsconfig.spec.json",
+      "!{projectRoot}/**/*.Tests/**/*",
+      "!{projectRoot}/**/bin/**/*",
+      "!{projectRoot}/**/obj/**/*"
     ],
     "sharedGlobals": [
       "{workspaceRoot}/tsconfig.base.json",
@@ -18,21 +23,42 @@
     ]
   },
   "targetDefaults": {
-    "test": {
-      "inputs": ["default", "^production"],
-      "cache": true,
-      "outputs": ["{projectRoot}/coverage"]
-    },
-    "@nx-dotnet/core:test": {
-      "options": {
-        "collect": "XPlat Code Coverage",
-        "resultsDirectory": "coverage"
-      }
-    },
     "build": {
-      "inputs": ["production", "^production"],
-      "cache": true
+      "cache": true,
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/bin",
+        "{projectRoot}/obj"
+      ]
+    },
+    "build:release": {
+      "outputs": [
+        "{projectRoot}/bin",
+        "{projectRoot}/obj"
+      ]
+    },
+    "test": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/coverage"
+      ]
+    },
+    "serve": {
+      "dependsOn": []
     }
   },
-  "parallel": 3
+  "parallel": 3,
+  "plugins": [
+    "@nx/dotnet"
+  ]
 }

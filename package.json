@@ -5,8 +5,8 @@
     "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
     "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
     "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
-    "test:affected": "nx affected --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library",
-    "test": "nx run-many --target=test --exclude=@spark-demo/*,DemoApp,DemoApp.Library,Fleet,Fleet.Library,HR,HR.Library,WebhooksDemo,WebhooksDemo.Library"
+    "test:affected": "nx affected --target=test",
+    "test": "nx run-many --target=test"
   },
   "workspaces": [
     "node_packages/ng-spark",
@@ -45,16 +45,18 @@
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "^2.4.8",
     "@analogjs/vitest-angular": "^2.4.8",
+    "@angular-devkit/build-angular": "^21.2.8",
     "@angular/build": "21.1.5",
     "@angular/cli": "21.1.5",
     "@angular/compiler-cli": "21.1.6",
-    "@nx-dotnet/core": "^3.0.2",
+    "@nx/angular": "22.6.5",
+    "@nx/dotnet": "^22.6.5",
+    "@vitest/coverage-v8": "4.0.16",
     "jsdom": "27.3.0",
     "ng-packagr": "21.1.0",
-    "nx": "^20.8.4",
+    "nx": "22.6.5",
     "typescript": "5.9.3",
-    "vitest": "4.0.16",
-    "@vitest/coverage-v8": "4.0.16"
+    "vitest": "4.0.16"
   },
   "overrides": {
     "@angular/core": "21.1.6",
