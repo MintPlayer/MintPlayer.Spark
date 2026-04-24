@@ -27,7 +27,7 @@ public class ExecuteCustomActionTests
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
-    private readonly RetryAccessor _retryAccessor = new();
+    private readonly RetryAccessor _retryAccessor = new(new ClientAccessor());
 
     private static readonly EntityTypeDefinition CarType = new()
     {

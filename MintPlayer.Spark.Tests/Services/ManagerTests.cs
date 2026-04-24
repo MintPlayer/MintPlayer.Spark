@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientInstructions;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Services;
 using NSubstitute;
@@ -9,11 +10,12 @@ namespace MintPlayer.Spark.Tests.Services;
 public class ManagerTests
 {
     private readonly IRetryAccessor _retry = Substitute.For<IRetryAccessor>();
+    private readonly IClientAccessor _client = Substitute.For<IClientAccessor>();
     private readonly ITranslationsLoader _translations = Substitute.For<ITranslationsLoader>();
     private readonly IRequestCultureResolver _culture = Substitute.For<IRequestCultureResolver>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
 
-    private Manager CreateManager() => new(_retry, _translations, _culture, _entityMapper);
+    private Manager CreateManager() => new(_retry, _client, _translations, _culture, _entityMapper);
 
     [Fact]
     public void GetPersistentObject_ByName_ForwardsToEntityMapper()
