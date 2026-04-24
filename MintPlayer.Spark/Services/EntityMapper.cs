@@ -19,14 +19,14 @@ public interface IEntityMapper
     /// Value = null, Parent set. Throws <see cref="KeyNotFoundException"/> on unknown
     /// or ambiguous name.
     /// </summary>
-    PersistentObject NewPersistentObject(string name);
+    PersistentObject GetPersistentObject(string name);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject by ObjectTypeId. Preferred over the name
     /// overload for apps that declare entities across multiple database schemas,
     /// since IDs are unambiguous by construction.
     /// </summary>
-    PersistentObject NewPersistentObject(Guid id);
+    PersistentObject GetPersistentObject(Guid id);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject for <typeparamref name="T"/>, resolving the
@@ -34,7 +34,7 @@ public interface IEntityMapper
     /// <see cref="KeyNotFoundException"/> when no entity type is registered under
     /// <c>typeof(T).FullName</c>.
     /// </summary>
-    PersistentObject NewPersistentObject<T>() where T : class;
+    PersistentObject GetPersistentObject<T>() where T : class;
 
     /// <summary>
     /// Fills <paramref name="po"/> with values reflected from <paramref name="entity"/>:
@@ -55,7 +55,7 @@ public interface IEntityMapper
     void PopulateAttributeValues<T>(PersistentObject po, T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
 
     /// <summary>
-    /// Convenience wrapper: <see cref="NewPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
+    /// Convenience wrapper: <see cref="GetPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
     /// Existing call sites (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) keep this signature.
     /// </summary>
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
@@ -126,21 +126,21 @@ internal partial class EntityMapper : IEntityMapper
         return entity;
     }
 
-    public PersistentObject NewPersistentObject(string name)
+    public PersistentObject GetPersistentObject(string name)
     {
         var def = modelLoader.GetEntityTypeByName(name)
             ?? throw new KeyNotFoundException($"No entity type with Name '{name}' is registered.");
         return ScaffoldFrom(def);
     }
 
-    public PersistentObject NewPersistentObject(Guid id)
+    public PersistentObject GetPersistentObject(Guid id)
     {
         var def = modelLoader.GetEntityType(id)
             ?? throw new KeyNotFoundException($"No entity type with ObjectTypeId '{id}' is registered.");
         return ScaffoldFrom(def);
     }
 
-    public PersistentObject NewPersistentObject<T>() where T : class
+    public PersistentObject GetPersistentObject<T>() where T : class
         => ScaffoldFrom(ResolveDefByClrType(typeof(T)));
 
     public PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class
@@ -315,7 +315,7 @@ internal partial class EntityMapper : IEntityMapper
 
     /// <summary>
     /// Builds a scaffold PO (metadata only, values null) from an entity type definition.
-    /// Shared by <see cref="NewPersistentObject(string)"/>, <see cref="NewPersistentObject(Guid)"/>,
+    /// Shared by <see cref="GetPersistentObject(string)"/>, <see cref="GetPersistentObject(Guid)"/>,
     /// and <see cref="ToPersistentObject(object, Guid, Dictionary{string, object}?)"/>.
     /// Recurses through AsDetail attributes: for single AsDetail, the nested child PO is
     /// pre-scaffolded so UIs render an empty-but-structured form; for array AsDetail,

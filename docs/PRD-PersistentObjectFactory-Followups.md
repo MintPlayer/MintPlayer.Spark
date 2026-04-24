@@ -317,6 +317,8 @@ Unknown until scope is locked with the CustomActions PRD.
 
 ## 5. Rename `NewPersistentObject` → `GetPersistentObject`
 
+> **Status: Shipped.** Executed via `refactor/get-persistent-object-rename`; scoped in [`docs/PRD-PersistentObjectFactory-Followups-II.md`](./PRD-PersistentObjectFactory-Followups-II.md) §2. The section below is preserved as a historical record of the planned scope — the codebase now uses `GetPersistentObject` everywhere.
+
 ### Why deferred
 
 Parent PRD's "Out of scope":

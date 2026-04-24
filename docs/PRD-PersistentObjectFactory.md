@@ -46,7 +46,7 @@ Vidyano solved (1)–(3) with `Manager.Current.GetPersistentObject(Types.Foo)`,
 scaffold the PO (metadata only) via `GetPersistentObject`, then fill values
 via `po.PopulateAttributeValues(entity)`. Spark already has the
 `PersistentObjectNames.Foo` generator output, a stub
-`IManager.NewPersistentObject(...)` method with zero callers, and a weak
+`IManager.GetPersistentObject(...)` method with zero callers, and a weak
 `PopulateAttributeValues<T>` extension method. This PRD wires them together
 and promotes the scaffold-then-populate model to the framework's canonical
 entity→PO conversion path — replacing `EntityMapper.ToPersistentObject`,
@@ -55,7 +55,7 @@ entity→PO conversion path — replacing `EntityMapper.ToPersistentObject`,
 
 ## Goals
 
-- `manager.NewPersistentObject(PersistentObjectNames.Foo)` returns a fully
+- `manager.GetPersistentObject(PersistentObjectNames.Foo)` returns a fully
   schema-backed, blank PersistentObject — `ObjectTypeId`, every declared
   attribute with correct `DataType` / `Label` / `Rules` / `Renderer` /
   `ShowedOn` / `Order` / `Group` / `IsRequired` / `IsVisible` / `IsReadOnly` /
@@ -65,7 +65,7 @@ entity→PO conversion path — replacing `EntityMapper.ToPersistentObject`,
   (enum→string, `Color`→hex, `AsDetail`→dictionary), resolves Reference
   breadcrumbs, and sets `Id` / `Name` / `Breadcrumb` on the PO. Schema-aware.
 - `EntityMapper.ToPersistentObject` becomes a thin wrapper: scaffold via
-  `NewPersistentObject`, populate via `PopulateAttributeValues`. Its call sites
+  `GetPersistentObject`, populate via `PopulateAttributeValues`. Its call sites
   stop changing.
 - `SyncActionHandler.BuildPersistentObject` migrates to the same pattern with
   an extra `IsValueChanged` overlay from the incoming `properties[]` array.
@@ -79,13 +79,13 @@ entity→PO conversion path — replacing `EntityMapper.ToPersistentObject`,
   `Parent` back-reference.
 - Popup / dialog POs that don't correspond to a CLR entity are declared as
   **Virtual POs** in JSON — no separate code path, no
-  `ObjectTypeId == Guid.Empty` fallback. The same `NewPersistentObject(name)`
-  / `NewPersistentObject(Guid)` factory handles entity-backed and virtual
+  `ObjectTypeId == Guid.Empty` fallback. The same `GetPersistentObject(name)`
+  / `GetPersistentObject(Guid)` factory handles entity-backed and virtual
   POs identically.
 - The source generator emits a sibling `PersistentObjectIds` class —
   nested static classes per database schema, each holding
   `const string` Guid values — so apps with cross-schema name collisions
-  can disambiguate via `manager.NewPersistentObject(Guid)`.
+  can disambiguate via `manager.GetPersistentObject(Guid)`.
 - The three half-baked extension methods (`ToPersistentObject<T>`,
   `PopulateAttributeValues<T>`, `PopulateObjectValues<T>`) in
   `PersistentObjectExtensions.cs` are either deleted or rewritten to delegate
@@ -116,8 +116,8 @@ entity→PO conversion path — replacing `EntityMapper.ToPersistentObject`,
 
 | Piece | Location | Status |
 |---|---|---|
-| `IManager.NewPersistentObject(name, params attrs)` | `MintPlayer.Spark.Abstractions/IManager.cs` | Exists, trivial wrapper, zero callers |
-| `Manager.NewPersistentObject` impl | `MintPlayer.Spark/Services/Manager.cs:16` | Returns `new PersistentObject { ObjectTypeId = Guid.Empty, Attributes = attributes }` — not schema aware |
+| `IManager.GetPersistentObject(name, params attrs)` | `MintPlayer.Spark.Abstractions/IManager.cs` | Exists, trivial wrapper, zero callers |
+| `Manager.GetPersistentObject` impl | `MintPlayer.Spark/Services/Manager.cs:16` | Returns `new PersistentObject { ObjectTypeId = Guid.Empty, Attributes = attributes }` — not schema aware |
 | `IModelLoader` singleton with `GetEntityTypeByName` / `GetEntityTypeByClrType` / `ResolveEntityType` | `MintPlayer.Spark/Services/ModelLoader.cs` | Already loads every `App_Data/Model/*.json` lazily |
 | `EntityTypeDefinition.Attributes` (`EntityAttributeDefinition[]`) | `MintPlayer.Spark.Abstractions/EntityTypeDefinition.cs` | Full attribute schema, loaded from JSON |
 | `EntityMapper.ToPersistentObject` (schema-aware entity→PO) | `MintPlayer.Spark/Services/EntityMapper.cs:55-158` | Copies 14 metadata fields inline per attribute, does enum/Color/AsDetail value conversions, resolves Reference breadcrumbs. 6 callers (DatabaseAccess×2, QueryExecutor×2, StreamingQueryExecutor×1, PersistentObjectExtensions×1). |
@@ -164,7 +164,7 @@ actual conversions baked in.
 Both types remain sealed and wire-compatible. Key invariant: **every
 attribute belongs to exactly one PO for its entire lifetime**. No public
 `Attach` / `Detach` surface — attributes are constructed already-owned, via
-scaffold (`NewPersistentObject`), clone (`attribute.CloneAndAdd`), or
+scaffold (`GetPersistentObject`), clone (`attribute.CloneAndAdd`), or
 deserialization.
 
 ```csharp
@@ -210,7 +210,7 @@ public sealed class PersistentObjectAttribute
 
 **How `Parent` gets set** — three paths, all framework-internal:
 
-- `EntityMapper.NewPersistentObject(name)` — per-schema-attribute
+- `EntityMapper.GetPersistentObject(name)` — per-schema-attribute
   construction calls `po.AddAttribute(attr)`.
 - `attribute.CloneAndAdd(name, label?)` — reads `this.Parent`, builds the
   clone, calls `Parent.AddAttribute(clone)`.
@@ -241,17 +241,17 @@ public interface IManager
     // if the name is unknown OR ambiguous (more than one entity with this
     // name across schemas). Recommend the Guid overload for cross-schema
     // apps to avoid ambiguity.
-    PersistentObject NewPersistentObject(string name);
+    PersistentObject GetPersistentObject(string name);
 
     // NEW — schema-backed factory keyed by ObjectTypeId. Preferred when the
     // app declares entities in multiple database schemas (same name can
     // legally repeat). Throws KeyNotFoundException if the id is unknown.
-    PersistentObject NewPersistentObject(Guid id);
+    PersistentObject GetPersistentObject(Guid id);
 
     // NEW — typed convenience: derives ObjectTypeId from typeof(T).FullName
     // via IModelLoader.GetEntityTypeByClrType. Cleanest call site when the
     // caller has a typed entity class — no Guid plumbing, no string names.
-    PersistentObject NewPersistentObject<T>() where T : class;
+    PersistentObject GetPersistentObject<T>() where T : class;
 
     // existing
     IRetryAccessor Retry { get; }
@@ -263,14 +263,14 @@ public interface IManager
 There is **no "synthetic" overload**. Popup POs that don't correspond to a
 CLR entity are defined as **Virtual POs** in JSON (existing Spark concept —
 PO schema with `IsVirtual: true` and no `ClrType`). That gives them a real
-`ObjectTypeId`, real declared attributes, and lets `NewPersistentObject`
+`ObjectTypeId`, real declared attributes, and lets `GetPersistentObject`
 treat them identically to entity-backed POs. No separate code path, no
 `Guid.Empty` fallback.
 
 ### 3. `IEntityMapper` surface (extended)
 
 `IEntityMapper` owns the entire entity ↔ PO machinery. `Manager` injects it
-and thinly forwards the schema-backed `NewPersistentObject(name)` overload so
+and thinly forwards the schema-backed `GetPersistentObject(name)` overload so
 the user-facing ergonomic stays on `IManager`.
 
 ```csharp
@@ -278,17 +278,17 @@ public interface IEntityMapper
 {
     // NEW — schema-backed factory (scaffold only, values null). Keyed by
     // name. Throws on unknown / ambiguous name.
-    PersistentObject NewPersistentObject(string name);
+    PersistentObject GetPersistentObject(string name);
 
     // NEW — schema-backed factory keyed by ObjectTypeId. Never ambiguous.
-    PersistentObject NewPersistentObject(Guid id);
+    PersistentObject GetPersistentObject(Guid id);
 
     // NEW — typed overload: resolves ObjectTypeId via
     // IModelLoader.GetEntityTypeByClrType(typeof(T).FullName).
-    PersistentObject NewPersistentObject<T>() where T : class;
+    PersistentObject GetPersistentObject<T>() where T : class;
 
     // Existing surface — unchanged signature. Reimplemented internally as
-    // NewPersistentObject(objectTypeId) + PopulateAttributeValues.
+    // GetPersistentObject(objectTypeId) + PopulateAttributeValues.
     PersistentObject ToPersistentObject(object entity, Guid objectTypeId,
         Dictionary<string, object>? includedDocuments = null);
 
@@ -335,14 +335,14 @@ internal sealed partial class Manager : IManager
     [Inject] private readonly IRequestCultureResolver requestCultureResolver;
     [Inject] private readonly IEntityMapper entityMapper;            // NEW
 
-    public PersistentObject NewPersistentObject(string name)
-        => entityMapper.NewPersistentObject(name);
+    public PersistentObject GetPersistentObject(string name)
+        => entityMapper.GetPersistentObject(name);
 
-    public PersistentObject NewPersistentObject(Guid id)
-        => entityMapper.NewPersistentObject(id);
+    public PersistentObject GetPersistentObject(Guid id)
+        => entityMapper.GetPersistentObject(id);
 
-    public PersistentObject NewPersistentObject<T>() where T : class
-        => entityMapper.NewPersistentObject<T>();
+    public PersistentObject GetPersistentObject<T>() where T : class
+        => entityMapper.GetPersistentObject<T>();
 }
 ```
 
@@ -354,7 +354,7 @@ ModelLoader`, acyclic.
 
 Owns scaffold, populate, and the per-attribute metadata copy. No `IManager`
 dependency — the factory body and `ToPersistentObject` both self-call
-`NewPersistentObject`.
+`GetPersistentObject`.
 
 ```csharp
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped)]
@@ -363,14 +363,14 @@ internal partial class EntityMapper : IEntityMapper
     [Inject] private readonly IModelLoader modelLoader;
     // NO IManager dependency.
 
-    public PersistentObject NewPersistentObject(string name)
+    public PersistentObject GetPersistentObject(string name)
     {
         var def = modelLoader.GetEntityTypeByName(name)
             ?? throw new KeyNotFoundException($"Unknown entity type '{name}'");
         return ScaffoldFrom(def);
     }
 
-    public PersistentObject NewPersistentObject(Guid id)
+    public PersistentObject GetPersistentObject(Guid id)
     {
         var def = modelLoader.GetEntityType(id)
             ?? throw new KeyNotFoundException($"Unknown ObjectTypeId '{id}'");
@@ -380,7 +380,7 @@ internal partial class EntityMapper : IEntityMapper
     public PersistentObject ToPersistentObject(object entity, Guid objectTypeId,
         Dictionary<string, object>? includedDocuments = null)
     {
-        var po = NewPersistentObject(objectTypeId);   // self-call, no DI
+        var po = GetPersistentObject(objectTypeId);   // self-call, no DI
         PopulateAttributeValues(po, entity, includedDocuments);
         return po;
     }
@@ -489,7 +489,7 @@ private PersistentObject BuildPersistentObject(Type entityType, string? document
     // inline (it's a genuinely different beast — no PersistentObjectNames
     // constant exists, we're inventing attributes on the fly).
     var po = entityTypeDef is not null
-        ? entityMapper.NewPersistentObject(entityTypeDef.Id)
+        ? entityMapper.GetPersistentObject(entityTypeDef.Id)
         : BuildPoFromClrTypeFallback(entityType, documentId);
 
     po.Id = documentId;
@@ -534,7 +534,7 @@ path" claim is a lie the moment someone calls the extension.
 ### 8. RetryAction popup pattern
 
 Popup POs are Virtual POs — regular schema entries with no CLR entity.
-They go through the same `NewPersistentObject` factory as entity-backed POs.
+They go through the same `GetPersistentObject` factory as entity-backed POs.
 
 ```json
 // App_Data/Model/ConfirmDeleteCar.json — a Virtual PO definition
@@ -554,7 +554,7 @@ They go through the same `NewPersistentObject` factory as entity-backed POs.
 public override async Task OnBeforeDeleteAsync(Car car)
 {
     // Same API as any other PO. No "synthetic" concept.
-    var popup = manager.NewPersistentObject(
+    var popup = manager.GetPersistentObject(
         PersistentObjectNames.ConfirmDeleteCar);
     popup[AttributeNames.ConfirmDeleteCar.LicensePlate].Value = car.LicensePlate;
 
@@ -618,7 +618,7 @@ public static class PersistentObjectIds
 Consumer code that needs disambiguation:
 
 ```csharp
-var po = manager.NewPersistentObject(new Guid(PersistentObjectIds.Audit.AuditLog));
+var po = manager.GetPersistentObject(new Guid(PersistentObjectIds.Audit.AuditLog));
 ```
 
 `const string` (not `static readonly Guid`) per the user's directive — lets
@@ -658,20 +658,20 @@ never introduce a second schema — zero migration cost.
 
 1. Add `private static EntityMapper.FromDefinition(EntityAttributeDefinition)`
    and `private static EntityMapper.ScaffoldFrom(EntityTypeDefinition)`.
-2. Add `IEntityMapper.NewPersistentObject(string name)` and
-   `IEntityMapper.NewPersistentObject(Guid id)` — both delegate to
+2. Add `IEntityMapper.GetPersistentObject(string name)` and
+   `IEntityMapper.GetPersistentObject(Guid id)` — both delegate to
    `ScaffoldFrom`.
 3. Add `IEntityMapper.PopulateAttributeValues(po, entity, includedDocuments?)`.
 4. Rewrite `EntityMapper.ToPersistentObject` body as
-   `NewPersistentObject(objectTypeId)` + `PopulateAttributeValues` — one
+   `GetPersistentObject(objectTypeId)` + `PopulateAttributeValues` — one
    self-call, no `IManager` dependency.
 5. Add `IEntityMapper` injection to `Manager`; drop `IModelLoader` injection
    (no longer needed there).
-6. Implement `Manager.NewPersistentObject(string)`,
-   `Manager.NewPersistentObject(Guid)`, and `Manager.NewPersistentObject<T>()`
+6. Implement `Manager.GetPersistentObject(string)`,
+   `Manager.GetPersistentObject(Guid)`, and `Manager.GetPersistentObject<T>()`
    as thin forwards to `IEntityMapper`.
 7. **Generic overloads** (added during Phase 2 implementation after a mid-flight
-   design check): `IEntityMapper.NewPersistentObject<T>()`,
+   design check): `IEntityMapper.GetPersistentObject<T>()`,
    `IEntityMapper.ToPersistentObject<T>(entity, includedDocuments?)`, and
    `IEntityMapper.PopulateAttributeValues<T>(po, entity, includedDocuments?)`.
    Resolve `ObjectTypeId` via `IModelLoader.GetEntityTypeByClrType(typeof(T).FullName)`,
@@ -681,7 +681,7 @@ never introduce a second schema — zero migration cost.
    `StreamingQueryExecutor`) that work with RavenDB-returned `object`.
 8. Tests:
    - `ManagerTests` — forwarding to `IEntityMapper` via mock (3 tests).
-   - `EntityMapperFactoryTests` — all three `NewPersistentObject` overloads
+   - `EntityMapperFactoryTests` — all three `GetPersistentObject` overloads
      (name / Guid / generic), `PopulateAttributeValues` happy/edge paths
      (silent skip, dot-notation skip, enum→string, Color→hex), and
      `ToPersistentObject<T>` parity with the Guid overload (13 tests).
@@ -705,7 +705,7 @@ never introduce a second schema — zero migration cost.
 **Phase 3 — Framework internals migration**
 
 1. `SyncActionHandler.BuildPersistentObject` — migrate schema branch to
-   `entityMapper.NewPersistentObject(entityTypeDef.Id)` + value loop
+   `entityMapper.GetPersistentObject(entityTypeDef.Id)` + value loop
    (inject `IEntityMapper` directly; no need to go through `IManager`).
    Keep CLR-fallback as a separate method.
 2. ~~`PersistentObjectExtensions.ToPersistentObject<T>` — delete.~~
@@ -749,16 +749,16 @@ test helper that uses the internal `AddAttribute` path (exposed via
 Zero direct PO construction in demo apps today. Migration here is
 **opportunity-based**: when a demo Actions class grows a retry-action popup
 or a `CustomAction` return value, use `PersistentObjectNames.*` +
-`NewPersistentObject` from day one. A worked example (e.g. a `MergeWith`-style
+`GetPersistentObject` from day one. A worked example (e.g. a `MergeWith`-style
 CustomAction in DemoApp) is the best documentation.
 
 ## Acceptance criteria
 
-- [ ] `manager.NewPersistentObject(PersistentObjectNames.Person)` on DemoApp
+- [ ] `manager.GetPersistentObject(PersistentObjectNames.Person)` on DemoApp
   returns a PO with `ObjectTypeId == Person.Id`, `Attributes.Count ==
   entityDef.Attributes.Length`, each attribute has the full 14-field metadata
   matching the schema JSON, `Value == null`, and `Parent == returnedPO`.
-- [ ] `manager.NewPersistentObject(new Guid(PersistentObjectIds.Default.Person))`
+- [ ] `manager.GetPersistentObject(new Guid(PersistentObjectIds.Default.Person))`
   returns an equivalent PO. Both overloads behave identically for
   unambiguous names.
 - [ ] `po.PopulateAttributeValues(entity)` (via `IEntityMapper`) on that same
@@ -786,7 +786,7 @@ CustomAction in DemoApp) is the best documentation.
   pre-change byte output, and after deserialization every
   `PersistentObjectAttribute.Parent` is correctly set.
 - [ ] Virtual PO defined in `App_Data/Model/ConfirmDeleteCar.json` flows
-  through `NewPersistentObject` identically to an entity-backed PO
+  through `GetPersistentObject` identically to an entity-backed PO
   (same return-shape assertions, no special-case code path).
 - [ ] `PersistentObjectExtensions.ToPersistentObject<T>` and
   `PopulateAttributeValues<T>` are removed (or rewritten as delegating
@@ -803,7 +803,7 @@ CustomAction in DemoApp) is the best documentation.
    `TranslatedString?`, so mirror Vidyano. A `string` overload is trivial to
    add later if ergonomic.
 
-2. **Ambiguous name throw vs. silent-pick in `NewPersistentObject(string)`.**
+2. **Ambiguous name throw vs. silent-pick in `GetPersistentObject(string)`.**
    When two schemas declare an entity with the same name, should the name
    overload throw (`AmbiguousMatchException`) or fall back to the first
    match? Proposal: throw — forces the caller to switch to the Guid
@@ -841,8 +841,9 @@ CustomAction in DemoApp) is the best documentation.
   is a follow-up PRD.
 - A `CustomAction` return-value builder that uses the factory (separate PRD
   once CustomActions land broadly).
-- Renaming `NewPersistentObject` to `GetPersistentObject` à la Vidyano — the
-  Spark naming is already established in `prd-manager-retry-action.md`.
+- ~~Renaming `NewPersistentObject` to `GetPersistentObject` à la Vidyano — the
+  Spark naming is already established in `prd-manager-retry-action.md`.~~
+  **Shipped** — tracked in `docs/PRD-PersistentObjectFactory-Followups-II.md` §2.
 - **First-class `PersistentObjectAttributeAsDetail` (nested PO arrays) in
   the mapper.** Today `EntityMapper` converts `AsDetail`-typed values to a
   plain `Dictionary<string, object?>` for serialization; a richer port

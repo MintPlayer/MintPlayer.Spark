@@ -64,7 +64,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     /// Builds a PersistentObject from the incoming sync action data dictionary,
     /// marking attributes as <c>IsValueChanged</c> based on the <paramref name="properties"/> list.
     /// When an <see cref="EntityTypeDefinition"/> is registered for the entity type the
-    /// schema path runs through <see cref="IEntityMapper.NewPersistentObject(Guid)"/>, so
+    /// schema path runs through <see cref="IEntityMapper.GetPersistentObject(Guid)"/>, so
     /// every attribute gets the canonical 14-field metadata; otherwise the CLR-reflection
     /// fallback inventories the entity's public read/write properties (no schema available).
     /// </summary>
@@ -79,7 +79,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             return BuildFromClrReflection(entityType, documentId, data, propertySet);
 
         // Schema path — full metadata scaffolded by IEntityMapper, values overlaid from data dict.
-        var po = entityMapper.NewPersistentObject(entityTypeDef.Id);
+        var po = entityMapper.GetPersistentObject(entityTypeDef.Id);
         po.Id = documentId;
 
         foreach (var attribute in po.Attributes)

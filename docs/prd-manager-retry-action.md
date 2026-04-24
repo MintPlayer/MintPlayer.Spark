@@ -4,7 +4,7 @@
 
 Introduce an `IManager` interface (abstractions) and `internal Manager` class (core) that developers can inject into their Actions classes. The Manager provides two key capabilities:
 
-1. **`NewPersistentObject()`** — Create virtual/temporary PersistentObjects with custom attributes (not backed by a database entity).
+1. **`GetPersistentObject()`** — Create virtual/temporary PersistentObjects with custom attributes (not backed by a database entity).
 2. **`Retry.Action()` / `Retry.Result`** — An exception-driven confirmation/dialog pattern that lets action methods pause execution, present a modal to the user, and resume with the user's response.
 
 ## Motivation
@@ -43,7 +43,7 @@ Developer's Actions Class (CRUD hooks or future Custom Actions)
     │
     ├── Injects IManager
     │       │
-    │       ├── .NewPersistentObject(name, attributes[])
+    │       ├── .GetPersistentObject(name, attributes[])
     │       │       → Returns a virtual PersistentObject (no DB backing)
     │       │
     │       └── .Retry
@@ -85,7 +85,7 @@ public interface IManager
     /// Creates a virtual PersistentObject (not backed by a DB entity).
     /// Useful for building custom dialogs in Retry.Action().
     /// </summary>
-    PersistentObject NewPersistentObject(string name, params PersistentObjectAttribute[] attributes);
+    PersistentObject GetPersistentObject(string name, params PersistentObjectAttribute[] attributes);
 
     /// <summary>
     /// Access to the Retry Action subsystem.
@@ -165,7 +165,7 @@ internal sealed partial class Manager : IManager
 
     public IRetryAccessor Retry => retry;
 
-    public PersistentObject NewPersistentObject(string name, params PersistentObjectAttribute[] attributes)
+    public PersistentObject GetPersistentObject(string name, params PersistentObjectAttribute[] attributes)
     {
         return new PersistentObject
         {
@@ -425,7 +425,7 @@ public partial class InvoiceActions : DefaultPersistentObjectActions<Invoice>
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, Invoice entity)
     {
-        var dialog = manager.NewPersistentObject("Confirm Changes",
+        var dialog = manager.GetPersistentObject("Confirm Changes",
             new PersistentObjectAttribute { Name = "Reason", DataType = "string", IsRequired = true },
             new PersistentObjectAttribute { Name = "NotifyCustomer", DataType = "boolean", Value = true }
         );
