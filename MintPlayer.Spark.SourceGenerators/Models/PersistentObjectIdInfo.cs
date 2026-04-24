@@ -6,7 +6,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 /// A single entry harvested from a Spark Model JSON file (typically
 /// <c>App_Data/Model/*.json</c>). Feeds the <c>PersistentObjectIds</c> generator
 /// output — nested-by-schema <c>const string</c> Guids that user code can pass to
-/// <c>IManager.NewPersistentObject(Guid)</c>.
+/// <c>IManager.GetPersistentObject(Guid)</c>.
 /// </summary>
 [AutoValueComparer]
 public partial class PersistentObjectIdInfo

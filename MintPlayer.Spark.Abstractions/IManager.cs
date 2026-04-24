@@ -10,7 +10,7 @@ public interface IManager
     /// metadata (DataType, Label, Rules, Renderer, ShowedOn, Order, Group,
     /// IsRequired/Visible/ReadOnly/Array, Query for References); Value is null.
     /// Throws <see cref="KeyNotFoundException"/> on unknown or ambiguous name —
-    /// prefer the <see cref="NewPersistentObject(Guid)"/> overload in apps that
+    /// prefer the <see cref="GetPersistentObject(Guid)"/> overload in apps that
     /// declare entities across multiple database schemas.
     /// </summary>
     /// <remarks>
@@ -19,14 +19,14 @@ public interface IManager
     /// look it up by name, rather than constructing the PO and its attributes
     /// by hand.
     /// </remarks>
-    PersistentObject NewPersistentObject(string name);
+    PersistentObject GetPersistentObject(string name);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject by ObjectTypeId. Unambiguous — preferred
     /// over the name overload whenever the caller already has the Guid
     /// (e.g. from the source-generated <c>PersistentObjectIds</c> constants).
     /// </summary>
-    PersistentObject NewPersistentObject(Guid id);
+    PersistentObject GetPersistentObject(Guid id);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject for <typeparamref name="T"/>, resolving the
@@ -34,7 +34,7 @@ public interface IManager
     /// EntityTypeDefinitions. The cleanest path when the caller has a typed entity
     /// class — no Guid plumbing, no string names.
     /// </summary>
-    PersistentObject NewPersistentObject<T>() where T : class;
+    PersistentObject GetPersistentObject<T>() where T : class;
 
     /// <summary>
     /// Access to the Retry Action subsystem.

@@ -150,7 +150,7 @@ public sealed class PersistentObjectAttributeAsDetail : PersistentObjectAttribut
     /// <summary>
     /// For <see cref="PersistentObjectAttribute.IsArray"/> = <c>false</c>: the single nested
     /// PO (or <c>null</c> when the CLR field is null). The mapper always scaffolds this on
-    /// <c>NewPersistentObject</c> so UIs can start from an empty-but-structured form.
+    /// <c>GetPersistentObject</c> so UIs can start from an empty-but-structured form.
     /// </summary>
     public PersistentObject? Object { get; set; }
 

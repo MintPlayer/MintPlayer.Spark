@@ -117,9 +117,9 @@ public class EntityMapperAsDetailTests
     // --- Scaffold -------------------------------------------------------
 
     [Fact]
-    public void NewPersistentObject_SingleAsDetail_PreScaffoldsNestedPO()
+    public void GetPersistentObject_SingleAsDetail_PreScaffoldsNestedPO()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
 
         var addressAttr = po["Address"];
         addressAttr.Should().BeOfType<PersistentObjectAttributeAsDetail>();
@@ -133,9 +133,9 @@ public class EntityMapperAsDetailTests
     }
 
     [Fact]
-    public void NewPersistentObject_ArrayAsDetail_StartsWithEmptyList()
+    public void GetPersistentObject_ArrayAsDetail_StartsWithEmptyList()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
 
         var jobsAttr = (PersistentObjectAttributeAsDetail)po["Jobs"];
         jobsAttr.IsArray.Should().BeTrue();
@@ -149,7 +149,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateAttributeValues_SingleAsDetail_FillsNestedPO()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         var person = new TestPerson
         {
             FirstName = "Alice",
@@ -166,7 +166,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateAttributeValues_ArrayAsDetail_ScaffoldsOneChildPerItem()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         var person = new TestPerson
         {
             FirstName = "Alice",
@@ -190,7 +190,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateAttributeValues_NullSingleAsDetail_ClearsObject()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         var person = new TestPerson { FirstName = "Alice", Address = null };
 
         _mapper.PopulateAttributeValues(po, person);
@@ -201,7 +201,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateAttributeValues_EmptyArrayAsDetail_YieldsEmptyObjects()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         var person = new TestPerson { FirstName = "Alice", Jobs = [] };
 
         _mapper.PopulateAttributeValues(po, person);
@@ -214,7 +214,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateObjectValues_SingleAsDetail_InstantiatesAndFillsEntity()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object!["Street"].Value = "Rue 42";
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object!["City"].Value = "Ghent";
         po["FirstName"].Value = "Alice";
@@ -231,12 +231,12 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateObjectValues_ArrayAsDetail_BuildsListOfInstantiatedChildren()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         po["FirstName"].Value = "Alice";
 
-        var job1 = _mapper.NewPersistentObject<TestJob>();
+        var job1 = _mapper.GetPersistentObject<TestJob>();
         job1["Title"].Value = "Intern"; job1["Year"].Value = 2020;
-        var job2 = _mapper.NewPersistentObject<TestJob>();
+        var job2 = _mapper.GetPersistentObject<TestJob>();
         job2["Title"].Value = "Dev";    job2["Year"].Value = 2024;
         ((PersistentObjectAttributeAsDetail)po["Jobs"]).Objects = [job1, job2];
 
@@ -253,7 +253,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void PopulateObjectValues_NullSingleAsDetail_SetsPropertyNull()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object = null;
 
         var person = new TestPerson { Address = new TestAddress { Street = "stale" } };
@@ -342,7 +342,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void JsonConverter_SerializesAsDetailSubclassFields()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object!["Street"].Value = "Main 1";
 
         var json = JsonSerializer.Serialize(po);
@@ -354,7 +354,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void JsonConverter_DeserializesAsDetailBasedOnDataType()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object!["Street"].Value = "Main 1";
         ((PersistentObjectAttributeAsDetail)po["Address"]).Object!["City"].Value = "Brussels";
         var json = JsonSerializer.Serialize(po);
@@ -369,7 +369,7 @@ public class EntityMapperAsDetailTests
     [Fact]
     public void JsonConverter_NonAsDetailAttributeUsesBaseClass()
     {
-        var po = _mapper.NewPersistentObject<TestPerson>();
+        var po = _mapper.GetPersistentObject<TestPerson>();
         po["FirstName"].Value = "Alice";
         var json = JsonSerializer.Serialize(po);
 

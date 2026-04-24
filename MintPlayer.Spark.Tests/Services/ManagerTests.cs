@@ -16,40 +16,40 @@ public class ManagerTests
     private Manager CreateManager() => new(_retry, _translations, _culture, _entityMapper);
 
     [Fact]
-    public void NewPersistentObject_ByName_ForwardsToEntityMapper()
+    public void GetPersistentObject_ByName_ForwardsToEntityMapper()
     {
         var expected = new PersistentObject { Name = "Car", ObjectTypeId = Guid.NewGuid() };
-        _entityMapper.NewPersistentObject("Car").Returns(expected);
+        _entityMapper.GetPersistentObject("Car").Returns(expected);
         var manager = CreateManager();
 
-        var actual = manager.NewPersistentObject("Car");
+        var actual = manager.GetPersistentObject("Car");
 
         actual.Should().BeSameAs(expected);
-        _entityMapper.Received(1).NewPersistentObject("Car");
+        _entityMapper.Received(1).GetPersistentObject("Car");
     }
 
     [Fact]
-    public void NewPersistentObject_ByGuid_ForwardsToEntityMapper()
+    public void GetPersistentObject_ByGuid_ForwardsToEntityMapper()
     {
         var carId = Guid.Parse("11111111-2222-3333-4444-555555555555");
         var expected = new PersistentObject { Name = "Car", ObjectTypeId = carId };
-        _entityMapper.NewPersistentObject(carId).Returns(expected);
+        _entityMapper.GetPersistentObject(carId).Returns(expected);
         var manager = CreateManager();
 
-        var actual = manager.NewPersistentObject(carId);
+        var actual = manager.GetPersistentObject(carId);
 
         actual.Should().BeSameAs(expected);
-        _entityMapper.Received(1).NewPersistentObject(carId);
+        _entityMapper.Received(1).GetPersistentObject(carId);
     }
 
     [Fact]
-    public void NewPersistentObject_UnknownName_PropagatesEntityMapperException()
+    public void GetPersistentObject_UnknownName_PropagatesEntityMapperException()
     {
-        _entityMapper.NewPersistentObject("Unknown")
+        _entityMapper.GetPersistentObject("Unknown")
             .Throws(new KeyNotFoundException("No entity type with Name 'Unknown' is registered."));
         var manager = CreateManager();
 
-        var act = () => manager.NewPersistentObject("Unknown");
+        var act = () => manager.GetPersistentObject("Unknown");
 
         act.Should().Throw<KeyNotFoundException>()
             .WithMessage("*Unknown*");

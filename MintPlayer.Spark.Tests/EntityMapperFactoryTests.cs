@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Tests;
 
 /// <summary>
 /// Covers the Phase 2 factory surface on <see cref="IEntityMapper"/>:
-/// NewPersistentObject(string|Guid|T), ToPersistentObject(T), and
+/// GetPersistentObject(string|Guid|T), ToPersistentObject(T), and
 /// PopulateAttributeValues(PersistentObject, object, …) — including the
 /// Vidyano-parity silent-skip and dot-notation-skip rules, value-for-wire
 /// conversions (enum, Color), and Parent-back-reference invariants.
@@ -74,12 +74,12 @@ public class EntityMapperFactoryTests
         _mapper = new EntityMapper(_modelLoader);
     }
 
-    // --- NewPersistentObject(string) --------------------------------------
+    // --- GetPersistentObject(string) --------------------------------------
 
     [Fact]
-    public void NewPersistentObject_ByName_CopiesAllMetadataFieldsWithValuesNull()
+    public void GetPersistentObject_ByName_CopiesAllMetadataFieldsWithValuesNull()
     {
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
 
         po.Name.Should().Be("Car");
         po.ObjectTypeId.Should().Be(CarTypeId);
@@ -101,22 +101,22 @@ public class EntityMapperFactoryTests
     }
 
     [Fact]
-    public void NewPersistentObject_ByName_Throws_WhenNameNotRegistered()
+    public void GetPersistentObject_ByName_Throws_WhenNameNotRegistered()
     {
         _modelLoader.GetEntityTypeByName("Unknown").Returns((EntityTypeDefinition?)null);
 
-        var act = () => _mapper.NewPersistentObject("Unknown");
+        var act = () => _mapper.GetPersistentObject("Unknown");
 
         act.Should().Throw<KeyNotFoundException>().WithMessage("*Unknown*");
     }
 
-    // --- NewPersistentObject(Guid) ----------------------------------------
+    // --- GetPersistentObject(Guid) ----------------------------------------
 
     [Fact]
-    public void NewPersistentObject_ById_ReturnsEquivalentScaffold()
+    public void GetPersistentObject_ById_ReturnsEquivalentScaffold()
     {
-        var byName = _mapper.NewPersistentObject("Car");
-        var byId = _mapper.NewPersistentObject(CarTypeId);
+        var byName = _mapper.GetPersistentObject("Car");
+        var byId = _mapper.GetPersistentObject(CarTypeId);
 
         byId.Name.Should().Be(byName.Name);
         byId.ObjectTypeId.Should().Be(byName.ObjectTypeId);
@@ -124,31 +124,31 @@ public class EntityMapperFactoryTests
     }
 
     [Fact]
-    public void NewPersistentObject_ById_Throws_WhenIdNotRegistered()
+    public void GetPersistentObject_ById_Throws_WhenIdNotRegistered()
     {
         var unknown = Guid.NewGuid();
         _modelLoader.GetEntityType(unknown).Returns((EntityTypeDefinition?)null);
 
-        var act = () => _mapper.NewPersistentObject(unknown);
+        var act = () => _mapper.GetPersistentObject(unknown);
 
         act.Should().Throw<KeyNotFoundException>().WithMessage($"*{unknown}*");
     }
 
-    // --- NewPersistentObject<T>() -----------------------------------------
+    // --- GetPersistentObject<T>() -----------------------------------------
 
     [Fact]
-    public void NewPersistentObject_Generic_ResolvesByClrType()
+    public void GetPersistentObject_Generic_ResolvesByClrType()
     {
-        var po = _mapper.NewPersistentObject<TestCar>();
+        var po = _mapper.GetPersistentObject<TestCar>();
 
         po.ObjectTypeId.Should().Be(CarTypeId);
         po.Attributes.Should().HaveCount(4);
     }
 
     [Fact]
-    public void NewPersistentObject_Generic_Throws_WhenClrTypeNotRegistered()
+    public void GetPersistentObject_Generic_Throws_WhenClrTypeNotRegistered()
     {
-        var act = () => _mapper.NewPersistentObject<UnrelatedClass>();
+        var act = () => _mapper.GetPersistentObject<UnrelatedClass>();
 
         act.Should().Throw<KeyNotFoundException>()
             .WithMessage($"*{typeof(UnrelatedClass).FullName}*");
@@ -159,7 +159,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_FillsValueOnMatchingProperties()
     {
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123", Status = TestCarStatus.Active };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -171,7 +171,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_SetsIdNameAndBreadcrumb()
     {
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -184,7 +184,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_SkipsAttributesWithDotNotation()
     {
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC-123" };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -197,7 +197,7 @@ public class EntityMapperFactoryTests
     {
         // Attribute "Color" exists on Car def; property exists on TestCar.
         // Confirms: matching properties DO get populated, non-matching fall through silently.
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC-123" }; // Color not set → stays default (empty)
 
         _mapper.PopulateAttributeValues(po, car);
@@ -209,7 +209,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_ConvertsColorToHex()
     {
-        var po = _mapper.NewPersistentObject("Car");
+        var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC", Color = Color.FromArgb(0x12, 0x34, 0x56) };
 
         _mapper.PopulateAttributeValues(po, car);

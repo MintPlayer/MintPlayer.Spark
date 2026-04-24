@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
 /// Covers <see cref="SyncActionHandler.BuildPersistentObject"/> after the Phase 3
-/// migration: the schema branch routes through <see cref="IEntityMapper.NewPersistentObject(Guid)"/>
+/// migration: the schema branch routes through <see cref="IEntityMapper.GetPersistentObject(Guid)"/>
 /// so attributes get the full 14-field metadata scaffold, and the CLR-reflection
 /// fallback stays inline for entity types without a registered definition.
 /// </summary>
@@ -29,7 +29,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
     private sealed class TestCar { public string? Id { get; set; } public string? LicensePlate { get; set; } public int Year { get; set; } }
     private sealed class UnregisteredEntity { public string? Id { get; set; } public string? Name { get; set; } }
 
-    // --- Schema path: via IEntityMapper.NewPersistentObject ----------------
+    // --- Schema path: via IEntityMapper.GetPersistentObject ----------------
 
     [Fact]
     public void BuildPersistentObject_Schema_UsesEntityMapperScaffold()
@@ -57,7 +57,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
                 new PersistentObjectAttribute { Name = "Year", DataType = "number" },
             ],
         };
-        _entityMapper.NewPersistentObject(CarTypeId).Returns(scaffold);
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(scaffold);
 
         var data = new Dictionary<string, object?> { ["LicensePlate"] = "ABC-123", ["Year"] = 2024 };
 
@@ -86,7 +86,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             ],
         };
         _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
-        _entityMapper.NewPersistentObject(CarTypeId).Returns(new PersistentObject
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
         {
             Name = "Car",
             ObjectTypeId = CarTypeId,
@@ -121,7 +121,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             ],
         };
         _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
-        _entityMapper.NewPersistentObject(CarTypeId).Returns(new PersistentObject
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
         {
             Name = "Car",
             ObjectTypeId = CarTypeId,
@@ -152,7 +152,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LicensePlate", DataType = "string" }],
         };
         _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
-        _entityMapper.NewPersistentObject(CarTypeId).Returns(new PersistentObject
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
         {
             Name = "Car",
             ObjectTypeId = CarTypeId,
@@ -189,7 +189,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             .Which.Value.Should().Be("Alice");
 
         // The fallback must not reach the entity mapper — schema is unavailable.
-        _entityMapper.DidNotReceiveWithAnyArgs().NewPersistentObject(Arg.Any<Guid>());
+        _entityMapper.DidNotReceiveWithAnyArgs().GetPersistentObject(Arg.Any<Guid>());
     }
 
     [Fact]

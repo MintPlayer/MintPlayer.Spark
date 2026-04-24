@@ -9,7 +9,7 @@ The `IManager` interface exposes:
 | Member | Purpose |
 |---|---|
 | `Retry` | Access to the Retry Action subsystem (`IRetryAccessor`) |
-| `NewPersistentObject()` | Create a virtual PersistentObject for custom dialog forms |
+| `GetPersistentObject()` | Create a virtual PersistentObject for custom dialog forms |
 | `GetTranslatedMessage()` | Get a translated string for the current request culture |
 | `GetMessage()` | Get a translated string for a specific language |
 
@@ -154,13 +154,13 @@ void Action(
 
 ## Custom Dialog Forms
 
-You can display a form inside the retry modal by passing a `PersistentObject` with attributes. Use `manager.NewPersistentObject()` to create one:
+You can display a form inside the retry modal by passing a `PersistentObject` with attributes. Use `manager.GetPersistentObject()` to create one:
 
 ```csharp
 manager.Retry.Action(
     title: "Enter reason",
     options: ["Submit"],
-    persistentObject: manager.NewPersistentObject("ReasonForm",
+    persistentObject: manager.GetPersistentObject("ReasonForm",
         new PersistentObjectAttribute
         {
             Name = "Reason",

@@ -14,14 +14,14 @@ internal sealed partial class Manager : IManager
 
     public IRetryAccessor Retry => retry;
 
-    public PersistentObject NewPersistentObject(string name)
-        => entityMapper.NewPersistentObject(name);
+    public PersistentObject GetPersistentObject(string name)
+        => entityMapper.GetPersistentObject(name);
 
-    public PersistentObject NewPersistentObject(Guid id)
-        => entityMapper.NewPersistentObject(id);
+    public PersistentObject GetPersistentObject(Guid id)
+        => entityMapper.GetPersistentObject(id);
 
-    public PersistentObject NewPersistentObject<T>() where T : class
-        => entityMapper.NewPersistentObject<T>();
+    public PersistentObject GetPersistentObject<T>() where T : class
+        => entityMapper.GetPersistentObject<T>();
 
     public string GetTranslatedMessage(string key, params object[] parameters)
     {

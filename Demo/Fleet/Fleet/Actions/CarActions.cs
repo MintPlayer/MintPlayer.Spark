@@ -78,7 +78,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         // Virtual PO confirmation form — user must retype the plate. The Virtual PO is
         // scaffolded from Demo/Fleet/Fleet/App_Data/Model/ConfirmDeleteCar.json; the
         // populated values come back through manager.Retry.Result.PersistentObject.
-        var popup = manager.NewPersistentObject(Guid.Parse(PersistentObjectIds.Default.ConfirmDeleteCar));
+        var popup = manager.GetPersistentObject(Guid.Parse(PersistentObjectIds.Default.ConfirmDeleteCar));
         popup["LicensePlate"].Value = entity.LicensePlate;
 
         manager.Retry.Action(

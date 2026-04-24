@@ -4,7 +4,7 @@ namespace Fleet.VirtualObjects;
 /// Marker class for the <c>ConfirmDeleteCar</c> Virtual PO. Spark's
 /// <c>EntityTypeDefinition.ClrType</c> is required, so every schema registration needs a
 /// CLR type to resolve against — this class exists only to satisfy that shape. No
-/// persistence; instances are scaffolded via <c>manager.NewPersistentObject</c> and live
+/// persistence; instances are scaffolded via <c>manager.GetPersistentObject</c> and live
 /// for the duration of one retry-action round-trip in <c>CarActions.OnBeforeDeleteAsync</c>.
 /// </summary>
 public sealed class ConfirmDeleteCar
