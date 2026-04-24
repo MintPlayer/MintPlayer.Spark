@@ -13,9 +13,10 @@ namespace MintPlayer.Spark.Tests;
 /// </summary>
 public class EntityMapperAsDetailTests
 {
-    private static readonly Guid PersonTypeId  = Guid.Parse("aaaaaaaa-3333-3333-3333-333333333333");
-    private static readonly Guid AddressTypeId = Guid.Parse("bbbbbbbb-3333-3333-3333-333333333333");
-    private static readonly Guid JobTypeId     = Guid.Parse("cccccccc-3333-3333-3333-333333333333");
+    private static readonly Guid PersonTypeId        = Guid.Parse("aaaaaaaa-3333-3333-3333-333333333333");
+    private static readonly Guid AddressTypeId       = Guid.Parse("bbbbbbbb-3333-3333-3333-333333333333");
+    private static readonly Guid JobTypeId           = Guid.Parse("cccccccc-3333-3333-3333-333333333333");
+    private static readonly Guid CertificationTypeId = Guid.Parse("dddddddd-3333-3333-3333-333333333333");
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly EntityMapper _mapper;
@@ -35,6 +36,19 @@ public class EntityMapperAsDetailTests
             ],
         };
 
+        var certificationDef = new EntityTypeDefinition
+        {
+            Id = CertificationTypeId,
+            Name = "Certification",
+            ClrType = typeof(TestCertification).FullName!,
+            DisplayAttribute = "Name",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name",   DataType = "string", Order = 1 },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Issuer", DataType = "string", Order = 2 },
+            ],
+        };
+
         var jobDef = new EntityTypeDefinition
         {
             Id = JobTypeId,
@@ -45,6 +59,15 @@ public class EntityMapperAsDetailTests
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string", Order = 1 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Year",  DataType = "number", Order = 2 },
+                new EntityAttributeDefinition
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Certifications",
+                    DataType = "AsDetail",
+                    AsDetailType = typeof(TestCertification).FullName,
+                    IsArray = true,
+                    Order = 3,
+                },
             ],
         };
 
@@ -85,6 +108,8 @@ public class EntityMapperAsDetailTests
         _modelLoader.GetEntityTypeByClrType(typeof(TestAddress).FullName!).Returns(addressDef);
         _modelLoader.GetEntityType(JobTypeId).Returns(jobDef);
         _modelLoader.GetEntityTypeByClrType(typeof(TestJob).FullName!).Returns(jobDef);
+        _modelLoader.GetEntityType(CertificationTypeId).Returns(certificationDef);
+        _modelLoader.GetEntityTypeByClrType(typeof(TestCertification).FullName!).Returns(certificationDef);
 
         _mapper = new EntityMapper(_modelLoader);
     }
@@ -266,6 +291,52 @@ public class EntityMapperAsDetailTests
         rebuilt.Jobs[1].Year.Should().Be(2024);
     }
 
+    // --- Multi-level nesting (AsDetail-in-AsDetail) --------------------
+
+    [Fact]
+    public void RoundTrip_MultiLevelAsDetail_PreservesNestedInNestedThroughJson()
+    {
+        var original = new TestPerson
+        {
+            FirstName = "Alice",
+            Jobs =
+            [
+                new TestJob
+                {
+                    Title = "Dev",
+                    Year = 2024,
+                    Certifications =
+                    [
+                        new TestCertification { Name = "Azure Fundamentals", Issuer = "Microsoft" },
+                        new TestCertification { Name = "AWS CP",             Issuer = "Amazon" },
+                    ],
+                },
+            ],
+        };
+
+        var po = _mapper.ToPersistentObject(original);
+
+        // Forward recursion produced the nested-in-nested structure.
+        var jobs = (PersistentObjectAttributeAsDetail)po["Jobs"];
+        var firstJob = jobs.Objects!.Single();
+        var certs = (PersistentObjectAttributeAsDetail)firstJob["Certifications"];
+        certs.Objects.Should().HaveCount(2, "array AsDetail inside array AsDetail must be populated recursively");
+        certs.Objects![0]["Name"].Value.Should().Be("Azure Fundamentals");
+
+        // Serialize + deserialize exercises the polymorphic converter at every level.
+        var json = JsonSerializer.Serialize(po);
+        var rehydrated = JsonSerializer.Deserialize<PersistentObject>(json)!;
+
+        // Inverse recursion reconstitutes the two-level CLR graph.
+        var rebuilt = _mapper.ToEntity<TestPerson>(rehydrated);
+        rebuilt.Jobs.Should().HaveCount(1);
+        rebuilt.Jobs[0].Certifications.Should().HaveCount(2);
+        rebuilt.Jobs[0].Certifications[0].Name.Should().Be("Azure Fundamentals");
+        rebuilt.Jobs[0].Certifications[0].Issuer.Should().Be("Microsoft");
+        rebuilt.Jobs[0].Certifications[1].Name.Should().Be("AWS CP");
+        rebuilt.Jobs[0].Certifications[1].Issuer.Should().Be("Amazon");
+    }
+
     // --- Polymorphic JSON converter ------------------------------------
 
     [Fact]
@@ -330,5 +401,13 @@ public class EntityMapperAsDetailTests
         public string? Id { get; set; }
         public string? Title { get; set; }
         public int Year { get; set; }
+        public List<TestCertification> Certifications { get; set; } = [];
+    }
+
+    private sealed class TestCertification
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Issuer { get; set; }
     }
 }
