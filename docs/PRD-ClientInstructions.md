@@ -2,7 +2,22 @@
 
 ## Status
 
-New initiative. Supersedes:
+**Implementation progress — partial.** Server foundations landed; endpoint wiring, SDK updates, frontend, and demo work are pending.
+
+| Milestone | State |
+|---|---|
+| Server DTOs + envelope + `IClientAccessor` surface | ✅ shipped |
+| `ClientAccessor` impl + `IManager.Client` wiring + retry accumulation | ✅ shipped |
+| Envelope wiring through action endpoints | ⏳ pending |
+| `MintPlayer.Spark.Client` SDK envelope-unwrap | ⏳ pending |
+| Server unit tests (envelope contract + retry subsumption) | ⏳ pending |
+| Frontend dispatcher + provider token + `SparkService` interceptor | ⏳ pending |
+| Frontend handlers + notification/registry primitives | ⏳ pending |
+| Fleet demo examples + Playwright E2E | ⏳ pending |
+
+## Relationship to other PRDs
+
+Supersedes:
 
 - `docs/custom-actions-prd.md` §8 *"Future Phase: Navigate & Notify via IManager"* — that section's Navigate/Notify surface is a strict subset of what this PRD specifies. When this PRD ships, §8 gets a "Shipped in Client Instructions PRD" banner.
 - `docs/PRD-PersistentObjectFactory-Followups-II.md` §1 *"CustomAction return-value builder"* — obsolete. A builder-over-return-value was never the right shape; side-effects-accumulated-on-`IManager` generalizes further (covers CRUD actions, CustomActions, any future action type) and requires no changes to `ICustomAction.ExecuteAsync`'s signature.

@@ -134,6 +134,7 @@ MintPlayer.Spark/
 
 ### Reference
 
+- **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework
 - **[Spark Library API](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
