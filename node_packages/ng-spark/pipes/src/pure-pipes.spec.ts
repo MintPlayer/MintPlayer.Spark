@@ -135,13 +135,13 @@ describe('AttributeValuePipe', () => {
   });
 
   it('formats AsDetail array as count summary (plural)', () => {
-    const item = { attributes: [{ name: 'Jobs', value: [{}, {}, {}] }] } as any;
+    const item = { attributes: [{ name: 'Jobs', isArray: true, objects: [{}, {}, {}] }] } as any;
     const entityType = { attributes: [{ name: 'Jobs', dataType: 'AsDetail' }] } as any;
     expect(pipe.transform('Jobs', item, entityType, {}, [])).toBe('3 items');
   });
 
   it('formats AsDetail array singular', () => {
-    const item = { attributes: [{ name: 'Jobs', value: [{}] }] } as any;
+    const item = { attributes: [{ name: 'Jobs', isArray: true, objects: [{}] }] } as any;
     const entityType = { attributes: [{ name: 'Jobs', dataType: 'AsDetail' }] } as any;
     expect(pipe.transform('Jobs', item, entityType, {}, [])).toBe('1 item');
   });

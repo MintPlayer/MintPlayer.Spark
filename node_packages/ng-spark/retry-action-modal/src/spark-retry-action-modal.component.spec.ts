@@ -1,9 +1,31 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import { SparkRetryActionModalComponent } from './spark-retry-action-modal.component';
-import { RetryActionService } from '@mintplayer/ng-spark/services';
-import { RetryActionPayload } from '@mintplayer/ng-spark/models';
+import { RetryActionService, SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { EntityType, PersistentObject, RetryActionPayload } from '@mintplayer/ng-spark/models';
+
+const confirmDeleteCarType: EntityType = {
+  id: 't/confirm-delete-car',
+  name: 'ConfirmDeleteCar',
+  clrType: 'Fleet.VirtualObjects.ConfirmDeleteCar',
+  displayAttribute: 'Confirmation',
+  attributes: [
+    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', order: 1, isRequired: false, isVisible: true, isReadOnly: true, rules: [] },
+    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', order: 2, isRequired: true,  isVisible: true, isReadOnly: false, rules: [] },
+  ],
+};
+
+const scaffoldedPo: PersistentObject = {
+  id: '',
+  name: 'ConfirmDeleteCar',
+  objectTypeId: 't/confirm-delete-car',
+  attributes: [
+    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', value: 'ABC123', isRequired: false, isVisible: true, isReadOnly: true, order: 1, rules: [] },
+    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', value: null,     isRequired: true,  isVisible: true, isReadOnly: false, order: 2, rules: [] },
+  ],
+};
 
 const samplePayload: RetryActionPayload = {
   step: 'confirm-overwrite',
@@ -14,15 +36,32 @@ const samplePayload: RetryActionPayload = {
   persistentObject: { id: 'p/1', name: 'Person', objectTypeId: 't/1', attributes: [] } as any,
 };
 
+function setupWithTypes(types: EntityType[]) {
+  const sparkService: any = {
+    getEntityTypes: vi.fn().mockResolvedValue(types),
+  };
+  TestBed.configureTestingModule({
+    imports: [SparkRetryActionModalComponent],
+    providers: [
+      provideNoopAnimations(),
+      { provide: SparkService, useValue: sparkService },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+    ],
+  });
+  const service = TestBed.inject(RetryActionService);
+  const fixture = TestBed.createComponent(SparkRetryActionModalComponent);
+  const component = fixture.componentInstance;
+  return { service, component, fixture, sparkService };
+}
+
 describe('SparkRetryActionModalComponent', () => {
   let service: RetryActionService;
   let component: SparkRetryActionModalComponent;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [SparkRetryActionModalComponent] });
-    service = TestBed.inject(RetryActionService);
-    const fixture = TestBed.createComponent(SparkRetryActionModalComponent);
-    component = fixture.componentInstance;
+    const s = setupWithTypes([]);
+    service = s.service;
+    component = s.component;
   });
 
   it('isOpen() is false when no payload is set', () => {
@@ -48,5 +87,80 @@ describe('SparkRetryActionModalComponent', () => {
 
   it('onOption() does nothing when no payload is active (no throw, no resolution)', () => {
     expect(() => component.onOption('Cancel')).not.toThrow();
+  });
+});
+
+describe('SparkRetryActionModalComponent with PersistentObject', () => {
+  it('seeds formData from the scaffolded PO and synthesizes an EntityType from its attributes', async () => {
+    // Note: the synthesized EntityType is built from the PO's attributes rather than
+    // looked up via getEntityTypes() — Virtual POs used for retry prompts typically
+    // have no security grant and would be filtered out of the types list otherwise.
+    const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
+    const promise = service.show({
+      step: 'confirm',
+      title: 'Delete car',
+      options: ['Delete', 'Cancel'],
+      persistentObject: scaffoldedPo,
+    } as any);
+    fixture.detectChanges();
+    // Allow the effect + getEntityTypes promise to resolve.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(component.entityType()?.id).toBe('t/confirm-delete-car');
+    expect(component.entityType()?.attributes.map(a => a.name)).toEqual(['LicensePlate', 'Confirmation']);
+    expect(component.formData()).toEqual({ LicensePlate: 'ABC123', Confirmation: null });
+
+    component.onOption('Cancel'); // drain the promise
+    await promise;
+  });
+
+  it('populates the submitted PO with formData values on option click', async () => {
+    const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
+    const promise = service.show({
+      step: 'confirm',
+      title: 'Delete car',
+      options: ['Delete', 'Cancel'],
+      persistentObject: scaffoldedPo,
+    } as any);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    component.formData.set({ LicensePlate: 'ABC123', Confirmation: 'ABC123' });
+    component.onOption('Delete');
+
+    const result = await promise;
+    expect(result.option).toBe('Delete');
+    expect(result.persistentObject).toBeDefined();
+    const confirmationAttr = result.persistentObject!.attributes.find(a => a.name === 'Confirmation');
+    expect(confirmationAttr?.value).toBe('ABC123');
+    expect(confirmationAttr?.isValueChanged).toBe(true);
+    // Preserve server-issued metadata (id).
+    expect(confirmationAttr?.id).toBe('a-conf');
+  });
+
+  it('round-trips scaffold values unchanged when the user does not edit the form', async () => {
+    // Even when the types endpoint returns nothing (typical for Virtual POs that lack
+    // an explicit security grant), the modal synthesizes an EntityType from the PO's
+    // own attributes — so the PO is always rebuilt via dictToNestedPo, and scaffold
+    // values flow through formData → back onto the outgoing PO.
+    const { component, service, fixture } = setupWithTypes([]);
+    const promise = service.show({
+      step: 'confirm',
+      title: 'Delete car',
+      options: ['Delete', 'Cancel'],
+      persistentObject: scaffoldedPo,
+    } as any);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    component.onOption('Delete');
+
+    const result = await promise;
+    const confirmationAttr = result.persistentObject?.attributes.find(a => a.name === 'Confirmation');
+    expect(confirmationAttr?.value).toBeNull();
+    expect(result.persistentObject?.attributes.find(a => a.name === 'LicensePlate')?.value).toBe('ABC123');
   });
 });

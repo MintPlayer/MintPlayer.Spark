@@ -49,6 +49,12 @@
       "isDenied": false
     },
     {
+      "id": "a0000001-0000-0000-0000-000000000007",
+      "resource": "QueryReadEditNewDelete/AddressDescription",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "id": "b0000002-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNew/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",

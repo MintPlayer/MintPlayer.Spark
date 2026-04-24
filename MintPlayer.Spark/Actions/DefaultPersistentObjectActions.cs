@@ -29,7 +29,30 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
     {
-        var entity = entityMapper.ToEntity<T>(obj);
+        // Update path: load the existing entity and merge the PO's values onto it. Fields
+        // absent from the PO (server-managed metadata, untouched TranslatedString languages,
+        // etc.) survive — ToEntity's always-new-instance flow wiped them. Create path
+        // (Id is null/empty, or Raven returned null for an unknown Id) falls through to
+        // ToEntity which builds a fresh instance from the PO.
+        T entity;
+        if (!string.IsNullOrEmpty(obj.Id))
+        {
+            var existing = await session.LoadAsync<T>(obj.Id);
+            if (existing is not null)
+            {
+                await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
+                entity = existing;
+            }
+            else
+            {
+                entity = entityMapper.ToEntity<T>(obj);
+            }
+        }
+        else
+        {
+            entity = entityMapper.ToEntity<T>(obj);
+        }
+
         await OnBeforeSaveAsync(obj, entity);
         await session.StoreAsync(entity);
         await session.SaveChangesAsync();

@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, resolveTranslation } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, nestedPoToDict, resolveTranslation } from '@mintplayer/ng-spark/models';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
 export class AttributeValuePipe implements PipeTransform {
@@ -11,12 +11,15 @@ export class AttributeValuePipe implements PipeTransform {
     if (attr.breadcrumb) return attr.breadcrumb;
 
     const attrDef = entityType?.attributes.find(a => a.name === attrName);
-    if (attrDef?.dataType === 'AsDetail' && attr.value) {
-      if (Array.isArray(attr.value)) {
-        return `${attr.value.length} item${attr.value.length !== 1 ? 's' : ''}`;
+    if (attrDef?.dataType === 'AsDetail') {
+      // Server emits nested PO(s) in attr.objects (array) / attr.object (single) — attr.value is null.
+      if (attr.isArray) {
+        const count = attr.objects?.length ?? 0;
+        if (count === 0) return '';
+        return `${count} item${count !== 1 ? 's' : ''}`;
       }
-      if (typeof attr.value === 'object') {
-        return this.formatAsDetailValue(attrDef, attr.value, allEntityTypes);
+      if (attr.object) {
+        return this.formatAsDetailValue(attrDef, nestedPoToDict(attr.object), allEntityTypes);
       }
     }
 
