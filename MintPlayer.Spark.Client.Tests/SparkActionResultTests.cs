@@ -45,17 +45,25 @@ public class SparkActionResultTests
     {
         var (client, handler) = NewClientWithWarmup();
 
-        // Mirror the exact JSON the server emits from SparkRetryActionException — see
-        // MintPlayer.Spark/Endpoints/Actions/ExecuteCustomAction.cs for the canonical shape.
+        // Mirror the envelope shape the server emits — ClientAccessor.PushRetry adds a
+        // RetryOperation to the ClientOperationEnvelope.Operations list, with the polymorphic
+        // discriminator "type" = "retry" (see ClientOperation.cs).
         var payload = new
         {
-            type = "retry-action",
-            step = 3,
-            title = "Proceed?",
-            message = "This operation can't be undone.",
-            options = new[] { "Yes", "No" },
-            defaultOption = "No",
-            persistentObject = (PersistentObject?)null,
+            result = (object?)null,
+            operations = new[]
+            {
+                new
+                {
+                    type = "retry",
+                    step = 3,
+                    title = "Proceed?",
+                    message = "This operation can't be undone.",
+                    options = new[] { "Yes", "No" },
+                    defaultOption = "No",
+                    persistentObject = (PersistentObject?)null,
+                },
+            },
         };
         var response = new HttpResponseMessage((HttpStatusCode)449)
         {

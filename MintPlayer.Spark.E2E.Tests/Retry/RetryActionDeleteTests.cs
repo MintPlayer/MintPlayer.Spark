@@ -38,10 +38,11 @@ public class RetryActionDeleteTests
             $"first delete must surface the retry-action\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
-        payload.GetProperty("title").GetString().Should().Be("Delete car");
-        payload.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Contain(["Delete", "Cancel"]);
-        var step = payload.GetProperty("step").GetInt32();
-        var po = payload.GetProperty("persistentObject").Clone();
+        var retry = ExtractRetryOperation(payload);
+        retry.GetProperty("title").GetString().Should().Be("Delete car");
+        retry.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Contain(["Delete", "Cancel"]);
+        var step = retry.GetProperty("step").GetInt32();
+        var po = retry.GetProperty("persistentObject").Clone();
 
         // 2. Fill the Confirmation attribute with the correct plate.
         var populated = PopulatePoConfirmation(po, plate);
@@ -71,8 +72,9 @@ public class RetryActionDeleteTests
         var first = await adminClient.SendAsync(HttpMethod.Delete, DeleteUrl(created.Id!), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
-        var step = payload.GetProperty("step").GetInt32();
-        var po = payload.GetProperty("persistentObject").Clone();
+        var retry = ExtractRetryOperation(payload);
+        var step = retry.GetProperty("step").GetInt32();
+        var po = retry.GetProperty("persistentObject").Clone();
 
         // Cancel — server returns NoContent but doesn't delete.
         var second = await adminClient.SendAsync(
@@ -96,8 +98,9 @@ public class RetryActionDeleteTests
         var first = await adminClient.SendAsync(HttpMethod.Delete, DeleteUrl(created.Id!), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
-        var step = payload.GetProperty("step").GetInt32();
-        var po = payload.GetProperty("persistentObject").Clone();
+        var retry = ExtractRetryOperation(payload);
+        var step = retry.GetProperty("step").GetInt32();
+        var po = retry.GetProperty("persistentObject").Clone();
 
         var populated = PopulatePoConfirmation(po, "WRONG-PLATE");
         var second = await adminClient.SendAsync(
@@ -114,6 +117,20 @@ public class RetryActionDeleteTests
 
     private static string DeleteUrl(string carId)
         => $"/spark/po/{CarFixture.TypeId}/{Uri.EscapeDataString(carId)}";
+
+    /// <summary>
+    /// Server wraps action responses in a <c>ClientOperationEnvelope</c> — the retry payload
+    /// lives at <c>operations[i]</c> where <c>type == "retry"</c>, not at the envelope root.
+    /// </summary>
+    private static JsonElement ExtractRetryOperation(JsonElement envelope)
+    {
+        foreach (var op in envelope.GetProperty("operations").EnumerateArray())
+        {
+            if (op.GetProperty("type").GetString() == "retry")
+                return op;
+        }
+        throw new InvalidOperationException("envelope contains no retry operation");
+    }
 
     /// <summary>
     /// Shallow-clones the scaffolded PersistentObject JSON, finds the <c>Confirmation</c>
