@@ -103,14 +103,14 @@ export class SparkService {
   }
 
   async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
-    return this.putWithRetry<PersistentObject>(
+    return this.putWithEnvelope<PersistentObject>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       { persistentObject: data }
     );
   }
 
   async delete(type: string, id: string): Promise<void> {
-    return this.deleteWithRetry<void>(
+    return this.deleteWithEnvelope<void>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       {}
     );
@@ -123,7 +123,7 @@ export class SparkService {
 
   async executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItems?: PersistentObject[]): Promise<void> {
     const body: { parent?: PersistentObject; selectedItems?: PersistentObject[]; retryResults?: RetryActionResult[] } = { parent, selectedItems };
-    return this.postWithRetry<void>(
+    return this.postWithEnvelope<void>(
       `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
       body as any
     );
@@ -155,23 +155,56 @@ export class SparkService {
     ));
   }
 
-  // Retry Action helpers
+  // Envelope-aware HTTP helpers.
+  // All mutation endpoints (Create / Update / Delete / Execute custom action) emit the
+  // ClientOperationEnvelope { result, operations } shape. These helpers unwrap the envelope,
+  // dispatch any non-retry operations, and translate 449 retry-operations into the existing
+  // RetryActionService modal flow.
 
-  /**
-   * Envelope-aware POST. Used by endpoints that already emit the
-   * `{ result, operations }` envelope (currently: Create). Other endpoints
-   * still use postWithRetry until they migrate. Dispatches any non-retry
-   * operations (navigate, notify, refresh, disableAction) before returning.
-   */
-  private async postWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
+  private postWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
+    return this.sendWithEnvelope<T>(
+      () => firstValueFrom(this.http.post<ClientOperationEnvelope<T>>(url, body)),
+      body,
+      () => this.postWithEnvelope<T>(url, body),
+    );
+  }
+
+  private putWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
+    return this.sendWithEnvelope<T>(
+      () => firstValueFrom(this.http.put<ClientOperationEnvelope<T>>(url, body)),
+      body,
+      () => this.putWithEnvelope<T>(url, body),
+    );
+  }
+
+  private deleteWithEnvelope<T>(url: string, body: { retryResults?: RetryActionResult[] }): Promise<T> {
+    return this.sendWithEnvelope<T>(
+      () => {
+        const hasRetry = body.retryResults && body.retryResults.length > 0;
+        return firstValueFrom(
+          hasRetry
+            ? this.http.delete<ClientOperationEnvelope<T>>(url, { body })
+            : this.http.delete<ClientOperationEnvelope<T>>(url)
+        );
+      },
+      body,
+      () => this.deleteWithEnvelope<T>(url, body),
+    );
+  }
+
+  private async sendWithEnvelope<T>(
+    send: () => Promise<ClientOperationEnvelope<T>>,
+    body: { retryResults?: RetryActionResult[] },
+    retryFn: () => Promise<T>,
+  ): Promise<T> {
     try {
-      const envelope = await firstValueFrom(this.http.post<ClientOperationEnvelope<T>>(url, body));
-      if (envelope.operations?.length) {
+      const envelope = await send();
+      if (envelope?.operations?.length) {
         this.dispatcher.dispatch(envelope.operations);
       }
-      return envelope.result as T;
+      return envelope?.result as T;
     } catch (error) {
-      return this.handleEnvelopeRetryError<T>(error as HttpErrorResponse, () => this.postWithEnvelope<T>(url, body), body);
+      return this.handleEnvelopeRetryError<T>(error as HttpErrorResponse, retryFn, body);
     }
   }
 
@@ -186,73 +219,23 @@ export class SparkService {
 
     // Dispatch any non-retry operations accumulated before the retry throw
     // so notify/refresh/etc. fire BEFORE the retry modal opens.
-    const nonRetry = envelope.operations.filter(i => i.type !== 'retry');
+    const nonRetry = envelope.operations.filter(o => o.type !== 'retry');
     if (nonRetry.length) this.dispatcher.dispatch(nonRetry);
 
-    const retryInstr = envelope.operations.find(i => i.type === 'retry') as RetryOperation | undefined;
-    if (!retryInstr) throw error;
+    const retryOp = envelope.operations.find(o => o.type === 'retry') as RetryOperation | undefined;
+    if (!retryOp) throw error;
 
     const payload: RetryActionPayload = {
       type: 'retry-action',
-      step: retryInstr.step,
-      title: retryInstr.title,
-      options: retryInstr.options,
-      defaultOption: retryInstr.defaultOption ?? undefined,
-      persistentObject: retryInstr.persistentObject ?? undefined,
-      message: retryInstr.message ?? undefined,
+      step: retryOp.step,
+      title: retryOp.title,
+      options: retryOp.options,
+      defaultOption: retryOp.defaultOption ?? undefined,
+      persistentObject: retryOp.persistentObject ?? undefined,
+      message: retryOp.message ?? undefined,
     };
     const result = await this.retryActionService.show(payload);
     if (result.option === 'Cancel' && !payload.options.includes('Cancel')) throw error;
-
-    body.retryResults = [...(body.retryResults || []), result];
-    return retryFn();
-  }
-
-  private async postWithRetry<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
-    try {
-      return await firstValueFrom(this.http.post<T>(url, body));
-    } catch (error) {
-      return this.handleRetryError<T>(error as HttpErrorResponse, () => this.postWithRetry<T>(url, body), body);
-    }
-  }
-
-  private async putWithRetry<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
-    try {
-      return await firstValueFrom(this.http.put<T>(url, body));
-    } catch (error) {
-      return this.handleRetryError<T>(error as HttpErrorResponse, () => this.putWithRetry<T>(url, body), body);
-    }
-  }
-
-  private async deleteWithRetry<T>(url: string, body: { retryResults?: RetryActionResult[] }): Promise<T> {
-    try {
-      const hasRetry = body.retryResults && body.retryResults.length > 0;
-      return await firstValueFrom(
-        hasRetry
-          ? this.http.delete<T>(url, { body })
-          : this.http.delete<T>(url)
-      );
-    } catch (error) {
-      return this.handleRetryError<T>(error as HttpErrorResponse, () => this.deleteWithRetry<T>(url, body), body);
-    }
-  }
-
-  private async handleRetryError<T>(
-    error: HttpErrorResponse,
-    retryFn: () => Promise<T>,
-    body: { retryResults?: RetryActionResult[] }
-  ): Promise<T> {
-    if (error.status !== 449 || error.error?.type !== 'retry-action') {
-      throw error;
-    }
-
-    const payload = error.error as RetryActionPayload;
-    const result = await this.retryActionService.show(payload);
-
-    // Modal dismissed (Escape/X) - Cancel was not an explicit developer option
-    if (result.option === 'Cancel' && !payload.options.includes('Cancel')) {
-      throw error;
-    }
 
     body.retryResults = [...(body.retryResults || []), result];
     return retryFn();

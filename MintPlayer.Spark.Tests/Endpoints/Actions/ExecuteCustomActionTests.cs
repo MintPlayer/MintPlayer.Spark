@@ -27,7 +27,13 @@ public class ExecuteCustomActionTests
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
-    private readonly RetryAccessor _retryAccessor = new(new ClientAccessor());
+    private readonly ClientAccessor _sharedClientAccessor = new();
+    private readonly RetryAccessor _retryAccessor;
+
+    public ExecuteCustomActionTests()
+    {
+        _retryAccessor = new RetryAccessor(_sharedClientAccessor);
+    }
 
     private static readonly EntityTypeDefinition CarType = new()
     {
@@ -162,13 +168,15 @@ public class ExecuteCustomActionTests
 
         ((HttpStatusCode)context.Response.StatusCode).Should().Be((HttpStatusCode)449);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("type").GetString().Should().Be("retry-action");
-        doc.RootElement.GetProperty("step").GetInt32().Should().Be(2);
-        doc.RootElement.GetProperty("title").GetString().Should().Be("Confirm?");
-        doc.RootElement.GetProperty("options").EnumerateArray().Select(e => e.GetString())
+        // Envelope shape: { result, operations: [{ type: "retry", step, title, options, ... }] }
+        var retry = doc.RootElement.GetProperty("operations").EnumerateArray()
+            .First(o => o.GetProperty("type").GetString() == "retry");
+        retry.GetProperty("step").GetInt32().Should().Be(2);
+        retry.GetProperty("title").GetString().Should().Be("Confirm?");
+        retry.GetProperty("options").EnumerateArray().Select(e => e.GetString())
             .Should().Equal("Yes", "No");
-        doc.RootElement.GetProperty("defaultOption").GetString().Should().Be("No");
-        doc.RootElement.GetProperty("message").GetString().Should().Be("Are you sure?");
+        retry.GetProperty("defaultOption").GetString().Should().Be("No");
+        retry.GetProperty("message").GetString().Should().Be("Are you sure?");
     }
 
     [Fact]
@@ -210,7 +218,8 @@ public class ExecuteCustomActionTests
 
         context.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("error").GetString().Should().Be("Boom");
+        // Envelope shape: { result: { error: "..." }, operations: [] }
+        doc.RootElement.GetProperty("result").GetProperty("error").GetString().Should().Be("Boom");
     }
 
     [Fact]
@@ -262,7 +271,7 @@ public class ExecuteCustomActionTests
         => TEndpoint.Configure(builder);
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, NullLogger<ExecuteCustomAction>.Instance);
+        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance);
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,

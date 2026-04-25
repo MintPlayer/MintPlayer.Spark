@@ -101,14 +101,14 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         await OnBeforeDeleteAsync(entity);
         session.Delete(entity);
         await session.SaveChangesAsync();
+
+        // Demo toast — surfaces a frontend notification after the retry-confirmation flow
+        // completes so the user sees explicit feedback that the deletion went through.
+        manager.Client.Notify($"Car {entity.LicensePlate} deleted", NotificationKind.Success);
     }
 
     /// <summary>
-    /// Demo: emit a toast on the frontend after every successful save.
-    /// Vertical-slice example for the Client Operations PRD — proves the
-    /// `manager.Client.Notify(...)` → envelope → frontend dispatcher → toast
-    /// flow end-to-end. Wired only on the Create endpoint for now (the only
-    /// endpoint emitting the envelope at this point in the rollout).
+    /// Demo: emit a toast on the frontend after every successful save (Create + Update).
     /// </summary>
     public override Task OnAfterSaveAsync(PersistentObject obj, Car entity)
     {

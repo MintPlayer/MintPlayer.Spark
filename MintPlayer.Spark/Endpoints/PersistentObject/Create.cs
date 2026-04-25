@@ -63,11 +63,9 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return ClientResult.Envelope(clientAccessor, result, 201);
         }
-        catch (SparkRetryActionException)
+        catch (SparkRetryActionException ex)
         {
-            // Retry operation was already pushed onto clientAccessor by RetryAccessor.Action()
-            // before this exception unwound — rides out in the envelope's operations list.
-            return ClientResult.Envelope(clientAccessor, null, 449);
+            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkAccessDeniedException)
         {

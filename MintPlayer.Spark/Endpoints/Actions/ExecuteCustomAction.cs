@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -22,6 +23,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -32,40 +34,31 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
+            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, StatusCodes.Status404NotFound);
         }
 
-        // Get the simple type name (e.g., "Car" from "Fleet.Entities.Car")
         var typeName = entityType.ClrType.Split('.').Last();
 
-        // Authorization check
         try
         {
             await permissionService.EnsureAuthorizedAsync(actionName, typeName);
         }
         catch (SparkAccessDeniedException)
         {
-            if (httpContext.User.Identity?.IsAuthenticated != true)
-            {
-                return Results.Json(new { error = "Authentication required" }, statusCode: StatusCodes.Status401Unauthorized);
-            }
-            else
-            {
-                return Results.Json(new { error = "Access denied" }, statusCode: StatusCodes.Status403Forbidden);
-            }
+            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
+            return ClientResult.Envelope(clientAccessor,
+                new { error = isAuthed ? "Access denied" : "Authentication required" },
+                isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
         }
 
-        // Resolve the custom action implementation
         var action = actionResolver.Resolve(actionName);
         if (action is null)
         {
-            return Results.Json(new { error = $"Custom action '{actionName}' not found" }, statusCode: StatusCodes.Status404NotFound);
+            return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
 
-        // Deserialize request body
         var request = await httpContext.Request.ReadFromJsonAsync<CustomActionRequest>();
 
-        // Set up retry state if this is a re-invocation
         if (request?.RetryResults is { Length: > 0 } retryResults)
         {
             var accessor = (RetryAccessor)retryAccessor;
@@ -81,36 +74,23 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         try
         {
             await action.ExecuteAsync(args, httpContext.RequestAborted);
-            return Results.Ok();
+            return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
         }
         catch (SparkRetryActionException ex)
         {
-            return Results.Json(new
-            {
-                type = "retry-action",
-                step = ex.Step,
-                title = ex.Title,
-                message = ex.RetryMessage,
-                options = ex.Options,
-                defaultOption = ex.DefaultOption,
-                persistentObject = ex.PersistentObject,
-            }, statusCode: 449);
+            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkAccessDeniedException)
         {
-            if (httpContext.User.Identity?.IsAuthenticated != true)
-            {
-                return Results.Json(new { error = "Authentication required" }, statusCode: StatusCodes.Status401Unauthorized);
-            }
-            else
-            {
-                return Results.Json(new { error = "Access denied" }, statusCode: StatusCodes.Status403Forbidden);
-            }
+            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
+            return ClientResult.Envelope(clientAccessor,
+                new { error = isAuthed ? "Access denied" : "Authentication required" },
+                isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
-            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status500InternalServerError);
+            return ClientResult.Envelope(clientAccessor, new { error = ex.Message }, StatusCodes.Status500InternalServerError);
         }
     }
 }
