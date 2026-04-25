@@ -1,5 +1,5 @@
-// Wire types matching MintPlayer.Spark.Abstractions.ClientInstructions on the server.
-// Discriminator is the `type` field. Unknown instruction types are silently dropped
+// Wire types matching MintPlayer.Spark.Abstractions.ClientOperations on the server.
+// Discriminator is the `type` field. Unknown operation types are silently dropped
 // by the dispatcher (forward-compat: new types can land server-side without updating
 // older clients).
 
@@ -12,21 +12,21 @@ export enum NotificationKind {
     Error = 3,
 }
 
-export interface NavigateInstruction {
+export interface NavigateOperation {
     type: 'navigate';
     objectTypeId?: string;
     id?: string;
     routeName?: string;
 }
 
-export interface NotifyInstruction {
+export interface NotifyOperation {
     type: 'notify';
     message: string;
     kind: NotificationKind;
     durationMs?: number;
 }
 
-export interface RefreshAttributeInstruction {
+export interface RefreshAttributeOperation {
     type: 'refreshAttribute';
     objectTypeId: string;
     id: string;
@@ -34,7 +34,7 @@ export interface RefreshAttributeInstruction {
     value?: unknown;
 }
 
-export interface RefreshQueryInstruction {
+export interface RefreshQueryOperation {
     type: 'refreshQuery';
     queryId: string;
 }
@@ -45,13 +45,13 @@ export type DisableTarget =
     | { kind: 'currentResponse' }
     | { kind: 'session' };
 
-export interface DisableActionInstruction {
+export interface DisableActionOperation {
     type: 'disableAction';
     actionName: string;
     target: DisableTarget;
 }
 
-export interface RetryInstruction {
+export interface RetryOperation {
     type: 'retry';
     step: number;
     title: string;
@@ -62,25 +62,25 @@ export interface RetryInstruction {
 }
 
 /**
- * Discriminated union of known instruction types, plus an open shape for unknown
- * future instructions. Handlers should narrow via the `type` discriminator before
- * accessing fields specific to their instruction type.
+ * Discriminated union of known operation types, plus an open shape for unknown
+ * future operations. Handlers should narrow via the `type` discriminator before
+ * accessing fields specific to their operation type.
  */
-export type ClientInstruction =
-    | NavigateInstruction
-    | NotifyInstruction
-    | RefreshAttributeInstruction
-    | RefreshQueryInstruction
-    | DisableActionInstruction
-    | RetryInstruction
+export type ClientOperation =
+    | NavigateOperation
+    | NotifyOperation
+    | RefreshAttributeOperation
+    | RefreshQueryOperation
+    | DisableActionOperation
+    | RetryOperation
     | { type: string; [key: string]: unknown };
 
 /**
  * Wire envelope returned by every action endpoint. `result` carries the primary
  * payload (the PersistentObject for a Create, the QueryResult for an Execute,
- * etc.); `instructions` carries the side-effects the frontend dispatches.
+ * etc.); `operations` carries the side-effects the frontend dispatches.
  */
-export interface ClientInstructionEnvelope<T = unknown> {
+export interface ClientOperationEnvelope<T = unknown> {
     result: T | null;
-    instructions: ClientInstruction[];
+    operations: ClientOperation[];
 }

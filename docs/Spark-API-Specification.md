@@ -2,7 +2,7 @@
 
 Reference for every HTTP endpoint the Spark framework exposes. All endpoints live under the `/spark/*` top-level prefix. Mutating endpoints (POST/PUT/DELETE) require the anti-forgery token; read endpoints are anonymous unless noted.
 
-> **Forward-compatibility note:** the response envelope is evolving. See [`docs/PRD-ClientInstructions.md`](./PRD-ClientInstructions.md) — once that PRD's endpoint-wiring milestone lands, every action-endpoint response will be wrapped in `{ result, instructions }` (instructions being an array of typed side-effects like `navigate`, `notify`, `refreshQuery`, `retry`, etc.). This document describes the current shape; the wrapping will be transparent to consumers that use the typed `MintPlayer.Spark.Client` SDK.
+> **Forward-compatibility note:** the response envelope is evolving. See [`docs/PRD-ClientOperations.md`](./PRD-ClientOperations.md) — once that PRD's endpoint-wiring milestone lands, every action-endpoint response will be wrapped in `{ result, operations }` (operations being an array of typed side-effects like `navigate`, `notify`, `refreshQuery`, `retry`, etc.). This document describes the current shape; the wrapping will be transparent to consumers that use the typed `MintPlayer.Spark.Client` SDK.
 
 ## Route Prefix Mapping
 
@@ -363,7 +363,7 @@ Action methods can prompt the user for confirmation/input mid-execution.
 
 Multiple sequential prompts accumulate — the client echoes back all prior answers on each resubmission. When every prompt has been answered, the endpoint returns the normal success response.
 
-Subsumption under the Client Instructions PRD: once implemented, the 449 response shape becomes one element of the unified `{ result, instructions }` envelope (with `instructions[0].type == "retry"`). User-visible behavior is unchanged; only the server-side JSON builder is different.
+Subsumption under the Client Operations PRD: once implemented, the 449 response shape becomes one element of the unified `{ result, operations }` envelope (with `operations[0].type == "retry"`). User-visible behavior is unchanged; only the server-side JSON builder is different.
 
 ### Authorization Model
 

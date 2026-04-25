@@ -1,6 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 
@@ -41,8 +41,8 @@ internal sealed partial class RetryAccessor : IRetryAccessor
             return;
         }
 
-        // Push the retry instruction onto the client accessor so the endpoint's
-        // envelope serializer picks it up alongside any non-blocking instructions
+        // Push the retry operation onto the client accessor so the endpoint's
+        // envelope serializer picks it up alongside any non-blocking operations
         // emitted before this call. Then throw to unwind.
         ((ClientAccessor)clientAccessor).PushRetry(step, title, options, defaultOption, persistentObject, message);
         throw new SparkRetryActionException(step, title, options, defaultOption, persistentObject, message);

@@ -1,4 +1,4 @@
-export * from './src/instructions';
+export * from './src/operations';
 export * from './src/dispatcher.service';
 export * from './src/handlers.token';
 export * from './src/notification.service';

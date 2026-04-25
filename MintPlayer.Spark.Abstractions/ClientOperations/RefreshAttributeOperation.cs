@@ -1,8 +1,8 @@
-namespace MintPlayer.Spark.Abstractions.ClientInstructions;
+namespace MintPlayer.Spark.Abstractions.ClientOperations;
 
 /// <summary>
 /// Patches a single attribute on a currently-open PersistentObject on the frontend.
-/// If the target PO is not displayed, the instruction is silently dropped by the
+/// If the target PO is not displayed, the operation is silently dropped by the
 /// frontend dispatcher (no error).
 /// </summary>
 /// <remarks>
@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Abstractions.ClientInstructions;
 /// with a protocol signal could mean "refetch" rather than "set to null" — not
 /// specified yet.
 /// </remarks>
-public sealed class RefreshAttributeInstruction : ClientInstruction
+public sealed class RefreshAttributeOperation : ClientOperation
 {
     public required Guid ObjectTypeId { get; init; }
     public required string Id { get; init; }

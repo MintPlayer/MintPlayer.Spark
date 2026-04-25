@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
-import { ClientInstructionEnvelope, RetryInstruction, SparkClientInstructionDispatcher } from '@mintplayer/ng-spark/client-instructions';
+import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
@@ -13,7 +13,7 @@ export class SparkService {
   private readonly baseUrl = this.config?.baseUrl ?? '/spark';
   private readonly http = inject(HttpClient);
   private readonly retryActionService = inject(RetryActionService);
-  private readonly dispatcher = inject(SparkClientInstructionDispatcher);
+  private readonly dispatcher = inject(SparkClientOperationDispatcher);
 
   // Entity Types
   async getEntityTypes(): Promise<EntityType[]> {
@@ -159,15 +159,15 @@ export class SparkService {
 
   /**
    * Envelope-aware POST. Used by endpoints that already emit the
-   * `{ result, instructions }` envelope (currently: Create). Other endpoints
+   * `{ result, operations }` envelope (currently: Create). Other endpoints
    * still use postWithRetry until they migrate. Dispatches any non-retry
-   * instructions (navigate, notify, refresh, disableAction) before returning.
+   * operations (navigate, notify, refresh, disableAction) before returning.
    */
   private async postWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
     try {
-      const envelope = await firstValueFrom(this.http.post<ClientInstructionEnvelope<T>>(url, body));
-      if (envelope.instructions?.length) {
-        this.dispatcher.dispatch(envelope.instructions);
+      const envelope = await firstValueFrom(this.http.post<ClientOperationEnvelope<T>>(url, body));
+      if (envelope.operations?.length) {
+        this.dispatcher.dispatch(envelope.operations);
       }
       return envelope.result as T;
     } catch (error) {
@@ -181,15 +181,15 @@ export class SparkService {
     body: { retryResults?: RetryActionResult[] }
   ): Promise<T> {
     if (error.status !== 449) throw error;
-    const envelope = error.error as ClientInstructionEnvelope<T> | undefined;
-    if (!envelope?.instructions?.length) throw error;
+    const envelope = error.error as ClientOperationEnvelope<T> | undefined;
+    if (!envelope?.operations?.length) throw error;
 
-    // Dispatch any non-retry instructions accumulated before the retry throw
+    // Dispatch any non-retry operations accumulated before the retry throw
     // so notify/refresh/etc. fire BEFORE the retry modal opens.
-    const nonRetry = envelope.instructions.filter(i => i.type !== 'retry');
+    const nonRetry = envelope.operations.filter(i => i.type !== 'retry');
     if (nonRetry.length) this.dispatcher.dispatch(nonRetry);
 
-    const retryInstr = envelope.instructions.find(i => i.type === 'retry') as RetryInstruction | undefined;
+    const retryInstr = envelope.operations.find(i => i.type === 'retry') as RetryOperation | undefined;
     if (!retryInstr) throw error;
 
     const payload: RetryActionPayload = {

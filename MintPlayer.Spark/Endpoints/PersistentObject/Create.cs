@@ -3,7 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -65,8 +65,8 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         }
         catch (SparkRetryActionException)
         {
-            // Retry instruction was already pushed onto clientAccessor by RetryAccessor.Action()
-            // before this exception unwound — rides out in the envelope's instructions list.
+            // Retry operation was already pushed onto clientAccessor by RetryAccessor.Action()
+            // before this exception unwound — rides out in the envelope's operations list.
             return ClientResult.Envelope(clientAccessor, null, 449);
         }
         catch (SparkAccessDeniedException)

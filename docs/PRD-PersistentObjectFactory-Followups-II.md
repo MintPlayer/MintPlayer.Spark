@@ -19,8 +19,8 @@ This PRD covers the two remaining items (§4 and §5 of the predecessor), renumb
 
 ## 1. `CustomAction` return-value builder
 
-> **Status: obsoleted by [`docs/PRD-ClientInstructions.md`](./PRD-ClientInstructions.md).**
-> A return-value builder on `ICustomAction.ExecuteAsync` was never the right shape. The Client Instructions PRD generalizes the problem: backend side-effects (including what this builder would have produced — navigate, notify) are accumulated onto `IManager.Client` during action execution and ride out in a unified response envelope. This applies uniformly to CustomActions, CRUD PO actions, and any future action type — not just CustomActions. No `CustomActionResult` object will exist; `ICustomAction.ExecuteAsync`'s signature stays `Task`. The content below is preserved as historical context for the decision.
+> **Status: obsoleted by [`docs/PRD-ClientOperations.md`](./PRD-ClientOperations.md).**
+> A return-value builder on `ICustomAction.ExecuteAsync` was never the right shape. The Client Operations PRD generalizes the problem: backend side-effects (including what this builder would have produced — navigate, notify) are accumulated onto `IManager.Client` during action execution and ride out in a unified response envelope. This applies uniformly to CustomActions, CRUD PO actions, and any future action type — not just CustomActions. No `CustomActionResult` object will exist; `ICustomAction.ExecuteAsync`'s signature stays `Task`. The content below is preserved as historical context for the decision.
 
 ### Why deferred (from predecessor PRD §4)
 

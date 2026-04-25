@@ -1,4 +1,4 @@
-namespace MintPlayer.Spark.Abstractions.ClientInstructions;
+namespace MintPlayer.Spark.Abstractions.ClientOperations;
 
 public enum NotificationKind
 {

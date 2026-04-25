@@ -139,11 +139,11 @@ public class SparkClient : IDisposable
     /// null on input; the server assigns it and returns the populated object.
     /// </summary>
     /// <remarks>
-    /// The Create endpoint returns the new <c>ClientInstructionEnvelope</c> wire shape
-    /// (<c>{ result, instructions }</c>); this method unwraps the envelope and returns just the
-    /// <see cref="PersistentObject"/>. Any client instructions emitted by server-side action code
+    /// The Create endpoint returns the new <c>ClientOperationEnvelope</c> wire shape
+    /// (<c>{ result, operations }</c>); this method unwraps the envelope and returns just the
+    /// <see cref="PersistentObject"/>. Any client operations emitted by server-side action code
     /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
-    /// docs/PRD-ClientInstructions.md.
+    /// docs/PRD-ClientOperations.md.
     /// </remarks>
     public async Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
     {
@@ -378,9 +378,9 @@ public class SparkClient : IDisposable
     }
 
     /// <summary>
-    /// Reads a <c>{ result, instructions }</c> envelope (per PRD-ClientInstructions) and
+    /// Reads a <c>{ result, operations }</c> envelope (per PRD-ClientOperations) and
     /// extracts the typed <c>result</c> field. Returns <c>default</c> when the result is
-    /// null / absent. Instructions are currently discarded — re-expose them via a richer
+    /// null / absent. Operations are currently discarded — re-expose them via a richer
     /// return type when the SDK starts surfacing client-side side-effects.
     /// </summary>
     private async Task<T?> ReadEnvelopeResultAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)

@@ -1,19 +1,19 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Per-request accumulator for client instructions. Drained by action endpoints into
-/// the <see cref="ClientInstructionEnvelope"/> on response egress.
+/// Per-request accumulator for client operations. Drained by action endpoints into
+/// the <see cref="ClientOperationEnvelope"/> on response egress.
 /// </summary>
 [Register(typeof(IClientAccessor), ServiceLifetime.Scoped)]
 internal sealed partial class ClientAccessor : IClientAccessor
 {
-    private readonly List<ClientInstruction> _instructions = [];
+    private readonly List<ClientOperation> _operations = [];
 
-    public IReadOnlyList<ClientInstruction> Instructions => _instructions;
+    public IReadOnlyList<ClientOperation> Operations => _operations;
 
     // --- Navigate -------------------------------------------------------
 
@@ -23,19 +23,19 @@ internal sealed partial class ClientAccessor : IClientAccessor
         if (string.IsNullOrEmpty(po.Id))
             throw new InvalidOperationException(
                 "Cannot Navigate to a PersistentObject without an Id — typically means the PO hasn't been saved yet.");
-        _instructions.Add(new NavigateInstruction { ObjectTypeId = po.ObjectTypeId, Id = po.Id });
+        _operations.Add(new NavigateOperation { ObjectTypeId = po.ObjectTypeId, Id = po.Id });
     }
 
     public void Navigate(Guid objectTypeId, string id)
-        => _instructions.Add(new NavigateInstruction { ObjectTypeId = objectTypeId, Id = id });
+        => _operations.Add(new NavigateOperation { ObjectTypeId = objectTypeId, Id = id });
 
     public void Navigate(string routeName)
-        => _instructions.Add(new NavigateInstruction { RouteName = routeName });
+        => _operations.Add(new NavigateOperation { RouteName = routeName });
 
     // --- Notify ---------------------------------------------------------
 
     public void Notify(string message, NotificationKind kind = NotificationKind.Info, TimeSpan? duration = null)
-        => _instructions.Add(new NotifyInstruction
+        => _operations.Add(new NotifyOperation
         {
             Message = message,
             Kind = kind,
@@ -51,7 +51,7 @@ internal sealed partial class ClientAccessor : IClientAccessor
             throw new InvalidOperationException(
                 "Cannot RefreshAttribute on a PersistentObject without an Id.");
         var attr = po[attributeName];
-        _instructions.Add(new RefreshAttributeInstruction
+        _operations.Add(new RefreshAttributeOperation
         {
             ObjectTypeId = po.ObjectTypeId,
             Id = po.Id,
@@ -61,7 +61,7 @@ internal sealed partial class ClientAccessor : IClientAccessor
     }
 
     public void RefreshAttribute(Guid objectTypeId, string id, string attributeName, object? value)
-        => _instructions.Add(new RefreshAttributeInstruction
+        => _operations.Add(new RefreshAttributeOperation
         {
             ObjectTypeId = objectTypeId,
             Id = id,
@@ -70,7 +70,7 @@ internal sealed partial class ClientAccessor : IClientAccessor
         });
 
     public void RefreshQuery(string queryId)
-        => _instructions.Add(new RefreshQueryInstruction { QueryId = queryId });
+        => _operations.Add(new RefreshQueryOperation { QueryId = queryId });
 
     // --- DisableAction overloads ---------------------------------------
 
@@ -98,15 +98,15 @@ internal sealed partial class ClientAccessor : IClientAccessor
     private void AddDisableForEach(string[] actionNames, DisableTarget target)
     {
         foreach (var name in actionNames)
-            _instructions.Add(new DisableActionInstruction { ActionName = name, Target = target });
+            _operations.Add(new DisableActionOperation { ActionName = name, Target = target });
     }
 
     // --- Framework-internal: retry push --------------------------------
 
     /// <summary>
-    /// Pushes a <see cref="RetryInstruction"/> onto the accumulator. Called by
+    /// Pushes a <see cref="RetryOperation"/> onto the accumulator. Called by
     /// <see cref="RetryAccessor"/> just before it throws, so the retry rides
-    /// out in the same envelope as any non-blocking instructions queued earlier.
+    /// out in the same envelope as any non-blocking operations queued earlier.
     /// </summary>
     internal void PushRetry(
         int step,
@@ -115,7 +115,7 @@ internal sealed partial class ClientAccessor : IClientAccessor
         string? defaultOption,
         PersistentObject? persistentObject,
         string? message)
-        => _instructions.Add(new RetryInstruction
+        => _operations.Add(new RetryOperation
         {
             Step = step,
             Title = title,

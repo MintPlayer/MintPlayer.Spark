@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
 
-namespace MintPlayer.Spark.Abstractions.ClientInstructions;
+namespace MintPlayer.Spark.Abstractions.ClientOperations;
 
 /// <summary>
-/// Scoping target for a <see cref="DisableActionInstruction"/>. Discriminated by
-/// <c>kind</c>. See <c>docs/PRD-ClientInstructions.md</c> for the target shape
+/// Scoping target for a <see cref="DisableActionOperation"/>. Discriminated by
+/// <c>kind</c>. See <c>docs/PRD-ClientOperations.md</c> for the target shape
 /// table.
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]

@@ -5,7 +5,7 @@ using Fleet.LookupReferences;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
@@ -105,7 +105,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
     /// <summary>
     /// Demo: emit a toast on the frontend after every successful save.
-    /// Vertical-slice example for the Client Instructions PRD — proves the
+    /// Vertical-slice example for the Client Operations PRD — proves the
     /// `manager.Client.Notify(...)` → envelope → frontend dispatcher → toast
     /// flow end-to-end. Wired only on the Create endpoint for now (the only
     /// endpoint emitting the envelope at this point in the rollout).

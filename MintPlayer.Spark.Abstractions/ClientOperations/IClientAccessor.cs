@@ -1,19 +1,19 @@
-namespace MintPlayer.Spark.Abstractions.ClientInstructions;
+namespace MintPlayer.Spark.Abstractions.ClientOperations;
 
 /// <summary>
-/// Backend accumulator for client instructions. Scoped per HTTP request. Exposed on
+/// Backend accumulator for client operations. Scoped per HTTP request. Exposed on
 /// <see cref="IManager.Client"/>. Non-blocking methods append to the accumulator and
-/// return; the instructions are drained into the response envelope by the endpoint.
+/// return; the operations are drained into the response envelope by the endpoint.
 /// Blocking concerns (retry) go through <see cref="IManager.Retry"/>, which also
 /// accumulates onto this surface internally.
 /// </summary>
 public interface IClientAccessor
 {
     /// <summary>
-    /// The currently-accumulated instructions in emission order. Drained by the
+    /// The currently-accumulated operations in emission order. Drained by the
     /// endpoint on response egress.
     /// </summary>
-    IReadOnlyList<ClientInstruction> Instructions { get; }
+    IReadOnlyList<ClientOperation> Operations { get; }
 
     // --- Navigate -------------------------------------------------------
 

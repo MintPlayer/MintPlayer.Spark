@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { SparkRetryActionModalComponent } from '@mintplayer/ng-spark/retry-action-modal';
-import { SparkToastContainerComponent } from '@mintplayer/ng-spark/client-instructions';
+import { SparkToastContainerComponent } from '@mintplayer/ng-spark/client-operations';
 
 @Component({
   selector: 'app-root',

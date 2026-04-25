@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { SparkNotificationService } from './notification.service';
-import { NotificationKind } from './instructions';
+import { NotificationKind } from './operations';
 
 @Component({
     selector: 'spark-toast-container',

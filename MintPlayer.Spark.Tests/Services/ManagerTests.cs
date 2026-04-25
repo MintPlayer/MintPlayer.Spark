@@ -1,5 +1,5 @@
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Services;
 using NSubstitute;

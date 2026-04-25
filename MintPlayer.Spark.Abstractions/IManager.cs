@@ -1,4 +1,4 @@
-using MintPlayer.Spark.Abstractions.ClientInstructions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 
 namespace MintPlayer.Spark.Abstractions;
@@ -43,10 +43,10 @@ public interface IManager
     IRetryAccessor Retry { get; }
 
     /// <summary>
-    /// Access to the client-instructions accumulator — non-blocking side-effects
+    /// Access to the client-operations accumulator — non-blocking side-effects
     /// (Navigate, Notify, RefreshAttribute, RefreshQuery, DisableAction*) that the
     /// backend pushes and the frontend executes after the current action completes.
-    /// See <c>docs/PRD-ClientInstructions.md</c>.
+    /// See <c>docs/PRD-ClientOperations.md</c>.
     /// </summary>
     IClientAccessor Client { get; }
 

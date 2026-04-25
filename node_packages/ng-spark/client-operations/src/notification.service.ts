@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { NotificationKind } from './instructions';
+import { NotificationKind } from './operations';
 
 export interface SparkToast {
     id: string;
@@ -12,7 +12,7 @@ const DEFAULT_DURATION_MS = 4000;
 
 /**
  * Holds the active toasts as a signal. The `<spark-toast-container>` component
- * renders them; the built-in `notify` instruction handler pushes new toasts here.
+ * renders them; the built-in `notify` operation handler pushes new toasts here.
  *
  * Auto-dismissal: each toast schedules its own removal after `durationMs`. Pass
  * `0` to make a toast sticky (manual dismissal only).
