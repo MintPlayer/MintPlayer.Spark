@@ -71,7 +71,7 @@ jobs:
     - name: Run affected tests (.NET + Angular via Nx)
       run: npx nx affected --target=test
       env:
-        NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
     # One codecov upload per test project, each tagged with its own flag.
