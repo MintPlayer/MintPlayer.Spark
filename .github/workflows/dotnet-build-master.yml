@@ -74,32 +74,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-playwright-
 
-    # Per-project test invocation so each coverage file lands at
-    # `{ProjectName}/coverage/{guid}/coverage.cobertura.xml` — matches the layout
-    # nx produces on PRs, and matches the glob pattern each flagged codecov
-    # upload step below uses.
-    - name: Test
-      run: |
-        set -e
-        for proj in \
-          MintPlayer.Spark.Tests \
-          MintPlayer.Spark.SourceGenerators.Tests \
-          MintPlayer.Spark.Client.Tests \
-          MintPlayer.Spark.E2E.Tests; do
-          echo "::group::dotnet test ${proj}"
-          dotnet test "${proj}" \
-            --no-restore \
-            --configuration Release \
-            --verbosity normal \
-            --collect:"XPlat Code Coverage" \
-            --results-directory "${proj}/coverage"
-          echo "::endgroup::"
-        done
+    # All test projects (.NET + Angular) run via Nx so master populates the remote
+    # cache that PRs read from. The .NET test target's coverage args live in each
+    # test project's project.json so the layout (`{ProjectName}/coverage/{guid}/
+    # coverage.cobertura.xml`) is identical between PR and master runs — matches
+    # the glob pattern each flagged codecov upload step below uses.
+    - name: Test (all projects via Nx)
+      run: npx nx run-many --target=test
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
-
-    - name: Test Angular libraries
-      run: npx nx run-many --target=test --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
 
     # Master runs every test project unconditionally — all four coverage files
     # are present. Each uploads under its own flag so codecov's carryforward

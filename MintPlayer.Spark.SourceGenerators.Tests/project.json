@@ -1,0 +1,19 @@
+{
+  "name": "MintPlayer.Spark.SourceGenerators.Tests",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "test": {
+      "options": {
+        "cwd": "MintPlayer.Spark.SourceGenerators.Tests",
+        "command": "dotnet test",
+        "args": [
+          "--no-build",
+          "--no-restore",
+          "--collect:XPlat Code Coverage",
+          "--results-directory",
+          "coverage"
+        ]
+      }
+    }
+  }
+}
