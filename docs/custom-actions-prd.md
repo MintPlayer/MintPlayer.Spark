@@ -398,6 +398,9 @@ builder.Services.AddSparkCustomActions();  // new - auto-generated
 
 ## 8. Future Phase: Navigate & Notify via IManager
 
+> **Status: superseded by [`docs/PRD-ClientOperations.md`](./PRD-ClientOperations.md).**
+> That PRD generalizes this section: instead of just Navigate/Notify, it introduces a unified **Client Operations** envelope (`{ result, operations }`) that carries `navigate`, `notify`, `refreshAttribute`, `refreshQuery`, `disableAction`, and `retry` as typed operation kinds. The API surface lives on `IManager.Client` (sibling to `IManager.Retry`). See the Client Operations PRD for the full design. The §8 content below is preserved as historical context.
+
 In a later phase, `IManager` will be extended to support navigation and notification from both Custom Actions and PersistentObject Actions classes (e.g., `PersonActions`). This ensures a unified mechanism for all action types:
 
 - **Navigate** — `IManager.Navigate(PersistentObject obj)` — tells the frontend to open/navigate to a PersistentObject after the action completes

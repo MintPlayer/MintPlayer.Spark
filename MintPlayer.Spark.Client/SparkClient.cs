@@ -138,6 +138,13 @@ public class SparkClient : IDisposable
     /// Creates a new PersistentObject. The instance's <see cref="PersistentObject.Id"/> must be
     /// null on input; the server assigns it and returns the populated object.
     /// </summary>
+    /// <remarks>
+    /// The Create endpoint returns the new <c>ClientOperationEnvelope</c> wire shape
+    /// (<c>{ result, operations }</c>); this method unwraps the envelope and returns just the
+    /// <see cref="PersistentObject"/>. Any client operations emitted by server-side action code
+    /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
+    /// docs/PRD-ClientOperations.md.
+    /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(obj);
@@ -341,16 +348,50 @@ public class SparkClient : IDisposable
             cancellationToken);
 
         // 449 (Retry With) is in-protocol; translate to a populated SparkActionResult rather
-        // than throwing, because it's not an error — the server is asking a question.
+        // than throwing, because it's not an error — the server is asking a question. The
+        // server now wraps the retry in a ClientOperationEnvelope; extract the retry operation
+        // and adapt it to the legacy RetryActionPayload shape callers expect.
         if ((int)response.StatusCode == 449)
         {
-            var retry = await response.Content.ReadFromJsonAsync<RetryActionPayload>(JsonOptions, cancellationToken)
+            var retry = await ReadEnvelopeRetryAsync(response, cancellationToken)
                 ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty retry-action response body.");
             return SparkActionResult.ForRetry(retry);
         }
 
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
         return SparkActionResult.ForSuccess((int)response.StatusCode);
+    }
+
+    /// <summary>
+    /// Reads the envelope and extracts the first <c>retry</c>-typed operation, adapted into a
+    /// <see cref="RetryActionPayload"/> for callers that haven't migrated to envelope-aware
+    /// processing yet. Returns <c>null</c> when the envelope has no retry operation.
+    /// </summary>
+    private async Task<RetryActionPayload?> ReadEnvelopeRetryAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions, cancellationToken);
+        if (doc is null) return null;
+        if (!doc.RootElement.TryGetProperty("operations", out var operations) || operations.ValueKind != JsonValueKind.Array) return null;
+        foreach (var op in operations.EnumerateArray())
+        {
+            if (op.TryGetProperty("type", out var typeEl) && typeEl.GetString() == "retry")
+            {
+                return new RetryActionPayload
+                {
+                    Step = op.TryGetProperty("step", out var step) ? step.GetInt32() : 0,
+                    Title = op.TryGetProperty("title", out var title) ? title.GetString() ?? "" : "",
+                    Message = op.TryGetProperty("message", out var msg) && msg.ValueKind != JsonValueKind.Null ? msg.GetString() : null,
+                    Options = op.TryGetProperty("options", out var optsEl) && optsEl.ValueKind == JsonValueKind.Array
+                        ? optsEl.EnumerateArray().Select(e => e.GetString() ?? "").ToArray()
+                        : [],
+                    DefaultOption = op.TryGetProperty("defaultOption", out var def) && def.ValueKind != JsonValueKind.Null ? def.GetString() : null,
+                    PersistentObject = op.TryGetProperty("persistentObject", out var po) && po.ValueKind != JsonValueKind.Null
+                        ? po.Deserialize<PersistentObject>(JsonOptions)
+                        : null,
+                };
+            }
+        }
+        return null;
     }
 
     // --------------------------------------------------------------------------------
@@ -362,8 +403,23 @@ public class SparkClient : IDisposable
         var content = JsonContent.Create(new { persistentObject = obj }, options: JsonOptions);
         using var response = await SendAsync(method, url, content, requiresAntiforgery: true, cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<PersistentObject>(JsonOptions, cancellationToken)
+        return await ReadEnvelopeResultAsync<PersistentObject>(response, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
+    }
+
+    /// <summary>
+    /// Reads a <c>{ result, operations }</c> envelope (per PRD-ClientOperations) and
+    /// extracts the typed <c>result</c> field. Returns <c>default</c> when the result is
+    /// null / absent. Operations are currently discarded — re-expose them via a richer
+    /// return type when the SDK starts surfacing client-side side-effects.
+    /// </summary>
+    private async Task<T?> ReadEnvelopeResultAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions, cancellationToken);
+        if (doc is null) return default;
+        if (!doc.RootElement.TryGetProperty("result", out var resultEl)) return default;
+        if (resultEl.ValueKind == JsonValueKind.Null) return default;
+        return resultEl.Deserialize<T>(JsonOptions);
     }
 
     /// <summary>

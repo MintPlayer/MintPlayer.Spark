@@ -5,6 +5,7 @@ using Fleet.LookupReferences;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
@@ -100,6 +101,19 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         await OnBeforeDeleteAsync(entity);
         session.Delete(entity);
         await session.SaveChangesAsync();
+
+        // Demo toast — surfaces a frontend notification after the retry-confirmation flow
+        // completes so the user sees explicit feedback that the deletion went through.
+        manager.Client.Notify($"Car {entity.LicensePlate} deleted", NotificationKind.Success);
+    }
+
+    /// <summary>
+    /// Demo: emit a toast on the frontend after every successful save (Create + Update).
+    /// </summary>
+    public override Task OnAfterSaveAsync(PersistentObject obj, Car entity)
+    {
+        manager.Client.Notify($"Car {entity.LicensePlate} saved", NotificationKind.Success);
+        return Task.CompletedTask;
     }
 
     /// <summary>

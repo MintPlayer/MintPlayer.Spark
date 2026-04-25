@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 
 namespace MintPlayer.Spark.Services;
@@ -8,11 +9,13 @@ namespace MintPlayer.Spark.Services;
 internal sealed partial class Manager : IManager
 {
     [Inject] private readonly IRetryAccessor retry;
+    [Inject] private readonly IClientAccessor client;
     [Inject] private readonly ITranslationsLoader translationsLoader;
     [Inject] private readonly IRequestCultureResolver requestCultureResolver;
     [Inject] private readonly IEntityMapper entityMapper;
 
     public IRetryAccessor Retry => retry;
+    public IClientAccessor Client => client;
 
     public PersistentObject GetPersistentObject(string name)
         => entityMapper.GetPersistentObject(name);

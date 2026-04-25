@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
@@ -22,6 +23,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
     [Inject] private readonly IValidationService validationService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IClientAccessor clientAccessor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -31,7 +33,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
+            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, 404);
         }
 
         try
@@ -41,7 +43,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
 
             if (existingObj is null)
             {
-                return Results.Json(new { error = $"Object with ID {decodedId} not found" }, statusCode: 404);
+                return ClientResult.Envelope(clientAccessor, new { error = $"Object with ID {decodedId} not found" }, 404);
             }
 
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -50,54 +52,38 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             var obj = request.PersistentObject
                 ?? throw new InvalidOperationException("PersistentObject is required.");
 
-            // Set up retry state if this is a re-invocation
             if (request.RetryResults is { Length: > 0 } retryResults)
             {
                 var accessor = (RetryAccessor)retryAccessor;
                 accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
             }
 
-            // Ensure the ID and ObjectTypeId match the URL parameters
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;
 
-            // Validate the object
             var validationResult = validationService.Validate(obj);
             if (!validationResult.IsValid)
             {
-                return Results.Json(new { errors = validationResult.Errors }, statusCode: 400);
+                return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
             }
 
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            return Results.Json(result);
+            return ClientResult.Envelope(clientAccessor, result, 200);
         }
         catch (SparkConcurrencyException ex)
         {
-            return Results.Json(new { error = ex.Message }, statusCode: 409);
+            return ClientResult.Envelope(clientAccessor, new { error = ex.Message }, 409);
         }
         catch (SparkRetryActionException ex)
         {
-            return Results.Json(new
-            {
-                type = "retry-action",
-                step = ex.Step,
-                title = ex.Title,
-                message = ex.RetryMessage,
-                options = ex.Options,
-                defaultOption = ex.DefaultOption,
-                persistentObject = ex.PersistentObject,
-            }, statusCode: 449);
+            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkAccessDeniedException)
         {
-            if (httpContext.User.Identity?.IsAuthenticated != true)
-            {
-                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
-            }
-            else
-            {
-                return Results.Json(new { error = "Access denied" }, statusCode: 403);
-            }
+            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
+            return ClientResult.Envelope(clientAccessor,
+                new { error = isAuthed ? "Access denied" : "Authentication required" },
+                isAuthed ? 403 : 401);
         }
     }
 }
