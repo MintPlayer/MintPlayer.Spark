@@ -138,11 +138,22 @@ public class SparkClient : IDisposable
     /// Creates a new PersistentObject. The instance's <see cref="PersistentObject.Id"/> must be
     /// null on input; the server assigns it and returns the populated object.
     /// </summary>
-    public Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// The Create endpoint returns the new <c>ClientInstructionEnvelope</c> wire shape
+    /// (<c>{ result, instructions }</c>); this method unwraps the envelope and returns just the
+    /// <see cref="PersistentObject"/>. Any client instructions emitted by server-side action code
+    /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
+    /// docs/PRD-ClientInstructions.md.
+    /// </remarks>
+    public async Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(obj);
         var target = $"/spark/po/{obj.Name}";
-        return SendPersistentObjectAsync(HttpMethod.Post, target, obj, cancellationToken);
+        var content = JsonContent.Create(new { persistentObject = obj }, options: JsonOptions);
+        using var response = await SendAsync(HttpMethod.Post, target, content, requiresAntiforgery: true, cancellationToken);
+        await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
+        return await ReadEnvelopeResultAsync<PersistentObject>(response, cancellationToken)
+            ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
     }
 
     /// <summary>
@@ -364,6 +375,21 @@ public class SparkClient : IDisposable
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<PersistentObject>(JsonOptions, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
+    }
+
+    /// <summary>
+    /// Reads a <c>{ result, instructions }</c> envelope (per PRD-ClientInstructions) and
+    /// extracts the typed <c>result</c> field. Returns <c>default</c> when the result is
+    /// null / absent. Instructions are currently discarded — re-expose them via a richer
+    /// return type when the SDK starts surfacing client-side side-effects.
+    /// </summary>
+    private async Task<T?> ReadEnvelopeResultAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions, cancellationToken);
+        if (doc is null) return default;
+        if (!doc.RootElement.TryGetProperty("result", out var resultEl)) return default;
+        if (resultEl.ValueKind == JsonValueKind.Null) return default;
+        return resultEl.Deserialize<T>(JsonOptions);
     }
 
     /// <summary>
