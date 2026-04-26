@@ -27,11 +27,12 @@ COPY ["MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csp
 RUN dotnet restore "./Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj"
 COPY . .
 
-# Build Angular frontend
+# Build Angular frontend via Nx (post-Nx-migration: there's no per-app
+# angular.json, so `ng build` doesn't see a workspace; build target is
+# defined in Demo/WebhooksDemo/WebhooksDemo/ClientApp/project.json).
 WORKDIR /src
-RUN npm install
-WORKDIR /src/Demo/WebhooksDemo/WebhooksDemo/ClientApp
-RUN npx ng build --configuration=production
+RUN npm ci
+RUN npx nx run @spark-demo/webhooks-demo:build --configuration=production
 
 # Build .NET application
 WORKDIR "/src/Demo/WebhooksDemo/WebhooksDemo"

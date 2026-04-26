@@ -68,6 +68,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-playwright-
 
+    # Run build before tests so Angular-app build failures (e.g., broken
+    # imports, type errors, budget overruns) block the PR. The .NET test
+    # target already dependsOn build, but the demo Angular apps
+    # (@spark-demo/{demo-app,fleet-demo,hr-demo,webhooks-demo}) don't have
+    # a test target — without this step their build is never exercised in
+    # CI, and the next deploy run is the first thing to notice.
+    - name: Build affected projects (Nx)
+      run: npx nx affected --target=build
+
     - name: Run affected tests (.NET + Angular via Nx)
       run: npx nx affected --target=test
       env:
