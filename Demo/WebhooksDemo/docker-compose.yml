@@ -7,7 +7,10 @@ services:
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
     volumes:
-      - raven-data:/opt/RavenDB/Server/RavenData
+      # ravendb:7.1-latest sets RAVEN_DataDir=/var/lib/ravendb/data; mounting the
+      # legacy /opt/RavenDB/Server/RavenData path silently lost data on every
+      # container recreate.
+      - raven-data:/var/lib/ravendb/data
     networks:
       - web
     restart: unless-stopped
