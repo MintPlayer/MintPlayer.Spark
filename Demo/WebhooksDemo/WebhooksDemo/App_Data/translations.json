@@ -47,6 +47,21 @@
     "enabled":    { "en": "Enabled",    "fr": "Activé",        "nl": "Ingeschakeld" },
     "enable":     { "en": "Enable",     "fr": "Activer",       "nl": "Inschakelen" },
     "configure":  { "en": "Configure",  "fr": "Configurer",    "nl": "Configureren" },
-    "failedToLoadProjects": { "en": "Failed to load projects", "fr": "Impossible de charger les projets", "nl": "Projecten laden mislukt" }
+    "failedToLoadProjects": { "en": "Failed to load projects", "fr": "Impossible de charger les projets", "nl": "Projecten laden mislukt" },
+    "installAppHintBefore": {
+      "en": "If your project doesn't appear, you need to install",
+      "fr": "Si votre projet n'apparaît pas, vous devez installer",
+      "nl": "Als je project niet verschijnt, moet je"
+    },
+    "installAppHintLink": {
+      "en": "this app",
+      "fr": "cette application",
+      "nl": "deze app"
+    },
+    "installAppHintAfter": {
+      "en": "on your organization.",
+      "fr": "sur votre organisation.",
+      "nl": "op je organisatie installeren."
+    }
   }
 }

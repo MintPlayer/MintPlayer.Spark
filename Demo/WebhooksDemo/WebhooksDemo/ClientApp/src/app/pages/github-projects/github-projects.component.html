@@ -66,6 +66,13 @@
           }
         </div>
       </bs-card>
+      @if (installAppUrl(); as url) {
+        <p class="text-muted small mt-3 mb-0">
+          {{ 'app.installAppHintBefore' | t }}
+          <a [href]="url" target="_blank" rel="noopener">{{ 'app.installAppHintLink' | t }}</a>
+          {{ 'app.installAppHintAfter' | t }}
+        </p>
+      }
     </div>
   </div>
 </bs-grid>

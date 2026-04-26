@@ -36,9 +36,21 @@ export default class GitHubProjectsComponent implements OnInit {
   projects = signal<ProjectRow[]>([]);
   loading = signal(true);
   error = signal<string | null>(null);
+  installAppUrl = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await this.loadProjects();
+    await Promise.all([this.loadProjects(), this.loadAppInfo()]);
+  }
+
+  private async loadAppInfo(): Promise<void> {
+    try {
+      const info = await this.ghService.getAppInfo();
+      const slug = info.productionAppSlug;
+      this.installAppUrl.set(slug ? `https://github.com/apps/${slug}/installations/new` : null);
+    } catch {
+      // Soft-fail: link just stays hidden if the backend can't tell us the slug.
+      this.installAppUrl.set(null);
+    }
   }
 
   private async loadProjects(): Promise<void> {
