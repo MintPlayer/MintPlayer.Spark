@@ -15,6 +15,14 @@ on:
       - 'MintPlayer.Spark.Webhooks.GitHub/**'
       - 'MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'
       - 'MintPlayer.Dotnet.SocketExtensions/**'
+      # Angular libraries baked into the image via `nx run @spark-demo/webhooks-demo:build`.
+      - 'node_packages/ng-spark/**'
+      - 'node_packages/ng-spark-auth/**'
+      # Workspace-level files that affect the build (lockfile, Nx config, base tsconfig).
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
   workflow_dispatch:
 
 concurrency:
