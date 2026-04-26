@@ -42,6 +42,32 @@ describe('ArrayValuePipe', () => {
   it('returns empty array when item is null', () => {
     expect(pipe.transform('rows', null)).toEqual([]);
   });
+
+  it('flattens AsDetail array attribute from attr.objects (server wire shape)', () => {
+    const item = {
+      attributes: [{
+        name: 'EventMappings',
+        dataType: 'AsDetail',
+        isArray: true,
+        value: null,
+        objects: [
+          { attributes: [{ name: 'WebhookEvent', value: 'IssuesOpened' }, { name: 'AutoAddToProject', value: true }] },
+          { attributes: [{ name: 'WebhookEvent', value: 'PullRequestMerged' }, { name: 'AutoAddToProject', value: false }] },
+        ],
+      }]
+    } as any;
+    expect(pipe.transform('EventMappings', item)).toEqual([
+      { WebhookEvent: 'IssuesOpened', AutoAddToProject: true },
+      { WebhookEvent: 'PullRequestMerged', AutoAddToProject: false },
+    ]);
+  });
+
+  it('returns empty array for AsDetail array with null objects', () => {
+    const item = {
+      attributes: [{ name: 'EventMappings', dataType: 'AsDetail', isArray: true, value: null, objects: null }]
+    } as any;
+    expect(pipe.transform('EventMappings', item)).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
