@@ -11,3 +11,7 @@ export interface ProjectColumn {
   optionId: string;
   name: string;
 }
+
+export interface GitHubAppInfo {
+  productionAppSlug: string | null;
+}

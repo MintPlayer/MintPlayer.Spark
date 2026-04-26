@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { GitHubProjectInfo, ProjectColumn } from '../models/github-project';
+import { GitHubAppInfo, GitHubProjectInfo, ProjectColumn } from '../models/github-project';
 
 @Injectable({ providedIn: 'root' })
 export class GitHubProjectsService {
@@ -9,6 +9,10 @@ export class GitHubProjectsService {
 
   listProjects(): Promise<GitHubProjectInfo[]> {
     return firstValueFrom(this.http.get<GitHubProjectInfo[]>('/api/github/projects'));
+  }
+
+  getAppInfo(): Promise<GitHubAppInfo> {
+    return firstValueFrom(this.http.get<GitHubAppInfo>('/api/github/app-info'));
   }
 
   getColumns(nodeId: string, installationId: number): Promise<{ statusFieldId: string; columns: ProjectColumn[] }> {
