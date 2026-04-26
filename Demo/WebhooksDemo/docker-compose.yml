@@ -1,7 +1,10 @@
 services:
 
   spark-raven:
-    image: docker.io/ravendb/ravendb:7.1-latest
+    # Pinned to a specific patch (over `7.1-latest`, which moves) so a future
+    # major-revision refresh can't surprise the on-disk format / settings.json
+    # layout. Bump deliberately when you've tested an upgrade.
+    image: docker.io/ravendb/ravendb:7.1.7-ubuntu.22.04-x64
     environment:
       - RAVEN_Setup_Mode=None
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
