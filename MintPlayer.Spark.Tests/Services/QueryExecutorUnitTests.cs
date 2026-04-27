@@ -16,7 +16,7 @@ public class QueryExecutorUnitTests
 {
     private static readonly Guid PersonTypeId = Guid.Parse("dddddddd-1111-1111-1111-111111111111");
 
-    private readonly IDocumentStore _store = Substitute.For<IDocumentStore>();
+    private readonly IAsyncDocumentSession _session = Substitute.For<IAsyncDocumentSession>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ISparkContextResolver _contextResolver = Substitute.For<ISparkContextResolver>();
@@ -25,13 +25,8 @@ public class QueryExecutorUnitTests
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
 
-    public QueryExecutorUnitTests()
-    {
-        _store.OpenAsyncSession().Returns(Substitute.For<IAsyncDocumentSession>());
-    }
-
     private QueryExecutor CreateExecutor() => new(
-        _store, _entityMapper, _modelLoader, _contextResolver,
+        _session, _entityMapper, _modelLoader, _contextResolver,
         _indexRegistry, _permissionService, _actionsResolver, _referenceResolver);
 
     private static SparkQuery Q(string source) => new()

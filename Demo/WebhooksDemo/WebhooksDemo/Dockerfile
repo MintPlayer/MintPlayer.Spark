@@ -30,9 +30,18 @@ COPY . .
 # Build Angular frontend via Nx (post-Nx-migration: there's no per-app
 # angular.json, so `ng build` doesn't see a workspace; build target is
 # defined in Demo/WebhooksDemo/WebhooksDemo/ClientApp/project.json).
+#
+# `--skip-nx-cache` is intentional. This Dockerfile produces the artifact
+# that ships to production, so it must be hermetic: every byte must be
+# rebuildable from the source files COPY'd above, with no possibility of a
+# cached entry (potentially written by an earlier compromised CI run) being
+# replayed into the deployed image. Cache speedups for non-deploy paths
+# (PR validation, master publish-release) live in the GitHub Actions
+# workflows, where the artifact isn't what gets deployed.
+# See docs/guide-nx-remote-cache.md.
 WORKDIR /src
 RUN npm ci
-RUN npx nx run @spark-demo/webhooks-demo:build --configuration=production
+RUN npx nx run @spark-demo/webhooks-demo:build --configuration=production --skip-nx-cache
 
 # Build .NET application
 WORKDIR "/src/Demo/WebhooksDemo/WebhooksDemo"

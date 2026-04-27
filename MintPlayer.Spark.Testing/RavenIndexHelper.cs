@@ -62,9 +62,8 @@ public static class RavenIndexHelper
 
     /// <summary>
     /// Registers every <see cref="AbstractIndexCreationTask"/> found in the supplied assemblies
-    /// and then waits for the server to finish building them. Equivalent in spirit to the
-    /// "wait for all async index creations" step described by CronosCore's Readme — a test's
-    /// first query is free to assume its indexes are live once this returns.
+    /// and then waits for the server to finish building them — a test's first query is free
+    /// to assume its indexes are live once this returns.
     /// </summary>
     public static async Task DeployIndexesAsync(
         IDocumentStore store,

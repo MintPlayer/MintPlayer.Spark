@@ -41,8 +41,7 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// Assemblies whose <c>AbstractIndexCreationTask</c> types should be deployed automatically
     /// at <see cref="InitializeAsync"/> and waited on for completion. Default: empty. Override
     /// in a subclass to guarantee that every test in the fixture sees its indexes live before
-    /// the first <c>[Fact]</c> runs — the Spark equivalent of CronosCore's
-    /// <c>IndexHelper.Register + RunAll</c> pattern.
+    /// the first <c>[Fact]</c> runs.
     /// </summary>
     protected virtual IEnumerable<Assembly> IndexAssemblies { get; } = Array.Empty<Assembly>();
 

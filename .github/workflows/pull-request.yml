@@ -41,12 +41,10 @@ jobs:
     - name: Install npm dependencies
       run: npm ci
 
-    - name: Build ng-spark
-      run: dotnet build node_packages/ng-spark/ng-spark.esproj --configuration Release
-
-    - name: Build ng-spark-auth
-      run: dotnet build node_packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
-
+    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
+    # restore must run first on a fresh runner with no cache hit on `obj/`.
+    # Angular library builds (ng-spark, ng-spark-auth) and the rest of the
+    # solution build are covered by `nx affected --target=build` below.
     - name: dotnet restore
       run: dotnet restore
       env:

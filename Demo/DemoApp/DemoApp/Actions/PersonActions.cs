@@ -8,12 +8,14 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
 public partial class PersonActions : DefaultPersistentObjectActions<Person>
 {
     [Inject] private readonly IMessageBus messageBus;
+    [Inject] private readonly IAsyncDocumentSession session;
 
     public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
     {
@@ -47,7 +49,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
     public IRavenQueryable<VPerson> Company_People(CustomQueryArgs args)
     {
         args.EnsureParent("Company");
-        return args.Session.Query<VPerson, People_Overview>()
+        return session.Query<VPerson, People_Overview>()
             .Where(p => p.Company == args.Parent!.Id);
     }
 }

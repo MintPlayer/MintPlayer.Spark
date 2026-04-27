@@ -18,7 +18,7 @@ public interface IQueryExecutor
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
 internal partial class QueryExecutor : IQueryExecutor
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
@@ -91,8 +91,6 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<IEnumerable<PersistentObject>> ExecuteDatabaseQueryAsync(SparkQuery query, string propertyName)
     {
-        using var session = documentStore.OpenAsyncSession();
-
         var sparkContext = sparkContextResolver.ResolveContext(session);
         if (sparkContext == null)
         {
@@ -186,8 +184,6 @@ internal partial class QueryExecutor : IQueryExecutor
     private async Task<IEnumerable<PersistentObject>> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent)
     {
-        using var session = documentStore.OpenAsyncSession();
-
         // Resolve the entity type for this query
         var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
         if (entityTypeDefinition == null)
@@ -225,7 +221,6 @@ internal partial class QueryExecutor : IQueryExecutor
             Parent = parent,
             ParentType = parentTypeName,
             Query = query,
-            Session = session,
         };
 
         object? result;
@@ -305,6 +300,12 @@ internal partial class QueryExecutor : IQueryExecutor
         return null;
     }
 
+    /// <summary>
+    /// Resolves the custom query method info from the given actions type and method name, with caching for performance.
+    /// </summary>
+    /// <param name="actionsType"></param>
+    /// <param name="methodName"></param>
+    /// <returns></returns>
     private static CustomQueryMethodInfo? ResolveCustomQueryMethod(Type actionsType, string methodName)
     {
         var cacheKey = $"{actionsType.FullName};{methodName}";
@@ -428,23 +429,36 @@ internal partial class QueryExecutor : IQueryExecutor
 
     #region Shared Helpers
 
+    /// <summary>
+    /// Returns session.Query&lt;resultType, indexType&gt;()
+    /// </summary>
+    /// <param name="session">The asynchronous document session to execute the query on.</param>
+    /// <param name="resultType">The type of the query result.</param>
+    /// <param name="indexType">The type of the index to use for the query.</param>
+    /// <returns>The result of the invoked generic query.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the required generic Query&lt;T, TIndexCreator&gt; method cannot be found on the session.</exception>
     private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
     {
         var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
             .FirstOrDefault(m => m.Name == "Query"
                 && m.IsGenericMethod
                 && m.GetGenericArguments().Length == 2
-                && m.GetParameters().Length == 0);
+                && m.GetParameters().Length == 0)
 
-        if (sessionQueryMethod == null)
-        {
-            throw new InvalidOperationException("Could not find Query<T, TIndexCreator> method on IAsyncDocumentSession");
-        }
+            ?? throw new InvalidOperationException("Could not find Query<T, TIndexCreator> method on IAsyncDocumentSession");
 
         var genericMethod = sessionQueryMethod.MakeGenericMethod(resultType, indexType);
         return genericMethod.Invoke(session, [])!;
     }
 
+    /// <summary>
+    /// Returns session.Query&lt;entityType&gt;(indexName, null, false)
+    /// </summary>
+    /// <param name="session"></param>
+    /// <param name="entityType"></param>
+    /// <param name="indexName"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
     private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
     {
         var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
@@ -454,18 +468,21 @@ internal partial class QueryExecutor : IQueryExecutor
                 && m.GetParameters().Length == 3
                 && m.GetParameters()[0].ParameterType == typeof(string)
                 && m.GetParameters()[1].ParameterType == typeof(string)
-                && m.GetParameters()[2].ParameterType == typeof(bool));
-
-        if (sessionQueryMethod == null)
-        {
-            throw new InvalidOperationException("Could not find Query<T>(string, string, bool) method on IAsyncDocumentSession");
-        }
+                && m.GetParameters()[2].ParameterType == typeof(bool))
+            
+            ?? throw new InvalidOperationException("Could not find Query<T>(string, string, bool) method on IAsyncDocumentSession");
 
         var genericMethod = sessionQueryMethod.MakeGenericMethod(entityType);
         var ravenIndexName = indexName.Replace("_", "/");
         return genericMethod.Invoke(session, [ravenIndexName, null, false])!;
     }
 
+    /// <summary>
+    /// Returns queryable.ProjectInto&lt;resultType&gt;() to apply index projections for computed/stored fields.
+    /// </summary>
+    /// <param name="queryable"></param>
+    /// <param name="resultType"></param>
+    /// <returns></returns>
     private object ApplyProjection(object queryable, Type resultType)
     {
         var projectIntoMethod = typeof(LinqExtensions).GetMethods()
@@ -484,6 +501,13 @@ internal partial class QueryExecutor : IQueryExecutor
         return genericProjectMethod.Invoke(null, [queryable])!;
     }
 
+    /// <summary>
+    /// Applies sorting to the queryable based on the provided sort columns.
+    /// </summary>
+    /// <param name="queryable"></param>
+    /// <param name="entityType"></param>
+    /// <param name="sortColumns"></param>
+    /// <returns></returns>
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns)
     {
         for (int i = 0; i < sortColumns.Length; i++)
@@ -510,6 +534,12 @@ internal partial class QueryExecutor : IQueryExecutor
         return queryable;
     }
 
+    /// <summary>
+    /// Materializes an IRavenQueryable<T> by calling ToListAsync via reflection.
+    /// </summary>
+    /// <param name="queryable"></param>
+    /// <param name="entityType"></param>
+    /// <returns></returns>
     private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
     {
         var toListMethod = typeof(LinqExtensions).GetMethods()
