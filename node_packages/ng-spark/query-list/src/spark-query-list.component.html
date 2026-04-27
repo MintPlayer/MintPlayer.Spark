@@ -1,23 +1,31 @@
 <div class="d-flex flex-column h-100">
-  <!-- Title + Actions row -->
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
-    <h2>
-      {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
-      @if (isStreaming()) {
-        <span class="badge bg-success ms-2" style="font-size: 0.5em; vertical-align: middle;">LIVE</span>
-      }
-    </h2>
-    <div class="d-flex gap-2">
-      @if (extraActionsTemplate(); as extraActionsTpl) {
-        <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
-      }
+  <div class="spark-actionbar py-2 flex-shrink-0" [class.px-4]="isVirtualScrolling()" [class.px-3]="!isVirtualScrolling()">
+    <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
       @if (canCreate()) {
-        <button class="btn btn-primary" (click)="onCreate()">
+        <button *bsPriorityNavItem="1" class="btn btn-primary" (click)="onCreate()">
           <spark-icon name="plus-lg" /> {{ 'common.new' | t }}
         </button>
       }
-    </div>
+      @if (showCustomActions()) {
+        @for (action of customActions(); track action.name) {
+          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary" (click)="onCustomAction(action)">
+            {{ action.displayName | resolveTranslation }}
+          </button>
+        }
+      }
+      @if (extraActionsTemplate(); as extraActionsTpl) {
+        <ng-container *bsPriorityNavItem="50">
+          <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
+        </ng-container>
+      }
+    </bs-priority-nav>
   </div>
+  <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
+    {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
+    @if (isStreaming()) {
+      <span class="badge bg-success ms-2" style="font-size: 0.5em; vertical-align: middle;">LIVE</span>
+    }
+  </h2>
 
   @if (entityType()) {
     <!-- Search box -->

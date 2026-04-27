@@ -12,9 +12,11 @@ import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstra
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
+import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { HttpErrorResponse } from '@angular/common/http';
 import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
-import { SparkService, SparkStreamingService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
@@ -23,6 +25,7 @@ import {
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
+  CustomActionDefinition,
   StreamingMessage,
   EntityType,
   EntityAttributeDefinition,
@@ -35,7 +38,7 @@ import {
 
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,13 +51,16 @@ export class SparkQueryListComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly streamingService = inject(SparkStreamingService);
+  protected readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
   private readonly destroyRef = inject(DestroyRef);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
+  showCustomActions = input(true);
 
   rowClicked = output<PersistentObject>();
   createClicked = output<void>();
+  customActionExecuted = output<{ action: CustomActionDefinition }>();
 
   colors = Color;
   errorMessage = signal<string | null>(null);
@@ -66,6 +72,7 @@ export class SparkQueryListComponent {
   searchTerm: string = '';
   canRead = signal(false);
   canCreate = signal(false);
+  customActions = signal<CustomActionDefinition[]>([]);
   isStreaming = signal(false);
   private streamingSub: Subscription | null = null;
   private allItems = signal<PersistentObject[]>([]);
@@ -158,9 +165,30 @@ export class SparkQueryListComponent {
       }
 
       this.loadLookupReferenceOptions();
-      const permissions = await this.sparkService.getPermissions(resolvedEntityType.id);
+      const [permissions, actions] = await Promise.all([
+        this.sparkService.getPermissions(resolvedEntityType.id),
+        this.sparkService.getCustomActions(resolvedEntityType.id),
+      ]);
       this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
+      this.customActions.set(actions.filter(a => a.showedOn === 'list' || a.showedOn === 'both'));
+    }
+  }
+
+  async onCustomAction(action: CustomActionDefinition): Promise<void> {
+    if (action.confirmationMessageKey) {
+      const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
+      if (!confirm(message)) return;
+    }
+    try {
+      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
+      this.customActionExecuted.emit({ action });
+      if (action.refreshOnCompleted) {
+        this.onSettingsChange();
+      }
+    } catch (e) {
+      const err = e as HttpErrorResponse;
+      this.errorMessage.set(err.error?.error || err.message || 'Action failed');
     }
   }
 

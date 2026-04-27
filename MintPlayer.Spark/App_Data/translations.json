@@ -10,6 +10,7 @@
     "select":      { "en": "Select",     "fr": "Sélectionner",   "nl": "Selecteer" },
     "add":         { "en": "Add",        "fr": "Ajouter",        "nl": "Toevoegen" },
     "search":      { "en": "Search...",  "fr": "Rechercher...",  "nl": "Zoeken..." },
+    "more":        { "en": "More",       "fr": "Plus",           "nl": "Meer" },
     "loading":     { "en": "Loading...", "fr": "Chargement...",  "nl": "Laden..." },
     "details":     { "en": "Details",    "fr": "Détails",        "nl": "Details" },
     "properties":  { "en": "Properties", "fr": "Propriétés",     "nl": "Eigenschappen" },
