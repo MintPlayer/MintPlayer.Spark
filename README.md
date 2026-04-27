@@ -150,7 +150,7 @@ MintPlayer.Spark/
 
 ### Building the Project
 
-The repo is an **Nx 22 workspace** spanning all .NET and Angular projects. Task graph and caching work across both stacks.
+The repo is an **Nx 22 workspace** spanning all .NET and Angular projects. Task graph and caching work across both stacks. CI shares build outputs across runs through a self-hosted Nx remote cache — see [Nx remote cache](docs/guide-nx-remote-cache.md) for configuration, token gating, and the cache-poisoning consideration that's relevant if write access to this repo ever expands beyond a single maintainer.
 
 ```bash
 # Clone the repository

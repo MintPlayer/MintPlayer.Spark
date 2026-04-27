@@ -53,17 +53,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: 10.0.x
-
-    - name: Restore dependencies
-      run: dotnet restore Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj
-
-    - name: Build
-      run: dotnet build Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj --configuration Release --no-restore
-
+    # No host .NET/Node setup needed: the Dockerfile's `build` stage runs
+    # `dotnet restore`, `npm ci`, `nx run @spark-demo/webhooks-demo:build`,
+    # and `dotnet build`/`publish` inside the container. Build failures are
+    # already gated upstream by `pull-request.yml` (pre-merge) and
+    # `dotnet-build-master.yml` (post-merge, runs in parallel with this job).
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -81,6 +75,10 @@ jobs:
         github-token: ${{ github.token }}
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+    # No Nx remote-cache build-args/secrets are passed into the Docker build
+    # by design: the Dockerfile uses `--skip-nx-cache` so the deployed image
+    # is always rebuilt from the source files in the build context, never
+    # replayed from a cache entry. See docs/guide-nx-remote-cache.md.
     - name: Build and push Docker image
       id: push-ghcr
       uses: docker/build-push-action@v6

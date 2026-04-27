@@ -45,19 +45,26 @@ jobs:
     - name: Install npm dependencies
       run: npm ci
 
-    - name: Build ng-spark
-      run: dotnet build node_packages/ng-spark/ng-spark.esproj --configuration Release
-
-    - name: Build ng-spark-auth
-      run: dotnet build node_packages/ng-spark-auth/ng-spark-auth.esproj --configuration Release
-
+    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
+    # restore must run first on a fresh runner with no cache hit on `obj/`.
     - name: Install dependencies
       run: dotnet restore
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
 
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
+    # Build everything via Nx so master populates the self-hosted remote
+    # cache that PRs read from. Two run-many calls because:
+    #   - .NET projects have a `build:release` target (Release config —
+    #     produces bin/Release/ artifacts that `dotnet pack --no-build`
+    #     consumes below).
+    #   - Angular libraries (@mintplayer/ng-spark, @mintplayer/ng-spark-auth)
+    #     only have a `build` target and produce ng-packagr `dist/` for the
+    #     `JS-DevTools/npm-publish` steps below.
+    - name: Build .NET projects (Release)
+      run: npx nx run-many --target=build:release
+
+    - name: Build Angular libraries
+      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
 
     - name: Resolve Playwright version
       id: playwright
