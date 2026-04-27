@@ -128,7 +128,7 @@ The list page already has `display: flex; flex-direction: column; h-100` on its 
 
 ### 4.2 Sticky positioning
 
-- **`position: sticky; top: 0; z-index: 1020;`** on `.spark-po-detail-actionbar`.
+- **`position: sticky; top: 0; z-index: 400;`** on `.spark-po-detail-actionbar`. (Below `bs-shell`'s sidebar overlay at `z-index: 500` — using Bootstrap's sticky convention of `1020` would cover the mobile sidebar.)
 - **Scroll context:** the demo shell's `<main>` element (`Demo/*/ClientApp/src/app/shell/shell.component.scss:50-57`) already owns `overflow: auto; height: 100vh`. Sticky binds to the nearest scrolling ancestor, which is `<main>`. No global layout changes needed.
 - **No additional content padding** is required: a sticky element occupies its own slot in normal flow until it sticks; the title row naturally sits below it.
   - *(Counter-option: use `position: fixed`. Rejected — it would require manual width tracking to honor "width of the inner-page", and would force a hand-tuned `padding-top` on the content. Sticky gives both behaviors for free.)*
@@ -229,7 +229,7 @@ All initial open questions resolved on 2026-04-27:
 3. **Title-row buttons that survive — RESOLVED.** None. Title is the only element at the top of the actual page content. Confirmed: the detail view is read-only and no in-place save flow is planned.
 4. **Translation of "More" — RESOLVED.** Bind `[moreLabel]="lang.t('common.more')"` and add the `common.more` key to all language files.
 5. **Bar position relative to the entity-loaded gate — RESOLVED.** Inside the gate (consistency with the rest of the page).
-6. **Z-index stacking with sub-query / sticky table headers — DEFERRED TO IMPLEMENTATION.** Start with `z-index: 1020` (Bootstrap's sticky-header convention) and observe behavior with `SparkSubQueryComponent`'s own sticky elements during dev testing. Adjust only if a real clash is observed.
+6. **Z-index stacking — RESOLVED at `400`.** Initial implementation used Bootstrap's sticky convention (`1020`), but the bar then overlaid `bs-shell`'s mobile sidebar (`z-index: 500`). `400` keeps the bar above page content while staying below the sidebar overlay. If a sub-query sticky table-header clashes (`SparkSubQueryComponent` is the candidate), it'd need to sit below 400.
 7. **Mobile behavior — RESOLVED.** `[collapseAt]="'sm'"` — below `sm`, all items collapse into the More menu.
 8. **Per-action authz (custom actions) — RESOLVED.** Already handled server-side. `MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs:42` calls `permissionService.IsAllowedAsync(actionName, typeName)` per request, so actions denied by `security.json` are never returned to the client. No client-side authz needed; client-side `showedOn` filter remains the only client filter.
 9. **List-page custom actions — RESOLVED.** In scope for v1. The list component currently does not render `showedOn === 'list' | 'both'` actions; this PRD adds that rendering as part of the list-page bar implementation (§5 step 4).
