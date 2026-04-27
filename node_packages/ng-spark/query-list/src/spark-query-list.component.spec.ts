@@ -65,7 +65,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     getQueries: vi.fn().mockResolvedValue([allPeopleQuery]),
     getQuery: vi.fn().mockResolvedValue(allPeopleQuery),
     getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canUpdate: true, canDelete: true }),
+    getCustomActions: vi.fn().mockResolvedValue([]),
     executeQuery: vi.fn().mockResolvedValue(samplePage),
+    executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,
   };
