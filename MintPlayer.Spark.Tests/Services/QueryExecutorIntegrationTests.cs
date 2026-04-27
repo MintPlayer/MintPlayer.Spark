@@ -67,8 +67,11 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
             Arg.Any<List<(PropertyInfo Property, ReferenceAttribute Attribute)>>())
             .Returns(new Dictionary<string, object>());
 
+        // Open a session that lives for the lifetime of this executor — mirrors what the
+        // request-scoped DI registration provides in production.
+        var session = Store.OpenAsyncSession();
         return new QueryExecutor(
-            Store, entityMapper, _modelLoader, _contextResolver,
+            session, entityMapper, _modelLoader, _contextResolver,
             _indexRegistry, _permissionService, _actionsResolver, _referenceResolver);
     }
 

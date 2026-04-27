@@ -1,7 +1,5 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
-using NSubstitute;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests;
 
@@ -17,7 +15,6 @@ public class CustomQueryArgsTests
                 Name = "TestQuery",
                 Source = "Custom.Test"
             },
-            Session = Substitute.For<IAsyncDocumentSession>(),
             Parent = parent,
             ParentType = parentType
         };

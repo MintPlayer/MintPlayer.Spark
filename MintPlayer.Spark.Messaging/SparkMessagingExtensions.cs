@@ -3,7 +3,6 @@ using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.Expiration;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging;
 
@@ -18,8 +17,7 @@ internal static class SparkMessagingExtensions
             services.Configure(configure);
         }
 
-        services.AddScoped<IAsyncDocumentSession>(sp =>
-            sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
+        // IAsyncDocumentSession is now registered by AddSpark() in the core library.
         services.AddScoped<IMessageBus, MessageBus>();
         services.AddScoped<MessageCheckpoint>();
         services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());

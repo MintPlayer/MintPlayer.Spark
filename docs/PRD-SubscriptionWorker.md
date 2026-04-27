@@ -38,7 +38,7 @@ Applications built on RavenDB frequently need to react to document changes: reca
 - **No subscription support in Spark**: RavenDB data subscriptions (server-push, guaranteed delivery, automatic batching) are not available as a framework feature
 - **Messaging uses Changes API + polling**: The `MessageProcessor` in `MintPlayer.Spark.Messaging` uses a hybrid approach that is more complex and less reliable than server-managed subscriptions
 - **No shared retry infrastructure**: Each consumer that needs per-document retry tracking must implement its own logic
-- **CronosCore's implementation uses anti-patterns**: Static `SyncWorker` orchestrator, `ServiceLocator`, `async void`, no DI integration
+- **Existing reference implementations elsewhere use anti-patterns**: static orchestrators, `ServiceLocator`, `async void`, no DI integration — none of which we want to inherit
 
 ---
 

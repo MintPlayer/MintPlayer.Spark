@@ -17,6 +17,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 {
     [Inject] private readonly IManager manager;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly IAsyncDocumentSession session;
 
     private const string AdminRole = "Administrators";
 
@@ -120,9 +121,9 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     /// Custom query: returns cars reported as stolen.
     /// Source: "Custom.Stolen_Cars"
     /// </summary>
-    public IRavenQueryable<VCar> Stolen_Cars(CustomQueryArgs args)
+    public IRavenQueryable<VCar> Stolen_Cars()
     {
-        return args.Session.Query<VCar, Cars_Overview>()
+        return session.Query<VCar, Cars_Overview>()
             .Where(c => c.Status == CarStatus.Stolen);
     }
 }

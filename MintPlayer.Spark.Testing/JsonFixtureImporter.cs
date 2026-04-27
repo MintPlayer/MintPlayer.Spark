@@ -6,7 +6,6 @@ namespace MintPlayer.Spark.Testing;
 /// <summary>
 /// Seeds an <see cref="IDocumentStore"/> from RavenDB query-result-format JSON files.
 /// Expected shape: <c>{ "Results": [ { "@metadata": { "@id": "...", "@collection": "..." }, ... } ] }</c>.
-/// Mirrors the fixture format used by CronosCore.RavenDB.UnitTests but with an xUnit-native implementation.
 /// </summary>
 public static class JsonFixtureImporter
 {

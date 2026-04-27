@@ -1,5 +1,4 @@
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Queries;
 
@@ -23,11 +22,6 @@ public sealed class CustomQueryArgs
     /// The SparkQuery being executed (for conditional behavior based on query metadata).
     /// </summary>
     public required SparkQuery Query { get; set; }
-
-    /// <summary>
-    /// The RavenDB async document session for database access.
-    /// </summary>
-    public required IAsyncDocumentSession Session { get; set; }
 
     /// <summary>
     /// Validates that a parent is present and of the expected type.

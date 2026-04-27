@@ -13,6 +13,7 @@ namespace MintPlayer.Spark.Services;
 internal partial class DatabaseAccess : IDatabaseAccess
 {
     [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
@@ -23,19 +24,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
         return await session.LoadAsync<T>(id);
     }
 
     public async Task<IEnumerable<T>> GetDocumentsAsync<T>() where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
         return await session.Query<T>().ToListAsync();
     }
 
     public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdAsync<T>(Guid objectTypeId) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
         return await session.Query<T>()
             .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
             .ToListAsync();
@@ -43,7 +41,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentAsync<T>(T document) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
 
@@ -61,7 +58,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeleteDocumentAsync<T>(string id) where T : class
     {
-        using var session = documentStore.OpenAsyncSession();
         session.Delete(id);
         await session.SaveChangesAsync();
 
@@ -85,8 +81,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
-
-        using var session = documentStore.OpenAsyncSession();
 
         // Get reference properties to include
         var referenceProperties = referenceResolver.GetReferenceProperties(entityType);
@@ -122,8 +116,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return [];
-
-        using var session = documentStore.OpenAsyncSession();
 
         // Check IndexRegistry for projection type - if so, query the index instead of the collection
         Type queryType = entityType;
@@ -202,13 +194,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
-        using var session = documentStore.OpenAsyncSession();
-
         // Optimistic-concurrency check: if the caller sent an Etag on an existing entity,
         // verify it matches the current server-side change vector before the actions
         // pipeline runs. A mismatch means the entity has been updated since the caller
-        // read it — reject instead of silently overwriting. We load into a side session so
-        // the tracking on the main session is clean for the actions pipeline's StoreAsync.
+        // read it — reject instead of silently overwriting. We deliberately open a SIDE
+        // session via documentStore here (instead of using the request-scoped session):
+        // loading the existing entity for comparison would otherwise pollute change tracking
+        // on the main session, conflicting with the actions pipeline's StoreAsync below.
         if (!string.IsNullOrEmpty(persistentObject.Id) && !string.IsNullOrEmpty(persistentObject.Etag))
         {
             using var checkSession = documentStore.OpenAsyncSession();
@@ -252,8 +244,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return;
-
-        using var session = documentStore.OpenAsyncSession();
 
         // Delete locally first (includes before hook)
         await DeleteEntityViaActionsAsync(session, entityType, id);

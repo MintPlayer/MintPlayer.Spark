@@ -6,7 +6,7 @@ Implement cross-module ETL (Extract-Transform-Load) replication for the Spark fr
 
 ## Motivation
 
-In a microservices/modular architecture, different applications own different data domains. For example, a **Fleet** module owns Cars and CarBrands, while an **HR** module owns People, Addresses, and Companies. However, HR may need a read-only copy of Cars for display purposes. Rather than querying Fleet's API at runtime, RavenDB ETL replication can push transformed copies of documents from Fleet's database into HR's database automatically. This is a proven pattern used in the Cronos ecosystem (inspiration: `C:\Repos\ETL`, `C:\Repos\Fleet`, `C:\Repos\HR`).
+In a microservices/modular architecture, different applications own different data domains. For example, a **Fleet** module owns Cars and CarBrands, while an **HR** module owns People, Addresses, and Companies. However, HR may need a read-only copy of Cars for display purposes. Rather than querying Fleet's API at runtime, RavenDB ETL replication can push transformed copies of documents from Fleet's database into HR's database automatically.
 
 ---
 

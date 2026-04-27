@@ -8,7 +8,7 @@
 | **Owner** | MintPlayer |
 | **Scope** | All non-Demo projects in `MintPlayer.Spark.sln` + Angular libraries + IDE extensions (when activated) |
 
-> Establishes a test strategy covering unit, integration, and E2E tests across the framework. Standardizes infrastructure (xUnit + FluentAssertions + NSubstitute; RavenDB.TestDriver via `CronosCore.RavenDB.UnitTests`; **Vitest + happy-dom** for Angular unit tests; **Playwright Component Testing** for visually-sensitive components; Playwright for E2E against a dedicated test-host app).
+> Establishes a test strategy covering unit, integration, and E2E tests across the framework. Standardizes infrastructure (xUnit + FluentAssertions + NSubstitute; `RavenDB.TestDriver` directly; **Vitest + happy-dom** for Angular unit tests; **Playwright Component Testing** for visually-sensitive components; Playwright for E2E against a dedicated test-host app).
 >
 > v1.1 swaps Karma → Vitest per current Angular guidance (Karma is deprecated as of Angular 20). Adds Playwright CT, affected-only testing via nx/turbo, and remote task caching to hit a <2-min PR feedback target.
 
@@ -38,7 +38,7 @@ We need a consolidated plan before adding any tests, so the infrastructure is sh
 
 ## 2. Goals
 
-1. **A single shared test infrastructure** for Raven-backed .NET tests, based on the reusable `CronosCore.RavenDB.UnitTests` helper — JSON-seeded in-memory RavenDB + Verify snapshots.
+1. **A single shared test infrastructure** for Raven-backed .NET tests — JSON-seeded in-memory RavenDB on top of `RavenDB.TestDriver`, with Verify snapshots for shape-sensitive output.
 2. **Unit tests** for every pure-logic service, pipe, guard, and generator — mockable via NSubstitute.
 3. **Integration tests** for every HTTP endpoint, source generator, RavenDB-dependent service, and external-dependency boundary (GitHub API, SMTP, WebSocket).
 4. **Browser-level E2E** via Playwright against a new dedicated test host app (not the Demo apps — those stay free to evolve).
@@ -65,30 +65,21 @@ We need a consolidated plan before adding any tests, so the infrastructure is sh
 | Test runner | `xUnit` | 2.9.x |
 | Assertions | `FluentAssertions` | 6.x |
 | Mocking | `NSubstitute` | 5.x |
-| RavenDB in-memory | `RavenDB.TestDriver` (via CronosCore wrapper) | 7.2.x |
+| RavenDB in-memory | `RavenDB.TestDriver` (consumed directly) | 7.2.x |
 | Snapshot testing | `Verify.Xunit` + `Verify.NewtonsoftJson` | latest |
 | Source-generator testing | `Verify.SourceGenerators` + `Microsoft.CodeAnalysis.CSharp.Testing.XUnit` | latest |
 | HTTP mocking | `WireMock.Net` | 1.6.x |
 | ASP.NET Core integration | `Microsoft.AspNetCore.Mvc.Testing` (`WebApplicationFactory`) | 10.0.x |
 
-### 3.2 CronosCore test helper — design reference
+### 3.2 Raven test helper — design
 
-Location: `C:\Repos\CronosCore\CronosCore.RavenDB.UnitTests`. Published as NuGet (current `3.22.0`).
-
-**Treated as a design reference, NOT a runtime dependency.** Implementation finding during milestone 1:
-
-- `RavenDBTestDriver.cs` is NUnit-coupled (`[TestFixture]`, `[SetUp]`, `[TearDown]`) — direct `ProjectReference` from an xUnit project would pull a second test runner.
-- Its `GetLicenseAsync()` fetches a private CronosCore Azure blob, not accessible from Spark's CI.
-
-**Therefore**: `MintPlayer.Spark.Testing` depends directly on `RavenDB.TestDriver` (framework-neutral `RavenTestDriver` base class) and re-implements the small amount of value-added code following CronosCore's *patterns*:
+`MintPlayer.Spark.Testing` consumes `RavenDB.TestDriver` directly (the framework-neutral `RavenTestDriver` base class), wraps it for xUnit, and adds the small amount of value-added code Spark needs:
 
 - `SparkTestDriver : RavenTestDriver, IAsyncLifetime` — xUnit-native per-test lifecycle.
-- `JsonFixtureImporter` — reads the same `{ "Results": [ { "@metadata": { "@id": "…", "@collection": "…" }, … } ] }` JSON format used by CronosCore fixtures.
+- `JsonFixtureImporter` — seeds documents from the RavenDB query-result-format JSON shape: `{ "Results": [ { "@metadata": { "@id": "…", "@collection": "…" }, … } ] }`.
 - `VerifyDefaults.Initialize()` — sets `Verifier.DerivePathInfo(...)` → `VerifyResults/{ClassName}/{MethodName}.verified.*`, wired via `[ModuleInitializer]`.
 
-Explicitly NOT ported (Vidyano-coupled):
-- `VidyanoTestDriver` and its partials (`.Ex`, `.Exceptions`, `.Hooks`, `.ImportReader`, `.ImportScope`, `.Mockups`, `.Options`, `.VidyanoServer`).
-- `PersistentObject`, `PersistentObjectAttribute`, `PersistentObject.ViewModelBase` — those are Vidyano view-model wrappers; Spark has its own types.
+**No third-party Raven test wrapper is taken as a runtime dependency.** Earlier exploration of one such wrapper revealed two blockers — its base class was NUnit-coupled (would pull a second test runner into an xUnit project) and its license fetch hit a private Azure blob unavailable to Spark's CI — so we kept the dependency surface minimal and wrote our own thin layer.
 
 Consuming from `MintPlayer.Spark.Tests`:
 
@@ -97,8 +88,6 @@ Consuming from `MintPlayer.Spark.Tests`:
 ```
 
 Further `WebApplicationFactory`-based helpers (for HTTP endpoint tests) land on `SparkTestDriver` as they're needed — no premature abstraction.
-
-Reference for CronosCore details: [reference_cronoscore_raven_tests.md](../../.claude/projects/C--Repos-MintPlayer-Spark/memory/reference_cronoscore_raven_tests.md).
 
 ### 3.3 Test project layout
 
@@ -601,7 +590,7 @@ jobs:
 
 1. **Per-library test projects vs. one monolithic project** — proposed: keep one (`MintPlayer.Spark.Tests`) split by folder, plus the separate `MintPlayer.Spark.Testing` reusable helpers. Revisit if build/run time exceeds ~3 min.
 2. **Verify snapshot storage** — committed to git vs. `.gitignore`d and regenerated in CI? Proposed: commit; snapshot diffs are the signal that something changed intentionally or not.
-3. **Raven license in CI** — the CronosCore `.targets` imports the embedded Raven server, which includes a test license valid for TestDriver use. Confirm no Azure-blob license fetch is required at test time.
+3. **Raven license in CI** — `RavenDB.TestDriver` ships an embedded Raven server with a test license valid for TestDriver use. Confirm no external license fetch is required at test time.
 4. **Coverage tool** — Coverlet (default xUnit collector) or `dotnet-coverage` (MSFT). Proposed: Coverlet, uploaded to Codecov.
 5. **Nx adoption scope** — proposed: adopt Nx for the full monorepo (JS + .NET via `@nx-dotnet/core`). Fallback if too invasive: Turbo for JS + custom `affected-dotnet.sh` for .NET. Decide before milestone 1.
 6. **Nx Cloud tier** — proposed: free tier initially; upgrade when free computes run out. Self-hosted remote cache (`@nx/nx-cloud` on-prem) is a fallback if commercial pricing is blocking.
@@ -635,7 +624,7 @@ These are non-obvious things discovered while implementing. They cost real time 
 ### 13.1 .NET infrastructure
 
 - **RavenDB 7.x requires a license even for embedded TestDriver.** `MintPlayer.Spark.Testing/SparkTestDriver.cs` loads it from `RAVENDB_LICENSE` env var (CI) or a gitignored `raven-license.log` at the repo root (local). Throws an actionable error if neither is present. Both `pull-request.yml` and `dotnet-build-master.yml` pass the secret.
-- **CronosCore.RavenDB.UnitTests is a design reference, NOT a runtime dependency.** Its base class is NUnit-coupled (`[TestFixture]`, `[SetUp]`) and its license fetch targets a private Cronos Azure blob. We re-implemented the small amount of value-added code in `MintPlayer.Spark.Testing` using xUnit's `IAsyncLifetime` pattern.
+- **No third-party Raven test wrapper is used as a runtime dependency.** An earlier candidate's base class was NUnit-coupled (`[TestFixture]`, `[SetUp]`) and its license fetch targeted an inaccessible private Azure blob. We took `RavenDB.TestDriver` directly and wrote the small amount of value-added code in `MintPlayer.Spark.Testing` using xUnit's `IAsyncLifetime` pattern.
 - **`InternalsVisibleTo("DynamicProxyGenAssembly2")`** must be on every project whose internal interfaces NSubstitute needs to mock. Currently set on `MintPlayer.Spark` and `MintPlayer.Spark.Authorization`.
 - **`<IsTestProject>false</IsTestProject>`** must be set on `MintPlayer.Spark.Testing.csproj` — it has an xunit reference (for `IAsyncLifetime` types) but is NOT a test project. Without this, `dotnet test <sln>` tries to discover tests in it and exits non-zero with a confusing "0 Error(s), Build FAILED".
 - **`WebApplicationFactory<T>` doesn't work** when the host assembly has no `Main` entry point. `MintPlayer.Spark.Tests/_Infrastructure/SparkEndpointFactory.cs` uses `TestServer + IHost` directly instead.

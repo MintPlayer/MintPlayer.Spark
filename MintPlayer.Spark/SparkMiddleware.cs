@@ -9,6 +9,7 @@ using MintPlayer.Spark.Converters;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
+using Raven.Client.Documents.Session;
 using Raven.Client.Json.Serialization.NewtonsoftJson;
 using Raven.Client.ServerWide.Operations;
 using System.Reflection;
@@ -89,6 +90,15 @@ public static class SparkExtensions
 
             return store;
         });
+
+        // Request-scoped Raven sessions. One session per HTTP request, disposed when the
+        // DI scope ends. MaxNumberOfRequestsPerSession stays at Raven's default (30) — if
+        // a single method needs more headroom, use SessionExtensions.IgnoreMaxRequests().
+        services.AddScoped<IAsyncDocumentSession>(sp =>
+            sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
+
+        services.AddScoped<IDocumentSession>(sp =>
+            sp.GetRequiredService<IDocumentStore>().OpenSession());
 
         // Let modules register their services
         configure(builder);

@@ -6,7 +6,6 @@ namespace MintPlayer.Spark.Testing;
 /// <summary>
 /// Centralizes Verify snapshot configuration for Spark tests.
 /// Snapshots land under <c>VerifyResults/{TestClassName}/{TestMethodName}.verified.*</c>.
-/// Mirrors the path convention used by CronosCore.RavenDB.UnitTests.
 /// </summary>
 public static class VerifyDefaults
 {
