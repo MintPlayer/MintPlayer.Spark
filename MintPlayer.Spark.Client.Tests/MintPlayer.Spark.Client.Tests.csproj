@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
