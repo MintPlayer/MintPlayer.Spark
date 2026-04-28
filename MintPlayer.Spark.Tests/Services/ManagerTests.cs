@@ -56,4 +56,64 @@ public class ManagerTests
         act.Should().Throw<KeyNotFoundException>()
             .WithMessage("*Unknown*");
     }
+
+    [Fact]
+    public void GetPersistentObject_Generic_ForwardsToEntityMapper()
+    {
+        var expected = new PersistentObject { Name = "Person", ObjectTypeId = Guid.NewGuid() };
+        _entityMapper.GetPersistentObject<Person>().Returns(expected);
+        var manager = CreateManager();
+
+        var actual = manager.GetPersistentObject<Person>();
+
+        actual.Should().BeSameAs(expected);
+    }
+
+    [Fact]
+    public void Retry_property_returns_the_injected_accessor()
+        => CreateManager().Retry.Should().BeSameAs(_retry);
+
+    [Fact]
+    public void Client_property_returns_the_injected_accessor()
+        => CreateManager().Client.Should().BeSameAs(_client);
+
+    [Fact]
+    public void GetMessage_returns_template_for_requested_language_with_format_arguments_applied()
+    {
+        _translations.Resolve("validation.required").Returns(
+            new TranslatedString { Translations = { ["en"] = "{0} is required", ["nl"] = "{0} is verplicht" } });
+
+        CreateManager().GetMessage("validation.required", "nl", "Email")
+            .Should().Be("Email is verplicht");
+    }
+
+    [Fact]
+    public void GetMessage_with_no_format_arguments_returns_the_raw_template()
+    {
+        _translations.Resolve("greeting").Returns(
+            new TranslatedString { Translations = { ["en"] = "Hello, world" } });
+
+        CreateManager().GetMessage("greeting", "en").Should().Be("Hello, world");
+    }
+
+    [Fact]
+    public void GetMessage_returns_the_key_when_translations_loader_has_no_entry()
+    {
+        _translations.Resolve("missing.key").Returns((TranslatedString?)null);
+
+        CreateManager().GetMessage("missing.key", "en").Should().Be("missing.key");
+    }
+
+    [Fact]
+    public void GetTranslatedMessage_uses_the_culture_resolver_to_pick_the_language()
+    {
+        _culture.GetCurrentCulture().Returns("nl");
+        _translations.Resolve("validation.required").Returns(
+            new TranslatedString { Translations = { ["en"] = "{0} is required", ["nl"] = "{0} is verplicht" } });
+
+        CreateManager().GetTranslatedMessage("validation.required", "Email")
+            .Should().Be("Email is verplicht");
+    }
+
+    private sealed class Person { }
 }
