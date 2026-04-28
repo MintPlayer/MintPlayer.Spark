@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 public class GitHubAuthenticationExtensionsTests
 {
     [Fact]
-    public void AddGitHub_registers_authentication_scheme_with_default_name()
+    public async Task AddGitHub_registers_authentication_scheme_with_default_name()
     {
         var services = new ServiceCollection();
         var identityBuilder = services.AddSparkAuthentication<SparkUser>();
@@ -27,14 +27,14 @@ public class GitHubAuthenticationExtensionsTests
 
         using var provider = services.BuildServiceProvider();
         var schemeProvider = provider.GetRequiredService<IAuthenticationSchemeProvider>();
-        var scheme = schemeProvider.GetSchemeAsync("GitHub").GetAwaiter().GetResult();
+        var scheme = await schemeProvider.GetSchemeAsync("GitHub");
 
         scheme.Should().NotBeNull("the default scheme name is 'GitHub'");
         scheme!.DisplayName.Should().Be("GitHub");
     }
 
     [Fact]
-    public void AddGitHub_with_custom_scheme_name_registers_under_that_name()
+    public async Task AddGitHub_with_custom_scheme_name_registers_under_that_name()
     {
         var services = new ServiceCollection();
         var identityBuilder = services.AddSparkAuthentication<SparkUser>();
@@ -43,7 +43,7 @@ public class GitHubAuthenticationExtensionsTests
 
         using var provider = services.BuildServiceProvider();
         var schemeProvider = provider.GetRequiredService<IAuthenticationSchemeProvider>();
-        var scheme = schemeProvider.GetSchemeAsync("CustomGitHub").GetAwaiter().GetResult();
+        var scheme = await schemeProvider.GetSchemeAsync("CustomGitHub");
 
         scheme.Should().NotBeNull();
     }
