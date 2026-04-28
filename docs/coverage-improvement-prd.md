@@ -23,7 +23,7 @@ This PRD proposes a phased push to close those gaps and raise enforced coverage 
 - No change to the e2e Playwright suite scope; it already covers cross-cutting flows and is intentionally slow.
 - No introduction of mutation testing (Stryker) in this round — revisit once line coverage stabilises.
 - No migration off Vitest, off Verify, or off `RavenDB.TestDriver`; the toolchain is fine.
-- Not adopting `CronosCore.RavenDB.UnitTests` here. The repo's own `MintPlayer.Spark.Testing` + `SparkTestDriver` already fills the same role for in-tree code; CronosCore is for downstream apps.
+- Not adopting any external Raven test-helper package here. The repo's own `MintPlayer.Spark.Testing` + `SparkTestDriver` already fills the same role for in-tree code; downstream apps with denser fixture needs can pick whatever helper suits them.
 
 ## 4. Current State
 
@@ -191,7 +191,7 @@ Threshold bumps are their own one-line PRs, gated on the prior phase's coverage 
 ## 9. Out of Scope / Follow-ups
 
 - Mutation testing (Stryker.NET, Stryker for JS) — evaluate after Phase 3 lands.
-- Unifying `MintPlayer.Spark.Testing` with `CronosCore.RavenDB.UnitTests` into a shared NuGet — separate cross-repo discussion.
+- Extracting `MintPlayer.Spark.Testing` into a standalone NuGet for downstream apps to consume — separate cross-repo discussion.
 - Demo-app coverage — only worth doing if a demo starts shipping production logic.
 - Coverage SLAs per package (e.g., per-module thresholds in codecov) — revisit once breadth is solved.
 
