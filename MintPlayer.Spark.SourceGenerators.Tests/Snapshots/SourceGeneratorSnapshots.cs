@@ -3,6 +3,8 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 using VerifyXunit;
+using OutputKind = Microsoft.CodeAnalysis.OutputKind;
+using GeneratorRunResult = MintPlayer.Spark.SourceGenerators.Tests._Infrastructure.GeneratorRunResult;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Snapshots;
 
@@ -143,6 +145,51 @@ public class SourceGeneratorSnapshots
             sources: [],
             rootNamespace: "TestApp",
             additionalTexts: [("translations.json", translations)]);
+
+        return Verifier.Verify(Render(result));
+    }
+
+    /// <summary>
+    /// Pin the host-side aggregator: it walks referenced assemblies' [SparkTranslations]
+    /// attributes, reassembles chunked JSON payloads, merges them with the host's own
+    /// translations.json (host wins on conflict), and emits the merged dictionary. The
+    /// generator only fires for ConsoleApplication/WindowsApplication output, so we
+    /// build the test compilation as a console app and inject a synthetic referenced
+    /// library carrying two [SparkTranslations] attributes (chunked) plus a host-side
+    /// translations.json that overrides one key.
+    /// </summary>
+    [Fact]
+    public Task HostTranslationsAggregatorGenerator_aggregates_chunks_and_host_overrides_a_key()
+    {
+        // Synthetic referenced library with chunked [SparkTranslations]. Two chunks, each a
+        // standalone JSON object — the generator concatenates members on reassembly.
+        const string libSource = """
+            using MintPlayer.Spark.Abstractions;
+            [assembly: SparkTranslations(0, 2, "{\"greeting\":{\"en\":\"Hello\",\"nl\":\"Hallo\"}}")]
+            [assembly: SparkTranslations(1, 2, "{\"shared\":{\"en\":\"FromLib\"}}")]
+            """;
+
+        var libRef = GeneratorHarness.CompileToMetadataReference(
+            assemblyName: "FixtureLib",
+            sources: [libSource],
+            referenceTypes: [typeof(SparkTranslationsAttribute)]);
+
+        // Host's own translations.json overrides "shared" — host wins, conflict reported.
+        const string hostTranslations = """
+            {
+              "shared": { "en": "FromHost" },
+              "farewell": { "en": "Bye", "nl": "Tot ziens" }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            "HostTranslationsAggregatorGenerator",
+            sources: [],
+            referenceTypes: [typeof(SparkTranslationsAttribute)],
+            rootNamespace: "TestApp",
+            additionalTexts: [("translations.json", hostTranslations)],
+            outputKind: OutputKind.ConsoleApplication,
+            additionalReferences: [libRef]);
 
         return Verifier.Verify(Render(result));
     }

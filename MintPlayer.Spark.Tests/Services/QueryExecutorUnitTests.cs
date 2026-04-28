@@ -137,4 +137,50 @@ public class QueryExecutorUnitTests
         result.Skip.Should().Be(25);
         result.Take.Should().Be(10);
     }
+
+    [Fact]
+    public async Task CustomQuery_method_cache_stays_consistent_under_parallel_load()
+    {
+        // The custom-query method-info cache is a static ConcurrentDictionary keyed by
+        // "{ActionsTypeName};{MethodName}". GetOrAdd is thread-safe but its factory may
+        // run more than once under contention — the contract we depend on is that all
+        // observers see the same cached value once the dust settles, with no exceptions
+        // and no corruption. This test fires N parallel resolutions of the same query
+        // through the executor and asserts every one returns identical empty data.
+        var entityDef = new EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "QECacheConcurrencyEntity",
+            ClrType = typeof(QECacheTestEntity).FullName!,
+        };
+        _modelLoader.GetEntityTypeByName("QECacheConcurrencyEntity").Returns(entityDef);
+        _actionsResolver.ResolveForType(typeof(QECacheTestEntity)).Returns(new QECacheTestActions());
+
+        var query = new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "QECacheConcurrencyQuery",
+            Source = "Custom.EmptyPeople",
+            EntityType = "QECacheConcurrencyEntity",
+        };
+
+        var executor = CreateExecutor();
+
+        // 16 parallel callers — well above any practical concurrency for this code path.
+        var results = await Task.WhenAll(Enumerable.Range(0, 16)
+            .Select(_ => Task.Run(() => executor.ExecuteQueryAsync(query))));
+
+        results.Should().AllSatisfy(r =>
+        {
+            r.Data.Should().BeEmpty();
+            r.TotalRecords.Should().Be(0);
+        });
+    }
+
+    public class QECacheTestEntity { public string? Id { get; set; } }
+
+    public class QECacheTestActions
+    {
+        public IQueryable<QECacheTestEntity> EmptyPeople() => Array.Empty<QECacheTestEntity>().AsQueryable();
+    }
 }

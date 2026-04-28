@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.AspNetCore.Endpoints;
@@ -38,7 +40,10 @@ public class LogoutTests
     [Fact]
     public async Task Configure_marks_the_endpoint_with_RequireAntiforgeryTokenAttribute()
     {
+        // TestServer instead of Kestrel — see ExecuteCustomActionTests for the same pattern.
+        // Avoids the 127.0.0.1:5000 default-port collision between parallel test processes.
         var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
         builder.Services.AddRouting();
         var app = builder.Build();
 

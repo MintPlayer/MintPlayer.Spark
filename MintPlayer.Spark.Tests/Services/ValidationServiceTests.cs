@@ -246,4 +246,93 @@ public class ValidationServiceTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    // --- audit gap fillers: rule.Value coercion early-returns and translated messages -----
+
+    [Fact]
+    public void MaxLength_with_unparseable_rule_value_skips_validation()
+    {
+        // rule.Value isn't an int and TryGetIntValue returns false → ValidateMaxLength bails (line 91).
+        SetupType(Attr("Name", rules: new ValidationRule { Type = "maxLength", Value = "not-a-number" }));
+        var service = CreateService();
+
+        var result = service.Validate(Po(("Name", new string('x', 100))));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MinLength_with_unparseable_rule_value_skips_validation()
+    {
+        SetupType(Attr("Name", rules: new ValidationRule { Type = "minLength", Value = new object() }));
+        var service = CreateService();
+
+        var result = service.Validate(Po(("Name", "")));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Range_with_non_numeric_value_skips_validation()
+    {
+        // value is not convertible to decimal → TryConvertToDecimal returns false → bail (lines 125-126).
+        SetupType(Attr("Age", rules: new ValidationRule { Type = "range", Min = 0, Max = 100 }));
+        var service = CreateService();
+
+        var result = service.Validate(Po(("Age", "not-a-number")));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Regex_with_empty_pattern_skips_validation()
+    {
+        // rule.Value is null → pattern is empty → ValidateRegex bails (lines 156-157).
+        SetupType(Attr("Code", rules: new ValidationRule { Type = "regex", Value = null }));
+        var service = CreateService();
+
+        var result = service.Validate(Po(("Code", "anything")));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Translation_loader_template_is_formatted_per_language_with_label_lookup()
+    {
+        // Drives FormatTranslatedMessage's "templateString is not null" branch (lines 209-219).
+        // Provides a multilingual template that uses {0} (label) and {1} (extra param).
+        var template = new TranslatedString
+        {
+            Translations =
+            {
+                ["en"] = "{0} must be at most {1} chars",
+                ["nl"] = "{0} mag maximaal {1} tekens zijn",
+            }
+        };
+        _translations.Resolve("validation.maxLength").Returns(template);
+
+        var label = new TranslatedString
+        {
+            Translations = { ["en"] = "Surname", ["nl"] = "Achternaam" }
+        };
+
+        var attr = new EntityAttributeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "LastName",
+            Label = label,
+            Rules = [new ValidationRule { Type = "maxLength", Value = 5 }],
+        };
+        SetupType(attr);
+
+        var service = new ValidationService(_modelLoader, _translations);
+        var result = service.Validate(Po(("LastName", "TooLongName")));
+
+        result.Errors.Should().ContainSingle().Which.ErrorMessage.Translations
+            .Should().BeEquivalentTo(new Dictionary<string, string>
+            {
+                ["en"] = "Surname must be at most 5 chars",
+                ["nl"] = "Achternaam mag maximaal 5 tekens zijn",
+            });
+    }
 }

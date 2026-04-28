@@ -32,10 +32,11 @@
 
   <ItemGroup>
     <!--
-    Reference the generator project so its DLL ends up in our bin, but don't compile
-    against it and don't apply it as an analyzer to this project (we'll LoadFrom at
-    test time and drive the GeneratorDriver manually).
-    SkipGetTargetFrameworkProperties avoids the netstandard2.0 ↔ net10.0 mismatch error.
+    Reference the generator projects with ReferenceOutputAssembly="false" so their netstandard2.0
+    surface (and the polyfilled types in MintPlayer.SourceGenerators.Tools, e.g. ModuleInitializerAttribute)
+    don't enter this net10.0 project's compile-time graph. The DLLs are copied into the test bin
+    root below so coverlet's collector picks them up for instrumentation, and so the harness can
+    Assembly.Load them at test time via the default probing path.
     -->
     <ProjectReference Include="..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
                       ReferenceOutputAssembly="false"
@@ -53,18 +54,26 @@
   </ItemGroup>
 
   <!--
-  The generator is built as netstandard2.0 and depends on MintPlayer.SourceGenerators.Tools
-  at runtime. Copy the generator DLL + the Tools DLL (from NuGet cache) into our bin so
-  Assembly.LoadFrom can resolve the dependency.
+  The generator is built as netstandard2.0 and depends on MintPlayer.SourceGenerators.Tools at runtime.
+  Copy the generator DLLs (with PDBs in Debug — see condition) and the Tools DLL into the test bin
+  ROOT (not a Generators/ subfolder) so coverlet's collector — which scans the test host directory —
+  finds them, and so Assembly.Load resolves them via default probing.
+
+  PDBs are only copied in Debug to keep them out of any Release-published artifacts.
   -->
-  <Target Name="CopyGeneratorToOutput" AfterTargets="Build">
+  <Target Name="CopyGeneratorRuntimeAssets" AfterTargets="Build">
     <ItemGroup>
-      <GeneratorOutputs Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
-      <GeneratorOutputs Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
-      <GeneratorOutputs Include="$(NuGetPackageRoot)mintplayer.sourcegenerators.tools\10.19.0\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(NuGetPackageRoot)mintplayer.sourcegenerators.tools\10.19.0\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
+
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
+                               Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
+                               Include="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
     </ItemGroup>
-    <Copy SourceFiles="@(GeneratorOutputs)"
-          DestinationFolder="$(OutputPath)Generators\"
+    <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
+          DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true" />
   </Target>
 
