@@ -121,6 +121,56 @@ public class EntityMapperInverseTests
         person.FavoriteColor.Should().Be(Color.FromArgb(0x12, 0x34, 0x56));
     }
 
+    [Fact]
+    public void PopulateObjectValues_InvalidEnumString_SilentlySkipsKeepingDefault()
+    {
+        // Enum.Parse throws on unknown name; the mapper's catch (line 814) swallows.
+        // Existing default value on the entity must survive.
+        var person = new TestPerson { FavoriteStatus = TestStatus.Active };
+        var po = PoWith(("FavoriteStatus", "NotARealStatus", "string"));
+
+        _mapper.PopulateObjectValues(po, person);
+
+        person.FavoriteStatus.Should().Be(TestStatus.Active);
+    }
+
+    [Fact]
+    public void PopulateObjectValues_InvalidColorHex_SilentlySkipsKeepingDefault()
+    {
+        // ColorTranslator.FromHtml throws on garbage; the mapper's catch swallows.
+        var person = new TestPerson { FavoriteColor = Color.FromArgb(0xAB, 0xCD, 0xEF) };
+        var po = PoWith(("FavoriteColor", "not-a-color", "color"));
+
+        _mapper.PopulateObjectValues(po, person);
+
+        person.FavoriteColor.Should().Be(Color.FromArgb(0xAB, 0xCD, 0xEF));
+    }
+
+    [Fact]
+    public void PopulateObjectValues_TypeMismatchOnPrimitive_SilentlySkips()
+    {
+        // The Convert.ChangeType fallback (line 808) is the catch-all for unspecialised
+        // types. A non-numeric string into Age (int) throws FormatException → swallowed.
+        var person = new TestPerson { Age = 30 };
+        var po = PoWith(("Age", "not-a-number", "number"));
+
+        _mapper.PopulateObjectValues(po, person);
+
+        person.Age.Should().Be(30);
+    }
+
+    [Fact]
+    public void PopulateObjectValues_PrimitiveStringToInt_CoercesViaConvertChangeType()
+    {
+        // The Convert.ChangeType fallback (line 808) — non-special target, parseable string.
+        var person = new TestPerson();
+        var po = PoWith(("Age", "42", "number"));
+
+        _mapper.PopulateObjectValues(po, person);
+
+        person.Age.Should().Be(42);
+    }
+
     // --- TranslatedString merging ----------------------------------------
 
     [Fact]
