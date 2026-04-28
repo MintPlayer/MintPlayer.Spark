@@ -7,10 +7,12 @@ namespace MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
 /// <summary>
 /// Runs a single source generator against an in-memory compilation and hands back the
-/// files it produced. The generator assembly is loaded via <see cref="Assembly.LoadFrom"/>
-/// from the Generators/ sibling directory (see csproj CopyGeneratorToOutput target) so we
-/// don't bring the generator's netstandard2.0 dependency polyfills into this net10.0
-/// process's compile-time type graph.
+/// files it produced. Generator assemblies are kept out of this project's compile-time
+/// graph (ReferenceOutputAssembly="false" on the ProjectReference) to avoid the polyfill
+/// collision between MintPlayer.SourceGenerators.Tools (netstandard2.0) and the BCL on
+/// net10.0. Their DLLs are copied into the test bin root via CopyGeneratorRuntimeAssets
+/// so they're discoverable by Assembly.Load (default probing) AND by coverlet's collector,
+/// which scans the test host directory for assemblies to instrument.
 /// </summary>
 internal static class GeneratorHarness
 {
@@ -122,22 +124,8 @@ internal static class GeneratorHarness
 
     private static Assembly LoadGeneratorAssembly(string assemblyName)
     {
-        var testAsmDir = Path.GetDirectoryName(typeof(GeneratorHarness).Assembly.Location)!;
-        var generatorsDir = Path.Combine(testAsmDir, "Generators");
-        var generatorPath = Path.Combine(generatorsDir, assemblyName + ".dll");
-
-        if (!File.Exists(generatorPath))
-            throw new FileNotFoundException(
-                $"Generator assembly not found at {generatorPath}. Build the solution first.", generatorPath);
-
-        // Preload the generator's runtime dependency so IncrementalGenerator base class resolves.
-        var toolsPath = Path.Combine(generatorsDir, "MintPlayer.SourceGenerators.Tools.dll");
-        if (File.Exists(toolsPath))
-        {
-            Assembly.LoadFrom(toolsPath);
-        }
-
-        return Assembly.LoadFrom(generatorPath);
+        // Load via the default ALC so coverlet's instrumentation applies to the generator's IL.
+        return Assembly.Load(new AssemblyName(assemblyName));
     }
 
     private static CSharpCompilation BuildCompilation(IEnumerable<string> sources, IEnumerable<Type> referenceTypes)

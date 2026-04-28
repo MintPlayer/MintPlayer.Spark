@@ -46,6 +46,10 @@ Inventory taken on `feat/inject-document-session` against `master`.
 - **`MintPlayer.Spark.Authorization/Identity/RoleStore.cs`** (~176 LOC) — RavenDB-backed role store; zero tests.
 - **`MintPlayer.Spark.Client.Authorization`** (2 source files: `SparkClientAuthExtensions.cs`, `SparkUserInfo.cs`) — no test project references this assembly at all.
 - **`MintPlayer.Spark.AllFeatures.SourceGenerators`** (4 generator/model files) — no test project; emit unverified.
+- **`MintPlayer.Spark/Streaming/`** (~169 uncovered lines, 28.7% line / 25.0% branch) — `StreamingDiffEngine` and `StreamingQueryExecutor` have no direct unit tests. Stateful per-connection diff logic, `ValuesEqual` equality semantics, and the streaming dispatch loop are unverified.
+- **`MintPlayer.Spark.Authorization/Extensions/`** (150 uncovered lines, 0%) — DI-registration extensions: `SparkAuthenticationExtensions`, `GitHubAuthenticationExtensions`, OpenID/Identity setup. Configuration-shape regressions ship silently today.
+- **`MintPlayer.Spark/Endpoints/ProgramUnits/`** (84 uncovered lines, 1.2% line / 0% branch) — endpoint surface is effectively un-exercised by unit tests.
+- **`MintPlayer.Spark/Endpoints/LookupReferences/`** (49 uncovered lines, 22.2% line / 0% branch) — `LookupReferenceServiceTests` covers service-level behavior but the endpoint handlers themselves are thin on coverage.
 
 ### 4.4 Tested projects with thin coverage on critical paths
 - `MintPlayer.Spark/Services/EntityMapper.cs` (~935 LOC) — has tests for breadcrumb / inverse / asDetail / factory; enum and Color conversion paths are thinner.
@@ -57,6 +61,35 @@ Inventory taken on `feat/inject-document-session` against `master`.
 
 ### 4.5 Source generator emit verification
 `MintPlayer.Spark.SourceGenerators.Tests` exists but uses `CSharpGeneratorDriver` with hand-written assertions. There is no `Verify`-based snapshot of the emitted source, so accidental output drift (renamed helpers, dropped translation keys, attribute name mismatches) only surfaces when a downstream test happens to break.
+
+**Coverlet instrumentation gap.** The test csproj references the generator with `ReferenceOutputAssembly="false"` and copies the netstandard2.0 DLL into `bin/Generators/`, then `Assembly.LoadFrom`s it at test time. Coverlet only instruments project references that flow into the test bin normally, so generator code is invisible to the coverage collector — `MintPlayer.Spark.SourceGenerators` reports **0% line coverage** despite 34 passing tests. Adding `Verify` snapshot tests (§5.2) is necessary but **not sufficient**; a separate instrumentation strategy is also required (sidecar test project that references the generator output assembly directly with a non-`Analyzer` reference, or `coverlet.msbuild` with explicit module include patterns).
+
+### 4.7 Measured baseline (April 2026)
+
+Merged Cobertura reports across `MintPlayer.Spark.Tests`, `MintPlayer.Spark.SourceGenerators.Tests`, and `MintPlayer.Spark.Client.Tests` runs from 2026-04-27. E2E flag not included.
+
+| Assembly | Line | Branch | Notes |
+|---|---|---|---|
+| `MintPlayer.Spark.Abstractions` | **86.5%** | 97.1% | Healthy; continue maintenance only. |
+| `MintPlayer.Spark` | **65.7%** | 66.8% | 1664 uncovered lines — the dominant target. |
+| `MintPlayer.Spark.Authorization` | **74.7%** | 89.1% | Branch coverage is good; line gaps are concentrated in `Extensions/` and `Identity/` (UserStore/RoleStore). |
+| `MintPlayer.Spark.SourceGenerators` | **0%** | 0% | Instrumentation gap (see §4.5), not a real zero. |
+| `MintPlayer.Spark.IdentityProvider` | n/a | n/a | Project does not exist yet (PRD only). |
+
+Top-10 namespaces by uncovered-line count (highest leverage first):
+
+| Namespace | Line % | Uncovered |
+|---|---|---|
+| `MintPlayer.Spark.Services` | 70.2% | **908** |
+| `MintPlayer.Spark.Streaming` | 28.7% | 169 |
+| `MintPlayer.Spark.Authorization.Extensions` | 0.0% | 150 |
+| `MintPlayer.Spark` (root) | 63.6% | 118 |
+| `MintPlayer.Spark.Endpoints.ProgramUnits` | 1.2% | 84 |
+| `MintPlayer.Spark.Actions` | 74.3% | 75 |
+| `MintPlayer.Spark.Endpoints.Queries` | 67.4% | 63 |
+| `MintPlayer.Spark.Endpoints.PersistentObject` | 64.2% | 59 |
+| `MintPlayer.Spark.Authorization` (endpoints) | 0.0% | 51 |
+| `MintPlayer.Spark.Endpoints.LookupReferences` | 22.2% | 49 |
 
 ### 4.6 Codecov configuration
 - `coverage.project.default.target = auto`, `threshold = 2%`.
@@ -117,24 +150,28 @@ Threshold bumps are their own one-line PRs, gated on the prior phase's coverage 
 ## 6. Phasing
 
 ### Phase 1 — Identity stores + Client.Authorization (the un-tested code)
-1. `RoleStoreTests` in `MintPlayer.Spark.Tests/Authorization/Identity/` — full `IRoleStore` + `IRoleClaimStore` + `IQueryableRoleStore` coverage against `SparkTestDriver`.
-2. `UserStoreTests` in the same folder — full coverage of all 14 store interfaces, with explicit cases for the email compare-exchange uniqueness path and email-change reconciliation in `UpdateAsync`.
-3. Add `MintPlayer.Spark.Client.Authorization` as a `ProjectReference` from `MintPlayer.Spark.Client.Tests` and write tests for `SparkClientAuthExtensions` and `SparkUserInfo`.
-4. Add `Verify`-based snapshot tests to `MintPlayer.Spark.SourceGenerators.Tests` for the four highest-traffic generators (`ActionsRegistration`, `CustomActionsRegistration`, `PersistentObjectNames`, `HostTranslationsAggregator`).
-5. Bump `patch` threshold to 55%.
+1. **Fix the source-generator instrumentation gap first** (§4.5). Without this, the `sourcegen` flag stays at 0% no matter how many `Verify` snapshots get added — measured progress is impossible. Pick one of: (a) sidecar test project that `ProjectReference`s the generator output assembly with `OutputItemType="Compile"` instead of `Analyzer`, or (b) `coverlet.msbuild` with `Include="[MintPlayer.Spark.SourceGenerators]*"` against the `Assembly.LoadFrom`'d module.
+2. `RoleStoreTests` in `MintPlayer.Spark.Tests/Authorization/Identity/` — full `IRoleStore` + `IRoleClaimStore` + `IQueryableRoleStore` coverage against `SparkTestDriver`.
+3. `UserStoreTests` in the same folder — full coverage of all 14 store interfaces, with explicit cases for the email compare-exchange uniqueness path and email-change reconciliation in `UpdateAsync`.
+4. Add `MintPlayer.Spark.Client.Authorization` as a `ProjectReference` from `MintPlayer.Spark.Client.Tests` and write tests for `SparkClientAuthExtensions` and `SparkUserInfo`.
+5. Add `Verify`-based snapshot tests to `MintPlayer.Spark.SourceGenerators.Tests` for the four highest-traffic generators (`ActionsRegistration`, `CustomActionsRegistration`, `PersistentObjectNames`, `HostTranslationsAggregator`).
+6. Bump `patch` threshold to 55%.
 
-### Phase 2 — AllFeatures.SourceGenerators + critical-path depth
+### Phase 2 — AllFeatures.SourceGenerators + critical-path depth + Streaming
 1. Decide between folding `AllFeatures.SourceGenerators` tests into `MintPlayer.Spark.SourceGenerators.Tests` vs. a dedicated test project; implement either way.
 2. `EntityMapper` enum/Color depth and `ValidationService` audit pass.
 3. `QueryExecutor` reflection cache concurrency tests.
-4. Vitest specs for the six Angular surfaces in §5.5.
-5. Bump `patch` threshold to 70%, `project` tolerance to 1%.
+4. **`Streaming/` namespace** (§4.3) — `StreamingDiffEngine` unit tests covering null handling, `ValuesEqual` semantics for Reference/AsDetail/TranslatedString attributes, ordering invariants, and new-item detection. `StreamingQueryExecutor` integration tests for the per-connection state machine and reconnect path.
+5. **`Authorization/Extensions/` namespace** (§4.3) — DI-shape tests for `SparkAuthenticationExtensions`, `GitHubAuthenticationExtensions`, OpenID/Identity setup. Pattern: `ServiceCollection` → `BuildServiceProvider()` → assert expected services + `AuthenticationOptions` schemes are wired. Avoids needing a full host.
+6. Vitest specs for the six Angular surfaces in §5.5.
+7. Bump `patch` threshold to 70%, `project` tolerance to 1%.
 
 ### Phase 3 — Infrastructure-heavy (higher effort, ongoing)
-1. `WebApplicationFactory`-based endpoint tests covering CSRF, session, auth interaction (extends but does not replace Playwright e2e).
-2. Cross-module Replication/Messaging integration scenarios with two `SparkTestDriver` instances.
-3. `SubscriptionWorker` lifecycle tests (start/stop, batch error recovery) beyond the existing `RetryNumeratorTests`.
-4. Bump `patch` threshold to 80%.
+1. `WebApplicationFactory`-based endpoint tests covering the thin-coverage namespaces from §4.7: `Endpoints.ProgramUnits` (1.2%), `Endpoints.LookupReferences` (22.2%), `Endpoints.PersistentObject` (64.2% → 80%), `Endpoints.Queries` (67.4% → 80%). Uses `SparkTestDriver` + `SparkEndpointFactory`; reuses the `SeedDynamicDocAsync` pattern from `LookupReferenceServiceTests` for endpoint-level fixtures.
+2. CSRF, session, auth interaction tests at the endpoint layer (extends but does not replace Playwright e2e).
+3. Cross-module Replication/Messaging integration scenarios with two `SparkTestDriver` instances.
+4. `SubscriptionWorker` lifecycle tests (start/stop, batch error recovery) beyond the existing `RetryNumeratorTests`.
+5. Bump `patch` threshold to 80%.
 
 ## 7. Success Criteria
 
