@@ -16,7 +16,7 @@ coverage:
         carryforward_behavior: include
     patch:
       default:
-        target: 70%
+        target: 80%
         threshold: 0%
         informational: false
 
