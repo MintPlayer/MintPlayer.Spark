@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client.Documents;
@@ -7,16 +8,12 @@ using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
-internal class MessageBus : IMessageBus
+internal partial class MessageBus : IMessageBus
 {
-    private readonly IDocumentStore _documentStore;
-    private readonly SparkMessagingOptions _options;
+    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IOptions<SparkMessagingOptions> options;
 
-    public MessageBus(IDocumentStore documentStore, IOptions<SparkMessagingOptions> options)
-    {
-        _documentStore = documentStore;
-        _options = options.Value;
-    }
+    private SparkMessagingOptions Options => options.Value;
 
     public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
         => StoreMessageAsync(message, delay: null, queueNameOverride: null, cancellationToken);
@@ -48,11 +45,11 @@ internal class MessageBus : IMessageBus
             CreatedAtUtc = DateTime.UtcNow,
             NextAttemptAtUtc = delay.HasValue ? DateTime.UtcNow + delay.Value : null,
             AttemptCount = 0,
-            MaxAttempts = _options.MaxAttempts,
+            MaxAttempts = Options.MaxAttempts,
             Status = EMessageStatus.Pending,
         };
 
-        using var session = _documentStore.OpenAsyncSession();
+        using var session = documentStore.OpenAsyncSession();
         await session.StoreAsync(sparkMessage, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }

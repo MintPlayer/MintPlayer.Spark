@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
@@ -10,7 +11,7 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// RavenDB-backed user store implementing all ASP.NET Core Identity store interfaces.
 /// Adapted from RavenDB.Identity (MIT licensed) for MintPlayer.Spark's infrastructure.
 /// </summary>
-public class UserStore<TUser> :
+public partial class UserStore<TUser> :
     IUserStore<TUser>,
     IUserPasswordStore<TUser>,
     IUserEmailStore<TUser>,
@@ -29,14 +30,9 @@ public class UserStore<TUser> :
 {
     private const string EmailReservationKeyPrefix = "emails/";
 
-    private readonly IDocumentStore documentStore;
+    [Inject] private readonly IDocumentStore documentStore;
     private IAsyncDocumentSession? session;
     private bool disposed;
-
-    public UserStore(IDocumentStore documentStore)
-    {
-        this.documentStore = documentStore;
-    }
 
     private IAsyncDocumentSession Session
     {

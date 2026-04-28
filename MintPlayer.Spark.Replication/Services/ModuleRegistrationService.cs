@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using Raven.Client.Documents;
@@ -10,21 +11,13 @@ namespace MintPlayer.Spark.Replication.Services;
 /// Registers this module in the shared SparkModules database on startup,
 /// making it discoverable by other modules.
 /// </summary>
-internal class ModuleRegistrationService
+internal partial class ModuleRegistrationService
 {
-    private readonly SparkReplicationOptions _options;
-    private readonly IDocumentStore _appDocumentStore;
-    private readonly ILogger<ModuleRegistrationService> _logger;
+    [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
+    [Inject] private readonly IDocumentStore appDocumentStore;
+    [Inject] private readonly ILogger<ModuleRegistrationService> logger;
 
-    public ModuleRegistrationService(
-        IOptions<SparkReplicationOptions> options,
-        IDocumentStore appDocumentStore,
-        ILogger<ModuleRegistrationService> logger)
-    {
-        _options = options.Value;
-        _appDocumentStore = appDocumentStore;
-        _logger = logger;
-    }
+    private SparkReplicationOptions Options => optionsAccessor.Value;
 
     /// <summary>
     /// Creates a dedicated DocumentStore for the shared SparkModules database.
@@ -33,8 +26,8 @@ internal class ModuleRegistrationService
     {
         var store = new DocumentStore
         {
-            Urls = _options.SparkModulesUrls,
-            Database = _options.SparkModulesDatabase,
+            Urls = Options.SparkModulesUrls,
+            Database = Options.SparkModulesDatabase,
         };
         store.Initialize();
         return store;
@@ -49,29 +42,29 @@ internal class ModuleRegistrationService
         try
         {
             var databaseNames = modulesStore.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
-            if (!databaseNames.Contains(_options.SparkModulesDatabase))
+            if (!databaseNames.Contains(Options.SparkModulesDatabase))
             {
                 modulesStore.Maintenance.Server.Send(new CreateDatabaseOperation(o =>
-                    o.Regular(_options.SparkModulesDatabase).WithReplicationFactor(1)
+                    o.Regular(Options.SparkModulesDatabase).WithReplicationFactor(1)
                 ));
-                _logger.LogInformation("Created shared SparkModules database '{Database}'", _options.SparkModulesDatabase);
+                logger.LogInformation("Created shared SparkModules database '{Database}'", Options.SparkModulesDatabase);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not ensure SparkModules database exists (may already exist or lack permissions)");
+            logger.LogWarning(ex, "Could not ensure SparkModules database exists (may already exist or lack permissions)");
         }
 
-        var documentId = $"moduleInformations/{_options.ModuleName}";
+        var documentId = $"moduleInformations/{Options.ModuleName}";
 
         using var session = modulesStore.OpenAsyncSession();
         var existing = await session.LoadAsync<ModuleInformation>(documentId, cancellationToken);
 
         if (existing != null)
         {
-            existing.AppUrl = _options.ModuleUrl;
-            existing.DatabaseName = _appDocumentStore.Database;
-            existing.DatabaseUrls = _appDocumentStore.Urls;
+            existing.AppUrl = Options.ModuleUrl;
+            existing.DatabaseName = appDocumentStore.Database;
+            existing.DatabaseUrls = appDocumentStore.Urls;
             existing.RegisteredAtUtc = DateTime.UtcNow;
         }
         else
@@ -79,17 +72,17 @@ internal class ModuleRegistrationService
             var moduleInfo = new ModuleInformation
             {
                 Id = documentId,
-                AppName = _options.ModuleName,
-                AppUrl = _options.ModuleUrl,
-                DatabaseName = _appDocumentStore.Database,
-                DatabaseUrls = _appDocumentStore.Urls,
+                AppName = Options.ModuleName,
+                AppUrl = Options.ModuleUrl,
+                DatabaseName = appDocumentStore.Database,
+                DatabaseUrls = appDocumentStore.Urls,
                 RegisteredAtUtc = DateTime.UtcNow,
             };
             await session.StoreAsync(moduleInfo, documentId, cancellationToken);
         }
 
         await session.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Registered module '{ModuleName}' in SparkModules database (URL: {ModuleUrl}, DB: {Database})",
-            _options.ModuleName, _options.ModuleUrl, _appDocumentStore.Database);
+        logger.LogInformation("Registered module '{ModuleName}' in SparkModules database (URL: {ModuleUrl}, DB: {Database})",
+            Options.ModuleName, Options.ModuleUrl, appDocumentStore.Database);
     }
 }

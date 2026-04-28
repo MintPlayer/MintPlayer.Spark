@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.ConnectionStrings;
@@ -9,16 +10,10 @@ namespace MintPlayer.Spark.Replication.Services;
 /// <summary>
 /// Creates, updates, and removes RavenDB ETL tasks to replicate data to requesting modules.
 /// </summary>
-internal class EtlTaskManager
+internal partial class EtlTaskManager
 {
-    private readonly IDocumentStore _documentStore;
-    private readonly ILogger<EtlTaskManager> _logger;
-
-    public EtlTaskManager(IDocumentStore documentStore, ILogger<EtlTaskManager> logger)
-    {
-        _documentStore = documentStore;
-        _logger = logger;
-    }
+    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ILogger<EtlTaskManager> logger;
 
     /// <summary>
     /// Deploys ETL scripts by creating/updating RavenDB ETL tasks.
@@ -40,8 +35,8 @@ internal class EtlTaskManager
                 TopologyDiscoveryUrls = request.TargetUrls,
             };
 
-            _documentStore.Maintenance.Send(new PutConnectionStringOperation<RavenConnectionString>(connectionString));
-            _logger.LogDebug("Connection string '{ConnectionStringName}' created/updated for database '{Database}'",
+            documentStore.Maintenance.Send(new PutConnectionStringOperation<RavenConnectionString>(connectionString));
+            logger.LogDebug("Connection string '{ConnectionStringName}' created/updated for database '{Database}'",
                 connectionStringName, request.TargetDatabase);
 
             // Step 2: Build the ETL configuration with transformations
@@ -64,23 +59,23 @@ internal class EtlTaskManager
 
             if (existingTaskId.HasValue)
             {
-                _documentStore.Maintenance.Send(
+                documentStore.Maintenance.Send(
                     new UpdateEtlOperation<RavenConnectionString>(existingTaskId.Value, etlConfig));
                 result.TasksUpdated = 1;
-                _logger.LogInformation("Updated ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
+                logger.LogInformation("Updated ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
                     taskName, transforms.Count, request.RequestingModule);
             }
             else
             {
-                _documentStore.Maintenance.Send(new AddEtlOperation<RavenConnectionString>(etlConfig));
+                documentStore.Maintenance.Send(new AddEtlOperation<RavenConnectionString>(etlConfig));
                 result.TasksCreated = 1;
-                _logger.LogInformation("Created ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
+                logger.LogInformation("Created ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
                     taskName, transforms.Count, request.RequestingModule);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", request.RequestingModule);
+            logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", request.RequestingModule);
             result.Success = false;
             result.Error = ex.Message;
         }
@@ -95,7 +90,7 @@ internal class EtlTaskManager
     {
         try
         {
-            var result = _documentStore.Maintenance.Send(
+            var result = documentStore.Maintenance.Send(
                 new GetOngoingTaskInfoOperation(taskName, OngoingTaskType.RavenEtl));
             return result?.TaskId;
         }

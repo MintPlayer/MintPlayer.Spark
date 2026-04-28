@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
@@ -15,27 +16,19 @@ namespace MintPlayer.Spark.Replication.Services;
 /// Intercepts write operations on replicated entities and stores SparkSyncAction
 /// documents directly in RavenDB for processing by the subscription worker.
 /// </summary>
-internal class SyncActionInterceptor : ISyncActionInterceptor
+internal partial class SyncActionInterceptor : ISyncActionInterceptor
 {
-    private readonly IDocumentStore _documentStore;
-    private readonly SparkReplicationOptions _options;
-    private readonly ILogger<SyncActionInterceptor> _logger;
+    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
+    [Inject] private readonly ILogger<SyncActionInterceptor> logger;
+
+    private SparkReplicationOptions Options => optionsAccessor.Value;
 
     // Cache: CLR type → ReplicatedAttribute (null means not replicated)
     private static readonly ConcurrentDictionary<Type, ReplicatedAttribute?> _replicatedCache = new();
 
     // Cache: CLR type → property names (excluding Id) for partial updates
     private static readonly ConcurrentDictionary<Type, string[]> _propertyNamesCache = new();
-
-    public SyncActionInterceptor(
-        IDocumentStore documentStore,
-        IOptions<SparkReplicationOptions> options,
-        ILogger<SyncActionInterceptor> logger)
-    {
-        _documentStore = documentStore;
-        _options = options.Value;
-        _logger = logger;
-    }
 
     public bool IsReplicated(Type entityType)
     {
@@ -84,7 +77,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
 
         await DispatchAsync(attr.SourceModule, collection, syncAction);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "Dispatched {ActionType} sync action for {Collection} (ID: {DocumentId}, {PropertyCount} changed properties) to owner module '{OwnerModule}'",
             actionType, collection, obj.Id ?? "(new)", changedProperties.Length, attr.SourceModule);
     }
@@ -119,7 +112,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
 
         await DispatchAsync(attr.SourceModule, collection, syncAction);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "Dispatched {ActionType} sync action for {Collection} (ID: {DocumentId}, {PropertyCount} properties) to owner module '{OwnerModule}'",
             actionType, collection, documentId ?? "(new)", properties.Length, attr.SourceModule);
     }
@@ -140,7 +133,7 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
 
         await DispatchAsync(attr.SourceModule, collection, syncAction);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "Dispatched Delete sync action for {Collection}/{DocumentId} to owner module '{OwnerModule}'",
             collection, documentId, attr.SourceModule);
     }
@@ -150,14 +143,14 @@ internal class SyncActionInterceptor : ISyncActionInterceptor
         var syncActionDoc = new SparkSyncAction
         {
             OwnerModuleName = ownerModuleName,
-            RequestingModule = _options.ModuleName,
+            RequestingModule = Options.ModuleName,
             Collection = collection,
             Actions = [action],
             Status = ESyncActionStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
         };
 
-        using var session = _documentStore.OpenAsyncSession();
+        using var session = documentStore.OpenAsyncSession();
         await session.StoreAsync(syncActionDoc);
         await session.SaveChangesAsync();
     }
