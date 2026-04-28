@@ -1,62 +1,50 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
-internal sealed class MessageSubscriptionManager : BackgroundService
+internal sealed partial class MessageSubscriptionManager : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IDocumentStore _documentStore;
-    private readonly IOptions<SparkMessagingOptions> _options;
-    private readonly ILogger<MessageSubscriptionManager> _logger;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly IEnumerable<string> _queueNames;
-    private readonly List<MessageSubscriptionWorker> _workers = new();
+    [Inject] private readonly IServiceProvider serviceProvider;
+    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IOptions<SparkMessagingOptions> options;
+    [Inject] private readonly ILogger<MessageSubscriptionManager> logger;
+    [Inject] private readonly ILoggerFactory loggerFactory;
+    private readonly List<MessageSubscriptionWorker> workers = new();
 
-    public MessageSubscriptionManager(
-        IServiceProvider serviceProvider,
-        IDocumentStore documentStore,
-        IOptions<SparkMessagingOptions> options,
-        ILogger<MessageSubscriptionManager> logger,
-        ILoggerFactory loggerFactory)
-    {
-        _serviceProvider = serviceProvider;
-        _documentStore = documentStore;
-        _options = options;
-        _logger = logger;
-        _loggerFactory = loggerFactory;
-        _queueNames = DiscoverQueueNames(serviceProvider);
-    }
+    private IEnumerable<string> QueueNames => DiscoverQueueNames(serviceProvider);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var queueNameList = _queueNames.ToList();
+        var queueNameList = QueueNames.ToList();
 
         if (queueNameList.Count == 0)
         {
-            _logger.LogWarning("No message queues discovered from IRecipient<T> registrations. MessageSubscriptionManager will not start any workers.");
+            logger.LogWarning("No message queues discovered from IRecipient<T> registrations. MessageSubscriptionManager will not start any workers.");
             return;
         }
 
-        _logger.LogInformation("MessageSubscriptionManager discovered {Count} queue(s): {Queues}", queueNameList.Count, string.Join(", ", queueNameList));
+        logger.LogInformation("MessageSubscriptionManager discovered {Count} queue(s): {Queues}", queueNameList.Count, string.Join(", ", queueNameList));
 
         var workerTasks = new List<Task>();
 
         foreach (var queueName in queueNameList)
         {
-            var workerLogger = _loggerFactory.CreateLogger<MessageSubscriptionWorker>();
+            // Pass the loggerFactory through; MessageSubscriptionWorker forwards it to the
+            // base, which scopes the logger to the worker's concrete type via PostConstruct.
             var worker = new MessageSubscriptionWorker(
                 queueName,
-                _documentStore,
-                _serviceProvider,
-                _options,
-                workerLogger);
+                documentStore,
+                serviceProvider,
+                options,
+                loggerFactory);
 
-            _workers.Add(worker);
+            workers.Add(worker);
 
-            _logger.LogInformation("Starting subscription worker for queue '{QueueName}'", queueName);
+            logger.LogInformation("Starting subscription worker for queue '{QueueName}'", queueName);
             workerTasks.Add(worker.StartAsync(stoppingToken));
         }
 
@@ -75,18 +63,18 @@ internal sealed class MessageSubscriptionManager : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("MessageSubscriptionManager stopping, shutting down {Count} worker(s)", _workers.Count);
+        logger.LogInformation("MessageSubscriptionManager stopping, shutting down {Count} worker(s)", workers.Count);
 
-        var stopTasks = _workers.Select(w => w.StopAsync(cancellationToken));
+        var stopTasks = workers.Select(w => w.StopAsync(cancellationToken));
         await Task.WhenAll(stopTasks);
 
-        foreach (var worker in _workers)
+        foreach (var worker in workers)
         {
             if (worker is IDisposable disposable)
                 disposable.Dispose();
         }
 
-        _workers.Clear();
+        workers.Clear();
 
         await base.StopAsync(cancellationToken);
     }
@@ -132,12 +120,7 @@ internal interface IServiceCollectionAccessor
     IServiceCollection Services { get; }
 }
 
-internal sealed class ServiceCollectionAccessor : IServiceCollectionAccessor
+internal sealed partial class ServiceCollectionAccessor : IServiceCollectionAccessor
 {
-    public IServiceCollection Services { get; }
-
-    public ServiceCollectionAccessor(IServiceCollection services)
-    {
-        Services = services;
-    }
+    [Inject] public IServiceCollection Services { get; }
 }

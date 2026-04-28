@@ -295,6 +295,12 @@ Instead of directly POSTing to remote modules, the deployment uses the existing 
 
 ##### EtlScriptDeploymentMessage
 
+The message carries only the source module's *name* and the request payload. The recipient
+resolves the source module's URL from the `SparkModules` database **on each delivery**, so
+retries pick up the freshly-registered URL after a slow-starting source module comes online.
+(See issue #148 for the bug this avoids: capturing a URL into the message at send time meant
+retries kept hitting a stale endpoint forever.)
+
 ```csharp
 namespace MintPlayer.Spark.Replication.Messages;
 
@@ -303,9 +309,6 @@ public class EtlScriptDeploymentMessage
 {
     /// <summary>The source module that owns the data and should create the ETL task</summary>
     public required string SourceModuleName { get; set; }
-
-    /// <summary>The URL of the source module (looked up from SparkModules DB)</summary>
-    public required string SourceModuleUrl { get; set; }
 
     /// <summary>The ETL script request payload to send to the source module</summary>
     public required EtlScriptRequest Request { get; set; }
@@ -316,8 +319,10 @@ public class EtlScriptDeploymentMessage
 
 A message bus recipient that:
 1. Receives the `EtlScriptDeploymentMessage`
-2. POSTs the `EtlScriptRequest` to `{SourceModuleUrl}/spark/etl/deploy`
-3. If the HTTP call fails, throws an exception → message bus retries automatically
+2. Resolves `SourceModuleName` against the `SparkModules` database to get the current `AppUrl`
+3. If the source module isn't registered yet, throws — message bus retries with backoff
+4. POSTs the `EtlScriptRequest` to `{AppUrl}/spark/etl/deploy`
+5. If the HTTP call fails, throws an exception → message bus retries automatically
 
 ```csharp
 namespace MintPlayer.Spark.Replication.Messages;
@@ -325,15 +330,24 @@ namespace MintPlayer.Spark.Replication.Messages;
 public class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploymentMessage>
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ModuleRegistrationService _registrationService;
     private readonly ILogger<EtlScriptDeploymentRecipient> _logger;
 
     public async Task HandleAsync(EtlScriptDeploymentMessage message, CancellationToken ct)
     {
+        using var modulesStore = _registrationService.CreateModulesStore();
+        using var session = modulesStore.OpenAsyncSession();
+        var sourceInfo = await session.LoadAsync<ModuleInformation>(
+            $"moduleInformations/{message.SourceModuleName}", ct);
+
+        if (sourceInfo is null || string.IsNullOrEmpty(sourceInfo.AppUrl))
+            throw new InvalidOperationException(
+                $"Source module '{message.SourceModuleName}' is not registered; will retry.");
+
         var client = _httpClientFactory.CreateClient("spark-etl");
         var response = await client.PostAsJsonAsync(
-            $"{message.SourceModuleUrl}/spark/etl/deploy",
-            message.Request,
-            ct);
+            $"{sourceInfo.AppUrl.TrimEnd('/')}/spark/etl/deploy",
+            message.Request, ct);
         response.EnsureSuccessStatusCode();
     }
 }

@@ -107,11 +107,13 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             Store,
             NullLogger<ModuleRegistrationService>.Instance);
 
+        // Generated ctor order: own [Inject] fields first (httpClientFactory, registrationService),
+        // then base [Inject] members (loggerFactory field, DocumentStore property).
         return new SyncActionSubscriptionWorker(
-            Store,
             new StubHttpClientFactory(handler),
             registration,
-            NullLogger<SyncActionSubscriptionWorker>.Instance);
+            NullLoggerFactory.Instance,
+            Store);
     }
 
     private async Task<string> SeedSyncActionAsync(string ownerModuleName = OwnerModule)

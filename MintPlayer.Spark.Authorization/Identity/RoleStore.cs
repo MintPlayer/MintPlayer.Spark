@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using System.Security.Claims;
@@ -9,16 +10,11 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// RavenDB-backed role store for Spark authentication.
 /// Uses deterministic document IDs based on the role name.
 /// </summary>
-public class RoleStore : IRoleStore<SparkRole>, IRoleClaimStore<SparkRole>, IQueryableRoleStore<SparkRole>
+public partial class RoleStore : IRoleStore<SparkRole>, IRoleClaimStore<SparkRole>, IQueryableRoleStore<SparkRole>
 {
-    private readonly IDocumentStore documentStore;
+    [Inject] private readonly IDocumentStore documentStore;
     private IAsyncDocumentSession? session;
     private bool disposed;
-
-    public RoleStore(IDocumentStore documentStore)
-    {
-        this.documentStore = documentStore;
-    }
 
     private IAsyncDocumentSession Session
     {
