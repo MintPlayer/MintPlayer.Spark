@@ -118,7 +118,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             Store,
             serviceProvider,
             Options.Create(options ?? new SparkMessagingOptions { MaxAttempts = 5 }),
-            NullLogger<MessageSubscriptionWorker>.Instance);
+            NullLoggerFactory.Instance);
     }
 
     private static IServiceProvider ProviderFor<TMessage, TRecipient>(TRecipient instance)

@@ -33,13 +33,14 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
 
         foreach (var queueName in queueNameList)
         {
-            var workerLogger = loggerFactory.CreateLogger<MessageSubscriptionWorker>();
+            // Pass the loggerFactory through; MessageSubscriptionWorker forwards it to the
+            // base, which scopes the logger to the worker's concrete type via PostConstruct.
             var worker = new MessageSubscriptionWorker(
                 queueName,
                 documentStore,
                 serviceProvider,
                 options,
-                workerLogger);
+                loggerFactory);
 
             workers.Add(worker);
 
@@ -119,12 +120,7 @@ internal interface IServiceCollectionAccessor
     IServiceCollection Services { get; }
 }
 
-internal sealed class ServiceCollectionAccessor : IServiceCollectionAccessor
+internal sealed partial class ServiceCollectionAccessor : IServiceCollectionAccessor
 {
-    public IServiceCollection Services { get; }
-
-    public ServiceCollectionAccessor(IServiceCollection services)
-    {
-        Services = services;
-    }
+    [Inject] public IServiceCollection Services { get; }
 }

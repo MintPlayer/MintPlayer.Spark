@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
@@ -12,22 +13,11 @@ namespace MintPlayer.Spark.Replication.Workers;
 /// Subscription worker that picks up pending SparkSyncAction documents and POSTs them
 /// to the owner module's /spark/sync/apply endpoint.
 /// </summary>
-internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncAction>
+internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncAction>
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ModuleRegistrationService _registrationService;
-    private readonly RetryNumerator _retryNumerator = new();
-
-    public SyncActionSubscriptionWorker(
-        IDocumentStore store,
-        IHttpClientFactory httpClientFactory,
-        ModuleRegistrationService registrationService,
-        ILogger<SyncActionSubscriptionWorker> logger)
-        : base(store, logger)
-    {
-        _httpClientFactory = httpClientFactory;
-        _registrationService = registrationService;
-    }
+    [Inject] private readonly IHttpClientFactory httpClientFactory;
+    [Inject] private readonly ModuleRegistrationService registrationService;
+    private readonly RetryNumerator retryNumerator = new();
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
@@ -63,7 +53,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
                     "Sending {ActionCount} sync action(s) to owner module '{OwnerModule}' at {Url}",
                     request.Actions.Count, syncAction.OwnerModuleName, url);
 
-                var client = _httpClientFactory.CreateClient("spark-sync");
+                var client = httpClientFactory.CreateClient("spark-sync");
                 var response = await client.PostAsJsonAsync(url, request, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
@@ -74,7 +64,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
                     syncAction.Status = ESyncActionStatus.Completed;
                     syncAction.NextAttemptAtUtc = null;
-                    await _retryNumerator.ClearRetryAsync(session, syncAction);
+                    await retryNumerator.ClearRetryAsync(session, syncAction);
                     await session.SaveChangesAsync(cancellationToken);
                     continue;
                 }
@@ -101,7 +91,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
                 syncAction.LastError = error.Message;
                 syncAction.Status = ESyncActionStatus.Pending;
-                var retry = await _retryNumerator.TrackRetryAsync(session, syncAction, error, Logger);
+                var retry = await retryNumerator.TrackRetryAsync(session, syncAction, error, Logger);
                 syncAction.NextAttemptAtUtc = retry.NextAttemptAtUtc;
 
                 if (!retry.WillRetry)
@@ -117,7 +107,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
                 syncAction.LastError = ex.Message;
                 syncAction.Status = ESyncActionStatus.Pending;
-                var retry = await _retryNumerator.TrackRetryAsync(session, syncAction, ex, Logger);
+                var retry = await retryNumerator.TrackRetryAsync(session, syncAction, ex, Logger);
                 syncAction.NextAttemptAtUtc = retry.NextAttemptAtUtc;
 
                 if (!retry.WillRetry)
@@ -132,7 +122,7 @@ internal class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncA
 
     private async Task<string> ResolveModuleUrlAsync(string moduleName, CancellationToken cancellationToken)
     {
-        using var modulesStore = _registrationService.CreateModulesStore();
+        using var modulesStore = registrationService.CreateModulesStore();
         using var session = modulesStore.OpenAsyncSession();
 
         var moduleId = $"moduleInformations/{moduleName}";

@@ -19,13 +19,17 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
     protected override string SubscriptionName => $"SparkMessaging-{_queueName}";
     protected override int MaxDocsPerBatch => 1;
 
+    // Hand-written ctor — the queueName is a per-instance runtime value supplied by
+    // MessageSubscriptionManager and can't be DI-resolved, so [Inject] doesn't apply here.
+    // Forwards (store, loggerFactory) to the base (which uses [PostConstruct] to derive the
+    // per-class logger via loggerFactory.CreateLogger(GetType())).
     public MessageSubscriptionWorker(
         string queueName,
         IDocumentStore store,
         IServiceProvider serviceProvider,
         IOptions<SparkMessagingOptions> options,
-        ILogger<MessageSubscriptionWorker> logger)
-        : base(store, logger)
+        ILoggerFactory loggerFactory)
+        : base(loggerFactory, store)
     {
         _queueName = queueName;
         _serviceProvider = serviceProvider;

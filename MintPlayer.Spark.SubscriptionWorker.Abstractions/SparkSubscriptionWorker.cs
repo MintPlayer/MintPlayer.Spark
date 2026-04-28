@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Exceptions.Database;
@@ -13,10 +14,20 @@ namespace MintPlayer.Spark.SubscriptionWorker;
 /// and ASP.NET Core lifecycle management.
 /// </summary>
 /// <typeparam name="T">The document type to subscribe to.</typeparam>
-public abstract class SparkSubscriptionWorker<T> : BackgroundService where T : class
+public abstract partial class SparkSubscriptionWorker<T> : BackgroundService where T : class
 {
-    protected IDocumentStore DocumentStore { get; }
-    protected ILogger Logger { get; }
+    [Inject] protected IDocumentStore DocumentStore { get; }
+
+    /// <summary>
+    /// Logger instance scoped to the concrete worker subtype. The source generator's
+    /// <c>[PostConstruct]</c> hook assigns this once injection completes, calling
+    /// <c>ILoggerFactory.CreateLogger(GetType())</c> so each derived worker logs under its
+    /// own category — the same per-class scoping the previous hand-written ctor achieved
+    /// by accepting <c>ILogger&lt;TWorker&gt;</c> from the derived class.
+    /// </summary>
+    protected ILogger Logger { get; private set; } = null!;
+
+    [Inject] private readonly ILoggerFactory loggerFactory;
 
     /// <summary>The RavenDB subscription name. Defaults to class name minus common suffixes.</summary>
     protected virtual string SubscriptionName
@@ -39,11 +50,8 @@ public abstract class SparkSubscriptionWorker<T> : BackgroundService where T : c
     /// <summary>Maximum documents per subscription batch. Default: 256.</summary>
     protected virtual int MaxDocsPerBatch => 256;
 
-    protected SparkSubscriptionWorker(IDocumentStore store, ILogger logger)
-    {
-        DocumentStore = store;
-        Logger = logger;
-    }
+    [PostConstruct]
+    private void InitializeLogger() => Logger = loggerFactory.CreateLogger(GetType());
 
     /// <summary>
     /// Configure the subscription query/filter. Called once during startup to create
