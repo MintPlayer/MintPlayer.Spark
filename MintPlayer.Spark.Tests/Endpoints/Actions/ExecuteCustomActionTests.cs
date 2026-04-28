@@ -4,9 +4,11 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -243,7 +245,11 @@ public class ExecuteCustomActionTests
     [Fact]
     public async Task Configure_marks_the_endpoint_with_RequireAntiforgeryTokenAttribute()
     {
+        // TestServer instead of Kestrel — the test only inspects EndpointDataSource
+        // metadata, no real HTTP needed. Kestrel's default 127.0.0.1:5000 binding
+        // collides with parallel test processes / leftover sockets on CI runners.
         var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
         builder.Services.AddRouting();
         var app = builder.Build();
 
