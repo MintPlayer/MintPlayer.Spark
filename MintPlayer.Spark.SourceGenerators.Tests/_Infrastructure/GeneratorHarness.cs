@@ -31,7 +31,9 @@ internal static class GeneratorHarness
         IEnumerable<Type>? referenceTypes = null,
         string? rootNamespace = null,
         IEnumerable<(string Path, string Text)>? additionalTexts = null,
-        string? generatorAssemblyName = null)
+        string? generatorAssemblyName = null,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
         var generator = InstantiateGenerator(generatorTypeName, generatorAssemblyName);
 
@@ -40,7 +42,7 @@ internal static class GeneratorHarness
         if (sourceList.Count == 0)
             sourceList.Add("// intentionally empty");
 
-        var compilation = BuildCompilation(sourceList, referenceTypes ?? Array.Empty<Type>());
+        var compilation = BuildCompilation(sourceList, referenceTypes ?? Array.Empty<Type>(), outputKind, additionalReferences);
 
         var parseOptions = (CSharpParseOptions)compilation.SyntaxTrees.First().Options;
 
@@ -128,7 +130,11 @@ internal static class GeneratorHarness
         return Assembly.Load(new AssemblyName(assemblyName));
     }
 
-    private static CSharpCompilation BuildCompilation(IEnumerable<string> sources, IEnumerable<Type> referenceTypes)
+    private static CSharpCompilation BuildCompilation(
+        IEnumerable<string> sources,
+        IEnumerable<Type> referenceTypes,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
         var syntaxTrees = sources.Select((src, i) =>
             CSharpSyntaxTree.ParseText(src, path: $"Source{i}.cs")).ToList();
@@ -152,11 +158,42 @@ internal static class GeneratorHarness
         foreach (var t in referenceTypes)
             references.Add(MetadataReference.CreateFromFile(t.Assembly.Location));
 
+        if (additionalReferences is not null)
+            foreach (var r in additionalReferences)
+                references.Add(r);
+
         return CSharpCompilation.Create(
             assemblyName: "TestInput",
             syntaxTrees: syntaxTrees,
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(outputKind));
+    }
+
+    /// <summary>
+    /// Compiles <paramref name="sources"/> to an in-memory PE image and returns it as a
+    /// <see cref="MetadataReference"/>. Lets snapshot tests fabricate a "referenced library"
+    /// with assembly attributes that the generator under test inspects (e.g.
+    /// <c>HostTranslationsAggregatorGenerator</c> reading <c>SparkTranslationsAttribute</c>).
+    /// </summary>
+    public static MetadataReference CompileToMetadataReference(
+        string assemblyName,
+        IEnumerable<string> sources,
+        IEnumerable<Type>? referenceTypes = null)
+    {
+        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>())
+            .WithAssemblyName(assemblyName);
+
+        using var stream = new MemoryStream();
+        var emit = compilation.Emit(stream);
+        if (!emit.Success)
+        {
+            var errors = string.Join(Environment.NewLine,
+                emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()));
+            throw new InvalidOperationException(
+                $"Failed to emit fixture assembly '{assemblyName}':{Environment.NewLine}{errors}");
+        }
+        stream.Position = 0;
+        return MetadataReference.CreateFromStream(stream);
     }
 }
 
