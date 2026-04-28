@@ -85,24 +85,12 @@ internal static class SparkReplicationExtensions
                 // longer needs a fabricated fallback URL (which previously baked
                 // `http://{name}:5000` into the message and made retries hit a stale endpoint
                 // forever even after the source module finally registered).
-                foreach (var (sourceModule, scripts) in scriptsByModule)
+                foreach (var deploymentMessage in BuildDeploymentMessages(scriptsByModule, options, appStore))
                 {
-                    var deploymentMessage = new EtlScriptDeploymentMessage
-                    {
-                        SourceModuleName = sourceModule,
-                        Request = new EtlScriptRequest
-                        {
-                            RequestingModule = options.ModuleName,
-                            TargetDatabase = appStore.Database,
-                            TargetUrls = appStore.Urls,
-                            Scripts = scripts,
-                        },
-                    };
-
                     await messageBus.BroadcastAsync(deploymentMessage);
                     logger.LogInformation(
                         "Queued ETL deployment to '{SourceModule}' ({ScriptCount} scripts) via message bus",
-                        sourceModule, scripts.Count);
+                        deploymentMessage.SourceModuleName, deploymentMessage.Request.Scripts.Count);
                 }
             }
             catch (Exception ex)
@@ -112,6 +100,33 @@ internal static class SparkReplicationExtensions
         });
 
         return app;
+    }
+
+    /// <summary>
+    /// Pure function that projects the collected per-source-module scripts into the
+    /// <see cref="EtlScriptDeploymentMessage"/> envelopes the message bus broadcasts.
+    /// Extracted so the message-shape contract can be unit-tested without spinning up
+    /// a host (which would otherwise require IMessageBus + IDocumentStore + Task.Run timing).
+    /// </summary>
+    internal static IEnumerable<EtlScriptDeploymentMessage> BuildDeploymentMessages(
+        IReadOnlyDictionary<string, List<EtlScriptItem>> scriptsByModule,
+        SparkReplicationOptions options,
+        IDocumentStore appStore)
+    {
+        foreach (var (sourceModule, scripts) in scriptsByModule)
+        {
+            yield return new EtlScriptDeploymentMessage
+            {
+                SourceModuleName = sourceModule,
+                Request = new EtlScriptRequest
+                {
+                    RequestingModule = options.ModuleName,
+                    TargetDatabase = appStore.Database,
+                    TargetUrls = appStore.Urls,
+                    Scripts = scripts,
+                },
+            };
+        }
     }
 
     /// <summary>
