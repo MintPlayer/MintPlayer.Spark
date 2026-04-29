@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication;
@@ -144,6 +145,41 @@ public class SparkReplicationExtensionsTests
 
         SparkReplicationExtensions.BuildDeploymentMessages(scriptsByModule, options, appStore)
             .Should().BeEmpty();
+    }
+
+    // --- MapSparkReplication: trivial wrapper ----------------------------
+
+    [Fact]
+    public void MapSparkReplication_returns_same_endpoints_instance_for_chaining()
+    {
+        using var endpoints = NewMinimalRouteBuilder();
+
+        var returned = endpoints.MapSparkReplication();
+
+        returned.Should().BeSameAs(endpoints);
+    }
+
+    private static MinimalEndpointRouteBuilder NewMinimalRouteBuilder() => new();
+
+    /// <summary>
+    /// Minimal <see cref="IEndpointRouteBuilder"/> backing for the source-generated
+    /// <c>MapSparkReplicationEndpoints</c> call — substitutes throw on property reads.
+    /// </summary>
+    private sealed class MinimalEndpointRouteBuilder : IEndpointRouteBuilder, IDisposable
+    {
+        private readonly ServiceProvider _sp;
+        private readonly List<Microsoft.AspNetCore.Routing.EndpointDataSource> _ds = [];
+        public MinimalEndpointRouteBuilder()
+        {
+            var s = new ServiceCollection();
+            s.AddRouting();
+            _sp = s.BuildServiceProvider();
+        }
+        public IServiceProvider ServiceProvider => _sp;
+        public ICollection<Microsoft.AspNetCore.Routing.EndpointDataSource> DataSources => _ds;
+        public Microsoft.AspNetCore.Builder.IApplicationBuilder CreateApplicationBuilder()
+            => new Microsoft.AspNetCore.Builder.ApplicationBuilder(_sp);
+        public void Dispose() => _sp.Dispose();
     }
 
     [Fact]
