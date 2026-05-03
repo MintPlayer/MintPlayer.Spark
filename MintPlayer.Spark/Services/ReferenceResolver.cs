@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents.Session;
 using System.Reflection;
 
@@ -33,11 +34,17 @@ internal partial class ReferenceResolver : IReferenceResolver
 {
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
-        return entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(p => (Property: p, Attribute: p.GetCustomAttribute<ReferenceAttribute>()))
-            .Where(x => x.Attribute != null)
-            .Select(x => (x.Property, x.Attribute!))
-            .ToList();
+        // Return a copy of the cached array as a List so callers can mutate (the
+        // overload below appends fallback entries). The underlying array itself
+        // is shared via ReflectionCache and must not be mutated.
+        var cached = ReflectionCache.GetOrAdd<(PropertyInfo Property, ReferenceAttribute Attribute)[]>(
+            entityType,
+            static t => t.GetCachedProperties()
+                .Select(p => (Property: p, Attribute: p.GetCachedCustomAttribute<ReferenceAttribute>()))
+                .Where(x => x.Attribute is not null)
+                .Select(x => (x.Property, x.Attribute!))
+                .ToArray());
+        return new List<(PropertyInfo, ReferenceAttribute)>(cached);
     }
 
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType, Type fallbackType)
@@ -52,7 +59,7 @@ internal partial class ReferenceResolver : IReferenceResolver
         var fallbackProps = GetReferenceProperties(fallbackType);
         foreach (var (fallbackProp, refAttr) in fallbackProps)
         {
-            var matchingProp = entityType.GetProperty(fallbackProp.Name, BindingFlags.Public | BindingFlags.Instance);
+            var matchingProp = entityType.GetCachedProperty(fallbackProp.Name);
             if (matchingProp != null)
             {
                 result.Add((matchingProp, refAttr));
@@ -68,10 +75,15 @@ internal partial class ReferenceResolver : IReferenceResolver
         {
             var queryType = queryable.GetType();
 
-            var includeMethod = queryType.GetMethods()
-                .FirstOrDefault(m => m.Name == "Include"
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(string));
+            // Cached per (queryType, "Include(string)"): the .Include(string) MethodInfo
+            // doesn't change for a given queryable type and is otherwise a fresh
+            // GetMethods() scan per reference property.
+            var includeMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
+                $"includeMethod|{queryType.FullName}",
+                () => queryType.GetMethods()
+                    .FirstOrDefault(m => m.Name == "Include"
+                        && m.GetParameters().Length == 1
+                        && m.GetParameters()[0].ParameterType == typeof(string)));
 
             if (includeMethod != null)
             {
@@ -99,7 +111,7 @@ internal partial class ReferenceResolver : IReferenceResolver
         {
             foreach (var (property, refAttr) in referenceProperties)
             {
-                var refId = property.GetValue(entity) as string;
+                var refId = AccessorCache.GetGetter(property)(entity) as string;
                 if (string.IsNullOrEmpty(refId)) continue;
 
                 var targetType = refAttr.TargetType;
@@ -129,15 +141,22 @@ internal partial class ReferenceResolver : IReferenceResolver
 
     private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
-        var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
-        var genericMethod = method?.MakeGenericMethod(entityType);
+        var genericMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
+            $"sessionLoadAsync|{entityType.FullName ?? entityType.Name}",
+            () =>
+            {
+                var method = typeof(IAsyncDocumentSession).GetMethod(
+                    nameof(IAsyncDocumentSession.LoadAsync),
+                    [typeof(string), typeof(CancellationToken)]);
+                return method?.MakeGenericMethod(entityType);
+            });
         var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
 
         if (task == null) return null;
 
         await task;
 
-        var resultProperty = task.GetType().GetProperty("Result");
-        return resultProperty?.GetValue(task);
+        var resultProperty = task.GetType().GetCachedProperty("Result");
+        return resultProperty is not null ? AccessorCache.GetGetter(resultProperty)(task) : null;
     }
 }

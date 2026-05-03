@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents.Session;
 using System.Drawing;
 using System.Reflection;
@@ -178,8 +179,8 @@ internal partial class EntityMapper : IEntityMapper
     public void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null)
     {
         var entityType = entity.GetType();
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        po.Id = idProperty?.GetValue(entity)?.ToString();
+        var idProperty = entityType.GetCachedProperty("Id");
+        po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         var entityTypeDef = modelLoader.GetEntityType(po.ObjectTypeId);
         var displayName = GetEntityDisplayName(entity, entityType, entityTypeDef);
@@ -194,11 +195,11 @@ internal partial class EntityMapper : IEntityMapper
             if (attribute.Name.Contains('.'))
                 continue;
 
-            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            var property = entityType.GetCachedProperty(attribute.Name);
             if (property is null || !property.CanRead)
                 continue; // silent skip — attribute may be projection-only
 
-            var raw = property.GetValue(entity);
+            var raw = AccessorCache.GetGetter(property)(entity);
 
             // AsDetail attributes carry full nested PersistentObject(s) instead of a scalar
             // Value; delegate to the recursive populator.
@@ -291,9 +292,14 @@ internal partial class EntityMapper : IEntityMapper
 
     /// <summary>
     /// Returns the element type for an array (<c>T[]</c>), a generic <see cref="IEnumerable{T}"/>,
-    /// or a <c>List&lt;T&gt;</c>. Returns <c>null</c> for non-collection types.
+    /// or a <c>List&lt;T&gt;</c>. Returns <c>null</c> for non-collection types. Cached per
+    /// <see cref="Type"/> via <see cref="ReflectionCache"/>; called per-AsDetail-property
+    /// per-row in the read path, so the cache hit matters.
     /// </summary>
     private static Type? GetCollectionElementType(Type propertyType)
+        => ReflectionCache.GetOrAdd<Type?>(propertyType, ResolveCollectionElementType);
+
+    private static Type? ResolveCollectionElementType(Type propertyType)
     {
         if (propertyType.IsArray)
             return propertyType.GetElementType();
@@ -438,7 +444,7 @@ internal partial class EntityMapper : IEntityMapper
             if (attribute.Name.Contains('.'))
                 continue;
 
-            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            var property = entityType.GetCachedProperty(attribute.Name);
             if (property is null || !property.CanWrite)
                 continue;
 
@@ -458,7 +464,7 @@ internal partial class EntityMapper : IEntityMapper
             if (attribute.Name.Contains('.'))
                 continue;
 
-            var property = entityType.GetProperty(attribute.Name, BindingFlags.Public | BindingFlags.Instance);
+            var property = entityType.GetCachedProperty(attribute.Name);
             if (property is null || !property.CanWrite)
                 continue;
 
@@ -473,7 +479,7 @@ internal partial class EntityMapper : IEntityMapper
     private void TryWriteId(Type entityType, object entity, string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        var idProperty = entityType.GetCachedProperty("Id");
         if (idProperty is null || !idProperty.CanWrite) return;
         SetPropertyValue(idProperty, entity, id);
     }
@@ -511,20 +517,20 @@ internal partial class EntityMapper : IEntityMapper
             var refId = ExtractReferenceId(attribute.Value);
             if (string.IsNullOrEmpty(refId))
             {
-                property.SetValue(entity, null);
+                AccessorCache.GetSetter(property)(entity, null);
                 return;
             }
 
             if (includedDocuments is not null && includedDocuments.TryGetValue(refId, out var preloaded))
             {
-                property.SetValue(entity, preloaded);
+                AccessorCache.GetSetter(property)(entity, preloaded);
                 return;
             }
 
             if (session is not null)
             {
                 var loaded = await LoadReferenceAsync(session, targetType, refId, cancellationToken);
-                property.SetValue(entity, loaded);
+                AccessorCache.GetSetter(property)(entity, loaded);
                 return;
             }
 
@@ -572,13 +578,13 @@ internal partial class EntityMapper : IEntityMapper
                 await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
                 items.Add(childEntity);
             }
-            property.SetValue(entity, BuildCollection(items, propertyType, elementType));
+            AccessorCache.GetSetter(property)(entity, BuildCollection(items, propertyType, elementType));
             return;
         }
 
         if (attr.Object is null)
         {
-            property.SetValue(entity, null);
+            AccessorCache.GetSetter(property)(entity, null);
             return;
         }
 
@@ -587,7 +593,7 @@ internal partial class EntityMapper : IEntityMapper
             ?? throw new InvalidOperationException(
                 $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
-        property.SetValue(entity, child);
+        AccessorCache.GetSetter(property)(entity, child);
     }
 
     /// <summary>
@@ -620,14 +626,14 @@ internal partial class EntityMapper : IEntityMapper
         if (incoming is null)
         {
             // Explicit null / empty incoming clears the property — matches "write null to erase".
-            property.SetValue(entity, null);
+            AccessorCache.GetSetter(property)(entity, null);
             return;
         }
 
-        var existing = property.GetValue(entity) as TranslatedString;
+        var existing = AccessorCache.GetGetter(property)(entity) as TranslatedString;
         if (existing is null)
         {
-            property.SetValue(entity, incoming);
+            AccessorCache.GetSetter(property)(entity, incoming);
             return;
         }
 
@@ -716,19 +722,26 @@ internal partial class EntityMapper : IEntityMapper
     private static async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
         Type targetType, string refId, CancellationToken cancellationToken)
     {
-        var method = typeof(IAsyncDocumentSession).GetMethod(
-            nameof(IAsyncDocumentSession.LoadAsync),
-            [typeof(string), typeof(CancellationToken)])
-            ?? throw new InvalidOperationException("Could not resolve IAsyncDocumentSession.LoadAsync<T>(string, CancellationToken).");
-        var generic = method.MakeGenericMethod(targetType);
+        var generic = ReflectionCache.GetOrAdd<MethodInfo>(
+            $"sessionLoadAsync|{targetType.FullName ?? targetType.Name}",
+            () =>
+            {
+                var method = typeof(IAsyncDocumentSession).GetMethod(
+                    nameof(IAsyncDocumentSession.LoadAsync),
+                    [typeof(string), typeof(CancellationToken)])
+                    ?? throw new InvalidOperationException("Could not resolve IAsyncDocumentSession.LoadAsync<T>(string, CancellationToken).");
+                return method.MakeGenericMethod(targetType);
+            });
         var task = (Task)generic.Invoke(session, [refId, cancellationToken])!;
         await task.ConfigureAwait(false);
-        return task.GetType().GetProperty("Result")?.GetValue(task);
+        var resultProp = task.GetType().GetCachedProperty("Result");
+        return resultProp is not null ? AccessorCache.GetGetter(resultProp)(task) : null;
     }
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        var setter = AccessorCache.GetSetter(property);
 
         // Handle JsonElement - either extract simple value or deserialize complex types
         if (value is JsonElement je)
@@ -739,7 +752,7 @@ internal partial class EntityMapper : IEntityMapper
                 try
                 {
                     var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    property.SetValue(entity, deserializedValue);
+                    setter(entity, deserializedValue);
                 }
                 catch
                 {
@@ -753,7 +766,7 @@ internal partial class EntityMapper : IEntityMapper
                 try
                 {
                     var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    property.SetValue(entity, deserializedValue);
+                    setter(entity, deserializedValue);
                 }
                 catch
                 {
@@ -771,7 +784,7 @@ internal partial class EntityMapper : IEntityMapper
         {
             if (Nullable.GetUnderlyingType(property.PropertyType) != null || !property.PropertyType.IsValueType)
             {
-                property.SetValue(entity, null);
+                setter(entity, null);
             }
             return;
         }
@@ -809,7 +822,7 @@ internal partial class EntityMapper : IEntityMapper
                 convertedValue = Convert.ChangeType(value, targetType);
             }
 
-            property.SetValue(entity, convertedValue);
+            setter(entity, convertedValue);
         }
         catch
         {
@@ -859,8 +872,7 @@ internal partial class EntityMapper : IEntityMapper
             return false;
 
         // Check if it's a class with public properties
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        return properties.Length > 0;
+        return type.GetCachedProperties().Length > 0;
     }
 
     private string GetEntityDisplayName(object entity, Type entityType, EntityTypeDefinition? entityTypeDef = null)
@@ -880,10 +892,10 @@ internal partial class EntityMapper : IEntityMapper
         // 2. Try DisplayAttribute (single property name)
         if (!string.IsNullOrEmpty(entityTypeDef?.DisplayAttribute))
         {
-            var displayProperty = entityType.GetProperty(entityTypeDef.DisplayAttribute, BindingFlags.Public | BindingFlags.Instance);
-            if (displayProperty != null)
+            var displayProperty = entityType.GetCachedProperty(entityTypeDef.DisplayAttribute);
+            if (displayProperty is not null && displayProperty.CanRead)
             {
-                var value = displayProperty.GetValue(entity);
+                var value = AccessorCache.GetGetter(displayProperty)(entity);
                 if (value != null)
                 {
                     return value.ToString() ?? entityType.Name;
@@ -892,24 +904,27 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         // 3. Fallback to common display name properties
-        var nameProperty = entityType.GetProperty("Name")
-            ?? entityType.GetProperty("FullName")
-            ?? entityType.GetProperty("Title");
+        var nameProperty = entityType.GetCachedProperty("Name")
+            ?? entityType.GetCachedProperty("FullName")
+            ?? entityType.GetCachedProperty("Title");
 
-        return nameProperty?.GetValue(entity)?.ToString() ?? entityType.Name;
+        if (nameProperty is null || !nameProperty.CanRead)
+            return entityType.Name;
+
+        return AccessorCache.GetGetter(nameProperty)(entity)?.ToString() ?? entityType.Name;
     }
 
     private static string ResolveDisplayFormat(object entity, Type entityType, string displayFormat)
     {
         var result = displayFormat;
-        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var properties = entityType.GetCachedProperties();
 
         foreach (var property in properties)
         {
             var placeholder = $"{{{property.Name}}}";
-            if (result.Contains(placeholder))
+            if (result.Contains(placeholder) && property.CanRead)
             {
-                var value = property.GetValue(entity)?.ToString() ?? string.Empty;
+                var value = AccessorCache.GetGetter(property)(entity)?.ToString() ?? string.Empty;
                 result = result.Replace(placeholder, value);
             }
         }
@@ -919,17 +934,23 @@ internal partial class EntityMapper : IEntityMapper
 
     private Type? ResolveType(string clrType)
     {
-        // First try the standard Type.GetType which works for assembly-qualified names
-        var type = Type.GetType(clrType);
-        if (type != null) return type;
+        // Cache positive and negative resolutions: assembly walks are expensive and the
+        // same CLR type names are looked up repeatedly across requests. ReflectionCache
+        // memoizes null results too — so unresolvable names don't re-walk every time.
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"resolveType|{clrType}",
+            () =>
+            {
+                var type = Type.GetType(clrType);
+                if (type != null) return type;
 
-        // Search through all loaded assemblies
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            type = assembly.GetType(clrType);
-            if (type != null) return type;
-        }
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    type = assembly.GetType(clrType);
+                    if (type != null) return type;
+                }
 
-        return null;
+                return null;
+            });
     }
 }

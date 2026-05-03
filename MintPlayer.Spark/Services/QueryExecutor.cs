@@ -1,11 +1,11 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
-using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -26,8 +26,6 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IReferenceResolver referenceResolver;
-
-    private static readonly ConcurrentDictionary<string, CustomQueryMethodInfo?> customQueryMethodCache = new();
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
     {
@@ -98,14 +96,14 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         var contextType = sparkContext.GetType();
-        var property = contextType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+        var property = contextType.GetCachedProperty(propertyName);
 
-        if (property == null)
+        if (property == null || !property.CanRead)
         {
             return [];
         }
 
-        var queryable = property.GetValue(sparkContext);
+        var queryable = AccessorCache.GetGetter(property)(sparkContext);
         if (queryable == null)
         {
             return [];
@@ -308,8 +306,9 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <returns></returns>
     private static CustomQueryMethodInfo? ResolveCustomQueryMethod(Type actionsType, string methodName)
     {
-        var cacheKey = $"{actionsType.FullName};{methodName}";
-        return customQueryMethodCache.GetOrAdd(cacheKey, _ =>
+        return ReflectionCache.GetOrAdd<CustomQueryMethodInfo?>(
+            $"customQueryMethod|{actionsType.FullName};{methodName}",
+            () =>
         {
             var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
             if (method == null)
@@ -363,41 +362,48 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private static Type? ExtractQueryableElementType(Type type)
     {
-        // Check if the type itself is IQueryable<T>
-        if (type.IsGenericType)
-        {
-            var genericDef = type.GetGenericTypeDefinition();
-            if (genericDef == typeof(IQueryable<>) || genericDef == typeof(IEnumerable<>))
-                return type.GetGenericArguments()[0];
-        }
-
-        // Check implemented interfaces for IQueryable<T>
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IQueryable<>))
-                return iface.GetGenericArguments()[0];
-        }
-
-        // Check for IEnumerable<T> as fallback
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"queryableElement|{type.FullName ?? type.Name}",
+            () =>
             {
-                var elementType = iface.GetGenericArguments()[0];
-                if (elementType != typeof(object))
-                    return elementType;
-            }
-        }
+                // Check if the type itself is IQueryable<T>
+                if (type.IsGenericType)
+                {
+                    var genericDef = type.GetGenericTypeDefinition();
+                    if (genericDef == typeof(IQueryable<>) || genericDef == typeof(IEnumerable<>))
+                        return type.GetGenericArguments()[0];
+                }
 
-        return null;
+                // Check implemented interfaces for IQueryable<T>
+                foreach (var iface in type.GetInterfaces())
+                {
+                    if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IQueryable<>))
+                        return iface.GetGenericArguments()[0];
+                }
+
+                // Check for IEnumerable<T> as fallback
+                foreach (var iface in type.GetInterfaces())
+                {
+                    if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    {
+                        var elementType = iface.GetGenericArguments()[0];
+                        if (elementType != typeof(object))
+                            return elementType;
+                    }
+                }
+
+                return null;
+            });
     }
 
     private static IEnumerable<object> MaterializeQueryable(object queryable, Type elementType)
     {
         // Call Queryable.ToList() on an in-memory IQueryable<T>
-        var toListMethod = typeof(Enumerable).GetMethods()
-            .First(m => m.Name == nameof(Enumerable.ToList) && m.GetGenericArguments().Length == 1)
-            .MakeGenericMethod(elementType);
+        var toListMethod = ReflectionCache.GetOrAdd<MethodInfo>(
+            $"enumerableToList|{elementType.FullName ?? elementType.Name}",
+            () => typeof(Enumerable).GetMethods()
+                .First(m => m.Name == nameof(Enumerable.ToList) && m.GetGenericArguments().Length == 1)
+                .MakeGenericMethod(elementType));
 
         var result = toListMethod.Invoke(null, [queryable]);
         if (result is System.Collections.IEnumerable enumerable)
@@ -409,20 +415,25 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private static Type? FindClrType(string clrTypeName)
     {
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"clrType|{clrTypeName}",
+            () =>
             {
-                var type = assembly.GetTypes()
-                    .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
-                if (type != null) return type;
-            }
-            catch (ReflectionTypeLoadException)
-            {
-                continue;
-            }
-        }
-        return null;
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var type = assembly.GetTypes()
+                            .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
+                        if (type != null) return type;
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                        continue;
+                    }
+                }
+                return null;
+            });
     }
 
     #endregion
