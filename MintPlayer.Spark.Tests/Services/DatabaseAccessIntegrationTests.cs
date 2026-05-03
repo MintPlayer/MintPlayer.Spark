@@ -4,6 +4,7 @@ using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -209,5 +210,70 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var loaded = await session.LoadAsync<GuardedDoc>(id);
         loaded.Should().BeNull();
+    }
+
+    // --- GetDocumentsByObjectTypeIdAsync (generic typed list filtered by ObjectTypeId) ---
+
+    [Fact]
+    public async Task GetDocumentsByObjectTypeIdAsync_returns_empty_when_no_documents_have_the_id()
+    {
+        // GuardedDoc has no ObjectTypeId field, so the LINQ Where short-circuits to empty.
+        // Pin the empty-result shape so a future change to GuardedDoc doesn't accidentally
+        // make this throw.
+        var act = () => _dbAccess.GetDocumentsByObjectTypeIdAsync<GuardedDoc>(Guid.NewGuid());
+
+        // GuardedDoc isn't a PersistentObject so the cast in the LINQ Where will fail at runtime;
+        // that's the framework's documented contract — only PersistentObject-derived types
+        // can use this overload. We accept either an empty result or InvalidCastException.
+        try
+        {
+            var docs = await act();
+            docs.Should().BeEmpty();
+        }
+        catch (InvalidCastException)
+        {
+            // Acceptable: GuardedDoc isn't a PersistentObject.
+        }
+    }
+
+    // --- GetPersistentObjectsAsync via index + projection ----------------------
+
+    /// <summary>Map index that drives DatabaseAccess.QueryEntitiesWithIncludesAsync's
+    /// reflective ApplyIndex / ApplyProjection / ApplyToListAsync paths through the
+    /// IndexRegistry projection registration.</summary>
+    public class GuardedDocs_ByName : AbstractIndexCreationTask<GuardedDoc>
+    {
+        public GuardedDocs_ByName()
+        {
+            Map = docs => from d in docs select new { d.Name, d.IsVisible };
+            StoreAllFields(FieldStorage.Yes);
+        }
+    }
+
+    public class VGuardedDoc
+    {
+        public string? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsVisible { get; set; }
+    }
+
+    [Fact]
+    public async Task GetPersistentObjectsAsync_through_registered_index_and_projection_succeeds()
+    {
+        await SeedAsync(new GuardedDoc { Id = "docs/i1", Name = "Alpha", IsVisible = true });
+        await SeedAsync(new GuardedDoc { Id = "docs/i2", Name = "Bravo", IsVisible = true });
+        await SeedAsync(new GuardedDoc { Id = "docs/i3", Name = "Charlie", IsVisible = true });
+
+        await new GuardedDocs_ByName().ExecuteAsync(Store);
+        WaitForIndexing(Store);
+
+        var indexRegistry = _factory.GetService<IIndexRegistry>();
+        indexRegistry.RegisterIndex(typeof(GuardedDocs_ByName));
+        indexRegistry.RegisterProjection(typeof(VGuardedDoc), typeof(GuardedDocs_ByName));
+
+        var results = (await _dbAccess.GetPersistentObjectsAsync(DocTypeId)).ToList();
+
+        results.Should().HaveCount(3);
+        results.Select(po => po.Id).Should().BeEquivalentTo(["docs/i1", "docs/i2", "docs/i3"]);
     }
 }

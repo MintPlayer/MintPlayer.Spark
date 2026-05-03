@@ -282,60 +282,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return task.GetCompletedTaskResult();
     }
 
-    private async Task<IEnumerable<object>> QueryEntitiesAsync(IAsyncDocumentSession session, Type entityType)
-    {
-        // Use Query<T> directly on the session (not via Advanced)
-        // Query(string indexName, string collectionName, bool isMapReduce) with 1 generic param and 3 regular params
-        var sessionType = session.GetType();
-
-        var genericQueryMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionQuery3|{sessionType.FullName ?? sessionType.Name}|{entityType.FullName ?? entityType.Name}",
-            () =>
-            {
-                var queryMethod = sessionType.GetMethods()
-                    .FirstOrDefault(m => m.Name == "Query"
-                        && m.GetGenericArguments().Length == 1
-                        && m.GetParameters().Length == 3);
-                return queryMethod?.MakeGenericMethod(entityType);
-            });
-
-        if (genericQueryMethod == null) return [];
-
-        // Pass null for indexName, null for collectionName, false for isMapReduce
-        var query = genericQueryMethod.Invoke(session, [null, null, false]);
-
-        if (query == null) return [];
-
-        // Call ToListAsync on the IRavenQueryable<T>
-        var genericToListMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"linqToListAsync|{entityType.FullName ?? entityType.Name}",
-            () =>
-            {
-                var toListMethod = typeof(LinqExtensions).GetMethods()
-                    .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
-                        && m.GetGenericArguments().Length == 1
-                        && m.GetParameters().Length == 2);
-                return toListMethod?.MakeGenericMethod(entityType);
-            });
-
-        if (genericToListMethod == null) return [];
-
-        var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
-
-        if (task == null) return [];
-
-        await task;
-
-        var result = task.GetCompletedTaskResult();
-
-        if (result is System.Collections.IEnumerable enumerable)
-        {
-            return enumerable.Cast<object>().ToList();
-        }
-
-        return [];
-    }
-
     private Type? ResolveType(string clrType)
     {
         return ReflectionCache.GetOrAdd<Type?>(
@@ -480,22 +426,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var task = (Task)method.Invoke(actions, [action, entity])!;
         await task;
         return (bool)task.GetCompletedTaskResult()!;
-    }
-
-    private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(IAsyncDocumentSession session, Type entityType)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onQueryMethod = GetCachedActionMethod(actions.GetType(), "OnQueryAsync");
-        var task = (Task)onQueryMethod.Invoke(actions, [session])!;
-        await task;
-        var result = task.GetCompletedTaskResult();
-
-        if (result is System.Collections.IEnumerable enumerable)
-        {
-            return enumerable.Cast<object>().ToList();
-        }
-
-        return [];
     }
 
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)

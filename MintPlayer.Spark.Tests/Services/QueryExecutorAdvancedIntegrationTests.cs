@@ -5,6 +5,7 @@ using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 
@@ -357,5 +358,118 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .Where(e => e.Message.Contains("not found"));
+    }
+
+    // --- Index + projection path ------------------------------------------
+
+    /// <summary>
+    /// Map index over Employee that projects FirstName + LastName as stored fields.
+    /// Drives QueryExecutor.ApplyIndexWithType + ApplyProjection through the registered
+    /// projection-type path.
+    /// </summary>
+    public class Employees_ByLastName : AbstractIndexCreationTask<Employee>
+    {
+        public Employees_ByLastName()
+        {
+            Map = employees => from e in employees
+                               select new
+                               {
+                                   e.FirstName,
+                                   e.LastName,
+                               };
+            StoreAllFields(FieldStorage.Yes);
+        }
+    }
+
+    /// <summary>Projection type for the index.</summary>
+    public class VEmployee
+    {
+        public string? Id { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task Database_query_through_registered_index_uses_ApplyIndexWithType_and_ApplyProjection()
+    {
+        // Exercises the cached MethodInfos for:
+        //   - IAsyncDocumentSession.Query<TResult, TIndexCreator>() (zero-arg overload)
+        //   - LinqExtensions.ProjectInto<T>(IQueryable)
+        //   - LinqExtensions.ToListAsync<T>(IQueryable, CancellationToken)
+        await SeedAsync();
+
+        // Deploy the index to RavenDB and register it with the framework's IndexRegistry.
+        await new Employees_ByLastName().ExecuteAsync(Store);
+        WaitForIndexing(Store);
+
+        var indexRegistry = _factory.GetService<IIndexRegistry>();
+        indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
+        indexRegistry.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
+
+        var query = new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "EmployeesByIndex",
+            Source = "Database.Employees",
+        };
+
+        var result = await _executor.ExecuteQueryAsync(query);
+
+        result.TotalRecords.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Database_query_through_index_supports_sorting_on_indexed_field()
+    {
+        await SeedAsync();
+
+        await new Employees_ByLastName().ExecuteAsync(Store);
+        WaitForIndexing(Store);
+
+        var indexRegistry = _factory.GetService<IIndexRegistry>();
+        indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
+        indexRegistry.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
+
+        var query = new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "EmployeesByIndexSorted",
+            Source = "Database.Employees",
+            SortColumns = [
+                new SortColumn { Property = "LastName", Direction = "asc" },
+            ],
+        };
+
+        var result = await _executor.ExecuteQueryAsync(query);
+
+        var lastNames = result.Data
+            .Select(po => po.Attributes.Single(a => a.Name == "LastName").Value?.ToString())
+            .ToList();
+
+        lastNames.Should().Equal("Hopper", "Lovelace", "Torvalds");
+    }
+
+    [Fact]
+    public async Task Database_query_with_explicit_IndexName_uses_ApplyIndexByName_when_no_index_type_registered()
+    {
+        // SparkQuery.IndexName is set but no index *type* is registered with the registry —
+        // QueryExecutor must fall through to the ApplyIndexByName path that takes the index
+        // name as a string and reflects on the 3-arg Query<T>(string, string, bool) overload.
+        await SeedAsync();
+
+        await new Employees_ByLastName().ExecuteAsync(Store);
+        WaitForIndexing(Store);
+
+        var query = new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "EmployeesByExplicitIndex",
+            Source = "Database.Employees",
+            IndexName = "Employees_ByLastName",
+        };
+
+        var result = await _executor.ExecuteQueryAsync(query);
+
+        result.TotalRecords.Should().Be(3);
     }
 }
