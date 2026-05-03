@@ -1,10 +1,10 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
-using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -19,8 +19,6 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IReferenceResolver referenceResolver;
-
-    private static readonly ConcurrentDictionary<string, StreamingMethodInfo?> streamingMethodCache = new();
 
     public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -101,8 +99,9 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
     private static StreamingMethodInfo? ResolveStreamingMethod(Type actionsType, string methodName)
     {
-        var cacheKey = $"stream;{actionsType.FullName};{methodName}";
-        return streamingMethodCache.GetOrAdd(cacheKey, _ =>
+        return ReflectionCache.GetOrAdd<StreamingMethodInfo?>(
+            $"streamingMethod|{actionsType.FullName};{methodName}",
+            () =>
         {
             var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
             if (method is null) return null;
@@ -147,52 +146,63 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     }
 
     private static Type? ExtractAsyncEnumerableType(Type type)
-    {
-        // Check if type implements IAsyncEnumerable<T>
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
-            return type.GetGenericArguments()[0];
+        => ReflectionCache.GetOrAdd<Type?>(
+            $"asyncEnumerableElem|{type.FullName ?? type.Name}",
+            () =>
+            {
+                // Check if type implements IAsyncEnumerable<T>
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+                    return type.GetGenericArguments()[0];
 
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
-                return iface.GetGenericArguments()[0];
-        }
+                foreach (var iface in type.GetInterfaces())
+                {
+                    if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+                        return iface.GetGenericArguments()[0];
+                }
 
-        return null;
-    }
+                return null;
+            });
 
     private static Type? ExtractReadOnlyListElementType(Type type)
-    {
-        // Check IReadOnlyList<T>
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
-            return type.GetGenericArguments()[0];
+        => ReflectionCache.GetOrAdd<Type?>(
+            $"readOnlyListElem|{type.FullName ?? type.Name}",
+            () =>
+            {
+                // Check IReadOnlyList<T>
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+                    return type.GetGenericArguments()[0];
 
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
-                return iface.GetGenericArguments()[0];
-        }
+                foreach (var iface in type.GetInterfaces())
+                {
+                    if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+                        return iface.GetGenericArguments()[0];
+                }
 
-        return null;
-    }
+                return null;
+            });
 
     private static async IAsyncEnumerable<IReadOnlyList<object>> IterateAsyncEnumerable(
         object asyncEnumerable, Type elementType, bool isSingleItem, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // For batch streams: IAsyncEnumerable<IReadOnlyList<T>>
         // For single-item streams: IAsyncEnumerable<T>
-        var innerType = isSingleItem ? elementType : typeof(IReadOnlyList<>).MakeGenericType(elementType);
-        var asyncEnumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(innerType);
+        // Cache the closed IAsyncEnumerator<T> + its MoveNextAsync/Current MemberInfos per
+        // (elementType, isSingleItem) pair — they're stable for the AppDomain.
+        var (getEnumeratorMethod, moveNextMethod, currentProperty) = ReflectionCache.GetOrAdd<(MethodInfo, MethodInfo, PropertyInfo)>(
+            $"asyncEnumeratorOps|{elementType.FullName ?? elementType.Name}|single={isSingleItem}",
+            () =>
+            {
+                var innerType = isSingleItem ? elementType : typeof(IReadOnlyList<>).MakeGenericType(elementType);
+                var enumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(innerType);
+                var enumeratorInterface = typeof(IAsyncEnumerator<>).MakeGenericType(innerType);
+                return (
+                    enumerableType.GetMethod("GetAsyncEnumerator")!,
+                    enumeratorInterface.GetMethod("MoveNextAsync")!,
+                    enumeratorInterface.GetProperty("Current")!);
+            });
 
-        var getEnumeratorMethod = asyncEnumerableType.GetMethod("GetAsyncEnumerator")!;
         var enumerator = getEnumeratorMethod.Invoke(asyncEnumerable, [cancellationToken])!;
-
-        // Use the interface type to resolve methods — compiler-generated async enumerators
-        // use explicit interface implementation, so MoveNextAsync/Current won't be found
-        // on the concrete type.
-        var enumeratorInterfaceType = typeof(IAsyncEnumerator<>).MakeGenericType(innerType);
-        var moveNextMethod = enumeratorInterfaceType.GetMethod("MoveNextAsync")!;
-        var currentProperty = enumeratorInterfaceType.GetProperty("Current")!;
+        var currentGetter = AccessorCache.GetGetter(currentProperty);
 
         try
         {
@@ -211,7 +221,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
                 if (!hasMore) break;
 
-                var current = currentProperty.GetValue(enumerator);
+                var current = currentGetter(enumerator);
                 if (isSingleItem)
                 {
                     // Wrap single item in a list
@@ -236,20 +246,25 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
     private static Type? FindClrType(string clrTypeName)
     {
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"clrType|{clrTypeName}",
+            () =>
             {
-                var type = assembly.GetTypes()
-                    .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
-                if (type is not null) return type;
-            }
-            catch (ReflectionTypeLoadException)
-            {
-                continue;
-            }
-        }
-        return null;
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var type = assembly.GetTypes()
+                            .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
+                        if (type is not null) return type;
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                        continue;
+                    }
+                }
+                return null;
+            });
     }
 }
 

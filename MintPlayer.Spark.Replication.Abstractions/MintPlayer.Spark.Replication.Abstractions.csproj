@@ -18,4 +18,8 @@
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
 </Project>

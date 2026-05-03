@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.Services;
@@ -142,21 +143,26 @@ internal partial class IndexRegistry : IIndexRegistry
 
     private static Type? GetCollectionTypeFromIndex(Type indexType)
     {
-        var current = indexType;
-        while (current != null && current != typeof(object))
-        {
-            if (current.IsGenericType)
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"indexCollectionType|{indexType.FullName ?? indexType.Name}",
+            () =>
             {
-                var genericDef = current.GetGenericTypeDefinition();
-                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
-                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
+                var current = indexType;
+                while (current != null && current != typeof(object))
                 {
-                    return current.GetGenericArguments()[0];
+                    if (current.IsGenericType)
+                    {
+                        var genericDef = current.GetGenericTypeDefinition();
+                        if (genericDef == typeof(AbstractIndexCreationTask<>) ||
+                            genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
+                        {
+                            return current.GetGenericArguments()[0];
+                        }
+                    }
+                    current = current.BaseType;
                 }
-            }
-            current = current.BaseType;
-        }
-        return null;
+                return null;
+            });
     }
 
     private static string GetIndexName(Type indexType)

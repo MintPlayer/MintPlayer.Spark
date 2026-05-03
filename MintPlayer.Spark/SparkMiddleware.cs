@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
@@ -347,10 +348,14 @@ public static class SparkExtensions
 
         try
         {
-            // Find and register all index types
-            var indexTypes = targetAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                .ToList();
+            // Find and register all index types — Assembly.GetTypes() walks the assembly's
+            // entire metadata tables; cache the filtered result so repeat AddSpark calls
+            // (or hot-reload scenarios) don't re-scan.
+            var indexTypes = ReflectionCache.GetOrAdd<IReadOnlyList<Type>>(
+                $"indexTypes|{targetAssembly.FullName}",
+                () => targetAssembly.GetTypes()
+                    .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                    .ToArray());
 
             foreach (var indexType in indexTypes)
             {
@@ -358,13 +363,15 @@ public static class SparkExtensions
             }
 
             // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = targetAssembly.GetTypes()
-                .Where(t => t.GetCustomAttribute<FromIndexAttribute>() != null)
-                .ToList();
+            var projectionTypes = ReflectionCache.GetOrAdd<IReadOnlyList<Type>>(
+                $"projectionTypes|{targetAssembly.FullName}",
+                () => targetAssembly.GetTypes()
+                    .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
+                    .ToArray());
 
             foreach (var projectionType in projectionTypes)
             {
-                var attr = projectionType.GetCustomAttribute<FromIndexAttribute>()!;
+                var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
                 indexRegistry.RegisterProjection(projectionType, attr.IndexType);
             }
 

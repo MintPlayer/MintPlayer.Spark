@@ -2,9 +2,9 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
-using System.Reflection;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
@@ -70,7 +70,7 @@ internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGro
             var sparkContext = sparkContextResolver.ResolveContext(session);
             if (sparkContext is null) return map;
 
-            foreach (var property in sparkContext.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (var property in sparkContext.GetType().GetCachedProperties())
             {
                 var propertyType = property.PropertyType;
                 if (!propertyType.IsGenericType) continue;

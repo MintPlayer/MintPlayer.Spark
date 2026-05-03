@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.SubscriptionWorker;
@@ -83,8 +84,14 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                     return;
                 }
 
-                var recipientInterfaceType = typeof(IRecipient<>).MakeGenericType(clrType);
-                var checkpointInterfaceType = typeof(ICheckpointRecipient<>).MakeGenericType(clrType);
+                // Cache the closed generic interface types per CLR message type — the
+                // MakeGenericType call is otherwise repeated for every message processed.
+                var recipientInterfaceType = ReflectionCache.GetOrAdd<Type>(
+                    $"recipientInterface|{clrType.FullName}",
+                    () => typeof(IRecipient<>).MakeGenericType(clrType));
+                var checkpointInterfaceType = ReflectionCache.GetOrAdd<Type>(
+                    $"checkpointRecipientInterface|{clrType.FullName}",
+                    () => typeof(ICheckpointRecipient<>).MakeGenericType(clrType));
 
                 using (var scope = _serviceProvider.CreateScope())
                 {
@@ -151,14 +158,18 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                             // Check if handler implements ICheckpointRecipient<T> and has a previous checkpoint
                             if (handler.Checkpoint != null && checkpointInterfaceType.IsAssignableFrom(handlerType))
                             {
-                                var checkpointHandleMethod = checkpointInterfaceType.GetMethod(
-                                    nameof(ICheckpointRecipient<object>.HandleAsync),
-                                    [clrType, typeof(string), typeof(CancellationToken)]);
+                                var checkpointHandleMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
+                                    $"checkpointHandleAsync|{clrType.FullName}",
+                                    () => checkpointInterfaceType.GetMethod(
+                                        nameof(ICheckpointRecipient<object>.HandleAsync),
+                                        [clrType, typeof(string), typeof(CancellationToken)]));
                                 await (Task)checkpointHandleMethod!.Invoke(recipientInstance, [payload, handler.Checkpoint, cancellationToken])!;
                             }
                             else
                             {
-                                var handleMethod = recipientInterfaceType.GetMethod(nameof(IRecipient<object>.HandleAsync));
+                                var handleMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
+                                    $"recipientHandleAsync|{clrType.FullName}",
+                                    () => recipientInterfaceType.GetMethod(nameof(IRecipient<object>.HandleAsync)));
                                 await (Task)handleMethod!.Invoke(recipientInstance, [payload, cancellationToken])!;
                             }
 

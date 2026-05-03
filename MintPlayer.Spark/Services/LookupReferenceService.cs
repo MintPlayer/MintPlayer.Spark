@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents;
 using System.Reflection;
 
@@ -227,8 +228,11 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
     private System.Collections.IList? GetTransientItems(Type transientType)
     {
-        // Look for static Items property
-        var itemsProperty = transientType.GetProperty("Items", BindingFlags.Public | BindingFlags.Static);
+        // Static "Items" property — cached once per transient type. Static binding flags
+        // require a separate cache key (the GetCachedProperty helper scopes to Public+Instance).
+        var itemsProperty = ReflectionCache.GetOrAdd<PropertyInfo?>(
+            $"staticProp|{transientType.FullName}|Items",
+            () => transientType.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
         if (itemsProperty == null) return null;
 
         var value = itemsProperty.GetValue(null);
@@ -248,8 +252,8 @@ internal partial class LookupReferenceService : ILookupReferenceService
             return null;
 
         // Get the Key value via reflection (could be string, enum, or other TKey type)
-        var keyProp = transientItem.GetType().GetProperty("Key");
-        var keyValue = keyProp?.GetValue(transientItem);
+        var keyProp = transientItem.GetType().GetCachedProperty("Key");
+        var keyValue = keyProp is not null && keyProp.CanRead ? AccessorCache.GetGetter(keyProp)(transientItem) : null;
         var key = keyValue?.ToString() ?? string.Empty;
 
         // Get extra properties (properties beyond Key, Description, Values, DisplayType)
@@ -257,11 +261,11 @@ internal partial class LookupReferenceService : ILookupReferenceService
         var itemType = transientItem.GetType();
         var baseProps = new HashSet<string> { "Key", "Description", "Values", "DisplayType" };
 
-        foreach (var prop in itemType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var prop in itemType.GetCachedProperties())
         {
             if (!baseProps.Contains(prop.Name))
             {
-                var value = prop.GetValue(transientItem);
+                var value = prop.CanRead ? AccessorCache.GetGetter(prop)(transientItem) : null;
                 if (value != null)
                 {
                     extraProps[ToCamelCase(prop.Name)] = value;
