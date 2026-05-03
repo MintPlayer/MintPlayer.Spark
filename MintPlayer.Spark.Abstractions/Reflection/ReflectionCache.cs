@@ -71,6 +71,16 @@ public static class ReflectionCache
     /// <summary>
     /// Global string-keyed tier. Use when the cache key is naturally a string and
     /// not bound to one owning type (assembly scans, name → Type maps, …).
+    /// <para>
+    /// <strong>Keyspace convention.</strong> All callers share one global dictionary,
+    /// so keys must carry a unique namespace prefix to avoid silent collisions across
+    /// unrelated call sites. Established prefixes in Spark: <c>prop|</c> (property
+    /// lookups), <c>attr|</c> (custom-attribute reads), <c>get|</c>/<c>set|</c>
+    /// (compiled accessors), <c>resolveType|</c> (Type.GetType + assembly walk),
+    /// <c>sessionLoadAsync|</c> (closed generic <c>LoadAsync&lt;T&gt;</c> MethodInfos).
+    /// New call sites should pick a fresh, descriptive prefix and document it where
+    /// the key is constructed.
+    /// </para>
     /// </summary>
     public static TValue GetOrAdd<TValue>(string key, Func<TValue> factory)
     {
