@@ -878,22 +878,24 @@ internal partial class EntityMapper : IEntityMapper
     private string GetEntityDisplayName(object entity, Type entityType, EntityTypeDefinition? entityTypeDef = null)
     {
         // If no entity type definition provided, try to find it
-        if (entityTypeDef == null)
-        {
-            entityTypeDef = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-        }
+        entityTypeDef ??= modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
 
-        // 1. Try DisplayFormat (template with {PropertyName} placeholders)
+        // 1. DisplayFormat (template with {PropertyName} placeholders)
         if (!string.IsNullOrEmpty(entityTypeDef?.DisplayFormat))
         {
             return ResolveDisplayFormat(entity, entityType, entityTypeDef.DisplayFormat);
         }
 
-        // 2. Try DisplayAttribute (single property name)
+        // 2. DisplayAttribute (single property name). ModelSynchronizer auto-populates
+        // DisplayAttribute to "Name"/"FullName"/"Title" (or the first attribute) when
+        // synthesizing an EntityTypeDefinition, so there's no separate runtime fallback —
+        // any entity that went through the synchronizer already has DisplayAttribute set;
+        // entities without a definition (projection/anonymous types) fall through to the
+        // CLR type name below.
         if (!string.IsNullOrEmpty(entityTypeDef?.DisplayAttribute))
         {
             var displayProperty = entityType.GetCachedProperty(entityTypeDef.DisplayAttribute);
-            if (displayProperty is not null && displayProperty.CanRead)
+            if (displayProperty is not null)
             {
                 var value = AccessorCache.GetGetter(displayProperty)(entity);
                 if (value != null)
@@ -903,15 +905,7 @@ internal partial class EntityMapper : IEntityMapper
             }
         }
 
-        // 3. Fallback to common display name properties
-        var nameProperty = entityType.GetCachedProperty("Name")
-            ?? entityType.GetCachedProperty("FullName")
-            ?? entityType.GetCachedProperty("Title");
-
-        if (nameProperty is null || !nameProperty.CanRead)
-            return entityType.Name;
-
-        return AccessorCache.GetGetter(nameProperty)(entity)?.ToString() ?? entityType.Name;
+        return entityType.Name;
     }
 
     private static string ResolveDisplayFormat(object entity, Type entityType, string displayFormat)
@@ -922,7 +916,7 @@ internal partial class EntityMapper : IEntityMapper
         foreach (var property in properties)
         {
             var placeholder = $"{{{property.Name}}}";
-            if (result.Contains(placeholder) && property.CanRead)
+            if (result.Contains(placeholder))
             {
                 var value = AccessorCache.GetGetter(property)(entity)?.ToString() ?? string.Empty;
                 result = result.Replace(placeholder, value);
