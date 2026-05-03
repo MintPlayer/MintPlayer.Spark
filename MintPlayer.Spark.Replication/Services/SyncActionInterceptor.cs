@@ -183,9 +183,9 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     /// </summary>
     private static string[] GetPropertyNames(Type entityType)
     {
-        return ReflectionCache.GetOrAdd<string[]>(
-            $"replicatedPropNames|{entityType.FullName ?? entityType.Name}",
-            () => entityType.GetCachedProperties()
+        return ReflectionCache.GetOrAdd<(string Op, Type Type), string[]>(
+            ("SyncActionInterceptor.ReplicatedPropNames", entityType),
+            static k => k.Type.GetCachedProperties()
                 .Where(p => p.CanRead && p.CanWrite && !string.Equals(p.Name, "Id", StringComparison.Ordinal))
                 .Select(p => p.Name)
                 .ToArray());

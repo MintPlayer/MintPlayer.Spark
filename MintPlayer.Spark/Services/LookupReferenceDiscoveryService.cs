@@ -92,9 +92,9 @@ internal partial class LookupReferenceDiscoveryService : ILookupReferenceDiscove
         // For TransientLookupReference: get DisplayType from one of the Items
         if (typeof(TransientLookupReference).IsAssignableFrom(type))
         {
-            var itemsProp = ReflectionCache.GetOrAdd<PropertyInfo?>(
-                $"staticProp|{type.FullName}|Items",
-                () => type.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
+            var itemsProp = ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo?>(
+                ("LookupReferenceDiscoveryService.StaticItems", type),
+                static k => k.Type.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
             if (itemsProp != null)
             {
                 var items = itemsProp.GetValue(null);

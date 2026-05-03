@@ -230,9 +230,9 @@ internal partial class LookupReferenceService : ILookupReferenceService
     {
         // Static "Items" property — cached once per transient type. Static binding flags
         // require a separate cache key (the GetCachedProperty helper scopes to Public+Instance).
-        var itemsProperty = ReflectionCache.GetOrAdd<PropertyInfo?>(
-            $"staticProp|{transientType.FullName}|Items",
-            () => transientType.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
+        var itemsProperty = ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo?>(
+            ("LookupReferenceService.StaticItems", transientType),
+            static k => k.Type.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
         if (itemsProperty == null) return null;
 
         var value = itemsProperty.GetValue(null);

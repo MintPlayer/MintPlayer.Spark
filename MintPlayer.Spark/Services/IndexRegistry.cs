@@ -143,11 +143,11 @@ internal partial class IndexRegistry : IIndexRegistry
 
     private static Type? GetCollectionTypeFromIndex(Type indexType)
     {
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"indexCollectionType|{indexType.GetCacheKeyName()}",
-            () =>
+        return ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
+            ("IndexRegistry.IndexCollectionType", indexType),
+            static k =>
             {
-                var current = indexType;
+                var current = k.Type;
                 while (current != null && current != typeof(object))
                 {
                     if (current.IsGenericType)

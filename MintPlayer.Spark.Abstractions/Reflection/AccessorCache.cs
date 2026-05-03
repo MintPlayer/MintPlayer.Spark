@@ -9,8 +9,11 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 /// to produce strongly-typed getters / setters that avoid the per-call overhead
 /// of <see cref="PropertyInfo.GetValue(object?)"/> / <see cref="PropertyInfo.SetValue(object?, object?)"/>.
 /// <para>
-/// Built on top of <see cref="ReflectionCache"/>: each compiled delegate is
-/// memoized per <see cref="PropertyInfo"/> for the lifetime of the AppDomain.
+/// Built on top of <see cref="ReflectionCache"/>'s identity-keyed tier: each compiled
+/// delegate is memoized per <see cref="PropertyInfo"/> instance for the lifetime of
+/// the AppDomain. The CLR canonicalizes <c>PropertyInfo</c> within an
+/// <c>AssemblyLoadContext</c>, so independent <c>typeof(T).GetProperty(name)</c> calls
+/// hit the same cached delegate without string-key composition.
 /// </para>
 /// <para>
 /// The setter expects <paramref name="value"/> to already be assignable to the
@@ -33,9 +36,7 @@ public static class AccessorCache
         if (!property.CanRead)
             throw new ArgumentException($"Property '{property.DeclaringType?.FullName}.{property.Name}' is not readable.", nameof(property));
 
-        return ReflectionCache.GetOrAdd<PropertyInfoOwner, Func<object, object?>>(
-            "get|" + BuildKey(property),
-            () => CompileGetter(property));
+        return ReflectionCache.GetOrAdd<PropertyInfo, Func<object, object?>>(property, CompileGetter);
     }
 
     /// <summary>
@@ -49,9 +50,7 @@ public static class AccessorCache
         if (!property.CanWrite)
             throw new ArgumentException($"Property '{property.DeclaringType?.FullName}.{property.Name}' is not writable.", nameof(property));
 
-        return ReflectionCache.GetOrAdd<PropertyInfoOwner, Action<object, object?>>(
-            "set|" + BuildKey(property),
-            () => CompileSetter(property));
+        return ReflectionCache.GetOrAdd<PropertyInfo, Action<object, object?>>(property, CompileSetter);
     }
 
     private static Func<object, object?> CompileGetter(PropertyInfo property)
@@ -74,10 +73,4 @@ public static class AccessorCache
         var assign = Expression.Assign(Expression.Property(typedInstance, property), typedValue);
         return Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
     }
-
-    private static string BuildKey(PropertyInfo property)
-        => $"{property.DeclaringType!.GetCacheKeyName()}|{property.Name}|{property.PropertyType.GetCacheKeyName()}";
-
-    /// <summary>Marker type used as the per-type cache owner for accessor delegates.</summary>
-    private sealed class PropertyInfoOwner;
 }

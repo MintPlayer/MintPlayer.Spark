@@ -99,11 +99,11 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
     private static StreamingMethodInfo? ResolveStreamingMethod(Type actionsType, string methodName)
     {
-        return ReflectionCache.GetOrAdd<StreamingMethodInfo?>(
-            $"streamingMethod|{actionsType.FullName};{methodName}",
-            () =>
+        return ReflectionCache.GetOrAdd<(string Op, Type Type, string Method), StreamingMethodInfo?>(
+            ("StreamingQueryExecutor.ResolveStreamingMethod", actionsType, methodName),
+            static k =>
         {
-            var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+            var method = k.Type.GetMethod(k.Method, BindingFlags.Public | BindingFlags.Instance);
             if (method is null) return null;
 
             var returnType = method.ReturnType;
@@ -146,15 +146,16 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     }
 
     private static Type? ExtractAsyncEnumerableType(Type type)
-        => ReflectionCache.GetOrAdd<Type?>(
-            $"asyncEnumerableElem|{type.GetCacheKeyName()}",
-            () =>
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
+            ("StreamingQueryExecutor.AsyncEnumerableElement", type),
+            static k =>
             {
+                var t = k.Type;
                 // Check if type implements IAsyncEnumerable<T>
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
-                    return type.GetGenericArguments()[0];
+                if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+                    return t.GetGenericArguments()[0];
 
-                foreach (var iface in type.GetInterfaces())
+                foreach (var iface in t.GetInterfaces())
                 {
                     if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
                         return iface.GetGenericArguments()[0];
@@ -164,15 +165,16 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             });
 
     private static Type? ExtractReadOnlyListElementType(Type type)
-        => ReflectionCache.GetOrAdd<Type?>(
-            $"readOnlyListElem|{type.GetCacheKeyName()}",
-            () =>
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
+            ("StreamingQueryExecutor.ReadOnlyListElement", type),
+            static k =>
             {
+                var t = k.Type;
                 // Check IReadOnlyList<T>
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
-                    return type.GetGenericArguments()[0];
+                if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+                    return t.GetGenericArguments()[0];
 
-                foreach (var iface in type.GetInterfaces())
+                foreach (var iface in t.GetInterfaces())
                 {
                     if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
                         return iface.GetGenericArguments()[0];
@@ -188,11 +190,11 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // For single-item streams: IAsyncEnumerable<T>
         // Cache the closed IAsyncEnumerator<T> + its MoveNextAsync/Current MemberInfos per
         // (elementType, isSingleItem) pair — they're stable for the AppDomain.
-        var (getEnumeratorMethod, moveNextMethod, currentProperty) = ReflectionCache.GetOrAdd<(MethodInfo, MethodInfo, PropertyInfo)>(
-            $"asyncEnumeratorOps|{elementType.GetCacheKeyName()}|single={isSingleItem}",
-            () =>
+        var (getEnumeratorMethod, moveNextMethod, currentProperty) = ReflectionCache.GetOrAdd<(string Op, Type Element, bool Single), (MethodInfo, MethodInfo, PropertyInfo)>(
+            ("StreamingQueryExecutor.AsyncEnumeratorOps", elementType, isSingleItem),
+            static k =>
             {
-                var innerType = isSingleItem ? elementType : typeof(IReadOnlyList<>).MakeGenericType(elementType);
+                var innerType = k.Single ? k.Element : typeof(IReadOnlyList<>).MakeGenericType(k.Element);
                 var enumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(innerType);
                 var enumeratorInterface = typeof(IAsyncEnumerator<>).MakeGenericType(innerType);
                 return (

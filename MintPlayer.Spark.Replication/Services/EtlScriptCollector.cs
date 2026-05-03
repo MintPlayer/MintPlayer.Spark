@@ -23,9 +23,9 @@ internal class EtlScriptCollector
             // Cache the [Replicated]-annotated types per assembly so repeat calls (e.g.
             // collecting scripts from the same assembly more than once during testing or
             // module re-init) don't re-walk the metadata tables.
-            var replicatedTypes = ReflectionCache.GetOrAdd<IReadOnlyList<(Type Type, ReplicatedAttribute Attribute)>>(
-                $"replicatedTypes|{assembly.FullName}",
-                () => assembly.GetExportedTypes()
+            var replicatedTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<(Type Type, ReplicatedAttribute Attribute)>>(
+                ("EtlScriptCollector.ReplicatedTypes", assembly),
+                static k => k.Asm.GetExportedTypes()
                     .Where(t => t is { IsClass: true, IsAbstract: false })
                     .Select(t => (Type: t, Attribute: t.GetCachedCustomAttribute<ReplicatedAttribute>()))
                     .Where(x => x.Attribute != null)

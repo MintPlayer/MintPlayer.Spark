@@ -58,13 +58,12 @@ public class ReflectionCacheTests
     }
 
     [Fact]
-    public void GetOrAdd_type_keyed_runs_factory_once_per_type()
+    public void GetOrAdd_typed_key_runs_factory_once_per_type()
     {
-        ReflectionCache.ClearGlobalForTests();
         var calls = 0;
 
-        var first = ReflectionCache.GetOrAdd<string>(typeof(GetOrAddTypeKeyedFixture), t => { Interlocked.Increment(ref calls); return t.Name; });
-        var second = ReflectionCache.GetOrAdd<string>(typeof(GetOrAddTypeKeyedFixture), t => { Interlocked.Increment(ref calls); return "DIFFERENT"; });
+        var first = ReflectionCache.GetOrAdd<Type, string>(typeof(GetOrAddTypeKeyedFixture), t => { Interlocked.Increment(ref calls); return t.Name; });
+        var second = ReflectionCache.GetOrAdd<Type, string>(typeof(GetOrAddTypeKeyedFixture), t => { Interlocked.Increment(ref calls); return "DIFFERENT"; });
 
         first.Should().Be(nameof(GetOrAddTypeKeyedFixture));
         second.Should().Be(nameof(GetOrAddTypeKeyedFixture));
@@ -142,16 +141,14 @@ public class ReflectionCacheTests
     }
 
     [Fact]
-    public void GetOrAdd_type_keyed_isolates_distinct_value_types_for_same_Type()
+    public void GetOrAdd_typed_key_isolates_distinct_value_types_for_same_TKey()
     {
-        // The type-keyed overload is used by multiple call sites that cache different
-        // things per Type (e.g. "collection element type of T" vs "LoadAsync<T> MethodInfo").
-        // The cache must include TValue in its key so two such call sites can coexist
-        // without an InvalidCastException at the boundary.
-        ReflectionCache.ClearGlobalForTests();
-
-        var asInt = ReflectionCache.GetOrAdd<int>(typeof(TypeKeyedCollisionFixture), _ => 7);
-        var asString = ReflectionCache.GetOrAdd<string>(typeof(TypeKeyedCollisionFixture), t => t.Name);
+        // The identity-keyed tier is used by multiple call sites that may share a TKey
+        // (e.g. "Type") for different TValues. The dictionary's inner discriminator
+        // includes typeof(TValue) so two such call sites can coexist without an
+        // InvalidCastException at the boundary.
+        var asInt = ReflectionCache.GetOrAdd<Type, int>(typeof(TypeKeyedCollisionFixture), _ => 7);
+        var asString = ReflectionCache.GetOrAdd<Type, string>(typeof(TypeKeyedCollisionFixture), t => t.Name);
 
         asInt.Should().Be(7);
         asString.Should().Be(nameof(TypeKeyedCollisionFixture));
@@ -194,10 +191,10 @@ public class ReflectionCacheTests
     }
 
     [Fact]
-    public void GetOrAdd_type_keyed_throws_on_null_key_or_factory()
+    public void GetOrAdd_typed_key_throws_on_null_key_or_factory()
     {
-        Action nullKey = () => ReflectionCache.GetOrAdd<string>((Type)null!, _ => "v");
-        Action nullFactory = () => ReflectionCache.GetOrAdd<string>(typeof(string), null!);
+        Action nullKey = () => ReflectionCache.GetOrAdd<Type, string>(null!, _ => "v");
+        Action nullFactory = () => ReflectionCache.GetOrAdd<Type, string>(typeof(string), null!);
 
         nullKey.Should().Throw<ArgumentNullException>();
         nullFactory.Should().Throw<ArgumentNullException>();
@@ -224,54 +221,75 @@ public class ReflectionCacheTests
     }
 
     [Fact]
-    public void ClearGlobalForTests_clears_type_keyed_entries()
+    public void GlobalCount_increases_as_string_keyed_entries_are_added()
     {
-        ReflectionCache.GetOrAdd<string>(typeof(ClearTypeKeyedFixture), _ => "first");
-
+        // GlobalCount only reflects the global string-keyed tier — the per-TOwner and
+        // identity-keyed tiers are generic-static-specialized and have AppDomain lifetime
+        // by design (see ReflectionCache.ClearGlobalForTests docstring).
         ReflectionCache.ClearGlobalForTests();
-
-        var calls = 0;
-        var second = ReflectionCache.GetOrAdd<string>(typeof(ClearTypeKeyedFixture), _ =>
-        {
-            Interlocked.Increment(ref calls);
-            return "second";
-        });
-
-        second.Should().Be("second");
-        calls.Should().Be(1);
-    }
-
-    private sealed class ClearTypeKeyedFixture;
-
-    [Fact]
-    public void GlobalCount_increases_as_entries_are_added()
-    {
-        ReflectionCache.ClearGlobalForTests();
-        var initial = ReflectionCache.GlobalCount;
-        initial.Should().Be(0);
+        ReflectionCache.GlobalCount.Should().Be(0);
 
         ReflectionCache.GetOrAdd<string>($"counter:{Guid.NewGuid()}", () => "a");
-        ReflectionCache.GetOrAdd<string>(typeof(GlobalCountFixture), _ => "b");
+        ReflectionCache.GetOrAdd<string>($"counter:{Guid.NewGuid()}", () => "b");
 
         ReflectionCache.GlobalCount.Should().Be(2);
     }
 
-    private sealed class GlobalCountFixture;
-
     [Fact]
-    public void GetOrAdd_type_keyed_runs_factory_with_the_correct_Type_argument()
+    public void GetOrAdd_typed_key_runs_factory_with_the_correct_key_argument()
     {
-        // The factory receives the Type that was used as the key — verify it isn't
-        // accidentally swapped or boxed wrong by the (Type, ValueType) wrapping.
-        ReflectionCache.ClearGlobalForTests();
+        // The factory receives the TKey value that was used — verify it isn't accidentally
+        // swapped or boxed wrong by the (TKey, ValueType) wrapping.
         Type? observed = null;
 
-        ReflectionCache.GetOrAdd<string>(typeof(TypeArgFixture), t => { observed = t; return "v"; });
+        ReflectionCache.GetOrAdd<Type, string>(typeof(TypeArgFixture), t => { observed = t; return "v"; });
 
         observed.Should().Be(typeof(TypeArgFixture));
     }
 
     private sealed class TypeArgFixture;
+
+    [Fact]
+    public void GetOrAdd_typed_key_works_for_string_Type_string_tuple_shape()
+    {
+        // Framework call sites compose (string Op, Type, string Method)-shape tuple keys
+        // when a cache purpose is identified by a label + a runtime Type + an instance
+        // method name (e.g. StreamingQueryExecutor.ResolveStreamingMethod and
+        // QueryExecutor.CustomQueryMethod). Pin the contract: ValueTuple's structural
+        // equality + GetHashCode play correctly with the cache's per-TKey-type generic-static
+        // specialization, including across the heterogeneous Type-vs-string members.
+        var typeFromTypeof = typeof(TupleKeyFixture);
+        var typeFromGetType = new TupleKeyFixture().GetType();
+        var calls = 0;
+
+        var first = ReflectionCache.GetOrAdd<(string Op, Type Type, string Method), string>(
+            ("MyOp", typeFromTypeof, "MyMethod"),
+            k => { Interlocked.Increment(ref calls); return $"{k.Op}|{k.Type.Name}|{k.Method}"; });
+
+        // Same conceptual key reached via a different Type-resolution route — should hit
+        // the same dictionary slot and skip the factory.
+        var second = ReflectionCache.GetOrAdd<(string Op, Type Type, string Method), string>(
+            ("MyOp", typeFromGetType, "MyMethod"),
+            k => { Interlocked.Increment(ref calls); return "DIFFERENT"; });
+
+        first.Should().Be("MyOp|TupleKeyFixture|MyMethod");
+        second.Should().Be("MyOp|TupleKeyFixture|MyMethod");
+        calls.Should().Be(1, "Type identity holds across resolution routes; the tuple cache must collapse them to one slot");
+
+        // Differing on any tuple component → distinct slots.
+        var differentOp = ReflectionCache.GetOrAdd<(string Op, Type Type, string Method), string>(
+            ("OtherOp", typeFromTypeof, "MyMethod"),
+            k => { Interlocked.Increment(ref calls); return "differentOp"; });
+        var differentMethod = ReflectionCache.GetOrAdd<(string Op, Type Type, string Method), string>(
+            ("MyOp", typeFromTypeof, "OtherMethod"),
+            k => { Interlocked.Increment(ref calls); return "differentMethod"; });
+
+        differentOp.Should().Be("differentOp");
+        differentMethod.Should().Be("differentMethod");
+        calls.Should().Be(3, "the leading Op string and the trailing Method string both discriminate within the dict");
+    }
+
+    private sealed class TupleKeyFixture;
 
     [Fact]
     public void GetOrAdd_per_type_caches_value_type_results()

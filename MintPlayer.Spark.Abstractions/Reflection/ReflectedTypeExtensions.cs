@@ -4,9 +4,9 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 
 /// <summary>
 /// Cached convenience wrappers over the most common <see cref="Type"/> reflection
-/// lookups, all backed by <see cref="ReflectionCache"/>. These are pure sugar — every
-/// method composes against <see cref="ReflectionCache.GetOrAdd{TValue}(Type, Func{Type, TValue})"/>
-/// or its overloads. The cache primitive itself stays domain-agnostic.
+/// lookups, all backed by <see cref="ReflectionCache"/>'s identity-keyed tier. These
+/// are pure sugar — every method composes against the cache primitive with the natural
+/// runtime-identity key (Type, (Type, name), (MemberInfo, attrType)).
 /// <para>
 /// Use these whenever you'd otherwise call <see cref="Type.GetProperty(string, BindingFlags)"/>
 /// or <see cref="Type.GetProperties(BindingFlags)"/> in a hot path. They scope to public
@@ -18,12 +18,13 @@ public static class ReflectedTypeExtensions
     private const BindingFlags PublicInstance = BindingFlags.Public | BindingFlags.Instance;
 
     /// <summary>
-    /// Returns <c>type.GetProperties(Public | Instance)</c>, cached per <see cref="Type"/>.
+    /// Returns <c>type.GetProperties(Public | Instance)</c>, cached per <see cref="Type"/>
+    /// instance.
     /// </summary>
     public static PropertyInfo[] GetCachedProperties(this Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        return ReflectionCache.GetOrAdd<PropertyInfo[]>(type, static t => t.GetProperties(PublicInstance));
+        return ReflectionCache.GetOrAdd<Type, PropertyInfo[]>(type, static t => t.GetProperties(PublicInstance));
     }
 
     /// <summary>
@@ -36,43 +37,23 @@ public static class ReflectedTypeExtensions
     {
         ArgumentNullException.ThrowIfNull(type);
         ArgumentNullException.ThrowIfNull(name);
-        return ReflectionCache.GetOrAdd<PropertyInfo?>(
-            $"prop|{type.GetCacheKeyName()}|{name}",
-            () => type.GetProperty(name, PublicInstance));
+        return ReflectionCache.GetOrAdd<(Type Type, string Name), PropertyInfo?>(
+            (type, name),
+            static k => k.Type.GetProperty(k.Name, PublicInstance));
     }
 
     /// <summary>
     /// Returns <see cref="MemberInfo.GetCustomAttribute{T}"/>, cached per
-    /// <see cref="MemberInfo"/>. Includes negative caching for "no such attribute on
-    /// this member".
+    /// <c>(MemberInfo, attribute Type)</c>. Includes negative caching for "no such
+    /// attribute on this member".
     /// </summary>
     public static TAttribute? GetCachedCustomAttribute<TAttribute>(this MemberInfo member)
         where TAttribute : Attribute
     {
         ArgumentNullException.ThrowIfNull(member);
-        var key = $"attr|{typeof(TAttribute).GetCacheKeyName()}|{member.DeclaringType?.GetCacheKeyName()}|{member.Name}";
-        return ReflectionCache.GetOrAdd<TAttribute?>(key, member.GetCustomAttribute<TAttribute>);
-    }
-
-    /// <summary>
-    /// Returns the most-discriminating string identifier for <paramref name="type"/>:
-    /// <see cref="Type.AssemblyQualifiedName"/> (which already encodes assembly name,
-    /// version, culture, and public key token) when available, falling back to
-    /// <see cref="Type.FullName"/> for open generics, and <see cref="MemberInfo.Name"/>
-    /// as a last resort.
-    /// <para>
-    /// Use this whenever you compose a string cache key keyed on Type identity. AQN
-    /// disambiguates types that share a <see cref="Type.FullName"/> across assemblies —
-    /// a real risk in plugin / multi-version scenarios that plain FullName would silently
-    /// collide on. <strong>Do not</strong> use this for contractual identifiers stored in
-    /// model files (<c>EntityTypeDefinition.ClrType</c>) — those round-trip through disk
-    /// and must stay on <see cref="Type.FullName"/>.
-    /// </para>
-    /// </summary>
-    public static string GetCacheKeyName(this Type type)
-    {
-        ArgumentNullException.ThrowIfNull(type);
-        return type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
+        return ReflectionCache.GetOrAdd<(MemberInfo Member, Type AttrType), TAttribute?>(
+            (member, typeof(TAttribute)),
+            static k => (TAttribute?)k.Member.GetCustomAttribute(k.AttrType));
     }
 
     /// <summary>
@@ -91,3 +72,4 @@ public static class ReflectedTypeExtensions
         return prop is not null ? AccessorCache.GetGetter(prop)(task) : null;
     }
 }
+

@@ -351,9 +351,9 @@ public static class SparkExtensions
             // Find and register all index types — Assembly.GetTypes() walks the assembly's
             // entire metadata tables; cache the filtered result so repeat AddSpark calls
             // (or hot-reload scenarios) don't re-scan.
-            var indexTypes = ReflectionCache.GetOrAdd<IReadOnlyList<Type>>(
-                $"indexTypes|{targetAssembly.FullName}",
-                () => targetAssembly.GetTypes()
+            var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+                ("SparkMiddleware.IndexTypes", targetAssembly),
+                static k => k.Asm.GetTypes()
                     .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
                     .ToArray());
 
@@ -363,9 +363,9 @@ public static class SparkExtensions
             }
 
             // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = ReflectionCache.GetOrAdd<IReadOnlyList<Type>>(
-                $"projectionTypes|{targetAssembly.FullName}",
-                () => targetAssembly.GetTypes()
+            var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+                ("SparkMiddleware.ProjectionTypes", targetAssembly),
+                static k => k.Asm.GetTypes()
                     .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
                     .ToArray());
 

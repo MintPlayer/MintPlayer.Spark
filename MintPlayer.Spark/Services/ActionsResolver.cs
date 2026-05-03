@@ -57,11 +57,13 @@ internal partial class ActionsResolver : IActionsResolver
     {
         // Cache the closed Resolve<TEntity>() MethodInfo per entity type — the reflective
         // GetMethod + MakeGenericMethod was previously hit on every dispatch.
-        var genericMethod = ReflectionCache.GetOrAdd<MethodInfo>(entityType, static t =>
-        {
-            var method = typeof(ActionsResolver).GetMethod(nameof(Resolve))!;
-            return method.MakeGenericMethod(t);
-        });
+        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
+            ("ActionsResolver.Resolve", entityType),
+            static k =>
+            {
+                var method = typeof(ActionsResolver).GetMethod(nameof(Resolve))!;
+                return method.MakeGenericMethod(k.Type);
+            });
         return genericMethod.Invoke(this, null)!;
     }
 

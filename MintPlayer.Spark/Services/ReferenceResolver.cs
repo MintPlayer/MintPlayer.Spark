@@ -37,7 +37,7 @@ internal partial class ReferenceResolver : IReferenceResolver
         // Return a copy of the cached array as a List so callers can mutate (the
         // overload below appends fallback entries). The underlying array itself
         // is shared via ReflectionCache and must not be mutated.
-        var cached = ReflectionCache.GetOrAdd<(PropertyInfo Property, ReferenceAttribute Attribute)[]>(
+        var cached = ReflectionCache.GetOrAdd<Type, (PropertyInfo Property, ReferenceAttribute Attribute)[]>(
             entityType,
             static t => t.GetCachedProperties()
                 .Select(p => (Property: p, Attribute: p.GetCachedCustomAttribute<ReferenceAttribute>()))
@@ -78,9 +78,9 @@ internal partial class ReferenceResolver : IReferenceResolver
             // Cached per (queryType, "Include(string)"): the .Include(string) MethodInfo
             // doesn't change for a given queryable type and is otherwise a fresh
             // GetMethods() scan per reference property.
-            var includeMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-                $"includeMethod|{queryType.FullName}",
-                () => queryType.GetMethods()
+            var includeMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+                ("ReferenceResolver.IncludeMethod", queryType),
+                static k => k.Type.GetMethods()
                     .FirstOrDefault(m => m.Name == "Include"
                         && m.GetParameters().Length == 1
                         && m.GetParameters()[0].ParameterType == typeof(string)));
@@ -141,14 +141,14 @@ internal partial class ReferenceResolver : IReferenceResolver
 
     private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
-        var genericMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionLoadAsync|{entityType.GetCacheKeyName()}",
-            () =>
+        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("ReferenceResolver.SessionLoadAsync", entityType),
+            static k =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(
                     nameof(IAsyncDocumentSession.LoadAsync),
                     [typeof(string), typeof(CancellationToken)]);
-                return method?.MakeGenericMethod(entityType);
+                return method?.MakeGenericMethod(k.Type);
             });
         var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
 

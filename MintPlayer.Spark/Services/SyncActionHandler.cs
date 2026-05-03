@@ -229,11 +229,11 @@ internal partial class SyncActionHandler : ISyncActionHandler
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onSaveMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"actionsMethod|{actions.GetType().FullName}|OnSaveAsync",
-            () => actions.GetType().GetMethod("OnSaveAsync")
+        var onSaveMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
+            ("SyncActionHandler.OnSaveAsync", actions.GetType()),
+            static k => k.Actions.GetMethod("OnSaveAsync")
                 ?? throw new InvalidOperationException(
-                    $"Actions type '{actions.GetType().FullName}' is missing required method 'OnSaveAsync'."));
+                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnSaveAsync'."));
         var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
         await task;
         return task.GetCompletedTaskResult()!;
@@ -242,11 +242,11 @@ internal partial class SyncActionHandler : ISyncActionHandler
     private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onDeleteMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"actionsMethod|{actions.GetType().FullName}|OnDeleteAsync",
-            () => actions.GetType().GetMethod("OnDeleteAsync")
+        var onDeleteMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
+            ("SyncActionHandler.OnDeleteAsync", actions.GetType()),
+            static k => k.Actions.GetMethod("OnDeleteAsync")
                 ?? throw new InvalidOperationException(
-                    $"Actions type '{actions.GetType().FullName}' is missing required method 'OnDeleteAsync'."));
+                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnDeleteAsync'."));
         var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
         await task;
     }

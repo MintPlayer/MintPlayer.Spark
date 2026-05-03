@@ -297,7 +297,9 @@ internal partial class EntityMapper : IEntityMapper
     /// per-row in the read path, so the cache hit matters.
     /// </summary>
     private static Type? GetCollectionElementType(Type propertyType)
-        => ReflectionCache.GetOrAdd<Type?>(propertyType, ResolveCollectionElementType);
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
+            ("EntityMapper.CollectionElement", propertyType),
+            static k => ResolveCollectionElementType(k.Type));
 
     private static Type? ResolveCollectionElementType(Type propertyType)
     {
@@ -722,15 +724,15 @@ internal partial class EntityMapper : IEntityMapper
     private static async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
         Type targetType, string refId, CancellationToken cancellationToken)
     {
-        var generic = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"sessionLoadAsync|{targetType.GetCacheKeyName()}",
-            () =>
+        var generic = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
+            ("EntityMapper.SessionLoadAsync", targetType),
+            static k =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(
                     nameof(IAsyncDocumentSession.LoadAsync),
                     [typeof(string), typeof(CancellationToken)])
                     ?? throw new InvalidOperationException("Could not resolve IAsyncDocumentSession.LoadAsync<T>(string, CancellationToken).");
-                return method.MakeGenericMethod(targetType);
+                return method.MakeGenericMethod(k.Type);
             });
         var task = (Task)generic.Invoke(session, [refId, cancellationToken])!;
         await task.ConfigureAwait(false);

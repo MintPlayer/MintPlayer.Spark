@@ -186,4 +186,69 @@ public class ReflectedTypeExtensionsTests
         dict[other] = "other";
         dict.Should().HaveCount(2);
     }
+
+    [Fact]
+    public void Type_obtained_via_different_routes_collides_on_the_same_dictionary_slot()
+    {
+        // Pre-condition for a Type-keyed (or (Type, ...)-keyed) cache: the runtime must
+        // canonicalize Type instances within an AssemblyLoadContext so that compile-time
+        // typeof(...), runtime instance.GetType(), Assembly.GetType(string), and
+        // Type.GetType(assemblyQualifiedName) all produce values that collide on the
+        // same dictionary slot. If that contract held weakly (only Equals-equal but not
+        // hash-stable, or distinct instances per route), a Type-keyed cache would
+        // duplicate entries on every lookup variant and silently defeat itself.
+        var fromTypeof = typeof(Fixture);
+        var fromGetType = new Fixture().GetType();
+        var fromAssemblyLookup = typeof(Fixture).Assembly.GetType(typeof(Fixture).FullName!)!;
+        var fromAssemblyQualifiedName = Type.GetType(typeof(Fixture).AssemblyQualifiedName!)!;
+
+        // Reference equality — strongest contract, what the CLR actually guarantees within
+        // an ALC. If this ever weakens we want the test to catch it.
+        ReferenceEquals(fromTypeof, fromGetType).Should().BeTrue();
+        ReferenceEquals(fromTypeof, fromAssemblyLookup).Should().BeTrue();
+        ReferenceEquals(fromTypeof, fromAssemblyQualifiedName).Should().BeTrue();
+
+        // Equals + GetHashCode contract — the one ConcurrentDictionary actually depends on.
+        fromTypeof.Equals(fromGetType).Should().BeTrue();
+        fromTypeof.GetHashCode().Should().Be(fromGetType.GetHashCode());
+
+        var dict = new System.Collections.Concurrent.ConcurrentDictionary<Type, string>();
+        dict[fromTypeof] = "from-typeof";
+        dict[fromGetType] = "from-getType";
+        dict[fromAssemblyLookup] = "from-assembly-lookup";
+        dict[fromAssemblyQualifiedName] = "from-aqn";
+
+        dict.Should().HaveCount(1, "all four resolution routes must dedupe to a single dictionary slot");
+        dict[fromTypeof].Should().Be("from-aqn", "the last write wins on the shared slot");
+
+        // Distinct types — sanity check that the dict isn't pathologically collapsing
+        // everything to one slot.
+        dict[typeof(string)] = "string";
+        dict[typeof(int)] = "int";
+        dict.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void Tuple_of_Type_and_string_works_as_dictionary_key()
+    {
+        // The (Type, string) tuple is the natural key for "property X on type Y" lookups.
+        // Verify ValueTuple's structural equality + hash play correctly with
+        // ConcurrentDictionary so a tuple-keyed property cache works without surprises.
+        var k1 = (typeof(Fixture), nameof(Fixture.Tagged));
+        var k2 = (new Fixture().GetType(), nameof(Fixture.Tagged));
+        var k3 = (typeof(Fixture), nameof(Fixture.Untagged));
+
+        k1.Equals(k2).Should().BeTrue();
+        k1.GetHashCode().Should().Be(k2.GetHashCode());
+        k1.Equals(k3).Should().BeFalse("different property names must not collide");
+
+        var dict = new System.Collections.Concurrent.ConcurrentDictionary<(Type, string), string>();
+        dict[k1] = "first";
+        dict[k2] = "second";
+        dict[k3] = "third";
+
+        dict.Should().HaveCount(2);
+        dict[k1].Should().Be("second");
+        dict[k3].Should().Be("third");
+    }
 }

@@ -4,16 +4,19 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 
 /// <summary>
 /// Process-wide memoization primitive for reflection (and other) lookups whose
-/// result is immutable for the lifetime of the AppDomain. Two-tier:
+/// result is immutable for the lifetime of the AppDomain. Three tiers:
 /// <list type="bullet">
 ///   <item><c>GetOrAdd&lt;TOwner, TValue&gt;(string, Func&lt;TValue&gt;)</c> —
 ///   per-type cache. Each <typeparamref name="TOwner"/> gets its own dictionary
-///   via generic-static specialization, so keys never collide across types.</item>
+///   via generic-static specialization, so keys never collide across owners.</item>
 ///   <item><c>GetOrAdd&lt;TValue&gt;(string, Func&lt;TValue&gt;)</c> —
-///   global string-keyed cache for cross-type lookups.</item>
-///   <item><c>GetOrAdd&lt;TValue&gt;(Type, Func&lt;Type, TValue&gt;)</c> —
-///   global Type-keyed cache, avoids <c>type.FullName</c> boilerplate at call
-///   sites.</item>
+///   global string-keyed cache for cross-type lookups whose natural key is a
+///   string the caller controls (e.g. user-supplied CLR type names).</item>
+///   <item><c>GetOrAdd&lt;TKey, TValue&gt;(TKey, Func&lt;TKey, TValue&gt;)</c> —
+///   identity-keyed cache. Pass any <see cref="Type"/>, <see cref="System.Reflection.PropertyInfo"/>,
+///   <see cref="System.Reflection.MemberInfo"/>, or <c>ValueTuple</c> thereof
+///   directly — no string composition, no FullName ambiguity, equality is whatever
+///   <typeparamref name="TKey"/> defines.</item>
 /// </list>
 /// Backed by <see cref="ConcurrentDictionary{TKey,TValue}"/> + <see cref="Lazy{T}"/>
 /// with <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/>: lock-free reads,
@@ -45,12 +48,20 @@ public static class ReflectionCache
         internal static readonly ConcurrentDictionary<string, Lazy<object?>> Cache = new();
     }
 
+    /// <summary>
+    /// One dictionary per closed <typeparamref name="TKey"/> via generic-static
+    /// specialization. The inner key tuple includes <c>typeof(TValue)</c> so two
+    /// callers using the same <typeparamref name="TKey"/> shape but caching different
+    /// value types don't collide on a shared slot and trigger
+    /// <see cref="InvalidCastException"/> at the unbox boundary.
+    /// </summary>
+    private static class TypedKey<TKey> where TKey : notnull
+    {
+        // ReSharper disable once StaticMemberInGenericType
+        internal static readonly ConcurrentDictionary<(TKey Key, Type ValueType), Lazy<object?>> Cache = new();
+    }
+
     private static readonly ConcurrentDictionary<string, Lazy<object?>> globalCache = new();
-    // Keyed on (Type, ValueType) so distinct call sites that cache different things per
-    // Type don't collide. Without the value-type discriminator, two callers asking for
-    // typeof(Foo) with different TValue would share an entry and the second would get
-    // the first's cached object, hitting an InvalidCastException at the boundary.
-    private static readonly ConcurrentDictionary<(Type Key, Type ValueType), Lazy<object?>> typeKeyedCache = new();
 
     /// <summary>
     /// Per-type tier. Returns the cached value for <paramref name="key"/> in the
@@ -69,17 +80,18 @@ public static class ReflectionCache
     }
 
     /// <summary>
-    /// Global string-keyed tier. Use when the cache key is naturally a string and
-    /// not bound to one owning type (assembly scans, name → Type maps, …).
+    /// Global string-keyed tier. Use when the cache key is naturally a string the
+    /// caller controls — typically a user-supplied CLR type name or other free-form
+    /// identifier. For Type / PropertyInfo / MemberInfo lookups, prefer the
+    /// identity-keyed tier (<see cref="GetOrAdd{TKey,TValue}(TKey, Func{TKey, TValue})"/>) —
+    /// it sidesteps every <see cref="Type.FullName"/> / <see cref="Type.AssemblyQualifiedName"/>
+    /// ambiguity by keying on runtime identity.
     /// <para>
-    /// <strong>Keyspace convention.</strong> All callers share one global dictionary,
-    /// so keys must carry a unique namespace prefix to avoid silent collisions across
-    /// unrelated call sites. Established prefixes in Spark: <c>prop|</c> (property
-    /// lookups), <c>attr|</c> (custom-attribute reads), <c>get|</c>/<c>set|</c>
-    /// (compiled accessors), <c>resolveType|</c> (Type.GetType + assembly walk),
-    /// <c>sessionLoadAsync|</c> (closed generic <c>LoadAsync&lt;T&gt;</c> MethodInfos).
-    /// New call sites should pick a fresh, descriptive prefix and document it where
-    /// the key is constructed.
+    /// <strong>Keyspace convention.</strong> All callers of this tier share one
+    /// dictionary, so keys must carry a unique namespace prefix to avoid silent
+    /// collisions across unrelated call sites (e.g. <c>resolveType|...</c>,
+    /// <c>clrType|...</c>). New call sites should pick a fresh, descriptive prefix
+    /// and document it where the key is constructed.
     /// </para>
     /// </summary>
     public static TValue GetOrAdd<TValue>(string key, Func<TValue> factory)
@@ -94,32 +106,40 @@ public static class ReflectionCache
     }
 
     /// <summary>
-    /// Global Type-keyed tier. Convenience overload for "given any
-    /// <see cref="Type"/>, give me its X" lookups; saves callers from
-    /// stringifying <c>type.FullName</c>.
+    /// Identity-keyed tier. Pass any <typeparamref name="TKey"/> with correct
+    /// <see cref="object.Equals(object?)"/> + <see cref="object.GetHashCode"/> semantics —
+    /// <see cref="Type"/>, <see cref="System.Reflection.PropertyInfo"/>,
+    /// <see cref="System.Reflection.MemberInfo"/>, or <c>ValueTuple</c> compositions of
+    /// those — and the cache uses runtime identity, not a stringified surrogate.
+    /// <para>
+    /// One dictionary exists per closed <typeparamref name="TKey"/> via generic-static
+    /// specialization. Within a dictionary, entries are discriminated on
+    /// <c>typeof(TValue)</c> so two callers reusing the same key shape for different
+    /// value types stay isolated.
+    /// </para>
     /// </summary>
-    public static TValue GetOrAdd<TValue>(Type key, Func<Type, TValue> factory)
+    public static TValue GetOrAdd<TKey, TValue>(TKey key, Func<TKey, TValue> factory)
+        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(factory);
 
-        var lazy = typeKeyedCache.GetOrAdd(
+        var lazy = TypedKey<TKey>.Cache.GetOrAdd(
             (key, typeof(TValue)),
             entry => new Lazy<object?>(() => factory(entry.Key), LazyThreadSafetyMode.ExecutionAndPublication));
         return (TValue)lazy.Value!;
     }
 
     /// <summary>
-    /// Test-only helper: clears the global tiers. Does not (and cannot) clear
-    /// per-type tiers — those are owned by <see cref="PerType{TOwner}"/> generic
-    /// statics and have AppDomain lifetime by design.
+    /// Test-only helper: clears the global string-keyed tier. The per-<typeparamref name="TOwner"/>
+    /// and identity-keyed tiers are generic-static-specialized and have AppDomain lifetime
+    /// by design — tests that exercise them must use unique TOwner/TKey marker types per case.
     /// </summary>
     internal static void ClearGlobalForTests()
     {
         globalCache.Clear();
-        typeKeyedCache.Clear();
     }
 
-    /// <summary>Diagnostic — total entries across the two global tiers.</summary>
-    internal static int GlobalCount => globalCache.Count + typeKeyedCache.Count;
+    /// <summary>Diagnostic — entries in the global string-keyed tier.</summary>
+    internal static int GlobalCount => globalCache.Count;
 }

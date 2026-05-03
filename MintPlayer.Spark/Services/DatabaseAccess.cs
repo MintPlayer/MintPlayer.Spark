@@ -264,14 +264,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
-        var genericMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionLoadAsync|{entityType.GetCacheKeyName()}",
-            () =>
+        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("DatabaseAccess.SessionLoadAsync", entityType),
+            static k =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(
                     nameof(IAsyncDocumentSession.LoadAsync),
                     [typeof(string), typeof(CancellationToken)]);
-                return method?.MakeGenericMethod(entityType);
+                return method?.MakeGenericMethod(k.Type);
             });
         var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
 
@@ -316,15 +316,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Query method signature: Query<T>(string indexName, string collectionName, bool isMapReduce)
         var sessionType = session.GetType();
-        var genericQueryMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionQuery3|{sessionType.GetCacheKeyName()}|{entityType.GetCacheKeyName()}",
-            () =>
+        var genericQueryMethod = ReflectionCache.GetOrAdd<(string Op, Type Session, Type Entity), MethodInfo?>(
+            ("DatabaseAccess.SessionQuery3", sessionType, entityType),
+            static k =>
             {
-                var queryMethod = sessionType.GetMethods()
+                var queryMethod = k.Session.GetMethods()
                     .FirstOrDefault(m => m.Name == "Query"
                         && m.GetGenericArguments().Length == 1
                         && m.GetParameters().Length == 3);
-                return queryMethod?.MakeGenericMethod(entityType);
+                return queryMethod?.MakeGenericMethod(k.Entity);
             });
 
         if (genericQueryMethod == null)
@@ -342,9 +342,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // This ensures computed/stored fields like FullName are populated from the index
         if (!string.IsNullOrEmpty(indexName))
         {
-            var genericProjectIntoMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-                $"linqProjectInto|{entityType.GetCacheKeyName()}",
-                () =>
+            var genericProjectIntoMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+                ("DatabaseAccess.LinqProjectInto", entityType),
+                static k =>
                 {
                     var projectIntoMethod = typeof(LinqExtensions).GetMethods()
                         .FirstOrDefault(m => m.Name == "ProjectInto"
@@ -352,7 +352,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                             && m.GetGenericArguments().Length == 1
                             && m.GetParameters().Length == 1
                             && m.GetParameters()[0].ParameterType == typeof(IQueryable));
-                    return projectIntoMethod?.MakeGenericMethod(entityType);
+                    return projectIntoMethod?.MakeGenericMethod(k.Type);
                 });
 
             if (genericProjectIntoMethod != null)
@@ -368,15 +368,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         // Call ToListAsync on the query
-        var genericToListMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"linqToListAsync|{entityType.GetCacheKeyName()}",
-            () =>
+        var genericToListMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("DatabaseAccess.LinqToListAsync", entityType),
+            static k =>
             {
                 var toListMethod = typeof(LinqExtensions).GetMethods()
                     .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
                         && m.GetGenericArguments().Length == 1
                         && m.GetParameters().Length == 2);
-                return toListMethod?.MakeGenericMethod(entityType);
+                return toListMethod?.MakeGenericMethod(k.Type);
             });
 
         if (genericToListMethod == null)
@@ -418,9 +418,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var actionsType = actions.GetType();
-        var method = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"actionsMethod|{actionsType.FullName}|IsAllowedAsync|{entityType.FullName}",
-            () => actionsType.GetMethod("IsAllowedAsync", [typeof(string), entityType]));
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("DatabaseAccess.IsAllowedAsync", actionsType, entityType),
+            static k => k.Actions.GetMethod("IsAllowedAsync", [typeof(string), k.Entity]));
         if (method is null)
             return true; // Unknown shape — fail open rather than dropping valid rows.
         var task = (Task)method.Invoke(actions, [action, entity])!;
@@ -453,11 +453,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// a runtime condition we want to silently swallow.
     /// </summary>
     private static MethodInfo GetCachedActionMethod(Type actionsType, string methodName)
-        => ReflectionCache.GetOrAdd<MethodInfo>(
-            $"actionsMethod|{actionsType.FullName}|{methodName}",
-            () => actionsType.GetMethod(methodName)
+        => ReflectionCache.GetOrAdd<(string Op, Type Actions, string Method), MethodInfo>(
+            ("DatabaseAccess.ActionsMethod", actionsType, methodName),
+            static k => k.Actions.GetMethod(k.Method)
                 ?? throw new InvalidOperationException(
-                    $"Actions type '{actionsType.FullName}' is missing required method '{methodName}'."));
+                    $"Actions type '{k.Actions.FullName}' is missing required method '{k.Method}'."));
 
     #endregion
 }
