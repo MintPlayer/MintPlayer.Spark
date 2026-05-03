@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
@@ -39,7 +40,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles(modelPath);
 
         // Find all IRavenQueryable<T> properties on the SparkContext
-        var queryableProperties = contextType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var queryableProperties = contextType.GetCachedProperties()
             .Where(p => IsRavenQueryable(p.PropertyType))
             .ToList();
 
@@ -186,7 +187,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
     private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
     {
-        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var properties = entityType.GetCachedProperties()
             .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite);
 
         foreach (var property in properties)
@@ -278,12 +279,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
 
         // Get properties from collection type
-        var collectionProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var collectionProperties = entityType.GetCachedProperties()
             .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
             .ToDictionary(p => p.Name, p => p);
 
         // Get properties from projection type (if any)
-        var projectionProperties = projectionType?.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var projectionProperties = projectionType?.GetCachedProperties()
             .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
             .ToDictionary(p => p.Name, p => p)
             ?? new Dictionary<string, PropertyInfo>();
@@ -321,8 +322,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 }
             }
 
-            var referenceAttr = property.GetCustomAttribute<ReferenceAttribute>();
-            var lookupRefAttr = property.GetCustomAttribute<LookupReferenceAttribute>();
+            var referenceAttr = property.GetCachedCustomAttribute<ReferenceAttribute>();
+            var lookupRefAttr = property.GetCachedCustomAttribute<LookupReferenceAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
@@ -515,6 +516,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// Returns null if the type is not a collection.
     /// </summary>
     private static Type? GetCollectionElementType(Type type)
+        => ReflectionCache.GetOrAdd<Type?>(
+            $"modelSync.collElem|{type.FullName ?? type.Name}",
+            () => ResolveCollectionElementType(type));
+
+    private static Type? ResolveCollectionElementType(Type type)
     {
         // Handle arrays: T[]
         if (type.IsArray)
@@ -561,8 +567,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             return false;
 
         // Check if it's a class with public properties
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        return properties.Length > 0;
+        return type.GetCachedProperties().Length > 0;
     }
 
     private bool IsNullable(Type type)

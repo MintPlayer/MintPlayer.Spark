@@ -53,4 +53,20 @@ public static class ReflectedTypeExtensions
         var key = $"attr|{typeof(TAttribute).FullName}|{member.DeclaringType?.FullName}|{member.Name}";
         return ReflectionCache.GetOrAdd<TAttribute?>(key, member.GetCustomAttribute<TAttribute>);
     }
+
+    /// <summary>
+    /// Reads <c>Task&lt;T&gt;.Result</c> reflectively using a cached
+    /// <see cref="PropertyInfo"/> + compiled getter. Use this when a non-generic
+    /// <see cref="Task"/> reference was produced via reflection (e.g.
+    /// <c>MethodInfo.Invoke</c> on a <c>Task&lt;T&gt;</c>-returning method) and you
+    /// need to extract the result without paying for fresh reflection on every call.
+    /// The task <strong>must already be completed</strong> — this method does not
+    /// await; it just reads the <c>Result</c> property.
+    /// </summary>
+    public static object? GetCompletedTaskResult(this Task task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        var prop = task.GetType().GetCachedProperty("Result");
+        return prop is not null ? AccessorCache.GetGetter(prop)(task) : null;
+    }
 }
