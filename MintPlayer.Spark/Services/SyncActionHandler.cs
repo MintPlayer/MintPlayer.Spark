@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using System.Collections.Concurrent;
@@ -40,8 +41,10 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, po);
 
         // Extract the generated/existing ID
-        var resultIdProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        var resultId = resultIdProperty?.GetValue(savedEntity)?.ToString();
+        var resultIdProperty = entityType.GetCachedProperty("Id");
+        var resultId = resultIdProperty is not null && resultIdProperty.CanRead
+            ? AccessorCache.GetGetter(resultIdProperty)(savedEntity)?.ToString()
+            : null;
 
         logger.LogInformation("Sync action: saved {Collection}/{DocumentId} ({PropertyMode})",
             collection, resultId ?? documentId,
@@ -108,7 +111,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             Name = entityType.Name,
         };
 
-        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var prop in entityType.GetCachedProperties())
         {
             if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
             if (!prop.CanRead || !prop.CanWrite) continue;
@@ -206,31 +209,44 @@ internal partial class SyncActionHandler : ISyncActionHandler
 
     private static Type? ResolveType(string clrType)
     {
-        var type = Type.GetType(clrType);
-        if (type != null) return type;
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"resolveType|{clrType}",
+            () =>
+            {
+                var type = Type.GetType(clrType);
+                if (type != null) return type;
 
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            type = assembly.GetType(clrType);
-            if (type != null) return type;
-        }
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    type = assembly.GetType(clrType);
+                    if (type != null) return type;
+                }
 
-        return null;
+                return null;
+            });
     }
 
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
+        var onSaveMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
+            ("SyncActionHandler.OnSaveAsync", actions.GetType()),
+            static k => k.Actions.GetMethod("OnSaveAsync")
+                ?? throw new InvalidOperationException(
+                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnSaveAsync'."));
         var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
         await task;
-        return task.GetType().GetProperty("Result")!.GetValue(task)!;
+        return task.GetCompletedTaskResult()!;
     }
 
     private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onDeleteMethod = actions.GetType().GetMethod("OnDeleteAsync")!;
+        var onDeleteMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
+            ("SyncActionHandler.OnDeleteAsync", actions.GetType()),
+            static k => k.Actions.GetMethod("OnDeleteAsync")
+                ?? throw new InvalidOperationException(
+                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnDeleteAsync'."));
         var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
         await task;
     }

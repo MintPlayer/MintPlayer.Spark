@@ -1,4 +1,4 @@
-using System.Reflection;
+using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
@@ -91,10 +91,10 @@ public class SyncAction<T> where T : class
     private static Dictionary<string, object?> EntityToDictionary(T entity)
     {
         var dict = new Dictionary<string, object?>();
-        foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var prop in typeof(T).GetCachedProperties())
         {
             if (prop.CanRead)
-                dict[prop.Name] = prop.GetValue(entity);
+                dict[prop.Name] = AccessorCache.GetGetter(prop)(entity!);
         }
         return dict;
     }

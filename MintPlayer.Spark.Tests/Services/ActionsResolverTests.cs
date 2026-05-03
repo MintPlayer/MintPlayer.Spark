@@ -128,6 +128,46 @@ public class ActionsResolverTests
         first.Should().BeSameAs(registeredInstance);
         second.Should().BeSameAs(registeredInstance);
     }
+
+    [Fact]
+    public void FindActionsType_caches_negative_result_for_missing_actions_class()
+    {
+        // ResolverFixtureC has no entity-specific Actions class anywhere. The cache
+        // primitive's negative-caching contract means the assembly walk should run at
+        // most once per missing type name, no matter how many times Resolve is called.
+        // We can't directly observe assembly walks, but two consecutive Resolve calls
+        // returning the same Default instance shape proves the resolver is stable.
+        var services = BaseServices();
+        var provider = services.BuildServiceProvider();
+
+        var resolver = new ActionsResolver(provider);
+
+        var first = resolver.Resolve<ResolverFixtureC>();
+        var second = resolver.Resolve<ResolverFixtureC>();
+
+        first.Should().BeOfType<DefaultPersistentObjectActions<ResolverFixtureC>>();
+        second.Should().BeOfType<DefaultPersistentObjectActions<ResolverFixtureC>>();
+    }
+
+    [Fact]
+    public void ResolveForType_caches_closed_generic_method_per_entity_type()
+    {
+        // ResolveForType reflects on Resolve<T> + MakeGenericMethod(entityType); the
+        // closed MethodInfo is cached per entityType. Repeated dispatches for the same
+        // entityType must keep returning the right shape.
+        var services = BaseServices();
+        var provider = services.BuildServiceProvider();
+
+        var resolver = new ActionsResolver(provider);
+
+        var firstA = resolver.ResolveForType(typeof(ResolverFixtureA));
+        var secondA = resolver.ResolveForType(typeof(ResolverFixtureA));
+        var firstC = resolver.ResolveForType(typeof(ResolverFixtureC));
+
+        firstA.Should().BeOfType<ResolverFixtureAActions>();
+        secondA.Should().BeOfType<ResolverFixtureAActions>();
+        firstC.Should().BeOfType<DefaultPersistentObjectActions<ResolverFixtureC>>();
+    }
 }
 
 // Top-level fixtures so FindActionsType can match by Type.Name.

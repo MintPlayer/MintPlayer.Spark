@@ -93,6 +93,14 @@ export class SparkQueryListComponent {
   }
 
   private async onParamsChange(params: any): Promise<void> {
+    // Reset prior-route state so we render the spinner (not stale rows from
+    // the previous query) while the new query/entityType resolve.
+    this.entityType.set(null);
+    this.paginationData.set(undefined);
+    this.virtualDataSource.set(null);
+    this.allItems.set([]);
+    this.disconnectStreaming();
+
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
 

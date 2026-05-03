@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Exceptions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -48,8 +49,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         if (interceptor != null && interceptor.IsReplicated(typeof(T)))
         {
-            var idProperty = typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-            var documentId = idProperty?.GetValue(document)?.ToString();
+            var idProperty = typeof(T).GetCachedProperty("Id");
+            var documentId = idProperty is not null && idProperty.CanRead
+                ? AccessorCache.GetGetter(idProperty)(document)?.ToString()
+                : null;
             await interceptor.HandleSaveAsync(document, documentId);
         }
 
@@ -163,8 +166,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         if (entities.Count == 0) return entities;
 
-        var idProperty = queryType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        if (idProperty is null) return entities; // Can't resolve IDs — fail open.
+        var idProperty = queryType.GetCachedProperty("Id");
+        if (idProperty is null || !idProperty.CanRead) return entities; // Can't resolve IDs — fail open.
+        var idGetter = AccessorCache.GetGetter(idProperty);
 
         var visible = new List<object>(entities.Count);
         foreach (var entity in entities)
@@ -172,7 +176,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             object? subject = entity;
             if (queryType != entityType)
             {
-                var id = idProperty.GetValue(entity)?.ToString();
+                var id = idGetter(entity)?.ToString();
                 if (string.IsNullOrEmpty(id)) { visible.Add(entity); continue; }
                 subject = await LoadEntityAsync(session, entityType, id);
                 if (subject is null) { visible.Add(entity); continue; }
@@ -217,8 +221,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
 
         // Get the generated ID from the entity
-        var idProperty = entityType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
-        var generatedId = idProperty?.GetValue(savedEntity)?.ToString();
+        var idProperty = entityType.GetCachedProperty("Id");
+        var generatedId = idProperty is not null && idProperty.CanRead
+            ? AccessorCache.GetGetter(idProperty)(savedEntity)?.ToString()
+            : null;
 
         persistentObject.Id = generatedId;
         // Return the fresh change vector so the client can round-trip it to the next update.
@@ -258,80 +264,41 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
-        // Use reflection to call the generic LoadAsync<T> method
-        var method = typeof(IAsyncDocumentSession).GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(string), typeof(CancellationToken)]);
-        var genericMethod = method?.MakeGenericMethod(entityType);
+        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("DatabaseAccess.SessionLoadAsync", entityType),
+            static k =>
+            {
+                var method = typeof(IAsyncDocumentSession).GetMethod(
+                    nameof(IAsyncDocumentSession.LoadAsync),
+                    [typeof(string), typeof(CancellationToken)]);
+                return method?.MakeGenericMethod(k.Type);
+            });
         var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
 
         if (task == null) return null;
 
         await task;
 
-        // Get the result from the task
-        var resultProperty = task.GetType().GetProperty("Result");
-        return resultProperty?.GetValue(task);
-    }
-
-    private async Task<IEnumerable<object>> QueryEntitiesAsync(IAsyncDocumentSession session, Type entityType)
-    {
-        // Use Query<T> directly on the session (not via Advanced)
-        // Query(string indexName, string collectionName, bool isMapReduce) with 1 generic param and 3 regular params
-        var sessionType = session.GetType();
-
-        var queryMethod = sessionType.GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 3);
-
-        if (queryMethod == null) return [];
-
-        var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
-        // Pass null for indexName, null for collectionName, false for isMapReduce
-        var query = genericQueryMethod.Invoke(session, [null, null, false]);
-
-        if (query == null) return [];
-
-        // Call ToListAsync on the IRavenQueryable<T>
-        // ToListAsync is an extension method in Raven.Client.Documents.Linq.LinqExtensions
-        var toListMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 2);
-
-        if (toListMethod == null) return [];
-
-        var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
-        var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
-
-        if (task == null) return [];
-
-        await task;
-
-        var resultProperty = task.GetType().GetProperty("Result");
-        var result = resultProperty?.GetValue(task);
-
-        if (result is System.Collections.IEnumerable enumerable)
-        {
-            return enumerable.Cast<object>().ToList();
-        }
-
-        return [];
+        return task.GetCompletedTaskResult();
     }
 
     private Type? ResolveType(string clrType)
     {
-        // First try the standard Type.GetType which works for assembly-qualified names
-        var type = Type.GetType(clrType);
-        if (type != null) return type;
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"resolveType|{clrType}",
+            () =>
+            {
+                var type = Type.GetType(clrType);
+                if (type != null) return type;
 
-        // Search through all loaded assemblies
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            type = assembly.GetType(clrType);
-            if (type != null) return type;
-        }
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    type = assembly.GetType(clrType);
+                    if (type != null) return type;
+                }
 
-        return null;
+                return null;
+            });
     }
 
     /// <summary>
@@ -349,15 +316,19 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Query method signature: Query<T>(string indexName, string collectionName, bool isMapReduce)
         var sessionType = session.GetType();
-        var queryMethod = sessionType.GetMethods()
-            .FirstOrDefault(m => m.Name == "Query"
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 3);
+        var genericQueryMethod = ReflectionCache.GetOrAdd<(string Op, Type Session, Type Entity), MethodInfo?>(
+            ("DatabaseAccess.SessionQuery3", sessionType, entityType),
+            static k =>
+            {
+                var queryMethod = k.Session.GetMethods()
+                    .FirstOrDefault(m => m.Name == "Query"
+                        && m.GetGenericArguments().Length == 1
+                        && m.GetParameters().Length == 3);
+                return queryMethod?.MakeGenericMethod(k.Entity);
+            });
 
-        if (queryMethod == null)
+        if (genericQueryMethod == null)
             return [];
-
-        var genericQueryMethod = queryMethod.MakeGenericMethod(entityType);
 
         // Pass indexName if querying an index, null for collection query
         // RavenDB converts underscores to slashes in index names (e.g., "People_Overview" -> "People/Overview")
@@ -369,19 +340,23 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // When querying an index, use ProjectInto<T>() to project from stored fields
         // This ensures computed/stored fields like FullName are populated from the index
-        // ProjectInto is an extension method on IQueryable (non-generic) in LinqExtensions
         if (!string.IsNullOrEmpty(indexName))
         {
-            var projectIntoMethod = typeof(LinqExtensions).GetMethods()
-                .FirstOrDefault(m => m.Name == "ProjectInto"
-                    && m.IsGenericMethod
-                    && m.GetGenericArguments().Length == 1
-                    && m.GetParameters().Length == 1
-                    && m.GetParameters()[0].ParameterType == typeof(IQueryable));
+            var genericProjectIntoMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+                ("DatabaseAccess.LinqProjectInto", entityType),
+                static k =>
+                {
+                    var projectIntoMethod = typeof(LinqExtensions).GetMethods()
+                        .FirstOrDefault(m => m.Name == "ProjectInto"
+                            && m.IsGenericMethod
+                            && m.GetGenericArguments().Length == 1
+                            && m.GetParameters().Length == 1
+                            && m.GetParameters()[0].ParameterType == typeof(IQueryable));
+                    return projectIntoMethod?.MakeGenericMethod(k.Type);
+                });
 
-            if (projectIntoMethod != null)
+            if (genericProjectIntoMethod != null)
             {
-                var genericProjectIntoMethod = projectIntoMethod.MakeGenericMethod(entityType);
                 query = genericProjectIntoMethod.Invoke(null, [query])!;
             }
         }
@@ -393,15 +368,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         // Call ToListAsync on the query
-        var toListMethod = typeof(LinqExtensions).GetMethods()
-            .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
-                && m.GetGenericArguments().Length == 1
-                && m.GetParameters().Length == 2);
+        var genericToListMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("DatabaseAccess.LinqToListAsync", entityType),
+            static k =>
+            {
+                var toListMethod = typeof(LinqExtensions).GetMethods()
+                    .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
+                        && m.GetGenericArguments().Length == 1
+                        && m.GetParameters().Length == 2);
+                return toListMethod?.MakeGenericMethod(k.Type);
+            });
 
-        if (toListMethod == null)
+        if (genericToListMethod == null)
             return [];
 
-        var genericToListMethod = toListMethod.MakeGenericMethod(entityType);
         var task = genericToListMethod.Invoke(null, [query, CancellationToken.None]) as Task;
 
         if (task == null)
@@ -409,8 +389,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         await task;
 
-        var resultProperty = task.GetType().GetProperty("Result");
-        var result = resultProperty?.GetValue(task);
+        var result = task.GetCompletedTaskResult();
 
         if (result is System.Collections.IEnumerable enumerable)
         {
@@ -425,10 +404,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onLoadMethod = actions.GetType().GetMethod("OnLoadAsync")!;
+        var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
         var task = (Task)onLoadMethod.Invoke(actions, [session, id])!;
         await task;
-        return task.GetType().GetProperty("Result")!.GetValue(task);
+        return task.GetCompletedTaskResult();
     }
 
     /// <summary>
@@ -438,46 +417,47 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<bool> IsAllowedEntityViaActionsAsync(Type entityType, string action, object entity)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var method = actions.GetType().GetMethod("IsAllowedAsync", [typeof(string), entityType]);
+        var actionsType = actions.GetType();
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("DatabaseAccess.IsAllowedAsync", actionsType, entityType),
+            static k => k.Actions.GetMethod("IsAllowedAsync", [typeof(string), k.Entity]));
         if (method is null)
             return true; // Unknown shape — fail open rather than dropping valid rows.
         var task = (Task)method.Invoke(actions, [action, entity])!;
         await task;
-        return (bool)task.GetType().GetProperty("Result")!.GetValue(task)!;
-    }
-
-    private async Task<IEnumerable<object>> QueryEntitiesViaActionsAsync(IAsyncDocumentSession session, Type entityType)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onQueryMethod = actions.GetType().GetMethod("OnQueryAsync")!;
-        var task = (Task)onQueryMethod.Invoke(actions, [session])!;
-        await task;
-        var result = task.GetType().GetProperty("Result")!.GetValue(task);
-
-        if (result is System.Collections.IEnumerable enumerable)
-        {
-            return enumerable.Cast<object>().ToList();
-        }
-
-        return [];
+        return (bool)task.GetCompletedTaskResult()!;
     }
 
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onSaveMethod = actions.GetType().GetMethod("OnSaveAsync")!;
+        var onSaveMethod = GetCachedActionMethod(actions.GetType(), "OnSaveAsync");
         var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
         await task;
-        return task.GetType().GetProperty("Result")!.GetValue(task)!;
+        return task.GetCompletedTaskResult()!;
     }
 
     private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onDeleteMethod = actions.GetType().GetMethod("OnDeleteAsync")!;
+        var onDeleteMethod = GetCachedActionMethod(actions.GetType(), "OnDeleteAsync");
         var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
         await task;
     }
+
+    /// <summary>
+    /// Cached <c>actionsType.GetMethod(name)</c>. The actions-type+method-name pair is
+    /// stable for the AppDomain (an Actions class doesn't grow new methods at runtime),
+    /// so a single lookup per pair is sufficient. Throws if the named method is missing —
+    /// the action plumbing requires it, so a missing method is a programming error, not
+    /// a runtime condition we want to silently swallow.
+    /// </summary>
+    private static MethodInfo GetCachedActionMethod(Type actionsType, string methodName)
+        => ReflectionCache.GetOrAdd<(string Op, Type Actions, string Method), MethodInfo>(
+            ("DatabaseAccess.ActionsMethod", actionsType, methodName),
+            static k => k.Actions.GetMethod(k.Method)
+                ?? throw new InvalidOperationException(
+                    $"Actions type '{k.Actions.FullName}' is missing required method '{k.Method}'."));
 
     #endregion
 }

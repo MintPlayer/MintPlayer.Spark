@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client.Documents;
-using System.Reflection;
 using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
@@ -31,7 +31,7 @@ internal partial class MessageBus : IMessageBus
         var queueName = queueNameOverride;
         if (queueName == null)
         {
-            var queueAttribute = messageType.GetCustomAttribute<MessageQueueAttribute>();
+            var queueAttribute = messageType.GetCachedCustomAttribute<MessageQueueAttribute>();
             queueName = queueAttribute?.QueueName ?? messageType.FullName!;
         }
 

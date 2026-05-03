@@ -1,13 +1,12 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Models;
 using Raven.Client.Documents;
-using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text.Json;
 
 namespace MintPlayer.Spark.Replication.Services;
@@ -23,12 +22,6 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     [Inject] private readonly ILogger<SyncActionInterceptor> logger;
 
     private SparkReplicationOptions Options => optionsAccessor.Value;
-
-    // Cache: CLR type → ReplicatedAttribute (null means not replicated)
-    private static readonly ConcurrentDictionary<Type, ReplicatedAttribute?> _replicatedCache = new();
-
-    // Cache: CLR type → property names (excluding Id) for partial updates
-    private static readonly ConcurrentDictionary<Type, string[]> _propertyNamesCache = new();
 
     public bool IsReplicated(Type entityType)
     {
@@ -95,10 +88,10 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         var properties = GetPropertyNames(entityType);
 
         var data = new Dictionary<string, object?>();
-        foreach (var prop in entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var prop in entityType.GetCachedProperties())
         {
             if (prop.CanRead)
-                data[prop.Name] = NormalizeValue(prop.GetValue(entity));
+                data[prop.Name] = NormalizeValue(AccessorCache.GetGetter(prop)(entity));
         }
 
         var syncAction = new SyncAction
@@ -181,9 +174,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     }
 
     private static ReplicatedAttribute? GetReplicatedAttribute(Type type)
-    {
-        return _replicatedCache.GetOrAdd(type, t => t.GetCustomAttribute<ReplicatedAttribute>());
-    }
+        => type.GetCachedCustomAttribute<ReplicatedAttribute>();
 
     /// <summary>
     /// Gets the property names from the replicated entity type, excluding "Id".
@@ -192,8 +183,9 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     /// </summary>
     private static string[] GetPropertyNames(Type entityType)
     {
-        return _propertyNamesCache.GetOrAdd(entityType, t =>
-            t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        return ReflectionCache.GetOrAdd<(string Op, Type Type), string[]>(
+            ("SyncActionInterceptor.ReplicatedPropNames", entityType),
+            static k => k.Type.GetCachedProperties()
                 .Where(p => p.CanRead && p.CanWrite && !string.Equals(p.Name, "Id", StringComparison.Ordinal))
                 .Select(p => p.Name)
                 .ToArray());

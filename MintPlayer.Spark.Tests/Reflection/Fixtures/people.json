@@ -1,0 +1,19 @@
+{
+  "Results": [
+    {
+      "@metadata": { "@id": "people/1-A", "@collection": "People" },
+      "FirstName": "Ada",
+      "LastName": "Lovelace"
+    },
+    {
+      "@metadata": { "@id": "people/2-A", "@collection": "People" },
+      "FirstName": "Grace",
+      "LastName": "Hopper"
+    },
+    {
+      "@metadata": { "@id": "people/3-A", "@collection": "People" },
+      "FirstName": "Linus",
+      "LastName": "Torvalds"
+    }
+  ]
+}

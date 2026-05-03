@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using System.Reflection;
 
@@ -54,27 +55,42 @@ internal partial class ActionsResolver : IActionsResolver
 
     public object ResolveForType(Type entityType)
     {
-        var method = typeof(ActionsResolver).GetMethod(nameof(Resolve))!;
-        var genericMethod = method.MakeGenericMethod(entityType);
+        // Cache the closed Resolve<TEntity>() MethodInfo per entity type — the reflective
+        // GetMethod + MakeGenericMethod was previously hit on every dispatch.
+        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
+            ("ActionsResolver.Resolve", entityType),
+            static k =>
+            {
+                var method = typeof(ActionsResolver).GetMethod(nameof(Resolve))!;
+                return method.MakeGenericMethod(k.Type);
+            });
         return genericMethod.Invoke(this, null)!;
     }
 
-    private Type? FindActionsType(string typeName)
+    private static Type? FindActionsType(string typeName)
     {
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
+        // Negative caching matters here: when no Actions class exists for an entity, the
+        // resolver still walks every loaded assembly on every request unless the null
+        // is cached. ReflectionCache caches null too via Lazy<object?>.
+        return ReflectionCache.GetOrAdd<Type?>(
+            $"actionsType|{typeName}",
+            () =>
             {
-                var type = assembly.GetTypes()
-                    .FirstOrDefault(t => t.Name == typeName && !t.IsAbstract && !t.IsInterface);
-                if (type != null) return type;
-            }
-            catch (ReflectionTypeLoadException)
-            {
-                // Skip assemblies that can't be loaded
-                continue;
-            }
-        }
-        return null;
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var type = assembly.GetTypes()
+                            .FirstOrDefault(t => t.Name == typeName && !t.IsAbstract && !t.IsInterface);
+                        if (type != null) return type;
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                        // Skip assemblies that can't be loaded
+                        continue;
+                    }
+                }
+                return null;
+            });
     }
 }

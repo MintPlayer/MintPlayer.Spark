@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
 using System.Reflection;
@@ -103,7 +104,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
                 continue;
 
             var messageType = serviceType.GetGenericArguments()[0];
-            var queueAttribute = messageType.GetCustomAttribute<MessageQueueAttribute>();
+            var queueAttribute = messageType.GetCachedCustomAttribute<MessageQueueAttribute>();
             var queueName = queueAttribute?.QueueName ?? messageType.FullName!;
             queueNames.Add(queueName);
         }

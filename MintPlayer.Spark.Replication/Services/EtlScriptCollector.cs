@@ -1,4 +1,5 @@
 using System.Reflection;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 
@@ -19,18 +20,21 @@ internal class EtlScriptCollector
 
         foreach (var assembly in assemblies)
         {
-            var replicatedTypes = assembly.GetExportedTypes()
-                .Where(t => t is { IsClass: true, IsAbstract: false })
-                .Select(t => new
-                {
-                    Type = t,
-                    Attribute = t.GetCustomAttribute<ReplicatedAttribute>()
-                })
-                .Where(x => x.Attribute != null);
+            // Cache the [Replicated]-annotated types per assembly so repeat calls (e.g.
+            // collecting scripts from the same assembly more than once during testing or
+            // module re-init) don't re-walk the metadata tables.
+            var replicatedTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<(Type Type, ReplicatedAttribute Attribute)>>(
+                ("EtlScriptCollector.ReplicatedTypes", assembly),
+                static k => k.Asm.GetExportedTypes()
+                    .Where(t => t is { IsClass: true, IsAbstract: false })
+                    .Select(t => (Type: t, Attribute: t.GetCachedCustomAttribute<ReplicatedAttribute>()))
+                    .Where(x => x.Attribute != null)
+                    .Select(x => (x.Type, x.Attribute!))
+                    .ToArray());
 
             foreach (var item in replicatedTypes)
             {
-                var attr = item.Attribute!;
+                var attr = item.Attribute;
                 var sourceCollection = attr.SourceCollection
                     ?? InferCollectionName(attr.OriginalType ?? item.Type);
 

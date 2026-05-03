@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -91,7 +92,9 @@ internal partial class LookupReferenceDiscoveryService : ILookupReferenceDiscove
         // For TransientLookupReference: get DisplayType from one of the Items
         if (typeof(TransientLookupReference).IsAssignableFrom(type))
         {
-            var itemsProp = type.GetProperty("Items", BindingFlags.Public | BindingFlags.Static);
+            var itemsProp = ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo?>(
+                ("LookupReferenceDiscoveryService.StaticItems", type),
+                static k => k.Type.GetProperty("Items", BindingFlags.Public | BindingFlags.Static));
             if (itemsProp != null)
             {
                 var items = itemsProp.GetValue(null);
@@ -115,10 +118,10 @@ internal partial class LookupReferenceDiscoveryService : ILookupReferenceDiscove
                 var instance = Activator.CreateInstance(type);
                 if (instance != null)
                 {
-                    var prop = type.GetProperty("DisplayType", BindingFlags.Public | BindingFlags.Instance);
-                    if (prop != null)
+                    var prop = type.GetCachedProperty("DisplayType");
+                    if (prop is not null && prop.CanRead)
                     {
-                        var value = prop.GetValue(instance);
+                        var value = AccessorCache.GetGetter(prop)(instance);
                         if (value is ELookupDisplayType displayType)
                             return displayType;
                     }
