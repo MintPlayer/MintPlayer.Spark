@@ -153,4 +153,37 @@ public class ReflectedTypeExtensionsTests
         task1.GetCompletedTaskResult().Should().Be("first");
         task2.GetCompletedTaskResult().Should().Be("second");
     }
+
+    [Fact]
+    public void Two_separate_GetProperty_calls_collide_on_the_same_dictionary_slot()
+    {
+        // Pre-condition for the principled tier-redesign follow-up: if we ever switch
+        // AccessorCache / GetCachedProperty from string keys to PropertyInfo (or
+        // (Type, string)) keys backed by ConcurrentDictionary, the dictionary's identity
+        // contract must hold — two independent calls to typeof(T).GetProperty("X") must
+        // produce values that .Equals each other AND share a hash code, so the second
+        // call hits the entry stored by the first instead of creating a duplicate slot.
+        // The BCL caches RuntimePropertyInfo internally, so today they're typically
+        // reference-equal too — but Equals + GetHashCode is the contract that actually
+        // matters for ConcurrentDictionary behavior, and that's what we pin here.
+        var a = typeof(Fixture).GetProperty(nameof(Fixture.Tagged))!;
+        var b = typeof(Fixture).GetProperty(nameof(Fixture.Tagged))!;
+
+        a.Equals(b).Should().BeTrue("PropertyInfo equality must hold across separate GetProperty calls on the same Type");
+        a.GetHashCode().Should().Be(b.GetHashCode(),
+            "Equals contract requires matching hash codes; ConcurrentDictionary depends on it for slot routing");
+
+        var dict = new System.Collections.Concurrent.ConcurrentDictionary<System.Reflection.PropertyInfo, string>();
+        dict[a] = "from-a";
+        dict[b] = "from-b";
+
+        dict.Should().HaveCount(1, "the second assignment must overwrite the first slot, not add a new one");
+        dict[a].Should().Be("from-b");
+
+        // And the same for a different property on the same type — the two PropertyInfos
+        // for distinct properties must NOT collide.
+        var other = typeof(Fixture).GetProperty(nameof(Fixture.Untagged))!;
+        dict[other] = "other";
+        dict.Should().HaveCount(2);
+    }
 }
