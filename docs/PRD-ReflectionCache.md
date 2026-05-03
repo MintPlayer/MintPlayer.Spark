@@ -2,13 +2,15 @@
 
 | | |
 |---|---|
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | 2026-05-03 |
-| **Status** | Proposed |
+| **Status** | Implemented (PR #152) |
 | **Owner** | MintPlayer |
-| **Package** | `MintPlayer.Spark` |
+| **Package** | `MintPlayer.Spark.Abstractions` (promoted from `MintPlayer.Spark` so the messaging and replication-abstractions packages can consume it without a new dependency edge to `MintPlayer.Spark`) |
 | **Issue** | [#151](https://github.com/MintPlayer/MintPlayer.Spark/issues/151) |
 | **Reference** | `C:\Repos\CronosCore\CronosCore.RavenDB\ReferenceObject\ReflectionCache.cs` |
+
+> **v1.1** — design unchanged from v1.0. Implementation shipped in PR #152 includes Phase 3 (compiled accessor delegates) up-front; the Phase-2/Phase-3 split was collapsed at the user's request to ship comprehensive coverage in a single PR.
 
 ---
 
@@ -56,8 +58,11 @@ Spark performs the same reflection lookups repeatedly on hot request paths. None
 
 - **Eviction / TTL.** Reflection metadata is AppDomain-immutable; never evict.
 - **Cross-process / distributed cache.** In-process only.
-- **Compiled accessor delegates** (`Expression.Lambda` for getters/setters) are *not in initial scope* but the API must accommodate them as a pure consumer — i.e. caching `Func<object, object>` should be a one-liner from a caller, with no changes to `ReflectionCache` itself. (Tracked as a follow-up; see §7.)
-- **Replacing every reflection call site at once.** Audit-driven, tier-prioritized rollout.
+- **Replacing every reflection call site at once.** ~~Audit-driven, tier-prioritized rollout.~~ **Updated in v1.1**: comprehensive single-PR rollout (the user requested every reflection hotspot be migrated in this PR; see §4).
+
+### Goals expanded in v1.1
+
+- **Compiled accessor delegates included.** `AccessorCache.GetGetter(PropertyInfo) → Func<object, object?>` and `GetSetter → Action<object, object?>` build via `Expression.Lambda` and cache on top of `ReflectionCache`. Used by `EntityMapper.PopulateAttributeValues` (Tier 1 hot path) and the `task.GetType().GetProperty("Result").GetValue(task)` extraction pattern that recurs in 10+ reflective dispatch sites (folded into the `Task.GetCompletedTaskResult()` extension method).
 
 ---
 
@@ -175,28 +180,39 @@ Negative caching (caching `null`) falls out for free because `Lazy<object?>` hap
 
 ---
 
-## 4. Migration Plan
+## 4. Migration Plan (v1.1 — all phases shipped in PR #152)
 
-### Phase 1 — primitive + Tier 1 (this PR)
+### Phase 1 — primitive + Tier 1
 
-1. Add `MintPlayer.Spark/Reflection/ReflectionCache.cs` per §3.2.
-2. Migrate Tier 1 sites:
-   - `EntityMapper.PopulateAttributeValues` — cache `(Type, propertyName) → PropertyInfo`.
-   - `EntityMapper.GetEntityDisplayName` — cache `Type → PropertyInfo[]`.
-   - `EntityMapper.GetCollectionElementType` — cache `Type → Type?`.
-   - `ReferenceResolver.GetReferenceProperties` — cache `Type → (PropertyInfo, ReferenceAttribute)[]`.
-   - `ActionsResolver.FindActionsType` — cache `string → Type?`.
-3. Unit tests (see §6).
+1. `MintPlayer.Spark.Abstractions/Reflection/ReflectionCache.cs` — three `GetOrAdd` overloads.
+2. `MintPlayer.Spark.Abstractions/Reflection/AccessorCache.cs` — compiled getter/setter delegates.
+3. `MintPlayer.Spark.Abstractions/Reflection/ReflectedTypeExtensions.cs` — `GetCachedProperties`, `GetCachedProperty`, `GetCachedCustomAttribute`, `GetCompletedTaskResult`.
+4. Tier 1 migrations: `EntityMapper.{PopulateAttributeValues, GetEntityDisplayName, ResolveDisplayFormat, GetCollectionElementType, IsComplexType, MergeTranslatedString, LoadReferenceAsync, ResolveType, TryWriteId, SetPropertyValue}`, `ReferenceResolver.{GetReferenceProperties, ApplyIncludes, LoadEntityAsync, ResolveReferencedDocumentsAsync}`, `ActionsResolver.{FindActionsType, ResolveForType}`.
 
-### Phase 2 — Tier 2 consolidation (follow-up)
+### Phase 2 — Tier 2 consolidation
 
-4. Replace `QueryExecutor.customQueryMethodCache` ad-hoc dictionary with `ReflectionCache.GetOrAdd<...>("custom-query:" + key, ...)`.
-5. Migrate `MessageBus.StoreMessageAsync` attribute lookup.
-6. Migrate `ModelSynchronizer` per-type attribute reads.
+5. `QueryExecutor` — replaces `customQueryMethodCache` ad-hoc dictionary with `ReflectionCache`; caches `ExtractQueryableElementType`, `FindClrType`, `MaterializeQueryable`, `ApplyIndexWithType`, `ApplyIndexByName`, `ApplyProjection`, `ApplySorting` per-(entity, property), `ExecuteQueryableAsync`.
+6. `MessageBus.StoreMessageAsync` — `GetCachedCustomAttribute<MessageQueueAttribute>`.
+7. `ModelSynchronizer` — `GetCachedProperties` and `GetCachedCustomAttribute` throughout, plus collection-element-type caching.
 
-### Phase 3 — compiled accessor delegates (follow-up, optional)
+### Phase 3 — compiled accessor delegates
 
-7. Add a separate `AccessorCache` static helper (consumes `ReflectionCache` — no changes to it) that builds and caches `Func<object, object>` getters / `Action<object, object>` setters via `Expression.Lambda` for properties read/written on hot paths (`EntityMapper.PopulateAttributeValues` is the prime candidate). Track separately; only ship if Phase 1 profiling shows getter/setter invocation is still hot after `PropertyInfo` lookups are cached.
+8. `AccessorCache.GetGetter` / `GetSetter` consumed by every property read/write previously calling `PropertyInfo.GetValue` / `SetValue` directly across `EntityMapper`, `ReferenceResolver`, `DatabaseAccess`, `SyncActionInterceptor`, `LookupReferenceService`, `LookupReferenceDiscoveryService`, `SyncAction`.
+
+### Phase 3.5 — comprehensive sweep across every remaining reflection site
+
+9. `DatabaseAccess` — caches all `IAsyncDocumentSession.LoadAsync<T>` / `Query<T>` (3-arg overload) / `LinqExtensions.ToListAsync<T>` / `LinqExtensions.ProjectInto<T>` generic-method instantiations; caches `OnLoadAsync`/`OnSaveAsync`/`OnQueryAsync`/`OnDeleteAsync`/`IsAllowedAsync` MethodInfos per actions type; caches `"Id"` PropertyInfo lookups.
+10. `SyncActionHandler` — same shape plus `GetCachedProperties` for the CLR-fallback property scan.
+11. `StreamingQueryExecutor` — replaces ad-hoc `streamingMethodCache`; caches `IAsyncEnumerator<T>.GetAsyncEnumerator`/`MoveNextAsync`/`Current` member-info per `(elementType, isSingleItem)`; caches `FindClrType`.
+12. `LookupReferenceService` / `LookupReferenceDiscoveryService` — caches static `Items` PropertyInfo per transient type, `DisplayType` lookup, transient-item per-property reads.
+13. `SparkMiddleware` — caches `Assembly.GetTypes()` filtered scans for index types and `[FromIndex]` projection types per assembly.
+14. `Endpoints/ProgramUnits/Get` — `GetCachedProperties` for the per-request SparkContext walk.
+15. `IndexRegistry.GetCollectionTypeFromIndex` — caches the base-type traversal per index type.
+16. `SyncActionInterceptor` — replaces `_replicatedCache` and `_propertyNamesCache` ad-hoc `ConcurrentDictionary`s with `ReflectionCache`.
+17. `EtlScriptCollector` — caches the per-assembly `[Replicated]`-annotated type scan.
+18. `MessageSubscriptionWorker` — caches `IRecipient<T>`/`ICheckpointRecipient<T>` closed generic types and their `HandleAsync` MethodInfos per CLR message type.
+19. `MessageSubscriptionManager` — `GetCachedCustomAttribute` for `[MessageQueue]` discovery.
+20. `SyncAction.EntityToDictionary` (Replication.Abstractions) — `GetCachedProperties` + `AccessorCache.GetGetter`. Required adding a project reference from `MintPlayer.Spark.Replication.Abstractions` to `MintPlayer.Spark.Abstractions`.
 
 ---
 
@@ -208,10 +224,14 @@ Negative caching (caching `null`) falls out for free because `Lazy<object?>` hap
 - **Stale cache during hot reload.** .NET hot reload can replace types. Out of scope; if it bites, add a `MetadataUpdateHandler` later.
 - **Lazy factory exceptions.** A throwing factory under `ExecutionAndPublication` caches the *exception* and re-throws on every subsequent access. This is the correct behavior — a reflection lookup that fails will fail deterministically — but document it in xmldoc.
 
-### Open questions
+### Open questions (resolved in v1.1)
 
-1. Should the cache live in `MintPlayer.Spark` or `MintPlayer.Spark.Abstractions`? **Recommendation:** `MintPlayer.Spark/Reflection/` for now — no abstraction needed; it's a static helper, not a service. Promote later if multiple packages need it.
-2. Diagnostic counters — emit anything via `Activity` / `Metrics`? **Recommendation:** no, defer until a real ask.
+1. ~~Should the cache live in `MintPlayer.Spark` or `MintPlayer.Spark.Abstractions`?~~ **Resolved**: lives in `MintPlayer.Spark.Abstractions/Reflection/`. Required because both `MintPlayer.Spark.Messaging` and `MintPlayer.Spark.Replication.Abstractions` need it and neither references `MintPlayer.Spark`.
+2. ~~Diagnostic counters — emit anything via `Activity` / `Metrics`?~~ **Deferred**, no real ask yet.
+
+### New footgun caught during implementation
+
+The original `GetOrAdd<TValue>(Type, Func<Type, TValue>)` overload used a `ConcurrentDictionary<Type, Lazy<object?>>` keyed only on `Type`. Two call sites that cache different things per Type (e.g. `MethodInfo` for `LoadAsync<T>` vs `Type?` for "collection element type of T") would have collided and hit `InvalidCastException` at the boundary. The cache key is now `(Type, ValueType)` — the value type is included automatically, so distinct `TValue` parameters never collide. Pinned by `GetOrAdd_type_keyed_isolates_distinct_value_types_for_same_Type` in `ReflectionCacheTests`.
 
 ---
 
@@ -227,19 +247,21 @@ Negative caching (caching `null`) falls out for free because `Lazy<object?>` hap
 
 ---
 
-## 7. Out of Scope (deferred)
+## 7. Out of Scope (still deferred in v1.1)
 
-- Compiled property getters/setters (Phase 3 above — open if profiling justifies).
-- Eviction / TTL.
+- Eviction / TTL — reflection metadata is AppDomain-immutable; never evict.
 - Cross-AppDomain / distributed sharing.
 - Replacing reflection inside source-generator-generated code (already compile-time).
+- Caching dynamic CLR-name resolutions (`ResolveType(string)` etc.) does cache *negative* results too. Spark's runtime doesn't dynamically load entity-type assemblies after startup, so a stale-null cached entry on a late-loaded assembly is a non-issue today; if hot reload becomes a target, revisit `ResolveType` with positive-only caching.
 
 ---
 
 ## 8. Acceptance Criteria
 
-- [ ] `ReflectionCache` exists with the §3.2 API and §6 unit tests passing.
-- [ ] Tier 1 hotspots migrated; existing tests green.
-- [ ] No new external NuGet dependencies.
-- [ ] xmldoc on every public member, including the lazy-exception caching note.
-- [ ] Issue #151 description updated to reflect this design.
+- [x] `ReflectionCache` exists with the §3.2 API and §6 unit tests passing (18 tests across `ReflectionCacheTests` + `AccessorCacheTests` + `ReflectedTypeExtensionsTests`).
+- [x] Tier 1 hotspots migrated; existing tests green (783 / 783 pass).
+- [x] Tier 2 ad-hoc caches consolidated.
+- [x] Tier 3 sweep across every remaining reflection call site.
+- [x] No new external NuGet dependencies.
+- [x] xmldoc on every public member, including the lazy-exception caching note and the `(Type, TValue)` collision note.
+- [x] Issue #151 description updated to reflect this design.
