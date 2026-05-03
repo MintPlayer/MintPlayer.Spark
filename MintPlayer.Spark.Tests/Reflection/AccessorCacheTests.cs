@@ -135,4 +135,69 @@ public class AccessorCacheTests
         Action act = () => AccessorCache.GetSetter(prop);
         act.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void GetGetter_throws_on_null_property()
+    {
+        Action act = () => AccessorCache.GetGetter(null!);
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void GetSetter_throws_on_null_property()
+    {
+        Action act = () => AccessorCache.GetSetter(null!);
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    private class BaseFixture
+    {
+        public string? Inherited { get; set; }
+    }
+
+    private class DerivedFixture : BaseFixture
+    {
+        public int Own { get; set; }
+    }
+
+    [Fact]
+    public void GetGetter_works_for_inherited_property()
+    {
+        // PropertyInfo.DeclaringType is the base type — verify the compiled getter
+        // still works when the actual instance is a derived type.
+        var prop = typeof(DerivedFixture).GetProperty(nameof(BaseFixture.Inherited))!;
+        var getter = AccessorCache.GetGetter(prop);
+
+        var instance = new DerivedFixture { Inherited = "from-base" };
+        getter(instance).Should().Be("from-base");
+    }
+
+    [Fact]
+    public void GetSetter_works_for_inherited_property()
+    {
+        var prop = typeof(DerivedFixture).GetProperty(nameof(BaseFixture.Inherited))!;
+        var setter = AccessorCache.GetSetter(prop);
+
+        var instance = new DerivedFixture();
+        setter(instance, "written-via-base");
+
+        instance.Inherited.Should().Be("written-via-base");
+    }
+
+    [Fact]
+    public void Get_and_Set_share_no_cache_entries_for_same_property()
+    {
+        // Regression for the bug fixed in 2431b7e: getter and setter must use distinct
+        // cache slots (we namespace with "get|" and "set|"). If they shared a slot,
+        // resolving the setter after the getter (or vice versa) would either return
+        // wrong-typed delegate or hit InvalidCastException.
+        var prop = typeof(RefFixture).GetProperty(nameof(RefFixture.Age))!;
+
+        var getter = AccessorCache.GetGetter(prop);
+        var setter = AccessorCache.GetSetter(prop);
+
+        var instance = new RefFixture();
+        setter(instance, 7);
+        getter(instance).Should().Be(7);
+    }
 }

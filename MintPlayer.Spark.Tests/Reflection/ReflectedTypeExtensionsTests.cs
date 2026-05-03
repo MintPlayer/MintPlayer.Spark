@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Tests.Reflection;
 /// </summary>
 public class ReflectedTypeExtensionsTests
 {
-    [AttributeUsage(AttributeTargets.Property)] private sealed class MarkerAttribute : Attribute;
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Class)] private sealed class MarkerAttribute : Attribute;
 
     private class Fixture
     {
@@ -62,5 +62,95 @@ public class ReflectedTypeExtensionsTests
         var prop = typeof(Fixture).GetCachedProperty(nameof(Fixture.Untagged))!;
         var attr = prop.GetCachedCustomAttribute<MarkerAttribute>();
         attr.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetCachedCustomAttribute_works_on_Type_directly()
+    {
+        // GetCachedCustomAttribute extends MemberInfo, so it must work on Type itself
+        // (used by SyncActionInterceptor.GetReplicatedAttribute(Type)).
+        var attr = typeof(MarkedClassFixture).GetCachedCustomAttribute<MarkerAttribute>();
+        attr.Should().NotBeNull();
+    }
+
+    [Marker]
+    private sealed class MarkedClassFixture;
+
+    [Fact]
+    public void GetCachedProperties_throws_on_null_type()
+    {
+        Action act = () => ((Type)null!).GetCachedProperties();
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void GetCachedProperty_throws_on_null_type_or_name()
+    {
+        Action nullType = () => ((Type)null!).GetCachedProperty("X");
+        Action nullName = () => typeof(Fixture).GetCachedProperty(null!);
+
+        nullType.Should().Throw<ArgumentNullException>();
+        nullName.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void GetCachedCustomAttribute_throws_on_null_member()
+    {
+        Action act = () => ((System.Reflection.MemberInfo)null!).GetCachedCustomAttribute<MarkerAttribute>();
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    // --- GetCompletedTaskResult ---
+
+    [Fact]
+    public async Task GetCompletedTaskResult_extracts_value_from_completed_Task_of_T()
+    {
+        // Reflective dispatch sites get back a non-generic Task because they invoked the
+        // generic method via reflection. GetCompletedTaskResult unwraps Task<T>.Result via
+        // a cached PropertyInfo + compiled getter — the same shape used by EntityMapper,
+        // ReferenceResolver, DatabaseAccess, QueryExecutor, SyncActionHandler.
+        Task task = Task.FromResult("hello");
+        await task;
+
+        task.GetCompletedTaskResult().Should().Be("hello");
+    }
+
+    [Fact]
+    public async Task GetCompletedTaskResult_extracts_value_type_result()
+    {
+        Task task = Task.FromResult(42);
+        await task;
+
+        task.GetCompletedTaskResult().Should().Be(42);
+    }
+
+    [Fact]
+    public async Task GetCompletedTaskResult_returns_null_when_Task_T_resolves_to_null_reference()
+    {
+        Task task = Task.FromResult<string?>(null);
+        await task;
+
+        task.GetCompletedTaskResult().Should().BeNull();
+    }
+
+    [Fact]
+    public void GetCompletedTaskResult_throws_on_null_task()
+    {
+        Action act = () => ((Task)null!).GetCompletedTaskResult();
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task GetCompletedTaskResult_caches_Result_property_per_task_type()
+    {
+        // Two completed Task<string> instances should hit the same cached PropertyInfo.
+        // Verify by extracting from both and confirming both succeed (a stale/wrong cache
+        // would either NRE or return a wrong value).
+        Task task1 = Task.FromResult("first");
+        Task task2 = Task.FromResult("second");
+        await Task.WhenAll(task1, task2);
+
+        task1.GetCompletedTaskResult().Should().Be("first");
+        task2.GetCompletedTaskResult().Should().Be("second");
     }
 }

@@ -182,4 +182,122 @@ public class ReflectionCacheTests
         nullKey.Should().Throw<ArgumentNullException>();
         nullFactory.Should().Throw<ArgumentNullException>();
     }
+
+    [Fact]
+    public void GetOrAdd_global_throws_on_null_key_or_factory()
+    {
+        Action nullKey = () => ReflectionCache.GetOrAdd<string>((string)null!, () => "v");
+        Action nullFactory = () => ReflectionCache.GetOrAdd<string>("k", (Func<string>)null!);
+
+        nullKey.Should().Throw<ArgumentNullException>();
+        nullFactory.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void GetOrAdd_type_keyed_throws_on_null_key_or_factory()
+    {
+        Action nullKey = () => ReflectionCache.GetOrAdd<string>((Type)null!, _ => "v");
+        Action nullFactory = () => ReflectionCache.GetOrAdd<string>(typeof(string), null!);
+
+        nullKey.Should().Throw<ArgumentNullException>();
+        nullFactory.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void ClearGlobalForTests_clears_global_string_keyed_entries()
+    {
+        var key = $"clearTest:{Guid.NewGuid()}";
+        ReflectionCache.GetOrAdd<string>(key, () => "first");
+
+        ReflectionCache.ClearGlobalForTests();
+
+        // After clear, the factory must run again because the entry is gone.
+        var calls = 0;
+        var second = ReflectionCache.GetOrAdd<string>(key, () =>
+        {
+            Interlocked.Increment(ref calls);
+            return "second";
+        });
+
+        second.Should().Be("second");
+        calls.Should().Be(1, "the cleared entry should re-run its factory on next access");
+    }
+
+    [Fact]
+    public void ClearGlobalForTests_clears_type_keyed_entries()
+    {
+        ReflectionCache.GetOrAdd<string>(typeof(ClearTypeKeyedFixture), _ => "first");
+
+        ReflectionCache.ClearGlobalForTests();
+
+        var calls = 0;
+        var second = ReflectionCache.GetOrAdd<string>(typeof(ClearTypeKeyedFixture), _ =>
+        {
+            Interlocked.Increment(ref calls);
+            return "second";
+        });
+
+        second.Should().Be("second");
+        calls.Should().Be(1);
+    }
+
+    private sealed class ClearTypeKeyedFixture;
+
+    [Fact]
+    public void GlobalCount_increases_as_entries_are_added()
+    {
+        ReflectionCache.ClearGlobalForTests();
+        var initial = ReflectionCache.GlobalCount;
+        initial.Should().Be(0);
+
+        ReflectionCache.GetOrAdd<string>($"counter:{Guid.NewGuid()}", () => "a");
+        ReflectionCache.GetOrAdd<string>(typeof(GlobalCountFixture), _ => "b");
+
+        ReflectionCache.GlobalCount.Should().Be(2);
+    }
+
+    private sealed class GlobalCountFixture;
+
+    [Fact]
+    public void GetOrAdd_type_keyed_runs_factory_with_the_correct_Type_argument()
+    {
+        // The factory receives the Type that was used as the key — verify it isn't
+        // accidentally swapped or boxed wrong by the (Type, ValueType) wrapping.
+        ReflectionCache.ClearGlobalForTests();
+        Type? observed = null;
+
+        ReflectionCache.GetOrAdd<string>(typeof(TypeArgFixture), t => { observed = t; return "v"; });
+
+        observed.Should().Be(typeof(TypeArgFixture));
+    }
+
+    private sealed class TypeArgFixture;
+
+    [Fact]
+    public void GetOrAdd_per_type_caches_value_type_results()
+    {
+        // Per-type cache must round-trip value types via boxing without losing the value.
+        var first = ReflectionCache.GetOrAdd<OwnerValueType, int>("k", () => 12345);
+        var second = ReflectionCache.GetOrAdd<OwnerValueType, int>("k", () => 99999);
+
+        first.Should().Be(12345);
+        second.Should().Be(12345);
+    }
+
+    private sealed class OwnerValueType;
+
+    [Fact]
+    public void GetOrAdd_caches_complex_reference_type_results()
+    {
+        // PropertyInfo[] is a common cached shape (used by GetCachedProperties); verify
+        // the cache returns the same array reference on repeat calls — that's how
+        // downstream code can rely on cache hits not allocating new arrays.
+        var first = ReflectionCache.GetOrAdd<OwnerComplexValue, string[]>("k", () => ["a", "b", "c"]);
+        var second = ReflectionCache.GetOrAdd<OwnerComplexValue, string[]>("k", () => ["x", "y", "z"]);
+
+        ReferenceEquals(first, second).Should().BeTrue("reference equality preserves cache-hit semantics for downstream callers");
+        first.Should().Equal("a", "b", "c");
+    }
+
+    private sealed class OwnerComplexValue;
 }

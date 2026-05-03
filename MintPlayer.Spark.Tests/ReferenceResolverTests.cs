@@ -42,6 +42,31 @@ public class ReferenceResolverTests
         props.Should().ContainSingle();
         props[0].Property.DeclaringType.Should().Be(typeof(TestPerson));
     }
+
+    [Fact]
+    public void GetReferenceProperties_ReturnsFreshList_OnEachCall()
+    {
+        // Each call returns a fresh List wrapper around the cached array. Mutating one
+        // result must not affect subsequent callers — otherwise the projection-fallback
+        // overload (which Adds to the result) would poison the per-Type cache.
+        var first = _resolver.GetReferenceProperties(typeof(TestPerson));
+        first.Add((null!, null!));
+
+        var second = _resolver.GetReferenceProperties(typeof(TestPerson));
+        second.Should().ContainSingle("each call returns a fresh List, not the cached one");
+    }
+
+    [Fact]
+    public void GetReferenceProperties_RepeatCalls_ReturnSamePropertyInfoReferences()
+    {
+        // Cache hit: the underlying PropertyInfo references should be reference-equal
+        // across calls (proves the cache is doing its job).
+        var first = _resolver.GetReferenceProperties(typeof(TestPerson));
+        var second = _resolver.GetReferenceProperties(typeof(TestPerson));
+
+        ReferenceEquals(first[0].Property, second[0].Property).Should().BeTrue();
+        ReferenceEquals(first[0].Attribute, second[0].Attribute).Should().BeTrue();
+    }
 }
 
 public class TestCompany
