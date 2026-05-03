@@ -265,7 +265,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var genericMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionLoadAsync|{entityType.FullName ?? entityType.Name}",
+            $"sessionLoadAsync|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(
@@ -317,7 +317,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Query method signature: Query<T>(string indexName, string collectionName, bool isMapReduce)
         var sessionType = session.GetType();
         var genericQueryMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionQuery3|{sessionType.FullName ?? sessionType.Name}|{entityType.FullName ?? entityType.Name}",
+            $"sessionQuery3|{sessionType.GetCacheKeyName()}|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var queryMethod = sessionType.GetMethods()
@@ -343,7 +343,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (!string.IsNullOrEmpty(indexName))
         {
             var genericProjectIntoMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-                $"linqProjectInto|{entityType.FullName ?? entityType.Name}",
+                $"linqProjectInto|{entityType.GetCacheKeyName()}",
                 () =>
                 {
                     var projectIntoMethod = typeof(LinqExtensions).GetMethods()
@@ -369,7 +369,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Call ToListAsync on the query
         var genericToListMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"linqToListAsync|{entityType.FullName ?? entityType.Name}",
+            $"linqToListAsync|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var toListMethod = typeof(LinqExtensions).GetMethods()

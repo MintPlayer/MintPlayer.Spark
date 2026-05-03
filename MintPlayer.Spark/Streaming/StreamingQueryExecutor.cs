@@ -147,7 +147,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
     private static Type? ExtractAsyncEnumerableType(Type type)
         => ReflectionCache.GetOrAdd<Type?>(
-            $"asyncEnumerableElem|{type.FullName ?? type.Name}",
+            $"asyncEnumerableElem|{type.GetCacheKeyName()}",
             () =>
             {
                 // Check if type implements IAsyncEnumerable<T>
@@ -165,7 +165,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
     private static Type? ExtractReadOnlyListElementType(Type type)
         => ReflectionCache.GetOrAdd<Type?>(
-            $"readOnlyListElem|{type.FullName ?? type.Name}",
+            $"readOnlyListElem|{type.GetCacheKeyName()}",
             () =>
             {
                 // Check IReadOnlyList<T>
@@ -189,7 +189,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // Cache the closed IAsyncEnumerator<T> + its MoveNextAsync/Current MemberInfos per
         // (elementType, isSingleItem) pair — they're stable for the AppDomain.
         var (getEnumeratorMethod, moveNextMethod, currentProperty) = ReflectionCache.GetOrAdd<(MethodInfo, MethodInfo, PropertyInfo)>(
-            $"asyncEnumeratorOps|{elementType.FullName ?? elementType.Name}|single={isSingleItem}",
+            $"asyncEnumeratorOps|{elementType.GetCacheKeyName()}|single={isSingleItem}",
             () =>
             {
                 var innerType = isSingleItem ? elementType : typeof(IReadOnlyList<>).MakeGenericType(elementType);

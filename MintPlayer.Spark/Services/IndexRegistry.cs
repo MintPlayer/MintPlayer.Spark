@@ -144,7 +144,7 @@ internal partial class IndexRegistry : IIndexRegistry
     private static Type? GetCollectionTypeFromIndex(Type indexType)
     {
         return ReflectionCache.GetOrAdd<Type?>(
-            $"indexCollectionType|{indexType.FullName ?? indexType.Name}",
+            $"indexCollectionType|{indexType.GetCacheKeyName()}",
             () =>
             {
                 var current = indexType;

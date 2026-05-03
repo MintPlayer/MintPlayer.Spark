@@ -76,7 +76,7 @@ public static class AccessorCache
     }
 
     private static string BuildKey(PropertyInfo property)
-        => $"{property.DeclaringType!.FullName}|{property.Name}|{property.PropertyType.FullName}";
+        => $"{property.DeclaringType!.GetCacheKeyName()}|{property.Name}|{property.PropertyType.GetCacheKeyName()}";
 
     /// <summary>Marker type used as the per-type cache owner for accessor delegates.</summary>
     private sealed class PropertyInfoOwner;

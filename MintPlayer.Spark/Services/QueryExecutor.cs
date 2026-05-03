@@ -363,7 +363,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private static Type? ExtractQueryableElementType(Type type)
     {
         return ReflectionCache.GetOrAdd<Type?>(
-            $"queryableElement|{type.FullName ?? type.Name}",
+            $"queryableElement|{type.GetCacheKeyName()}",
             () =>
             {
                 // Check if the type itself is IQueryable<T>
@@ -400,7 +400,7 @@ internal partial class QueryExecutor : IQueryExecutor
     {
         // Call Queryable.ToList() on an in-memory IQueryable<T>
         var toListMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"enumerableToList|{elementType.FullName ?? elementType.Name}",
+            $"enumerableToList|{elementType.GetCacheKeyName()}",
             () => typeof(Enumerable).GetMethods()
                 .First(m => m.Name == nameof(Enumerable.ToList) && m.GetGenericArguments().Length == 1)
                 .MakeGenericMethod(elementType));
@@ -451,7 +451,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
     {
         var genericMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"sessionQueryByIndexCreator|{resultType.FullName ?? resultType.Name}|{indexType.FullName ?? indexType.Name}",
+            $"sessionQueryByIndexCreator|{resultType.GetCacheKeyName()}|{indexType.GetCacheKeyName()}",
             () =>
             {
                 var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
@@ -476,7 +476,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
     {
         var genericMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"sessionQueryByIndexName|{entityType.FullName ?? entityType.Name}",
+            $"sessionQueryByIndexName|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
@@ -503,7 +503,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private object ApplyProjection(object queryable, Type resultType)
     {
         var genericProjectMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"linqProjectInto|{resultType.FullName ?? resultType.Name}",
+            $"linqProjectInto|{resultType.GetCacheKeyName()}",
             () =>
             {
                 var projectIntoMethod = typeof(LinqExtensions).GetMethods()
@@ -548,7 +548,7 @@ internal partial class QueryExecutor : IQueryExecutor
             var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
 
             var orderMethod = ReflectionCache.GetOrAdd<MethodInfo>(
-                $"queryableOrder|{methodName}|{entityType.FullName ?? entityType.Name}|{propertyInfo.PropertyType.FullName ?? propertyInfo.PropertyType.Name}",
+                $"queryableOrder|{methodName}|{entityType.GetCacheKeyName()}|{propertyInfo.PropertyType.GetCacheKeyName()}",
                 () => typeof(Queryable).GetMethods()
                     .First(m => m.Name == methodName && m.GetParameters().Length == 2)
                     .MakeGenericMethod(entityType, propertyInfo.PropertyType));
@@ -567,7 +567,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
     {
         var genericToListMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"linqToListAsync|{entityType.FullName ?? entityType.Name}",
+            $"linqToListAsync|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var toListMethod = typeof(LinqExtensions).GetMethods()

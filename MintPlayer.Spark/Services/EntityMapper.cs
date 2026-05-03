@@ -723,7 +723,7 @@ internal partial class EntityMapper : IEntityMapper
         Type targetType, string refId, CancellationToken cancellationToken)
     {
         var generic = ReflectionCache.GetOrAdd<MethodInfo>(
-            $"sessionLoadAsync|{targetType.FullName ?? targetType.Name}",
+            $"sessionLoadAsync|{targetType.GetCacheKeyName()}",
             () =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(

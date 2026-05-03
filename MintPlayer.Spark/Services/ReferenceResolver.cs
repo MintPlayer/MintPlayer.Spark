@@ -142,7 +142,7 @@ internal partial class ReferenceResolver : IReferenceResolver
     private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
         var genericMethod = ReflectionCache.GetOrAdd<MethodInfo?>(
-            $"sessionLoadAsync|{entityType.FullName ?? entityType.Name}",
+            $"sessionLoadAsync|{entityType.GetCacheKeyName()}",
             () =>
             {
                 var method = typeof(IAsyncDocumentSession).GetMethod(

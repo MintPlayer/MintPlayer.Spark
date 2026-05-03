@@ -517,7 +517,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// </summary>
     private static Type? GetCollectionElementType(Type type)
         => ReflectionCache.GetOrAdd<Type?>(
-            $"modelSync.collElem|{type.FullName ?? type.Name}",
+            $"modelSync.collElem|{type.GetCacheKeyName()}",
             () => ResolveCollectionElementType(type));
 
     private static Type? ResolveCollectionElementType(Type type)

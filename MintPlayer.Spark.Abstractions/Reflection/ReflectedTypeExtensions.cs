@@ -37,7 +37,7 @@ public static class ReflectedTypeExtensions
         ArgumentNullException.ThrowIfNull(type);
         ArgumentNullException.ThrowIfNull(name);
         return ReflectionCache.GetOrAdd<PropertyInfo?>(
-            $"prop|{type.FullName ?? type.Name}|{name}",
+            $"prop|{type.GetCacheKeyName()}|{name}",
             () => type.GetProperty(name, PublicInstance));
     }
 
@@ -50,8 +50,29 @@ public static class ReflectedTypeExtensions
         where TAttribute : Attribute
     {
         ArgumentNullException.ThrowIfNull(member);
-        var key = $"attr|{typeof(TAttribute).FullName}|{member.DeclaringType?.FullName}|{member.Name}";
+        var key = $"attr|{typeof(TAttribute).GetCacheKeyName()}|{member.DeclaringType?.GetCacheKeyName()}|{member.Name}";
         return ReflectionCache.GetOrAdd<TAttribute?>(key, member.GetCustomAttribute<TAttribute>);
+    }
+
+    /// <summary>
+    /// Returns the most-discriminating string identifier for <paramref name="type"/>:
+    /// <see cref="Type.AssemblyQualifiedName"/> (which already encodes assembly name,
+    /// version, culture, and public key token) when available, falling back to
+    /// <see cref="Type.FullName"/> for open generics, and <see cref="MemberInfo.Name"/>
+    /// as a last resort.
+    /// <para>
+    /// Use this whenever you compose a string cache key keyed on Type identity. AQN
+    /// disambiguates types that share a <see cref="Type.FullName"/> across assemblies —
+    /// a real risk in plugin / multi-version scenarios that plain FullName would silently
+    /// collide on. <strong>Do not</strong> use this for contractual identifiers stored in
+    /// model files (<c>EntityTypeDefinition.ClrType</c>) — those round-trip through disk
+    /// and must stay on <see cref="Type.FullName"/>.
+    /// </para>
+    /// </summary>
+    public static string GetCacheKeyName(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
     }
 
     /// <summary>
