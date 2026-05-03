@@ -115,6 +115,11 @@ internal static class SparkReplicationExtensions
     {
         foreach (var (sourceModule, scripts) in scriptsByModule)
         {
+            // Note: TargetDatabase and TargetUrls are captured here at send-time and travel
+            // with the message — unlike the source module's URL, which the recipient
+            // resolves freshly from SparkModules on each delivery. If the consumer module's
+            // RavenDB cluster ever moves to new URLs, pending deployment messages will
+            // carry stale values until the next app startup re-broadcasts.
             yield return new EtlScriptDeploymentMessage
             {
                 SourceModuleName = sourceModule,

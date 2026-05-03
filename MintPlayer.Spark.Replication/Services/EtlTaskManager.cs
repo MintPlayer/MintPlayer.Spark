@@ -27,6 +27,19 @@ internal partial class EtlTaskManager
 
         try
         {
+            // Refuse to create an ETL task whose source and target are the same database —
+            // that would cause an infinite write loop (every applied transform re-triggers
+            // the source). Only the requesting module is supposed to invoke this, on the
+            // source module's store; if the two collapse to the same DB, the message bus
+            // routed the deployment to the wrong recipient (e.g. stale moduleInformations
+            // URL pointing back at the requester).
+            if (string.Equals(request.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Refusing to deploy ETL task '{taskName}': source and target database are both '{documentStore.Database}'. " +
+                    "This would create a self-loop. Check that this endpoint is being called on the source module, not the requesting module.");
+            }
+
             // Step 1: Create/update connection string to the requesting module's database
             var connectionString = new RavenConnectionString
             {
