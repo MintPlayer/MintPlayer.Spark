@@ -172,6 +172,45 @@ public class SocketExtensionsTests : IAsyncLifetime
         reply.Should().BeNull();
     }
 
+    [Fact]
+    public async Task ReadMessage_throws_when_inbound_payload_exceeds_max_bytes()
+    {
+        // R2-H13: previously unbounded — server allocated arbitrary memory per
+        // connection before deciding whether to act on the message. Cap is now
+        // enforced; we catch ANY exception type (the throw is WebSocketException
+        // today but the contract is "reject before buffering more bytes", not
+        // "throw this specific type").
+        Exception? caught = null;
+        long bytesBufferedAtFailure = 0;
+        var done = new TaskCompletionSource();
+        _serverHandler = async ws =>
+        {
+            try { await ws.ReadMessage(maxBytes: 8 * 1024); }
+            catch (Exception ex)
+            {
+                caught = ex;
+                bytesBufferedAtFailure = ex.Data.Contains("buffered") ? (long)ex.Data["buffered"]! : 0;
+            }
+            finally { done.TrySetResult(); }
+        };
+
+        var client = await ConnectAsync();
+        try { await client.WriteMessage(new string('a', 64 * 1024)); }
+        catch { /* peer may have already closed */ }
+
+        await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        caught.Should().NotBeNull(
+            "server-side ReadMessage must surface an exception once cumulative buffer exceeds maxBytes");
+    }
+
+    [Fact]
+    public async Task ReadMessage_default_cap_is_one_mebibyte()
+    {
+        global::System.Net.WebSockets.SocketExtensions.DefaultMaxMessageBytes
+            .Should().Be(1 * 1024 * 1024,
+                "default cap protects handshake-shaped callers (dev WS) without limiting normal frames");
+    }
+
     private sealed class Envelope
     {
         public string Type { get; set; } = string.Empty;

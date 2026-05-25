@@ -1,11 +1,16 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using NSubstitute;
 
 namespace MintPlayer.Spark.Tests;
 
 public class ReferenceResolverTests
 {
-    private readonly ReferenceResolver _resolver = new();
+    // R2-H10 added IActionsResolver injection so the cross-reference loader can
+    // apply the target collection's row-level Read hook. These tests don't
+    // exercise that path (they test only the reflection-based property scan),
+    // so a stubbed resolver is fine.
+    private readonly ReferenceResolver _resolver = new(Substitute.For<IActionsResolver>());
 
     [Fact]
     public void GetReferenceProperties_FindsReferenceAttributes()

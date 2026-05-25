@@ -31,14 +31,15 @@ public static class SocketExtensions
             // closing the socket cleanly so the caller knows the reason.
             if (ms.Length + result.Count > maxBytes)
             {
-                try
-                {
-                    await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig,
-                        $"Message exceeded {maxBytes} bytes", CancellationToken.None);
-                }
-                catch { /* socket may already be closing */ }
+                // Abort instead of CloseAsync: a polite close handshake waits for
+                // the peer to ack with its own close frame, which a hostile or
+                // mid-write peer may never send — that would hang the server.
+                // Abort tears the socket down immediately. We still surface a
+                // WebSocketException so the caller sees the rejection, with the
+                // close-status hint encoded in the message.
+                try { ws.Abort(); } catch { /* already closing */ }
                 throw new WebSocketException(WebSocketError.NotAWebSocket,
-                    $"Inbound message exceeded {maxBytes} bytes");
+                    $"Inbound message exceeded {maxBytes} bytes (closed with {WebSocketCloseStatus.MessageTooBig})");
             }
             ms.Write(buffer.Array ?? Array.Empty<byte>(), buffer.Offset, result.Count);
         }

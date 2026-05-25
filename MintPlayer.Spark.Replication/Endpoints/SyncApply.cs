@@ -11,8 +11,11 @@ internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGrou
     public static string Path => "/apply";
 
     [Inject] private readonly ILoggerFactory loggerFactory;
-    [Inject] private readonly ISyncActionHandler? syncActionHandler;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;
+    // Nullable fields produce optional ctor params in the generated [Inject] ctor;
+    // they must come AFTER any non-nullable (required) fields, otherwise C# rejects
+    // the constructor as "optional parameters must appear after all required ones".
+    [Inject] private readonly ISyncActionHandler? syncActionHandler;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {

@@ -19,6 +19,48 @@ public class LookupReferenceServiceTests : SparkTestDriver
 
     private LookupReferenceService CreateService() => new(_discovery, Store);
 
+    /// <summary>
+    /// R2-L8 — LookupReferenceService.ValidateName rejects names whose shape would
+    /// produce unpredictable document-id collisions in Raven. The route value
+    /// "Foo/../Bar" used to flow unchecked into "LookupReferences/Foo/../Bar".
+    /// Validation fires at the document-id interpolation site, so the test
+    /// configures discovery to return a dynamic lookup info (so we reach the
+    /// LoadDynamicLookupAsync path).
+    /// </summary>
+    [Theory]
+    [InlineData("1leadingDigit")]
+    [InlineData("contains/slash")]
+    [InlineData("contains space")]
+    [InlineData("contains.dot")]
+    [InlineData("contains:colon")]
+    [InlineData("../traversal")]
+    [InlineData("contains\nnewline")]
+    public async Task Invalid_lookup_reference_name_is_refused(string hostileName)
+    {
+        // Make discovery happy so the service proceeds to the document-id site
+        // where ValidateName fires.
+        _discovery.GetLookupReference(hostileName).Returns(DynamicInfo(hostileName));
+
+        var service = CreateService();
+        var act = () => service.GetAsync(hostileName);
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            $"hostile name '{hostileName}' must be refused at the document-id boundary");
+    }
+
+    [Theory]
+    [InlineData("CarStatus")]
+    [InlineData("Company_Tier")]
+    [InlineData("foo-bar")]
+    [InlineData("MyType123")]
+    public async Task Valid_lookup_reference_name_is_accepted(string goodName)
+    {
+        _discovery.GetLookupReference(goodName).Returns(DynamicInfo(goodName));
+        var service = CreateService();
+        // No document persisted yet → service returns dto with empty values, no throw.
+        var result = await service.GetAsync(goodName);
+        result.Should().NotBeNull("name passed validation; load proceeded normally");
+    }
+
     private static LookupReferenceInfo TransientInfo() => new()
     {
         Name = nameof(LDSTestStatus),
