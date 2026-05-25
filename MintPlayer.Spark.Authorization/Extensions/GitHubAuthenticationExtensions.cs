@@ -50,6 +50,37 @@ public static class GitHubAuthenticationExtensions
 
                 using var user = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 context.RunClaimActions(user.RootElement);
+
+                // R2-H11: GitHub's /user endpoint returns whatever email the user
+                // set as primary, even if unverified. To attest the email we hit
+                // /user/emails (requires the user:email scope) and emit
+                // urn:github:email_verified=true only when the primary entry is
+                // verified. The Spark callback consumes that claim before auto-
+                // provisioning a new TUser bound to the email.
+                using var emailsRequest = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user/emails");
+                emailsRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                emailsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.AccessToken);
+                emailsRequest.Headers.UserAgent.Add(new ProductInfoHeaderValue("SparkAuth", "1.0"));
+
+                using var emailsResponse = await context.Backchannel.SendAsync(emailsRequest, context.HttpContext.RequestAborted);
+                if (emailsResponse.IsSuccessStatusCode)
+                {
+                    using var emails = JsonDocument.Parse(await emailsResponse.Content.ReadAsStringAsync());
+                    foreach (var entry in emails.RootElement.EnumerateArray())
+                    {
+                        if (entry.TryGetProperty("primary", out var primary) && primary.GetBoolean()
+                            && entry.TryGetProperty("verified", out var verified) && verified.GetBoolean())
+                        {
+                            context.Identity?.AddClaim(new Claim("urn:github:email_verified", "true"));
+                            break;
+                        }
+                    }
+                }
+                // If /user/emails fails (scope not granted, rate limit, network),
+                // we deliberately don't emit the claim — the callback will refuse
+                // to auto-provision. Logging in to an *existing* linked account
+                // (matched by ProviderKey) still works; only first-time binding
+                // is gated.
             };
 
             // Allow consumer to override/extend
