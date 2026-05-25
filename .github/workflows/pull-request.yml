@@ -9,9 +9,15 @@ on:
 # read-write across every API. Fork PRs already don't get secrets, but a
 # malicious PR script (compromised third-party action, future-added
 # postinstall) could otherwise push commits / open issues under the repo's
-# default scope. Read-only is enough for build + test + codecov upload here.
+# default scope.
+#
+# packages: read is required because dotnet restore pulls
+# @mintplayer/* packages from the org's GitHub Packages NuGet feed. When ANY
+# explicit permissions block is set, GitHub defaults every unlisted scope to
+# none — so omitting packages here turns dotnet restore into 403s.
 permissions:
   contents: read
+  packages: read
 
 env:
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
