@@ -24,6 +24,12 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
     private readonly List<IDisposable> _ownedDisposables = new();
     private readonly IHttpClient _sharedRestHttpClient = new HttpClientAdapter(HttpMessageHandlerFactory.CreateDefault);
     private readonly SemaphoreSlim _refreshGate = new(initialCount: 1, maxCount: 1);
+    // R2-M9: cache the imported RSA so the PEM string doesn't have to be re-read /
+    // re-imported on every JWT mint (was loaded into a managed string on every
+    // call). The RSA holds the private key in unmanaged buffer space inside CNG/
+    // OpenSSL; the loaded PEM string itself is cleared right after the import.
+    private RSA? _signingKey;
+    private readonly SemaphoreSlim _signingKeyGate = new(1, 1);
     private bool _disposed;
 
     /// <summary>
@@ -70,9 +76,47 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
     public async Task<IGitHubClient> CreateAppClientAsync()
     {
         var opts = _options.Value;
-        var privateKey = await ResolvePrivateKeyAsync(opts);
-        var jwt = CreateJwt(opts.ClientId!, privateKey);
+        var rsa = await GetOrCreateSigningKeyAsync(opts);
+        var jwt = CreateJwt(opts.ClientId!, rsa);
         return _clientFactory.CreateAppClient(jwt);
+    }
+
+    /// <summary>
+    /// R2-M9: lazy-load the GitHub App private key once, hold it as an
+    /// <see cref="RSA"/> (key material lives in unmanaged buffer space), and
+    /// clear the loaded PEM <see cref="string"/> immediately after import. The
+    /// previous flow read the PEM file on every CreateAppClientAsync call and
+    /// held it as a managed string for the request's lifetime — recoverable
+    /// from a process dump or heap snapshot indefinitely.
+    /// </summary>
+    private async Task<RSA> GetOrCreateSigningKeyAsync(GitHubWebhooksOptions opts)
+    {
+        if (_signingKey is not null) return _signingKey;
+
+        await _signingKeyGate.WaitAsync();
+        try
+        {
+            if (_signingKey is not null) return _signingKey;
+
+            var privateKey = await ResolvePrivateKeyAsync(opts);
+            try
+            {
+                var rsa = RSA.Create();
+                rsa.ImportFromPem(privateKey);
+                _signingKey = rsa;
+                return rsa;
+            }
+            finally
+            {
+                // The String is immutable so we can't zero it in place, but
+                // dropping the reference at least removes our hold on it.
+                privateKey = null!;
+            }
+        }
+        finally
+        {
+            _signingKeyGate.Release();
+        }
     }
 
     public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
@@ -134,7 +178,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         return privateKey;
     }
 
-    private static string CreateJwt(string clientId, string privateKey)
+    private static string CreateJwt(string clientId, RSA rsa)
     {
         var header = Base64UrlEncode(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(new
         {
@@ -151,9 +195,6 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
             exp = exp.ToUnixTimeSeconds(),
             iss = clientId
         })));
-
-        var rsa = RSA.Create();
-        rsa.ImportFromPem(privateKey);
 
         var signature = Base64UrlEncode(
             rsa.SignData(Encoding.UTF8.GetBytes($"{header}.{payload}"),
@@ -172,6 +213,8 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         _disposed = true;
 
         _refreshGate.Dispose();
+        _signingKeyGate.Dispose();
+        _signingKey?.Dispose();
         _sharedRestHttpClient.Dispose();
 
         lock (_ownedDisposables)
