@@ -37,15 +37,18 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         // Octokit uses case-sensitive dictionary — make it case-insensitive
         var caseInsensitiveHeaders = new Dictionary<string, StringValues>(headers, StringComparer.OrdinalIgnoreCase);
 
-        // Validate webhook signature
-        if (!string.IsNullOrEmpty(_options.Value.WebhookSecret))
+        // Validate webhook signature. SignatureService is fail-closed on empty
+        // secret AND on signature mismatch, so unconditionally route every delivery
+        // through it — an outer "if secret configured" gate would re-open the
+        // fail-open hole the service is meant to plug.
+        caseInsensitiveHeaders.TryGetValue("X-Hub-Signature-256", out var signatureSha256);
+        if (!_signatureService.VerifySignature(signatureSha256, _options.Value.WebhookSecret, body))
         {
-            caseInsensitiveHeaders.TryGetValue("X-Hub-Signature-256", out var signatureSha256);
-            if (!_signatureService.VerifySignature(signatureSha256, _options.Value.WebhookSecret, body))
-            {
+            if (string.IsNullOrEmpty(_options.Value.WebhookSecret))
+                _logger.LogError("GitHub webhook signature validation failed — WebhookSecret is empty. Configure GitHub:WebhookSecret in appsettings/user secrets/env.");
+            else
                 _logger.LogWarning("GitHub webhook signature validation failed — dropping event");
-                return;
-            }
+            return;
         }
 
         // Check if this is from the development GitHub App
