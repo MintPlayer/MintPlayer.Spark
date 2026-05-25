@@ -50,6 +50,12 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
 
         // Ensure the ObjectTypeId matches the resolved entity type
         obj.ObjectTypeId = entityType.Id;
+        // R2-M18: POST is "Create", never "Edit". Force Id=null so SavePersistentObjectAsync's
+        // string.IsNullOrEmpty(Id) branch always picks "New" — a client posting
+        // {"Id":"cars/existing"} used to flip the action to Edit and overwrite a
+        // foreign record under the POST verb, bypassing the entity-type-level "New"
+        // permission and any developer mental-model of "POST = creation".
+        obj.Id = null;
 
         // Validate the object
         var validationResult = validationService.Validate(obj);
