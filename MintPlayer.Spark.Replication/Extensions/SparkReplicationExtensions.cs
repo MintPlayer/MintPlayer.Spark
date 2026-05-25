@@ -29,12 +29,14 @@ internal static class SparkReplicationExtensions
         services.AddSingleton<EtlTaskManager>();
         services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
 
-        // R2-C1/C2: outbound replication HttpClients attach this module's client
-        // certificate so the peer module can verify mTLS. Configured here once,
-        // reused by both spark-etl (ETL deploys) and spark-sync (sync apply).
+        // R2-C1/C2: outbound replication HttpClients attach this module's
+        // client certificate so the peer module can verify mTLS. The cert is
+        // *this* module's identity — same cert presented to every target by
+        // default. Per-target overrides exist for advanced multi-CA cases.
         // Operators set the cert via SparkReplicationOptions.ClientCertificate.
-        services.AddHttpClient("spark-etl").ConfigurePrimaryHttpMessageHandler(ConfigureClientCertHandler);
-        services.AddHttpClient("spark-sync").ConfigurePrimaryHttpMessageHandler(ConfigureClientCertHandler);
+        services.AddSingleton<IReplicationHttpClientProvider, ReplicationHttpClientProvider>();
+        services.AddHttpClient("spark-etl").ConfigurePrimaryHttpMessageHandler(sp => BuildDefaultHandler(sp));
+        services.AddHttpClient("spark-sync").ConfigurePrimaryHttpMessageHandler(sp => BuildDefaultHandler(sp));
 
         // Sync action services
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
@@ -44,21 +46,19 @@ internal static class SparkReplicationExtensions
     }
 
     /// <summary>
-    /// Builds a <see cref="HttpClientHandler"/> that attaches the local module's
-    /// client certificate (PFX/PEM at <c>SparkReplicationOptions.ClientCertificate.
-    /// CertificateFile</c>) so outbound replication calls present it for mTLS.
-    /// When no cert file is configured, returns a vanilla handler — useful in
-    /// dev/test where the receiving endpoint has
-    /// <c>RequireClientCertificate=false</c>.
+    /// Builds the default <see cref="HttpClientHandler"/> attached to the named
+    /// <c>spark-etl</c> / <c>spark-sync</c> clients — uses
+    /// <see cref="SparkReplicationCertificateOptions.CertificateFile"/>. Outbound
+    /// code paths that know their target module ahead of time should resolve
+    /// <see cref="IReplicationHttpClientProvider"/> instead, which honors per-
+    /// target overrides.
     /// </summary>
-    private static System.Net.Http.HttpMessageHandler ConfigureClientCertHandler(IServiceProvider sp)
+    private static System.Net.Http.HttpMessageHandler BuildDefaultHandler(IServiceProvider sp)
     {
         var options = sp.GetRequiredService<IOptions<SparkReplicationOptions>>().Value.ClientCertificate;
         var handler = new System.Net.Http.HttpClientHandler();
         if (!string.IsNullOrEmpty(options.CertificateFile))
         {
-            // Loading the cert in the factory runs once per HttpClient resolution
-            // (HttpClientFactory caches the handler for ~2 minutes by default).
             var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(
                 options.CertificateFile, options.CertificatePassword);
             handler.ClientCertificates.Add(cert);

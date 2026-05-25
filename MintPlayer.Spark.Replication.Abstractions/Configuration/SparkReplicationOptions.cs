@@ -32,18 +32,63 @@ public class SparkReplicationOptions
 }
 
 /// <summary>
+/// Mode that drives cross-module mTLS enforcement.
+/// </summary>
+public enum SparkReplicationCertificateMode
+{
+    /// <summary>
+    /// Auto-detect: <see cref="Production"/> when the host environment is anything
+    /// other than <c>Development</c>; <see cref="Development"/> when it is. The
+    /// default — keeps prod safe-by-default without requiring every appsettings
+    /// file to opt into mTLS.
+    /// </summary>
+    Auto = 0,
+
+    /// <summary>
+    /// Production: inbound endpoints require a valid client cert whose SHA-256
+    /// thumbprint matches the requesting module's pinned thumbprint; outbound
+    /// HttpClients attach the configured per-target cert.
+    /// </summary>
+    Production = 1,
+
+    /// <summary>
+    /// Development: inbound endpoints accept calls without a client cert, BUT
+    /// they still verify that the <c>RequestingModule</c> is registered in
+    /// SparkModules and log a warning per accepted call so the relaxed mode is
+    /// visible. Outbound HttpClients send the cert if configured, omit it
+    /// otherwise. Use only in dev/test where every module is on a trusted
+    /// network.
+    /// </summary>
+    Development = 2,
+
+    /// <summary>
+    /// Disabled: passthrough — no cert validation, no warning log. Reserved for
+    /// the legacy demo path; new apps should pick Production or Development.
+    /// </summary>
+    Disabled = 3,
+}
+
+/// <summary>
 /// mTLS settings for cross-module replication endpoints.
+/// <para>
+/// The certificate is THIS module's identity — the same cert is presented on
+/// every outbound call regardless of target. Receivers validate the cert's
+/// SHA-256 thumbprint against the pinned value stored when this module
+/// registered in <c>SparkModules</c>. Per-target overrides exist as an advanced
+/// escape hatch only (e.g. different CAs per peer); the primary config is a
+/// single cert per module.
+/// </para>
+/// <para>
+/// See <c>docs/guide-replication-mtls.md</c> for the full operator walkthrough.
+/// </para>
 /// </summary>
 public class SparkReplicationCertificateOptions
 {
     /// <summary>
-    /// When <c>true</c> (default), <c>/spark/etl/deploy</c> and <c>/spark/sync/apply</c>
-    /// require a valid client certificate whose SHA-256 thumbprint matches the
-    /// requesting module's pinned thumbprint. When <c>false</c>, the endpoints accept
-    /// unauthenticated cross-module traffic — only set this in trusted-network
-    /// dev/test environments and only with a clear warning in logs.
+    /// Enforcement mode. Default <see cref="SparkReplicationCertificateMode.Auto"/>
+    /// resolves to <c>Production</c> in non-Development host environments.
     /// </summary>
-    public bool RequireClientCertificate { get; set; } = true;
+    public SparkReplicationCertificateMode Mode { get; set; } = SparkReplicationCertificateMode.Auto;
 
     /// <summary>
     /// SHA-256 thumbprint of THIS module's client certificate (uppercase hex). Used
@@ -54,15 +99,34 @@ public class SparkReplicationCertificateOptions
     public string? Thumbprint { get; set; }
 
     /// <summary>
-    /// Optional path to the PFX/PEM file this module presents on outbound replication
-    /// calls. The Replication package's spark-etl / spark-sync named HttpClients
-    /// attach this cert. When <c>null</c>, outbound mTLS auth is not configured —
-    /// callers running in trusted-network dev mode can leave this unset.
+    /// Path to the PFX/PEM file containing THIS module's client certificate. Attached
+    /// to every outbound replication HttpClient by default. Leave null in
+    /// <see cref="SparkReplicationCertificateMode.Development"/> when running on a
+    /// trusted network.
     /// </summary>
     public string? CertificateFile { get; set; }
 
+    /// <summary>Optional password for <see cref="CertificateFile"/>.</summary>
+    public string? CertificatePassword { get; set; }
+
     /// <summary>
-    /// Optional password for the PFX file at <see cref="CertificateFile"/>.
+    /// Advanced escape hatch: per-target overrides for the outbound cert. Key =
+    /// target module name. Value = cert file + optional password. Used when
+    /// different peer modules trust different CAs — uncommon. Falls through to
+    /// <see cref="CertificateFile"/> when the target isn't in this dictionary.
     /// </summary>
+    public Dictionary<string, SparkOutboundCertificate> PerTargetOverrides { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// One outbound certificate entry — used in <see cref="SparkReplicationCertificateOptions.PerTargetOverrides"/>.
+/// </summary>
+public class SparkOutboundCertificate
+{
+    /// <summary>Path to the PFX/PEM file presented when calling the target module.</summary>
+    public required string CertificateFile { get; set; }
+
+    /// <summary>Optional password for <see cref="CertificateFile"/>.</summary>
     public string? CertificatePassword { get; set; }
 }

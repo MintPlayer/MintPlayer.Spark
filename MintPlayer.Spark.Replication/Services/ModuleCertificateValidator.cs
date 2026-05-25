@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
@@ -34,24 +35,49 @@ internal partial class ModuleCertificateValidator : IModuleCertificateValidator
 {
     [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
     [Inject] private readonly ModuleRegistrationService registrationService;
+    [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<ModuleCertificateValidator> logger;
+
+    /// <summary>
+    /// Resolves the configured <see cref="SparkReplicationCertificateMode"/>,
+    /// substituting Development for Auto when the host is in Development.
+    /// </summary>
+    private SparkReplicationCertificateMode ResolveMode()
+    {
+        var mode = optionsAccessor.Value.ClientCertificate.Mode;
+        if (mode == SparkReplicationCertificateMode.Auto)
+            return hostEnvironment.IsDevelopment()
+                ? SparkReplicationCertificateMode.Development
+                : SparkReplicationCertificateMode.Production;
+        return mode;
+    }
 
     public async Task<ModuleCertificateValidation> ValidateAsync(HttpContext context, string requestingModule, CancellationToken cancellationToken)
     {
-        var options = optionsAccessor.Value.ClientCertificate;
+        var mode = ResolveMode();
 
-        if (!options.RequireClientCertificate)
+        if (mode == SparkReplicationCertificateMode.Disabled)
         {
-            // Opt-out path: dev/test only. Log loudly so this can't quietly stay
-            // on in production.
+            // Explicit passthrough — no validation, no warning. Caller chose this.
+            return ModuleCertificateValidation.Ok;
+        }
+
+        if (mode == SparkReplicationCertificateMode.Development)
+        {
+            // Dev mode: skip cert thumbprint check, still log every call so the
+            // relaxed posture is visible in logs. Requesting module must still
+            // exist in SparkModules — that's free identity-level sanity.
+            if (string.IsNullOrEmpty(requestingModule))
+                return ModuleCertificateValidation.UnknownModule;
+
             logger.LogWarning(
-                "Cross-module call from '{Module}' accepted WITHOUT client certificate validation — " +
-                "SparkReplicationOptions.ClientCertificate.RequireClientCertificate is false. " +
-                "This MUST be re-enabled before any production-like deployment (R2-C1/C2/H7).",
+                "Cross-module call from '{Module}' accepted in Development mode (no cert thumbprint check). " +
+                "Set SparkReplicationOptions.ClientCertificate.Mode = Production before deploying.",
                 requestingModule);
             return ModuleCertificateValidation.Ok;
         }
 
+        // Production mode: full thumbprint check.
         if (string.IsNullOrEmpty(requestingModule))
             return ModuleCertificateValidation.UnknownModule;
 
