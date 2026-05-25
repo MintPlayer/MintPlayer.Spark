@@ -128,7 +128,8 @@ public class LookupReferenceEndpointTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        body.GetProperty("error").GetString().Should().Contain("transient");
+        // R2-M1: ex.Message no longer flows to the response body.
+        body.GetProperty("error").GetString().Should().Be("Operation failed");
     }
 
     [Fact]

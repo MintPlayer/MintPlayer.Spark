@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Extensions;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Testing;
@@ -66,7 +67,17 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                     .ConfigureServices(services =>
                     {
                         services.AddRouting();
-                        services.AddSpark(spark => spark.UseContext<TContext>());
+                        services.AddSpark(spark =>
+                        {
+                            spark.UseContext<TContext>();
+                            // R2-H1 default is deny-all; endpoint tests aren't
+                            // exercising auth, so opt into permissive mode so the
+                            // endpoint logic itself can be tested under the
+                            // "everyone-can" baseline. Tests that DO want to
+                            // exercise authz override IAccessControl in
+                            // configureServices.
+                            spark.AllowAnonymousAccess();
+                        });
 
                         var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));
                         services.Remove(existing);

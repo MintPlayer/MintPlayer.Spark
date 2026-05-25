@@ -35,9 +35,18 @@ internal partial class EtlTaskManager
             // URL pointing back at the requester).
             if (string.Equals(request.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(
-                    $"Refusing to deploy ETL task '{taskName}': source and target database are both '{documentStore.Database}'. " +
-                    "This would create a self-loop. Check that this endpoint is being called on the source module, not the requesting module.");
+                // Known, expected failure — return it directly so callers can
+                // distinguish self-loop config errors from generic ETL_DEPLOY_FAILED
+                // failures that the R2-L6 catch returns. We keep the human-readable
+                // string here because the caller is a trusted module (per R2-C1
+                // mTLS gate); only fully-generic ex.Message round-trips were the leak.
+                logger.LogWarning("Refusing self-loop ETL deployment for module '{Module}' (target db = local db '{Db}')",
+                    request.RequestingModule, documentStore.Database);
+                return Task.FromResult(new EtlDeploymentResult
+                {
+                    Success = false,
+                    Error = $"self-loop refused: source and target are both '{documentStore.Database}'",
+                });
             }
 
             // Step 1: Create/update connection string to the requesting module's database

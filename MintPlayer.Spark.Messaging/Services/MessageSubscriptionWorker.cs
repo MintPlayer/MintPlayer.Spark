@@ -62,7 +62,11 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
         if (string.IsNullOrEmpty(value)) return false;
         foreach (var c in value)
         {
-            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_' || c == '-'))
+            // Allow standard identifier shape plus '+' (nested CLR type separator —
+            // typeof(Nested).FullName produces "Outer+Inner") and '`' / digits for
+            // generic type parameters. Critically disallowed: `'`, `\`, whitespace,
+            // anything that could break out of the single-quoted RQL literal.
+            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_' || c == '-' || c == '+' || c == '`'))
                 return false;
         }
         return true;

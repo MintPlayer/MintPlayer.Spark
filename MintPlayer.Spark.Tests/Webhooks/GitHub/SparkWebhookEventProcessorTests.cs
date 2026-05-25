@@ -80,17 +80,24 @@ public class SparkWebhookEventProcessorTests
     }
 
     [Fact]
-    public async Task Skips_signature_validation_when_no_WebhookSecret_is_configured()
+    public async Task Drops_event_when_no_WebhookSecret_is_configured()
     {
+        // R2-C3: previously the processor skipped signature validation entirely
+        // when WebhookSecret was empty, accepting any POST. Now it routes through
+        // the (fail-closed) signature service unconditionally — empty secret →
+        // verifier returns false → drop.
         var options = new GitHubWebhooksOptions { WebhookSecret = "" };
+        _signatureService
+            .VerifySignature(Arg.Any<string?>(), "", Arg.Any<string>())
+            .Returns(false);
         var processor = CreateProcessor(options);
 
-        // Should not throw or hit the signature service.
         await processor.ProcessWebhookAsync(
             Headers(("X-GitHub-Event", "push")),
             "{}");
 
-        _signatureService.DidNotReceive().VerifySignature(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+        _signatureService.Received(1).VerifySignature(Arg.Any<string?>(), "", "{}");
+        await _messageBus.DidNotReceive().BroadcastAsync(Arg.Any<object>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -115,7 +122,13 @@ public class SparkWebhookEventProcessorTests
     [Fact]
     public async Task Forwards_to_dev_socket_service_when_DevelopmentAppId_matches()
     {
-        var options = new GitHubWebhooksOptions { DevelopmentAppId = 12345 };
+        // R2-C3: signature now validates unconditionally (including for the
+        // dev-forward path). Provide a valid signature so the forward branch
+        // is reached.
+        var options = new GitHubWebhooksOptions { DevelopmentAppId = 12345, WebhookSecret = "secret" };
+        _signatureService
+            .VerifySignature(Arg.Any<string?>(), "secret", Arg.Any<string>())
+            .Returns(true);
         var devSocket = new FakeDevWebSocketService();
         var serviceProvider = new ServiceCollection()
             .AddSingleton<IDevWebSocketService>(devSocket)

@@ -15,15 +15,12 @@ public class PermissionServiceTests
 {
     private readonly IAccessControl _accessControl = Substitute.For<IAccessControl>();
 
-    [Fact]
-    public async Task EnsureAuthorizedAsync_is_a_no_op_when_IAccessControl_is_not_registered()
-    {
-        var service = new PermissionService(accessControl: null);
-
-        var act = async () => await service.EnsureAuthorizedAsync("Read", "Person");
-
-        await act.Should().NotThrowAsync();
-    }
+    // R2-H1: the previous "no-op when IAccessControl is not registered" branch
+    // was the silent fail-open path the audit closed. PermissionService now
+    // requires a non-null IAccessControl (deny-all is registered by default in
+    // AddSpark). The behavioural test for the new default lives in
+    // PermissionServiceDefaultsTests (Authorization/) which exercises the full
+    // DI shape.
 
     [Fact]
     public async Task EnsureAuthorizedAsync_returns_when_IAccessControl_allows()
@@ -60,13 +57,9 @@ public class PermissionServiceTests
         await _accessControl.Received(1).IsAllowedAsync("EditNewDelete/DemoApp.Person", Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task IsAllowedAsync_returns_true_when_IAccessControl_is_not_registered()
-    {
-        var service = new PermissionService(accessControl: null);
-
-        (await service.IsAllowedAsync("Read", "Person")).Should().BeTrue();
-    }
+    // R2-H1: IsAllowedAsync no longer has a "null IAccessControl → true" path —
+    // the field is non-nullable, deny-all is the registered default. See
+    // PermissionServiceDefaultsTests.
 
     [Fact]
     public async Task IsAllowedAsync_delegates_to_IAccessControl()

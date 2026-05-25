@@ -161,18 +161,21 @@ public class StreamExecuteQueryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Generic_exception_is_surfaced_as_an_error_message_with_the_exception_text()
+    public async Task Generic_exception_is_surfaced_as_a_generic_error_message()
     {
+        // R2-M1: ex.Message no longer flows over the WebSocket. Server logs the
+        // full exception detail and sends a generic message so RavenDB-internal
+        // strings, change vectors, etc. don't leak.
         var query = new SparkQuery { Id = Guid.NewGuid(), Name = "Crashy", Source = "Database.People", IsStreamingQuery = true };
         _queryLoader.ResolveQuery("crashy").Returns(query);
         _executor.ExecuteStreamingQueryAsync(query, Arg.Any<CancellationToken>())
-            .Returns(Throwing(new InvalidOperationException("boom")));
+            .Returns(Throwing(new InvalidOperationException("Raven/Index/People not found")));
 
         var socket = await ConnectAsync("/stream/crashy");
 
         var message = await ReceiveJsonAsync(socket);
         message.RootElement.GetProperty("type").GetString().Should().Be("error");
-        message.RootElement.GetProperty("message").GetString().Should().Be("boom");
+        message.RootElement.GetProperty("message").GetString().Should().Be("Stream failed");
 
         await ExpectCloseAsync(socket, WebSocketCloseStatus.InternalServerError);
     }

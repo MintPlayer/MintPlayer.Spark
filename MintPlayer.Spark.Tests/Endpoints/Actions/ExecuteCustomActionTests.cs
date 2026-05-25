@@ -203,11 +203,14 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
-    public async Task Generic_exception_thrown_by_action_returns_500_with_the_message_as_error()
+    public async Task Generic_exception_thrown_by_action_returns_500_with_generic_error_message()
     {
+        // R2-M1: ex.Message used to flow to the response body. RavenDB-internal
+        // strings, index names, etc. leaked. Server logs full detail; client
+        // sees "Operation failed".
         var action = Substitute.For<ICustomAction>();
         action.When(a => a.ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>()))
-            .Do(_ => throw new InvalidOperationException("Boom"));
+            .Do(_ => throw new InvalidOperationException("Raven/Index/Cars/ByCreatedBy not found"));
 
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _actionResolver.Resolve("Archive").Returns(action);
@@ -220,8 +223,11 @@ public class ExecuteCustomActionTests
 
         context.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
         using var doc = JsonDocument.Parse(body);
-        // Envelope shape: { result: { error: "..." }, operations: [] }
-        doc.RootElement.GetProperty("result").GetProperty("error").GetString().Should().Be("Boom");
+        var error = doc.RootElement.GetProperty("result").GetProperty("error").GetString();
+        error.Should().Be("Operation failed",
+            "R2-M1: server-side ex.Message must not flow to the public response body");
+        body.Should().NotContain("Raven",
+            "Raven-internal strings must not leak to the client");
     }
 
     [Fact]

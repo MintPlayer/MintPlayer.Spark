@@ -6,6 +6,7 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
+using NSubstitute;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Messaging;
@@ -126,6 +127,29 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     {
         var services = new ServiceCollection();
         services.AddSingleton<IRecipient<TMessage>>(instance);
+        // R2-H6: the worker now requires IMessageTypeAllowList to gate Type.GetType.
+        // The allow-list reads its set from registered IRecipient<T> services via
+        // IServiceCollectionAccessor, so wire both with the same ServiceCollection.
+        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        return services.BuildServiceProvider();
+    }
+
+    private static IServiceProvider EmptyProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        return services.BuildServiceProvider();
+    }
+
+    private static IServiceProvider ProviderForMulti<TMessage>(params IRecipient<TMessage>[] recipients)
+    {
+        var services = new ServiceCollection();
+        foreach (var r in recipients)
+            services.AddSingleton(r);
+        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
         return services.BuildServiceProvider();
     }
 
@@ -160,8 +184,30 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     [Fact]
     public async Task Message_without_recipients_rollups_to_Completed_with_empty_Handlers()
     {
-        // No IRecipient<SuccessMessage> registered — worker should still pick the message up and complete it.
-        var sp = new ServiceCollection().BuildServiceProvider();
+        // No IRecipient<SuccessMessage> registered. R2-H6: the allow-list is
+        // computed from registered IRecipient<T>s and SuccessMessage isn't on
+        // it, so the message dead-letters before Type.GetType. We register
+        // SuccessMessage's recipient interface as a no-op stub so the allow-list
+        // accepts the type — keeping this test's existing "no recipients in the
+        // resolved scope → empty Handlers + Completed" contract.
+        var stubRecipient = Substitute.For<IRecipient<SuccessMessage>>();
+        var services = new ServiceCollection();
+        // NOT registering as a service so resolution returns empty — but we DO
+        // need the allow-list to include the type. Use the message-type-only
+        // wiring trick: add the type via a typed Func<,> sentinel that's never resolved.
+        // Simpler: register and remove. Actually the cleanest path is to register
+        // the recipient interface but not give the worker a way to resolve actual
+        // instances — that's what GetServices returns on the existing path.
+        // For test stability, just have the empty-handlers case re-route through
+        // a transient stub that returns empty enumeration.
+        services.AddSingleton<IServiceCollectionAccessor>(_ =>
+        {
+            var inner = new ServiceCollection();
+            inner.AddSingleton<IRecipient<SuccessMessage>>(stubRecipient);
+            return new ServiceCollectionAccessor(inner);
+        });
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        var sp = services.BuildServiceProvider();
 
         var id = await SeedAsync(new SuccessMessage("orders/empty"));
         var worker = NewWorker(typeof(SuccessMessage).FullName!, sp);
@@ -267,7 +313,10 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     [Fact]
     public async Task Unresolvable_MessageType_is_DeadLettered_without_invoking_handlers()
     {
-        var sp = new ServiceCollection().BuildServiceProvider();
+        // Empty allow-list: no IRecipient registrations → R2-H6 dead-letters
+        // the message before Type.GetType. Same observable outcome as the
+        // original test (Type.GetType returning null), via the new gate.
+        var sp = EmptyProvider();
 
         // Manually insert a SparkMessage whose MessageType cannot be resolved by Type.GetType
         var queueName = "ghost-queue";
@@ -307,10 +356,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     {
         var a = new MultiA();
         var b = new MultiB();
-        var services = new ServiceCollection();
-        services.AddSingleton<IRecipient<MultiHandlerMessage>>(a);
-        services.AddSingleton<IRecipient<MultiHandlerMessage>>(b);
-        var sp = services.BuildServiceProvider();
+        var sp = ProviderForMulti<MultiHandlerMessage>(a, b);
 
         var id = await SeedAsync(new MultiHandlerMessage("orders/mixed"));
         var worker = NewWorker(typeof(MultiHandlerMessage).FullName!, sp);
