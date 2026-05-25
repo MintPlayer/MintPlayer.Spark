@@ -91,9 +91,14 @@ public static class SparkBuilderExtensions
                 githubClient.Credentials = new Octokit.Credentials(handshake.GithubToken);
                 var githubUser = await githubClient.User.Current();
 
-                // Check against allowed users list (if configured)
+                // R2-H12: empty AllowedDevUsers fails closed — every webhook
+                // delivered to this app's DevelopmentAppId carries private-repo
+                // data, so accepting "any authenticated GitHub user" by default
+                // (the prior behavior) leaked all of it to throwaway accounts.
+                // Operators MUST configure AllowedDevUsers explicitly to enable
+                // the dev tunnel.
                 var opts = context.RequestServices.GetRequiredService<IOptions<GitHubWebhooksOptions>>().Value;
-                if (opts.AllowedDevUsers.Count > 0 && !opts.AllowedDevUsers.Contains(githubUser.Login))
+                if (opts.AllowedDevUsers.Count == 0 || !opts.AllowedDevUsers.Contains(githubUser.Login))
                 {
                     await ws.CloseAsync(WebSocketCloseStatus.InternalServerError, "Unauthorized", CancellationToken.None);
                     return;

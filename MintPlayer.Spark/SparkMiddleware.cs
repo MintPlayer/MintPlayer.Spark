@@ -201,6 +201,29 @@ public static class SparkExtensions
         // non-form mutating requests that pass Spark's validation above, it's a no-op.
         app.UseAntiforgery();
 
+        // R2-H5: enforce same-origin on WebSocket upgrades. ASP.NET Core's default
+        // is no origin check at all, which means an attacker page can open a WS to
+        // /spark/queries/{id}/stream and ride the victim's ambient cookies (CSWSH).
+        // We accept requests with no Origin header (non-browser clients) and
+        // requests whose Origin host matches the request's Host. Cross-origin WS
+        // remains an explicit opt-in via SparkWebSocketAllowedOrigins (config or
+        // builder ext) once that surface materializes — for now, fail-closed.
+        app.Use(async (context, next) =>
+        {
+            if (context.WebSockets.IsWebSocketRequest)
+            {
+                var origin = context.Request.Headers.Origin.ToString();
+                if (!string.IsNullOrEmpty(origin) &&
+                    Uri.TryCreate(origin, UriKind.Absolute, out var originUri) &&
+                    !string.Equals(originUri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+            }
+            await next(context);
+        });
+
         app.UseWebSockets();
 
         // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient

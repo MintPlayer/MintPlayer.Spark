@@ -7,7 +7,15 @@ public static class SocketExtensions
 {
     const int bufferSize = 512;
 
-    public static async Task<string> ReadMessage(this WebSocket ws)
+    /// <summary>
+    /// Default maximum bytes <see cref="ReadMessage(WebSocket, int)"/> will buffer
+    /// before closing the socket with <see cref="WebSocketCloseStatus.MessageTooBig"/>.
+    /// 1 MiB is sized for handshake/control payloads; callers expecting larger frames
+    /// pass an explicit limit.
+    /// </summary>
+    public const int DefaultMaxMessageBytes = 1 * 1024 * 1024;
+
+    public static async Task<string> ReadMessage(this WebSocket ws, int maxBytes = DefaultMaxMessageBytes)
     {
         var buffer = new ArraySegment<byte>(new byte[bufferSize]);
         using var ms = new MemoryStream();
@@ -16,6 +24,22 @@ public static class SocketExtensions
         do
         {
             result = await ws.ReceiveAsync(buffer, CancellationToken.None);
+            // R2-H13: an unauthenticated WebSocket caller used to be able to stream
+            // an unbounded message that the server would buffer in memory in full
+            // before deciding whether to act on it — a handful of parallel
+            // connections OOMs the process. We now refuse anything past maxBytes,
+            // closing the socket cleanly so the caller knows the reason.
+            if (ms.Length + result.Count > maxBytes)
+            {
+                try
+                {
+                    await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig,
+                        $"Message exceeded {maxBytes} bytes", CancellationToken.None);
+                }
+                catch { /* socket may already be closing */ }
+                throw new WebSocketException(WebSocketError.NotAWebSocket,
+                    $"Inbound message exceeded {maxBytes} bytes");
+            }
             ms.Write(buffer.Array ?? Array.Empty<byte>(), buffer.Offset, result.Count);
         }
         while (!result.EndOfMessage);
