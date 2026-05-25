@@ -438,12 +438,16 @@ internal partial class EntityMapper : IEntityMapper
         IAsyncDocumentSession? session = null, CancellationToken cancellationToken = default)
     {
         var entityType = entity.GetType();
+        var schemaAttributes = GetSchemaAttributeMap(entityType);
 
         TryWriteId(entityType, entity, po.Id);
 
         foreach (var attribute in po.Attributes)
         {
             if (attribute.Name.Contains('.'))
+                continue;
+
+            if (!IsWritableBySchema(attribute, schemaAttributes))
                 continue;
 
             var property = entityType.GetCachedProperty(attribute.Name);
@@ -458,12 +462,16 @@ internal partial class EntityMapper : IEntityMapper
         Dictionary<string, object>? includedDocuments = null)
     {
         var entityType = entity.GetType();
+        var schemaAttributes = GetSchemaAttributeMap(entityType);
 
         TryWriteId(entityType, entity, po.Id);
 
         foreach (var attribute in po.Attributes)
         {
             if (attribute.Name.Contains('.'))
+                continue;
+
+            if (!IsWritableBySchema(attribute, schemaAttributes))
                 continue;
 
             var property = entityType.GetCachedProperty(attribute.Name);
@@ -476,6 +484,44 @@ internal partial class EntityMapper : IEntityMapper
             WritePropertyAsync(property, entity, attribute, session: null, includedDocuments, CancellationToken.None)
                 .GetAwaiter().GetResult();
         }
+    }
+
+    /// <summary>
+    /// R2-H8 schema-side write gate. The client-supplied attribute carries its
+    /// own IsReadOnly / IsVisible flags, but those are advisory — the source of
+    /// truth is the entity's schema definition. We look up the schema for the
+    /// entity's CLR type and refuse any write to an attribute the schema marks
+    /// as IsReadOnly=true or IsVisible=false. Attributes whose name has no
+    /// schema entry are also refused (defense-in-depth against client-introduced
+    /// fields that happen to match a CLR property name not declared on the
+    /// model).
+    /// <para>
+    /// When the entity type has no schema registration at all (e.g. ad-hoc
+    /// internal mapping), the map is empty and every attribute is allowed —
+    /// callers in that path have already bypassed the framework's contract.
+    /// </para>
+    /// </summary>
+    private Dictionary<string, EntityAttributeDefinition>? GetSchemaAttributeMap(Type entityType)
+    {
+        var clrTypeName = entityType.FullName ?? entityType.Name;
+        var entityTypeDef = modelLoader.GetEntityTypeByClrType(clrTypeName);
+        if (entityTypeDef?.Attributes is null)
+            return null;
+        var map = new Dictionary<string, EntityAttributeDefinition>(StringComparer.Ordinal);
+        foreach (var def in entityTypeDef.Attributes)
+            map[def.Name] = def;
+        return map;
+    }
+
+    private static bool IsWritableBySchema(PersistentObjectAttribute attribute,
+        Dictionary<string, EntityAttributeDefinition>? schemaAttributes)
+    {
+        if (schemaAttributes is null) return true;
+        if (!schemaAttributes.TryGetValue(attribute.Name, out var def))
+            return false;
+        if (def.IsReadOnly) return false;
+        if (!def.IsVisible) return false;
+        return true;
     }
 
     private void TryWriteId(Type entityType, object entity, string? id)
