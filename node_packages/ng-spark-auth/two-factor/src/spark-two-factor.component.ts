@@ -6,7 +6,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
 
@@ -60,8 +60,14 @@ export class SparkTwoFactorComponent {
 
     try {
       await this.authService.loginTwoFactor(twoFactorCode ?? '', twoFactorRecoveryCode);
-      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-      this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
+      // R2-H9: same sanitization as login. The 2FA component receives returnUrl
+      // forwarded from the login step but must still validate — query params
+      // travel through router state and a deep-link to /two-factor?returnUrl=…
+      // is a viable attacker vector.
+      const returnUrl = sanitizeReturnUrl(
+        this.route.snapshot.queryParamMap.get('returnUrl'),
+        this.config.defaultRedirectUrl);
+      this.router.navigateByUrl(returnUrl);
     } catch {
       this.errorMessage.set(this.translation.t('auth.invalidCode'));
     } finally {

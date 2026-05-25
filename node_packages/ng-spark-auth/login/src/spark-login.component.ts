@@ -8,7 +8,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsToggleButtonComponent } from '@mintplayer/ng-bootstrap/toggle-button';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
 
@@ -48,13 +48,22 @@ export class SparkLoginComponent {
 
     try {
       await this.authService.login(email!, password!);
-      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-      this.router.navigateByUrl(returnUrl || this.config.defaultRedirectUrl);
+      // R2-H9: validate returnUrl against the local-path rule. navigateByUrl
+      // accepts some external shapes (protocol-relative '//attacker'); reject
+      // and fall back to the default to close the open-redirect.
+      const returnUrl = sanitizeReturnUrl(
+        this.route.snapshot.queryParamMap.get('returnUrl'),
+        this.config.defaultRedirectUrl);
+      this.router.navigateByUrl(returnUrl);
     } catch (err: any) {
       if (err instanceof HttpErrorResponse && err.status === 401 && err.error?.detail === 'RequiresTwoFactor') {
-        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+        // Forward the same sanitized returnUrl to the 2FA step so the user
+        // lands on the intended in-app page after completing the challenge.
+        const returnUrl = sanitizeReturnUrl(
+          this.route.snapshot.queryParamMap.get('returnUrl'),
+          this.config.defaultRedirectUrl);
         this.router.navigate([this.routePaths.twoFactor], {
-          queryParams: returnUrl ? { returnUrl } : undefined,
+          queryParams: { returnUrl },
         });
       } else {
         this.errorMessage.set(this.translation.t('auth.invalidCredentials'));
