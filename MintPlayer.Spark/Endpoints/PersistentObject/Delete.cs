@@ -64,6 +64,12 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
         {
             return ClientResult.Retry(clientAccessor, ex);
         }
+        catch (SparkRowLevelAccessDeniedException)
+        {
+            // R2-H2: row-level Delete denial returns 404 (M-3 uniformity).
+            return ClientResult.Envelope(clientAccessor,
+                new { error = $"Object with ID {id} not found" }, 404);
+        }
         catch (SparkAccessDeniedException)
         {
             var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;

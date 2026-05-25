@@ -78,6 +78,14 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
         {
             return ClientResult.Retry(clientAccessor, ex);
         }
+        catch (SparkRowLevelAccessDeniedException)
+        {
+            // R2-H2: row-level denial returns 404 to match the read path —
+            // M-3 says authorized-but-forbidden must be indistinguishable from
+            // not-found for instance-level checks.
+            return ClientResult.Envelope(clientAccessor,
+                new { error = $"Object with ID {id} not found" }, 404);
+        }
         catch (SparkAccessDeniedException)
         {
             var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;

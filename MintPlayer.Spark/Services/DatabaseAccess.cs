@@ -198,22 +198,31 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
-        // Optimistic-concurrency check: if the caller sent an Etag on an existing entity,
-        // verify it matches the current server-side change vector before the actions
-        // pipeline runs. A mismatch means the entity has been updated since the caller
-        // read it — reject instead of silently overwriting. We deliberately open a SIDE
-        // session via documentStore here (instead of using the request-scoped session):
-        // loading the existing entity for comparison would otherwise pollute change tracking
-        // on the main session, conflicting with the actions pipeline's StoreAsync below.
-        if (!string.IsNullOrEmpty(persistentObject.Id) && !string.IsNullOrEmpty(persistentObject.Etag))
+        // Row-level Edit gate (R2-H2): for an update against an existing entity, the
+        // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller
+        // can edit THIS instance. Round 1's H-2 fix only covered the Read/Query paths;
+        // writes silently inherited "if you can read it, you can overwrite it" — Alice
+        // could overwrite Bob's records if she could read them. We load the existing
+        // entity through a side session (same session as the etag check) so the row
+        // gate sees the pre-update state. New entities (Id == null) skip the gate —
+        // there's no instance yet to filter on; the entity-type-level "New" check
+        // above is sufficient.
+        if (!string.IsNullOrEmpty(persistentObject.Id))
         {
             using var checkSession = documentStore.OpenAsyncSession();
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
             if (existing is not null)
             {
-                var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
-                if (!string.Equals(currentEtag, persistentObject.Etag, StringComparison.Ordinal))
-                    throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
+                // Concurrency check folds into the same side session — see R2-M7 / M-7.
+                if (!string.IsNullOrEmpty(persistentObject.Etag))
+                {
+                    var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
+                    if (!string.Equals(currentEtag, persistentObject.Etag, StringComparison.Ordinal))
+                        throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
+                }
+
+                if (!await IsAllowedEntityViaActionsAsync(entityType, "Edit", existing))
+                    throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
             }
         }
 
@@ -250,6 +259,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var clrType = entityTypeDefinition.ClrType;
         var entityType = ResolveType(clrType);
         if (entityType == null) return;
+
+        // Row-level Delete gate (R2-H2): same shape as the Edit gate in
+        // SavePersistentObjectAsync — load the entity in a side session and ask
+        // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
+        var existing = await LoadEntityAsync(session, entityType, id);
+        if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+        if (!await IsAllowedEntityViaActionsAsync(entityType, "Delete", existing))
+            throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
 
         // Delete locally first (includes before hook)
         await DeleteEntityViaActionsAsync(session, entityType, id);
