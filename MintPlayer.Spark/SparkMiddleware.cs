@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
@@ -47,6 +48,16 @@ public static class SparkExtensions
 
         // Register the Spark services
         services.AddSparkServices();
+
+        // Default IAccessControl is fail-closed (deny everything). Apps opt into a
+        // real authorization model via spark.AddAuthorization() (from the Spark
+        // Authorization package) or into "no authorization" mode via
+        // spark.AllowAnonymousAccess(). Either opt-in registers an IAccessControl
+        // *after* this one, and DI resolves the last registration, so the deny-all
+        // default only applies when neither opt-in was called. Per R2-H1: this
+        // closes the silent fail-open path where AddSpark without AddAuthorization
+        // accepted every request.
+        services.AddScoped<IAccessControl, DenyAllAccessControl>();
 
         services.AddSingleton<IDocumentStore>(sp =>
         {

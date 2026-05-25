@@ -10,7 +10,9 @@ public interface IPermissionService
     /// <summary>
     /// Throws <see cref="SparkAccessDeniedException"/> if the current user
     /// does not have permission for the given action on the entity type.
-    /// No-op when authorization is not configured.
+    /// Apps without a registered access-control policy (neither
+    /// <c>spark.AddAuthorization()</c> nor <c>spark.AllowAnonymousAccess()</c>)
+    /// inherit a deny-all default and every call throws.
     /// </summary>
     /// <param name="action">The action (e.g., "Read", "Query", "New", "Edit", "Delete", "Execute")</param>
     /// <param name="target">The target (e.g., entity CLR type name or query name)</param>
@@ -19,7 +21,7 @@ public interface IPermissionService
 
     /// <summary>
     /// Checks if the current user has permission for the given action on the entity type.
-    /// Returns true when authorization is not configured.
+    /// Returns false when authorization is not configured (deny-all default).
     /// </summary>
     /// <param name="action">The action (e.g., "Read", "Query", "New", "Edit", "Delete", "Execute")</param>
     /// <param name="target">The target (e.g., entity CLR type name or query name)</param>
