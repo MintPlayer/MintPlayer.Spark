@@ -43,7 +43,7 @@ public class SparkClient : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public SparkClient(string baseUrl)
-        : this(new HttpClient { BaseAddress = new Uri(baseUrl) }, ownsClient: true)
+        : this(BuildDefaultHttpClient(new Uri(baseUrl)), ownsClient: true)
     {
     }
 
@@ -52,6 +52,29 @@ public class SparkClient : IDisposable
         ArgumentNullException.ThrowIfNull(httpClient);
         _httpClient = httpClient;
         _ownsClient = ownsClient;
+    }
+
+    /// <summary>
+    /// Builds the HttpClient used by the convenience ctor:
+    /// - R2-M13: AllowAutoRedirect=false on the underlying handler so manually-
+    ///   attached Cookie / X-XSRF-TOKEN headers can't be replayed cross-origin
+    ///   by a redirecting server.
+    /// - R2-M14: MaxResponseContentBufferSize and Timeout defaults so a hostile
+    ///   or compromised backend can't slow-drip multi-GB responses or hold
+    ///   threads indefinitely.
+    /// Callers who want different shapes can use the (HttpClient, ownsClient)
+    /// ctor directly.
+    /// </summary>
+    private static HttpClient BuildDefaultHttpClient(Uri baseAddress)
+    {
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        var client = new HttpClient(handler, disposeHandler: true)
+        {
+            BaseAddress = baseAddress,
+            Timeout = TimeSpan.FromSeconds(30),
+            MaxResponseContentBufferSize = 32 * 1024 * 1024, // 32 MiB
+        };
+        return client;
     }
 
     // --------------------------------------------------------------------------------
@@ -92,6 +115,18 @@ public class SparkClient : IDisposable
             request.Content = content;
 
         var response = await _httpClient.SendAsync(request, cancellationToken);
+        // R2-M13 defense in depth: even if a caller built the client with
+        // AllowAutoRedirect=true, refuse to absorb cookies from a cross-origin
+        // redirect response. The Cookie + X-XSRF-TOKEN headers we manually
+        // attach above are NOT stripped by HttpClient on redirect (unlike
+        // Authorization since .NET 5), so allowing redirects to a foreign host
+        // leaks the session.
+        if (response.RequestMessage?.RequestUri is { } finalUri
+            && _httpClient.BaseAddress is { } baseUri
+            && !string.Equals(finalUri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return response;
+        }
         UpdateCookiesFromResponse(response);
         return response;
     }
@@ -451,8 +486,23 @@ public class SparkClient : IDisposable
     private void UpdateCookiesFromResponse(HttpResponseMessage response)
     {
         if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies)) return;
+        // R2-L5: reject Set-Cookie entries whose Domain attribute targets a host
+        // other than BaseAddress. The previous parser stripped attributes
+        // entirely, so a misconfigured or hostile server could pin a cookie
+        // value for any domain in our jar. Validate before applying.
+        var baseHost = _httpClient.BaseAddress?.Host;
         foreach (var raw in setCookies)
         {
+            // Reject cookies that scope themselves to a different domain than the
+            // configured base address. Most production responses omit Domain (so
+            // the cookie defaults to the host it came from), which is fine.
+            if (baseHost is not null && TryGetDomainAttribute(raw, out var domain)
+                && !string.Equals(domain, baseHost, StringComparison.OrdinalIgnoreCase)
+                && !baseHost.EndsWith("." + domain.TrimStart('.'), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             var nameValue = raw.Split(';', 2)[0];
             var eq = nameValue.IndexOf('=');
             if (eq < 0) continue;
@@ -470,6 +520,22 @@ public class SparkClient : IDisposable
                 if (name == "XSRF-TOKEN") _xsrfToken = Uri.UnescapeDataString(value);
             }
         }
+    }
+
+    private static bool TryGetDomainAttribute(string setCookie, out string domain)
+    {
+        domain = string.Empty;
+        var parts = setCookie.Split(';');
+        for (int i = 1; i < parts.Length; i++)
+        {
+            var part = parts[i].Trim();
+            if (part.StartsWith("Domain=", StringComparison.OrdinalIgnoreCase))
+            {
+                domain = part["Domain=".Length..].Trim().TrimStart('.');
+                return !string.IsNullOrEmpty(domain);
+            }
+        }
+        return false;
     }
 
     public void Dispose()

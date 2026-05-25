@@ -10,6 +10,17 @@ import { SPARK_CLIENT_OPERATION_HANDLERS, type ClientOperationHandler } from './
  *
  * Last-registered-wins on duplicate `type` values, matching standard
  * Angular multi-provider override semantics.
+ *
+ * R2-H19 — security contract for handler authors:
+ *   The dispatcher treats handler resolution as allow-list-by-type (unknown
+ *   types drop). It does NOT validate the *content* of each operation. Handlers
+ *   that act on URL-shaped fields (navigate, redirect, openWindow) MUST run
+ *   the value through `sanitizeReturnUrl` from `@mintplayer/ng-spark-auth/models`
+ *   (or an equivalent same-origin check) before acting on it. Otherwise a
+ *   single attribute-echo XSS or a single mid-channel byte flip on a non-TLS
+ *   path lets the server drive client navigation to an attacker host. The
+ *   built-in `notify` handler renders via Angular interpolation (escaped) so
+ *   it's safe to pass through, but anything more powerful must validate.
  */
 @Injectable({ providedIn: 'root' })
 export class SparkClientOperationDispatcher {
