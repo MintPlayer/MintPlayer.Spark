@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
@@ -11,6 +12,7 @@ internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGrou
 
     [Inject] private readonly ILoggerFactory loggerFactory;
     [Inject] private readonly ISyncActionHandler? syncActionHandler;
+    [Inject] private readonly IModuleCertificateValidator certificateValidator;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -30,6 +32,21 @@ internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGrou
         if (request == null || request.Actions == null || request.Actions.Count == 0)
         {
             return Results.BadRequest(new { error = "Request must contain at least one sync action" });
+        }
+
+        // R2-C2: mTLS gate. /spark/sync/apply lets the caller mutate or delete
+        // any document in any collection — must require an authenticated module.
+        var certValidation = await certificateValidator.ValidateAsync(httpContext, request.RequestingModule ?? string.Empty, httpContext.RequestAborted);
+        switch (certValidation)
+        {
+            case ModuleCertificateValidation.MissingCertificate:
+                return Results.Json(new { error = "Client certificate required" }, statusCode: 401);
+            case ModuleCertificateValidation.ThumbprintMismatch:
+            case ModuleCertificateValidation.UnknownModule:
+                logger.LogWarning(
+                    "Sync apply refused: certificate validation failed for module '{Module}' ({Reason})",
+                    request.RequestingModule, certValidation);
+                return Results.Json(new { error = "Forbidden" }, statusCode: 403);
         }
 
         if (syncActionHandler == null)

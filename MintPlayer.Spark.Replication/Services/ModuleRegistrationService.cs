@@ -56,16 +56,41 @@ internal partial class ModuleRegistrationService
         }
 
         var documentId = $"moduleInformations/{Options.ModuleName}";
+        var thumbprint = Options.ClientCertificate.Thumbprint;
 
         using var session = modulesStore.OpenAsyncSession();
         var existing = await session.LoadAsync<ModuleInformation>(documentId, cancellationToken);
 
         if (existing != null)
         {
+            // R2-H7: refuse to overwrite a pinned thumbprint with a different one.
+            // If a previous registration pinned this module to cert X and a new
+            // process comes up with cert Y, that's either a key rotation (must be
+            // performed via an operator-driven path, not silent overwrite) or an
+            // attacker spinning up a malicious "HR" module to redirect ETL/sync
+            // deliveries. Either way: refuse the overwrite and surface the error.
+            if (!string.IsNullOrEmpty(existing.ClientCertificateThumbprint)
+                && !string.IsNullOrEmpty(thumbprint)
+                && !string.Equals(existing.ClientCertificateThumbprint, thumbprint, StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogError(
+                    "Refusing to overwrite module registration '{Module}': pinned thumbprint differs from configured thumbprint. " +
+                    "If this is an intentional cert rotation, delete moduleInformations/{Module} in SparkModules first.",
+                    Options.ModuleName, Options.ModuleName);
+                throw new InvalidOperationException(
+                    $"Module '{Options.ModuleName}' is already registered with a different client-certificate thumbprint. " +
+                    "Rotate via an operator-driven delete-then-register flow, not silent overwrite.");
+            }
+
             existing.AppUrl = Options.ModuleUrl;
             existing.DatabaseName = appDocumentStore.Database;
             existing.DatabaseUrls = appDocumentStore.Urls;
             existing.RegisteredAtUtc = DateTime.UtcNow;
+            // Pin the thumbprint if the existing entry didn't have one (legacy
+            // upgrade path). After this first save, subsequent re-registrations
+            // hit the mismatch check above.
+            if (string.IsNullOrEmpty(existing.ClientCertificateThumbprint) && !string.IsNullOrEmpty(thumbprint))
+                existing.ClientCertificateThumbprint = thumbprint;
         }
         else
         {
@@ -77,12 +102,13 @@ internal partial class ModuleRegistrationService
                 DatabaseName = appDocumentStore.Database,
                 DatabaseUrls = appDocumentStore.Urls,
                 RegisteredAtUtc = DateTime.UtcNow,
+                ClientCertificateThumbprint = thumbprint,
             };
             await session.StoreAsync(moduleInfo, documentId, cancellationToken);
         }
 
         await session.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Registered module '{ModuleName}' in SparkModules database (URL: {ModuleUrl}, DB: {Database})",
-            Options.ModuleName, Options.ModuleUrl, appDocumentStore.Database);
+        logger.LogInformation("Registered module '{ModuleName}' in SparkModules database (URL: {ModuleUrl}, DB: {Database}, thumbprint pinned: {HasThumbprint})",
+            Options.ModuleName, Options.ModuleUrl, appDocumentStore.Database, !string.IsNullOrEmpty(thumbprint));
     }
 }

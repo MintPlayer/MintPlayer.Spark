@@ -28,14 +28,43 @@ internal static class SparkReplicationExtensions
         services.AddSingleton<EtlScriptCollector>();
         services.AddSingleton<EtlTaskManager>();
         services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
-        services.AddHttpClient("spark-etl");
+
+        // R2-C1/C2: outbound replication HttpClients attach this module's client
+        // certificate so the peer module can verify mTLS. Configured here once,
+        // reused by both spark-etl (ETL deploys) and spark-sync (sync apply).
+        // Operators set the cert via SparkReplicationOptions.ClientCertificate.
+        services.AddHttpClient("spark-etl").ConfigurePrimaryHttpMessageHandler(ConfigureClientCertHandler);
+        services.AddHttpClient("spark-sync").ConfigurePrimaryHttpMessageHandler(ConfigureClientCertHandler);
 
         // Sync action services
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
         services.AddHostedService<SyncActionSubscriptionWorker>();
-        services.AddHttpClient("spark-sync");
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="HttpClientHandler"/> that attaches the local module's
+    /// client certificate (PFX/PEM at <c>SparkReplicationOptions.ClientCertificate.
+    /// CertificateFile</c>) so outbound replication calls present it for mTLS.
+    /// When no cert file is configured, returns a vanilla handler — useful in
+    /// dev/test where the receiving endpoint has
+    /// <c>RequireClientCertificate=false</c>.
+    /// </summary>
+    private static System.Net.Http.HttpMessageHandler ConfigureClientCertHandler(IServiceProvider sp)
+    {
+        var options = sp.GetRequiredService<IOptions<SparkReplicationOptions>>().Value.ClientCertificate;
+        var handler = new System.Net.Http.HttpClientHandler();
+        if (!string.IsNullOrEmpty(options.CertificateFile))
+        {
+            // Loading the cert in the factory runs once per HttpClient resolution
+            // (HttpClientFactory caches the handler for ~2 minutes by default).
+            var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(
+                options.CertificateFile, options.CertificatePassword);
+            handler.ClientCertificates.Add(cert);
+            handler.ClientCertificateOptions = System.Net.Http.ClientCertificateOption.Manual;
+        }
+        return handler;
     }
 
     /// <summary>
