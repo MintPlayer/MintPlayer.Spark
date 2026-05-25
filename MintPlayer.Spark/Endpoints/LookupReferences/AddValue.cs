@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
@@ -15,6 +16,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf
     }
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -22,6 +24,11 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf
 
         try
         {
+            // R2-H4: gate mutations behind Edit/LookupReferences. Round 1's route
+            // inventory marked these "Yes*" but no permission check existed in code
+            // or service. Apps grant this in security.json to admin tiers only.
+            await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
+
             var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
 
             if (value == null)
@@ -31,6 +38,13 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf
 
             var result = await lookupReferenceService.AddValueAsync(name, value);
             return Results.Json(result, statusCode: 201);
+        }
+        catch (SparkAccessDeniedException)
+        {
+            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
+            return Results.Json(
+                new { error = isAuthed ? "Access denied" : "Authentication required" },
+                statusCode: isAuthed ? 403 : 401);
         }
         catch (InvalidOperationException ex)
         {

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
@@ -15,6 +16,7 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint, IMember
     }
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -23,6 +25,8 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint, IMember
 
         try
         {
+            await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences"); // R2-H4
+
             var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
 
             if (value == null)
@@ -32,6 +36,13 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint, IMember
 
             var result = await lookupReferenceService.UpdateValueAsync(name, key, value);
             return Results.Json(result);
+        }
+        catch (SparkAccessDeniedException)
+        {
+            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
+            return Results.Json(
+                new { error = isAuthed ? "Access denied" : "Authentication required" },
+                statusCode: isAuthed ? 403 : 401);
         }
         catch (InvalidOperationException ex)
         {
