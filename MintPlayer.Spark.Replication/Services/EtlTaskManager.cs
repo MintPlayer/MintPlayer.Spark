@@ -88,9 +88,12 @@ internal partial class EtlTaskManager
         }
         catch (Exception ex)
         {
+            // R2-L6: log full exception server-side; surface a generic message
+            // to the caller. RavenDB maintenance exceptions often contain
+            // connection-string detail useful for recon.
             logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", request.RequestingModule);
             result.Success = false;
-            result.Error = ex.Message;
+            result.Error = "ETL_DEPLOY_FAILED";
         }
 
         return Task.FromResult(result);

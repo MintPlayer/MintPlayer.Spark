@@ -45,6 +45,19 @@ internal partial class WebSocketDevClientService : BackgroundService
         ws.Options.AddSubProtocol("wss");
 
         var baseUri = new Uri(_options.Value.ProductionWebSocketUrl);
+
+        // R2-L7: refuse to send a GitHub PAT over plain ws:// to a non-loopback
+        // host. Operators who set ProductionWebSocketUrl to a misconfigured
+        // ws://example.test would otherwise leak the token in cleartext on the
+        // first frame.
+        if (string.Equals(baseUri.Scheme, "ws", StringComparison.OrdinalIgnoreCase)
+            && !baseUri.IsLoopback)
+        {
+            throw new InvalidOperationException(
+                $"DevTunnel ProductionWebSocketUrl '{baseUri}' uses plain ws:// to a non-loopback host. " +
+                "The handshake carries the GitHub PAT — refuse to send it in cleartext. Use wss:// or ws://localhost.");
+        }
+
         _logger.LogInformation("Connecting to production WebSocket: {Url}", baseUri);
 
         await ws.ConnectAsync(baseUri, stoppingToken);

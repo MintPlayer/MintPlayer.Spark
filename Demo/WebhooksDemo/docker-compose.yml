@@ -4,7 +4,12 @@ services:
     image: docker.io/ravendb/ravendb:7.1-latest
     environment:
       - RAVEN_Setup_Mode=None
-      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
+      # R2-L1: PrivateNetwork limits unauth access to RFC1918 / loopback / Docker
+      # bridge networks. The spark-internal network below isolates Raven from
+      # the public 'web' Traefik network; if a future ingress rule routes
+      # spark-raven:8080 by mistake, PrivateNetwork still keeps the admin API
+      # off the public internet.
+      - RAVEN_Security_UnsecuredAccessAllowed=PrivateNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
     volumes:
       # ravendb:7.1-latest sets RAVEN_DataDir=/var/lib/ravendb/data; mounting the
@@ -12,7 +17,7 @@ services:
       # container recreate.
       - raven-data:/var/lib/ravendb/data
     networks:
-      - web
+      - spark-internal
     restart: unless-stopped
 
   spark-app:
@@ -37,6 +42,7 @@ services:
       - "traefik.http.routers.spark-webhooks.tls.certresolver=letsencrypt"
     networks:
       - web
+      - spark-internal
     restart: unless-stopped
 
 volumes:
@@ -45,3 +51,7 @@ volumes:
 networks:
   web:
     external: true
+  # R2-L1: dedicated internal network for app↔Raven traffic. Raven sits on
+  # this network only; the public Traefik network never reaches port 8080.
+  spark-internal:
+    driver: bridge

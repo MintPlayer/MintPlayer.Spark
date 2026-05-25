@@ -45,6 +45,27 @@ internal partial class LookupReferenceService : ILookupReferenceService
     [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;
     [Inject] private readonly IDocumentStore documentStore;
 
+    /// <summary>
+    /// R2-L8: refuse LookupReference names that aren't standard identifiers.
+    /// The name flows into <c>LookupReferences/{name}</c> document IDs; a value
+    /// like <c>Foo/../Bar</c> doesn't filesystem-resolve in Raven but produces
+    /// unpredictable key collisions. Reject anything outside
+    /// <c>[A-Za-z][A-Za-z0-9_-]*</c> before composing the document ID.
+    /// </summary>
+    private static void ValidateName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            throw new InvalidOperationException("LookupReference name is required.");
+        if (!char.IsLetter(name[0]))
+            throw new InvalidOperationException($"LookupReference name '{name}' must start with a letter.");
+        for (int i = 1; i < name.Length; i++)
+        {
+            var c = name[i];
+            if (!(char.IsLetterOrDigit(c) || c == '_' || c == '-'))
+                throw new InvalidOperationException($"LookupReference name '{name}' contains invalid characters; allowed: [A-Za-z][A-Za-z0-9_-]*.");
+        }
+    }
+
     public async Task<IEnumerable<LookupReferenceListItem>> GetAllAsync()
     {
         var result = new List<LookupReferenceListItem>();
@@ -131,6 +152,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
         using var session = documentStore.OpenAsyncSession();
 
+        ValidateName(name);
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
 
@@ -166,6 +188,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
         using var session = documentStore.OpenAsyncSession();
 
+        ValidateName(name);
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
 
@@ -205,6 +228,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
         using var session = documentStore.OpenAsyncSession();
 
+        ValidateName(name);
         var documentId = $"LookupReferences/{name}";
         var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
 
@@ -222,6 +246,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
     private async Task<DynamicLookupReferenceDocument?> LoadDynamicLookupAsync(string name)
     {
         using var session = documentStore.OpenAsyncSession();
+        ValidateName(name);
         var documentId = $"LookupReferences/{name}";
         return await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
     }
