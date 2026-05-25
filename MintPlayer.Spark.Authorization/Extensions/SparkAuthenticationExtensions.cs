@@ -69,7 +69,36 @@ internal static class SparkAuthenticationExtensions
         where TUser : SparkUser, new()
     {
         var authGroup = endpoints.MapGroup("/spark/auth");
-        authGroup.MapIdentityApi<TUser>();
+        // R2-H3: MapIdentityApi mounts /login, /register, /forgotPassword,
+        // /resetPassword, /manage/2fa, /manage/info etc. — Microsoft's defaults
+        // do not attach IAntiforgeryMetadata. We collect the endpoints the
+        // call mapped, then stamp RequireAntiforgeryTokenAttribute on each
+        // mutating one so Spark's CSRF middleware enforces double-submit on
+        // 2FA-disable / password-change / email-rotate. The login endpoint
+        // itself is excluded — the user doesn't have a session yet so there's
+        // no XSRF-TOKEN cookie to validate, and CSRF against /login lets the
+        // attacker log the victim into the attacker's account (separate
+        // concern that's mitigated by cookie SameSite + the post-login
+        // immediate-action flows being independently gated).
+        var identityConvention = authGroup.MapIdentityApi<TUser>();
+        var antiforgeryGatedRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "/manage/2fa",
+            "/manage/info",
+            "/resetPassword",
+            "/forgotPassword",
+            "/logout",
+        };
+        identityConvention.Add(builder =>
+        {
+            if (builder is Microsoft.AspNetCore.Routing.RouteEndpointBuilder route
+                && route.RoutePattern.RawText is { } raw
+                && antiforgeryGatedRoutes.Any(suffix => raw.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                && IsMutatingMethod(route.Metadata))
+            {
+                route.Metadata.Add(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(true));
+            }
+        });
 
         // Map Spark auth endpoints (source-generated)
         endpoints.MapSparkAuthEndpoints();
@@ -212,5 +241,24 @@ internal static class SparkAuthenticationExtensions
         if (!returnUrl.StartsWith('/')) return "/";
         if (returnUrl.Length >= 2 && (returnUrl[1] == '/' || returnUrl[1] == '\\')) return "/";
         return returnUrl;
+    }
+
+    private static bool IsMutatingMethod(IList<object> metadata)
+    {
+        foreach (var m in metadata)
+        {
+            if (m is Microsoft.AspNetCore.Routing.HttpMethodMetadata methods)
+            {
+                foreach (var method in methods.HttpMethods)
+                {
+                    if (string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(method, "PUT", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(method, "PATCH", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(method, "DELETE", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+        return false;
     }
 }
