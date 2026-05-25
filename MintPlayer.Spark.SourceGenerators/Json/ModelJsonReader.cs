@@ -10,8 +10,7 @@ namespace MintPlayer.Spark.SourceGenerators.Json;
 ///
 /// <para>
 /// Deliberately a minimal regex reader instead of a full JSON parser — the only
-/// thing the generator needs is three top-level string values. Model JSON files
-/// are framework-controlled; adversarial shapes aren't a concern.
+/// thing the generator needs is three top-level string values.
 /// </para>
 ///
 /// <para>
@@ -19,6 +18,15 @@ namespace MintPlayer.Spark.SourceGenerators.Json;
 /// object or array in every Model JSON file. "First match wins" is therefore
 /// safe — a nested <c>attributes[].id</c> never outranks the top-level
 /// <c>persistentObject.id</c>.
+/// </para>
+///
+/// <para>
+/// Per R2-C5, <c>name</c> and <c>schema</c> are validated against the C#
+/// identifier grammar before the entry is emitted: <c>AdditionalFiles</c>
+/// content is untrusted (contributor PRs, generated templates), and the
+/// downstream producer interpolates these strings directly as identifier
+/// slots. A name like <c>"Foo; } class X { static X(){...} } class Bar"</c>
+/// would otherwise compile attacker code into the host's emitted source.
 /// </para>
 /// </summary>
 internal static class ModelJsonReader
@@ -48,15 +56,38 @@ internal static class ModelJsonReader
         if (!Guid.TryParse(id, out _))
             return false;
 
+        // R2-C5: identifier slot — reject entries that would inject arbitrary C#
+        // into the generated source. Silent drop is intentional: bad-shape files
+        // should fail closed rather than fail loud at compile time, because the
+        // adversary's win condition is "anything I write reaches the compiler".
+        if (!IsValidCSharpIdentifier(name))
+            return false;
+
         var schema = FindTopLevelString(json, "schema");
+        var resolvedSchema = string.IsNullOrWhiteSpace(schema) ? "Default" : schema!;
+        if (!IsValidCSharpIdentifier(resolvedSchema))
+            return false;
+
         info = new Models.PersistentObjectIdInfo
         {
             Id = id,
             Name = name,
-            Schema = string.IsNullOrWhiteSpace(schema) ? "Default" : schema!,
+            Schema = resolvedSchema,
         };
         return true;
     }
+
+    private static bool IsValidCSharpIdentifier(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (!IsIdentifierStart(value[0])) return false;
+        for (int i = 1; i < value.Length; i++)
+            if (!IsIdentifierPart(value[i])) return false;
+        return true;
+    }
+
+    private static bool IsIdentifierStart(char c) => c == '_' || char.IsLetter(c);
+    private static bool IsIdentifierPart(char c) => c == '_' || char.IsLetterOrDigit(c);
 
     private static readonly Regex PersistentObjectOpen = new(
         "\"persistentObject\"\\s*:\\s*\\{",

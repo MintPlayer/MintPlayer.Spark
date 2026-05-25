@@ -54,13 +54,21 @@ public class PersistentObjectIdsProducer : Producer
         if (!knowsSpark || ids.Count == 0)
             return;
 
+        // Belt-and-suspenders on R2-C5: ModelJsonReader validates Name/Schema
+        // before constructing PersistentObjectIdInfo, but the producer also
+        // refuses any entry whose identifier slots aren't legal C# — so a
+        // future code path that builds PersistentObjectIdInfo from a less-
+        // validated source can't reopen the build-time RCE surface.
         // Deduplicate by (Schema, Name) — first write wins — then group per schema.
         var bySchema = ids
+            .Where(i => IsValidCSharpIdentifier(i.Name) && IsValidCSharpIdentifier(i.Schema))
             .GroupBy(i => (i.Schema, i.Name))
             .Select(g => g.First())
             .GroupBy(i => i.Schema, System.StringComparer.Ordinal)
             .OrderBy(g => g.Key, System.StringComparer.Ordinal)
             .ToList();
+
+        if (bySchema.Count == 0) return;
 
         writer.WriteLine(Header);
         writer.WriteLine();
@@ -90,4 +98,16 @@ public class PersistentObjectIdsProducer : Producer
             }
         }
     }
+
+    private static bool IsValidCSharpIdentifier(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (!IsIdentifierStart(value[0])) return false;
+        for (int i = 1; i < value.Length; i++)
+            if (!IsIdentifierPart(value[i])) return false;
+        return true;
+    }
+
+    private static bool IsIdentifierStart(char c) => c == '_' || char.IsLetter(c);
+    private static bool IsIdentifierPart(char c) => c == '_' || char.IsLetterOrDigit(c);
 }
