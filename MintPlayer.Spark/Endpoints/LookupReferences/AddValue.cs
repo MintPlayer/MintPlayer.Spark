@@ -48,7 +48,12 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf
         }
         catch (InvalidOperationException ex)
         {
-            return Results.Json(new { error = ex.Message }, statusCode: 400);
+            // R2-M1: don't echo ex.Message — leaks RavenDB-internal strings,
+            // index/collection names, etc. Log server-side with correlation ID.
+            httpContext.RequestServices.GetService<ILoggerFactory>()
+                ?.CreateLogger("SparkLookupReferences")
+                ?.LogWarning(ex, "AddLookupReferenceValue failed");
+            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }
 }

@@ -78,12 +78,17 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                 }
             }
 
-            // Read pagination parameters
+            // Read pagination parameters. R2-M2: clamp `take` so an authenticated
+            // attacker can't request `?take=2147483647` and have us materialize
+            // entire collections into memory before paging. 1000 is well above
+            // any sane UI page size; apps that need streaming for batch use cases
+            // should hit /spark/queries/{id}/stream instead.
+            const int MaxTake = 1000;
             var skipParam = httpContext.Request.Query["skip"].FirstOrDefault();
             var takeParam = httpContext.Request.Query["take"].FirstOrDefault();
             var search = httpContext.Request.Query["search"].FirstOrDefault();
-            int skip = int.TryParse(skipParam, out var s) ? s : 0;
-            int take = int.TryParse(takeParam, out var t) ? t : 50;
+            int skip = int.TryParse(skipParam, out var s) ? Math.Max(0, s) : 0;
+            int take = int.TryParse(takeParam, out var t) ? Math.Clamp(t, 1, MaxTake) : 50;
 
             // Read optional parent context for custom queries
             Abstractions.PersistentObject? parent = null;

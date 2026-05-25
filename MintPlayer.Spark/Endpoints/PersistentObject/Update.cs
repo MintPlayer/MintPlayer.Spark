@@ -70,9 +70,14 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return ClientResult.Envelope(clientAccessor, result, 200);
         }
-        catch (SparkConcurrencyException ex)
+        catch (SparkConcurrencyException)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = ex.Message }, 409);
+            // R2-M1: SparkConcurrencyException.Message contains the server-side
+            // change vector — useful for the legitimate optimistic-concurrency
+            // recovery flow, but it leaks document-version state that an
+            // attacker can use as a side channel. Return a generic 409; clients
+            // know to re-fetch on 409 regardless of the body content.
+            return ClientResult.Envelope(clientAccessor, new { error = "Concurrency conflict" }, 409);
         }
         catch (SparkRetryActionException ex)
         {

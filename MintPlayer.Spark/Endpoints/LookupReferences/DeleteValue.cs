@@ -39,7 +39,11 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint, IMem
         }
         catch (InvalidOperationException ex)
         {
-            return Results.Json(new { error = ex.Message }, statusCode: 400);
+            // R2-M1: don't leak Raven-internal strings — log server-side.
+            httpContext.RequestServices.GetService<ILoggerFactory>()
+                ?.CreateLogger("SparkLookupReferences")
+                ?.LogWarning(ex, "DeleteLookupReferenceValue failed");
+            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }
 }

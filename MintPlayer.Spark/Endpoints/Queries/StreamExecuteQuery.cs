@@ -88,7 +88,13 @@ internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesG
         }
         catch (Exception ex)
         {
-            await SendErrorAndCloseAsync(webSocket, ex.Message);
+            // R2-M1: don't echo ex.Message over the wire (or as the WS close
+            // reason — Raven names / change vectors leak from there too). Log
+            // server-side; report generic to the client.
+            httpContext.RequestServices.GetService<ILoggerFactory>()
+                ?.CreateLogger("SparkStreamingQuery")
+                ?.LogError(ex, "StreamExecuteQuery failed");
+            await SendErrorAndCloseAsync(webSocket, "Stream failed");
         }
 
         return Results.Empty;

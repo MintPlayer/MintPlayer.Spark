@@ -32,6 +32,8 @@ internal interface IReferenceResolver
 [Register(typeof(IReferenceResolver), ServiceLifetime.Scoped)]
 internal partial class ReferenceResolver : IReferenceResolver
 {
+    [Inject] private readonly IActionsResolver actionsResolver;
+
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
         // Return a copy of the cached array as a List so callers can mutate (the
@@ -123,20 +125,43 @@ internal partial class ReferenceResolver : IReferenceResolver
             }
         }
 
-        // Load referenced documents (from session cache if .Include() was used, otherwise from database)
+        // Load referenced documents (from session cache if .Include() was used, otherwise from database).
+        // R2-H10: apply row-level Read on each referenced doc through the target
+        // collection's Actions class. Without this, Bob could list his orders
+        // referencing Alice and read Alice's display name / email out of the
+        // breadcrumb even when Alice's own collection is row-gated to deny him.
         foreach (var (targetType, refIds) in refIdsByType)
         {
             foreach (var refId in refIds)
             {
                 var referencedEntity = await LoadEntityAsync(session, targetType, refId);
-                if (referencedEntity != null)
-                {
-                    includedDocuments[refId] = referencedEntity;
-                }
+                if (referencedEntity == null) continue;
+                if (!await IsAllowedRowAsync(targetType, "Read", referencedEntity)) continue;
+                includedDocuments[refId] = referencedEntity;
             }
         }
 
         return includedDocuments;
+    }
+
+    /// <summary>
+    /// R2-H10 helper: dispatches to the target Actions class's IsAllowedAsync hook
+    /// via reflection. Duplicates the shape from DatabaseAccess.IsAllowedEntityViaActionsAsync
+    /// to avoid a cyclic DI dependency (DatabaseAccess already depends on ReferenceResolver).
+    /// Fail-open on unknown shape — same convention as the database-access caller.
+    /// </summary>
+    private async Task<bool> IsAllowedRowAsync(Type entityType, string action, object entity)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var actionsType = actions.GetType();
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("ReferenceResolver.IsAllowedAsync", actionsType, entityType),
+            static k => k.Actions.GetMethod("IsAllowedAsync", [typeof(string), k.Entity]));
+        if (method is null) return true;
+        var task = (Task)method.Invoke(actions, [action, entity])!;
+        await task;
+        var resultProperty = task.GetType().GetProperty("Result");
+        return (bool)resultProperty!.GetValue(task)!;
     }
 
     private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)

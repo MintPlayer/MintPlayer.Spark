@@ -89,8 +89,9 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         }
         catch (Exception ex)
         {
+            // R2-M1: server-side log with full detail, generic public response.
             logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
-            return ClientResult.Envelope(clientAccessor, new { error = ex.Message }, StatusCodes.Status500InternalServerError);
+            return ClientResult.Envelope(clientAccessor, new { error = "Operation failed" }, StatusCodes.Status500InternalServerError);
         }
     }
 }
