@@ -39,15 +39,33 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
+        // R2-H14: refuse queue names that don't match the strict identifier
+        // allowlist. The previous EscapeRql helper only escaped single-quote and
+        // missed backslash escapes — `\` itself wasn't escaped, so a name like
+        // `\\'` round-tripped to `\\\'` and still closed the literal. The set of
+        // valid queue names is bounded (developer-declared via attribute, or
+        // explicit override) so a strict allowlist is the right shape: letters,
+        // digits, dot, underscore, dash. Throw at startup so the operator sees
+        // the bad config before traffic flows.
+        if (!IsValidQueueName(_queueName))
+            throw new InvalidOperationException(
+                $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._-]+.");
+
         return new SubscriptionCreationOptions
         {
-            Query = $@"from SparkMessages where QueueName = '{EscapeRql(_queueName)}' and Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())"
+            Query = $@"from SparkMessages where QueueName = '{_queueName}' and Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())"
         };
     }
 
-    private static string EscapeRql(string value)
+    private static bool IsValidQueueName(string value)
     {
-        return value.Replace("'", "\\'");
+        if (string.IsNullOrEmpty(value)) return false;
+        foreach (var c in value)
+        {
+            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_' || c == '-'))
+                return false;
+        }
+        return true;
     }
 
     protected override async Task ProcessBatchAsync(SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
@@ -64,6 +82,24 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                 sparkMessage.AttemptCount++;
 
                 // Deserialize the payload
+                // R2-H6: allow-list check BEFORE Type.GetType. The DI-derived
+                // allow-list contains only types that have an IRecipient<T>
+                // registration; an attacker who can write into SparkMessages
+                // (pre-mTLS, via the previously-unauthenticated sync/apply path)
+                // can no longer route through Type.GetType to instantiate
+                // arbitrary types (Newtonsoft gadgets, etc.).
+                var allowList = _serviceProvider.GetRequiredService<IMessageTypeAllowList>();
+                if (!allowList.IsAllowedMessageType(sparkMessage.MessageType))
+                {
+                    Logger.LogError(
+                        "Message type {MessageType} is not in the allow-list (no registered IRecipient<>) — dead-lettering {MessageId}",
+                        sparkMessage.MessageType, sparkMessage.Id);
+                    sparkMessage.Status = EMessageStatus.DeadLettered;
+                    SetExpiration(session, sparkMessage);
+                    await session.SaveChangesAsync(cancellationToken);
+                    return;
+                }
+
                 var clrType = Type.GetType(sparkMessage.MessageType);
                 if (clrType == null)
                 {
@@ -125,6 +161,21 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                         // Skip already completed or dead-lettered handlers
                         if (handler.Status is EHandlerStatus.Completed or EHandlerStatus.DeadLettered)
                             continue;
+
+                        // R2-H6: allow-list the handler too. HandlerType was
+                        // captured from the registered recipient at enqueue time,
+                        // but the document on disk is mutable — refuse to call
+                        // Type.GetType on anything we didn't register at startup.
+                        if (!allowList.IsAllowedHandlerType(handler.HandlerType))
+                        {
+                            Logger.LogError(
+                                "Handler type {HandlerType} is not in the allow-list — dead-lettering handler on {MessageId}",
+                                handler.HandlerType, sparkMessage.Id);
+                            handler.Status = EHandlerStatus.DeadLettered;
+                            handler.LastError = $"Handler type not in allow-list: {handler.HandlerType}";
+                            await session.SaveChangesAsync(cancellationToken);
+                            continue;
+                        }
 
                         var handlerType = Type.GetType(handler.HandlerType);
                         if (handlerType == null)

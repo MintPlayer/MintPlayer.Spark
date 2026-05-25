@@ -24,6 +24,8 @@ internal static class SparkMessagingExtensions
 
         // Register IServiceCollectionAccessor so the manager can discover queues at runtime
         services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        // R2-H6: type allow-list derived from the same scan
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
         services.AddHostedService<MessageSubscriptionManager>();
 
         return services;

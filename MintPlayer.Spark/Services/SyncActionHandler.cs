@@ -189,22 +189,30 @@ internal partial class SyncActionHandler : ISyncActionHandler
 
     private Type? ResolveEntityType(string collection)
     {
-        return _collectionTypeCache.GetOrAdd(collection, col =>
+        // R2-H15: don't cache unresolved (null) entries — the cache is keyed on
+        // request-controlled strings, so caching every miss lets an attacker
+        // grow the static dictionary without bound (memory DoS). Resolved
+        // (non-null) entries are bounded by the schema and safe to cache.
+        if (_collectionTypeCache.TryGetValue(collection, out var cached))
+            return cached;
+
+        Type? resolved = null;
+        foreach (var entityTypeDef in modelLoader.GetEntityTypes())
         {
-            // Iterate all entity type definitions, resolve each CLR type,
-            // and check if the RavenDB collection name matches
-            foreach (var entityTypeDef in modelLoader.GetEntityTypes())
+            var clrType = ResolveType(entityTypeDef.ClrType);
+            if (clrType == null) continue;
+
+            var collectionName = documentStore.Conventions.FindCollectionName(clrType);
+            if (string.Equals(collectionName, collection, StringComparison.OrdinalIgnoreCase))
             {
-                var clrType = ResolveType(entityTypeDef.ClrType);
-                if (clrType == null) continue;
-
-                var collectionName = documentStore.Conventions.FindCollectionName(clrType);
-                if (string.Equals(collectionName, col, StringComparison.OrdinalIgnoreCase))
-                    return clrType;
+                resolved = clrType;
+                break;
             }
+        }
 
-            return null;
-        });
+        if (resolved is not null)
+            _collectionTypeCache[collection] = resolved;
+        return resolved;
     }
 
     private static Type? ResolveType(string clrType)
