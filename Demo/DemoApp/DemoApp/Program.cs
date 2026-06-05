@@ -22,6 +22,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddActions();
     spark.AddMessaging();
     spark.AddRecipients();
+    spark.AddCronJobs();
 });
 
 // Configure SPA static files

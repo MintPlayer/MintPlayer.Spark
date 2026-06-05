@@ -6,7 +6,7 @@ namespace MintPlayer.Spark.AllFeatures.SourceGenerators.Models;
 public partial class SparkFullDiscoveredType
 {
     /// <summary>
-    /// One of: "Context", "User", "Actions", "CustomAction", "Recipient"
+    /// One of: "Context", "User", "Actions", "CustomAction", "Recipient", "CronJob"
     /// </summary>
     public string Kind { get; set; } = string.Empty;
 

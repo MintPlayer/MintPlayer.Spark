@@ -49,6 +49,7 @@
     <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+    <ProjectReference Include="..\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
     <ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
   </ItemGroup>

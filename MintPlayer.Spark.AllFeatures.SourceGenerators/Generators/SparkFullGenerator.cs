@@ -87,6 +87,15 @@ public class SparkFullGenerator : IncrementalGenerator
                                 TypeName = string.Empty
                             };
                         }
+
+                        if (iface.ToDisplayString() == "MintPlayer.Spark.Cron.ISparkCronJob")
+                        {
+                            return new SparkFullDiscoveredType
+                            {
+                                Kind = "CronJob",
+                                TypeName = string.Empty
+                            };
+                        }
                     }
 
                     return default;

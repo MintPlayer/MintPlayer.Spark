@@ -39,6 +39,7 @@ public class SparkFullProducer : Producer
         var hasActions = discoveryList.Any(d => d.Kind == "Actions");
         var hasCustomActions = discoveryList.Any(d => d.Kind == "CustomAction");
         var hasRecipients = discoveryList.Any(d => d.Kind == "Recipient");
+        var hasCron = discoveryList.Any(d => d.Kind == "CronJob");
 
         writer.WriteLine(Header);
         writer.WriteLine();
@@ -49,7 +50,7 @@ public class SparkFullProducer : Producer
         {
             using (writer.OpenBlock("internal static class SparkFullBuilderExtensions"))
             {
-                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients);
+                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron);
                 writer.WriteLine();
                 WriteUseSparkFull(writer, contextType);
                 writer.WriteLine();
@@ -64,7 +65,8 @@ public class SparkFullProducer : Producer
         string? userType,
         bool hasActions,
         bool hasCustomActions,
-        bool hasRecipients)
+        bool hasRecipients,
+        bool hasCron)
     {
         writer.WriteLine("/// <summary>");
         writer.WriteLine("/// Registers all Spark services, modules, and discovered actions/recipients.");
@@ -79,12 +81,18 @@ public class SparkFullProducer : Producer
             {
                 writer.WriteLine($"global::MintPlayer.Spark.SparkExtensions.UseContext<{contextType}>(spark);");
 
+                // These registration extensions are generated into {RootNamespace} by the other
+                // Spark generators. Call them fully-qualified (not as extension methods) so the
+                // emitted code can't collide with extension methods the developer writes themselves.
                 if (hasActions)
-                    writer.WriteLine("spark.AddActions();");
+                    writer.WriteLine($"global::{RootNamespace}.SparkActionsBuilderExtensions.AddActions(spark);");
                 if (hasCustomActions)
-                    writer.WriteLine("spark.AddCustomActions();");
+                    writer.WriteLine($"global::{RootNamespace}.SparkCustomActionsBuilderExtensions.AddCustomActions(spark);");
                 if (hasRecipients)
-                    writer.WriteLine("spark.AddRecipients();");
+                    writer.WriteLine($"global::{RootNamespace}.SparkRecipientsBuilderExtensions.AddRecipients(spark);");
+
+                if (hasCron)
+                    writer.WriteLine($"global::{RootNamespace}.SparkCronJobsBuilderExtensions.AddCronJobs(spark);");
 
                 if (flags.HasAuthorization)
                     writer.WriteLine("global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthorization(spark, options.Authorization);");

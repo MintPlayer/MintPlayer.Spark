@@ -1,6 +1,7 @@
 using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
@@ -80,5 +81,37 @@ public class SparkFullGeneratorTests
         var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
         combined.Should().Contain("TestApp.AppUser");
         combined.Should().Contain("AddAuthentication");
+    }
+
+    [Fact]
+    public void Cron_job_is_wired_into_AddSparkFull_via_fully_qualified_call()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Cron;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+
+            public class NightlyCleanup : ISparkCronJob
+            {
+                public static string CronSchedule => "0 0 * * *";
+                public Task RunAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(ISparkCronJob)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
+        // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
+        combined.Should().Contain("global::TestApp.SparkCronJobsBuilderExtensions.AddCronJobs(spark)");
     }
 }

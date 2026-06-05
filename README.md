@@ -94,6 +94,7 @@ MintPlayer.Spark/
 ├── MintPlayer.Spark.Replication/                # Cross-module ETL replication
 ├── MintPlayer.Spark.Replication.Abstractions/   # Replication interfaces and models
 ├── MintPlayer.Spark.SubscriptionWorker/         # RavenDB subscription-based background workers
+├── MintPlayer.Spark.Cron/                       # Cron-scheduled background jobs (multi-node safe)
 ├── MintPlayer.Spark.Webhooks.GitHub/            # GitHub webhook integration
 ├── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
 ├── MintPlayer.Spark.SourceGenerators/           # Compile-time DI code generation
@@ -129,6 +130,7 @@ MintPlayer.Spark/
 | [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
+| [Cron Jobs](docs/guide-cron-jobs.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
 | [GitHub Webhooks](docs/guide-github-webhooks.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
 
@@ -137,6 +139,7 @@ MintPlayer.Spark/
 - **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework
 - **[Spark Library API](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
+- **[Cron Jobs](MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
 - **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
 
 ## Contributing
