@@ -181,7 +181,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
             handler.LastRequest.RequestUri!.ToString().Should().Be($"{OwnerUrl}/spark/sync/apply");
             handler.LastRequestBody.Should().Contain("\"requestingModule\":\"HR\"");
-            handler.LastRequestBody.Should().Contain("\"actionType\":0"); // Insert
+            handler.LastRequestBody.Should().Contain("\"actionType\":\"Insert\""); // SyncActionType serializes as a string (JsonStringEnumConverter)
             (await GetRetryCounterAsync(id)).Should().BeNull("retry counter should be cleared on success");
         }
         finally
