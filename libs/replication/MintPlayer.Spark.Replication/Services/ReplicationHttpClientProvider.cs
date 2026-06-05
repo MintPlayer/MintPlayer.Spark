@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 
 namespace MintPlayer.Spark.Replication.Services;
@@ -69,6 +70,7 @@ internal sealed class ReplicationHttpClientProvider : IReplicationHttpClientProv
         });
     }
 
+    [NoInterfaceMember]
     public void Dispose()
     {
         foreach (var client in _byTarget.Values)

@@ -110,6 +110,7 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
         });
     }
 
+    [NoInterfaceMember]
     public void Dispose()
     {
         if (disposed) return;

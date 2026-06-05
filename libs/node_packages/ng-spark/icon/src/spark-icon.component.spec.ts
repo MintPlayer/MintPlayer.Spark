@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { DomSanitizer } from '@angular/platform-browser';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { SparkIconComponent } from './spark-icon.component';
@@ -6,14 +7,16 @@ import { SparkIconRegistry } from '@mintplayer/ng-spark/services';
 
 describe('SparkIconComponent', () => {
   let registry: SparkIconRegistry;
+  let sanitizer: DomSanitizer;
 
   beforeEach(() => {
     TestBed.configureTestingModule({ imports: [SparkIconComponent] });
     registry = TestBed.inject(SparkIconRegistry);
+    sanitizer = TestBed.inject(DomSanitizer);
   });
 
   it('renders the SVG span when the icon is registered', () => {
-    registry.register('test-svg', '<svg data-test="ok"><circle /></svg>');
+    registry.register('test-svg', sanitizer.bypassSecurityTrustHtml('<svg data-test="ok"><circle /></svg>'));
 
     const fixture = TestBed.createComponent(SparkIconComponent);
     fixture.componentRef.setInput('name', 'test-svg');
@@ -39,7 +42,7 @@ describe('SparkIconComponent', () => {
   });
 
   it('switches between registered and fallback when input changes', () => {
-    registry.register('icon-a', '<svg id="a" />');
+    registry.register('icon-a', sanitizer.bypassSecurityTrustHtml('<svg id="a" />'));
 
     const fixture = TestBed.createComponent(SparkIconComponent);
     fixture.componentRef.setInput('name', 'icon-a');

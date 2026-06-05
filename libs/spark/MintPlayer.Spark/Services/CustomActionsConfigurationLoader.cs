@@ -109,6 +109,7 @@ internal partial class CustomActionsConfigurationLoader : ICustomActionsConfigur
         });
     }
 
+    [NoInterfaceMember]
     public void Dispose()
     {
         if (disposed) return;
