@@ -38,17 +38,17 @@
     root below so coverlet's collector picks them up for instrumentation, and so the harness can
     Assembly.Load them at test time via the default probing path.
     -->
-    <ProjectReference Include="..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
+    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-    <ProjectReference Include="..\..\libs\subscription-worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+    <ProjectReference Include="..\..\libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
     <ProjectReference Include="..\..\libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
@@ -64,14 +64,14 @@
   -->
   <Target Name="CopyGeneratorRuntimeAssets" AfterTargets="Build">
     <ItemGroup>
-      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
-      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(NuGetPackageRoot)mintplayer.sourcegenerators.tools\10.19.0\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
 
       <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
+                               Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
       <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
+                               Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
     </ItemGroup>
     <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
           DestinationFolder="$(OutputPath)"

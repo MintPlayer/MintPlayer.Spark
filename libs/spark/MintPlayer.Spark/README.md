@@ -32,7 +32,7 @@ It is common to keep entity classes in a separate library project (e.g. `MyApp.L
 
 ## Quick Start
 
-> **Tip:** For the fastest setup, use [`MintPlayer.Spark.AllFeatures`](../../all-features/MintPlayer.Spark.AllFeatures/README.md) which source-generates `AddSparkFull` / `UseSparkFull` / `MapSparkFull` — three calls instead of the granular setup below.
+> **Tip:** For the fastest setup, use [`MintPlayer.Spark.AllFeatures`](../../all_features/MintPlayer.Spark.AllFeatures/README.md) which source-generates `AddSparkFull` / `UseSparkFull` / `MapSparkFull` — three calls instead of the granular setup below.
 
 ### 1. Configure Services
 

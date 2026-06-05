@@ -2,7 +2,7 @@
 
 **Status:** Draft — awaiting triage
 **Scope:** `master` branch, commit `ea596e9` (2026-04-20). Excludes `feat/authorization` and IdentityProvider work.
-**Method:** 5 parallel Explore agents covering AuthN/AuthZ, injection/input-validation, endpoint surface, Angular frontend, and source-generators/supply-chain. Findings dedeped and sanity-checked against master HEAD before inclusion.
+**Method:** 5 parallel Explore agents covering AuthN/AuthZ, injection/input-validation, endpoint surface, Angular frontend, and source_generators/supply-chain. Findings dedeped and sanity-checked against master HEAD before inclusion.
 
 ## 1. How to read this document
 

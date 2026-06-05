@@ -30,7 +30,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
-		<ProjectReference Include="..\..\socket-extensions\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
+		<ProjectReference Include="..\..\socket_extensions\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

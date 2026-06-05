@@ -38,7 +38,7 @@
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj" />
     <!-- Runs the PersistentObjectIds generator against Fleet's Model JSONs so Security
          tests can reference `PersistentObjectIds.Default.Car` instead of hardcoding the Guid. -->
-    <ProjectReference Include="..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

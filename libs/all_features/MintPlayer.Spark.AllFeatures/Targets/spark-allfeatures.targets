@@ -10,7 +10,7 @@
 	<ItemGroup>
 		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
 			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\..\source-generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
+		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
 			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 

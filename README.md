@@ -98,7 +98,7 @@ MintPlayer.Spark/
 │   ├── replication/
 │   │   ├── MintPlayer.Spark.Replication/         # Cross-module ETL replication
 │   │   └── MintPlayer.Spark.Replication.Abstractions/  # Replication interfaces and models
-│   ├── subscription-worker/
+│   ├── subscription_worker/
 │   │   ├── MintPlayer.Spark.SubscriptionWorker/  # RavenDB subscription-based background workers
 │   │   └── MintPlayer.Spark.SubscriptionWorker.Abstractions/
 │   ├── cron/
@@ -109,14 +109,14 @@ MintPlayer.Spark/
 │   ├── client/
 │   │   ├── MintPlayer.Spark.Client/              # Typed HTTP client SDK
 │   │   └── MintPlayer.Spark.Client.Authorization/
-│   ├── all-features/
+│   ├── all_features/
 │   │   ├── MintPlayer.Spark.AllFeatures/         # All-in-one package (references all + source generator)
 │   │   └── MintPlayer.Spark.AllFeatures.SourceGenerators/  # Generates AddSparkFull/UseSparkFull/MapSparkFull
-│   ├── source-generators/
+│   ├── source_generators/
 │   │   └── MintPlayer.Spark.SourceGenerators/    # Compile-time DI code generation
 │   ├── testing/
 │   │   └── MintPlayer.Spark.Testing/             # Test harness: embedded RavenDB driver, in-memory host factory
-│   ├── socket-extensions/
+│   ├── socket_extensions/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
@@ -147,7 +147,7 @@ MintPlayer.Spark/
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
-| [Subscription Workers](libs/subscription-worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
+| [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
 | [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
