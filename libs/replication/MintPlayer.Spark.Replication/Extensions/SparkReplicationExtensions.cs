@@ -25,6 +25,7 @@ internal static class SparkReplicationExtensions
     {
         services.Configure(configure);
         services.AddSingleton<ModuleRegistrationService>();
+        services.AddMintPlayerSparkReplication();
         services.AddSingleton<EtlScriptCollector>();
         services.AddSingleton<EtlTaskManager>();
         services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
