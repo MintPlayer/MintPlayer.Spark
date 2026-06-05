@@ -1,7 +1,12 @@
+using System.Text.Json.Serialization;
 using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
+// Accept both the string form ("Delete") and the numeric form over the wire. The
+// /spark/sync/apply endpoint reads the body before the mTLS/module check, so a body
+// that fails to bind would 400 ahead of the intended 403 for an unknown module.
+[JsonConverter(typeof(JsonStringEnumConverter<SyncActionType>))]
 public enum SyncActionType
 {
     Insert,

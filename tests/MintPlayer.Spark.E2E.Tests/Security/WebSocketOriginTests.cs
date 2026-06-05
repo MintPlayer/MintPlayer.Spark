@@ -13,7 +13,10 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class WebSocketOriginTests
 {
-    private static readonly Guid GetCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440002");
+    // StreamCompanies — a streaming query on Company. Everyone has QueryRead/Company,
+    // and the WS handshake upgrade only succeeds (101) for a query whose IsStreamingQuery
+    // is true; a non-streaming query would 400 ("not a streaming query") before the upgrade.
+    private static readonly Guid StreamCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440004");
 
     private readonly FleetE2ECollectionFixture _fixture;
     public WebSocketOriginTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
@@ -29,7 +32,7 @@ public class WebSocketOriginTests
         ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
         var wssUrl = _fixture.Host.FleetUrl.Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase)
-            + $"/spark/queries/{GetCompaniesQueryId}/stream";
+            + $"/spark/queries/{StreamCompaniesQueryId}/stream";
 
         var connectTask = ws.ConnectAsync(new Uri(wssUrl), CancellationToken.None);
 
@@ -50,11 +53,11 @@ public class WebSocketOriginTests
         ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
         var wssUrl = _fixture.Host.FleetUrl.Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase)
-            + $"/spark/queries/{GetCompaniesQueryId}/stream";
+            + $"/spark/queries/{StreamCompaniesQueryId}/stream";
 
         try
         {
-            // GetCompanies is granted to Everyone, so unauth + no Origin succeeds.
+            // StreamCompanies is granted to Everyone, so unauth + no Origin succeeds.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await ws.ConnectAsync(new Uri(wssUrl), cts.Token);
             ws.State.Should().BeOneOf([WebSocketState.Open, WebSocketState.CloseSent, WebSocketState.Closed],
@@ -62,10 +65,18 @@ public class WebSocketOriginTests
         }
         finally
         {
+            // Best-effort close. StreamCompanies is an open-ended live stream and the
+            // endpoint never reads from the socket, so a graceful close handshake can't
+            // complete server-side; it's just cleanup. The ConnectAsync + state assertion
+            // above is what proves a no-Origin upgrade was accepted.
             if (ws.State == WebSocketState.Open)
             {
-                using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "test done", closeCts.Token);
+                try
+                {
+                    using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "test done", closeCts.Token);
+                }
+                catch { /* live stream — server doesn't complete the close handshake */ }
             }
             ws.Dispose();
         }

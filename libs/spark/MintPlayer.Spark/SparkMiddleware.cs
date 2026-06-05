@@ -201,6 +201,13 @@ public static class SparkExtensions
         // non-form mutating requests that pass Spark's validation above, it's a no-op.
         app.UseAntiforgery();
 
+        // WebSockets must be enabled BEFORE the origin guard below. The guard keys off
+        // context.WebSockets.IsWebSocketRequest, which only reports true once the WebSocket
+        // middleware has inspected the upgrade and populated IHttpWebSocketFeature. Registering
+        // the guard ahead of UseWebSockets() made IsWebSocketRequest always false there, so the
+        // guard never fired — silently disabling the CSWSH protection it exists to provide.
+        app.UseWebSockets();
+
         // R2-H5: enforce same-origin on WebSocket upgrades. ASP.NET Core's default
         // is no origin check at all, which means an attacker page can open a WS to
         // /spark/queries/{id}/stream and ride the victim's ambient cookies (CSWSH).
@@ -223,8 +230,6 @@ public static class SparkExtensions
             }
             await next(context);
         });
-
-        app.UseWebSockets();
 
         // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
         app.Use(async (context, next) =>

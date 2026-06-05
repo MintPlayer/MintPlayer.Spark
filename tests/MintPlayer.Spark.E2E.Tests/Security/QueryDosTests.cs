@@ -11,7 +11,10 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class QueryDosTests
 {
-    private static readonly Guid GetCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440002");
+    // GetCompanies (Company). Everyone has QueryRead/Company in App_Data/security.json,
+    // so anonymous /execute is authorized — the point of this test is clamping, not authz.
+    // (…440002 is GetPeople/Person, which Everyone may NOT query — that returned 401.)
+    private static readonly Guid GetCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440003");
 
     private readonly FleetE2ECollectionFixture _fixture;
     public QueryDosTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;

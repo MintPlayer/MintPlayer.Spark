@@ -96,6 +96,15 @@
       "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
       "source": "Database.Companies",
       "sortColumns": [{ "property": "Name", "direction": "asc" }]
+    },
+    {
+      "id": "a20e8400-e29b-41d4-a716-446655440004",
+      "name": "StreamCompanies",
+      "description": { "en": "Companies (Live)", "fr": "Entreprises (En direct)", "nl": "Bedrijven (Live)" },
+      "source": "Custom.StreamItems",
+      "entityType": "Company",
+      "sortColumns": [{ "property": "Name", "direction": "asc" }],
+      "isStreamingQuery": true
     }
   ]
 }
