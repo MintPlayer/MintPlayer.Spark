@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roslyn host at the same version the generator was compiled against (5.3.0). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
+
+    <PackageReference Include="coverlet.collector" Version="8.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageReference Include="Verify.Xunit" Version="28.6.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="FluentAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+    Reference the generator projects with ReferenceOutputAssembly="false" so their netstandard2.0
+    surface (and the polyfilled types in MintPlayer.SourceGenerators.Tools, e.g. ModuleInitializerAttribute)
+    don't enter this net10.0 project's compile-time graph. The DLLs are copied into the test bin
+    root below so coverlet's collector picks them up for instrumentation, and so the harness can
+    Assembly.Load them at test time via the default probing path.
+    -->
+    <ProjectReference Include="..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true" />
+
+    <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+    <ProjectReference Include="..\..\libs\subscription-worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+    <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+    <ProjectReference Include="..\..\libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
+    <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+  </ItemGroup>
+
+  <!--
+  The generator is built as netstandard2.0 and depends on MintPlayer.SourceGenerators.Tools at runtime.
+  Copy the generator DLLs (with PDBs in Debug — see condition) and the Tools DLL into the test bin
+  ROOT (not a Generators/ subfolder) so coverlet's collector — which scans the test host directory —
+  finds them, and so Assembly.Load resolves them via default probing.
+
+  PDBs are only copied in Debug to keep them out of any Release-published artifacts.
+  -->
+  <Target Name="CopyGeneratorRuntimeAssets" AfterTargets="Build">
+    <ItemGroup>
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(NuGetPackageRoot)mintplayer.sourcegenerators.tools\10.19.0\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
+
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
+                               Include="$(MSBuildThisFileDirectory)..\..\libs\source-generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
+                               Include="$(MSBuildThisFileDirectory)..\..\libs\all-features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

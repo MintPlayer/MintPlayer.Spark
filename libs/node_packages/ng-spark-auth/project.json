@@ -1,0 +1,30 @@
+{
+  "name": "@mintplayer/ng-spark-auth",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/node_packages/ng-spark-auth",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.config.ts --coverage",
+        "cwd": "libs/node_packages/ng-spark-auth"
+      }
+    },
+    "build": {
+      "executor": "@nx/angular:package",
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "project": "libs/node_packages/ng-spark-auth/ng-package.json"
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ng-packagr -p ng-package.json --watch",
+        "cwd": "libs/node_packages/ng-spark-auth",
+        "forwardAllArgs": false
+      }
+    }
+  }
+}

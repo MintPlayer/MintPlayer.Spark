@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark</PackageId>
+		<Version>10.0.0-preview.34</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
+		<PackageTags>low-code;framework;ravendb;crud;persistentobject;angular</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		Validates consumer wiring of MintPlayer.Spark.SourceGenerators.
+		buildTransitive/ makes this flow to transitive consumers as well.
+		-->
+		<None Include="Targets\spark.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\source-generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AdditionalFiles Include="App_Data\translations.json" />
+		<!--
+		App_Data is implicitly included as Content by Microsoft.NET.Sdk.Web with
+		CopyToPublishDirectory=PreserveNewest, which propagates through ProjectReferences
+		and causes NETSDK1152 in consuming apps (multiple publish outputs with the same
+		relative path). This library only needs the file at build time as an
+		AdditionalFiles input for the translations source generator — the JSON is
+		compiled into [assembly: SparkTranslations(...)] attributes and read at runtime.
+		-->
+		<Content Remove="App_Data\translations.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
+	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

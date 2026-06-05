@@ -9,8 +9,8 @@
     "test": "nx run-many --target=test"
   },
   "workspaces": [
-    "node_packages/ng-spark",
-    "node_packages/ng-spark-auth",
+    "libs/node_packages/ng-spark",
+    "libs/node_packages/ng-spark-auth",
     "Demo/DemoApp/DemoApp/ClientApp",
     "Demo/Fleet/Fleet/ClientApp",
     "Demo/HR/HR/ClientApp",
