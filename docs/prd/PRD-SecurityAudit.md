@@ -519,6 +519,8 @@ ID prefix `R2-` distinguishes round-2 findings from round-1 (e.g., `R2-C1`).
 
 **Test asserts:** Unauthenticated `POST /spark/etl/deploy` with a valid body returns 401; `documentStore.Maintenance.Send*` is never invoked.
 
+**Resolution (`feat/security-audit-round-2`):** mTLS gate added — `EtlDeploy.HandleAsync` calls `IModuleCertificateValidator.ValidateAsync(RequestingModule)` before `EtlTaskManager.DeployAsync`. Production mode requires a client cert whose SHA-256 thumbprint matches the module's pinned value (missing cert → 401; unknown module / thumbprint mismatch → 403); Development mode still requires the module be registered (empty/unknown → 403). Verified by E2E `ReplicationEndpointAuthTests.Unauth_post_etl_deploy_with_unknown_requesting_module_is_refused` and in-process `EtlDeployEndpointTests` (body-validation + 401/403 gate branches).
+
 ---
 
 ##### R2-C2 — Unauthenticated `/spark/sync/apply` enables arbitrary CRUD on any RavenDB collection
@@ -532,6 +534,8 @@ ID prefix `R2-` distinguishes round-2 findings from round-1 (e.g., `R2-C1`).
 **Expected secure behavior:** Authenticate the calling module (the design intent — `RequestingModule` exists but is unvalidated); restrict `Collection` to the set this module owns via `[Replicated(SourceModule="me")]`; refuse cross-module writes; require antiforgery if cookie-auth is the chosen scheme.
 
 **Test asserts:** Unauthenticated `POST /spark/sync/apply` returns 401; a Delete against an un-replicated collection returns 403; partial-success body does not contain `ex.Message`.
+
+**Resolution (`feat/security-audit-round-2`):** Same mTLS gate via `IModuleCertificateValidator` runs before dispatch in `SyncApply.HandleAsync` (missing cert → 401; empty/unknown module → 403). This round also fixed a latent bug that *masked* the gate: the body's `ActionType` enum didn't bind from its JSON string form (`"Delete"`), so `ReadFromJsonAsync` threw and returned **400 before** the module check ever ran — `[JsonConverter(typeof(JsonStringEnumConverter<SyncActionType>))]` now accepts both string and numeric forms. Verified by E2E `ReplicationEndpointAuthTests` (unknown + empty `RequestingModule`) and in-process `SyncApplyEndpointTests` (400/401/403/500/200/207 matrix, incl. a string-enum binding regression). Still open: the per-action `Error = ex.Message` leak (`SyncApply.cs`) flagged here under M-6 is not yet addressed, and `Collection`-ownership enforcement remains a follow-up.
 
 ---
 
@@ -650,6 +654,8 @@ Upgrades the round-1 L-6 note: round 1 dismissed source-generator identifier sha
 **Expected secure behavior:** Populate `WebSocketOptions.AllowedOrigins` from the app's allowed-hosts/CORS config, or explicitly check `Request.Headers["Origin"]` in `StreamExecuteQuery` before `AcceptWebSocketAsync`.
 
 **Test asserts:** WS upgrade carrying `Origin: https://attacker.test` and a valid session cookie is rejected with 403 before any data flows.
+
+**Resolution (`feat/security-audit-round-2`):** Implemented as a same-origin guard middleware in `UseSpark` (`SparkMiddleware.cs`) rather than inside `StreamExecuteQuery`: a WebSocket upgrade whose `Origin` host doesn't match the request host is rejected with 403; requests with no `Origin` (non-browser clients) pass through. This round also caught that the guard was **dead code** — it had been registered *before* `app.UseWebSockets()`, so `context.WebSockets.IsWebSocketRequest` was always false and the check never fired (the foreign-origin test had been passing only incidentally, because its target query wasn't streamable and 400'd at the endpoint). Fixed by moving `UseWebSockets()` ahead of the guard. Verified by E2E `WebSocketOriginTests` (foreign `Origin` → handshake rejected; no `Origin` → accepted via a new `StreamCompanies` streaming query on Company, which Everyone may read).
 
 ---
 
@@ -876,6 +882,8 @@ Disposition table marked round-1 M-6 "Address"; the TestResults walked back to "
 `take=2147483647` is accepted with no upper bound; `ExecuteDatabaseQueryAsync` materializes the entire result set before applying `Skip(skip).Take(take)` in memory. Search filter and projection also run on the full materialized list. Authenticated `Query/{type}` caller pins CPU/memory.
 
 Fix: clamp `take` to a configurable max (e.g., 1000) AND push `Skip`/`Take` down to RavenDB.
+
+**Resolution (`feat/security-audit-round-2`):** `take` is clamped to `[1, 1000]` and `skip` floored at 0 in `Execute.cs` via `Math.Clamp`; out-of-range values are normalized rather than 500'd. Verified by E2E `QueryDosTests` (astronomical `take` returns 200 quickly; negative/zero skip+take normalized) — repointed to the GetCompanies query (`…440003`, granted to Everyone) since the previous id resolved to GetPeople/Person, which anonymous callers can't query. The RavenDB-side push-down of `Skip`/`Take` noted above remains a separate optimization.
 
 ---
 
