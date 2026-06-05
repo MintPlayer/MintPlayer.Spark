@@ -88,7 +88,7 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         bool claimed;
         try
         {
-            claimed = await TryClaimOccurrenceAsync(descriptor.Name, occurrenceUtc, stoppingToken);
+            claimed = await TryClaimOccurrenceAsync(documentStore, descriptor.Name, occurrenceUtc, stoppingToken);
         }
         catch (Exception ex)
         {
@@ -139,7 +139,7 @@ internal sealed partial class SparkCronScheduler : BackgroundService
     /// dedups the current occurrence and rejects stale ones. Returns <see langword="true"/> only
     /// for the node that wins the atomic compare-and-swap.
     /// </summary>
-    private async Task<bool> TryClaimOccurrenceAsync(string jobName, DateTime occurrenceUtc, CancellationToken stoppingToken)
+    internal static async Task<bool> TryClaimOccurrenceAsync(IDocumentStore documentStore, string jobName, DateTime occurrenceUtc, CancellationToken stoppingToken)
     {
         var key = $"cron/{jobName}";
         var occurrence = occurrenceUtc.ToString("O");
