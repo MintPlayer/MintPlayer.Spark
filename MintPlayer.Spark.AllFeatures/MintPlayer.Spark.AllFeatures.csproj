@@ -26,6 +26,7 @@
 		<ProjectReference Include="..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 	</ItemGroup>
 
 	<!-- Source generators (analyzer-only, no runtime assembly) -->
