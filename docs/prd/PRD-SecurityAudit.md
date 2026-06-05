@@ -1179,3 +1179,169 @@ Same convention as §6: each test asserts the *secure expected behavior*. Tests 
 5. **`R2-H9` (client returnUrl)** — disposition says configurable `allowedReturnUrls`. Reaffirm, or simpler default of "any relative path that doesn't start with `//`"?
 
 Once dispositions are set, the work fits the same shape as `feat/security-audit`: branch per phase, tests-first, e2e + unit assertions.
+
+## 10. Round 3 — Cron-feature audit + rebase drift-check (2026-06-05)
+
+**Status:** Draft — awaiting triage.
+**Trigger:** `feat/security-audit-round-2` was rebased onto `master`; exactly one new commit was incorporated — `6beb883 feat(cron): scheduled background jobs (MintPlayer.Spark.Cron) (#156)`. All R2 fix commits (`a48d8c4..7809f92`) now sit on top of it. The cron feature post-dates the round-2 baseline (`d0729ae`) and has **never** been security-audited.
+**Scope:** (a) the new `MintPlayer.Spark.Cron` package + its source generator + the AllFeatures wiring change introduced by #156; (b) a drift-check that the rebase did not silently revert any R2 fix.
+**Method:** 3 parallel auditor agents — Cron runtime/locking; Cron registration/source-generator/AllFeatures; Cron integration + R2 regression + supply-chain. Findings reconciled against the cited code by the lead, severities adjusted for real-world reachability.
+**Threat model:** unchanged from R2 (internet-facing multi-tenant, multi-node cluster).
+
+ID prefix `R3-`.
+
+### 10.1 Route / surface inventory (delta)
+
+The cron package adds **no HTTP endpoint, WebSocket, or other externally-reachable surface** (confirmed — it registers only a `BackgroundService` via `SparkCronExtensions.cs:42`). The only new persisted state is one RavenDB compare-exchange key per job, `cron/{jobName}` (`SparkCronScheduler.cs:144`). Job scheduling is fixed entirely at app-startup (`AddJob` / generated `AddCronJobs()`); there is **no runtime path — authenticated or anonymous — to add, alter, or trigger a job.**
+
+### 10.2 Headline
+
+**No CRITICAL findings. No directly-reachable HIGH findings.** The two highest-impact issues (compare-exchange claim poisoning) require RavenDB compare-exchange **write** access, for which there is no reachable path today (see §10.4) — they are recorded as MEDIUM hardening/observability. The most security-relevant *positive* result: the **R2-C5 build-time-RCE class is NOT repeated** in the cron source generator, and **no R2 fix regressed** in the rebase.
+
+### 10.3 Findings
+
+#### MEDIUM
+
+---
+
+##### R3-M1 — Cron claim value is trusted verbatim: a poisoned/corrupt compare-exchange value silently disables a job forever, logged only at Debug
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed (defect) / reachability gated (see note)
+
+**Where:** `MintPlayer.Spark.Cron/SparkCronScheduler.cs:147-157` (claim), `:150-151` (stale check), `:100-104` (Debug-only skip log)
+
+**Attack scenario / failure mode:** The claim key `cron/{jobName}` holds an ISO-8601 `"O"` timestamp and the stale check is `string.CompareOrdinal(existing, occurrence) >= 0 ⇒ skip`. A single value of `"9999-12-31T23:59:59.9999999Z"` (or any far-future / non-parseable string) makes every node skip every real occurrence indefinitely — the job is silently, permanently suppressed cluster-wide and survives restarts (the value is persisted). The only signal is `LogDebug("… already claimed (likely another node); skipping")`, invisible at production log levels. A security-relevant job (token/lockout/audit-retention sweep) silently never runs. The same Debug-masking hides a lost CAS race.
+
+**Reachability note:** This requires write access to the `cron/*` compare-exchange namespace. Auditor verification found **no reachable path** today: `/spark/sync/apply` and module-registration operate on document collections (never compare-exchange) and are mTLS-gated post-R2-C2; `UserStore` uses a disjoint `EmailReservation*` key namespace. So this is **hardening + observability**, not a directly-exploitable vuln — but a corrupt value from clock skew or operator error produces the same silent-death outcome, which is why it stays MEDIUM.
+
+**Expected secure behavior:** Treat the stored value as untrusted — validate it parses as a UTC timestamp within a sane window before honoring the stale comparison; on parse failure or an implausibly-far-future value, log **Warning** and reclaim rather than silently honoring it. Distinguish "lost a real race" (Debug) from "have not fired in N expected windows / stored value is in the future" (Warning), and expose a last-success heartbeat so a never-firing job is observable.
+
+**Test asserts:** Seed `cron/Job` with a year-2999 `"O"` string (and separately with garbage); assert the next due occurrence is still claimed/run by exactly one node **or** a Warning is emitted — not a silent Debug skip.
+
+---
+
+##### R3-M2 — Invalid or never-occurring cron expression fails silent (job never scheduled), validated only at runtime
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed
+
+**Where:** `MintPlayer.Spark.Cron/ISparkCronBuilder.cs:34-49` (registration validates only `IsNullOrWhiteSpace`); `MintPlayer.Spark.Cron/SparkCronScheduler.cs:47-64` (parse failure logs + `return`s); `:68-83` (never-occurring expression → indefinite 1h re-sleep)
+
+**Attack scenario / failure mode:** Two fail-silent paths. (a) `AddJob<T>("not a cron")`, or a job whose static `CronSchedule` is malformed, passes registration (only whitespace is rejected) and host startup green; at scheduler start `CrontabSchedule.Parse` throws, the loop logs `"Invalid cron expression … the job will not run."` and returns — the job is silently never scheduled. (b) A syntactically-valid but never-occurring expression (e.g. `0 0 30 2 *`, Feb 30) parses fine; `GetNextOccurrence` returns no real future occurrence, so the loop enters an indefinite 1-hour-resleep that never fires (NCrontab's exact return for the impossible-date case should be confirmed by the fix's test, but either branch — throw or sentinel — currently ends in a silent no-run). A typo'd schedule on a security-relevant cleanup/retention job thus quietly never runs.
+
+**Expected secure behavior:** Validate the cron expression at **registration** time in `AddJob` (`CrontabSchedule.TryParse`, fail-fast `ArgumentException`), consistent with the existing whitespace check, so a bad schedule fails the build/startup rather than silently disabling the job. At runtime, detect a "no future occurrence" result and log **Warning** + disable that one loop (leaving other jobs healthy) instead of re-sleeping forever.
+
+**Test asserts:** `AddJob<T>("xyz")` throws `ArgumentException` at registration; a registered `0 0 30 2 *` job logs a Warning and its loop terminates while the scheduler stays healthy for other jobs.
+
+---
+
+##### R3-M3 — `AllowConcurrentRuns` jobs are fire-and-forget with no concurrency cap → unbounded fan-out (self-DoS) when a run overruns its interval
+
+**Layer:** Framework · **Testable?** Indirect · **Confidence:** Likely
+
+**Where:** `MintPlayer.Spark.Cron/SparkCronScheduler.cs:107-112`
+
+**Attack scenario / failure mode:** With `AllowConcurrentRuns = true`, `ExecuteJobAsync` is launched and the returned `Task` is neither awaited nor tracked; the loop immediately schedules the next occurrence. Because the cluster claim is keyed per *occurrence* value, each new occurrence wins its own claim and starts another concurrent run. If `RunAsync` consistently outlasts the interval (a slow job, or one slowed by attacker-induced load), in-flight runs grow without bound — memory/connection/thread exhaustion on the node. There is no `SemaphoreSlim`/cap and outstanding runs are not tracked for graceful shutdown. (Exceptions themselves are safe — `ExecuteJobAsync` wraps its body in try/catch at `:117-133` — so this is fan-out, not unobserved-exception.)
+
+**Expected secure behavior:** Bound in-flight concurrency for `AllowConcurrentRuns` jobs (documented max / `SemaphoreSlim`); skip an occurrence when the cap is exceeded rather than growing unboundedly; track outstanding runs so shutdown can await/cancel them.
+
+**Test asserts:** Configure a concurrent job whose `RunAsync` blocks longer than its interval; assert in-flight runs are capped at a documented maximum rather than one-per-occurrence growth.
+
+#### LOW
+
+---
+
+##### R3-L1 — Cron jobs execute with full DI trust and no authorization principal; privilege boundary undocumented
+
+**Layer:** Framework / Application · **Testable?** No · **Confidence:** Confirmed
+
+**Where:** `MintPlayer.Spark.Cron/SparkCronScheduler.cs:119-123`; `MintPlayer.Spark.Cron/README.md` (omission)
+
+**Failure mode:** Each run resolves the job from a fresh DI scope with an unfiltered `IAsyncDocumentSession`/`IDatabaseAccess`, no `ClaimsPrincipal`, no tenant context, and no `IPermissionService` gate — cron jobs bypass the entire authorization layer that guards the HTTP surface (by design for trusted maintenance work). This is an undocumented privilege boundary: any package that registers an `ISparkCronJob` runs full-trust on every node on a schedule. The guide never states this, and a consumer job that calls `IPermissionService`/`IAccessControl` (which key off the ambient principal) would silently evaluate against an empty/anonymous context.
+
+**Expected secure behavior:** Document explicitly that cron jobs run with no principal and full data access, so registration is treated as a privileged operation; optionally offer an opt-in principal/tenant-scoping hook for multi-tenant deployments. At minimum add a security note to `MintPlayer.Spark.Cron/README.md`.
+
+---
+
+##### R3-L2 — 5-vs-6-field precision heuristic can silently mis-parse a schedule (e.g. 60× frequency)
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Likely
+
+**Where:** `MintPlayer.Spark.Cron/SparkCronScheduler.cs:52-57`
+
+**Failure mode:** Precision is chosen purely by counting space-separated fields (`IncludingSeconds = fieldCount == 6`). A registrant who writes `*/30 * * * *` intending "every 30 seconds" silently gets "every 30 minutes" (and a 6-field value meant as 5-field runs 60× more often). For a rate-limit-reset / lockout-sweep job, a 60× frequency or 60× delay is a meaningful misconfiguration with no feedback to the author.
+
+**Expected secure behavior:** Log (Information) the resolved precision and the first computed next-occurrence per job at startup so a precision misread is visible; reject malformed field counts explicitly rather than relying on NCrontab's downstream error.
+
+**Test asserts:** Register `*/30 * * * *` and assert the logged next-occurrence delta is ~30 minutes (documenting the interpretation); a 6-field schedule logs second precision.
+
+---
+
+##### R3-L3 — `SparkCronJobRegistry` is mutated without synchronization
+
+**Layer:** Framework · **Testable?** Indirect · **Confidence:** Confirmed (defect) / not remotely reachable
+
+**Where:** `MintPlayer.Spark.Cron/SparkCronJobRegistry.cs:10,15-23`; `SparkCronExtensions.cs:29-44`
+
+**Failure mode:** `Add` does a non-atomic `Any(...)`-then-`Add(...)` on a plain `List<>`, and `GetOrAddInfrastructure` does an unsynchronized find-or-create on the `IServiceCollection`. DI composition is single-threaded in the normal host path, so this is **not remotely reachable**; only an app that parallelizes module wiring could bypass the duplicate-name guard or tear the list (corrupted registry / duplicate `cron/{jobName}` lock keys — not a privilege bug).
+
+**Expected secure behavior:** Document registration as single-threaded, or guard `Add`/`GetOrAddInfrastructure` with a lock.
+
+### 10.4 Verified clean (Round 3)
+
+- **R2-C5 build-time-RCE class NOT repeated.** `CronJobRegistrationGenerator.Producer.cs` emits exactly one interpolated value — `jobClass.JobTypeName`, a Roslyn `ToDisplayString(FullyQualifiedFormat)` symbol name (`CronJobRegistrationGenerator.cs:39`) — into a fixed `cron.AddJob<{JobTypeName}>();`. The untrusted `name`/`cronSchedule` override strings exist only on the runtime `AddJob(string, string?)` overload, which the generator never calls. No `AdditionalFiles`/JSON feeds this generator (it works off `SyntaxProvider` class declarations). No identifier guard is needed because the input is a compiler-validated symbol, not file content. *(Verified by the lead by reading the producer directly.)*
+- **AllFeatures fully-qualified-call change is safe, complete, and symmetric.** `SparkFullGenerator.Producer.cs` emits `global::{RootNamespace}.SparkCronJobsBuilderExtensions.AddCronJobs(spark)`, matching the cron generator's emitted class/method/namespace (both derive `RootNamespace` from `settings.RootNamespace ?? "GeneratedCode"`). `global::`-qualified static-call form removes `using`-ambiguity and can't bind to developer-authored extensions. `AddCronJobs` is emitted **only** when an `ISparkCronJob` implementer exists — no fail-open, no dangling reference.
+- **No HTTP / external surface** in the cron package (none registered; demos add no routes).
+- **Compare-exchange key isolation.** Repo-wide, compare-exchange is used only by the scheduler (`cron/*`) and `UserStore` (`EmailReservation*`) — disjoint namespaces. No R2 write path (`/spark/sync/apply`, module registration) reaches compare-exchange.
+- **Demo jobs inert.** `HeartbeatJob` (DemoApp) and `FleetHeartbeatJob` (Fleet) only `LogInformation(DateTime.UtcNow)` — no sensitive data, no network, no attacker-influenceable input.
+- **Supply chain — NCrontab `3.3.3`** pinned exactly (`MintPlayer.Spark.Cron.csproj:36`), no known CVEs, small maintained single-purpose library; consistent with R2's supply-chain dismissals.
+- **Claim atomicity, exception isolation, idempotent `AddCron`, fail-closed duplicate-name, `TryAddScoped` lifetime, `SafeDelayAsync` cancellation, non-concurrent overlap suppression, host-clock `MaxSleep` re-evaluation** — all reviewed and correct.
+
+### 10.5 Part A — R2 rebase drift-check
+
+All sampled R2 fixes were read in the **current working tree** and are present and intact — **no regressions from the rebase**:
+
+| R2 ID | Verified at | Status |
+|-------|-------------|--------|
+| R2-C1 | `MintPlayer.Spark.Replication/Endpoints/EtlDeploy.cs:42-65` (mTLS via `IModuleCertificateValidator`) | INTACT |
+| R2-C2 | `MintPlayer.Spark.Replication/Endpoints/SyncApply.cs:40-53` (cert validation before CRUD) | INTACT |
+| R2-C3 | `MintPlayer.Spark.Webhooks.GitHub/Services/SignatureService.cs:16-17,36` (fail-closed + `FixedTimeEquals`) | INTACT |
+| R2-C4 / M3 / H11 | `…/SparkAuthenticationExtensions.cs` (`SanitizeReturnUrl:237-244`, server-side redirect, `email_verified` gate) | INTACT |
+| R2-H1 | `MintPlayer.Spark/Services/PermissionService.cs:13-19` (no null-fail-open; deny-all default) | INTACT |
+| R2-H3 | same file `:83-101` (`RequireAntiforgeryToken` on mutating Identity-API routes) | INTACT |
+| R2-H6 | `MintPlayer.Spark.Messaging/Services/MessageTypeAllowList.cs` + `MessageSubscriptionWorker.cs:89-107,173-184` (allow-list before `Type.GetType`) | INTACT |
+
+**Verdict:** All sampled R2 fixes intact — no rebase regressions.
+
+### 10.6 Per-finding disposition (ADDRESSED 2026-06-05)
+
+All six findings fixed in `MintPlayer.Spark.Cron` + tests; cron test suite green (23/23).
+
+| ID | Severity | Disposition | Where fixed |
+|----|----------|-------------|-------------|
+| R3-M1 | Medium | **Fixed.** Stored claim value treated as untrusted — `TryParseClaimValue` + future-skew threshold (`MaxClaimFutureSkew`); unparseable/poison value logs Warning and is reclaimed instead of honored. | `SparkCronScheduler.cs:TryClaimOccurrenceAsync/TryParseClaimValue` |
+| R3-M2 | Medium | **Fixed.** `CronScheduleParser.TryParse` fail-fast `ArgumentException` in `AddJob`; runtime `NextOccurrenceUtc` returns null for never-occurring expressions → Warning + that loop disabled (no infinite re-sleep). | `ISparkCronBuilder.cs`, `SparkCronScheduler.cs`, `CronScheduleParser.cs` |
+| R3-M3 | Medium | **Fixed.** `SemaphoreSlim(MaxConcurrentRunsPerJob=10)` caps concurrent fan-out (excess occurrences shed with Warning); in-flight runs tracked and drained at shutdown via `Task.WhenAll`. | `SparkCronScheduler.cs:TryRunOnceAsync/RunReleasingAsync` |
+| R3-L1 | Low | **Fixed.** New "Security & Trust Model" section documents no-principal full-trust execution. | `MintPlayer.Spark.Cron/README.md` |
+| R3-L2 | Low | **Fixed.** Resolved precision + first next-occurrence logged (Information) per job at startup. | `SparkCronScheduler.cs:RunJobLoopAsync` |
+| R3-L3 | Low | **Fixed.** `Add` + `GetOrAddInfrastructure` guarded by locks; `Jobs` returns a snapshot. | `SparkCronJobRegistry.cs`, `SparkCronExtensions.cs` |
+
+Test coverage added: `AddJob_throws_when_the_schedule_is_unparseable` (Theory), `AddJob_accepts_a_valid_but_never_occurring_expression`, `A_never_occurring_schedule_disables_only_its_own_loop`, `A_concurrent_job_that_overruns_is_capped_at_the_max_in_flight`, `A_poisoned_far_future_claim_value_is_reclaimed_not_honored`, `An_unparseable_claim_value_is_reclaimed_not_honored`.
+
+### 10.7 Test matrix (Round 3)
+
+| # | Finding | Test name | Assertion |
+|---|---------|-----------|-----------|
+| T1 | R3-M1 | `Poisoned_far_future_claim_value_does_not_silently_disable_job` | Seed `cron/Job`=year-2999 → next occurrence still claimed/run by one node OR Warning emitted |
+| T2 | R3-M1 | `Corrupt_claim_value_is_treated_as_untrusted` | Seed garbage value → Warning + reclaim, not silent skip |
+| T3 | R3-M2 | `AddJob_with_invalid_cron_throws_at_registration` | `AddJob<T>("xyz")` → `ArgumentException` (not a runtime log-only no-op) |
+| T4 | R3-M2 | `Never_occurring_schedule_disables_only_its_own_loop` | `0 0 30 2 *` → Warning + that loop ends, scheduler stays healthy |
+| T5 | R3-M3 | `Concurrent_overrunning_job_is_capped` | `RunAsync` longer than interval → in-flight runs ≤ documented cap |
+| T6 | R3-L2 | `Resolved_cron_precision_is_logged` | `*/30 * * * *` → logged next-occurrence ≈ 30 min |
+| T7 | R3-L3 | `Concurrent_duplicate_registration_is_rejected` | N concurrent `Add` same name → exactly one succeeds, rest throw |
+
+### 10.8 Triage questions (for the user)
+
+1. **Bundle with the R2 PR or a separate follow-up?** Round 3 has no Critical/High; it's 3 Mediums + 3 Lows confined to the new cron package. Cleanest as a small dedicated `fix(cron)` commit on this branch (tests-first, same shape as R2).
+2. **R3-M1 framing** — is cron lock-poisoning in-threat-model given there's no reachable compare-exchange write path today? If treated as pure robustness/observability, the heartbeat + Warning-escalation parts are the high-value pieces and the value-validation is defense-in-depth.
+3. **R3-M2** — fail-fast at registration (recommended) vs. keep runtime-only but escalate to Warning + disable. Fail-fast is consistent with the existing whitespace check.
+4. **R3-L1** — documentation-only, or also ship an opt-in principal/tenant-scoping hook for cron jobs?

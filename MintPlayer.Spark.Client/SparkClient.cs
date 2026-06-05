@@ -178,7 +178,7 @@ public class SparkClient : IDisposable
     /// (<c>{ result, operations }</c>); this method unwraps the envelope and returns just the
     /// <see cref="PersistentObject"/>. Any client operations emitted by server-side action code
     /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
-    /// docs/PRD-ClientOperations.md.
+    /// docs/prd/PRD-ClientOperations.md.
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
     {

@@ -4,7 +4,7 @@ namespace MintPlayer.Spark.Abstractions.ClientOperations;
 
 /// <summary>
 /// Scoping target for a <see cref="DisableActionOperation"/>. Discriminated by
-/// <c>kind</c>. See <c>docs/PRD-ClientOperations.md</c> for the target shape
+/// <c>kind</c>. See <c>docs/prd/PRD-ClientOperations.md</c> for the target shape
 /// table.
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]

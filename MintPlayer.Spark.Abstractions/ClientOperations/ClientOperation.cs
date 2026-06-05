@@ -5,7 +5,7 @@ namespace MintPlayer.Spark.Abstractions.ClientOperations;
 /// <summary>
 /// Base for the discriminated union of backend-issued operations that the frontend
 /// executes after an action completes. Wire discriminator is the <c>type</c> property.
-/// See <c>docs/PRD-ClientOperations.md</c> for the full design.
+/// See <c>docs/prd/PRD-ClientOperations.md</c> for the full design.
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(NavigateOperation),         "navigate")]

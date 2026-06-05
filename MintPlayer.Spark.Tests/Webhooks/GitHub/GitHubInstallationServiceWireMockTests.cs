@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Webhooks.GitHub;
 /// <summary>
 /// End-to-end tests for installation token refresh + 401 retry, using a local WireMock
 /// server to stand in for api.github.com. Covers the concurrency and retry contract from
-/// docs/PRD-GitHubAppClientCache.md that the reflection-based tests in
+/// docs/prd/PRD-GitHubAppClientCache.md that the reflection-based tests in
 /// GitHubInstallationServiceTests cannot reach.
 /// </summary>
 public class GitHubInstallationServiceWireMockTests : IAsyncLifetime

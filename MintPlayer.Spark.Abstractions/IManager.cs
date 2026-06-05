@@ -46,7 +46,7 @@ public interface IManager
     /// Access to the client-operations accumulator — non-blocking side-effects
     /// (Navigate, Notify, RefreshAttribute, RefreshQuery, DisableAction*) that the
     /// backend pushes and the frontend executes after the current action completes.
-    /// See <c>docs/PRD-ClientOperations.md</c>.
+    /// See <c>docs/prd/PRD-ClientOperations.md</c>.
     /// </summary>
     IClientAccessor Client { get; }
 

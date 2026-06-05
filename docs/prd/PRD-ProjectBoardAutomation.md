@@ -8,7 +8,7 @@ Parts of this PRD are historical. The feature shipped, but a few design points h
 - **Per-environment config keys.** `GitHub:ClientId` / `GitHub:ClientSecret` / `GitHub:PrivateKeyPath` / `GitHub:ProductionAppId` have moved under `GitHub:Production:*` and `GitHub:Development:*`. `Program.cs` picks the active environment via `IHostEnvironment.IsDevelopment()`.
 - **Org filtering** uses `GET /user/installations` at request time (see `OrganizationAccessService.cs`), not `/user/orgs` + claims. See `PRD-GitHubProject-OrgAuthorization.md` for the related deviation.
 
-The entity model, Actions hooks, webhook-handler design, and UI flow all match what shipped. Refer to the current `Demo/WebhooksDemo/WebhooksDemo/Program.cs` and `docs/guide-github-webhooks.md` for the authoritative config shape.
+The entity model, Actions hooks, webhook-handler design, and UI flow all match what shipped. Refer to the current `Demo/WebhooksDemo/WebhooksDemo/Program.cs` and `MintPlayer.Spark.Webhooks.GitHub/README.md` for the authoritative config shape.
 
 ---
 

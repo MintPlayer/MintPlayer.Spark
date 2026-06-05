@@ -48,7 +48,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 });
 ```
 
-See the [AllFeatures documentation](docs/PRD-AllFeatures.md) for details.
+See the [AllFeatures documentation](docs/prd/PRD-AllFeatures.md) for details.
 
 ### Granular Setup
 
@@ -101,6 +101,7 @@ MintPlayer.Spark/
 ├── MintPlayer.Spark.AllFeatures/                # All-in-one package (references all + source generator)
 ├── MintPlayer.Spark.AllFeatures.SourceGenerators/ # Generates AddSparkFull/UseSparkFull/MapSparkFull
 ├── MintPlayer.Dotnet.SocketExtensions/          # WebSocket read/write helpers
+├── MintPlayer.Spark.Testing/                    # Test harness: embedded RavenDB driver, in-memory host factory, fixtures
 ├── Demo/
 │   ├── DemoApp/                                 # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                   # Fleet management demo (auth, messaging, replication)
@@ -116,7 +117,7 @@ MintPlayer.Spark/
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](docs/guide-getting-started.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
+| [Getting Started](MintPlayer.Spark/README.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
@@ -125,14 +126,16 @@ MintPlayer.Spark/
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
-| [Authorization](docs/guide-authorization.md) | Optional security package, `security.json`, groups, permissions, XSRF |
+| [Authorization](MintPlayer.Spark.Authorization/README.md) | Optional security package, `security.json`, groups, permissions, XSRF |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
-| [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
+| [Durable Message Bus](MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
-| [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
-| [Cron Jobs](docs/guide-cron-jobs.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
-| [GitHub Webhooks](docs/guide-github-webhooks.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
+| [Subscription Workers](MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
+| [Cron Jobs](MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [GitHub Webhooks](MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
+| [GitHub Webhooks — Dev Tunnel](MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
+| [Testing Harness](MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 
 ### Reference
 
@@ -140,7 +143,7 @@ MintPlayer.Spark/
 - **[Spark Library API](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
-- **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
+- **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
 
 ## Contributing
 

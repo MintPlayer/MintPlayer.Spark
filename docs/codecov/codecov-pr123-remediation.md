@@ -1,6 +1,6 @@
 # CodeCov PR #123 — Remediation Options
 
-Per `docs/codecov-pr123-diagnosis.md`: ~174 LOC of new production code (H-2/H-3 row-level authz, M-7 optimistic concurrency) is exercised only by `MintPlayer.Spark.E2E.Tests/Security/*`. Those tests run Fleet as an **out-of-process** `dotnet run` subprocess (see `MintPlayer.Spark.E2E.Tests/_Infrastructure/FleetTestHost.cs:262`), so coverlet in the test process captures zero coverage of `MintPlayer.Spark.dll`. That — plus the fact that CI's nx filter doesn't invoke the E2E project at all — accounts for both the patch 26.28% and the project −5.80%.
+Per `docs/codecov/codecov-pr123-diagnosis.md`: ~174 LOC of new production code (H-2/H-3 row-level authz, M-7 optimistic concurrency) is exercised only by `MintPlayer.Spark.E2E.Tests/Security/*`. Those tests run Fleet as an **out-of-process** `dotnet run` subprocess (see `MintPlayer.Spark.E2E.Tests/_Infrastructure/FleetTestHost.cs:262`), so coverlet in the test process captures zero coverage of `MintPlayer.Spark.dll`. That — plus the fact that CI's nx filter doesn't invoke the E2E project at all — accounts for both the patch 26.28% and the project −5.80%.
 
 Three options below, then a recommendation.
 
