@@ -21,6 +21,7 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
 	</ItemGroup>
 
 	<ItemGroup>
