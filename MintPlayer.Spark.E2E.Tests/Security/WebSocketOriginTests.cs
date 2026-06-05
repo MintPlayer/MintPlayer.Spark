@@ -57,7 +57,7 @@ public class WebSocketOriginTests
             // GetCompanies is granted to Everyone, so unauth + no Origin succeeds.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await ws.ConnectAsync(new Uri(wssUrl), cts.Token);
-            ws.State.Should().BeOneOf(WebSocketState.Open, WebSocketState.CloseSent, WebSocketState.Closed,
+            ws.State.Should().BeOneOf([WebSocketState.Open, WebSocketState.CloseSent, WebSocketState.Closed],
                 "no-Origin clients must be allowed through");
         }
         finally

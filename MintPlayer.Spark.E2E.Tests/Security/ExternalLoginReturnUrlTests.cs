@@ -44,7 +44,7 @@ public class ExternalLoginReturnUrlTests
         // The callback redirects to the sanitized URL. Without an OAuth session,
         // signInManager.GetExternalLoginInfoAsync returns null → fallback redirect
         // path. The fallback MUST be the sanitized value, which is "/".
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.Found,
+        response.StatusCode.Should().BeOneOf([HttpStatusCode.Redirect, HttpStatusCode.Found],
             "callback should respond with a redirect, not embed the returnUrl in HTML");
 
         var location = response.Headers.Location?.ToString() ?? string.Empty;

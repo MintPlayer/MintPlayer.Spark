@@ -46,7 +46,7 @@ public class ReplicationEndpointAuthTests
         // Development mode still verifies the module is registered — unknown
         // module → 403. (Production mode also returns 403 for thumbprint mismatch.)
         // Critically: NOT 200. The previous behavior was "no check at all".
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized,
+        response.StatusCode.Should().BeOneOf([HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized],
             "ETL deployment must reject unknown requesting modules");
     }
 
@@ -71,7 +71,7 @@ public class ReplicationEndpointAuthTests
 
         var response = await http.PostAsJsonAsync("/spark/sync/apply", body);
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized,
+        response.StatusCode.Should().BeOneOf([HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized],
             "sync apply must reject unknown requesting modules — was previously fully unauthenticated");
     }
 
@@ -96,7 +96,7 @@ public class ReplicationEndpointAuthTests
 
         var response = await http.PostAsJsonAsync("/spark/sync/apply", body);
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized,
+        response.StatusCode.Should().BeOneOf([HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized],
             "empty RequestingModule must be refused even before module-registration lookup");
     }
 }
