@@ -17,9 +17,8 @@ namespace MintPlayer.Spark.Testing;
 /// <c>ModelLoader</c> sees only the entity types declared by the fixture.
 ///
 /// Uses <see cref="TestServer"/>/<see cref="IHost"/> directly rather than
-/// <see cref="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory{TEntryPoint}"/> —
-/// the latter requires the host assembly to expose a <c>Main</c> entry point, which a
-/// library-level test project doesn't have.
+/// <c>WebApplicationFactory&lt;TEntryPoint&gt;</c> — the latter requires the host assembly to
+/// expose a <c>Main</c> entry point, which a library-level test project doesn't have.
 ///
 /// <typeparamref name="TContext"/> is the <see cref="SparkContext"/> subclass your tests
 /// expose to Spark (e.g. a context with <c>IRavenQueryable&lt;Person&gt; People</c>).
