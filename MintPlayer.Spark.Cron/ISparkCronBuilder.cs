@@ -36,6 +36,15 @@ internal sealed class SparkCronBuilder(IServiceCollection services, SparkCronJob
         if (string.IsNullOrWhiteSpace(cronSchedule))
             throw new ArgumentException("Cron schedule must not be null or empty.", nameof(cronSchedule));
 
+        // Fail fast on a malformed expression at registration, rather than letting the scheduler
+        // discover it at runtime and silently never run the job. (A syntactically-valid but
+        // never-occurring expression still passes here and is handled by the scheduler loop.)
+        if (!CronScheduleParser.TryParse(cronSchedule, out _, out _))
+            throw new ArgumentException(
+                $"'{cronSchedule}' is not a valid NCrontab expression " +
+                "(five fields = minute precision, six = seconds; always UTC).",
+                nameof(cronSchedule));
+
         // Resolved per-run from a DI scope, so [Inject] dependencies work — never `new TJob()`.
         services.TryAddScoped<TJob>();
 

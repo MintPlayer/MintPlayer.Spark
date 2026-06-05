@@ -120,6 +120,34 @@ public class SparkCronRegistrationTests
         act.Should().Throw<ArgumentException>().WithParameterName("cronSchedule");
     }
 
+    [Theory]
+    [InlineData("not-a-cron-expression")] // single token, unparseable
+    [InlineData("99 99 * * *")]           // out-of-range fields
+    [InlineData("* * *")]                 // too few fields
+    [InlineData("* * * * * * *")]         // too many fields
+    public void AddJob_throws_when_the_schedule_is_unparseable(string schedule)
+    {
+        var builder = new TestBuilder();
+
+        // Fail fast at registration rather than letting the scheduler silently never run the job.
+        var act = () => builder.AddCron(cron => cron.AddJob<JobA>(schedule, "x"));
+
+        act.Should().Throw<ArgumentException>().WithParameterName("cronSchedule");
+    }
+
+    [Fact]
+    public void AddJob_accepts_a_valid_but_never_occurring_expression()
+    {
+        var builder = new TestBuilder();
+
+        // "30 February" is syntactically valid (so registration succeeds); the scheduler detects the
+        // no-future-occurrence case at runtime and disables only that loop.
+        var act = () => builder.AddCron(cron => cron.AddJob<JobA>("0 0 30 2 *", "feb30"));
+
+        act.Should().NotThrow();
+        Resolve(builder).Jobs.Single().CronSchedule.Should().Be("0 0 30 2 *");
+    }
+
     [Fact]
     public void AddJob_throws_when_the_same_name_is_registered_twice()
     {
