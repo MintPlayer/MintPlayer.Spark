@@ -7,24 +7,42 @@ namespace MintPlayer.Spark.Cron;
 public interface ISparkCronBuilder
 {
     /// <summary>
-    /// Registers <typeparamref name="TJob"/> as a scoped service and captures its schedule.
-    /// The cron expression is read from <typeparamref name="TJob"/>'s static abstract member —
-    /// it is never passed as a parameter.
+    /// Registers <typeparamref name="TJob"/> using the schedule it ships via its
+    /// <see cref="ISparkCronJob.CronSchedule"/> static abstract member.
     /// </summary>
     ISparkCronBuilder AddJob<TJob>() where TJob : class, ISparkCronJob;
+
+    /// <summary>
+    /// Registers <typeparamref name="TJob"/> with a caller-supplied schedule, overriding the job's
+    /// shipped default. This lets a consumer run a packaged job on its own schedule, and — by giving
+    /// each registration a distinct <paramref name="name"/> — run the same job type on several
+    /// schedules.
+    /// </summary>
+    /// <param name="cronSchedule">The cron expression (NCrontab syntax, UTC) to run on.</param>
+    /// <param name="name">
+    /// Unique name for this registration. Defaults to the job type name. Also used as the
+    /// cluster-wide compare-exchange lock key, so it must be unique across all registered jobs.
+    /// </param>
+    ISparkCronBuilder AddJob<TJob>(string cronSchedule, string? name = null) where TJob : class, ISparkCronJob;
 }
 
 internal sealed class SparkCronBuilder(IServiceCollection services, SparkCronJobRegistry registry) : ISparkCronBuilder
 {
     public ISparkCronBuilder AddJob<TJob>() where TJob : class, ISparkCronJob
+        => AddJob<TJob>(TJob.CronSchedule);              // static abstract default, read here
+
+    public ISparkCronBuilder AddJob<TJob>(string cronSchedule, string? name = null) where TJob : class, ISparkCronJob
     {
+        if (string.IsNullOrWhiteSpace(cronSchedule))
+            throw new ArgumentException("Cron schedule must not be null or empty.", nameof(cronSchedule));
+
         // Resolved per-run from a DI scope, so [Inject] dependencies work — never `new TJob()`.
         services.TryAddScoped<TJob>();
 
         registry.Add(new CronJobDescriptor(
             JobType: typeof(TJob),
-            Name: typeof(TJob).Name,
-            CronSchedule: TJob.CronSchedule,             // static abstract, read here
+            Name: name ?? typeof(TJob).Name,
+            CronSchedule: cronSchedule,
             AllowConcurrentRuns: TJob.AllowConcurrentRuns));
 
         return this;

@@ -16,7 +16,8 @@ public sealed class SparkCronJobRegistry
     {
         if (jobs.Any(j => j.Name == descriptor.Name))
             throw new InvalidOperationException(
-                $"A cron job named '{descriptor.Name}' is already registered. Job names must be unique.");
+                $"A cron job named '{descriptor.Name}' is already registered. Job names must be unique — " +
+                $"to register the same job type on more than one schedule, pass a distinct 'name' to AddJob.");
 
         jobs.Add(descriptor);
     }
