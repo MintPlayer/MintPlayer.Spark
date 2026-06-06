@@ -29,7 +29,7 @@
     "@mintplayer/ng-animations": "21.1.0",
     "@mintplayer/ng-bootstrap": "^21.18.0",
     "@mintplayer/ng-video-player": "^21.0.0",
-    "@mintplayer/pagination": "^2.3.0",
+    "@mintplayer/pagination": "^2.4.0",
     "@mintplayer/player-progress": "^19.0.0",
     "@mintplayer/player-provider": "^19.0.0",
     "@mintplayer/soundcloud-player": "^19.0.0",
