@@ -12,11 +12,11 @@
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
 		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
 	</ItemGroup>
 
 	<ItemGroup>
