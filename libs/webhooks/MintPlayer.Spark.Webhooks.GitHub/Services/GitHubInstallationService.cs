@@ -1,0 +1,234 @@
+using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Webhooks.GitHub.Configuration;
+using MintPlayer.Spark.Webhooks.GitHub.Services.Internal;
+using Newtonsoft.Json;
+using Octokit;
+using Octokit.Internal;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
+using GraphQLConnection = Octokit.GraphQL.Connection;
+
+namespace MintPlayer.Spark.Webhooks.GitHub.Services;
+
+[Register(typeof(IGitHubInstallationService), ServiceLifetime.Singleton)]
+internal partial class GitHubInstallationService : IGitHubInstallationService, IDisposable
+{
+    [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
+    [Inject] private readonly IGitHubClientFactory _clientFactory;
+
+    private readonly ConcurrentDictionary<long, AccessToken> _installationTokens = new();
+    private readonly ConcurrentDictionary<long, IGitHubClient> _installationClients = new();
+    private readonly ConcurrentDictionary<long, GraphQLConnection> _installationGraphQLConnections = new();
+    private readonly List<IDisposable> _ownedDisposables = new();
+    private readonly IHttpClient _sharedRestHttpClient = new HttpClientAdapter(HttpMessageHandlerFactory.CreateDefault);
+    private readonly SemaphoreSlim _refreshGate = new(initialCount: 1, maxCount: 1);
+    // R2-M9: cache the imported RSA so the PEM string doesn't have to be re-read /
+    // re-imported on every JWT mint (was loaded into a managed string on every
+    // call). The RSA holds the private key in unmanaged buffer space inside CNG/
+    // OpenSSL; the loaded PEM string itself is cleared right after the import.
+    private RSA? _signingKey;
+    private readonly SemaphoreSlim _signingKeyGate = new(1, 1);
+    private bool _disposed;
+
+    /// <summary>
+    /// Returns a cached installation token if it has &gt; 60s remaining, otherwise mints a fresh one
+    /// (under <see cref="_refreshGate"/> to ensure only one concurrent refresh per installation).
+    /// </summary>
+    internal async Task<AccessToken> GetOrCreateInstallationTokenAsync(long installationId, CancellationToken cancellationToken)
+    {
+        // Fast path — lock-free read of a still-fresh token
+        if (_installationTokens.TryGetValue(installationId, out var cached)
+            && DateTimeOffset.UtcNow.AddSeconds(60) < cached.ExpiresAt)
+        {
+            return cached;
+        }
+
+        await _refreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            // Re-check inside the gate (another caller may have refreshed)
+            if (_installationTokens.TryGetValue(installationId, out cached)
+                && DateTimeOffset.UtcNow.AddSeconds(60) < cached.ExpiresAt)
+            {
+                return cached;
+            }
+
+            var appClient = await CreateAppClientAsync();
+            var fresh = await appClient.GitHubApps.CreateInstallationToken(installationId);
+            _installationTokens[installationId] = fresh;
+            return fresh;
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Removes the cached token for the given installation. Called by the 401-retry interceptors
+    /// when a request returns Unauthorized, forcing the next call to mint a fresh token.
+    /// </summary>
+    internal void InvalidateInstallation(long installationId)
+        => _installationTokens.TryRemove(installationId, out _);
+
+    public async Task<IGitHubClient> CreateAppClientAsync()
+    {
+        var opts = _options.Value;
+        var rsa = await GetOrCreateSigningKeyAsync(opts);
+        var jwt = CreateJwt(opts.ClientId!, rsa);
+        return _clientFactory.CreateAppClient(jwt);
+    }
+
+    /// <summary>
+    /// R2-M9: lazy-load the GitHub App private key once, hold it as an
+    /// <see cref="RSA"/> (key material lives in unmanaged buffer space), and
+    /// clear the loaded PEM <see cref="string"/> immediately after import. The
+    /// previous flow read the PEM file on every CreateAppClientAsync call and
+    /// held it as a managed string for the request's lifetime — recoverable
+    /// from a process dump or heap snapshot indefinitely.
+    /// </summary>
+    private async Task<RSA> GetOrCreateSigningKeyAsync(GitHubWebhooksOptions opts)
+    {
+        if (_signingKey is not null) return _signingKey;
+
+        await _signingKeyGate.WaitAsync();
+        try
+        {
+            if (_signingKey is not null) return _signingKey;
+
+            var privateKey = await ResolvePrivateKeyAsync(opts);
+            try
+            {
+                var rsa = RSA.Create();
+                rsa.ImportFromPem(privateKey);
+                _signingKey = rsa;
+                return rsa;
+            }
+            finally
+            {
+                // The String is immutable so we can't zero it in place, but
+                // dropping the reference at least removes our hold on it.
+                privateKey = null!;
+            }
+        }
+        finally
+        {
+            _signingKeyGate.Release();
+        }
+    }
+
+    public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
+        => Task.FromResult(_installationClients.GetOrAdd(installationId, BuildInstallationClient));
+
+    private IGitHubClient BuildInstallationClient(long installationId)
+    {
+        var refreshing = new TokenRefreshingHttpClient(_sharedRestHttpClient, installationId, this);
+        var credentialStore = new DynamicInstallationCredentialStore(installationId, this);
+        return _clientFactory.CreateInstallationClient(refreshing, credentialStore);
+    }
+
+    public async Task<GraphQLConnection> CreateGraphQLConnectionAsync(long installationId, EClientType clientType)
+    {
+        switch (clientType)
+        {
+            case EClientType.App:
+                // App-mode GraphQL is rare and never cached — mint a fresh JWT-bearing connection per call.
+                var appClient = await CreateAppClientAsync();
+                var appToken = appClient.Connection.Credentials.Password;
+                return _clientFactory.CreateAppGraphQLConnection(appToken);
+            case EClientType.Installation:
+                return _installationGraphQLConnections.GetOrAdd(installationId, BuildInstallationGraphQLConnection);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(clientType), clientType, null);
+        }
+    }
+
+    private GraphQLConnection BuildInstallationGraphQLConnection(long installationId)
+    {
+        var handler = new TokenRefreshingHandler(installationId, this) { InnerHandler = new HttpClientHandler() };
+        var httpClient = new HttpClient(handler);
+        lock (_ownedDisposables) { _ownedDisposables.Add(httpClient); }
+
+        return _clientFactory.CreateInstallationGraphQLConnection(
+            new DynamicInstallationGraphQLCredentialStore(installationId, this),
+            httpClient);
+    }
+
+    private static async Task<string> ResolvePrivateKeyAsync(GitHubWebhooksOptions opts)
+    {
+        var privateKey = opts.PrivateKeyPem;
+        if (string.IsNullOrEmpty(privateKey))
+        {
+            if (string.IsNullOrEmpty(opts.PrivateKeyPath))
+                throw new InvalidOperationException(
+                    "GitHub App authentication requires either PrivateKeyPem or PrivateKeyPath to be configured.");
+
+            var absolutePath = Path.IsPathRooted(opts.PrivateKeyPath)
+                ? opts.PrivateKeyPath
+                : Path.Combine(Directory.GetCurrentDirectory(), opts.PrivateKeyPath);
+            privateKey = await File.ReadAllTextAsync(absolutePath);
+        }
+
+        if (string.IsNullOrEmpty(opts.ClientId))
+            throw new InvalidOperationException(
+                "GitHub App authentication requires ClientId to be configured.");
+
+        return privateKey;
+    }
+
+    private static string CreateJwt(string clientId, RSA rsa)
+    {
+        var header = Base64UrlEncode(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(new
+        {
+            alg = "RS256",
+            typ = "JWT"
+        })));
+
+        var iat = DateTimeOffset.UtcNow.AddSeconds(-60);
+        var exp = iat.AddMinutes(10);
+
+        var payload = Base64UrlEncode(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(new
+        {
+            iat = iat.ToUnixTimeSeconds(),
+            exp = exp.ToUnixTimeSeconds(),
+            iss = clientId
+        })));
+
+        var signature = Base64UrlEncode(
+            rsa.SignData(Encoding.UTF8.GetBytes($"{header}.{payload}"),
+                HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+
+        return $"{header}.{payload}.{signature}";
+    }
+
+    private static string Base64UrlEncode(byte[] data)
+        => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    [NoInterfaceMember]
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _refreshGate.Dispose();
+        _signingKeyGate.Dispose();
+        _signingKey?.Dispose();
+        _sharedRestHttpClient.Dispose();
+
+        lock (_ownedDisposables)
+        {
+            foreach (var d in _ownedDisposables)
+            {
+                try { d.Dispose(); }
+                catch { /* swallow — best-effort cleanup at shutdown */ }
+            }
+            _ownedDisposables.Clear();
+        }
+
+        _installationClients.Clear();
+        _installationGraphQLConnections.Clear();
+        _installationTokens.Clear();
+    }
+}

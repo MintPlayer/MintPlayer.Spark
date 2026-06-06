@@ -2,7 +2,7 @@
 
 Reference for every HTTP endpoint the Spark framework exposes. All endpoints live under the `/spark/*` top-level prefix. Mutating endpoints (POST/PUT/DELETE) require the anti-forgery token; read endpoints are anonymous unless noted.
 
-> **Forward-compatibility note:** the response envelope is evolving. See [`docs/PRD-ClientOperations.md`](./PRD-ClientOperations.md) — once that PRD's endpoint-wiring milestone lands, every action-endpoint response will be wrapped in `{ result, operations }` (operations being an array of typed side-effects like `navigate`, `notify`, `refreshQuery`, `retry`, etc.). This document describes the current shape; the wrapping will be transparent to consumers that use the typed `MintPlayer.Spark.Client` SDK.
+> **Forward-compatibility note:** the response envelope is evolving. See [`docs/prd/PRD-ClientOperations.md`](./prd/PRD-ClientOperations.md) — once that PRD's endpoint-wiring milestone lands, every action-endpoint response will be wrapped in `{ result, operations }` (operations being an array of typed side-effects like `navigate`, `notify`, `refreshQuery`, `retry`, etc.). This document describes the current shape; the wrapping will be transparent to consumers that use the typed `MintPlayer.Spark.Client` SDK.
 
 ## Route Prefix Mapping
 

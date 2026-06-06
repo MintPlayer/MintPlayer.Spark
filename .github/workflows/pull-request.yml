@@ -4,6 +4,21 @@ on:
   pull_request:
     branches: [ master ]
 
+# R2-H18: explicit least-privilege token. Without this the workflow inherited
+# the repo default GITHUB_TOKEN scope, which on older repos could be
+# read-write across every API. Fork PRs already don't get secrets, but a
+# malicious PR script (compromised third-party action, future-added
+# postinstall) could otherwise push commits / open issues under the repo's
+# default scope.
+#
+# packages: read is required because dotnet restore pulls
+# @mintplayer/* packages from the org's GitHub Packages NuGet feed. When ANY
+# explicit permissions block is set, GitHub defaults every unlisted scope to
+# none — so omitting packages here turns dotnet restore into 403s.
+permissions:
+  contents: read
+  packages: read
+
 env:
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
@@ -53,7 +68,7 @@ jobs:
     - name: Resolve Playwright version
       id: playwright
       run: |
-        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
           | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
         echo "version=${version}" >> "$GITHUB_OUTPUT"
         echo "Playwright version: ${version}"
@@ -90,41 +105,41 @@ jobs:
     # (nx affected may have skipped the project, leaving no file) so a
     # missing file is a no-op rather than a failure.
     - name: Upload coverage (unit)
-      if: always() && hashFiles('MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
         flags: unit
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (sourcegen)
-      if: always() && hashFiles('MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
         flags: sourcegen
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (client)
-      if: always() && hashFiles('MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
         flags: client
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (e2e)
-      if: always() && hashFiles('MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
         flags: e2e
         fail_ci_if_error: false
         verbose: true

@@ -1,0 +1,25 @@
+{
+  "name": "@mintplayer/ng-spark-auth",
+  "private": false,
+  "version": "0.0.8",
+  "description": "Angular authentication library for MintPlayer.Spark",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+    "directory": "libs/node_packages/ng-spark-auth"
+  },
+  "scripts": {
+    "build": "ng-packagr -p ng-package.json",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "peerDependencies": {
+    "@angular/core": "^21.0.0",
+    "@angular/common": "^21.0.0",
+    "@angular/router": "^21.0.0",
+    "@angular/forms": "^21.0.0",
+    "@mintplayer/ng-bootstrap": "^21.18.0",
+    "rxjs": "~7.8.0"
+  },
+  "devDependencies": {},
+  "sideEffects": false
+}

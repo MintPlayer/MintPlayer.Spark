@@ -9,8 +9,8 @@
     "test": "nx run-many --target=test"
   },
   "workspaces": [
-    "node_packages/ng-spark",
-    "node_packages/ng-spark-auth",
+    "libs/node_packages/ng-spark",
+    "libs/node_packages/ng-spark-auth",
     "Demo/DemoApp/DemoApp/ClientApp",
     "Demo/Fleet/Fleet/ClientApp",
     "Demo/HR/HR/ClientApp",
@@ -28,7 +28,6 @@
     "@mintplayer/file-player": "^19.0.0",
     "@mintplayer/ng-animations": "21.1.0",
     "@mintplayer/ng-bootstrap": "^21.18.0",
-    "@mintplayer/ng-spark-auth": "^0.0.8",
     "@mintplayer/ng-video-player": "^21.0.0",
     "@mintplayer/pagination": "^2.3.0",
     "@mintplayer/player-progress": "^19.0.0",

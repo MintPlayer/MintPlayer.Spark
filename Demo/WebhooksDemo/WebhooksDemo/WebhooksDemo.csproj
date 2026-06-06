@@ -20,12 +20,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-		<ProjectReference Include="..\..\..\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
-		<ProjectReference Include="..\..\..\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
-		<ProjectReference Include="..\..\..\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
-		<ProjectReference Include="..\..\..\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
-		<ProjectReference Include="..\..\..\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\WebhooksDemo.Library\WebhooksDemo.Library.csproj" />
 	</ItemGroup>
 

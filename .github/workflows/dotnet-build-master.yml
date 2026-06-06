@@ -69,7 +69,7 @@ jobs:
     - name: Resolve Playwright version
       id: playwright
       run: |
-        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
           | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
         echo "version=${version}" >> "$GITHUB_OUTPUT"
 
@@ -96,41 +96,41 @@ jobs:
     # logic has a full, fresh baseline to serve to PRs where `nx affected`
     # skipped one or more projects. See codecov.yml `flag_management`.
     - name: Upload coverage (unit)
-      if: always() && hashFiles('MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
         flags: unit
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (sourcegen)
-      if: always() && hashFiles('MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
         flags: sourcegen
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (client)
-      if: always() && hashFiles('MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
         flags: client
         fail_ci_if_error: false
         verbose: true
 
     - name: Upload coverage (e2e)
-      if: always() && hashFiles('MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
+        files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
         flags: e2e
         fail_ci_if_error: false
         verbose: true
@@ -149,7 +149,7 @@ jobs:
     - name: Push ng-spark to NPM
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'node_packages/ng-spark/dist/package.json'
+        package: 'libs/node_packages/ng-spark/dist/package.json'
         registry: 'https://registry.npmjs.org'
         token: ${{ secrets.PUBLISH_TO_NPMJS }}
         access: 'public'
@@ -158,7 +158,7 @@ jobs:
     - name: Push ng-spark to Github
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'node_packages/ng-spark/dist/package.json'
+        package: 'libs/node_packages/ng-spark/dist/package.json'
         registry: 'https://npm.pkg.github.com'
         token: ${{ github.token }}
         access: 'public'
@@ -167,7 +167,7 @@ jobs:
     - name: Push ng-spark-auth to NPM
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'node_packages/ng-spark-auth/dist/package.json'
+        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
         registry: 'https://registry.npmjs.org'
         token: ${{ secrets.PUBLISH_TO_NPMJS }}
         access: 'public'
@@ -176,7 +176,7 @@ jobs:
     - name: Push ng-spark-auth to Github
       uses: JS-DevTools/npm-publish@v4
       with:
-        package: 'node_packages/ng-spark-auth/dist/package.json'
+        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
         registry: 'https://npm.pkg.github.com'
         token: ${{ github.token }}
         access: 'public'

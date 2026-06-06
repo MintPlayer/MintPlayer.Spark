@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <!--
+      This is a test-utilities library (SparkTestDriver, SparkEndpointFactory, JsonFixtureImporter,
+      VerifyDefaults), not a test project. It references xunit for IAsyncLifetime types but has no
+      [Fact] tests. IsTestProject=false stops `dotnet test <sln>` from invoking VSTest on it, which
+      would discover no tests and exit non-zero even though nothing is wrong.
+    -->
+    <IsTestProject>false</IsTestProject>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>MintPlayer.Spark.Testing</PackageId>
+    <Version>10.0.0-preview.34</Version>
+    <Authors>MintPlayer</Authors>
+    <Company>MintPlayer</Company>
+    <Description>Test harness for writing integration tests against MintPlayer.Spark apps: an embedded RavenDB driver (SparkTestDriver), an in-memory Spark host factory (SparkEndpointFactory), an antiforgery-aware HTTP client, JSON fixture seeding, index helpers, and Verify snapshot defaults.</Description>
+    <PackageTags>spark;testing;integration-tests;ravendb;xunit;testhost</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- TestServer / GetTestClient (SparkEndpointFactory). The harness boots a host directly via
+         IHost + TestServer, so it needs TestHost but not the heavier Mvc.Testing/WebApplicationFactory. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="RavenDB.TestDriver" Version="7.2.0" />
+    <PackageReference Include="Verify.Xunit" Version="28.6.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+    <ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,60 @@
+# Auto-pin third-party GitHub Actions and Docker base images.
+#
+# R2-H16: third-party actions used to ride floating tags (@v4, @v1.0.0). Tag
+# rebinds let a compromised maintainer ship backdoored code with secrets
+# in scope (npm publish token, VPS SSH key). Dependabot opens PRs that pin
+# each `uses:` ref to a full 40-char commit SHA and tracks the upstream
+# version in a comment so future bumps are visible.
+#
+# R2-M16: same shape for the Dockerfile base images — pinning to a digest
+# stops the build pulling whatever's currently behind `:10.0`.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Pin to SHA on update. Dependabot writes the SHA + a comment with the
+    # version it resolves to.
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /Demo/WebhooksDemo/WebhooksDemo
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # Group all transitive Microsoft.* bumps so we get one PR per week rather
+    # than dozens.
+    groups:
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+      ravendb:
+        patterns:
+          - "RavenDB.*"
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@angular-devkit/*"
+      nx:
+        patterns:
+          - "@nx/*"
+          - "nx"

@@ -1,0 +1,51 @@
+using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Messaging.Indexes;
+using MintPlayer.Spark.Messaging.Services;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Operations.Expiration;
+
+namespace MintPlayer.Spark.Messaging;
+
+internal static class SparkMessagingExtensions
+{
+    internal static IServiceCollection AddSparkMessaging(
+        this IServiceCollection services,
+        Action<SparkMessagingOptions>? configure = null)
+    {
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        // IAsyncDocumentSession is now registered by AddSpark() in the core library.
+        services.AddScoped<IMessageBus, MessageBus>();
+        services.AddScoped<MessageCheckpoint>();
+        services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());
+
+        // Register IServiceCollectionAccessor so the manager can discover queues at runtime
+        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        // R2-H6: type allow-list derived from the same scan
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        services.AddHostedService<MessageSubscriptionManager>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Deploys the SparkMessages RavenDB index. Call this after the application is built.
+    /// </summary>
+    internal static IApplicationBuilder CreateSparkMessagingIndexes(this IApplicationBuilder app)
+    {
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        new SparkMessages_ByQueue().Execute(documentStore);
+
+        // Enable RavenDB document expiration so @expires metadata is honored
+        documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
+        {
+            Disabled = false,
+            DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)
+        }));
+
+        return app;
+    }
+}

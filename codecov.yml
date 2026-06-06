@@ -59,4 +59,4 @@ ignore:
   - "MintPlayer.Spark.SourceGenerators.Tests/**"
   - "MintPlayer.Spark.Client.Tests/**"
   - "MintPlayer.Spark.E2E.Tests/**"
-  - "node_packages/**"                        # Angular libs measured separately
+  - "libs/node_packages/**"                        # Angular libs measured separately

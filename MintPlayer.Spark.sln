@@ -1,23 +1,22 @@
-﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.3.11429.125
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark", "MintPlayer.Spark\MintPlayer.Spark.csproj", "{AC392092-7666-4FDE-8FBD-71C1A602CD7A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark", "libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj", "{AC392092-7666-4FDE-8FBD-71C1A602CD7A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Abstractions", "MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj", "{FEE68A9B-1E8D-490A-A56E-0381615A61C2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Abstractions", "libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj", "{FEE68A9B-1E8D-490A-A56E-0381615A61C2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators", "MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj", "{BE8DB20B-024B-4104-A4CE-615A048825D8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators", "libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj", "{BE8DB20B-024B-4104-A4CE-615A048825D8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Authorization", "MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj", "{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Authorization", "libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj", "{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging.Abstractions", "MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj", "{8FA8E1EE-63B3-4908-A25B-191399829400}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging.Abstractions", "libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj", "{8FA8E1EE-63B3-4908-A25B-191399829400}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging", "MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj", "{2DF03B88-B4CE-41CC-BB47-8ABD0B424046}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Messaging", "libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj", "{2DF03B88-B4CE-41CC-BB47-8ABD0B424046}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Replication.Abstractions", "MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj", "{6C9ACEC8-2B43-4358-B4D0-B2750252B414}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Replication.Abstractions", "libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj", "{6C9ACEC8-2B43-4358-B4D0-B2750252B414}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Replication", "MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj", "{E4EE0134-29D4-4C8A-A1D4-AA839D59F128}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Replication", "libs\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj", "{E4EE0134-29D4-4C8A-A1D4-AA839D59F128}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Demos", "Demos", "{FA8A28C8-4B59-8028-2ACF-626D05B08DB7}"
 EndProject
@@ -41,45 +40,73 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "HRApp", "HRApp", "{2A519F7C
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "node_packages", "node_packages", "{809F86A1-1C4C-B159-0CD4-DF9D33D876CE}"
 EndProject
-Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark-auth", "node_packages\ng-spark-auth\ng-spark-auth.esproj", "{3A3366F2-9EC5-49BD-B408-0C90F52636B9}"
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark-auth", "libs\node_packages\ng-spark-auth\ng-spark-auth.esproj", "{3A3366F2-9EC5-49BD-B408-0C90F52636B9}"
 EndProject
-Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark", "node_packages\ng-spark\ng-spark.esproj", "{503DE99E-29F1-40A7-B42A-2B37A744C64D}"
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "ng-spark", "libs\node_packages\ng-spark\ng-spark.esproj", "{503DE99E-29F1-40A7-B42A-2B37A744C64D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SubscriptionWorker", "MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj", "{A754EA1F-571A-4D96-A2DA-A580DCEC1516}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SubscriptionWorker", "libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj", "{A754EA1F-571A-4D96-A2DA-A580DCEC1516}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Tests", "MintPlayer.Spark.Tests\MintPlayer.Spark.Tests.csproj", "{10A3D4B1-782C-457A-86F7-2C97A7A208C8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Tests", "tests\MintPlayer.Spark.Tests\MintPlayer.Spark.Tests.csproj", "{10A3D4B1-782C-457A-86F7-2C97A7A208C8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Dotnet.SocketExtensions", "MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj", "{94898A33-0021-4C10-88D7-7150D840E70D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Dotnet.SocketExtensions", "libs\socket_extensions\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj", "{94898A33-0021-4C10-88D7-7150D840E70D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Webhooks.GitHub", "MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj", "{76434E41-D68C-4274-9B6B-D31D409ABACB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Webhooks.GitHub", "libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj", "{76434E41-D68C-4274-9B6B-D31D409ABACB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Webhooks.GitHub.DevTunnel", "MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "{D35BC50D-64B5-41F0-B495-6A7A1BDAB19F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Webhooks.GitHub.DevTunnel", "libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "{D35BC50D-64B5-41F0-B495-6A7A1BDAB19F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebhooksDemo", "Demo\WebhooksDemo\WebhooksDemo\WebhooksDemo.csproj", "{1D13BCEC-A00F-4DF4-BE73-986058378482}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures.SourceGenerators", "MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "{0B6CC068-7A99-4713-96AC-5C3945917E55}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures.SourceGenerators", "libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "{0B6CC068-7A99-4713-96AC-5C3945917E55}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures", "MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj", "{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.AllFeatures", "libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj", "{3DA067A8-EFB4-42E9-9BA0-DF49570E716B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WebhooksDemo", "WebhooksDemo", "{C32BE5C5-DA55-4484-9B87-83D342E5E3B1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebhooksDemo.Library", "Demo\WebhooksDemo\WebhooksDemo.Library\WebhooksDemo.Library.csproj", "{6604858D-A285-485F-8191-EE9368348AA1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Testing", "MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj", "{39C9BFC8-F370-4837-825B-2704D60E1F9F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Testing", "libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj", "{39C9BFC8-F370-4837-825B-2704D60E1F9F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.E2E.Tests", "MintPlayer.Spark.E2E.Tests\MintPlayer.Spark.E2E.Tests.csproj", "{120850E5-8FE9-4A12-B22A-F16243A4F422}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.E2E.Tests", "tests\MintPlayer.Spark.E2E.Tests\MintPlayer.Spark.E2E.Tests.csproj", "{120850E5-8FE9-4A12-B22A-F16243A4F422}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators.Tests", "MintPlayer.Spark.SourceGenerators.Tests\MintPlayer.Spark.SourceGenerators.Tests.csproj", "{D465E002-1B8F-47BB-8D63-050E903DBFFA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SourceGenerators.Tests", "tests\MintPlayer.Spark.SourceGenerators.Tests\MintPlayer.Spark.SourceGenerators.Tests.csproj", "{D465E002-1B8F-47BB-8D63-050E903DBFFA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SubscriptionWorker.Abstractions", "MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj", "{059EB754-3C9C-4B6B-9ECA-14C972C639D7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.SubscriptionWorker.Abstractions", "libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj", "{059EB754-3C9C-4B6B-9ECA-14C972C639D7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client", "MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj", "{481F2A63-1BD5-46EC-B813-12CC178A1D68}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client", "libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj", "{481F2A63-1BD5-46EC-B813-12CC178A1D68}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client.Tests", "MintPlayer.Spark.Client.Tests\MintPlayer.Spark.Client.Tests.csproj", "{8DCFA0C2-B9EC-4E0B-9131-6FA7B3ECC7DF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client.Tests", "tests\MintPlayer.Spark.Client.Tests\MintPlayer.Spark.Client.Tests.csproj", "{8DCFA0C2-B9EC-4E0B-9131-6FA7B3ECC7DF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client.Authorization", "MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj", "{8B522177-C458-4FD8-AB7D-ADE194D25CEC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Client.Authorization", "libs\client\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj", "{8B522177-C458-4FD8-AB7D-ADE194D25CEC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Cron", "MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj", "{1CA877E4-C6E5-4607-8EC2-B3D9EC3FA838}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Cron", "libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj", "{1CA877E4-C6E5-4607-8EC2-B3D9EC3FA838}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "libs", "libs", "{6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "all_features", "all_features", "{DB9DA1E7-7629-EC58-1BDF-57A41154592E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "authorization", "authorization", "{7C41F2A1-1399-4465-D1FC-3E858A7AD82D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "client", "client", "{108D60D1-42BF-525A-3C28-B5A656D11EE7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "cron", "cron", "{44406B93-492C-7968-AA61-F411ADFE0C91}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "messaging", "messaging", "{A6F11290-D096-D106-72E1-DA7959B882A6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "replication", "replication", "{35714FD9-84C0-AFE5-B0E5-0157E162423F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "socket_extensions", "socket_extensions", "{E927A806-4E28-468A-176C-2BD127DCD559}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "source_generators", "source_generators", "{6E392150-6046-E365-AB4A-17845FD3C672}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "spark", "spark", "{4B60BCEB-340F-45A4-F3CE-A0ED5B6E78FC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "subscription_worker", "subscription_worker", "{04E225AB-FA36-F433-5DD0-9D524507377E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testing", "testing", "{CA41A6EE-C33B-ECC5-A41E-DF5E7AF8E062}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "webhooks", "webhooks", "{034C0450-791B-163A-E4F8-C04060224C39}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -480,6 +507,14 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{AC392092-7666-4FDE-8FBD-71C1A602CD7A} = {4B60BCEB-340F-45A4-F3CE-A0ED5B6E78FC}
+		{FEE68A9B-1E8D-490A-A56E-0381615A61C2} = {4B60BCEB-340F-45A4-F3CE-A0ED5B6E78FC}
+		{BE8DB20B-024B-4104-A4CE-615A048825D8} = {6E392150-6046-E365-AB4A-17845FD3C672}
+		{C8E2A5F1-3D4B-4E6F-9A1C-2B3D4E5F6A7B} = {7C41F2A1-1399-4465-D1FC-3E858A7AD82D}
+		{8FA8E1EE-63B3-4908-A25B-191399829400} = {A6F11290-D096-D106-72E1-DA7959B882A6}
+		{2DF03B88-B4CE-41CC-BB47-8ABD0B424046} = {A6F11290-D096-D106-72E1-DA7959B882A6}
+		{6C9ACEC8-2B43-4358-B4D0-B2750252B414} = {35714FD9-84C0-AFE5-B0E5-0157E162423F}
+		{E4EE0134-29D4-4C8A-A1D4-AA839D59F128} = {35714FD9-84C0-AFE5-B0E5-0157E162423F}
 		{40188019-E6C1-4B0A-8BEB-16E68C189A26} = {7A499952-5669-73FB-302A-8A5CC7327F87}
 		{3925EF03-7D64-411C-8354-D4B9C939A653} = {7A499952-5669-73FB-302A-8A5CC7327F87}
 		{20525374-9D06-4401-AC5D-6EBF15E186BF} = {CF2BA7A2-9D64-C420-DB99-F252FCABF1D0}
@@ -489,11 +524,39 @@ Global
 		{7A499952-5669-73FB-302A-8A5CC7327F87} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
 		{CF2BA7A2-9D64-C420-DB99-F252FCABF1D0} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
 		{2A519F7C-005D-12C2-C047-E13C1573BFEA} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
+		{809F86A1-1C4C-B159-0CD4-DF9D33D876CE} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
 		{3A3366F2-9EC5-49BD-B408-0C90F52636B9} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
 		{503DE99E-29F1-40A7-B42A-2B37A744C64D} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
+		{A754EA1F-571A-4D96-A2DA-A580DCEC1516} = {04E225AB-FA36-F433-5DD0-9D524507377E}
+		{10A3D4B1-782C-457A-86F7-2C97A7A208C8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{94898A33-0021-4C10-88D7-7150D840E70D} = {E927A806-4E28-468A-176C-2BD127DCD559}
+		{76434E41-D68C-4274-9B6B-D31D409ABACB} = {034C0450-791B-163A-E4F8-C04060224C39}
+		{D35BC50D-64B5-41F0-B495-6A7A1BDAB19F} = {034C0450-791B-163A-E4F8-C04060224C39}
 		{1D13BCEC-A00F-4DF4-BE73-986058378482} = {C32BE5C5-DA55-4484-9B87-83D342E5E3B1}
+		{0B6CC068-7A99-4713-96AC-5C3945917E55} = {DB9DA1E7-7629-EC58-1BDF-57A41154592E}
+		{3DA067A8-EFB4-42E9-9BA0-DF49570E716B} = {DB9DA1E7-7629-EC58-1BDF-57A41154592E}
 		{C32BE5C5-DA55-4484-9B87-83D342E5E3B1} = {FA8A28C8-4B59-8028-2ACF-626D05B08DB7}
 		{6604858D-A285-485F-8191-EE9368348AA1} = {C32BE5C5-DA55-4484-9B87-83D342E5E3B1}
+		{39C9BFC8-F370-4837-825B-2704D60E1F9F} = {CA41A6EE-C33B-ECC5-A41E-DF5E7AF8E062}
+		{120850E5-8FE9-4A12-B22A-F16243A4F422} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{D465E002-1B8F-47BB-8D63-050E903DBFFA} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{059EB754-3C9C-4B6B-9ECA-14C972C639D7} = {04E225AB-FA36-F433-5DD0-9D524507377E}
+		{481F2A63-1BD5-46EC-B813-12CC178A1D68} = {108D60D1-42BF-525A-3C28-B5A656D11EE7}
+		{8DCFA0C2-B9EC-4E0B-9131-6FA7B3ECC7DF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{8B522177-C458-4FD8-AB7D-ADE194D25CEC} = {108D60D1-42BF-525A-3C28-B5A656D11EE7}
+		{1CA877E4-C6E5-4607-8EC2-B3D9EC3FA838} = {44406B93-492C-7968-AA61-F411ADFE0C91}
+		{DB9DA1E7-7629-EC58-1BDF-57A41154592E} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{7C41F2A1-1399-4465-D1FC-3E858A7AD82D} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{108D60D1-42BF-525A-3C28-B5A656D11EE7} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{44406B93-492C-7968-AA61-F411ADFE0C91} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{A6F11290-D096-D106-72E1-DA7959B882A6} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{35714FD9-84C0-AFE5-B0E5-0157E162423F} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{E927A806-4E28-468A-176C-2BD127DCD559} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{6E392150-6046-E365-AB4A-17845FD3C672} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{4B60BCEB-340F-45A4-F3CE-A0ED5B6E78FC} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{04E225AB-FA36-F433-5DD0-9D524507377E} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{CA41A6EE-C33B-ECC5-A41E-DF5E7AF8E062} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{034C0450-791B-163A-E4F8-C04060224C39} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BE3C450D-A8DE-4D9E-B4D4-3F32F348E7EA}

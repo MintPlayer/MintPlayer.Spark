@@ -48,7 +48,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 });
 ```
 
-See the [AllFeatures documentation](docs/PRD-AllFeatures.md) for details.
+See the [AllFeatures documentation](docs/prd/PRD-AllFeatures.md) for details.
 
 ### Granular Setup
 
@@ -86,28 +86,46 @@ dotnet run --spark-synchronize-model
 
 ```
 MintPlayer.Spark/
-├── MintPlayer.Spark/                            # Core framework library (CRUD)
-├── MintPlayer.Spark.Abstractions/               # Shared interfaces and models
-├── MintPlayer.Spark.Authorization/              # Optional auth + group-based access control
-├── MintPlayer.Spark.Messaging.Abstractions/     # Messaging interfaces (IMessageBus, IRecipient<T>)
-├── MintPlayer.Spark.Messaging/                  # Durable message bus with RavenDB persistence
-├── MintPlayer.Spark.Replication/                # Cross-module ETL replication
-├── MintPlayer.Spark.Replication.Abstractions/   # Replication interfaces and models
-├── MintPlayer.Spark.SubscriptionWorker/         # RavenDB subscription-based background workers
-├── MintPlayer.Spark.Cron/                       # Cron-scheduled background jobs (multi-node safe)
-├── MintPlayer.Spark.Webhooks.GitHub/            # GitHub webhook integration
-├── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
-├── MintPlayer.Spark.SourceGenerators/           # Compile-time DI code generation
-├── MintPlayer.Spark.AllFeatures/                # All-in-one package (references all + source generator)
-├── MintPlayer.Spark.AllFeatures.SourceGenerators/ # Generates AddSparkFull/UseSparkFull/MapSparkFull
-├── MintPlayer.Dotnet.SocketExtensions/          # WebSocket read/write helpers
+├── libs/
+│   ├── spark/
+│   │   ├── MintPlayer.Spark/                     # Core framework library (CRUD)
+│   │   └── MintPlayer.Spark.Abstractions/        # Shared interfaces and models
+│   ├── authorization/
+│   │   └── MintPlayer.Spark.Authorization/       # Optional auth + group-based access control
+│   ├── messaging/
+│   │   ├── MintPlayer.Spark.Messaging/           # Durable message bus with RavenDB persistence
+│   │   └── MintPlayer.Spark.Messaging.Abstractions/  # Messaging interfaces (IMessageBus, IRecipient<T>)
+│   ├── replication/
+│   │   ├── MintPlayer.Spark.Replication/         # Cross-module ETL replication
+│   │   └── MintPlayer.Spark.Replication.Abstractions/  # Replication interfaces and models
+│   ├── subscription_worker/
+│   │   ├── MintPlayer.Spark.SubscriptionWorker/  # RavenDB subscription-based background workers
+│   │   └── MintPlayer.Spark.SubscriptionWorker.Abstractions/
+│   ├── cron/
+│   │   └── MintPlayer.Spark.Cron/                # Cron-scheduled background jobs (multi-node safe)
+│   ├── webhooks/
+│   │   ├── MintPlayer.Spark.Webhooks.GitHub/     # GitHub webhook integration
+│   │   └── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
+│   ├── client/
+│   │   ├── MintPlayer.Spark.Client/              # Typed HTTP client SDK
+│   │   └── MintPlayer.Spark.Client.Authorization/
+│   ├── all_features/
+│   │   ├── MintPlayer.Spark.AllFeatures/         # All-in-one package (references all + source generator)
+│   │   └── MintPlayer.Spark.AllFeatures.SourceGenerators/  # Generates AddSparkFull/UseSparkFull/MapSparkFull
+│   ├── source_generators/
+│   │   └── MintPlayer.Spark.SourceGenerators/    # Compile-time DI code generation
+│   ├── testing/
+│   │   └── MintPlayer.Spark.Testing/             # Test harness: embedded RavenDB driver, in-memory host factory
+│   ├── socket_extensions/
+│   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
+│   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
+├── tests/                                        # Test projects (unit, source-generator, client, E2E)
 ├── Demo/
-│   ├── DemoApp/                                 # Sample ASP.NET Core + Angular application
-│   ├── Fleet/                                   # Fleet management demo (auth, messaging, replication)
-│   ├── HR/                                      # HR demo (auth, messaging, replication)
-│   ├── WebhooksDemo/                            # GitHub webhooks demo application
-│   └── DemoApp.Library/                         # Shared entity definitions
-└── docs/                                        # Documentation
+│   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
+│   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
+│   ├── HR/                                       # HR demo (auth, messaging, replication)
+│   └── WebhooksDemo/                             # GitHub webhooks demo application
+└── docs/                                         # Documentation (guides, prd/, codecov/)
 ```
 
 ## Documentation
@@ -116,7 +134,7 @@ MintPlayer.Spark/
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](docs/guide-getting-started.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
+| [Getting Started](libs/spark/MintPlayer.Spark/README.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
@@ -125,22 +143,24 @@ MintPlayer.Spark/
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
-| [Authorization](docs/guide-authorization.md) | Optional security package, `security.json`, groups, permissions, XSRF |
+| [Authorization](libs/authorization/MintPlayer.Spark.Authorization/README.md) | Optional security package, `security.json`, groups, permissions, XSRF |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
-| [Durable Message Bus](docs/guide-message-bus.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
+| [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
-| [Subscription Workers](docs/guide-subscription-workers.md) | RavenDB subscription-based background processing with retry handling |
-| [Cron Jobs](docs/guide-cron-jobs.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
-| [GitHub Webhooks](docs/guide-github-webhooks.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
+| [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
+| [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
+| [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
+| [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 
 ### Reference
 
 - **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework
-- **[Spark Library API](MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
-- **[Messaging API](MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
-- **[Cron Jobs](MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
-- **[Product Requirements Document](docs/PRD.md)** - Full specification and architecture
+- **[Spark Library API](libs/spark/MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
+- **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
+- **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
+- **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
 
 ## Contributing
 
@@ -198,7 +218,7 @@ dotnet run
 
 The application will be available at `https://localhost:5001`.
 
-**Library HMR:** edit any file under `node_packages/ng-spark/src/**` or `node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
+**Library HMR:** edit any file under `libs/node_packages/ng-spark/src/**` or `libs/node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
 
 ### Model Synchronization
 
