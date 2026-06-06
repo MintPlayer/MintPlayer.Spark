@@ -35,7 +35,7 @@
     "@mintplayer/soundcloud-player": "^19.0.0",
     "@mintplayer/video-player": "^19.0.0",
     "@mintplayer/vimeo-player": "^19.0.0",
-    "@mintplayer/youtube-player": "^19.0.0",
+    "@mintplayer/youtube-player": "^20.0.0",
     "bootstrap": "5.3.8",
     "bootstrap-icons": "1.13.1",
     "rxjs": "7.8.2",
