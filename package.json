@@ -32,7 +32,7 @@
     "@mintplayer/pagination": "^2.3.0",
     "@mintplayer/player-progress": "^19.0.0",
     "@mintplayer/player-provider": "^19.0.0",
-    "@mintplayer/soundcloud-player": "^19.0.0",
+    "@mintplayer/soundcloud-player": "^20.0.0",
     "@mintplayer/video-player": "^19.0.0",
     "@mintplayer/vimeo-player": "^19.0.0",
     "@mintplayer/youtube-player": "^19.0.0",
