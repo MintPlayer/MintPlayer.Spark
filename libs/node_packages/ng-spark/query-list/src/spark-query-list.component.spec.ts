@@ -5,6 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { Subject } from 'rxjs';
 
 import { SparkQueryListComponent } from './spark-query-list.component';
 import { SparkService, SparkStreamingService } from '@mintplayer/ng-spark/services';
@@ -71,9 +72,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,
   };
+  const streamSubject = new Subject<any>();
   const streaming: any = {
-    connect: vi.fn(),
-    disconnect: vi.fn(),
+    connectToStreamingQuery: vi.fn(() => streamSubject.asObservable()),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -87,7 +88,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     ],
   });
   const harness = await RouterTestingHarness.create();
-  return { harness, service };
+  return { harness, service, streamSubject };
 }
 
 describe('SparkQueryListComponent', () => {
@@ -197,5 +198,41 @@ describe('SparkQueryListComponent', () => {
     c.rowClicked.emit(item);
 
     expect(handler).toHaveBeenCalledWith(item);
+  });
+
+  it('streaming: snapshot populates streamItems, patch updates a value, search filters', async () => {
+    const streamingQuery = { ...allPeopleQuery, id: 'q-live', isStreamingQuery: true } as any;
+    const { harness, streamSubject } = await setup({
+      getQuery: vi.fn().mockResolvedValue(streamingQuery),
+    });
+    const c = await harness.navigateByUrl('/query/q-live', SparkQueryListComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.isStreaming()).toBe(true);
+
+    // snapshot -> streamItems populated, resultCount reflects it
+    streamSubject.next({
+      type: 'snapshot',
+      data: [
+        { id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Alice' }] },
+        { id: 'people/2', name: 'Bob', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Bob' }] },
+      ],
+    });
+    expect(c.streamItems()).toHaveLength(2);
+    expect(c.resultCount()).toBe(2);
+
+    // patch -> the matching row's attribute value is updated in place
+    streamSubject.next({
+      type: 'patch',
+      updated: [{ id: 'people/1', attributes: { FirstName: 'Alicia' } }],
+    });
+    const alice = c.streamItems().find(i => i.id === 'people/1')!;
+    expect(alice.attributes.find((a: any) => a.name === 'FirstName')?.value).toBe('Alicia');
+
+    // search -> streamItems filtered client-side
+    c.searchTerm = 'bob';
+    c.onSearchChange();
+    expect(c.streamItems()).toHaveLength(1);
+    expect(c.streamItems()[0].id).toBe('people/2');
   });
 });
