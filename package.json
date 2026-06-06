@@ -33,7 +33,7 @@
     "@mintplayer/player-progress": "^19.0.0",
     "@mintplayer/player-provider": "^19.0.0",
     "@mintplayer/soundcloud-player": "^19.0.0",
-    "@mintplayer/video-player": "^19.0.0",
+    "@mintplayer/video-player": "^20.0.0",
     "@mintplayer/vimeo-player": "^19.0.0",
     "@mintplayer/youtube-player": "^19.0.0",
     "bootstrap": "5.3.8",
