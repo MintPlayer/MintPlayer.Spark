@@ -24,7 +24,7 @@
     "@angular/forms": "21.1.6",
     "@angular/platform-browser": "21.1.6",
     "@angular/router": "21.1.6",
-    "@mintplayer/dailymotion-player": "^19.0.0",
+    "@mintplayer/dailymotion-player": "^20.0.0",
     "@mintplayer/file-player": "^19.0.0",
     "@mintplayer/ng-animations": "21.1.0",
     "@mintplayer/ng-bootstrap": "^21.18.0",
