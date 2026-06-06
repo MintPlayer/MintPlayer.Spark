@@ -2,7 +2,7 @@
 
 **Issue**: #178
 **Title**: fix: ng-spark build broken against ng-bootstrap 22 (removed virtual-datatable + toggle-button entry points)
-**Status**: Draft
+**Status**: Blocked (by MintPlayer/mintplayer-ng-bootstrap#385)
 **Created**: 2026-06-06
 **Last Updated**: 2026-06-06
 
@@ -10,7 +10,21 @@
 
 ## Summary
 
-The published ng-spark / ng-spark-auth libs import ng-bootstrap v22-removed entry points (`virtual-datatable`, `toggle-button`), so any Angular-22 app that consumes them fails to bundle. The fix cannot be a localized component edit: this monorepo is still on Angular 21.1.6 + ng-bootstrap 21.18.0, the v22 replacements (`/checkbox`, fetch-driven `/datatable`) don't exist in v21, and ng-bootstrap 22 peer-requires Angular 22. With one root `node_modules` and CI/publish jobs that both compile the libs, the workspace **must move to Angular 22 + ng-bootstrap 22 in a single PR** (apps and libs together), absorb the datatable/checkbox API changes in the three ng-spark components **and** the ng-spark-auth login, keep the four demo apps compiling, and republish both libs as **22.0.0**.
+**As built.** The whole workspace moved from Angular 21.1.6 + ng-bootstrap 21.18.0 to **Angular 22.0.0 + ng-bootstrap 22.2.0**, and ng-spark / ng-spark-auth were realigned to the v22 API and bumped to **22.0.0**. This had to be one PR (apps + libs together): the v22 datatable/checkbox API doesn't exist on v21, ng-bootstrap 22 peer-requires Angular 22, and a single root `node_modules` + CI/publish jobs compile the libs.
+
+What landed:
+- **M1 — upgrade** (`package.json`, lockfile, `tsconfig.base.json`): Angular → 22.0.0 (deps/devDeps/overrides incl. `@angular/cdk`); **TypeScript 5.9.3 → 6.0.3** (Angular 22 needs ≥6.0); ng-bootstrap 22.2.0 + ecosystem (ng-animations 22, players ^20, Analog 2.6.0). Nx 22.6.5 lacks Angular-22 support, so its Angular-tooling peers (`@angular/build`, `@schematics/angular`, `@angular-devkit/{core,schematics,build-angular}`, `ng-packagr`) are forced to 22.0.0 via `overrides`. TS 6.0 makes `baseUrl` an error → removed it and made `paths` relative (no `ignoreDeprecations`).
+- **M2 — ng-spark**: po-form `<bs-toggle-button>`→`<bs-checkbox>` + reference-modal datatable to client-side `[data]`+`(rowClick)`; query-list and po-detail collapsed the virtual/normal dual path into one fetch-driven `<bs-datatable>` (`[fetch]`; `[virtualScroll]` flag; streaming via `[data]`). Dataless `*bsRowTemplate` with `@let row = $any(item)`. Removed two pre-existing dead imports.
+- **M3 — ng-spark-auth**: login remember-me `<bs-toggle-button>`→`<bs-checkbox>`.
+- **M4 — demos**: all four ClientApps build under Angular 22.
+
+Load-bearing decisions: (1) **couple upgrade+migration** (they're mutually blocking) — chosen over splitting, which can't produce a buildable repo; (2) **lib version 22.0.0** tracking the Angular major — over a patch bump, to signal compatibility; (3) **`overrides` for Nx's capped peers** — over downgrading Angular or waiting for Nx, per the no-`nx-migrate` reality; (4) **remove `baseUrl`** — over `ignoreDeprecations` (developer preference; cleaner under TS 6).
+
+**⛔ BLOCKED — do not PR/publish yet.** The pre-PR review surfaced that `[fetch]` + `[virtualScroll]` in ng-bootstrap 22 **eager-loads the entire result set** (`runVirtualFetchAll`) instead of lazy windowed fetching — a behavior regression for `renderMode: 'VirtualScrolling'` queries (FR-4). It is **not fixable in ng-spark** (the v22 datatable owns the fetch loop; no lazy-window hook). Per developer decision, #178 is held until the lazy-virtual feature ships in ng-bootstrap: **MintPlayer/mintplayer-ng-bootstrap#385**. Once that releases, bump ng-bootstrap here and resume M5 (PR → CI → merge → publish 22.0.0).
+
+Review outcome (`passes-with-fixes`): streaming coverage gap **fixed** (added a query-list streaming test); virtual-scroll eager-load → **blocker #385**; nits deferred (streaming double-sort harmless for string columns; po-form reference page-math dead code → FR-7; historical `docs/prd/*` v21 references left as archived history).
+
+Traps for the reviewer: row-template `item` is `unknown` (the standalone `*bsRowTemplate` can't infer the datatable's generic) — cast via `@let row = $any(item)`, so cell content is no longer type-checked; **FR-4 behaviour preservation** (paging/sort/virtual/streaming/reference-pick) is build- and unit-test-green but needs real-app verification; po-form's `applyReferenceFilter` page-math is now partly redundant (the datatable paginates `[data]` client-side) but left in place to keep the diff minimal.
 
 ---
 
@@ -55,7 +69,7 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 - [x] **FR-1**: Workspace upgraded to Angular 22.0.0 + ng-bootstrap 22.2.0 (deps, devDeps; `overrides` force Nx-capped Angular tooling to 22; ng-bootstrap's new peers auto-resolved; TS → 6.0.3).
 - [x] **FR-2**: ng-spark po-form/query-list/po-detail migrated to `<bs-checkbox>` + fetch-driven `<bs-datatable>`; no removed-API imports. (Also removed pre-existing dead `BsTableComponent`/`BsContainerComponent` imports.)
 - [x] **FR-3**: ng-spark-auth login migrated `bs-toggle-button` → `bs-checkbox` (preserve `formControlName="rememberMe"`).
-- [ ] **FR-4**: Behavior preserved — server paging+sorting, virtual scrolling (`renderMode==='VirtualScrolling'`), query-list streaming, search, custom actions, permissions, lookup/reference rendering, per-cell renderer/link content. *(builds green; pending manual/app verification)*
+- [ ] **FR-4**: Behavior preserved — server paging+sorting, query-list streaming (tested), search, custom actions, permissions, lookup/reference rendering, per-cell renderer/link content. **⛔ virtual scrolling is a known regression** (eager full-load) blocked on ng-bootstrap#385; rest builds green + unit-tested, pending end-to-end app verification.
 - [x] **FR-5**: All 4 demo ClientApps build under Angular 22.
 - [ ] **FR-6**: ng-spark + ng-spark-auth republished as 22.0.0 with ^22 peer ranges, to npmjs.com + GitHub Packages.
 
@@ -78,8 +92,10 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 ### Milestone 4: Demo apps build-green under Angular 22
 - [x] DemoApp, Fleet, HR, WebhooksDemo build (TS 6.0 `baseUrl` removed → relative `paths`)
 
-### Milestone 5: Verify + publish
-- [ ] build/test all, PR, CI green, merge, confirm 22.0.0 published to both registries
+### Milestone 5: Verify + publish — ⛔ BLOCKED on ng-bootstrap#385
+- [x] build all (libs + 4 demos) + ng-spark/ng-spark-auth unit tests green
+- [x] pre-PR review+verify (`passes-with-fixes`); streaming test added
+- [ ] **HELD**: PR, CI green, merge, publish 22.0.0 — resume after ng-bootstrap#385 (lazy virtual fetch) releases and is bumped here
 
 ---
 

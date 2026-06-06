@@ -96,7 +96,8 @@ Keep the PR to **only the changes the upgrade + migration require**. `nx migrate
 ### Milestone 4: Fix demo apps under Angular 22
 1. Build each demo ClientApp; resolve any Angular-22 / ng-bootstrap-22 breakages.
 
-### Milestone 5: Verify, publish, confirm
+### Milestone 5: Verify, publish, confirm — ⛔ BLOCKED on [ng-bootstrap#385](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/385)
+> Held per developer decision: `[fetch]` + `[virtualScroll]` eager-loads all pages in ng-bootstrap 22 (FR-4 virtual-scroll regression, not fixable in ng-spark). Resume PR/publish after the lazy-virtual feature ships in ng-bootstrap and is bumped here. Builds + unit tests are already green; pre-PR review passed-with-fixes (streaming test added).
 1. `npx nx run-many --target=build` (all) — zero unresolved `@mintplayer/ng-bootstrap/*`.
 2. `npx nx run-many --target=test`.
 3. ng-packagr `dist/` builds for both libs.
