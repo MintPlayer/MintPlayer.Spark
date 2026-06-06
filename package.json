@@ -52,7 +52,7 @@
     "@nx/dotnet": "^22.6.5",
     "@vitest/coverage-v8": "4.0.16",
     "jsdom": "27.3.0",
-    "ng-packagr": "21.1.0",
+    "ng-packagr": "22.0.0",
     "nx": "22.6.5",
     "typescript": "5.9.3",
     "vitest": "4.0.16"
