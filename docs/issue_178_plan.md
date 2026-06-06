@@ -61,7 +61,7 @@ The libs reference ng-bootstrap v22-removed entry points. The fix can only be au
 - `Demo/{DemoApp,Fleet,HR,WebhooksDemo}/.../ClientApp` — no direct use of the removed APIs (verified by grep), but must compile under Angular 22 + ng-bootstrap 22; fix any schematic-missed breakages.
 
 ### Dependencies / Risks
-- **@nx/angular ↔ Angular 22 compatibility**: confirm 22.7.5 drives the Angular 22 migration (`nx migrate`). Likely the gating tool version.
+- **Nx does not support Angular 22 yet** (as of 2026-06): no `nx migrate`. Upgrade by editing `package.json` + `npm install` + `overrides`. `@nx/angular` 22.6.5 may still execute Angular-22 builds; if it declares an Angular `^21` peer, force via `overrides`.
 - **TypeScript / zone.js / tsconfig**: Angular 22 may require a TS bump or `tsconfig` target changes — let migration schematics drive this; verify `typescript 5.9.3` is in range.
 - **ng-bootstrap 22 new peers** must be added explicitly (`ng-click-outside`, `ng-focus-on-load`, `ng-swiper`, `web-components`, `lit`) or installs/builds 404 on peer resolution.
 - Standalone-API / control-flow / signal migration schematics may rewrite app code beyond the libs.
@@ -77,11 +77,11 @@ Keep the PR to **only the changes the upgrade + migration require**. `nx migrate
 ## Implementation Plan
 
 ### Milestone 1: Upgrade the workspace to Angular 22 + ng-bootstrap 22
-1. `npx nx migrate latest` (pin Angular + @nx/angular to 22 targets); review `migrations.json`.
-2. Update root `package.json`: Angular `*` → 22.0.0 (deps + devDeps + `overrides`, incl. `@angular/cdk`), `@angular/cli`/`build`/`build-angular`/`compiler-cli` → 22.0.0, `ng-packagr` → 22.0.0, `nx`/`@nx/*` → 22.7.5, `@mintplayer/ng-bootstrap` → ^22.2.0, `@mintplayer/ng-animations` → 22.0.0, add `@mintplayer/ng-click-outside`/`ng-focus-on-load`/`ng-swiper` 22.0.0 + `@mintplayer/web-components` ^1.6.0 + `lit` ^3.3.0, `@mintplayer/ng-video-player` → ^22.
-3. `npm install` from repo root; `npx nx migrate --run-migrations`.
-4. Kill stale `node.exe`, clear `.angular/` + demo `dist/` (per CLAUDE.md zombie-process note).
-5. Outcome gate: tooling resolves; lib + app builds may still fail on the removed APIs — that's M2–M4.
+> **Do NOT use `nx migrate`** — Nx does not support Angular 22 yet (as of 2026-06). Upgrade by hand: edit `package.json`, `npm install`, resolve conflicts, and add `overrides` for any dependency that hasn't published Angular-22 support.
+1. Update root `package.json`: Angular `*` → 22.0.0 (deps + devDeps + `overrides`, incl. `@angular/cdk`), `@angular/cli`/`build`/`build-angular`/`compiler-cli` → 22.0.0, `ng-packagr` → 22.0.0, `@mintplayer/ng-bootstrap` → ^22.2.0, `@mintplayer/ng-animations` → 22.0.0, add `@mintplayer/ng-click-outside`/`ng-focus-on-load`/`ng-swiper` 22.0.0 + `@mintplayer/web-components` ^1.6.0 + `lit` ^3.3.0, `@mintplayer/ng-video-player` → ^22. Leave `nx`/`@nx/*` at their current 22.6.5 (Nx version, independent of Angular).
+2. `npm install` from repo root. Resolve any `ERESOLVE` peer conflicts: for a dependency that still declares an Angular `^21` peer but works under 22, force its Angular deps via root `overrides` (the established pattern in this `package.json`).
+3. Kill stale `node.exe`, clear `.angular/` + demo `dist/` (per CLAUDE.md zombie-process note).
+4. Outcome gate: install resolves; lib + app builds may still fail on the removed APIs — that's M2–M4.
 
 ### Milestone 2: Migrate ng-spark components
 1. po-form: checkbox swap + reference-modal datatable to `[data]`.
@@ -157,10 +157,9 @@ Keep the PR to **only the changes the upgrade + migration require**. `nx migrate
 ## Build & Test Commands
 
 ```bash
-# Upgrade
-npx nx migrate latest
+# Upgrade (NOT nx migrate — Nx lacks Angular 22 support)
+# 1. hand-edit package.json to Angular 22 + ng-bootstrap 22 (+ overrides as needed)
 npm install
-npx nx migrate --run-migrations
 
 # Build / test
 npx nx run-many --target=build

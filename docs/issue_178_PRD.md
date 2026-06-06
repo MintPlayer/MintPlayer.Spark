@@ -52,7 +52,7 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] **FR-1**: Workspace upgraded to Angular 22.0.0 + ng-bootstrap 22.2.0 (deps, devDeps, overrides, new ng-bootstrap peers added).
+- [x] **FR-1**: Workspace upgraded to Angular 22.0.0 + ng-bootstrap 22.2.0 (deps, devDeps; `overrides` force Nx-capped Angular tooling to 22; ng-bootstrap's new peers auto-resolved; TS → 6.0.3).
 - [ ] **FR-2**: ng-spark po-form/query-list/po-detail migrated to `<bs-checkbox>` + fetch-driven `<bs-datatable>`; no removed-API imports.
 - [ ] **FR-3**: ng-spark-auth login migrated `bs-toggle-button` → `bs-checkbox` (preserve `formControlName="rememberMe"`).
 - [ ] **FR-4**: Behavior preserved — server paging+sorting, virtual scrolling (`renderMode==='VirtualScrolling'`), query-list streaming, search, custom actions, permissions, lookup/reference rendering, per-cell renderer/link content.
@@ -67,7 +67,7 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 ## Timeline & Milestones
 
 ### Milestone 1: Workspace upgrade to Angular 22 + ng-bootstrap 22
-- [ ] nx migrate + manifest bumps + install + run migrations
+- [x] manifest bumps (Angular 22 + ng-bootstrap 22.2.0, TS 6.0.3, players ^20, Analog 2.6.0) + `overrides` for Nx-capped tooling + lib peer ranges → ^22 + clean `npm install`
 
 ### Milestone 2: ng-spark component migration
 - [ ] po-form, query-list, po-detail + version/peer bump
@@ -92,7 +92,7 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 ## Technical Notes (Issue-Specific)
 
 - ng-bootstrap 22 peers requiring explicit add: `@mintplayer/ng-click-outside`, `@mintplayer/ng-focus-on-load`, `@mintplayer/ng-swiper` (22.0.0), `@mintplayer/web-components` (^1.6.0), `lit` (^3.3.0).
-- Verify `@nx/angular` 22.7.5 drives the Angular 22 migration; bump from 22.6.5.
+- **Nx does not support Angular 22 yet** (2026-06) — do NOT `nx migrate`. Upgrade by hand-editing `package.json`, `npm install`, and adding `overrides` for any dependency stuck on an Angular `^21` peer. Keep `nx`/`@nx/*` at 22.6.5.
 - Per CLAUDE.md: kill all `node.exe`, clear `.angular/` + demo `dist/` between dev-server restarts to avoid stale bundles.
 
 ---
