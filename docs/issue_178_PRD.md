@@ -53,10 +53,10 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 
 ### Must Have (P0)
 - [x] **FR-1**: Workspace upgraded to Angular 22.0.0 + ng-bootstrap 22.2.0 (deps, devDeps; `overrides` force Nx-capped Angular tooling to 22; ng-bootstrap's new peers auto-resolved; TS → 6.0.3).
-- [ ] **FR-2**: ng-spark po-form/query-list/po-detail migrated to `<bs-checkbox>` + fetch-driven `<bs-datatable>`; no removed-API imports.
-- [ ] **FR-3**: ng-spark-auth login migrated `bs-toggle-button` → `bs-checkbox` (preserve `formControlName="rememberMe"`).
-- [ ] **FR-4**: Behavior preserved — server paging+sorting, virtual scrolling (`renderMode==='VirtualScrolling'`), query-list streaming, search, custom actions, permissions, lookup/reference rendering, per-cell renderer/link content.
-- [ ] **FR-5**: All 4 demo ClientApps build under Angular 22.
+- [x] **FR-2**: ng-spark po-form/query-list/po-detail migrated to `<bs-checkbox>` + fetch-driven `<bs-datatable>`; no removed-API imports. (Also removed pre-existing dead `BsTableComponent`/`BsContainerComponent` imports.)
+- [x] **FR-3**: ng-spark-auth login migrated `bs-toggle-button` → `bs-checkbox` (preserve `formControlName="rememberMe"`).
+- [ ] **FR-4**: Behavior preserved — server paging+sorting, virtual scrolling (`renderMode==='VirtualScrolling'`), query-list streaming, search, custom actions, permissions, lookup/reference rendering, per-cell renderer/link content. *(builds green; pending manual/app verification)*
+- [x] **FR-5**: All 4 demo ClientApps build under Angular 22.
 - [ ] **FR-6**: ng-spark + ng-spark-auth republished as 22.0.0 with ^22 peer ranges, to npmjs.com + GitHub Packages.
 
 ### Should Have (P1)
@@ -70,13 +70,13 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 - [x] manifest bumps (Angular 22 + ng-bootstrap 22.2.0, TS 6.0.3, players ^20, Analog 2.6.0) + `overrides` for Nx-capped tooling + lib peer ranges → ^22 + clean `npm install`
 
 ### Milestone 2: ng-spark component migration
-- [ ] po-form, query-list, po-detail + version/peer bump
+- [x] po-form, query-list, po-detail migrated; version → 22.0.0 (peer ranges done in M1)
 
 ### Milestone 3: ng-spark-auth migration
-- [ ] login + version/peer bump
+- [x] login migrated; version → 22.0.0 (peer ranges done in M1)
 
 ### Milestone 4: Demo apps build-green under Angular 22
-- [ ] DemoApp, Fleet, HR, WebhooksDemo
+- [x] DemoApp, Fleet, HR, WebhooksDemo build (TS 6.0 `baseUrl` removed → relative `paths`)
 
 ### Milestone 5: Verify + publish
 - [ ] build/test all, PR, CI green, merge, confirm 22.0.0 published to both registries
