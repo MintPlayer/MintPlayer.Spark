@@ -5,68 +5,39 @@
       <div class="text-center p-3">
         <bs-spinner />
       </div>
-    } @else if (q.renderMode === 'VirtualScrolling') {
-      @if (virtualDataSource(); as vds) {
-        <div class="p-3 d-flex flex-column" style="height: 400px;">
-          <bs-virtual-datatable class="flex-grow-1 overflow-hidden"
-              [(settings)]="virtualSettings"
-              [dataSource]="vds"
-              [isResponsive]="true"
-              (settingsChange)="onSettingsChange()">
-            @for (attr of visibleAttributes(); track attr.id) {
-              <div *bsDatatableColumn="attr.name; sortable: true">
-                {{ (attr.label | resolveTranslation) || attr.name }}
-              </div>
-            }
-
-            <ng-template bsVirtualRowTemplate let-item>
-              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-                <td>
-                  @if (item) {
-                    @if (first && canRead()) {
-                      <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
-                        <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
-                      </a>
-                    } @else {
-                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
-                    }
-                  } @else {
-                    &nbsp;
-                  }
-                </td>
-              }
-            </ng-template>
-          </bs-virtual-datatable>
-        </div>
-      }
     } @else {
       <div class="p-3">
-        @if (!paginationData() || paginationData()!.totalRecords === 0) {
+        <bs-datatable
+            [virtualScroll]="isVirtualScrolling()"
+            [itemSize]="40"
+            [isResponsive]="isVirtualScrolling()"
+            [fetch]="fetchFn()"
+            [(settings)]="settings">
+          @for (attr of visibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ (attr.label | resolveTranslation) || attr.name }}
+            </div>
+          }
+
+          <ng-container *bsRowTemplate="let item">
+            @let row = $any(item);
+            @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+              <td>
+                @if (first && canRead()) {
+                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
+                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                  </a>
+                } @else {
+                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                }
+              </td>
+            }
+          </ng-container>
+        </bs-datatable>
+        @if (resultCount() === 0) {
           <div class="text-center text-muted">
             {{ 'common.noItemsFound' | t }}
           </div>
-        } @else {
-          <bs-datatable [(settings)]="settings" (settingsChange)="onSettingsChange()">
-            @for (attr of visibleAttributes(); track attr.id) {
-              <div *bsDatatableColumn="attr.name; sortable: true">
-                {{ (attr.label | resolveTranslation) || attr.name }}
-              </div>
-            }
-
-            <tr *bsRowTemplate="let item of paginationData()">
-              @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-                <td>
-                  @if (first && canRead()) {
-                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, item.id]">
-                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
-                    </a>
-                  } @else {
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: item, attr: attr }"></ng-container>
-                  }
-                </td>
-              }
-            </tr>
-          </bs-datatable>
         }
       </div>
     }

@@ -50,10 +50,10 @@
         </label>
         <div [md]="8">
           @if (attr.dataType === 'boolean') {
-            <bs-toggle-button
+            <bs-checkbox
               [ngModel]="formData()[attr.name]"
               (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">
-            </bs-toggle-button>
+            </bs-checkbox>
           } @else if (attr.lookupReferenceType) {
             @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
               <bs-input-group>
@@ -117,10 +117,10 @@
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                       <td>
                         @if (col.dataType === 'boolean') {
-                          <bs-toggle-button
+                          <bs-checkbox
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
-                          </bs-toggle-button>
+                          </bs-checkbox>
                         } @else if (col.dataType === 'Reference' && col.query) {
                           <bs-select
                             [(ngModel)]="row[col.name]"
@@ -327,18 +327,21 @@
           </div>
         </bs-grid>
 
-        <bs-datatable [(settings)]="referenceModalSettings" (settingsChange)="applyReferenceFilter()">
+        <bs-datatable
+          [(settings)]="referenceModalSettings"
+          [data]="referenceModalRows()"
+          (rowClick)="selectReferenceItem($event.row)">
           @for (attr of referenceVisibleAttributes(); track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">
               {{ attr.label | resolveTranslation:attr.name }}
             </div>
           }
 
-          <tr *bsRowTemplate="let item of referenceModalPagination()" (click)="selectReferenceItem(item)" style="cursor: pointer;">
+          <ng-container *bsRowTemplate="let item">
             @for (attr of referenceVisibleAttributes(); track attr.id) {
-              <td>{{ item | referenceAttrValue:attr.name }}</td>
+              <td>{{ $any(item) | referenceAttrValue:attr.name }}</td>
             }
-          </tr>
+          </ng-container>
         </bs-datatable>
       } @else {
         <div class="text-center p-3">
