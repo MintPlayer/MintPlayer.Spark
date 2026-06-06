@@ -123,15 +123,15 @@ describe('SparkQueryListComponent', () => {
     expect(c.canCreate()).toBe(false);
   });
 
-  it('executes the query on initial load and stores the page in paginationData', async () => {
+  it('executes the query on initial load (via the datatable fetch) and exposes the result count', async () => {
     const { harness, service } = await setup();
     const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
     await harness.fixture.whenStable();
 
     expect(service.executeQuery).toHaveBeenCalledOnce();
-    const page = c.paginationData();
-    expect(page?.data).toHaveLength(1);
-    expect(page?.totalRecords).toBe(1);
+    const opts = (service.executeQuery as any).mock.calls[0][1];
+    expect(opts.skip).toBe(0);
+    expect(c.resultCount()).toBe(1);
   });
 
   it('visibleAttributes filters out non-visible and detail-only attributes', async () => {

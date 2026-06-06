@@ -101,23 +101,27 @@ describe('SparkSubQueryComponent', () => {
     expect(component.loading()).toBe(false);
   });
 
-  it('Pagination mode: executeQuery is called with parent context and page metadata is stored', async () => {
+  it('builds a fetch callback that calls executeQuery with parent context + paging and maps the response', async () => {
     const { fixture, component, service } = createComponent();
     fixture.detectChanges();
     await flush();
 
-    expect(service.executeQuery).toHaveBeenCalledOnce();
-    const [queryId, opts] = (service.executeQuery as any).mock.calls[0];
+    const fetch = component.fetchFn();
+    expect(fetch).toBeTruthy();
+
+    const res = await fetch!({ page: 1, perPage: 10, sortColumns: [] });
+    const [queryId, opts] = (service.executeQuery as any).mock.calls.at(-1);
     expect(queryId).toBe('q-lines');
     expect(opts.parentId).toBe('orders/1');
     expect(opts.parentType).toBe('order');
     expect(opts.skip).toBe(0);
     expect(opts.take).toBe(10);
-    expect(component.paginationData()?.totalRecords).toBe(2);
-    expect(component.paginationData()?.totalPages).toBe(1);
+    expect(res.totalRecords).toBe(2);
+    expect(res.totalPages).toBe(1);
+    expect(component.resultCount()).toBe(2);
   });
 
-  it('VirtualScrolling mode initializes virtualDataSource instead of paginationData', async () => {
+  it('VirtualScrolling mode still uses the fetch callback (virtual is just a flag)', async () => {
     const virtualQuery = { ...linesQuery, renderMode: 'VirtualScrolling' } as any;
     const { fixture, component } = createComponent({
       getQuery: vi.fn().mockResolvedValue(virtualQuery),
@@ -125,8 +129,8 @@ describe('SparkSubQueryComponent', () => {
     fixture.detectChanges();
     await flush();
 
-    expect(component.virtualDataSource()).not.toBeNull();
-    expect(component.paginationData()).toBeUndefined();
+    expect(component.isVirtualScrolling()).toBe(true);
+    expect(component.fetchFn()).toBeTruthy();
   });
 
   it('visibleAttributes keeps Query-showed visible attrs and excludes detail-only + hidden', async () => {
@@ -149,52 +153,24 @@ describe('SparkSubQueryComponent', () => {
     expect(component.settings().sortColumns[0]).toEqual({ property: 'Sku', direction: 'descending' });
   });
 
-  it('onSettingsChange in Pagination mode re-fetches the page', async () => {
-    const { fixture, component, service } = createComponent();
-    fixture.detectChanges();
-    await flush();
-    (service.executeQuery as any).mockClear();
-
-    component.onSettingsChange();
-    await flush();
-
-    expect(service.executeQuery).toHaveBeenCalledOnce();
-  });
-
-  it('onSettingsChange in VirtualScrolling mode rebuilds the data source', async () => {
-    const virtualQuery = { ...linesQuery, renderMode: 'VirtualScrolling' } as any;
-    const { fixture, component } = createComponent({
-      getQuery: vi.fn().mockResolvedValue(virtualQuery),
-    });
-    fixture.detectChanges();
-    await flush();
-    const firstSource = component.virtualDataSource();
-
-    component.onSettingsChange();
-
-    expect(component.virtualDataSource()).not.toBe(firstSource);
-  });
-
-  it('error path: when getQuery rejects, paginationData clears and loading resolves to false', async () => {
+  it('error path: when getQuery rejects, fetchFn stays null and loading resolves to false', async () => {
     const { fixture, component } = createComponent({
       getQuery: vi.fn().mockRejectedValue(new Error('boom')),
     });
     fixture.detectChanges();
     await flush();
 
-    expect(component.paginationData()).toBeUndefined();
+    expect(component.fetchFn()).toBeNull();
     expect(component.loading()).toBe(false);
   });
 
-  it('onSettingsChange is a no-op before the query has resolved', async () => {
-    const { fixture, component, service } = createComponent({
+  it('fetchFn is null before the query has resolved', async () => {
+    const { fixture, component } = createComponent({
       getQuery: vi.fn(() => new Promise<SparkQuery>(() => {})),
     });
     fixture.detectChanges();
 
-    component.onSettingsChange();
-
-    expect(service.executeQuery).not.toHaveBeenCalled();
+    expect(component.fetchFn()).toBeNull();
   });
 
   it('entity type resolves by name OR by lowercased alias', async () => {
