@@ -23,12 +23,16 @@
             @let row = $any(item);
             @for (attr of visibleAttributes(); track attr.id; let first = $first) {
               <td>
-                @if (first && canRead()) {
-                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
+                @if (row) {
+                  @if (first && canRead()) {
+                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
+                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                    </a>
+                  } @else {
                     <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  </a>
+                  }
                 } @else {
-                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                  &nbsp;
                 }
               </td>
             }

@@ -8,6 +8,24 @@
 
   &.virtual-scrolling {
     margin: 0 -1.5rem -1.5rem;
+
+    // ng-bootstrap 22.4's <bs-datatable> virtual viewport defaults to a fixed
+    // 480px max-height. On a full-height query page that leaves the datatable
+    // shorter than its slot, so the page (`main`) grows its own scrollbar on top
+    // of the datatable's. Let the datatable fill the flex space so its own
+    // virtual viewport is the only scrollbar. (`--mp-datatable-virtual-max-height`
+    // inherits into the web component's shadow scroll viewport.)
+    ::ng-deep bs-datatable {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      --mp-datatable-virtual-max-height: 100%;
+
+      mp-datatable {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+    }
   }
 }
 
