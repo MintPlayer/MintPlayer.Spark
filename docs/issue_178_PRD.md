@@ -2,9 +2,9 @@
 
 **Issue**: #178
 **Title**: fix: ng-spark build broken against ng-bootstrap 22 (removed virtual-datatable + toggle-button entry points)
-**Status**: In Progress (blocker MintPlayer/mintplayer-ng-bootstrap#385 resolved → shipped as ng-bootstrap 22.4.0)
+**Status**: In Progress — eyeball done; finishing demo-shell sidebar toggler, then M5 (PR → publish)
 **Created**: 2026-06-06
-**Last Updated**: 2026-06-06
+**Last Updated**: 2026-06-07 (see "Current state & resume plan" below)
 
 ---
 
@@ -24,7 +24,41 @@ Load-bearing decisions: (1) **couple upgrade+migration** (they're mutually block
 
 Review outcome (`passes-with-fixes`): streaming coverage gap **fixed** (added a query-list streaming test); virtual-scroll eager-load → **blocker #385**; nits deferred (streaming double-sort harmless for string columns; po-form reference page-math dead code → FR-7; historical `docs/prd/*` v21 references left as archived history).
 
-Traps for the reviewer: row-template `item` is `unknown` (the standalone `*bsRowTemplate` can't infer the datatable's generic) — cast via `@let row = $any(item)`, so cell content is no longer type-checked; **FR-4 behaviour preservation** (paging/sort/virtual/streaming/reference-pick) is build- and unit-test-green but needs real-app verification; po-form's `applyReferenceFilter` page-math is now partly redundant (the datatable paginates `[data]` client-side) but left in place to keep the diff minimal.
+Traps for the reviewer: row-template `item` is `unknown` (the standalone `*bsRowTemplate` can't infer the datatable's generic) — cast via `@let row = $any(item)`, so cell content is no longer type-checked; po-form's `applyReferenceFilter` page-math is now partly redundant (the datatable paginates `[data]` client-side) but left in place to keep the diff minimal.
+
+---
+
+## Current state & resume plan (2026-06-07)
+
+**Branch:** `fix/ng-spark-ngbootstrap22-datatable-toggle`. Core work is committed; **one demo-shell item is uncommitted** (Fleet only — see below).
+
+### Done since the original summary (committed)
+- ng-bootstrap **22.4.0** consumed (root + ng-spark peer `^22.4.0`); `onSearchChange` refetch fix; Fleet/HR `ng-spark-auth` relink → `^22.0.0`. (`88bb298`)
+- **Runtime eyeball DONE** (Fleet, logged in as admin, `/query/cars`, 10k cars): lazy windowed fetch confirmed (`skip=0/10/20/30 take=10`, not a 10k drain); live search refetch confirmed.
+- ng-spark virtual fixes (`510f72c`): **placeholder-row guard** `@if (row)` in query-list + po-detail row templates (22.4 virtual renders placeholder rows whose `*bsRowTemplate` item is `undefined` → crashed on `row.id`); **single scrollbar** (`--mp-datatable-virtual-max-height:100%` + flex so the datatable fills its slot and the page `main` doesn't add a 2nd scrollbar).
+- Demo shell fixes for ng-bootstrap 22's named-slot shell, applied to **all 4 demos** (DemoApp, Fleet, HR, WebhooksDemo) — `82258be`, `9d1e6c8`, `60712fd`:
+  - `*bsShellSidebar` → `bsShellSidebar` (the `*` form host-binds `slot` on an `ng-template`, illegal in ng22 → blanked sidebar at runtime).
+  - sidebar gray `#333` moved to the slotted `<nav>` (`::ng-deep .sidebar` is shadow-DOM, unreachable).
+  - topbar moved into `<mp-shell>`'s native `slot="topbar"`; dropped the `position-fixed` bar + `main` padding-top hack; shell host fills viewport (`:host{height:100vh}` + `bs-shell` flex), `main{height:100%}`.
+- All libs + 4 demos build; ng-spark **183** + ng-spark-auth **63** tests green.
+
+### UNCOMMITTED — sidebar toggler (Fleet only, NOT built/verified/committed)
+The topbar needs a visible sidebar open/close toggle on the left. The canonical toggle is `<mp-shell>`'s **built-in hamburger** (the radios in ng-bootstrap's demo are only a noscript fallback); it was wrongly hidden. Fix done on **Fleet** (`shell.component.{html,scss,ts}`), to **replicate on DemoApp / HR / WebhooksDemo**:
+- HTML: remove `<bs-navbar-toggler>` from `slot="topbar"`; add `(statechange)="onShellToggle($event)"` on `<bs-shell>`; slot div `class="flex-grow-1 d-flex align-items-center"` (was `w-100 bg-dark …`).
+- SCSS: replace `::ng-deep mp-shell::part(hamburger){display:none}` with `::ng-deep mp-shell::part(topbar){ background-color:#212529; color:#fff; }` (dark bar + light hamburger).
+- TS: swap `BsNavbarTogglerComponent` import + its `imports:` entry for `import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell'`; add `onShellToggle(detail: ShellStateChangeEventDetail){ this.shellState.set(detail.open ? 'show' : 'hide'); this.updateSidebarVisibility(); }`. (Leftover `toggleSidebar`/`isSidebarVisible` are now vestigial but compile fine.)
+- DemoApp's topbar had only the toggler → its `slot="topbar"` div becomes empty (fine). WebhooksDemo keeps GitHub login/logout.
+
+### Resume checklist
+1. `git status` — confirm the uncommitted **Fleet** shell toggler edits are present (file edits persist across restart).
+2. Apply the same toggler change to **DemoApp, HR, WebhooksDemo** shells.
+3. `npx nx run-many --target=build --projects=@spark-demo/demo-app,@spark-demo/fleet-demo,@spark-demo/hr-demo,@spark-demo/webhooks-demo --skip-nx-cache` (verifies AOT + that `@mintplayer/web-components/shell` type import resolves).
+4. Browser-verify the hamburger toggles the sidebar (Firefox, or restart the playwright MCP — it hung last session).
+5. Commit (`fix(demos): use shell built-in hamburger toggle (#178)`).
+6. **M5**: rewrite this Summary to final as-built + set `Status: Complete`, then `/dcg:pr_create` → wait for `pull-request` CI green → merge to master → `publish-release` workflow publishes `@mintplayer/ng-spark@22.0.0` + `ng-spark-auth@22.0.0` to npmjs + `npm.pkg.github.com/MintPlayer`. Downstream `C:\Repos\MintPlayer` then `npm i` the new versions + builds (Session A drives that).
+
+### Running the Fleet app (for verification)
+RavenDB runs on :8080 (DB `SparkFleet`, 10k Cars seeded). `dotnet run --project Demo/Fleet/Fleet/Fleet.csproj --launch-profile https` → https://localhost:5003 (boots `ng serve` via `UseAngularCliServer`). The **Car** query requires login as an **Administrator** (`security.json` restricts `Query/Car`; seeded `admin@cronos.be` is in Administrators). Route: `/query/cars`. Do NOT commit `--spark-synchronize-model` churn (it rewrites `App_Data/Model/*.json`; revert it). To stop the app, surgically kill the Fleet dotnet + its `ng serve` node child — **never** `taskkill /IM node.exe` (kills the MCP servers).
 
 ---
 
