@@ -1,23 +1,23 @@
-<div class="position-fixed w-100 bg-dark top-bar d-flex align-items-center">
-  <bs-navbar-toggler [state]="isSidebarVisible()"
-                     (stateChange)="toggleSidebar($event)">
-  </bs-navbar-toggler>
-  <div class="ms-auto me-3 d-flex align-items-center gap-2">
-    @if (lang.languages() | keyvalue; as langs) {
-      @if (langs.length > 1) {
-        <bs-select [ngModel]="lang.language()"
-                   (ngModelChange)="lang.setLanguage($event)">
-          @for (l of langs; track l.key) {
-            <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
-          }
-        </bs-select>
+<bs-shell [state]="shellState()" [breakpoint]="'md'" (statechange)="onShellToggle($event)">
+  <div *bsShellTopbar class="w-100 bg-dark d-flex align-items-center">
+    <bs-navbar-toggler [state]="isSidebarVisible()"
+                       (stateChange)="toggleSidebar($event)">
+    </bs-navbar-toggler>
+    <div class="ms-auto me-3 d-flex align-items-center gap-2">
+      @if (lang.languages() | keyvalue; as langs) {
+        @if (langs.length > 1) {
+          <bs-select [ngModel]="lang.language()"
+                     (ngModelChange)="lang.setLanguage($event)">
+            @for (l of langs; track l.key) {
+              <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
+            }
+          </bs-select>
+        }
       }
-    }
-    <spark-auth-bar />
+      <spark-auth-bar />
+    </div>
   </div>
-</div>
-<bs-shell [state]="shellState()" [breakpoint]="'md'">
-  <nav *bsShellSidebar class="sidebar-inner text-light p-2">
+  <nav bsShellSidebar class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">
       @for (group of programUnitGroups(); track group.id) {

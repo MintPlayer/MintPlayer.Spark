@@ -6,16 +6,14 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
-import { BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, VirtualDatatableDataSource } from '@mintplayer/ng-bootstrap/virtual-datatable';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
-import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
-import { PaginationResponse, SortColumn } from '@mintplayer/pagination';
+import { SortColumn } from '@mintplayer/pagination';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
   TranslateKeyPipe,
@@ -38,7 +36,7 @@ import {
 
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsContainerComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsVirtualDatatableComponent, BsVirtualRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,7 +66,7 @@ export class SparkQueryListComponent {
   entityType = signal<EntityType | null>(null);
   allEntityTypes = signal<EntityType[]>([]);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
-  paginationData = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
+  resultCount = signal<number | null>(null);
   searchTerm: string = '';
   canRead = signal(false);
   canCreate = signal(false);
@@ -76,14 +74,11 @@ export class SparkQueryListComponent {
   isStreaming = signal(false);
   private streamingSub: Subscription | null = null;
   private allItems = signal<PersistentObject[]>([]);
-  private filteredItems: PersistentObject[] = [];
+  streamItems = signal<PersistentObject[]>([]);
+  fetchFn = signal<BsDatatableFetch<PersistentObject> | null>(null);
   settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
-    sortColumns: []
-  }));
-  virtualDataSource = signal<VirtualDatatableDataSource<PersistentObject> | null>(null);
-  virtualSettings = signal(new DatatableSettings({
     sortColumns: []
   }));
 
@@ -96,9 +91,10 @@ export class SparkQueryListComponent {
     // Reset prior-route state so we render the spinner (not stale rows from
     // the previous query) while the new query/entityType resolve.
     this.entityType.set(null);
-    this.paginationData.set(undefined);
-    this.virtualDataSource.set(null);
+    this.fetchFn.set(null);
+    this.resultCount.set(null);
     this.allItems.set([]);
+    this.streamItems.set([]);
     this.disconnectStreaming();
 
     const queryId = params.get('queryId');
@@ -148,28 +144,20 @@ export class SparkQueryListComponent {
         direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
       }));
 
-      if (resolvedQuery?.renderMode === 'VirtualScrolling') {
-        this.virtualSettings.set(new DatatableSettings({ sortColumns: initialSortColumns }));
-        if (resolvedQuery?.isStreamingQuery) {
-          // Streaming + VirtualScrolling: create a stable client-side data source, then connect WebSocket
-          this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
-            (skip, take) => Promise.resolve({
-              data: this.filteredItems.slice(skip, skip + take),
-              totalRecords: this.filteredItems.length
-            }),
-            50
-          ));
-          this.connectStreaming(resolvedQuery.id);
-        } else {
-          this.initVirtualDataSource();
-        }
-      } else {
-        this.settings.set(new DatatableSettings({
-          perPage: { values: [10, 25, 50], selected: 10 },
-          page: { values: [1], selected: 1 },
-          sortColumns: initialSortColumns
-        }));
-        await this.loadItems();
+      this.settings.set(new DatatableSettings({
+        perPage: { values: [10, 25, 50], selected: 10 },
+        page: { values: [1], selected: 1 },
+        sortColumns: initialSortColumns
+      }));
+
+      if (resolvedQuery?.isStreamingQuery) {
+        // Streaming: WebSocket feeds allItems; the datatable binds [data]="streamItems()".
+        this.connectStreaming(resolvedQuery.id);
+      } else if (resolvedQuery) {
+        // Non-streaming: the datatable drives paging/sorting via [(settings)] and calls
+        // fetchFn per page. Virtual scrolling is just the [virtualScroll] template flag —
+        // the datatable front-loads all pages from fetchFn when virtual.
+        this.fetchFn.set(this.makeFetch(resolvedQuery));
       }
 
       this.loadLookupReferenceOptions();
@@ -192,7 +180,7 @@ export class SparkQueryListComponent {
       await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) {
-        this.onSettingsChange();
+        this.refresh();
       }
     } catch (e) {
       const err = e as HttpErrorResponse;
@@ -248,70 +236,42 @@ export class SparkQueryListComponent {
     return plural;
   }
 
-  private initVirtualDataSource(): void {
-    const currentQuery = this.query();
-    if (!currentQuery) return;
-    this.virtualDataSource.set(new VirtualDatatableDataSource<PersistentObject>(
-      (skip, take) => this.sparkService.executeQuery(currentQuery.id, {
-        sortColumns: this.virtualSettings().sortColumns,
-        skip, take,
-        search: this.searchTerm || undefined,
-      }).then(r => ({ data: r.data, totalRecords: r.totalRecords })),
-      50
-    ));
-  }
-
-  async loadItems(): Promise<void> {
-    const currentQuery = this.query();
-    if (!currentQuery) return;
-
-    // Streaming queries use WebSocket instead of HTTP
-    if (currentQuery.isStreamingQuery) {
-      this.connectStreaming(currentQuery.id);
-      return;
-    }
-
-    // Non-streaming: disconnect any previous streaming connection
-    this.disconnectStreaming();
-
-    try {
-      const s = this.settings();
-      const result = await this.sparkService.executeQuery(currentQuery.id, {
-        sortColumns: s.sortColumns,
-        skip: (s.page.selected - 1) * s.perPage.selected,
-        take: s.perPage.selected,
-        search: this.searchTerm || undefined,
-      });
+  /**
+   * Builds the server-side fetch callback the datatable invokes per page/sort.
+   * Reads `searchTerm` live, so a settings change (or a new fetchFn identity)
+   * refetches with the current search term.
+   */
+  private makeFetch(query: SparkQuery): BsDatatableFetch<PersistentObject> {
+    return (req) => this.sparkService.executeQuery(query.id, {
+      sortColumns: req.sortColumns,
+      skip: (req.page - 1) * req.perPage,
+      take: req.perPage,
+      search: this.searchTerm || undefined,
+    }).then(r => {
       this.errorMessage.set(null);
-
-      const totalPages = Math.ceil(result.totalRecords / s.perPage.selected) || 1;
-      this.paginationData.set({
-        data: result.data,
-        totalRecords: result.totalRecords,
-        totalPages: totalPages,
-        perPage: s.perPage.selected,
-        page: s.page.selected
-      });
-      s.page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-    } catch (e: any) {
+      this.resultCount.set(r.totalRecords);
+      return {
+        data: r.data,
+        totalRecords: r.totalRecords,
+        totalPages: Math.ceil(r.totalRecords / req.perPage) || 1,
+        perPage: req.perPage,
+        page: req.page,
+      };
+    }).catch((e: any) => {
       this.errorMessage.set(e.error?.error || e.message || 'An unexpected error occurred');
-      this.paginationData.set(undefined);
-    }
+      this.resultCount.set(0);
+      return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
+    });
   }
 
-  onSettingsChange(): void {
+  /** Force a refetch (e.g. after a custom action) without changing page/sort. */
+  private refresh(): void {
     if (this.isStreaming()) {
-      // Streaming: sort/filter is client-side only
       this.applyFilter();
       return;
     }
-
-    if (this.query()?.renderMode === 'VirtualScrolling') {
-      this.virtualDataSource()?.reset();
-      this.initVirtualDataSource();
-    } else {
-      this.loadItems();
-    }
+    const q = this.query();
+    if (q) this.fetchFn.set(this.makeFetch(q));
   }
 
   onSearchChange(): void {
@@ -319,14 +279,20 @@ export class SparkQueryListComponent {
       this.applyFilter();
       return;
     }
-
-    if (this.query()?.renderMode === 'VirtualScrolling') {
-      this.virtualDataSource()?.reset();
-      this.initVirtualDataSource();
-    } else {
-      this.settings().page.selected = 1;
-      this.loadItems();
-    }
+    // Reset to page 1 for the new search.
+    const s = this.settings();
+    this.settings.set(new DatatableSettings({
+      perPage: { values: s.perPage.values, selected: s.perPage.selected },
+      page: { values: [1], selected: 1 },
+      sortColumns: s.sortColumns,
+    }));
+    // Re-assign the fetch callback so the datatable refetches even when
+    // page/perPage/sort are unchanged. ng-bootstrap 22.4's web component dedupes
+    // reloads by {sortColumns, perPage, page}; setting a new fetch identity resets
+    // that key (set fetch → _lastReloadKey = null) and forces the reload. makeFetch
+    // reads searchTerm live (mirrors refresh()).
+    const q = this.query();
+    if (q) this.fetchFn.set(this.makeFetch(q));
   }
 
   clearSearch(): void {
@@ -450,9 +416,9 @@ export class SparkQueryListComponent {
       );
     }
 
-    // Apply sorting
-    const isVirtual = this.query()?.renderMode === 'VirtualScrolling';
-    const sortCols = isVirtual ? this.virtualSettings().sortColumns : this.settings().sortColumns;
+    // Apply sorting (client-side for the streaming snapshot; the datatable in
+    // [data] mode also auto-sorts on header clicks).
+    const sortCols = this.settings().sortColumns;
     if (sortCols.length > 0) {
       items = [...items].sort((a, b) => {
         for (const col of sortCols) {
@@ -465,20 +431,7 @@ export class SparkQueryListComponent {
       });
     }
 
-    if (isVirtual) {
-      // Update the mutable filtered items array.
-      // The stable data source's fetchFn closure reads from this.filteredItems,
-      // so clearing its cache and emitting empty triggers the CDK viewport to re-fetch.
-      this.filteredItems = items;
-      this.virtualDataSource()?.reset();
-    } else {
-      this.paginationData.set({
-        data: items,
-        totalRecords: items.length,
-        totalPages: 1,
-        perPage: items.length,
-        page: 1
-      });
-    }
+    this.streamItems.set(items);
+    this.resultCount.set(items.length);
   }
 }
