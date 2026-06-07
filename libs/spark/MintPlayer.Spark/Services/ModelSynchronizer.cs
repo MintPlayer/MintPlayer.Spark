@@ -328,21 +328,29 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
 
-            // For AsDetail, resolve the actual element type (unwrap arrays/collections)
+            // For AsDetail, resolve the actual element type (unwrap arrays/collections).
+            // For non-AsDetail collections (scalar arrays, or [Reference] List<string>),
+            // mark IsArray so the wire value round-trips as a JSON array of ids/scalars.
             var isArray = false;
             string? asDetailType = null;
+            var collectionElementType = GetCollectionElementType(propType);
             if (dataType == "AsDetail")
             {
-                var elementType = GetCollectionElementType(propType);
-                if (elementType != null)
+                if (collectionElementType != null)
                 {
                     isArray = true;
-                    asDetailType = elementType.FullName ?? elementType.Name;
+                    asDetailType = collectionElementType.FullName ?? collectionElementType.Name;
                 }
                 else
                 {
                     asDetailType = propType.FullName ?? propType.Name;
                 }
+            }
+            else if (collectionElementType != null)
+            {
+                // e.g. [Reference(typeof(Tag), "GetTags")] List<string> TagIds, or a bare
+                // List<string> of scalars — a real array of simple/reference values.
+                isArray = true;
             }
 
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
@@ -385,10 +393,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.Query = resolvedQuery;
                 }
 
+                // IsArray is derived purely from the CLR property shape, so always
+                // refresh it (covers Reference/scalar arrays, not just AsDetail).
+                existingAttr.IsArray = isArray;
+
                 if (dataType == "AsDetail")
                 {
                     existingAttr.AsDetailType = asDetailType;
-                    existingAttr.IsArray = isArray;
                 }
 
                 if (lookupRefAttr != null)
@@ -483,11 +494,16 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
 
-        // Check for array/collection of complex types
+        // Collections are classified by their ELEMENT type, never by the collection
+        // wrapper. A collection of a complex element is AsDetail; a collection of a
+        // simple element (e.g. List<string>, string[]) takes the element's scalar type.
+        // Classifying by the wrapper would be wrong: a List<> is itself a class with
+        // public properties, so the IsComplexType fallback below would mis-tag
+        // List<string> as AsDetail and the mapper would drop its values.
         var elementType = GetCollectionElementType(underlying);
-        if (elementType != null && IsComplexType(elementType))
+        if (elementType != null)
         {
-            return "AsDetail";
+            return IsComplexType(elementType) ? "AsDetail" : GetDataType(elementType);
         }
 
         return underlying switch

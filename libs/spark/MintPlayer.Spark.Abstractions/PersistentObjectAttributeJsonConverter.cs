@@ -135,6 +135,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
                     case "Order":           attr.Order          = prop.Value.GetInt32(); break;
                     case "Query":           attr.Query          = ReadNullableString(prop.Value); break;
                     case "Breadcrumb":      attr.Breadcrumb     = ReadNullableString(prop.Value); break;
+                    case "Breadcrumbs":     attr.Breadcrumbs    = Deserialize<Dictionary<string, string?>>(prop.Value, options); break;
                     case "ShowedOn":        attr.ShowedOn       = Deserialize<EShowedOn>(prop.Value, options); break;
                     case "Rules":           attr.Rules          = Deserialize<ValidationRule[]>(prop.Value, options) ?? []; break;
                     case "Group":           attr.Group          = prop.Value.ValueKind == JsonValueKind.Null ? null : Deserialize<Guid?>(prop.Value, options); break;
@@ -159,6 +160,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
             WritePropertyName(writer, "Order", options);           writer.WriteNumberValue(value.Order);
             WritePropertyName(writer, "Query", options);           writer.WriteStringValue(value.Query);
             WritePropertyName(writer, "Breadcrumb", options);      writer.WriteStringValue(value.Breadcrumb);
+            WritePropertyName(writer, "Breadcrumbs", options);     JsonSerializer.Serialize(writer, value.Breadcrumbs, options);
             WritePropertyName(writer, "ShowedOn", options);        JsonSerializer.Serialize(writer, value.ShowedOn, options);
             WritePropertyName(writer, "Rules", options);           JsonSerializer.Serialize(writer, value.Rules, options);
             WritePropertyName(writer, "Group", options);
@@ -202,7 +204,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
         private static readonly string[] KnownFieldNames =
         [
             "Id", "Name", "Label", "Value", "DataType", "IsArray", "IsRequired", "IsVisible",
-            "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "ShowedOn",
+            "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "Breadcrumbs", "ShowedOn",
             "Rules", "Group", "Renderer", "RendererOptions",
         ];
 

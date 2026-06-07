@@ -6,6 +6,7 @@ export * from './raw-attribute-value.pipe';
 export * from './reference-display-value.pipe';
 export * from './reference-attr-value.pipe';
 export * from './reference-link-route.pipe';
+export * from './reference-chips.pipe';
 export * from './router-link.pipe';
 export * from './as-detail-type.pipe';
 export * from './as-detail-columns.pipe';

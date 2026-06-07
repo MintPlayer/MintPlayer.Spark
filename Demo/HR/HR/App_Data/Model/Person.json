@@ -201,6 +201,27 @@
         "group": "b1b2c3d4-0002-0002-0002-000000000003"
       },
       {
+        "id": "7c1f0a92-3b8e-4d51-9f0a-2d6e4c8b1a37",
+        "name": "Professions",
+        "label": {
+          "en": "Professions",
+          "fr": "Professions",
+          "nl": "Beroepen"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "query": "GetProfessions",
+        "referenceType": "HR.Entities.Profession",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000003"
+      },
+      {
         "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
         "name": "Address",
         "label": {

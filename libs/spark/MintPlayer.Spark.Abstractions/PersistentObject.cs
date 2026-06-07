@@ -81,6 +81,15 @@ public class PersistentObjectAttribute
     public int Order { get; set; }
     public string? Query { get; set; }
     public string? Breadcrumb { get; set; }
+
+    /// <summary>
+    /// For <see cref="DataType"/> == "Reference" with <see cref="IsArray"/> = true: the
+    /// resolved display label per referenced id (id → breadcrumb), so clients can render
+    /// a chip per selected reference without a second round-trip. The single-reference
+    /// counterpart is <see cref="Breadcrumb"/>. Null when there are no resolved labels.
+    /// </summary>
+    public Dictionary<string, string?>? Breadcrumbs { get; set; }
+
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
     public Guid? Group { get; set; }

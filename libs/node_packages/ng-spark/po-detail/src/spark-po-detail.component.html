@@ -138,6 +138,22 @@
                 } @else {
                   -
                 }
+              } @else if (attr.dataType === 'Reference' && attr.isArray) {
+                @let chips = (attr.name | referenceChips:item());
+                @if (chips.length) {
+                  <div class="d-flex flex-wrap gap-1">
+                    @for (chip of chips; track chip.id) {
+                      @let chipRoute = (attr.referenceType ? (attr.referenceType | referenceLinkRoute:chip.id:allEntityTypes()) : null);
+                      @if (chipRoute) {
+                        <a class="badge text-bg-secondary text-decoration-none" [routerLink]="chipRoute">{{ chip.label }}</a>
+                      } @else {
+                        <span class="badge text-bg-secondary">{{ chip.label }}</span>
+                      }
+                    }
+                  </div>
+                } @else {
+                  -
+                }
               } @else if (attr.dataType === 'Reference' && attr.referenceType) {
                 @let refRoute = (attr.referenceType | referenceLinkRoute:(attr.name | rawAttributeValue:item()):allEntityTypes());
                 @if (refRoute && (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes())) {

@@ -127,6 +127,36 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void Reference_collection_property_is_typed_Reference_array()
+    {
+        var ctx = new TaggedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_TestTagged"));
+        var tagIds = file.PersistentObject.Attributes.Single(a => a.Name == "TagIds");
+        tagIds.DataType.Should().Be("Reference", "[Reference] List<string> is a multi-reference, not AsDetail");
+        tagIds.IsArray.Should().BeTrue("a collection reference round-trips as an array of ids");
+        tagIds.ReferenceType.Should().Be(typeof(MS_TestTag).FullName);
+    }
+
+    [Fact]
+    public void Bare_list_of_primitive_is_scalar_array_not_AsDetail()
+    {
+        var ctx = new TaggedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_TestTagged"));
+        var labels = file.PersistentObject.Attributes.Single(a => a.Name == "Labels");
+        labels.DataType.Should().Be("string", "List<string> takes its element's scalar type, not AsDetail");
+        labels.IsArray.Should().BeTrue();
+        labels.AsDetailType.Should().BeNull("a list of primitives scaffolds no nested PO type");
+    }
+
+    [Fact]
     public void Removes_stale_projection_model_files_listed_in_IndexRegistry()
     {
         // Pre-create a stale Vehicle.json model file. Then register a projection that maps
@@ -191,6 +221,22 @@ public class MS_TestVehicle
     public string DisplayName { get; set; } = string.Empty;
 }
 
+public class MS_TestTag
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class MS_TestTagged
+{
+    public string? Id { get; set; }
+
+    [Reference(typeof(MS_TestTag))]
+    public List<string> TagIds { get; set; } = [];
+
+    public List<string> Labels { get; set; } = [];
+}
+
 public class EmptyContext : SparkContext { }
 
 public class SinglePersonContext : SparkContext
@@ -207,4 +253,10 @@ public class TwoEntityContext : SparkContext
 public class ProjectionOnlyContext : SparkContext
 {
     public IRavenQueryable<MS_TestVehicle> Vehicles => Session.Query<MS_TestVehicle>();
+}
+
+public class TaggedContext : SparkContext
+{
+    public IRavenQueryable<MS_TestTagged> Tagged => Session.Query<MS_TestTagged>();
+    public IRavenQueryable<MS_TestTag> Tags => Session.Query<MS_TestTag>();
 }
