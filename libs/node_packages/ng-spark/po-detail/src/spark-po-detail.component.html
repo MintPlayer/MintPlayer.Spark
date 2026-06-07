@@ -145,9 +145,9 @@
                     @for (chip of chips; track chip.id) {
                       @let chipRoute = (attr.referenceType ? (attr.referenceType | referenceLinkRoute:chip.id:allEntityTypes()) : null);
                       @if (chipRoute) {
-                        <a class="badge text-bg-secondary text-decoration-none" [routerLink]="chipRoute">{{ chip.label }}</a>
+                        <a class="badge rounded-pill border bg-body-secondary text-body text-decoration-none px-3 py-2" [routerLink]="chipRoute">{{ chip.label }}</a>
                       } @else {
-                        <span class="badge text-bg-secondary">{{ chip.label }}</span>
+                        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
                       }
                     }
                   </div>
