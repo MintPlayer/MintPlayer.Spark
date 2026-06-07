@@ -4,6 +4,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>MintPlayer.Spark.Client</PackageId>
+    <Version>10.0.0-preview.35</Version>
+    <Authors>MintPlayer</Authors>
+    <Company>MintPlayer</Company>
+    <Description>Typed C# client for consuming MintPlayer.Spark backend APIs.</Description>
+    <PackageTags>spark;client;typed-client;http;ravendb</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>MintPlayer.Spark.Client.Authorization</PackageId>
+    <Version>10.0.0-preview.35</Version>
+    <Authors>MintPlayer</Authors>
+    <Company>MintPlayer</Company>
+    <Description>Authorization extensions for the MintPlayer.Spark typed C# client.</Description>
+    <PackageTags>spark;client;authorization;typed-client</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
