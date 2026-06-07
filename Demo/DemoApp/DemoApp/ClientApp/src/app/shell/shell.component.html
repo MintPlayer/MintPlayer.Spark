@@ -1,9 +1,9 @@
-<div class="position-fixed w-100 bg-dark top-bar">
-  <bs-navbar-toggler [state]="isSidebarVisible()"
-                     (stateChange)="toggleSidebar($event)">
-  </bs-navbar-toggler>
-</div>
 <bs-shell [state]="shellState()" [breakpoint]="'md'">
+  <div slot="topbar" class="w-100 bg-dark d-flex align-items-center">
+    <bs-navbar-toggler [state]="isSidebarVisible()"
+                       (stateChange)="toggleSidebar($event)">
+    </bs-navbar-toggler>
+  </div>
   <nav bsShellSidebar class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">

@@ -1,3 +1,14 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+bs-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 ::ng-deep bs-shell {
   bs-accordion {
     bs-accordion-tab {
@@ -38,18 +49,14 @@
   }
 }
 
-nav.sidebar-inner {
-    padding-top: 3.375rem !important;
-}
-
-.top-bar {
-  z-index: 1000;
-  height: 3.375rem;
+// The topbar now lives in <mp-shell>'s native topbar slot, so hide the web
+// component's default hamburger (we project our own <bs-navbar-toggler>).
+::ng-deep mp-shell::part(hamburger) {
+  display: none;
 }
 
 main {
-  height: 100vh;
-  padding-top: 4rem !important; // 54px for top-bar
+  height: 100%;
   background-color: #f8f9fa;
   display: flex;
   flex-direction: column;
