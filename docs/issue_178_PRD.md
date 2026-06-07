@@ -2,9 +2,9 @@
 
 **Issue**: #178
 **Title**: fix: ng-spark build broken against ng-bootstrap 22 (removed virtual-datatable + toggle-button entry points)
-**Status**: In Progress — eyeball done; finishing demo-shell sidebar toggler, then M5 (PR → publish)
+**Status**: Complete — all milestones landed; PR open for CI → merge → publish 22.0.0
 **Created**: 2026-06-06
-**Last Updated**: 2026-06-07 (see "Current state & resume plan" below)
+**Last Updated**: 2026-06-07 (M5 — shell toggler finalized + committed `514720e`)
 
 ---
 
@@ -28,11 +28,21 @@ Traps for the reviewer: row-template `item` is `unknown` (the standalone `*bsRow
 
 ---
 
-## Current state & resume plan (2026-06-07)
+## Current state (2026-06-07) — all work committed
 
-**Branch:** `fix/ng-spark-ngbootstrap22-datatable-toggle`. Core work is committed; **one demo-shell item is uncommitted** (Fleet only — see below).
+**Branch:** `fix/ng-spark-ngbootstrap22-datatable-toggle`. All work committed; PR open for CI → merge → publish.
 
-### Done since the original summary (committed)
+### Demo-shell sidebar toggler — DONE (`514720e`, browser-verified)
+Final as-built design, applied identically to **all 4 demos** (DemoApp / Fleet / HR / WebhooksDemo):
+- **`<bs-navbar-toggler>` projected top-left** of the topbar; the `<mp-shell>` built-in hamburger is hidden (`::ng-deep mp-shell::part(hamburger){display:none}`). The toggler drives `shellState` (`(stateChange)="toggleSidebar($event)"`, `[state]="isSidebarVisible()"`).
+- **Bidirectional sync:** `<bs-shell (statechange)="onShellToggle($event)">`, where `onShellToggle` only mirrors `isSidebarVisible.set(detail.open)` — never sets `shellState` — so the shell's own `'auto'` breakpoint behavior is preserved.
+- **New local `*bsShellTopbar` structural directive** (`shell/bs-shell-topbar.directive.ts`, one per app) projects the topbar template into `slot="topbar"`: it renders the embedded view then stamps `slot="topbar"` on the root element via `Renderer2`. (Same ng22 constraint that forced sidebar to the `bsShellSidebar` attribute: host-binding `slot` on an `<ng-template>` is illegal.) **TODO: promote `bsShellTopbar` to `@mintplayer/ng-bootstrap/shell`**, then apps import it from the package and delete the 4 local copies.
+- Toggler bars use `--bs-secondary-color` (dark default → invisible on the dark topbar); lightened via `::ng-deep bs-navbar-toggler { --mp-secondary-color }`-style override (`rgba(255,255,255,.85)`). This was the "missing toggler" reported earlier.
+- Browser-verified on Fleet (playwright): toggler visible top-left, sidebar opens/closes, state stays in sync. All 4 demos build green.
+
+> Earlier this section described a (reverted) "use the built-in hamburger via `::part(topbar)`" approach; the navbar-toggler + `bsShellTopbar` design above is what shipped, per developer preference (toggler in top-left + a reusable structural directive headed for ng-bootstrap).
+
+### Done earlier (committed)
 - ng-bootstrap **22.4.0** consumed (root + ng-spark peer `^22.4.0`); `onSearchChange` refetch fix; Fleet/HR `ng-spark-auth` relink → `^22.0.0`. (`88bb298`)
 - **Runtime eyeball DONE** (Fleet, logged in as admin, `/query/cars`, 10k cars): lazy windowed fetch confirmed (`skip=0/10/20/30 take=10`, not a 10k drain); live search refetch confirmed.
 - ng-spark virtual fixes (`510f72c`): **placeholder-row guard** `@if (row)` in query-list + po-detail row templates (22.4 virtual renders placeholder rows whose `*bsRowTemplate` item is `undefined` → crashed on `row.id`); **single scrollbar** (`--mp-datatable-virtual-max-height:100%` + flex so the datatable fills its slot and the page `main` doesn't add a 2nd scrollbar).
@@ -42,20 +52,8 @@ Traps for the reviewer: row-template `item` is `unknown` (the standalone `*bsRow
   - topbar moved into `<mp-shell>`'s native `slot="topbar"`; dropped the `position-fixed` bar + `main` padding-top hack; shell host fills viewport (`:host{height:100vh}` + `bs-shell` flex), `main{height:100%}`.
 - All libs + 4 demos build; ng-spark **183** + ng-spark-auth **63** tests green.
 
-### UNCOMMITTED — sidebar toggler (Fleet only, NOT built/verified/committed)
-The topbar needs a visible sidebar open/close toggle on the left. The canonical toggle is `<mp-shell>`'s **built-in hamburger** (the radios in ng-bootstrap's demo are only a noscript fallback); it was wrongly hidden. Fix done on **Fleet** (`shell.component.{html,scss,ts}`), to **replicate on DemoApp / HR / WebhooksDemo**:
-- HTML: remove `<bs-navbar-toggler>` from `slot="topbar"`; add `(statechange)="onShellToggle($event)"` on `<bs-shell>`; slot div `class="flex-grow-1 d-flex align-items-center"` (was `w-100 bg-dark …`).
-- SCSS: replace `::ng-deep mp-shell::part(hamburger){display:none}` with `::ng-deep mp-shell::part(topbar){ background-color:#212529; color:#fff; }` (dark bar + light hamburger).
-- TS: swap `BsNavbarTogglerComponent` import + its `imports:` entry for `import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell'`; add `onShellToggle(detail: ShellStateChangeEventDetail){ this.shellState.set(detail.open ? 'show' : 'hide'); this.updateSidebarVisibility(); }`. (Leftover `toggleSidebar`/`isSidebarVisible` are now vestigial but compile fine.)
-- DemoApp's topbar had only the toggler → its `slot="topbar"` div becomes empty (fine). WebhooksDemo keeps GitHub login/logout.
-
-### Resume checklist
-1. `git status` — confirm the uncommitted **Fleet** shell toggler edits are present (file edits persist across restart).
-2. Apply the same toggler change to **DemoApp, HR, WebhooksDemo** shells.
-3. `npx nx run-many --target=build --projects=@spark-demo/demo-app,@spark-demo/fleet-demo,@spark-demo/hr-demo,@spark-demo/webhooks-demo --skip-nx-cache` (verifies AOT + that `@mintplayer/web-components/shell` type import resolves).
-4. Browser-verify the hamburger toggles the sidebar (Firefox, or restart the playwright MCP — it hung last session).
-5. Commit (`fix(demos): use shell built-in hamburger toggle (#178)`).
-6. **M5**: rewrite this Summary to final as-built + set `Status: Complete`, then `/dcg:pr_create` → wait for `pull-request` CI green → merge to master → `publish-release` workflow publishes `@mintplayer/ng-spark@22.0.0` + `ng-spark-auth@22.0.0` to npmjs + `npm.pkg.github.com/MintPlayer`. Downstream `C:\Repos\MintPlayer` then `npm i` the new versions + builds (Session A drives that).
+### M5 — remaining publish path
+PR open against `master`. On green CI → merge → the `publish-release` workflow publishes `@mintplayer/ng-spark@22.0.0` + `ng-spark-auth@22.0.0` to npmjs + `npm.pkg.github.com/MintPlayer`. Downstream `C:\Repos\MintPlayer` then `npm i` the new versions + builds — the first step of the larger **MintPlayer → Spark framework migration** (the end goal that motivated #178).
 
 ### Running the Fleet app (for verification)
 RavenDB runs on :8080 (DB `SparkFleet`, 10k Cars seeded). `dotnet run --project Demo/Fleet/Fleet/Fleet.csproj --launch-profile https` → https://localhost:5003 (boots `ng serve` via `UseAngularCliServer`). The **Car** query requires login as an **Administrator** (`security.json` restricts `Query/Car`; seeded `admin@cronos.be` is in Administrators). Route: `/query/cars`. Do NOT commit `--spark-synchronize-model` churn (it rewrites `App_Data/Model/*.json`; revert it). To stop the app, surgically kill the Fleet dotnet + its `ng serve` node child — **never** `taskkill /IM node.exe` (kills the MCP servers).
@@ -103,7 +101,7 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 - [x] **FR-1**: Workspace upgraded to Angular 22.0.0 + ng-bootstrap 22.2.0 (deps, devDeps; `overrides` force Nx-capped Angular tooling to 22; ng-bootstrap's new peers auto-resolved; TS → 6.0.3).
 - [x] **FR-2**: ng-spark po-form/query-list/po-detail migrated to `<bs-checkbox>` + fetch-driven `<bs-datatable>`; no removed-API imports. (Also removed pre-existing dead `BsTableComponent`/`BsContainerComponent` imports.)
 - [x] **FR-3**: ng-spark-auth login migrated `bs-toggle-button` → `bs-checkbox` (preserve `formControlName="rememberMe"`).
-- [ ] **FR-4**: Behavior preserved — server paging+sorting, query-list streaming (tested), search (fixed for 22.4 dedup), custom actions, permissions, lookup/reference rendering, per-cell renderer/link content. Virtual scrolling now lazy-fetches via ng-bootstrap 22.4.0 (regression resolved). Builds green + unit-tested; pending end-to-end app eyeball.
+- [x] **FR-4**: Behavior preserved — server paging+sorting, query-list streaming (tested), search (fixed for 22.4 dedup), custom actions, permissions, lookup/reference rendering, per-cell renderer/link content. Virtual scrolling lazy-fetches via ng-bootstrap 22.4.0 (regression resolved); end-to-end eyeball DONE on Fleet `/query/cars` (lazy windowed fetch + live search refetch confirmed).
 - [x] **FR-5**: All 4 demo ClientApps build under Angular 22.
 - [ ] **FR-6**: ng-spark + ng-spark-auth republished as 22.0.0 with ^22 peer ranges, to npmjs.com + GitHub Packages.
 
@@ -130,7 +128,8 @@ Interface is defined by ng-bootstrap 22 (the merged fetch-driven `<bs-datatable>
 - [x] build all (libs + 4 demos) + ng-spark/ng-spark-auth unit tests green (against 22.4.0)
 - [x] pre-PR review+verify (`passes-with-fixes`); streaming test added
 - [x] bump to ng-bootstrap ^22.4.0; `onSearchChange` refetch fix for 22.4 WC dedup; relink Fleet/HR demo ng-spark-auth
-- [ ] end-to-end eyeball: VirtualScrolling query (Fleet `Car` / DemoApp `Stock`) lazy-fetches page-by-page; search refetches
+- [x] end-to-end eyeball: VirtualScrolling query (Fleet `Car`) lazy-fetches page-by-page; search refetches
+- [x] demo-shell sidebar toggler finalized + browser-verified (`514720e`)
 - [ ] PR, CI green, merge, publish 22.0.0
 
 ---
