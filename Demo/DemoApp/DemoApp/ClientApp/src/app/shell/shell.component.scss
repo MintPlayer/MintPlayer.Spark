@@ -56,7 +56,11 @@ main {
   overflow: auto;
 }
 
-::ng-deep .sidebar {
+// ng-bootstrap 22's <mp-shell> projects the sidebar into a shadow-DOM `.sidebar`
+// slot, which ::ng-deep can't reach. Colour the slotted <nav> directly and let
+// it fill the full-height sidebar column.
+nav.sidebar-inner {
   background: #333;
+  min-height: 100%;
 }
 

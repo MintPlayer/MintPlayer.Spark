@@ -4,7 +4,7 @@
   </bs-navbar-toggler>
 </div>
 <bs-shell [state]="shellState()" [breakpoint]="'md'">
-  <nav *bsShellSidebar class="sidebar-inner text-light p-2">
+  <nav bsShellSidebar class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">
       @for (group of programUnitGroups(); track group.id) {
