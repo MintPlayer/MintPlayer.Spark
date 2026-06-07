@@ -14,16 +14,21 @@ RUN apt-get update && \
 
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+# Selective csproj COPY for restore-layer caching. Paths must match the repo's
+# libs/<group>/ layout and cover WebhooksDemo's full transitive ProjectReference
+# closure, since `dotnet restore` (below) runs before `COPY . .`.
 COPY ["Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj", "Demo/WebhooksDemo/WebhooksDemo/"]
-COPY ["MintPlayer.Spark/MintPlayer.Spark.csproj", "MintPlayer.Spark/"]
-COPY ["MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "MintPlayer.Spark.Abstractions/"]
-COPY ["MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj", "MintPlayer.Spark.SourceGenerators/"]
-COPY ["MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj", "MintPlayer.Spark.Messaging/"]
-COPY ["MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "MintPlayer.Spark.Messaging.Abstractions/"]
-COPY ["MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj", "MintPlayer.Spark.SubscriptionWorker/"]
-COPY ["MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj", "MintPlayer.Spark.Webhooks.GitHub/"]
-COPY ["MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "MintPlayer.Spark.Webhooks.GitHub.DevTunnel/"]
-COPY ["MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "MintPlayer.Dotnet.SocketExtensions/"]
+COPY ["Demo/WebhooksDemo/WebhooksDemo.Library/WebhooksDemo.Library.csproj", "Demo/WebhooksDemo/WebhooksDemo.Library/"]
+COPY ["libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj", "libs/spark/MintPlayer.Spark/"]
+COPY ["libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "libs/spark/MintPlayer.Spark.Abstractions/"]
+COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]
+COPY ["libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj", "libs/messaging/MintPlayer.Spark.Messaging/"]
+COPY ["libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "libs/messaging/MintPlayer.Spark.Messaging.Abstractions/"]
+COPY ["libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj", "libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/"]
+COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj", "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/"]
+COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/"]
+COPY ["libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj", "libs/source_generators/MintPlayer.Spark.SourceGenerators/"]
+COPY ["libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/"]
 RUN dotnet restore "./Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj"
 COPY . .
 
