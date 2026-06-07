@@ -1,5 +1,5 @@
-<bs-shell [state]="shellState()" [breakpoint]="'md'">
-  <div slot="topbar" class="w-100 bg-dark d-flex align-items-center">
+<bs-shell [state]="shellState()" [breakpoint]="'md'" (statechange)="onShellToggle($event)">
+  <div *bsShellTopbar class="w-100 bg-dark d-flex align-items-center">
     <bs-navbar-toggler [state]="isSidebarVisible()"
                        (stateChange)="toggleSidebar($event)">
     </bs-navbar-toggler>

@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
+import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell';
+import { BsShellTopbarDirective } from './bs-shell-topbar.directive';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { ResolveTranslationPipe, IconNamePipe, RouterLinkPipe } from '@mintplayer/ng-spark/pipes';
@@ -11,7 +13,7 @@ import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -40,6 +42,14 @@ export class ShellComponent implements OnInit {
   toggleSidebar(open: boolean) {
     this.shellState.set(open ? 'show' : 'hide');
     this.updateSidebarVisibility();
+  }
+
+  // Keep the navbar-toggler in sync with the shell's actual open/closed state
+  // (the shell may toggle itself at the breakpoint in 'auto' mode). We only
+  // mirror the reflected visibility here — never force show/hide — so 'auto'
+  // responsive behaviour is preserved; explicit toggles go through the toggler.
+  onShellToggle(detail: ShellStateChangeEventDetail) {
+    this.isSidebarVisible.set(detail.open);
   }
 
   onMenuItemClick() {

@@ -49,10 +49,16 @@ bs-shell {
   }
 }
 
-// The topbar now lives in <mp-shell>'s native topbar slot, so hide the web
-// component's default hamburger (we project our own <bs-navbar-toggler>).
+// We project our own <bs-navbar-toggler> into the topbar, so hide the web
+// component's built-in hamburger to avoid showing two togglers.
 ::ng-deep mp-shell::part(hamburger) {
   display: none;
+}
+
+// The navbar-toggler's bars use --bs-secondary-color (dark by default); lighten
+// it so the toggler is visible against the dark topbar.
+::ng-deep bs-navbar-toggler {
+  --bs-secondary-color: rgba(255, 255, 255, 0.85);
 }
 
 main {
