@@ -279,14 +279,20 @@ export class SparkQueryListComponent {
       this.applyFilter();
       return;
     }
-    // A new settings identity (page reset to 1) makes the datatable refetch;
-    // the fetch callback reads the current searchTerm live.
+    // Reset to page 1 for the new search.
     const s = this.settings();
     this.settings.set(new DatatableSettings({
       perPage: { values: s.perPage.values, selected: s.perPage.selected },
       page: { values: [1], selected: 1 },
       sortColumns: s.sortColumns,
     }));
+    // Re-assign the fetch callback so the datatable refetches even when
+    // page/perPage/sort are unchanged. ng-bootstrap 22.4's web component dedupes
+    // reloads by {sortColumns, perPage, page}; setting a new fetch identity resets
+    // that key (set fetch → _lastReloadKey = null) and forces the reload. makeFetch
+    // reads searchTerm live (mirrors refresh()).
+    const q = this.query();
+    if (q) this.fetchFn.set(this.makeFetch(q));
   }
 
   clearSearch(): void {
