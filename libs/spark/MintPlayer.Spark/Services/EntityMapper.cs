@@ -214,7 +214,7 @@ internal partial class EntityMapper : IEntityMapper
             // Reference attributes: resolve the display name of the referenced entity
             // from the preloaded includedDocuments dict so the client can render a
             // breadcrumb without a second round-trip.
-            if (attribute.DataType == "Reference"
+            if (attribute.DataType == "Reference" && !attribute.IsArray
                 && attribute.Value is string refId && !string.IsNullOrEmpty(refId)
                 && includedDocuments is not null
                 && includedDocuments.TryGetValue(refId, out var referencedEntity)
@@ -224,6 +224,25 @@ internal partial class EntityMapper : IEntityMapper
                 var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(
                     referencedEntityType.FullName ?? referencedEntityType.Name);
                 attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
+            }
+            // Reference ARRAY: resolve a breadcrumb per id (id → display name) so the
+            // client can render one chip per selected reference. Mirrors the single-
+            // reference path above, over each element of the id array.
+            else if (attribute.DataType == "Reference" && attribute.IsArray
+                && includedDocuments is not null
+                && raw is System.Collections.IEnumerable refIds && raw is not string)
+            {
+                Dictionary<string, string?>? breadcrumbs = null;
+                foreach (var idObj in refIds)
+                {
+                    var id = idObj?.ToString();
+                    if (string.IsNullOrEmpty(id)) continue;
+                    if (!includedDocuments.TryGetValue(id, out var refEntity) || refEntity is null) continue;
+                    var refType = refEntity.GetType();
+                    var refDef = modelLoader.GetEntityTypeByClrType(refType.FullName ?? refType.Name);
+                    (breadcrumbs ??= [])[id] = GetEntityDisplayName(refEntity, refType, refDef);
+                }
+                attribute.Breadcrumbs = breadcrumbs;
             }
         }
     }
@@ -555,6 +574,16 @@ internal partial class EntityMapper : IEntityMapper
             return;
         }
 
+        // Reference ARRAYS carry an array of ids in Value, not a single refId — route
+        // them to the collection coercion path (SetPropertyValue) rather than the
+        // single-reference resolver below, which would try to load one document per the
+        // whole serialized array.
+        if (attribute.IsArray)
+        {
+            SetPropertyValue(property, entity, attribute.Value);
+            return;
+        }
+
         // Reference attributes pointing at a complex entity type need resolution to
         // an actual entity instance. String-typed reference properties fall through
         // to the generic coercion path below — the refId is written as-is.
@@ -826,6 +855,27 @@ internal partial class EntityMapper : IEntityMapper
             {
                 value = ExtractJsonElementValue(je);
             }
+        }
+
+        // Collection target handed a non-JsonElement enumerable directly (e.g. a
+        // List<string> of reference ids assembled in-process rather than off the wire):
+        // round-trip through JSON so element coercion uses the same path as the
+        // JsonElement-array branch above. AsDetail arrays never reach here — they are
+        // handled by WriteAsDetailAsync before SetPropertyValue.
+        if (value is not null && value is System.Collections.IEnumerable && value is not string
+            && GetCollectionElementType(targetType) is not null)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(value);
+                using var tmpDoc = JsonDocument.Parse(json);
+                setter(entity, tmpDoc.RootElement.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }));
+            }
+            catch
+            {
+                // Skip values that can't be coerced into the collection type.
+            }
+            return;
         }
 
         if (value == null)

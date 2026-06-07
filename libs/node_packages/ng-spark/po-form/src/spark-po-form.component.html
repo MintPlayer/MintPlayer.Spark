@@ -85,6 +85,17 @@
                 }
               </bs-select>
             }
+          } @else if (attr.dataType === 'Reference' && attr.isArray) {
+            <bs-tree-select
+              mode="multiple"
+              variant="textbox"
+              [showClear]="true"
+              [placeholder]="'common.search' | t"
+              [provider]="getReferenceProvider(attr)"
+              [ngModel]="referenceTreeValues()[attr.name] || []"
+              (ngModelChange)="onReferenceTreeChange(attr, $event)"
+              [ngModelOptions]="{ standalone: true }">
+            </bs-tree-select>
           } @else if (attr.dataType === 'Reference') {
             <bs-input-group>
               <input

@@ -17,6 +17,12 @@ export interface PersistentObjectAttribute {
   query?: string;
   breadcrumb?: string;
   /**
+   * For `dataType === 'Reference'` with `isArray === true`: resolved display label per
+   * referenced id (id → breadcrumb), so the UI can render a chip per selected reference.
+   * The single-reference counterpart is `breadcrumb`.
+   */
+  breadcrumbs?: Record<string, string | null>;
+  /**
    * Controls on which pages the attribute should be displayed.
    * Query = shown in list views, PersistentObject = shown in detail/edit views.
    * Can be a numeric flag value or a string like "Query, PersistentObject".

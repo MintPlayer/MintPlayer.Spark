@@ -113,15 +113,20 @@ internal partial class ReferenceResolver : IReferenceResolver
         {
             foreach (var (property, refAttr) in referenceProperties)
             {
-                var refId = AccessorCache.GetGetter(property)(entity) as string;
-                if (string.IsNullOrEmpty(refId)) continue;
+                var rawValue = AccessorCache.GetGetter(property)(entity);
 
-                var targetType = refAttr.TargetType;
-                if (!refIdsByType.ContainsKey(targetType))
+                // A reference property is either a single id (string) or an array of ids
+                // ([Reference] List<string>/string[]). Both round-trip through .Include();
+                // here we collect every referenced id so its document is resolved.
+                foreach (var refId in ExtractReferenceIds(rawValue))
                 {
-                    refIdsByType[targetType] = [];
+                    var targetType = refAttr.TargetType;
+                    if (!refIdsByType.TryGetValue(targetType, out var set))
+                    {
+                        refIdsByType[targetType] = set = [];
+                    }
+                    set.Add(refId);
                 }
-                refIdsByType[targetType].Add(refId);
             }
         }
 
@@ -162,6 +167,32 @@ internal partial class ReferenceResolver : IReferenceResolver
         await task;
         var resultProperty = task.GetType().GetProperty("Result");
         return (bool)resultProperty!.GetValue(task)!;
+    }
+
+    /// <summary>
+    /// Normalizes a reference property value to its referenced id(s): a single id for a
+    /// string property, or each non-empty id for a collection property
+    /// (<c>[Reference] List&lt;string&gt;</c> / <c>string[]</c>). A <c>string</c> is checked
+    /// before <see cref="System.Collections.IEnumerable"/> because string itself enumerates
+    /// its chars.
+    /// </summary>
+    private static IEnumerable<string> ExtractReferenceIds(object? value)
+    {
+        switch (value)
+        {
+            case null:
+                yield break;
+            case string s:
+                if (!string.IsNullOrEmpty(s)) yield return s;
+                yield break;
+            case System.Collections.IEnumerable enumerable:
+                foreach (var item in enumerable)
+                {
+                    var id = item?.ToString();
+                    if (!string.IsNullOrEmpty(id)) yield return id;
+                }
+                yield break;
+        }
     }
 
     private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)

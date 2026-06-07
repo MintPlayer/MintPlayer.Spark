@@ -8,6 +8,7 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDi
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
+import { BsTreeSelectComponent, InMemoryTreeSelectProvider, TreeNode } from '@mintplayer/ng-bootstrap/tree-select';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
@@ -55,7 +56,7 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -77,6 +78,13 @@ export class SparkPoFormComponent {
 
   colors = Color;
   referenceOptions = signal<Record<string, PersistentObject[]>>({});
+
+  // Multi-reference (Reference && isArray) editor state. Built from the same query
+  // results as referenceOptions: a flat TreeNode list per attribute drives an
+  // InMemoryTreeSelectProvider (the <bs-tree-select> data port), and a node lookup
+  // resolves selected ids back to chip labels.
+  referenceProviders = signal<Record<string, InMemoryTreeSelectProvider>>({});
+  referenceNodes = signal<Record<string, Record<string, TreeNode>>>({});
   asDetailTypes = signal<Record<string, EntityType>>({});
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
 
@@ -205,7 +213,55 @@ export class SparkPoFormComponent {
         return [attr.name, result.data] as [string, PersistentObject[]];
       })
     );
-    this.referenceOptions.set(this.toRecord(entries));
+    const optionsByAttr = this.toRecord(entries);
+    this.referenceOptions.set(optionsByAttr);
+
+    // For multi-reference attributes (Reference && isArray), turn each query result
+    // into a flat TreeNode list + an in-memory provider for <bs-tree-select>, and a
+    // by-id node map used to render chip labels for the current selection.
+    const providers: Record<string, InMemoryTreeSelectProvider> = {};
+    const nodesByAttr: Record<string, Record<string, TreeNode>> = {};
+    for (const attr of refAttrs) {
+      if (!attr.isArray) continue;
+      const pos = optionsByAttr[attr.name] || [];
+      const nodes: TreeNode[] = pos
+        .filter(po => !!po.id)
+        .map(po => ({ id: po.id!, label: po.breadcrumb || po.name || po.id! }));
+      providers[attr.name] = new InMemoryTreeSelectProvider(nodes);
+      nodesByAttr[attr.name] = this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode]));
+    }
+    this.referenceProviders.set(providers);
+    this.referenceNodes.set(nodesByAttr);
+  }
+
+  /**
+   * Stable TreeNode[] value per multi-reference attribute, derived from the id array
+   * in formData and the resolved node map. Recomputes only when formData or the node
+   * map changes, so binding it into <bs-tree-select> doesn't churn on every CD pass.
+   * Ids without a resolved node fall back to a label of the id itself.
+   */
+  referenceTreeValues = computed<Record<string, TreeNode[]>>(() => {
+    const fd = this.formData();
+    const nodesByAttr = this.referenceNodes();
+    const result: Record<string, TreeNode[]> = {};
+    for (const attr of this.editableAttributes()) {
+      if (attr.dataType !== 'Reference' || !attr.isArray) continue;
+      const ids: string[] = Array.isArray(fd[attr.name]) ? fd[attr.name] : [];
+      const nodeMap = nodesByAttr[attr.name] || {};
+      result[attr.name] = ids.map(id => nodeMap[id] ?? { id, label: id });
+    }
+    return result;
+  });
+
+  getReferenceProvider(attr: EntityAttributeDefinition): InMemoryTreeSelectProvider | undefined {
+    return this.referenceProviders()[attr.name];
+  }
+
+  onReferenceTreeChange(attr: EntityAttributeDefinition, value: TreeNode | TreeNode[] | null): void {
+    const nodes = Array.isArray(value) ? value : value ? [value] : [];
+    const data = { ...this.formData() };
+    data[attr.name] = nodes.map(n => n.id);
+    this.formData.set(data);
   }
 
   async loadAsDetailTypes(): Promise<void> {
