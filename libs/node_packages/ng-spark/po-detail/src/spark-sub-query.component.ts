@@ -6,7 +6,7 @@ import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirectiv
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
-import { ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe } from '@mintplayer/ng-spark/pipes';
+import { ResolveTranslationPipe, AttributeValuePipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
@@ -21,7 +21,7 @@ import {
 
 @Component({
   selector: 'spark-sub-query',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe],
   templateUrl: './spark-sub-query.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
