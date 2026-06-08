@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Migrations</PackageId>
-		<Version>10.0.0-preview.36</Version>
+		<Version>10.0.0-preview.37</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Database migrations for MintPlayer.Spark. Define migrations by implementing ISparkMigration with a static abstract Version; they run once, in version order, at startup. Multi-node safe via RavenDB compare-exchange locking, idempotent via per-version marker documents.</Description>
