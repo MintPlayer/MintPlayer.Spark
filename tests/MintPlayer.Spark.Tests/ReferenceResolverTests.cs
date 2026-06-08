@@ -6,9 +6,9 @@ namespace MintPlayer.Spark.Tests;
 
 public class ReferenceResolverTests
 {
-    // R2-H10's row-level Read hook now goes through IRowSecurity. These tests
-    // exercise only the reflection-based property scan, so a stubbed gate is fine.
-    private readonly ReferenceResolver _resolver = new(Substitute.For<IRowSecurity>());
+    // ReferenceResolver is now just the [Reference] property scan + .Include() chaining;
+    // breadcrumb loading moved to BreadcrumbResolver, so no dependencies to stub.
+    private readonly ReferenceResolver _resolver = new();
 
     [Fact]
     public void GetReferenceProperties_FindsReferenceAttributes()

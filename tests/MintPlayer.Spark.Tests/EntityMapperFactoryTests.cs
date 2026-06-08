@@ -1,6 +1,7 @@
 using System.Drawing;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests;
@@ -169,7 +170,21 @@ public class EntityMapperFactoryTests
     }
 
     [Fact]
-    public void PopulateAttributeValues_SetsIdNameAndBreadcrumb()
+    public void PopulateAttributeValues_SetsId_and_copies_Name_Breadcrumb_from_result()
+    {
+        var po = _mapper.GetPersistentObject("Car");
+        var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
+        var breadcrumbs = new BreadcrumbResult(new Dictionary<string, string> { ["cars/1"] = "ABC-123" });
+
+        _mapper.PopulateAttributeValues(po, car, breadcrumbs);
+
+        po.Id.Should().Be("cars/1");
+        po.Name.Should().Be("ABC-123", "Name/Breadcrumb are copied from the resolved result by id");
+        po.Breadcrumb.Should().Be("ABC-123");
+    }
+
+    [Fact]
+    public void PopulateAttributeValues_without_a_result_falls_back_to_the_type_name()
     {
         var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
@@ -177,8 +192,7 @@ public class EntityMapperFactoryTests
         _mapper.PopulateAttributeValues(po, car);
 
         po.Id.Should().Be("cars/1");
-        po.Name.Should().Be("ABC-123", "DisplayAttribute=LicensePlate");
-        po.Breadcrumb.Should().Be("ABC-123");
+        po.Name.Should().Be(nameof(TestCar), "no breadcrumb result → fall back to the CLR type name");
     }
 
     [Fact]

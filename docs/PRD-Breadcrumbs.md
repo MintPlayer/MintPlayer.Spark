@@ -168,7 +168,8 @@ For each entity type, parse the template once into `Literal|Field` tokens and co
 
 1. **Seed.** `loaded` map = root entities keyed by id. `frontier` = roots.
 2. **BFS by level** (until frontier empty or `maxDepth`):
-   - From the frontier types' breadcrumb closures, collect every referenced id that is **not already in `loaded`**.
+   - **Root level vs deeper levels (refinement found in Phase 4):** the *root* entities follow **every** `[Reference]` attribute — each one is a column/field on the returned PO and needs its own display label. *Deeper* levels follow only the **breadcrumb-template** references (the closure), because a referenced entity is represented to the client solely by its breadcrumb string. (The old per-attribute loader resolved a label for every reference; the closure alone would have dropped labels for references not used in a template.)
+   - From the frontier, collect every referenced id that is **not already in `loaded`**.
    - **One batched call:** `session.LoadAsync<object>(ids[])` loads *all* of them — across mixed target types — in a **single RavenDB request** (type is recovered from document metadata). Ids already primed by the list query's `.Include()` resolve from the session cache for free.
    - Apply row-level `Read` auth in-memory on each newly loaded doc (no extra DB request); denied docs are recorded as **redacted**.
    - New docs become the next frontier.

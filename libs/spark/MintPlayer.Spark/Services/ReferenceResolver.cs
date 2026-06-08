@@ -1,11 +1,15 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Session;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
 
+/// <summary>
+/// Discovers <see cref="ReferenceAttribute"/> properties and chains RavenDB <c>.Include()</c> so a
+/// query's first-level references are primed into the session cache. Breadcrumb resolution itself
+/// (recursive, batched) lives in <see cref="Breadcrumb.IBreadcrumbResolver"/>.
+/// </summary>
 internal interface IReferenceResolver
 {
     List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType);
@@ -22,18 +26,11 @@ internal interface IReferenceResolver
     /// are loaded in the same round-trip. Returns the (possibly wrapped) queryable.
     /// </summary>
     object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
-
-    Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(
-        IAsyncDocumentSession session,
-        IEnumerable<object> entities,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
 }
 
 [Register(typeof(IReferenceResolver), ServiceLifetime.Scoped)]
 internal partial class ReferenceResolver : IReferenceResolver
 {
-    [Inject] private readonly IRowSecurity rowSecurity;
-
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
         // Return a copy of the cached array as a List so callers can mutate (the
@@ -94,105 +91,5 @@ internal partial class ReferenceResolver : IReferenceResolver
         }
 
         return queryable;
-    }
-
-    public async Task<Dictionary<string, object>> ResolveReferencedDocumentsAsync(
-        IAsyncDocumentSession session,
-        IEnumerable<object> entities,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
-    {
-        var includedDocuments = new Dictionary<string, object>();
-
-        if (referenceProperties.Count == 0)
-            return includedDocuments;
-
-        // Collect all unique reference IDs grouped by target type
-        var refIdsByType = new Dictionary<Type, HashSet<string>>();
-
-        foreach (var entity in entities)
-        {
-            foreach (var (property, refAttr) in referenceProperties)
-            {
-                var rawValue = AccessorCache.GetGetter(property)(entity);
-
-                // A reference property is either a single id (string) or an array of ids
-                // ([Reference] List<string>/string[]). Both round-trip through .Include();
-                // here we collect every referenced id so its document is resolved.
-                foreach (var refId in ExtractReferenceIds(rawValue))
-                {
-                    var targetType = refAttr.TargetType;
-                    if (!refIdsByType.TryGetValue(targetType, out var set))
-                    {
-                        refIdsByType[targetType] = set = [];
-                    }
-                    set.Add(refId);
-                }
-            }
-        }
-
-        // Load referenced documents (from session cache if .Include() was used, otherwise from database).
-        // R2-H10: apply row-level Read on each referenced doc through the target
-        // collection's Actions class. Without this, Bob could list his orders
-        // referencing Alice and read Alice's display name / email out of the
-        // breadcrumb even when Alice's own collection is row-gated to deny him.
-        foreach (var (targetType, refIds) in refIdsByType)
-        {
-            foreach (var refId in refIds)
-            {
-                var referencedEntity = await LoadEntityAsync(session, targetType, refId);
-                if (referencedEntity == null) continue;
-                if (!await rowSecurity.IsAllowedAsync(targetType, "Read", referencedEntity)) continue;
-                includedDocuments[refId] = referencedEntity;
-            }
-        }
-
-        return includedDocuments;
-    }
-
-    /// <summary>
-    /// Normalizes a reference property value to its referenced id(s): a single id for a
-    /// string property, or each non-empty id for a collection property
-    /// (<c>[Reference] List&lt;string&gt;</c> / <c>string[]</c>). A <c>string</c> is checked
-    /// before <see cref="System.Collections.IEnumerable"/> because string itself enumerates
-    /// its chars.
-    /// </summary>
-    private static IEnumerable<string> ExtractReferenceIds(object? value)
-    {
-        switch (value)
-        {
-            case null:
-                yield break;
-            case string s:
-                if (!string.IsNullOrEmpty(s)) yield return s;
-                yield break;
-            case System.Collections.IEnumerable enumerable:
-                foreach (var item in enumerable)
-                {
-                    var id = item?.ToString();
-                    if (!string.IsNullOrEmpty(id)) yield return id;
-                }
-                yield break;
-        }
-    }
-
-    private static async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
-            ("ReferenceResolver.SessionLoadAsync", entityType),
-            static k =>
-            {
-                var method = typeof(IAsyncDocumentSession).GetMethod(
-                    nameof(IAsyncDocumentSession.LoadAsync),
-                    [typeof(string), typeof(CancellationToken)]);
-                return method?.MakeGenericMethod(k.Type);
-            });
-        var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
-
-        if (task == null) return null;
-
-        await task;
-
-        var resultProperty = task.GetType().GetCachedProperty("Result");
-        return resultProperty is not null ? AccessorCache.GetGetter(resultProperty)(task) : null;
     }
 }

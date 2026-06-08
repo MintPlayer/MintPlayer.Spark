@@ -35,9 +35,9 @@ public sealed class BreadcrumbResult
 internal interface IBreadcrumbResolver
 {
     /// <param name="roots">The page's entities (collection documents or projections).</param>
-    /// <param name="rootType">The <b>collection</b> CLR type whose breadcrumb template/edges apply to the roots.</param>
+    /// <param name="rootDef">The <b>collection</b> entity-type definition whose breadcrumb template/edges apply to the roots.</param>
     Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, Type rootType, CancellationToken ct = default);
+        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default);
 }
 
 [Register(typeof(IBreadcrumbResolver), ServiceLifetime.Scoped)]
@@ -49,12 +49,10 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     [Inject] private readonly SparkOptions options;
 
     public async Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, Type rootType, CancellationToken ct = default)
+        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default)
     {
         if (roots.Count == 0)
             return BreadcrumbResult.Empty;
-
-        var rootDef = modelLoader.GetEntityTypeByClrType(rootType.FullName ?? rootType.Name);
 
         // id → the entity to render that id's breadcrumb from; id → the def driving the render.
         var renderEntity = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -94,7 +92,12 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                 var def = defById[id];
                 if (def is null) continue;
                 var entity = renderEntity[id];
-                foreach (var reference in closure.GetReferences(def))
+
+                // Roots (depth 1) follow EVERY reference attribute — each one needs a display label
+                // on the returned PO. Deeper levels follow only the breadcrumb-template references,
+                // since a referenced entity is represented solely by its breadcrumb string.
+                var references = depth == 1 ? GetAllReferences(def) : closure.GetReferences(def);
+                foreach (var reference in references)
                     foreach (var refId in ExtractIds(entity, reference.AttributeName))
                         if (!renderEntity.ContainsKey(refId) && !denied.Contains(refId) && neededSet.Add(refId))
                             needed.Add(refId);
@@ -194,6 +197,13 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             visited.Remove(id);
         return sb.ToString();
     }
+
+    /// <summary>Every <c>[Reference]</c> attribute of a type — root attributes all need a display label.</summary>
+    private static IReadOnlyList<BreadcrumbReference> GetAllReferences(EntityTypeDefinition def)
+        => def.Attributes
+            .Where(a => a.DataType == "Reference" && !string.IsNullOrEmpty(a.ReferenceType))
+            .Select(a => new BreadcrumbReference(a.Name, a.ReferenceType!, a.IsArray))
+            .ToList();
 
     private static string GetId(object entity)
         => ReadValue(entity, "Id")?.ToString() ?? string.Empty;

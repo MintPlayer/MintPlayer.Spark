@@ -73,7 +73,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
             Attributes = [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LastName", DataType = "string" },
-                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Company", DataType = "Reference" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Company", DataType = "Reference", ReferenceType = typeof(Company).FullName },
             ],
         },
     };

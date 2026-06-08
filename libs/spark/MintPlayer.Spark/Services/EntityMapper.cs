@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Session;
 using System.Drawing;
 using System.Reflection;
@@ -42,24 +43,25 @@ public interface IEntityMapper
     /// Id / Name / Breadcrumb on the PO itself, and Value on every attribute that has
     /// a matching public readable property. Applies enum→string, <see cref="System.Drawing.Color"/>→
     /// <c>#RRGGBB</c> hex, and AsDetail→dictionary conversions. When
-    /// <paramref name="includedDocuments"/> is supplied, Reference attributes gain a
-    /// Breadcrumb resolved from the target document. Attributes whose name has no
+    /// <paramref name="breadcrumbs"/> is supplied, the PO's Name/Breadcrumb and each Reference
+    /// attribute's Breadcrumb(s) are filled by id lookup from the pre-resolved result (see
+    /// <see cref="Breadcrumb.IBreadcrumbResolver"/>). Attributes whose name has no
     /// matching property on the entity are left with Value = null (Vidyano parity);
     /// attributes whose name contains '.' are skipped.
     /// </summary>
-    void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null);
+    void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null);
 
     /// <summary>
     /// Typed convenience overload of
-    /// <see cref="PopulateAttributeValues(PersistentObject, object, Dictionary{string, object}?)"/>.
+    /// <see cref="PopulateAttributeValues(PersistentObject, object, BreadcrumbResult?)"/>.
     /// </summary>
-    void PopulateAttributeValues<T>(PersistentObject po, T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
+    void PopulateAttributeValues<T>(PersistentObject po, T entity, BreadcrumbResult? breadcrumbs = null) where T : class;
 
     /// <summary>
     /// Convenience wrapper: <see cref="GetPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
     /// Existing call sites (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) keep this signature.
     /// </summary>
-    PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null);
+    PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null);
 
     /// <summary>
     /// Typed convenience overload that derives the ObjectTypeId from
@@ -68,7 +70,7 @@ public interface IEntityMapper
     /// for the CLR type. Callers in framework internals that already have a Guid
     /// (DatabaseAccess, QueryExecutor) continue to use the non-generic overload.
     /// </summary>
-    PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class;
+    PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class;
 
     /// <summary>
     /// Populates <paramref name="entity"/> in-place from <paramref name="po"/>'s attribute
@@ -144,11 +146,11 @@ internal partial class EntityMapper : IEntityMapper
     public PersistentObject GetPersistentObject<T>() where T : class
         => ScaffoldFrom(ResolveDefByClrType(typeof(T)));
 
-    public PersistentObject ToPersistentObject<T>(T entity, Dictionary<string, object>? includedDocuments = null) where T : class
-        => ToPersistentObject(entity, ResolveDefByClrType(typeof(T)).Id, includedDocuments);
+    public PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class
+        => ToPersistentObject(entity, ResolveDefByClrType(typeof(T)).Id, breadcrumbs);
 
-    public void PopulateAttributeValues<T>(PersistentObject po, T entity, Dictionary<string, object>? includedDocuments = null) where T : class
-        => PopulateAttributeValues(po, (object)entity, includedDocuments);
+    public void PopulateAttributeValues<T>(PersistentObject po, T entity, BreadcrumbResult? breadcrumbs = null) where T : class
+        => PopulateAttributeValues(po, (object)entity, breadcrumbs);
 
     private EntityTypeDefinition ResolveDefByClrType(Type clrType)
     {
@@ -157,7 +159,7 @@ internal partial class EntityMapper : IEntityMapper
             ?? throw new KeyNotFoundException($"No entity type registered for CLR type '{name}'.");
     }
 
-    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, Dictionary<string, object>? includedDocuments = null)
+    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null)
     {
         // `GetEntityType` may legitimately return null for projection / anonymous types
         // that don't have a declared EntityTypeDefinition. In that case we produce an
@@ -172,20 +174,24 @@ internal partial class EntityMapper : IEntityMapper
                 ObjectTypeId = objectTypeId,
             };
 
-        PopulateAttributeValues(po, entity, includedDocuments);
+        PopulateAttributeValues(po, entity, breadcrumbs);
         return po;
     }
 
-    public void PopulateAttributeValues(PersistentObject po, object entity, Dictionary<string, object>? includedDocuments = null)
+    public void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null)
     {
         var entityType = entity.GetType();
         var idProperty = entityType.GetCachedProperty("Id");
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
-        var entityTypeDef = modelLoader.GetEntityType(po.ObjectTypeId);
-        var displayName = GetEntityDisplayName(entity, entityType, entityTypeDef);
-        po.Name = displayName;
-        po.Breadcrumb = displayName;
+        // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
+        // Embedded AsDetail objects have no id and aren't in the result → fall back to the type name;
+        // the frontend renders nested AsDetail display from the breadcrumb template itself.
+        var breadcrumb = breadcrumbs?.Get(po.Id);
+        if (string.IsNullOrWhiteSpace(breadcrumb))
+            breadcrumb = entityType.Name;
+        po.Name = breadcrumb;
+        po.Breadcrumb = breadcrumb;
 
         foreach (var attribute in po.Attributes)
         {
@@ -205,44 +211,36 @@ internal partial class EntityMapper : IEntityMapper
             // Value; delegate to the recursive populator.
             if (attribute is PersistentObjectAttributeAsDetail asDetail)
             {
-                PopulateAsDetail(asDetail, raw, property.PropertyType, includedDocuments);
+                PopulateAsDetail(asDetail, raw, property.PropertyType, breadcrumbs);
                 continue;
             }
 
             attribute.Value = ConvertValueForWire(raw, property.PropertyType, attribute);
 
-            // Reference attributes: resolve the display name of the referenced entity
-            // from the preloaded includedDocuments dict so the client can render a
-            // breadcrumb without a second round-trip.
+            if (breadcrumbs is null)
+                continue;
+
+            // Reference attributes: copy the referenced entity's pre-resolved breadcrumb (by id)
+            // so the client can render it without a second round-trip. The breadcrumb is fully
+            // recursive — the resolver already expanded any nested references.
             if (attribute.DataType == "Reference" && !attribute.IsArray
-                && attribute.Value is string refId && !string.IsNullOrEmpty(refId)
-                && includedDocuments is not null
-                && includedDocuments.TryGetValue(refId, out var referencedEntity)
-                && referencedEntity is not null)
+                && attribute.Value is string refId && !string.IsNullOrEmpty(refId))
             {
-                var referencedEntityType = referencedEntity.GetType();
-                var referencedEntityTypeDef = modelLoader.GetEntityTypeByClrType(
-                    referencedEntityType.FullName ?? referencedEntityType.Name);
-                attribute.Breadcrumb = GetEntityDisplayName(referencedEntity, referencedEntityType, referencedEntityTypeDef);
+                attribute.Breadcrumb = breadcrumbs.Get(refId);
             }
-            // Reference ARRAY: resolve a breadcrumb per id (id → display name) so the
-            // client can render one chip per selected reference. Mirrors the single-
-            // reference path above, over each element of the id array.
+            // Reference ARRAY: a breadcrumb per id (id → breadcrumb) so the client can render one
+            // chip per selected reference.
             else if (attribute.DataType == "Reference" && attribute.IsArray
-                && includedDocuments is not null
                 && raw is System.Collections.IEnumerable refIds && raw is not string)
             {
-                Dictionary<string, string?>? breadcrumbs = null;
+                Dictionary<string, string?>? perId = null;
                 foreach (var idObj in refIds)
                 {
                     var id = idObj?.ToString();
                     if (string.IsNullOrEmpty(id)) continue;
-                    if (!includedDocuments.TryGetValue(id, out var refEntity) || refEntity is null) continue;
-                    var refType = refEntity.GetType();
-                    var refDef = modelLoader.GetEntityTypeByClrType(refType.FullName ?? refType.Name);
-                    (breadcrumbs ??= [])[id] = GetEntityDisplayName(refEntity, refType, refDef);
+                    (perId ??= [])[id] = breadcrumbs.Get(id);
                 }
-                attribute.Breadcrumbs = breadcrumbs;
+                attribute.Breadcrumbs = perId;
             }
         }
     }
@@ -256,7 +254,7 @@ internal partial class EntityMapper : IEntityMapper
     /// scaffold would poison the wire value.
     /// </summary>
     private void PopulateAsDetail(PersistentObjectAttributeAsDetail attr, object? raw, Type propertyType,
-        Dictionary<string, object>? includedDocuments)
+        BreadcrumbResult? breadcrumbs)
     {
         attr.Value = null; // AsDetail no longer carries a flat Value.
 
@@ -282,7 +280,7 @@ internal partial class EntityMapper : IEntityMapper
                 {
                     var child = ScaffoldFrom(elementDef);
                     if (item is not null)
-                        PopulateAttributeValues(child, item, includedDocuments);
+                        PopulateAttributeValues(child, item, breadcrumbs);
                     children.Add(child);
                 }
             }
@@ -305,7 +303,7 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         var nested = ScaffoldFrom(childDefSingle);
-        PopulateAttributeValues(nested, raw, includedDocuments);
+        PopulateAttributeValues(nested, raw, breadcrumbs);
         attr.Object = nested;
     }
 
@@ -971,45 +969,6 @@ internal partial class EntityMapper : IEntityMapper
 
         // Check if it's a class with public properties
         return type.GetCachedProperties().Length > 0;
-    }
-
-    private string GetEntityDisplayName(object entity, Type entityType, EntityTypeDefinition? entityTypeDef = null)
-    {
-        // If no entity type definition provided, try to find it
-        entityTypeDef ??= modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-
-        // Breadcrumb template (literal text + {Attribute} placeholders). ModelSynchronizer
-        // always populates Breadcrumb (from the [Breadcrumb] attribute, a preserved JSON
-        // value, or a synthesized default), so a single resolution path suffices; entities
-        // without a definition (projection/anonymous types) fall through to the CLR type name.
-        // NOTE (Phase 1): this is still flat substitution — reference placeholders render the
-        // raw id. Recursive resolution lands with BreadcrumbResolver (Phase 3/4).
-        if (!string.IsNullOrEmpty(entityTypeDef?.Breadcrumb))
-        {
-            var resolved = ResolveDisplayFormat(entity, entityType, entityTypeDef.Breadcrumb);
-            if (!string.IsNullOrWhiteSpace(resolved))
-                return resolved;
-        }
-
-        return entityType.Name;
-    }
-
-    private static string ResolveDisplayFormat(object entity, Type entityType, string displayFormat)
-    {
-        var result = displayFormat;
-        var properties = entityType.GetCachedProperties();
-
-        foreach (var property in properties)
-        {
-            var placeholder = $"{{{property.Name}}}";
-            if (result.Contains(placeholder))
-            {
-                var value = AccessorCache.GetGetter(property)(entity)?.ToString() ?? string.Empty;
-                result = result.Replace(placeholder, value);
-            }
-        }
-
-        return result;
     }
 
     private Type? ResolveType(string clrType)

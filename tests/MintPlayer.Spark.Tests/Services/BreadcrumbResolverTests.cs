@@ -46,20 +46,23 @@ public class BreadcrumbResolverTests : SparkTestDriver
         return (resolver, rowSecurity);
     }
 
-    private EntityTypeDefinition[] ChainModel() =>
-    [
-        Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName")),
-        Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person))),
-        Def(typeof(BR_ParkingSpot), "{ParkedCar} ({Coordinates})", null, Scalar("Coordinates"), Ref("ParkedCar", typeof(BR_Car))),
-    ];
+    // ParkingSpot -> Car -> Person, a 3-level chain.
+    private (EntityTypeDefinition person, EntityTypeDefinition car, EntityTypeDefinition spot) ChainDefs()
+    {
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var spot = Def(typeof(BR_ParkingSpot), "{ParkedCar} ({Coordinates})", null, Scalar("Coordinates"), Ref("ParkedCar", typeof(BR_Car)));
+        return (person, car, spot);
+    }
 
     [Fact]
     public async Task Empty_roots_returns_empty()
     {
-        var (resolver, _) = Build(ChainModel());
+        var (person, car, spot) = ChainDefs();
+        var (resolver, _) = Build(person, car, spot);
         using var session = Store.OpenAsyncSession();
 
-        var result = await resolver.ResolveAsync(session, [], typeof(BR_ParkingSpot));
+        var result = await resolver.ResolveAsync(session, [], spot);
 
         result.BreadcrumbsById.Should().BeEmpty();
     }
@@ -80,21 +83,46 @@ public class BreadcrumbResolverTests : SparkTestDriver
             await seed.SaveChangesAsync();
         }
 
-        var (resolver, _) = Build(ChainModel());
+        var (person, car, spot) = ChainDefs();
+        var (resolver, _) = Build(person, car, spot);
         using var session = Store.OpenAsyncSession();
         var spotIds = Enumerable.Range(0, n).Select(i => $"spots/{i}").ToList();
         var spots = (await session.LoadAsync<BR_ParkingSpot>(spotIds)).Values.Where(s => s is not null).Cast<object>().ToList();
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, spots, typeof(BR_ParkingSpot));
+        var result = await resolver.ResolveAsync(session, spots, spot);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(2, $"cost is O(depth): one batched load for cars, one for people — independent of n={n}");
         result.Get("spots/0").Should().Be("CAR-0 (P0 X) (0,0)");
         result.Get($"spots/{n - 1}").Should().Be($"CAR-{n - 1} (P{n - 1} X) ({n - 1},{n - 1})");
-        // Intermediate + leaf breadcrumbs are also resolved and available by id.
         result.Get("cars/0").Should().Be("CAR-0 (P0 X)");
         result.Get("people/0").Should().Be("P0 X");
+    }
+
+    [Fact]
+    public async Task Root_reference_attribute_outside_the_breadcrumb_template_is_still_resolved()
+    {
+        // Car's breadcrumb is just {LicensePlate} — Driver is NOT in the template, but the Driver
+        // column still needs a display label, so the resolver must resolve it for the root.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "John", LastName = "Doe" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate}", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        result.Get("cars/1").Should().Be("CAR-1", "the car's own breadcrumb omits the driver");
+        result.Get("people/1").Should().Be("John Doe", "but the driver reference still resolves a label");
     }
 
     [Fact]
@@ -108,14 +136,14 @@ public class BreadcrumbResolverTests : SparkTestDriver
             await seed.SaveChangesAsync();
         }
 
-        var (resolver, _) = Build(
-            Def(typeof(BR_Tag), "{Name}", null, Scalar("Name")),
-            Def(typeof(BR_Post), "{Title}: {TagIds}", null, Scalar("Title"), Ref("TagIds", typeof(BR_Tag), isArray: true)));
+        var tag = Def(typeof(BR_Tag), "{Name}", null, Scalar("Name"));
+        var post = Def(typeof(BR_Post), "{Title}: {TagIds}", null, Scalar("Title"), Ref("TagIds", typeof(BR_Tag), isArray: true));
+        var (resolver, _) = Build(tag, post);
 
         using var session = Store.OpenAsyncSession();
-        var post = await session.LoadAsync<BR_Post>("posts/1");
+        var postEntity = await session.LoadAsync<BR_Post>("posts/1");
 
-        var result = await resolver.ResolveAsync(session, [post], typeof(BR_Post));
+        var result = await resolver.ResolveAsync(session, [postEntity], post);
 
         result.Get("posts/1").Should().Be("Post: news, sports");
     }
@@ -130,16 +158,16 @@ public class BreadcrumbResolverTests : SparkTestDriver
             await seed.SaveChangesAsync();
         }
 
-        var (resolver, rowSecurity) = Build(
-            Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName")),
-            Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person))));
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, rowSecurity) = Build(person, car);
         // Deny row-level Read on the Person behind the wheel.
         rowSecurity.IsAllowedAsync(typeof(BR_Person), "Read", Arg.Any<object>()).Returns(false);
 
         using var session = Store.OpenAsyncSession();
-        var car = await session.LoadAsync<BR_Car>("cars/1");
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [car], typeof(BR_Car));
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1 (—)", "the denied driver is redacted, the rest renders");
         result.Get("people/1").Should().Be("—");
@@ -155,15 +183,15 @@ public class BreadcrumbResolverTests : SparkTestDriver
         }
 
         // Person's breadcrumb uses FirstName/LastName, which the VPerson projection lacks → not satisfiable.
-        var (resolver, _) = Build(
-            Def(typeof(BR_Person), "{FirstName} {LastName}", satisfiable: false, Scalar("FirstName"), Scalar("LastName")));
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", satisfiable: false, Scalar("FirstName"), Scalar("LastName"));
+        var (resolver, _) = Build(person);
 
         using var session = Store.OpenAsyncSession();
         // Roots are projection instances WITHOUT the collection fields.
         var projection = new BR_VPerson { Id = "people/1", FullName = "ignored" };
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, [projection], typeof(BR_Person));
+        var result = await resolver.ResolveAsync(session, [projection], person);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(1, "one batched load fetches the collection documents for the page");
@@ -180,13 +208,13 @@ public class BreadcrumbResolverTests : SparkTestDriver
             await seed.SaveChangesAsync();
         }
 
-        var (resolver, _) = Build(
-            Def(typeof(BR_Person), "{LastName} (mgr: {Manager})", null, Scalar("LastName"), Ref("Manager", typeof(BR_Person))));
+        var person = Def(typeof(BR_Person), "{LastName} (mgr: {Manager})", null, Scalar("LastName"), Ref("Manager", typeof(BR_Person)));
+        var (resolver, _) = Build(person);
 
         using var session = Store.OpenAsyncSession();
         var a = await session.LoadAsync<BR_Person>("people/1");
 
-        var result = await resolver.ResolveAsync(session, [a], typeof(BR_Person));
+        var result = await resolver.ResolveAsync(session, [a], person);
 
         // Must terminate (no stack overflow / hang) and name both people before the cycle is cut.
         var crumb = result.Get("people/1");

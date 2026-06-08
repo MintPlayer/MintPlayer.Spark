@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -24,10 +25,11 @@ public class QueryExecutorUnitTests
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
+    private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private QueryExecutor CreateExecutor() => new(
         _session, _entityMapper, _modelLoader, _contextResolver,
-        _indexRegistry, _permissionService, _actionsResolver, _referenceResolver);
+        _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver);
 
     private static SparkQuery Q(string source) => new()
     {

@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Streaming;
 using NSubstitute;
 using Raven.Client.Documents;
@@ -25,11 +26,11 @@ public class StreamingQueryExecutorUnitTests
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
-    private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
+    private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private StreamingQueryExecutor CreateExecutor() => new(
         _documentStore, _entityMapper, _modelLoader,
-        _permissionService, _actionsResolver, _referenceResolver);
+        _permissionService, _actionsResolver, _breadcrumbResolver);
 
     private static SparkQuery Q(string source, string? entityType = "TestEntity") => new()
     {
@@ -197,14 +198,13 @@ public class StreamingQueryExecutorUnitTests
         };
         _modelLoader.GetEntityTypeByName("TestEntity").Returns(entityDef);
         _actionsResolver.ResolveForType(typeof(TestEntity)).Returns(actions);
-        _referenceResolver.GetReferenceProperties(Arg.Any<Type>())
-            .Returns(new List<(PropertyInfo, ReferenceAttribute)>());
-        _referenceResolver
-            .ResolveReferencedDocumentsAsync(
+        _breadcrumbResolver
+            .ResolveAsync(
                 Arg.Any<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
-                Arg.Any<IEnumerable<object>>(),
-                Arg.Any<List<(PropertyInfo Property, ReferenceAttribute Attribute)>>())
-            .Returns(new Dictionary<string, object>());
+                Arg.Any<IReadOnlyList<object>>(),
+                Arg.Any<EntityTypeDefinition?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(BreadcrumbResult.Empty);
         _documentStore.OpenAsyncSession().Returns(Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>());
         _permissionService
             .EnsureAuthorizedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -214,7 +214,7 @@ public class StreamingQueryExecutorUnitTests
     private void StubMapperToEcho()
     {
         _entityMapper
-            .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<Dictionary<string, object>?>())
+            .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>())
             .Returns(ci => new PersistentObject
             {
                 Id = "echo",

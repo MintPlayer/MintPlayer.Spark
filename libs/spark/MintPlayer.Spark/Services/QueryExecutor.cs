@@ -26,6 +26,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IReferenceResolver referenceResolver;
+    [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
     {
@@ -167,11 +168,12 @@ internal partial class QueryExecutor : IQueryExecutor
 
         var entities = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
 
-        // Referenced docs are now in session cache — no extra DB calls
-        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
+        // Referenced docs were primed into the session cache by .Include() above; the resolver's
+        // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
         return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
             .DistinctBy(po => po.Id);
     }
 
@@ -276,12 +278,12 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        // Resolve reference breadcrumbs
-        var referenceProperties = referenceResolver.GetReferenceProperties(methodInfo.ResultElementType);
-        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities.ToList(), referenceProperties);
+        // Resolve breadcrumbs (recursive, batched) for the custom query's results.
+        var entityList = entities as IReadOnlyList<object> ?? entities.ToList();
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
 
-        return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, includedDocuments))
+        return entityList
+            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
             .DistinctBy(po => po.Id);
     }
 

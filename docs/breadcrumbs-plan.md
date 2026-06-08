@@ -85,7 +85,23 @@ Phase 3 — `BreadcrumbResolver` (the core)
 
 ---
 
-## Phase 4 — Wire into read paths (the chokepoint)
+## Phase 4 — Wire into read paths ✅ DONE (2026-06-08)
+
+All four read paths now resolve breadcrumbs through `BreadcrumbResolver` and the old flat engine is deleted:
+- `EntityMapper` forward API takes `BreadcrumbResult?` (was `includedDocuments`); copies Name/Breadcrumb + per-reference Breadcrumb(s) by id. `GetEntityDisplayName`/`ResolveDisplayFormat` **deleted**. Inverse/write path's own `includedDocuments` untouched.
+- `DatabaseAccess` (Get + List), `QueryExecutor` (database + custom), `StreamingQueryExecutor` (per batch) call `breadcrumbResolver.ResolveAsync(session, roots, collectionDef)`. `.Include()` priming kept on the query paths.
+- `ReferenceResolver.ResolveReferencedDocumentsAsync` (+ `ExtractReferenceIds`, `LoadEntityAsync`, its row-security dep) **deleted**; it's now just `GetReferenceProperties` + `ApplyIncludes`. `StreamingQueryExecutor` no longer depends on it.
+- Resolver API takes `EntityTypeDefinition` (not `Type`) — every caller already has the collection def.
+- **Refinement:** roots follow all `[Reference]` attributes (each needs a label); deeper levels follow only template references. Search-by-breadcrumb still resolves the full result set (batching keeps it O(depth) requests); page-only resolution deferred.
+
+**Single-system gate met:** repo-wide grep for `GetEntityDisplayName`/`ResolveDisplayFormat`/`ResolveReferencedDocumentsAsync` in `libs/` → **zero hits**.
+
+**Tests green:** full `MintPlayer.Spark.Tests` 954/956 (the 2 failures are pre-existing cron timing flakiness — 9/9 in isolation), client tests 38/38, solution builds. New resolver test pins the non-template-reference-still-labeled behavior. `MultiReferenceIntegrationTests` validates the whole pipeline (Get → resolver → mapper) end-to-end.
+
+**Exit:** ✅ recursive breadcrumbs live across all five surfaces server-side; the deleted methods have zero callers.
+
+### Original spec
+Phase 4 — Wire into read paths (the chokepoint)
 
 1. **`EntityMapper`** (`Services/EntityMapper.cs`): delete `GetEntityDisplayName` / `ResolveDisplayFormat` and the inline single/array breadcrumb code in `PopulateAttributeValues`. Add an overload that accepts a precomputed `BreadcrumbResult` and fills `po.Breadcrumb`, `attr.Breadcrumb`, `attr.Breadcrumbs[id]` by lookup.
 2. **`DatabaseAccess`** (`Services/DatabaseAccess.cs`): `GetPersistentObjectAsync` (single root) and `GetPersistentObjectsAsync` (list) call `BreadcrumbResolver.ResolveAsync` then map. The existing `ResolveReferencedDocumentsAsync` becomes redundant for breadcrumbs — fold its referenced-doc loading into the resolver's BFS (keep `.Include()` priming via `ApplyIncludes`).

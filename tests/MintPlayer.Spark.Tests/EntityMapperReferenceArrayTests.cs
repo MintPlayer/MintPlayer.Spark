@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests;
@@ -57,13 +58,13 @@ public class EntityMapperReferenceArrayTests
     public void Forward_reference_array_carries_id_array_and_per_id_breadcrumbs()
     {
         var tagged = new EM_Tagged { Id = "Tagged/1", Title = "Post", TagIds = ["Tags/1", "Tags/2"] };
-        var included = new Dictionary<string, object>
+        var breadcrumbs = new BreadcrumbResult(new Dictionary<string, string>
         {
-            ["Tags/1"] = new EM_Tag { Id = "Tags/1", Name = "news" },
-            ["Tags/2"] = new EM_Tag { Id = "Tags/2", Name = "sports" },
-        };
+            ["Tags/1"] = "news",
+            ["Tags/2"] = "sports",
+        });
 
-        var po = _mapper.ToPersistentObject(tagged, TaggedTypeId, included);
+        var po = _mapper.ToPersistentObject(tagged, TaggedTypeId, breadcrumbs);
 
         var tagIds = po.Attributes.Single(a => a.Name == "TagIds");
         tagIds.Value.Should().BeAssignableTo<IEnumerable<string>>();
