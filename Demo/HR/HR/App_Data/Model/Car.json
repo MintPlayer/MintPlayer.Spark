@@ -8,7 +8,7 @@
       "nl": "Auto"
     },
     "clrType": "HR.Replicated.Car",
-    "displayAttribute": "LicensePlate",
+    "breadcrumb": "{LicensePlate}",
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -141,9 +141,16 @@
         "nl": "Auto's"
       },
       "source": "Database.Cars",
-      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "LicensePlate",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Car"
+      "entityType": "Car",
+      "isStreamingQuery": false
     }
   ]
 }

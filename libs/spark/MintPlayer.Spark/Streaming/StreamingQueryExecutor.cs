@@ -18,7 +18,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
-    [Inject] private readonly IReferenceResolver referenceResolver;
+    [Inject] private readonly Services.Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
 
     public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -80,18 +80,15 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         var result = methodInfo.Method.Invoke(actionsInstance, [args, cancellationToken]);
         if (result is null) yield break;
 
-        // Get reference properties once for the entity type
-        var referenceProperties = referenceResolver.GetReferenceProperties(methodInfo.ElementType);
-
         // Iterate via IAsyncEnumerable reflection
         await foreach (var batch in IterateAsyncEnumerable(result, methodInfo.ElementType, methodInfo.IsSingleItemStream, cancellationToken))
         {
-            // Resolve reference breadcrumbs for this batch
-            var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, batch, referenceProperties);
+            // Resolve breadcrumbs (recursive, batched) for this batch.
+            var batchList = batch as IReadOnlyList<object> ?? batch.ToList();
+            var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, batchList, entityTypeDef, cancellationToken);
 
-            // Map each entity in the batch to PersistentObject
-            var persistentObjects = batch
-                .Select(e => entityMapper.ToPersistentObject(e, entityTypeDef.Id, includedDocuments))
+            var persistentObjects = batchList
+                .Select(e => entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs))
                 .ToArray();
             yield return persistentObjects;
         }

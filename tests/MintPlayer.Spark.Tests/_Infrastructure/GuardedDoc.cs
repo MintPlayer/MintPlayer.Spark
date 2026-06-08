@@ -40,7 +40,7 @@ public static class GuardedDocModel
             Id = id,
             Name = "GuardedDoc",
             ClrType = typeof(GuardedDoc).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },

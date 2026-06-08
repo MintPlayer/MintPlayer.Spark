@@ -56,6 +56,12 @@
     @if (colorVal) {
       <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
     }
+  } @else if (attr.dataType === 'Reference' && attr.isArray) {
+    <span class="d-inline-flex flex-wrap gap-1">
+      @for (chip of (attr.name | referenceChips:item); track chip.id) {
+        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
+      }
+    </span>
   } @else {
     {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
   }

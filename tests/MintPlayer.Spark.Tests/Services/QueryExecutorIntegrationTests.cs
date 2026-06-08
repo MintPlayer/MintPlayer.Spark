@@ -2,7 +2,9 @@ using System.Linq;
 using System.Reflection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Testing;
 using NSubstitute;
 using Raven.Client.Documents;
@@ -61,18 +63,19 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         _indexRegistry.GetRegistrationForCollectionType(typeof(Person)).Returns((IndexRegistration?)null);
         _referenceResolver.GetReferenceProperties(typeof(Person), typeof(Person))
             .Returns(new List<(PropertyInfo Property, ReferenceAttribute Attribute)>());
-        _referenceResolver.ResolveReferencedDocumentsAsync(
-            Arg.Any<IAsyncDocumentSession>(),
-            Arg.Any<IList<object>>(),
-            Arg.Any<List<(PropertyInfo Property, ReferenceAttribute Attribute)>>())
-            .Returns(new Dictionary<string, object>());
+
+        // A real breadcrumb resolver so POs get their server-resolved Name/Breadcrumb.
+        var rowSecurity = Substitute.For<IRowSecurity>();
+        rowSecurity.IsAllowedAsync(default!, default!, default!).ReturnsForAnyArgs(true);
+        var breadcrumbResolver = new BreadcrumbResolver(
+            _modelLoader, new BreadcrumbClosure(_modelLoader), rowSecurity, new SparkOptions());
 
         // Open a session that lives for the lifetime of this executor — mirrors what the
         // request-scoped DI registration provides in production.
         var session = Store.OpenAsyncSession();
         return new QueryExecutor(
             session, entityMapper, _modelLoader, _contextResolver,
-            _indexRegistry, _permissionService, _actionsResolver, _referenceResolver);
+            _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, breadcrumbResolver);
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()
@@ -80,7 +83,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         Id = PersonTypeId,
         Name = "Person",
         ClrType = typeof(Person).FullName!,
-        DisplayAttribute = "LastName",
+        Breadcrumb = "{LastName}",
         Attributes =
         [
             new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },

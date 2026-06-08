@@ -22,6 +22,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IServiceProvider serviceProvider;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IReferenceResolver referenceResolver;
+    [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
 
     public async Task<T?> GetDocumentAsync<T>(string id) where T : class
     {
@@ -85,9 +86,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return null;
 
-        // Get reference properties to include
-        var referenceProperties = referenceResolver.GetReferenceProperties(entityType);
-
         // Use actions for loading
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
 
@@ -100,10 +98,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (!await IsAllowedEntityViaActionsAsync(entityType, "Read", entity))
             return null;
 
-        // Load included documents for breadcrumb resolution
-        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, [entity], referenceProperties);
+        // Resolve breadcrumbs (recursive, batched) for this entity and its references.
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, [entity], entityTypeDefinition);
 
-        var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, includedDocuments);
+        var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
         persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
         return persistentObject;
@@ -144,11 +142,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // filter for large collections can override OnQueryAsync directly.
         entities = (await FilterByRowLevelAuthAsync(session, entities, entityType, queryType)).ToList();
 
-        // Referenced documents are now in session cache - extract them
-        var includedDocuments = await referenceResolver.ResolveReferencedDocumentsAsync(session, entities, referenceProperties);
+        // Resolve breadcrumbs for the page. The .Include() from QueryEntitiesWithIncludesAsync
+        // primed level-1 references into the session cache, so the resolver's first batched
+        // load is a cache hit; deeper levels cost one batched request each.
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
-        // Convert each entity to PersistentObject with breadcrumb resolution
-        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, includedDocuments));
+        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs));
     }
 
     /// <summary>

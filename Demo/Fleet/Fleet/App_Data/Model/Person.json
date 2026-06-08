@@ -8,7 +8,7 @@
       "nl": "Persoon"
     },
     "clrType": "Fleet.Replicated.Person",
-    "displayAttribute": "FirstName",
+    "breadcrumb": "{FirstName}",
     "tabs": [],
     "groups": [],
     "attributes": [

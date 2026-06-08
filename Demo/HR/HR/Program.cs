@@ -22,6 +22,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<HRContext>();
     spark.AddActions();
+    spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
 
     spark.AddAuthorization();
     spark.AddAuthentication<SparkUser>();

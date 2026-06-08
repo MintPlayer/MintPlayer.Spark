@@ -25,14 +25,21 @@ public sealed class EntityTypeDefinition
     /// </summary>
     public string? IndexName { get; set; }
     /// <summary>
-    /// Template string with {PropertyName} placeholders for building a formatted display value.
-    /// Example: "{Street}, {PostalCode} {City}"
+    /// Breadcrumb template: literal text plus <c>{AttributeName}</c> placeholders. A scalar
+    /// placeholder renders its value; a reference placeholder renders the referenced entity's
+    /// breadcrumb (resolved recursively). Authored against the collection type's property names.
+    /// Example: <c>"{ParkedCar} ({Coordinates})"</c>. Source of truth: <c>[Breadcrumb]</c> attribute,
+    /// else a value preserved in the model JSON, else a synthesized default.
     /// </summary>
-    public string? DisplayFormat { get; set; }
+    public string? Breadcrumb { get; set; }
     /// <summary>
-    /// (Fallback) Single attribute name to use as display value when DisplayFormat is not specified.
+    /// Whether every <c>{…}</c> placeholder in <see cref="Breadcrumb"/> is present on the
+    /// <see cref="QueryType"/> projection. <c>null</c> means satisfiable / not applicable
+    /// (no projection); <c>false</c> means the breadcrumb needs the collection document
+    /// (the list path must batch-load collection docs to render it). Only persisted when
+    /// <c>false</c>, so satisfiable types add no JSON noise.
     /// </summary>
-    public string? DisplayAttribute { get; set; }
+    public bool? BreadcrumbProjectionSatisfiable { get; set; }
     public AttributeTab[] Tabs { get; set; } = [];
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];

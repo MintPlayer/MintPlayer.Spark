@@ -28,7 +28,7 @@ public class EntityMapperAsDetailTests
             Id = AddressTypeId,
             Name = "Address",
             ClrType = typeof(TestAddress).FullName!,
-            DisplayAttribute = "Street",
+            Breadcrumb = "{Street}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Street", DataType = "string", Order = 1 },
@@ -41,7 +41,7 @@ public class EntityMapperAsDetailTests
             Id = CertificationTypeId,
             Name = "Certification",
             ClrType = typeof(TestCertification).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name",   DataType = "string", Order = 1 },
@@ -54,7 +54,7 @@ public class EntityMapperAsDetailTests
             Id = JobTypeId,
             Name = "Job",
             ClrType = typeof(TestJob).FullName!,
-            DisplayAttribute = "Title",
+            Breadcrumb = "{Title}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string", Order = 1 },
@@ -76,7 +76,7 @@ public class EntityMapperAsDetailTests
             Id = PersonTypeId,
             Name = "Person",
             ClrType = typeof(TestPerson).FullName!,
-            DisplayAttribute = "FirstName",
+            Breadcrumb = "{FirstName}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string", Order = 1 },

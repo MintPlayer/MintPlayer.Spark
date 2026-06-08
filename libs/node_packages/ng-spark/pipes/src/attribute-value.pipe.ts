@@ -1,5 +1,6 @@
 import { Pipe, PipeTransform } from '@angular/core';
 import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, nestedPoToDict, resolveTranslation } from '@mintplayer/ng-spark/models';
+import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
 export class AttributeValuePipe implements PipeTransform {
@@ -43,27 +44,11 @@ export class AttributeValuePipe implements PipeTransform {
   private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>, allEntityTypes: EntityType[]): string {
     const asDetailType = allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
 
-    if (asDetailType?.displayFormat) {
-      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+    if (asDetailType?.breadcrumb) {
+      const result = applyFieldTemplate(asDetailType.breadcrumb, value);
       if (result && result.trim()) return result;
     }
 
-    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
-      return value[asDetailType.displayAttribute];
-    }
-
-    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
-    for (const prop of displayProps) {
-      if (value[prop]) return value[prop];
-    }
-
     return '(object)';
-  }
-
-  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
-    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
-      const value = data[propertyName];
-      return value != null ? String(value) : '';
-    });
   }
 }

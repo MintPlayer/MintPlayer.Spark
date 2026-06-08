@@ -10,7 +10,7 @@
     "clrType": "DemoApp.Library.Entities.Car",
     "queryType": "DemoApp.Data.VCar",
     "indexName": "Cars_Overview",
-    "displayAttribute": "LicensePlate",
+    "breadcrumb": "{LicensePlate}",
     "tabs": [],
     "groups": [],
     "attributes": [

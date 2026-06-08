@@ -6,11 +6,9 @@ namespace MintPlayer.Spark.Tests;
 
 public class ReferenceResolverTests
 {
-    // R2-H10 added IActionsResolver injection so the cross-reference loader can
-    // apply the target collection's row-level Read hook. These tests don't
-    // exercise that path (they test only the reflection-based property scan),
-    // so a stubbed resolver is fine.
-    private readonly ReferenceResolver _resolver = new(Substitute.For<IActionsResolver>());
+    // ReferenceResolver is now just the [Reference] property scan + .Include() chaining;
+    // breadcrumb loading moved to BreadcrumbResolver, so no dependencies to stub.
+    private readonly ReferenceResolver _resolver = new();
 
     [Fact]
     public void GetReferenceProperties_FindsReferenceAttributes()

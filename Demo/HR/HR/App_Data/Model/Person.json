@@ -10,7 +10,8 @@
     "clrType": "HR.Entities.Person",
     "queryType": "HR.Indexes.VPerson",
     "indexName": "People_Overview",
-    "displayAttribute": "FullName",
+    "breadcrumb": "{FirstName} {LastName} @ {Company}",
+    "breadcrumbProjectionSatisfiable": false,
     "tabs": [
       {
         "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -147,7 +148,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 3,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [
@@ -173,7 +174,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 4,
+        "order": 5,
         "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",
@@ -192,7 +193,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 5,
+        "order": 6,
         "query": "GetCompanies",
         "referenceType": "HR.Entities.Company",
         "isArray": false,
@@ -212,7 +213,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 8,
+        "order": 9,
         "query": "GetProfessions",
         "referenceType": "HR.Entities.Profession",
         "isArray": true,
@@ -233,7 +234,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 6,
+        "order": 7,
         "asDetailType": "HR.Entities.Address",
         "isArray": false,
         "inQueryType": false,
@@ -251,7 +252,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 7,
+        "order": 8,
         "asDetailType": "HR.Entities.CarreerJob",
         "isArray": true,
         "editMode": "inline",
@@ -272,7 +273,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 7,
+        "order": 3,
         "isArray": false,
         "inCollectionType": false,
         "showedOn": "Query",
@@ -291,9 +292,16 @@
         "nl": "Personen"
       },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "LastName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Person"
+      "entityType": "Person",
+      "isStreamingQuery": false
     },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440010",
@@ -305,9 +313,16 @@
       },
       "source": "Custom.Company_People",
       "alias": "company-people",
-      "sortColumns": [{ "property": "FullName", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Person"
+      "entityType": "Person",
+      "isStreamingQuery": false
     }
   ]
 }

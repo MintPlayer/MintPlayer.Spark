@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.AllFeatures</PackageId>
-		<Version>10.0.0-preview.35</Version>
+		<Version>10.0.0-preview.37</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>All-in-one package for MintPlayer.Spark. References all Spark libraries and source-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
@@ -32,6 +32,7 @@
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
 		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 	</ItemGroup>
 
 	<!-- Source generators (analyzer-only, no runtime assembly) -->

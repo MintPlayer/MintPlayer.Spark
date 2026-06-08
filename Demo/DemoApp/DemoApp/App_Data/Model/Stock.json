@@ -8,7 +8,7 @@
       "nl": "Aandeel"
     },
     "clrType": "DemoApp.Library.Entities.Stock",
-    "displayAttribute": "Symbol",
+    "breadcrumb": "{Symbol}",
     "tabs": [],
     "groups": [],
     "attributes": [

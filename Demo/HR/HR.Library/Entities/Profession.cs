@@ -1,5 +1,8 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace HR.Entities;
 
+[Breadcrumb("{Description}")]
 public class Profession
 {
     public string? Id { get; set; }

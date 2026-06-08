@@ -96,6 +96,15 @@ public class SparkFullGenerator : IncrementalGenerator
                                 TypeName = string.Empty
                             };
                         }
+
+                        if (iface.ToDisplayString() == "MintPlayer.Spark.Migrations.ISparkMigration")
+                        {
+                            return new SparkFullDiscoveredType
+                            {
+                                Kind = "Migration",
+                                TypeName = string.Empty
+                            };
+                        }
                     }
 
                     return default;

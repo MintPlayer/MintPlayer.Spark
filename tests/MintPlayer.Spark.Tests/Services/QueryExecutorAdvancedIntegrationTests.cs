@@ -55,7 +55,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
             Id = CompanyTypeId,
             Name = "Company",
             ClrType = typeof(Company).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes = [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },
             ],
@@ -69,11 +69,11 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
             Id = EmployeeTypeId,
             Name = "Employee",
             ClrType = typeof(Employee).FullName!,
-            DisplayAttribute = "LastName",
+            Breadcrumb = "{LastName}",
             Attributes = [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LastName", DataType = "string" },
-                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Company", DataType = "Reference" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Company", DataType = "Reference", ReferenceType = typeof(Company).FullName },
             ],
         },
     };

@@ -10,7 +10,7 @@
     "clrType": "DemoApp.Library.Entities.Person",
     "queryType": "DemoApp.Data.VPerson",
     "indexName": "People_Overview",
-    "displayAttribute": "FullName",
+    "breadcrumb": "{FirstName} {LastName}",
     "tabs": [],
     "groups": [],
     "attributes": [

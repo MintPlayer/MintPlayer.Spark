@@ -30,7 +30,7 @@ public static class TestModels
             Id = id,
             Name = "Person",
             ClrType = typeof(Person).FullName!,
-            DisplayAttribute = "LastName",
+            Breadcrumb = "{LastName}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },

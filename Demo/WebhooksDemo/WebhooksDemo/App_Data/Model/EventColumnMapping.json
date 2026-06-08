@@ -8,7 +8,7 @@
       "nl": "Gebeurtenis-kolommapping"
     },
     "clrType": "WebhooksDemo.Entities.EventColumnMapping",
-    "displayAttribute": "WebhookEvent",
+    "breadcrumb": "{WebhookEvent}",
     "tabs": [],
     "groups": [],
     "attributes": [
