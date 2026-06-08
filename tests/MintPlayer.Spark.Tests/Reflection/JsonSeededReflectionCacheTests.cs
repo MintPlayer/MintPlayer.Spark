@@ -36,7 +36,7 @@ public class JsonSeededReflectionCacheTests : SparkTestDriver
                 Id = PersonTypeId,
                 Name = "Person",
                 ClrType = typeof(Person).FullName!,
-                DisplayAttribute = "LastName",
+                Breadcrumb = "{LastName}",
                 Attributes =
                 [
                     new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },
@@ -77,7 +77,7 @@ public class JsonSeededReflectionCacheTests : SparkTestDriver
         var rows = result.Data
             .Select(po => (
                 Id: po.Id,
-                Name: po.Name, // GetEntityDisplayName(DisplayAttribute = "LastName") → AccessorCache.GetGetter
+                Name: po.Name, // GetEntityDisplayName(Breadcrumb = "{LastName}") → AccessorCache.GetGetter
                 FirstName: po.Attributes.Single(a => a.Name == "FirstName").Value?.ToString(),
                 LastName: po.Attributes.Single(a => a.Name == "LastName").Value?.ToString()))
             .ToList();

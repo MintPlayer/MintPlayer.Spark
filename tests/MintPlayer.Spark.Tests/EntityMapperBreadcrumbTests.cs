@@ -21,7 +21,7 @@ public class EntityMapperBreadcrumbTests
             Id = PersonTypeId,
             Name = "Person",
             ClrType = typeof(TestPerson).FullName!,
-            DisplayAttribute = "LastName",
+            Breadcrumb = "{LastName}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },
@@ -35,7 +35,7 @@ public class EntityMapperBreadcrumbTests
             Id = CompanyTypeId,
             Name = "Company",
             ClrType = typeof(TestCompany).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },

@@ -43,18 +43,9 @@ export class AttributeValuePipe implements PipeTransform {
   private formatAsDetailValue(attrDef: EntityAttributeDefinition, value: Record<string, any>, allEntityTypes: EntityType[]): string {
     const asDetailType = allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
 
-    if (asDetailType?.displayFormat) {
-      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+    if (asDetailType?.breadcrumb) {
+      const result = this.resolveDisplayFormat(asDetailType.breadcrumb, value);
       if (result && result.trim()) return result;
-    }
-
-    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
-      return value[asDetailType.displayAttribute];
-    }
-
-    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
-    for (const prop of displayProps) {
-      if (value[prop]) return value[prop];
     }
 
     return '(object)';

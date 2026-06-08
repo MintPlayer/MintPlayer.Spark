@@ -8,7 +8,7 @@
       "nl": "Bedrijf"
     },
     "clrType": "HR.Entities.Company",
-    "displayAttribute": "Name",
+    "breadcrumb": "{Name}",
     "tabs": [],
     "groups": [],
     "attributes": [

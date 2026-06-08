@@ -26,7 +26,7 @@ public class EntityMapperFactoryTests
             Id = CarTypeId,
             Name = "Car",
             ClrType = typeof(TestCar).FullName!,
-            DisplayAttribute = "LicensePlate",
+            Breadcrumb = "{LicensePlate}",
             Attributes =
             [
                 new EntityAttributeDefinition

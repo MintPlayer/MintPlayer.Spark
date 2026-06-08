@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
@@ -454,15 +455,76 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         entityTypeDef.Attributes = newAttributes.ToArray();
 
-        // Set display attribute if not set
-        if (string.IsNullOrEmpty(entityTypeDef.DisplayAttribute))
-        {
-            entityTypeDef.DisplayAttribute = newAttributes
-                .FirstOrDefault(a => a.Name is "Name" or "FullName" or "Title")?.Name
-                ?? newAttributes.FirstOrDefault()?.Name;
-        }
+        // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
+        // an existing JSON value; otherwise synthesize a sensible default. Then validate the
+        // template and flag whether it is renderable from the projection alone.
+        var breadcrumbAttr = entityType.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
+        if (breadcrumbAttr is not null)
+            entityTypeDef.Breadcrumb = breadcrumbAttr.Template;
+        else if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
+            entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(newAttributes);
+
+        ValidateBreadcrumb(entityTypeDef);
+        entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
 
         return entityTypeDef;
+    }
+
+    /// <summary>Default breadcrumb when none is authored: prefer Name/FullName/Title, else the first attribute.</summary>
+    private static string? SynthesizeDefaultBreadcrumb(IReadOnlyList<EntityAttributeDefinition> attributes)
+    {
+        var name = attributes.FirstOrDefault(a => a.Name is "Name" or "FullName" or "Title")?.Name
+            ?? attributes.FirstOrDefault()?.Name;
+        return name is null ? null : $"{{{name}}}";
+    }
+
+    /// <summary>Fails fast on malformed templates (bad braces, unknown placeholder attribute).</summary>
+    private static void ValidateBreadcrumb(EntityTypeDefinition def)
+    {
+        if (string.IsNullOrEmpty(def.Breadcrumb)) return;
+
+        IReadOnlyList<BreadcrumbToken> tokens;
+        try
+        {
+            tokens = BreadcrumbTemplate.Parse(def.Breadcrumb);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException(
+                $"Invalid breadcrumb template on entity '{def.Name}': {ex.Message}", ex);
+        }
+
+        var attrNames = def.Attributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (var field in tokens.OfType<FieldToken>())
+        {
+            if (field.AttributeName == "Id") continue;
+            if (!attrNames.Contains(field.AttributeName))
+                throw new InvalidOperationException(
+                    $"Breadcrumb template on entity '{def.Name}' references unknown attribute " +
+                    $"'{{{field.AttributeName}}}'. Known attributes: {string.Join(", ", attrNames)}.");
+        }
+    }
+
+    /// <summary>
+    /// null = renderable from the projection (or no projection); false = a placeholder field
+    /// is absent from the projection, so the list path must batch-load collection documents.
+    /// </summary>
+    private static bool? ComputeBreadcrumbProjectionSatisfiable(EntityTypeDefinition def, Type? projectionType)
+    {
+        if (projectionType is null || string.IsNullOrEmpty(def.Breadcrumb))
+            return null;
+
+        var projectionProps = projectionType.GetCachedProperties()
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var field in BreadcrumbTemplate.FieldNames(def.Breadcrumb))
+        {
+            if (field == "Id") continue;
+            if (!projectionProps.Contains(field))
+                return false;
+        }
+        return null;
     }
 
     private bool AreDataTypesCompatible(string type1, string type2)

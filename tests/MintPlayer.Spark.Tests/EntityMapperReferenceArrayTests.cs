@@ -27,7 +27,7 @@ public class EntityMapperReferenceArrayTests
             Id = TaggedTypeId,
             Name = "Tagged",
             ClrType = typeof(EM_Tagged).FullName!,
-            DisplayAttribute = "Title",
+            Breadcrumb = "{Title}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
@@ -41,7 +41,7 @@ public class EntityMapperReferenceArrayTests
             Id = TagTypeId,
             Name = "Tag",
             ClrType = typeof(EM_Tag).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
         };
 

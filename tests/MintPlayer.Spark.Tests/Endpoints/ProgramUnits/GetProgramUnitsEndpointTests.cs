@@ -274,7 +274,7 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
             Id = id,
             Name = "Company",
             ClrType = typeof(Company).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },

@@ -10,7 +10,7 @@ const confirmDeleteCarType: EntityType = {
   id: 't/confirm-delete-car',
   name: 'ConfirmDeleteCar',
   clrType: 'Fleet.VirtualObjects.ConfirmDeleteCar',
-  displayAttribute: 'Confirmation',
+  breadcrumb: '{Confirmation}',
   attributes: [
     { id: 'a-plate', name: 'LicensePlate', dataType: 'string', order: 1, isRequired: false, isVisible: true, isReadOnly: true, rules: [] },
     { id: 'a-conf',  name: 'Confirmation', dataType: 'string', order: 2, isRequired: true,  isVisible: true, isReadOnly: false, rules: [] },

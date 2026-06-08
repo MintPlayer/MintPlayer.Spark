@@ -64,14 +64,16 @@ export interface EntityType {
   clrType: string;
   alias?: string;
   /**
-   * Template string with {PropertyName} placeholders for building a formatted display value.
-   * Example: "{Street}, {PostalCode} {City}"
+   * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder
+   * renders its value; a reference placeholder renders the referenced entity's breadcrumb.
+   * The server resolves this — clients only read the resulting strings. Example: "{Street}, {City}".
    */
-  displayFormat?: string;
+  breadcrumb?: string;
   /**
-   * (Fallback) Single attribute name to use as display value when displayFormat is not specified.
+   * When false, the breadcrumb needs the collection document (a placeholder field is not on the
+   * projection). null/absent means renderable from the projection. Informational on the client.
    */
-  displayAttribute?: string;
+  breadcrumbProjectionSatisfiable?: boolean;
   tabs?: AttributeTab[];
   groups?: AttributeGroup[];
   attributes: EntityAttributeDefinition[];

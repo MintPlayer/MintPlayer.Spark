@@ -8,7 +8,7 @@
       "nl": "Adresbeschrijving"
     },
     "clrType": "HR.Entities.AddressDescription",
-    "displayAttribute": "Title",
+    "breadcrumb": "{Title}",
     "tabs": [],
     "groups": [],
     "attributes": [

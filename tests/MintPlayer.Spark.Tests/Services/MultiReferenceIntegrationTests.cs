@@ -91,7 +91,7 @@ public class MultiReferenceIntegrationTests : SparkTestDriver
             Id = TagTypeId,
             Name = "Tag",
             ClrType = typeof(MR_Tag).FullName!,
-            DisplayAttribute = "Name",
+            Breadcrumb = "{Name}",
             Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
         },
     };
@@ -103,7 +103,7 @@ public class MultiReferenceIntegrationTests : SparkTestDriver
             Id = TaggedTypeId,
             Name = "Tagged",
             ClrType = typeof(MR_Tagged).FullName!,
-            DisplayAttribute = "Title",
+            Breadcrumb = "{Title}",
             Attributes =
             [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },

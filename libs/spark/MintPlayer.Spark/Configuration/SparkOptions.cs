@@ -3,6 +3,25 @@ namespace MintPlayer.Spark.Configuration;
 public class SparkOptions
 {
     public RavenDbOptions RavenDb { get; set; } = new();
+    public BreadcrumbOptions Breadcrumb { get; set; } = new();
+}
+
+public class BreadcrumbOptions
+{
+    /// <summary>
+    /// Maximum reference depth the breadcrumb resolver follows (roots are depth 0). Bounds the
+    /// number of batched load round-trips and breaks reference cycles. Default: 5.
+    /// </summary>
+    public int MaxDepth { get; set; } = 5;
+
+    /// <summary>Separator joining the breadcrumbs of a reference-array placeholder. Default: ", ".</summary>
+    public string ReferenceSeparator { get; set; } = ", ";
+
+    /// <summary>
+    /// Rendered in place of a referenced entity the current user is not allowed to read
+    /// (row-level Read denied). Default: "—".
+    /// </summary>
+    public string RedactedPlaceholder { get; set; } = "—";
 }
 
 public class RavenDbOptions

@@ -155,7 +155,7 @@ function entityTypeFromPo(po: PersistentObject): EntityType {
     id: po.objectTypeId,
     name: po.name,
     clrType: '', // Not needed by the form's rendering path; the PO's attributes carry the schema.
-    displayAttribute: undefined,
+    breadcrumb: undefined,
     tabs: [],
     groups: [],
     attributes: (po.attributes ?? []).map(attrToDefinition),

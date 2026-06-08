@@ -10,7 +10,7 @@
     "clrType": "HR.Entities.Person",
     "queryType": "HR.Indexes.VPerson",
     "indexName": "People_Overview",
-    "displayAttribute": "FullName",
+    "breadcrumb": "{FirstName} {LastName}",
     "tabs": [
       {
         "id": "a1b2c3d4-0001-0001-0001-000000000001",

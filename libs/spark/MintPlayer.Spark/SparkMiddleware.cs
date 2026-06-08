@@ -37,6 +37,10 @@ public static class SparkExtensions
     {
         var options = builder.Options;
 
+        // Expose the bound SparkOptions to DI so services (e.g. BreadcrumbResolver) can read
+        // configuration. Same instance the builder holds, so later configure() tweaks apply.
+        services.AddSingleton(options);
+
         // Register authorization (required by UseSpark → UseAuthorization)
         services.AddAuthorization();
 

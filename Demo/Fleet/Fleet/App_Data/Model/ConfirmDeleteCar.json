@@ -8,7 +8,7 @@
       "nl": "Verwijdering bevestigen"
     },
     "clrType": "Fleet.VirtualObjects.ConfirmDeleteCar",
-    "displayAttribute": "Confirmation",
+    "breadcrumb": "{Confirmation}",
     "tabs": [],
     "groups": [],
     "attributes": [

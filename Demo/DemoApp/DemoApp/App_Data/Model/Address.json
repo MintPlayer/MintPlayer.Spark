@@ -8,8 +8,7 @@
       "nl": "Adres"
     },
     "clrType": "DemoApp.Library.Entities.Address",
-    "displayFormat": "{Street}, {City} {State}",
-    "displayAttribute": "Street",
+    "breadcrumb": "{Street}, {City} {State}",
     "tabs": [],
     "groups": [],
     "attributes": [

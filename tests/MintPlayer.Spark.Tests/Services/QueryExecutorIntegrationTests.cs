@@ -80,7 +80,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         Id = PersonTypeId,
         Name = "Person",
         ClrType = typeof(Person).FullName!,
-        DisplayAttribute = "LastName",
+        Breadcrumb = "{LastName}",
         Attributes =
         [
             new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "FirstName", DataType = "string" },

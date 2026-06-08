@@ -8,8 +8,7 @@
       "nl": "Adres"
     },
     "clrType": "HR.Entities.Address",
-    "displayFormat": "{Street}, {PostalCode} {City}",
-    "displayAttribute": "Street",
+    "breadcrumb": "{Street}, {PostalCode} {City}",
     "tabs": [],
     "groups": [],
     "attributes": [

@@ -8,7 +8,7 @@
       "nl": "Projectkolom"
     },
     "clrType": "WebhooksDemo.Entities.ProjectColumn",
-    "displayAttribute": "Name",
+    "breadcrumb": "{Name}",
     "tabs": [],
     "groups": [],
     "attributes": [

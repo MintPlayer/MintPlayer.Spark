@@ -10,7 +10,7 @@
     "clrType": "DemoApp.Library.Entities.Company",
     "queryType": "DemoApp.Data.VCompany",
     "indexName": "Companies_Overview",
-    "displayAttribute": "Name",
+    "breadcrumb": "{Name}",
     "queries": ["company-people"],
     "tabs": [],
     "groups": [],

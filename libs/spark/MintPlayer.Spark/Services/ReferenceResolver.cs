@@ -32,7 +32,7 @@ internal interface IReferenceResolver
 [Register(typeof(IReferenceResolver), ServiceLifetime.Scoped)]
 internal partial class ReferenceResolver : IReferenceResolver
 {
-    [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
@@ -141,32 +141,12 @@ internal partial class ReferenceResolver : IReferenceResolver
             {
                 var referencedEntity = await LoadEntityAsync(session, targetType, refId);
                 if (referencedEntity == null) continue;
-                if (!await IsAllowedRowAsync(targetType, "Read", referencedEntity)) continue;
+                if (!await rowSecurity.IsAllowedAsync(targetType, "Read", referencedEntity)) continue;
                 includedDocuments[refId] = referencedEntity;
             }
         }
 
         return includedDocuments;
-    }
-
-    /// <summary>
-    /// R2-H10 helper: dispatches to the target Actions class's IsAllowedAsync hook
-    /// via reflection. Duplicates the shape from DatabaseAccess.IsAllowedEntityViaActionsAsync
-    /// to avoid a cyclic DI dependency (DatabaseAccess already depends on ReferenceResolver).
-    /// Fail-open on unknown shape — same convention as the database-access caller.
-    /// </summary>
-    private async Task<bool> IsAllowedRowAsync(Type entityType, string action, object entity)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var actionsType = actions.GetType();
-        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
-            ("ReferenceResolver.IsAllowedAsync", actionsType, entityType),
-            static k => k.Actions.GetMethod("IsAllowedAsync", [typeof(string), k.Entity]));
-        if (method is null) return true;
-        var task = (Task)method.Invoke(actions, [action, entity])!;
-        await task;
-        var resultProperty = task.GetType().GetProperty("Result");
-        return (bool)resultProperty!.GetValue(task)!;
     }
 
     /// <summary>

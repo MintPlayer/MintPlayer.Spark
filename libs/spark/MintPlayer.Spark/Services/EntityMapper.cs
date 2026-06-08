@@ -978,29 +978,17 @@ internal partial class EntityMapper : IEntityMapper
         // If no entity type definition provided, try to find it
         entityTypeDef ??= modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
 
-        // 1. DisplayFormat (template with {PropertyName} placeholders)
-        if (!string.IsNullOrEmpty(entityTypeDef?.DisplayFormat))
+        // Breadcrumb template (literal text + {Attribute} placeholders). ModelSynchronizer
+        // always populates Breadcrumb (from the [Breadcrumb] attribute, a preserved JSON
+        // value, or a synthesized default), so a single resolution path suffices; entities
+        // without a definition (projection/anonymous types) fall through to the CLR type name.
+        // NOTE (Phase 1): this is still flat substitution — reference placeholders render the
+        // raw id. Recursive resolution lands with BreadcrumbResolver (Phase 3/4).
+        if (!string.IsNullOrEmpty(entityTypeDef?.Breadcrumb))
         {
-            return ResolveDisplayFormat(entity, entityType, entityTypeDef.DisplayFormat);
-        }
-
-        // 2. DisplayAttribute (single property name). ModelSynchronizer auto-populates
-        // DisplayAttribute to "Name"/"FullName"/"Title" (or the first attribute) when
-        // synthesizing an EntityTypeDefinition, so there's no separate runtime fallback —
-        // any entity that went through the synchronizer already has DisplayAttribute set;
-        // entities without a definition (projection/anonymous types) fall through to the
-        // CLR type name below.
-        if (!string.IsNullOrEmpty(entityTypeDef?.DisplayAttribute))
-        {
-            var displayProperty = entityType.GetCachedProperty(entityTypeDef.DisplayAttribute);
-            if (displayProperty is not null)
-            {
-                var value = AccessorCache.GetGetter(displayProperty)(entity);
-                if (value != null)
-                {
-                    return value.ToString() ?? entityType.Name;
-                }
-            }
+            var resolved = ResolveDisplayFormat(entity, entityType, entityTypeDef.Breadcrumb);
+            if (!string.IsNullOrWhiteSpace(resolved))
+                return resolved;
         }
 
         return entityType.Name;

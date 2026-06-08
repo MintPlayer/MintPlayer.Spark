@@ -56,31 +56,25 @@ describe('AsDetailDisplayValuePipe', () => {
     expect(pipe.transform(attr, {}, {})).toBe('(not set)');
   });
 
-  it('formats via displayFormat template when type defines one', () => {
+  it('formats via the breadcrumb template when the type defines one', () => {
     const pipe = createPipe(AsDetailDisplayValuePipe);
     const attr = { name: 'addr' } as any;
-    const types = { addr: { displayFormat: '{Street}, {City}' } } as any;
+    const types = { addr: { breadcrumb: '{Street}, {City}' } } as any;
     const formData = { addr: { Street: 'Main', City: 'Brussels' } };
     expect(pipe.transform(attr, formData, types)).toBe('Main, Brussels');
   });
 
-  it('uses displayAttribute when no displayFormat', () => {
+  it('resolves a single-placeholder breadcrumb to the property value', () => {
     const pipe = createPipe(AsDetailDisplayValuePipe);
     const attr = { name: 'addr' } as any;
-    const types = { addr: { displayAttribute: 'City' } } as any;
+    const types = { addr: { breadcrumb: '{City}' } } as any;
     expect(pipe.transform(attr, { addr: { City: 'Brussels' } }, types)).toBe('Brussels');
   });
 
-  it('falls back to common property names (Name)', () => {
+  it('falls back to (click to edit) when no breadcrumb is defined', () => {
     const pipe = createPipe(AsDetailDisplayValuePipe);
     const attr = { name: 'addr' } as any;
-    expect(pipe.transform(attr, { addr: { Name: 'Acme' } }, {})).toBe('Acme');
-  });
-
-  it('falls back to (click to edit) translation when nothing matches', () => {
-    const pipe = createPipe(AsDetailDisplayValuePipe);
-    const attr = { name: 'addr' } as any;
-    expect(pipe.transform(attr, { addr: { Unknown: 'x' } }, {})).toBe('(click to edit)');
+    expect(pipe.transform(attr, { addr: { Name: 'Acme' } }, {})).toBe('(click to edit)');
   });
 });
 

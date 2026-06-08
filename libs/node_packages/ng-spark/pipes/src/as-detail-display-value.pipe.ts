@@ -12,21 +12,12 @@ export class AsDetailDisplayValuePipe implements PipeTransform {
 
     const asDetailType = asDetailTypes[attr.name] || null;
 
-    // 1. Try displayFormat (template with {PropertyName} placeholders)
-    if (asDetailType?.displayFormat) {
-      const result = this.resolveDisplayFormat(asDetailType.displayFormat, value);
+    // Resolve the breadcrumb template against the nested object's own fields.
+    // (Phase 1: flat substitution mirrors the server's transitional behavior; Phase 5
+    // replaces this with a server-emitted breadcrumb on the nested object.)
+    if (asDetailType?.breadcrumb) {
+      const result = this.resolveDisplayFormat(asDetailType.breadcrumb, value);
       if (result && result.trim()) return result;
-    }
-
-    // 2. Try displayAttribute (single property name)
-    if (asDetailType?.displayAttribute && value[asDetailType.displayAttribute]) {
-      return value[asDetailType.displayAttribute];
-    }
-
-    // 3. Fallback to common property names
-    const displayProps = ['Name', 'Title', 'Street', 'name', 'title'];
-    for (const prop of displayProps) {
-      if (value[prop]) return value[prop];
     }
 
     return this.lang.t('clickToEdit');

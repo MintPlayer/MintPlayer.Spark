@@ -10,7 +10,7 @@
     "clrType": "Fleet.Entities.Car",
     "queryType": "Fleet.Indexes.VCar",
     "indexName": "Cars_Overview",
-    "displayAttribute": "LicensePlate",
+    "breadcrumb": "{LicensePlate}",
     "tabs": [],
     "groups": [],
     "attributes": [

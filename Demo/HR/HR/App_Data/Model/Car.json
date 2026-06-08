@@ -8,7 +8,7 @@
       "nl": "Auto"
     },
     "clrType": "HR.Replicated.Car",
-    "displayAttribute": "LicensePlate",
+    "breadcrumb": "{LicensePlate}",
     "tabs": [],
     "groups": [],
     "attributes": [
