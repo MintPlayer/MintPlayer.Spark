@@ -142,7 +142,19 @@ Collapse the duplicate display logic (PRD §2.4 frontend table) so the server br
 
 ---
 
-## Phase 6 — Demo, docs, verification
+## Phase 6 — Demo, docs, verification ✅ DONE (2026-06-08)
+
+- **Demo chain (HR):** added `Company.Sector → Profession`; `[Breadcrumb]` on Person (`{FirstName} {LastName} @ {Company}`), Company (`{Name} · {Sector}`), Profession (`{Description}`) → a 3-level chain. Seeded by a **migration** (`M_202606081200_BreadcrumbDemo`: Ada Lovelace → Acme Corp → Software Engineering) via the new `MintPlayer.Spark.Migrations` feature.
+- **Live /verify against running HR app (http://localhost:5099):**
+  - Company query (anonymous): `Acme Corp · Software Engineering` — recursion (Company → Profession) live through the real `/spark/queries/{id}/execute` HTTP API.
+  - People query (temporary anon grant, reverted/uncommitted): **`Ada Lovelace @ Acme Corp · Software Engineering`** — full 3-level recursion live. Null references render empty (`Jonas Dewulf @ 2sky · `, `… @ `) — correct.
+  - Migration ran at first startup (seeded), and **skipped on restart** (idempotent) — verified live.
+- **Single-system grep gate:** `GetEntityDisplayName`/`ResolveDisplayFormat`/`ResolveReferencedDocumentsAsync` → 0 hits in `libs/` (Phase 4).
+- **Scope note:** the migrations framework (`MintPlayer.Spark.Migrations`) was added in this same PR at the user's request (see `PRD-Migrations` discussion in commit `a792b22`).
+
+Outstanding before merge: version bumps per `project_ci_autopublish.md`; optionally add `MintPlayer.Spark.Migrations` to the AllFeatures meta-package + `SparkFullGenerator`; open the PR.
+
+### Original spec
 
 1. Add the `ParkingSpot → Car → Person` chain (or reuse Fleet's `Car.Manager → Person`) to a demo app to exercise 3 levels end-to-end; seed data.
 2. Manual verification via `/verify` (or Playwright) across all five surfaces; capture request counts from Raven studio / logs.
