@@ -1,5 +1,6 @@
 import { Pipe, PipeTransform } from '@angular/core';
 import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, nestedPoToDict, resolveTranslation } from '@mintplayer/ng-spark/models';
+import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
 export class AttributeValuePipe implements PipeTransform {
@@ -44,17 +45,10 @@ export class AttributeValuePipe implements PipeTransform {
     const asDetailType = allEntityTypes.find(t => t.clrType === attrDef.asDetailType);
 
     if (asDetailType?.breadcrumb) {
-      const result = this.resolveDisplayFormat(asDetailType.breadcrumb, value);
+      const result = applyFieldTemplate(asDetailType.breadcrumb, value);
       if (result && result.trim()) return result;
     }
 
     return '(object)';
-  }
-
-  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
-    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
-      const value = data[propertyName];
-      return value != null ? String(value) : '';
-    });
   }
 }

@@ -1,6 +1,7 @@
 import { Pipe, PipeTransform, inject } from '@angular/core';
 import { EntityAttributeDefinition, EntityType } from '@mintplayer/ng-spark/models';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'asDetailDisplayValue', standalone: true, pure: true })
 export class AsDetailDisplayValuePipe implements PipeTransform {
@@ -16,17 +17,10 @@ export class AsDetailDisplayValuePipe implements PipeTransform {
     // (Phase 1: flat substitution mirrors the server's transitional behavior; Phase 5
     // replaces this with a server-emitted breadcrumb on the nested object.)
     if (asDetailType?.breadcrumb) {
-      const result = this.resolveDisplayFormat(asDetailType.breadcrumb, value);
+      const result = applyFieldTemplate(asDetailType.breadcrumb, value);
       if (result && result.trim()) return result;
     }
 
     return this.lang.t('clickToEdit');
-  }
-
-  private resolveDisplayFormat(format: string, data: Record<string, any>): string {
-    return format.replace(/\{(\w+)\}/g, (match, propertyName) => {
-      const value = data[propertyName];
-      return value != null ? String(value) : '';
-    });
   }
 }

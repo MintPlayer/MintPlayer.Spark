@@ -108,7 +108,11 @@ Today the same "resolve a display/breadcrumb value" concern is implemented **mul
 | `pipes/src/reference-chips.pipe.ts` | reads `breadcrumbs[id]` map | **Keep** — already a pure presentation reader. |
 | `models/src/entity-type.ts` | `displayFormat` / `displayAttribute` fields | **Replace** with `breadcrumb`. |
 
-**Acceptance for this mandate:** after the work, a repo-wide grep for `displayFormat`/`displayAttribute`/`GetEntityDisplayName`/`ResolveDisplayFormat`/`ResolveReferencedDocumentsAsync` returns **zero** hits outside `BreadcrumbResolver` and its tests, and no frontend pipe contains a `{…}` template engine or a hardcoded display-property list.
+**Acceptance for this mandate:** after the work, a repo-wide grep for `displayFormat`/`displayAttribute`/`GetEntityDisplayName`/`ResolveDisplayFormat`/`ResolveReferencedDocumentsAsync` returns **zero** hits in `libs/` (server side), and no frontend pipe contains a hardcoded display-property guess list.
+
+**Refinement (Phase 5).** Two parts of the original frontend table were reconsidered:
+- The thin reader pipes (`reference-attr-value`, `reference-display-value`, `as-detail-cell-value`) are kept — they only *read* server-resolved `breadcrumb` strings (the intended dumb-client shape), not a competing resolution engine, and are in active use by po-form/po-detail.
+- AsDetail **nested-object summary display** legitimately stays client-side: an embedded value object has no id and no document to load, so the client fills its `{Field}` template from the object's own fields. This is *not* the entity/reference breadcrumb system. The two duplicated copies of that template-fill were consolidated into **one** shared helper (`pipes/src/apply-field-template.ts`). The single-system mandate therefore scopes to **entity/reference** breadcrumbs (the server-side `BreadcrumbResolver`), which is fully met.
 
 ---
 

@@ -114,7 +114,18 @@ Phase 4 — Wire into read paths (the chokepoint)
 
 ---
 
-## Phase 5 — Frontend consolidation (`@mintplayer/ng-spark`)
+## Phase 5 — Frontend consolidation ✅ DONE (2026-06-08)
+
+- **`SparkSubQueryComponent`**: added the `Reference && isArray` → `referenceChips` badge branch (was rendering raw id arrays); single references already show the server breadcrumb via `attributeValue`. Sub-query viewer now matches query-list/po-detail.
+- **Template-fill dedup**: the two copies of the AsDetail `{Field}` fill (`attribute-value.pipe.ts`, `as-detail-display-value.pipe.ts`) extracted into one shared `pipes/src/apply-field-template.ts`.
+- **Decision (PRD §2.4 refinement)**: thin reader pipes kept (they only read server `breadcrumb` strings; in active use); AsDetail nested-object summary stays a client-side template fill (embedded objects have no id) — distinct from the entity/reference breadcrumb system, which is fully server-resolved.
+
+**Tests green:** full ng-spark vitest 182/182 (incl. pipes + po-detail). The hardcoded `['Name','Title','Street',…]` guess list and `entityType.displayFormat`/`displayAttribute` reads are already gone (Phase 1).
+
+**Exit:** ✅ all five surfaces render server breadcrumbs consistently; no client display-name guessing; one shared client template-fill helper for AsDetail.
+
+### Original spec
+Phase 5 — Frontend consolidation (`@mintplayer/ng-spark`)
 
 Collapse the duplicate display logic (PRD §2.4 frontend table) so the server breadcrumb is authoritative:
 
