@@ -49,9 +49,16 @@
       "id": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",
       "name": "GetProfessions",
       "source": "Database.Professions",
-      "sortColumns": [{ "property": "Description", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "Description",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Profession"
+      "entityType": "Profession",
+      "isStreamingQuery": false
     }
   ]
 }

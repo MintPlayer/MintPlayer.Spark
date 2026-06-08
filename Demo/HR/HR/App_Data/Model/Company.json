@@ -8,7 +8,7 @@
       "nl": "Bedrijf"
     },
     "clrType": "HR.Entities.Company",
-    "breadcrumb": "{Name}",
+    "breadcrumb": "{Name} · {Sector}",
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -120,6 +120,23 @@
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "09086eed-8001-45f3-8a4a-7cdf59300cad",
+        "name": "Sector",
+        "label": {
+          "en": "Sector"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "query": "GetProfessions",
+        "referenceType": "HR.Entities.Profession",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
       }
     ],
     "queries": [
@@ -136,9 +153,16 @@
         "nl": "Bedrijven"
       },
       "source": "Database.Companies",
-      "sortColumns": [{ "property": "Name", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Company"
+      "entityType": "Company",
+      "isStreamingQuery": false
     }
   ]
 }

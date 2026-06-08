@@ -10,7 +10,8 @@
     "clrType": "HR.Entities.Person",
     "queryType": "HR.Indexes.VPerson",
     "indexName": "People_Overview",
-    "breadcrumb": "{FirstName} {LastName}",
+    "breadcrumb": "{FirstName} {LastName} @ {Company}",
+    "breadcrumbProjectionSatisfiable": false,
     "tabs": [
       {
         "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -291,9 +292,16 @@
         "nl": "Personen"
       },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "LastName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Person"
+      "entityType": "Person",
+      "isStreamingQuery": false
     },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440010",
@@ -305,9 +313,16 @@
       },
       "source": "Custom.Company_People",
       "alias": "company-people",
-      "sortColumns": [{ "property": "FullName", "direction": "asc" }],
+      "sortColumns": [
+        {
+          "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
       "useProjection": false,
-      "entityType": "Person"
+      "entityType": "Person",
+      "isStreamingQuery": false
     }
   ]
 }

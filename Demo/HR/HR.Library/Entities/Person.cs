@@ -2,6 +2,9 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
+// Breadcrumb recurses through references: {Company} renders the Company's breadcrumb, which in
+// turn renders its {Sector} (a Profession) — a 3-level chain Person → Company → Profession.
+[Breadcrumb("{FirstName} {LastName} @ {Company}")]
 public class Person
 {
     public string? Id { get; set; }
