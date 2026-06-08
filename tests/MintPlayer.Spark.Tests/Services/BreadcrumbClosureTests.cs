@@ -124,4 +124,62 @@ public class BreadcrumbClosureTests
         // level (depth 1). The resolver bounds the actual self-ref hops by MaxBreadcrumbDepth.
         closure.GetDepth(person).Should().Be(1);
     }
+
+    [Fact]
+    public void GetDepth_takes_the_longest_simple_path_through_a_diamond()
+    {
+        // A -> B, A -> C, B -> D, C -> D. Both branches reconverge on D (a leaf).
+        var d = Def("T.D", "D", "{Name}", Scalar("Name"));
+        var b = Def("T.B", "B", "{Down}", Ref("Down", "T.D"));
+        var c = Def("T.C", "C", "{Down}", Ref("Down", "T.D"));
+        var a = Def("T.A", "A", "{Left} {Right}", Ref("Left", "T.B"), Ref("Right", "T.C"));
+        var closure = ClosureFor(a, b, c, d);
+
+        // Longest simple path A -> B -> D (== A -> C -> D): 3 distinct levels.
+        closure.GetDepth(a).Should().Be(3);
+        closure.GetDepth(d).Should().Be(1);
+        closure.GetCycles().Should().BeEmpty("a diamond is a DAG, not a cycle");
+    }
+
+    [Fact]
+    public void GetReferences_is_cached_and_returns_an_equivalent_result_on_repeat_calls()
+    {
+        var (spot, car, person) = Chain();
+        var closure = ClosureFor(spot, car, person);
+
+        var first = closure.GetReferences(car);
+        var second = closure.GetReferences(car);
+
+        // Cached by ClrType: the same edge set comes back (reference-equal, since cached).
+        second.Should().BeSameAs(first);
+        second.Should().BeEquivalentTo(first);
+    }
+
+    [Fact]
+    public void GetCycles_is_cached_across_repeat_calls()
+    {
+        var a = Def("T.A", "A", "{Next}", Ref("Next", "T.B"));
+        var b = Def("T.B", "B", "{Prev}", Ref("Prev", "T.A"));
+        var closure = ClosureFor(a, b);
+
+        var first = closure.GetCycles();
+        var second = closure.GetCycles();
+
+        second.Should().BeSameAs(first, "cycles are computed once and memoized");
+    }
+
+    [Fact]
+    public void GetDepth_bounds_a_two_node_cycle_to_the_simple_path_length()
+    {
+        // Re-pins the closure guarantee that drives the resolver's MaxDepth bound: even though the
+        // A<->B loop is infinite at runtime, the static longest-simple-path is 2 (A -> B, B cut).
+        var a = Def("T.A", "A", "{Next}", Ref("Next", "T.B"));
+        var b = Def("T.B", "B", "{Prev}", Ref("Prev", "T.A"));
+        var closure = ClosureFor(a, b);
+
+        closure.GetDepth(a).Should().Be(2);
+        closure.GetDepth(b).Should().Be(2);
+        closure.GetCycles().Should().ContainSingle();
+        closure.GetCycles()[0].Should().Contain(["T.A", "T.B"]);
+    }
 }

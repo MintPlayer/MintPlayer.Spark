@@ -32,6 +32,9 @@ public class BreadcrumbResolverTests : SparkTestDriver
         new() { Id = Guid.NewGuid(), Name = clr.Name, ClrType = clr.FullName!, Breadcrumb = breadcrumb, BreadcrumbProjectionSatisfiable = satisfiable, Attributes = attrs };
 
     private static (IBreadcrumbResolver resolver, IRowSecurity rowSecurity) Build(params EntityTypeDefinition[] defs)
+        => Build(new SparkOptions(), defs);
+
+    private static (IBreadcrumbResolver resolver, IRowSecurity rowSecurity) Build(SparkOptions options, params EntityTypeDefinition[] defs)
     {
         var loader = Substitute.For<IModelLoader>();
         loader.GetEntityTypes().Returns(defs);
@@ -42,7 +45,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         rowSecurity.IsAllowedAsync(default!, default!, default!).ReturnsForAnyArgs(true);
 
         var closure = new BreadcrumbClosure(loader);
-        var resolver = new BreadcrumbResolver(loader, closure, rowSecurity, new SparkOptions());
+        var resolver = new BreadcrumbResolver(loader, closure, rowSecurity, options);
         return (resolver, rowSecurity);
     }
 
@@ -220,5 +223,105 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var crumb = result.Get("people/1");
         crumb.Should().NotBeNullOrEmpty();
         crumb.Should().StartWith("Alpha (mgr: Beta (mgr: ");
+    }
+
+    [Fact]
+    public async Task Null_reference_field_renders_nothing_for_that_placeholder()
+    {
+        // Car with no Driver assigned — the {Driver} placeholder contributes the empty string,
+        // and the resolver must not crash trying to load a null id.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = null }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        result.Get("cars/1").Should().Be("CAR-1 ()", "a null reference contributes no text");
+    }
+
+    [Fact]
+    public async Task Empty_reference_array_joins_to_nothing()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Post { Title = "Untagged", TagIds = [] }, "posts/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var tag = Def(typeof(BR_Tag), "{Name}", null, Scalar("Name"));
+        var post = Def(typeof(BR_Post), "{Title}: {TagIds}", null, Scalar("Title"), Ref("TagIds", typeof(BR_Tag), isArray: true));
+        var (resolver, _) = Build(tag, post);
+
+        using var session = Store.OpenAsyncSession();
+        var postEntity = await session.LoadAsync<BR_Post>("posts/1");
+
+        var result = await resolver.ResolveAsync(session, [postEntity], post);
+
+        result.Get("posts/1").Should().Be("Untagged: ");
+    }
+
+    [Fact]
+    public async Task Chain_deeper_than_MaxDepth_is_truncated_at_the_unloaded_level()
+    {
+        // ParkingSpot -> Car -> Person, but MaxDepth caps the resolver before Person is loaded.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "John", LastName = "Doe" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.StoreAsync(new BR_ParkingSpot { Coordinates = "1,1", ParkedCar = "cars/1" }, "spots/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var (person, car, spot) = ChainDefs();
+        // MaxDepth = 2: the loop runs once (loads cars) then stops before loading people.
+        var options = new SparkOptions { Breadcrumb = new() { MaxDepth = 2 } };
+        var (resolver, _) = Build(options, person, car, spot);
+
+        using var session = Store.OpenAsyncSession();
+        var spotEntity = await session.LoadAsync<BR_ParkingSpot>("spots/1");
+
+        var before = session.Advanced.NumberOfRequests;
+        var result = await resolver.ResolveAsync(session, [spotEntity], spot);
+        var added = session.Advanced.NumberOfRequests - before;
+
+        added.Should().Be(1, "only one reference level is loaded before MaxDepth caps the walk");
+        // Car loaded, Person not: the {Driver} placeholder renders empty (unloaded), the rest renders.
+        result.Get("spots/1").Should().Be("CAR-1 () (1,1)");
+        result.Get("cars/1").Should().Be("CAR-1 ()");
+        result.Get("people/1").Should().BeNull("person was never loaded, so it has no breadcrumb");
+    }
+
+    [Fact]
+    public async Task Self_referencing_document_renders_without_infinite_recursion()
+    {
+        // A single document whose Manager points at itself — the per-path visited set cuts the loop.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "Solo", LastName = "Self", Manager = "people/1" }, "people/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{LastName} (mgr: {Manager})", null, Scalar("LastName"), Ref("Manager", typeof(BR_Person)));
+        var (resolver, _) = Build(person);
+
+        using var session = Store.OpenAsyncSession();
+        var self = await session.LoadAsync<BR_Person>("people/1");
+
+        var result = await resolver.ResolveAsync(session, [self], person);
+
+        var crumb = result.Get("people/1");
+        crumb.Should().NotBeNullOrEmpty();
+        // First level expands the self-reference once; the re-entry suppresses further expansion
+        // (the inner {Manager} contributes empty), so we terminate.
+        crumb.Should().StartWith("Self (mgr: Self (mgr: ");
     }
 }

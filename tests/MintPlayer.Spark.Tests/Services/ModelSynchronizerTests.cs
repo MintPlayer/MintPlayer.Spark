@@ -222,6 +222,76 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void Synthesized_default_breadcrumb_prefers_a_Name_attribute_over_the_first_attribute()
+    {
+        var ctx = new NamedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        // Description is the first declared attribute, but Name is preferred for the default.
+        Read<EntityTypeFile>(ModelFile("MS_NamedThing")).PersistentObject.Breadcrumb.Should().Be("{Name}");
+    }
+
+    [Fact]
+    public void Breadcrumb_projection_satisfiable_is_null_when_no_projection_type()
+    {
+        // No projection registered → the satisfiable flag is left null (renderable as-is).
+        var ctx = new SinglePersonContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).PersistentObject.BreadcrumbProjectionSatisfiable.Should().BeNull();
+    }
+
+    [Fact]
+    public void Breadcrumb_projection_satisfiable_is_false_when_a_placeholder_field_is_absent_from_the_projection()
+    {
+        // MS_BreadcrumbPerson breadcrumb is "{LastName}, {FirstName}", but the MS_TestVehicle
+        // projection has neither field → the list path must batch-load the collection documents.
+        var registration = new IndexRegistration
+        {
+            IndexName = "BcPeople_Index",
+            IndexType = typeof(MS_BreadcrumbPerson),
+            CollectionType = typeof(MS_BreadcrumbPerson),
+            ProjectionType = typeof(MS_TestVehicle),
+        };
+        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(registration);
+
+        var ctx = new BreadcrumbContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(ModelFile("MS_BreadcrumbPerson")).PersistentObject.BreadcrumbProjectionSatisfiable
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void Breadcrumb_projection_satisfiable_is_null_when_every_placeholder_field_is_on_the_projection()
+    {
+        // The projection carries LastName and FirstName, so the breadcrumb renders from the
+        // projection alone — satisfiable stays null (no collection-document load needed).
+        var registration = new IndexRegistration
+        {
+            IndexName = "BcPeople_Index",
+            IndexType = typeof(MS_BreadcrumbPerson),
+            CollectionType = typeof(MS_BreadcrumbPerson),
+            ProjectionType = typeof(MS_BreadcrumbPersonProjection),
+        };
+        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(registration);
+
+        var ctx = new BreadcrumbContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(ModelFile("MS_BreadcrumbPerson")).PersistentObject.BreadcrumbProjectionSatisfiable
+            .Should().BeNull();
+    }
+
+    [Fact]
     public void Removes_stale_projection_model_files_listed_in_IndexRegistry()
     {
         // Pre-create a stale Vehicle.json model file. Then register a projection that maps
@@ -310,6 +380,22 @@ public class MS_BreadcrumbPerson
     public string LastName { get; set; } = string.Empty;
 }
 
+// Projection that DOES carry the breadcrumb placeholder fields (LastName, FirstName).
+public class MS_BreadcrumbPersonProjection
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+}
+
+// First attribute is Description, but a Name attribute exists and is preferred for the default breadcrumb.
+public class MS_NamedThing
+{
+    public string? Id { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+}
+
 [Breadcrumb("{Nope}")]
 public class MS_BadBreadcrumb
 {
@@ -351,6 +437,11 @@ public class TaggedContext : SparkContext
 public class BreadcrumbContext : SparkContext
 {
     public IRavenQueryable<MS_BreadcrumbPerson> People => Session.Query<MS_BreadcrumbPerson>();
+}
+
+public class NamedContext : SparkContext
+{
+    public IRavenQueryable<MS_NamedThing> Things => Session.Query<MS_NamedThing>();
 }
 
 public class BadBreadcrumbContext : SparkContext

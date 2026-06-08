@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Migrations;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
@@ -113,5 +114,37 @@ public class SparkFullGeneratorTests
         var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
         // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
         combined.Should().Contain("global::TestApp.SparkCronJobsBuilderExtensions.AddCronJobs(spark)");
+    }
+
+    [Fact]
+    public void Migration_is_wired_into_AddSparkFull_via_fully_qualified_call()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Migrations;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+
+            public class AddInitialData : ISparkMigration
+            {
+                public static long Version => 202606081200;
+                public Task UpAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(ISparkMigration)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
+        // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
+        combined.Should().Contain("global::TestApp.SparkMigrationsBuilderExtensions.AddMigrations(spark)");
     }
 }

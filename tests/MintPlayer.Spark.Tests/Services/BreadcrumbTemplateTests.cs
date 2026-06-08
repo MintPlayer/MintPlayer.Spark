@@ -59,4 +59,55 @@ public class BreadcrumbTemplateTests
         var act = () => BreadcrumbTemplate.Parse(template);
         act.Should().Throw<FormatException>();
     }
+
+    [Fact]
+    public void Escaped_closing_braces_become_a_literal_closing_brace()
+    {
+        // A standalone "}}" outside any placeholder is the escape for a literal '}'.
+        BreadcrumbTemplate.Parse("a}}b").Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new LiteralToken("a}b"));
+    }
+
+    [Fact]
+    public void Field_only_template_is_a_single_field_token()
+    {
+        var tokens = BreadcrumbTemplate.Parse("{Name}");
+
+        tokens.Should().ContainSingle()
+            .Which.Should().BeOfType<FieldToken>()
+            .Which.AttributeName.Should().Be("Name");
+    }
+
+    [Fact]
+    public void FieldNames_preserves_first_occurrence_order_and_is_distinct()
+    {
+        // B appears before A's second occurrence; distinct keeps the first-seen order.
+        BreadcrumbTemplate.FieldNames("{B} {A} {B} {A}").Should().Equal("B", "A");
+    }
+
+    [Fact]
+    public void FieldNames_on_a_literal_only_template_is_empty()
+    {
+        BreadcrumbTemplate.FieldNames("just text {{escaped}}").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Nested_open_brace_inside_a_placeholder_throws_FormatException()
+    {
+        // "{a{b}" — the inner '{' is detected inside the placeholder name.
+        var act = () => BreadcrumbTemplate.Parse("{a{b}");
+        act.Should().Throw<FormatException>();
+    }
+
+    [Fact]
+    public void Escaped_braces_adjacent_to_a_field_parse_into_separate_tokens()
+    {
+        // "{{" -> literal "{", then {Name} field, then "}}" -> literal "}".
+        var tokens = BreadcrumbTemplate.Parse("{{{Name}}}");
+
+        tokens.Should().HaveCount(3);
+        tokens[0].Should().BeEquivalentTo(new LiteralToken("{"));
+        tokens[1].Should().BeOfType<FieldToken>().Which.AttributeName.Should().Be("Name");
+        tokens[2].Should().BeEquivalentTo(new LiteralToken("}"));
+    }
 }
