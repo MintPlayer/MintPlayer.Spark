@@ -366,6 +366,20 @@ export class SparkPoFormComponent {
     };
   }
 
+  /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
+  getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
+    if (!col.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
+  }
+
+  getAsDetailCellRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: row[col.name],
+      attribute: col,
+      options: col.rendererOptions,
+    };
+  }
+
   hasError(attrName: string): boolean {
     return this.validationErrors().some(e => e.attributeName === attrName);
   }

@@ -168,6 +168,20 @@ export class SparkPoDetailComponent {
     };
   }
 
+  /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
+  getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
+    if (!col.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
+  }
+
+  getAsDetailCellRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: row[col.name],
+      attribute: col,
+      options: col.rendererOptions,
+    };
+  }
+
   private async loadLookupReferenceOptions(): Promise<void> {
     const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;

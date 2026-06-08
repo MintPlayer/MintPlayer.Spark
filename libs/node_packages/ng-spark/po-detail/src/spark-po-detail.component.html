@@ -101,7 +101,9 @@
                       <tr>
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
-                            @if (col.dataType === 'Reference' && col.referenceType) {
+                            @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
+                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(row, col)"></ng-container>
+                            } @else if (col.dataType === 'Reference' && col.referenceType) {
                               @let route = (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes());
                               @if (route) {
                                 <a [routerLink]="route">{{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}</a>
