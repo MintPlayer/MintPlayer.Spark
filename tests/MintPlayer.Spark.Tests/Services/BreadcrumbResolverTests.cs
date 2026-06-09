@@ -36,6 +36,8 @@ public class BreadcrumbResolverTests : SparkTestDriver
     public class BR_Label { public string? Id { get; set; } public string Name { get; set; } = ""; public string? CountryId { get; set; } }
     public class BR_Credit { public string? LabelId { get; set; } }
     public class BR_Release { public string? Id { get; set; } public string Title { get; set; } = ""; public List<BR_Credit> Credits { get; set; } = []; }
+    // A SINGLE (non-array) embedded AsDetail whose reference must also resolve.
+    public class BR_Band { public string? Id { get; set; } public string Name { get; set; } = ""; public BR_SongArtist? Leader { get; set; } }
 
     // --- model builders ---
     private static EntityAttributeDefinition Scalar(string name) =>
@@ -46,6 +48,8 @@ public class BreadcrumbResolverTests : SparkTestDriver
         new() { Id = Guid.NewGuid(), Name = clr.Name, ClrType = clr.FullName!, Breadcrumb = breadcrumb, BreadcrumbProjectionSatisfiable = satisfiable, Attributes = attrs };
     private static EntityAttributeDefinition AsDetailArr(string name, Type child) =>
         new() { Id = Guid.NewGuid(), Name = name, DataType = "AsDetail", AsDetailType = child.FullName, IsArray = true };
+    private static EntityAttributeDefinition AsDetailSingle(string name, Type child) =>
+        new() { Id = Guid.NewGuid(), Name = name, DataType = "AsDetail", AsDetailType = child.FullName, IsArray = false };
 
     private static (IBreadcrumbResolver resolver, IRowSecurity rowSecurity) Build(params EntityTypeDefinition[] defs)
         => Build(new SparkOptions(), defs);
@@ -449,5 +453,31 @@ public class BreadcrumbResolverTests : SparkTestDriver
 
         result.Get("labels/1").Should().Be("Sony (Japan)", "the AsDetail-nested reference renders the label's full breadcrumb, which itself expands {CountryId}");
         result.Get("countries/1").Should().Be("Japan");
+    }
+
+    [Fact]
+    public async Task Single_non_array_AsDetail_reference_resolves_and_null_embedded_is_skipped()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            for (var i = 0; i < 3; i++)
+                await seed.StoreAsync(new BR_Artist { Name = $"Artist{i}" }, $"artists/{i}");
+            await seed.StoreAsync(new BR_Band { Name = "Queen", Leader = new BR_SongArtist { ArtistId = "artists/2" } }, "bands/1");
+            await seed.StoreAsync(new BR_Band { Name = "Solo", Leader = null }, "bands/2"); // null embedded → skipped, no crash
+            await seed.SaveChangesAsync();
+        }
+
+        var artist = Def(typeof(BR_Artist), "{Name}", null, Scalar("Name"));
+        var songArtist = Def(typeof(BR_SongArtist), "{ArtistId}", null, Ref("ArtistId", typeof(BR_Artist)));
+        var band = Def(typeof(BR_Band), "{Name}", null, Scalar("Name"), AsDetailSingle("Leader", typeof(BR_SongArtist)));
+        var (resolver, _) = Build(artist, songArtist, band);
+
+        using var session = Store.OpenAsyncSession();
+        var bands = (await session.LoadAsync<BR_Band>(["bands/1", "bands/2"])).Values.Where(b => b is not null).Cast<object>().ToList();
+
+        var result = await resolver.ResolveAsync(session, bands, band);
+
+        result.Get("artists/2").Should().Be("Artist2");
+        result.Get("bands/2").Should().Be("Solo");
     }
 }
