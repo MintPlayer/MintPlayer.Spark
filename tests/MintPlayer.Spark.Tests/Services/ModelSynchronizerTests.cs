@@ -157,6 +157,62 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void Sortable_attribute_on_AsDetail_array_sets_IsSortable_true()
+    {
+        var ctx = new OrderedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
+        var steps = file.PersistentObject.Attributes.Single(a => a.Name == "Steps");
+        steps.DataType.Should().Be("AsDetail");
+        steps.IsArray.Should().BeTrue();
+        steps.IsSortable.Should().BeTrue("[Sortable] on an AsDetail array opts it into drag-reorder");
+    }
+
+    [Fact]
+    public void AsDetail_array_without_Sortable_leaves_IsSortable_null()
+    {
+        var ctx = new OrderedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
+        var notes = file.PersistentObject.Attributes.Single(a => a.Name == "Notes");
+        notes.DataType.Should().Be("AsDetail");
+        notes.IsArray.Should().BeTrue();
+        notes.IsSortable.Should().BeNull("a non-[Sortable] AsDetail array carries no isSortable flag (absent, not false)");
+    }
+
+    [Fact]
+    public void Sortable_attribute_on_a_non_AsDetail_array_property_is_ignored()
+    {
+        var ctx = new OrderedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
+        // [Sortable] on a scalar string — meaningless, must not set the flag.
+        file.PersistentObject.Attributes.Single(a => a.Name == "Name").IsSortable.Should().BeNull();
+    }
+
+    [Fact]
+    public void IsSortable_survives_re_synchronize()
+    {
+        var ctx = new OrderedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
+        file.PersistentObject.Attributes.Single(a => a.Name == "Steps").IsSortable.Should().BeTrue();
+    }
+
+    [Fact]
     public void Synthesizes_a_default_breadcrumb_from_the_first_attribute_when_none_authored()
     {
         var ctx = new SinglePersonContext();
@@ -372,6 +428,25 @@ public class MS_TestTagged
     public List<string> Labels { get; set; } = [];
 }
 
+// AsDetail child for the [Sortable] fixtures.
+public class MS_Step
+{
+    public string Label { get; set; } = string.Empty;
+}
+
+public class MS_OrderedParent
+{
+    public string? Id { get; set; }
+
+    [Sortable]                                  // AsDetail array + [Sortable] → IsSortable: true
+    public List<MS_Step> Steps { get; set; } = [];
+
+    public List<MS_Step> Notes { get; set; } = []; // AsDetail array, no [Sortable] → null
+
+    [Sortable]                                  // scalar + [Sortable] → ignored (null)
+    public string Name { get; set; } = string.Empty;
+}
+
 [Breadcrumb("{LastName}, {FirstName}")]
 public class MS_BreadcrumbPerson
 {
@@ -442,6 +517,11 @@ public class BreadcrumbContext : SparkContext
 public class NamedContext : SparkContext
 {
     public IRavenQueryable<MS_NamedThing> Things => Session.Query<MS_NamedThing>();
+}
+
+public class OrderedContext : SparkContext
+{
+    public IRavenQueryable<MS_OrderedParent> Parents => Session.Query<MS_OrderedParent>();
 }
 
 public class BadBreadcrumbContext : SparkContext

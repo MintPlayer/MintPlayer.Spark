@@ -113,57 +113,121 @@
               </button>
             </bs-input-group>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+            <!-- One source of truth for an inline cell, reused by the row and by the drag
+                 preview. The preview is a live Angular view (not a cloneNode), so its
+                 <bs-select> binds to row[col.name] and shows the value while dragging. -->
+            <ng-template #inlineDetailCell let-row="row" let-col="col" let-attr="attr" let-rowIndex="rowIndex">
+              <td>
+                @if (col.isReadOnly) {
+                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
+                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(row, col)"></ng-container>
+                } @else if (col.dataType === 'AsDetail') {
+                  <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
+                       where the recursive spark-po-form renders the nested structure. -->
+                  <div class="d-flex align-items-center gap-1">
+                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
+                      <spark-icon name="pencil" />
+                    </button>
+                  </div>
+                } @else if (col.dataType === 'boolean') {
+                  <bs-checkbox
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()">
+                  </bs-checkbox>
+                } @else if (col.dataType === 'Reference' && col.query) {
+                  <bs-select
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                    @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                      <option [ngValue]="option.id">
+                        {{ option.breadcrumb || option.name || option.id }}
+                      </option>
+                    }
+                  </bs-select>
+                } @else if (col.lookupReferenceType) {
+                  <bs-select
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                    @for (option of getLookupOptions(col); track option.key) {
+                      <option [ngValue]="option.key">
+                        {{ option.values | resolveTranslation:option.key }}
+                      </option>
+                    }
+                  </bs-select>
+                } @else {
+                  <input
+                    [type]="col.dataType | inputType"
+                    [(ngModel)]="row[col.name]"
+                    [required]="col.isRequired"
+                    [step]="col.dataType === 'decimal' ? '0.01' : '1'"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
+                    (ngModelChange)="onFieldChange()">
+                }
+                @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
+                  <div class="invalid-feedback d-block">{{ errorMsg }}</div>
+                }
+              </td>
+            </ng-template>
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
+                  @if (attr.isSortable) {
+                    <th style="width: 32px"></th>
+                  }
                   @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                     <th>{{ col.label | resolveTranslation:col.name }}</th>
                   }
                   <th style="width: 50px"></th>
                 </tr>
               </thead>
-              <tbody class="align-middle">
-                @for (row of formData()[attr.name] || []; track $index) {
-                  <tr>
-                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                      <td>
-                        @if (col.dataType === 'boolean') {
-                          <bs-checkbox
-                            [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()">
-                          </bs-checkbox>
-                        } @else if (col.dataType === 'Reference' && col.query) {
-                          <bs-select
-                            [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()">
-                            <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                            @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
-                              <option [ngValue]="option.id">
-                                {{ option.breadcrumb || option.name || option.id }}
-                              </option>
-                            }
-                          </bs-select>
-                        } @else {
-                          <input
-                            [type]="col.dataType | inputType"
-                            [(ngModel)]="row[col.name]"
-                            [required]="col.isRequired"
-                            [step]="col.dataType === 'decimal' ? '0.01' : '1'"
-                            (ngModelChange)="onFieldChange()">
-                        }
+              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
+                @for (row of formData()[attr.name] || []; track $index; let rowIndex = $index) {
+                  <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
+                    @if (attr.isSortable) {
+                      <td class="text-center text-muted" style="cursor: move; touch-action: none" cdkDragHandle>
+                        <spark-icon name="grip-vertical" />
                       </td>
+                    }
+                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                      <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
                     }
                     <td class="text-nowrap">
                       @if (attr | canDeleteDetailRow:asDetailPermissions()) {
-                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, $index)">
+                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, rowIndex)">
                           <spark-icon name="trash" />
                         </button>
                       }
                     </td>
+
+                    <!-- Floating preview = a LIVE view of the row's cells (not CDK's cloneNode),
+                         so <bs-select> shows its value instead of blanking. The in-grid
+                         placeholder still uses CDK's default clone (exact row height) and is
+                         hidden via .cdk-drag-placeholder { visibility:hidden } in the styles,
+                         so the drop gap is blank without collapsing/shifting the other rows. -->
+                    <ng-template cdkDragPreview>
+                      <table class="table mb-0 bg-body shadow-sm spark-drag-preview">
+                        <tbody class="align-middle">
+                          <tr>
+                            @if (attr.isSortable) {
+                              <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
+                            }
+                            @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                              <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
+                            }
+                          </tr>
+                        </tbody>
+                      </table>
+                    </ng-template>
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>
@@ -179,15 +243,23 @@
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
+                  @if (attr.isSortable) {
+                    <th style="width: 32px"></th>
+                  }
                   @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                     <th>{{ col.label | resolveTranslation:col.name }}</th>
                   }
                   <th style="width: 80px"></th>
                 </tr>
               </thead>
-              <tbody class="align-middle">
+              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
                 @for (row of formData()[attr.name] || []; track $index) {
-                  <tr>
+                  <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
+                    @if (attr.isSortable) {
+                      <td class="text-center text-muted" style="cursor: move; touch-action: none" cdkDragHandle>
+                        <spark-icon name="grip-vertical" />
+                      </td>
+                    }
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                       <td>
                         @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
@@ -210,7 +282,7 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + 1" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>

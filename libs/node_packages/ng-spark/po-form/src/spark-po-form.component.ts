@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
 import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
@@ -56,8 +57,12 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
+  // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
+  // height). Hide its contents but keep it occupying space, so the drop gap is blank and
+  // the surrounding rows don't shift. ::ng-deep because the cloned node is styled by CDK.
+  styles: [`:host ::ng-deep .cdk-drag-placeholder { visibility: hidden; }`],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoFormComponent {
@@ -293,6 +298,17 @@ export class SparkPoFormComponent {
             );
             this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries) }));
           }
+
+          // Inline editing of LookupReference child columns needs their options loaded
+          // (keyed by lookup name in the shared lookupReferenceOptions, deduped).
+          const lookupCols = asDetailType.attributes.filter(a => a.lookupReferenceType);
+          for (const col of lookupCols) {
+            const lookupName = col.lookupReferenceType!;
+            if (!this.lookupReferenceOptions()[lookupName]) {
+              const ref = await this.sparkService.getLookupReference(lookupName);
+              this.lookupReferenceOptions.update(prev => ({ ...prev, [lookupName]: ref }));
+            }
+          }
         }
       }
     }
@@ -380,8 +396,43 @@ export class SparkPoFormComponent {
     };
   }
 
+  /** Edit-renderer for an inline AsDetail cell (so inline editing honors `col.renderer`, not just display). */
+  getAsDetailCellEditRenderer(col: EntityAttributeDefinition): Type<any> | null {
+    if (!col.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === col.renderer)?.editComponent ?? null;
+  }
+
+  getAsDetailCellEditRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: row[col.name],
+      attribute: col,
+      options: col.rendererOptions,
+      valueChange: (newValue: any) => {
+        row[col.name] = newValue;
+        this.onFieldChange();
+      },
+    };
+  }
+
   hasError(attrName: string): boolean {
     return this.validationErrors().some(e => e.attributeName === attrName);
+  }
+
+  // Per-cell validation for inline AsDetail rows. Server-emitted errors are keyed by the
+  // path "{attr}[{rowIndex}].{col}"; the client surfaces them like top-level field errors.
+  private inlineErrorPath(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): string {
+    return `${attr.name}[${rowIndex}].${col.name}`;
+  }
+
+  hasInlineError(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): boolean {
+    const path = this.inlineErrorPath(attr, rowIndex, col);
+    return this.validationErrors().some(e => e.attributeName === path);
+  }
+
+  inlineErrorMessage(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): string | null {
+    const path = this.inlineErrorPath(attr, rowIndex, col);
+    const error = this.validationErrors().find(e => e.attributeName === path);
+    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   onFieldChange(): void {
@@ -461,6 +512,18 @@ export class SparkPoFormComponent {
     const data = { ...this.formData() };
     const arr = [...(data[attr.name] || [])];
     arr.splice(index, 1);
+    data[attr.name] = arr;
+    this.formData.set(data);
+  }
+
+  // Drag-reorder for [Sortable] AsDetail arrays. Order = array position, so moving the
+  // row within formData()[attr.name] and re-emitting the signal IS the persisted order
+  // (po-edit flags AsDetail attributes isValueChanged on save).
+  onAsDetailReorder(attr: EntityAttributeDefinition, event: CdkDragDrop<Record<string, any>[]>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    const data = { ...this.formData() };
+    const arr = [...(data[attr.name] ?? [])];
+    moveItemInArray(arr, event.previousIndex, event.currentIndex);
     data[attr.name] = arr;
     this.formData.set(data);
   }

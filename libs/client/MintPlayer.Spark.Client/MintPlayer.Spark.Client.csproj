@@ -8,7 +8,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>MintPlayer.Spark.Client</PackageId>
-    <Version>10.0.0-preview.38</Version>
+    <Version>10.0.0-preview.39</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
     <Description>Typed C# client for consuming MintPlayer.Spark backend APIs.</Description>

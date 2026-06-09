@@ -20,6 +20,8 @@ export interface EntityAttributeDefinition {
   isArray?: boolean;
   /** For array AsDetail attributes: "modal" (default) or "inline" */
   editMode?: 'inline' | 'modal';
+  /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
+  isSortable?: boolean;
   /** For LookupReference attributes, specifies the lookup reference type name */
   lookupReferenceType?: string;
   /**
