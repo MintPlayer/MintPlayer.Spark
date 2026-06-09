@@ -256,6 +256,7 @@
         "asDetailType": "HR.Entities.CarreerJob",
         "isArray": true,
         "editMode": "inline",
+        "isSortable": true,
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": [],

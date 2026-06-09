@@ -22,5 +22,9 @@ public class Person
     public List<string> Professions { get; set; } = [];
 
     public Address? Address { get; set; }
+
+    // [Sortable]: career history is an ordered list — drag-reorder the rows (order = array
+    // position, no index field). Already editMode "inline", so this exercises inline + drag.
+    [Sortable]
     public CarreerJob[] Jobs { get; set; } = [];
 }
