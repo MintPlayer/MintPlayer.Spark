@@ -8,7 +8,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>MintPlayer.Spark.Client.Authorization</PackageId>
-    <Version>10.0.0-preview.38</Version>
+    <Version>10.0.0-preview.39</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
     <Description>Authorization extensions for the MintPlayer.Spark typed C# client.</Description>
