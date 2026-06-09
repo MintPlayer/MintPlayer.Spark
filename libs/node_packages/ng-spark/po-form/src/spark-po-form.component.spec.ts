@@ -67,7 +67,7 @@ const rolesLookup: LookupReference = {
   ] as LookupReferenceValue[],
 } as any;
 
-function createComponent(serviceOverrides: Partial<SparkService> = {}) {
+function createComponent(serviceOverrides: Partial<SparkService> = {}, rendererRegistry: any[] = []) {
   const service: any = {
     executeQueryByName: vi.fn().mockResolvedValue({ data: allCompanies, totalRecords: 1 }),
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
@@ -81,7 +81,7 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
-      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
+      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: rendererRegistry },
     ],
   });
 
@@ -409,6 +409,94 @@ describe('SparkPoFormComponent', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelectorAll('.bi-grip-vertical').length).toBe(0);
+    });
+  });
+
+  describe('inline AsDetail edit parity', () => {
+    // A child type exercising the inline column kinds: scalar, read-only, lookup, custom renderer.
+    const richChild: EntityType = {
+      id: 't-rich',
+      name: 'RichChild',
+      clrType: 'Test.RichChild',
+      attributes: [
+        attr({ id: 'c-label', name: 'Label', order: 1 }),
+        attr({ id: 'c-ro', name: 'Code', isReadOnly: true, order: 2 }),
+        attr({ id: 'c-role', name: 'Role', lookupReferenceType: 'Roles', order: 3 }),
+      ],
+    };
+    const inlineParent: EntityType = {
+      id: 't-parent',
+      name: 'Parent',
+      clrType: 'Test.Parent',
+      attributes: [
+        attr({ id: 'a-items', name: 'Items', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.RichChild', order: 1 }),
+      ],
+    };
+
+    it('B2: loadAsDetailTypes loads lookup options for child columns, and getLookupOptions resolves them', async () => {
+      const { fixture, component, service } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([inlineParent, richChild]),
+      });
+      await setEntityType(fixture, inlineParent);
+
+      expect(service.getLookupReference).toHaveBeenCalledWith('Roles');
+      expect(component.lookupReferenceOptions()['Roles']?.name).toBe('Roles');
+      const roleCol = richChild.attributes.find(a => a.name === 'Role')!;
+      expect(component.getLookupOptions(roleCol).map(o => o.key)).toEqual(['admin']);
+    });
+
+    it('B1: a read-only child column renders read-only text, not an input', async () => {
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([inlineParent, richChild]),
+      });
+      component.formData.set({ Items: [{ Label: 'a', Code: 'X1', Role: 'admin' }] });
+      await setEntityType(fixture, inlineParent);
+      fixture.detectChanges();
+
+      const cells = fixture.nativeElement.querySelectorAll('tbody tr td');
+      // Read-only "Code" cell shows a span and contains no editable <input>.
+      const html = fixture.nativeElement.innerHTML as string;
+      expect(html).toContain('X1');
+      const inputs = fixture.nativeElement.querySelectorAll('tbody input');
+      // Only the editable "Label" scalar is an <input>; Code (read-only) and Role (select) are not.
+      expect(inputs.length).toBe(1);
+      expect(cells.length).toBeGreaterThan(0);
+    });
+
+    it('B3: getAsDetailCellEditRenderer returns the registered edit component for a renderer column', async () => {
+      class DummyEditor {}
+      const registry = [{ name: 'my-editor', editComponent: DummyEditor, columnComponent: null }];
+      const { fixture, component } = createComponent({}, registry);
+      await setEntityType(fixture, personType);
+
+      const col = attr({ name: 'Custom', renderer: 'my-editor' });
+      expect(component.getAsDetailCellEditRenderer(col)).toBe(DummyEditor);
+      // Edit-renderer inputs write back into the row and flag a change.
+      const row: Record<string, any> = { Custom: 'old' };
+      const inputs = component.getAsDetailCellEditRendererInputs(row, col);
+      inputs['valueChange']('new');
+      expect(row['Custom']).toBe('new');
+    });
+
+    it('B3: getAsDetailCellEditRenderer is null when the column has no renderer', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      expect(component.getAsDetailCellEditRenderer(attr({ name: 'Plain' }))).toBeNull();
+    });
+
+    it('B5: per-cell errors are keyed by "{attr}[{row}].{col}"', async () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('validationErrors', [
+        { attributeName: 'Items[1].Label', errorMessage: { en: 'Label required' } as any, ruleType: 'required' },
+      ]);
+      await setEntityType(fixture, personType);
+
+      const items = attr({ name: 'Items', dataType: 'AsDetail', isArray: true });
+      const label = attr({ name: 'Label' });
+      expect(component.hasInlineError(items, 1, label)).toBe(true);
+      expect(component.hasInlineError(items, 0, label)).toBe(false);
+      expect(component.inlineErrorMessage(items, 1, label)).toBe('Label required');
+      expect(component.inlineErrorMessage(items, 0, label)).toBeNull();
     });
   });
 

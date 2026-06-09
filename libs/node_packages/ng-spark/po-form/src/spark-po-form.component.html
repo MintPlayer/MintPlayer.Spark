@@ -126,7 +126,7 @@
                 </tr>
               </thead>
               <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
-                @for (row of formData()[attr.name] || []; track $index) {
+                @for (row of formData()[attr.name] || []; track $index; let rowIndex = $index) {
                   <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
                     @if (attr.isSortable) {
                       <td class="text-center text-muted" style="cursor: move; touch-action: none" cdkDragHandle>
@@ -135,7 +135,20 @@
                     }
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                       <td>
-                        @if (col.dataType === 'boolean') {
+                        @if (col.isReadOnly) {
+                          <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                        } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
+                          <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(row, col)"></ng-container>
+                        } @else if (col.dataType === 'AsDetail') {
+                          <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
+                               where the recursive spark-po-form renders the nested structure. -->
+                          <div class="d-flex align-items-center gap-1">
+                            <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
+                              <spark-icon name="pencil" />
+                            </button>
+                          </div>
+                        } @else if (col.dataType === 'boolean') {
                           <bs-checkbox
                             [(ngModel)]="row[col.name]"
                             (ngModelChange)="onFieldChange()">
@@ -143,11 +156,24 @@
                         } @else if (col.dataType === 'Reference' && col.query) {
                           <bs-select
                             [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()">
+                            (ngModelChange)="onFieldChange()"
+                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
                             <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                             @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
                               <option [ngValue]="option.id">
                                 {{ option.breadcrumb || option.name || option.id }}
+                              </option>
+                            }
+                          </bs-select>
+                        } @else if (col.lookupReferenceType) {
+                          <bs-select
+                            [(ngModel)]="row[col.name]"
+                            (ngModelChange)="onFieldChange()"
+                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                            <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                            @for (option of getLookupOptions(col); track option.key) {
+                              <option [ngValue]="option.key">
+                                {{ option.values | resolveTranslation:option.key }}
                               </option>
                             }
                           </bs-select>
@@ -157,13 +183,17 @@
                             [(ngModel)]="row[col.name]"
                             [required]="col.isRequired"
                             [step]="col.dataType === 'decimal' ? '0.01' : '1'"
+                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
                             (ngModelChange)="onFieldChange()">
+                        }
+                        @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
+                          <div class="invalid-feedback d-block">{{ errorMsg }}</div>
                         }
                       </td>
                     }
                     <td class="text-nowrap">
                       @if (attr | canDeleteDetailRow:asDetailPermissions()) {
-                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, $index)">
+                        <button type="button" [color]="colors.secondary" (click)="removeArrayItem(attr, rowIndex)">
                           <spark-icon name="trash" />
                         </button>
                       }

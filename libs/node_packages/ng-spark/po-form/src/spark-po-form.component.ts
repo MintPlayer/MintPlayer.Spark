@@ -294,6 +294,17 @@ export class SparkPoFormComponent {
             );
             this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries) }));
           }
+
+          // Inline editing of LookupReference child columns needs their options loaded
+          // (keyed by lookup name in the shared lookupReferenceOptions, deduped).
+          const lookupCols = asDetailType.attributes.filter(a => a.lookupReferenceType);
+          for (const col of lookupCols) {
+            const lookupName = col.lookupReferenceType!;
+            if (!this.lookupReferenceOptions()[lookupName]) {
+              const ref = await this.sparkService.getLookupReference(lookupName);
+              this.lookupReferenceOptions.update(prev => ({ ...prev, [lookupName]: ref }));
+            }
+          }
         }
       }
     }
@@ -381,8 +392,43 @@ export class SparkPoFormComponent {
     };
   }
 
+  /** Edit-renderer for an inline AsDetail cell (so inline editing honors `col.renderer`, not just display). */
+  getAsDetailCellEditRenderer(col: EntityAttributeDefinition): Type<any> | null {
+    if (!col.renderer) return null;
+    return this.rendererRegistry.find(r => r.name === col.renderer)?.editComponent ?? null;
+  }
+
+  getAsDetailCellEditRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return {
+      value: row[col.name],
+      attribute: col,
+      options: col.rendererOptions,
+      valueChange: (newValue: any) => {
+        row[col.name] = newValue;
+        this.onFieldChange();
+      },
+    };
+  }
+
   hasError(attrName: string): boolean {
     return this.validationErrors().some(e => e.attributeName === attrName);
+  }
+
+  // Per-cell validation for inline AsDetail rows. Server-emitted errors are keyed by the
+  // path "{attr}[{rowIndex}].{col}"; the client surfaces them like top-level field errors.
+  private inlineErrorPath(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): string {
+    return `${attr.name}[${rowIndex}].${col.name}`;
+  }
+
+  hasInlineError(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): boolean {
+    const path = this.inlineErrorPath(attr, rowIndex, col);
+    return this.validationErrors().some(e => e.attributeName === path);
+  }
+
+  inlineErrorMessage(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): string | null {
+    const path = this.inlineErrorPath(attr, rowIndex, col);
+    const error = this.validationErrors().find(e => e.attributeName === path);
+    return error ? resolveTranslation(error.errorMessage) : null;
   }
 
   onFieldChange(): void {
