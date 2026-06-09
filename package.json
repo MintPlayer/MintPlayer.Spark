@@ -55,7 +55,7 @@
     "ng-packagr": "22.0.0",
     "nx": "22.6.5",
     "typescript": "6.0.3",
-    "vitest": "4.0.16"
+    "vitest": "4.1.8"
   },
   "overrides": {
     "@angular-devkit/build-angular": "22.0.0",
