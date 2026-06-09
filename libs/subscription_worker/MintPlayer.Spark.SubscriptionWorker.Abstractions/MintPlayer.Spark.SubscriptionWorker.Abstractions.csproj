@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SubscriptionWorker.Abstractions</PackageId>
-		<Version>10.0.0-preview.35</Version>
+		<Version>10.0.0-preview.38</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Public abstractions for MintPlayer.Spark.SubscriptionWorker: the SparkSubscriptionWorker&lt;T&gt; base class, RetryNumerator, options. Reference this from libraries that only need to DEFINE workers; reference the implementation package from hosts that register them.</Description>

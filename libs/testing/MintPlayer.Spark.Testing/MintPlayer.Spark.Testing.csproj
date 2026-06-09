@@ -15,7 +15,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>MintPlayer.Spark.Testing</PackageId>
-    <Version>10.0.0-preview.35</Version>
+    <Version>10.0.0-preview.38</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
     <Description>Test harness for writing integration tests against MintPlayer.Spark apps: an embedded RavenDB driver (SparkTestDriver), an in-memory Spark host factory (SparkEndpointFactory), an antiforgery-aware HTTP client, JSON fixture seeding, index helpers, and Verify snapshot defaults.</Description>
