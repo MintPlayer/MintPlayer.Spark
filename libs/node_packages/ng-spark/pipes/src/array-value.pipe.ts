@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { PersistentObject, nestedPoToDict } from '@mintplayer/ng-spark/models';
+import { PersistentObject, nestedPoToDisplayRow } from '@mintplayer/ng-spark/models';
 
 /**
  * Resolves an attribute to a list of flat row dicts for the detail-page table.
@@ -15,7 +15,7 @@ export class ArrayValuePipe implements PipeTransform {
     const attr = item?.attributes.find(a => a.name === attrName);
     if (!attr) return [];
     if (attr.dataType === 'AsDetail' && attr.isArray && Array.isArray(attr.objects)) {
-      return attr.objects.map(po => nestedPoToDict(po));
+      return attr.objects.map(po => nestedPoToDisplayRow(po));
     }
     if (Array.isArray(attr.value)) return attr.value;
     return [];
