@@ -113,6 +113,67 @@
               </button>
             </bs-input-group>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+            <!-- One source of truth for an inline cell, reused by the row and by the drag
+                 preview. The preview is a live Angular view (not a cloneNode), so its
+                 <bs-select> binds to row[col.name] and shows the value while dragging. -->
+            <ng-template #inlineDetailCell let-row="row" let-col="col" let-attr="attr" let-rowIndex="rowIndex">
+              <td>
+                @if (col.isReadOnly) {
+                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
+                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(row, col)"></ng-container>
+                } @else if (col.dataType === 'AsDetail') {
+                  <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
+                       where the recursive spark-po-form renders the nested structure. -->
+                  <div class="d-flex align-items-center gap-1">
+                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
+                      <spark-icon name="pencil" />
+                    </button>
+                  </div>
+                } @else if (col.dataType === 'boolean') {
+                  <bs-checkbox
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()">
+                  </bs-checkbox>
+                } @else if (col.dataType === 'Reference' && col.query) {
+                  <bs-select
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                    @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                      <option [ngValue]="option.id">
+                        {{ option.breadcrumb || option.name || option.id }}
+                      </option>
+                    }
+                  </bs-select>
+                } @else if (col.lookupReferenceType) {
+                  <bs-select
+                    [(ngModel)]="row[col.name]"
+                    (ngModelChange)="onFieldChange()"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                    @for (option of getLookupOptions(col); track option.key) {
+                      <option [ngValue]="option.key">
+                        {{ option.values | resolveTranslation:option.key }}
+                      </option>
+                    }
+                  </bs-select>
+                } @else {
+                  <input
+                    [type]="col.dataType | inputType"
+                    [(ngModel)]="row[col.name]"
+                    [required]="col.isRequired"
+                    [step]="col.dataType === 'decimal' ? '0.01' : '1'"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
+                    (ngModelChange)="onFieldChange()">
+                }
+                @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
+                  <div class="invalid-feedback d-block">{{ errorMsg }}</div>
+                }
+              </td>
+            </ng-template>
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -134,62 +195,7 @@
                       </td>
                     }
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                      <td>
-                        @if (col.isReadOnly) {
-                          <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
-                        } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
-                          <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(row, col)"></ng-container>
-                        } @else if (col.dataType === 'AsDetail') {
-                          <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
-                               where the recursive spark-po-form renders the nested structure. -->
-                          <div class="d-flex align-items-center gap-1">
-                            <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
-                              <spark-icon name="pencil" />
-                            </button>
-                          </div>
-                        } @else if (col.dataType === 'boolean') {
-                          <bs-checkbox
-                            [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()">
-                          </bs-checkbox>
-                        } @else if (col.dataType === 'Reference' && col.query) {
-                          <bs-select
-                            [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()"
-                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
-                            <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                            @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
-                              <option [ngValue]="option.id">
-                                {{ option.breadcrumb || option.name || option.id }}
-                              </option>
-                            }
-                          </bs-select>
-                        } @else if (col.lookupReferenceType) {
-                          <bs-select
-                            [(ngModel)]="row[col.name]"
-                            (ngModelChange)="onFieldChange()"
-                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
-                            <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                            @for (option of getLookupOptions(col); track option.key) {
-                              <option [ngValue]="option.key">
-                                {{ option.values | resolveTranslation:option.key }}
-                              </option>
-                            }
-                          </bs-select>
-                        } @else {
-                          <input
-                            [type]="col.dataType | inputType"
-                            [(ngModel)]="row[col.name]"
-                            [required]="col.isRequired"
-                            [step]="col.dataType === 'decimal' ? '0.01' : '1'"
-                            [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
-                            (ngModelChange)="onFieldChange()">
-                        }
-                        @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
-                          <div class="invalid-feedback d-block">{{ errorMsg }}</div>
-                        }
-                      </td>
+                      <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
                     }
                     <td class="text-nowrap">
                       @if (attr | canDeleteDetailRow:asDetailPermissions()) {
@@ -198,11 +204,26 @@
                         </button>
                       }
                     </td>
-                    <!-- Drag uses CDK's default clone for both the floating preview (the row with
-                         its controls, follows the cursor) and the in-grid placeholder. The
-                         placeholder clone keeps the dragged row's exact height; we make it
-                         visibility:hidden (see component styles) so the gap is blank but doesn't
-                         collapse and shift the other rows. -->
+
+                    <!-- Floating preview = a LIVE view of the row's cells (not CDK's cloneNode),
+                         so <bs-select> shows its value instead of blanking. The in-grid
+                         placeholder still uses CDK's default clone (exact row height) and is
+                         hidden via .cdk-drag-placeholder { visibility:hidden } in the styles,
+                         so the drop gap is blank without collapsing/shifting the other rows. -->
+                    <ng-template cdkDragPreview>
+                      <table class="table mb-0 bg-body shadow-sm spark-drag-preview">
+                        <tbody class="align-middle">
+                          <tr>
+                            @if (attr.isSortable) {
+                              <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
+                            }
+                            @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                              <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
+                            }
+                          </tr>
+                        </tbody>
+                      </table>
+                    </ng-template>
                   </tr>
                 } @empty {
                   <tr>
