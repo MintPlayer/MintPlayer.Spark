@@ -4,7 +4,7 @@
 - **Family:** #182 (custom renderers in AsDetail), #185 (reference breadcrumbs in AsDetail). Same theme — "AsDetail is the overlooked edit-surface."
 - **Origin:** MintPlayer.Web `Playlist.Tracks` (`List<PlaylistTrack>`) needs manual ordering and is best edited inline. This feature lets the app drop its hand-rolled drag renderer **and** its `PlaylistTrack.Index` field (order = array position).
 - **Scope note:** Per review, #187 now bundles **two** related deliverables in one PR: (A) drag-to-reorder via `[Sortable]`, and (B) closing the remaining inline-edit gaps so `editMode: "inline"` is feature-complete. The `editMode` default is **not** changed (modal stays the default; inline is opt-in).
-- **Status:** Draft
+- **Status:** Implemented on branch `feat/issue-187-sortable-inline` (pending PR). All tests green: `MintPlayer.Spark.Tests` 1003/1003, `@mintplayer/ng-spark` Vitest 205/205. See **As-built notes** at the end for how the implementation refined a few of the items below.
 
 ## Problem
 
@@ -93,9 +93,9 @@ public class PlaylistTrack            // Index removed — order is the array po
 **Inline-edit parity** (each asserted with `editMode: "inline"`)
 - **AC6 (LookupReference):** a `LookupReference` child column renders a select of lookup options inline and binds the chosen key into the row.
 - **AC7 (custom renderer):** a child column with a registered renderer renders its **edit** component inline (not a raw input).
-- **AC8 (nested AsDetail):** a nested-AsDetail child column is editable inline via the sub-modal escape hatch and persists.
+- **AC8 (nested AsDetail):** a nested-AsDetail child column is editable inline by escalating to the row modal (recursive form) and persists. *(See As-built.)*
 - **AC9 (read-only):** an `isReadOnly` child column is non-editable inline.
-- **AC10 (validation):** a required/invalid inline cell shows `[class.is-invalid]` + message and blocks save, keyed per row+column.
+- **AC10 (validation):** a server-reported invalid inline cell shows `[class.is-invalid]` + message, keyed per row+column (`"{attr}[{i}].{col}"`); native `[required]` applies client-side. *(Server-driven display — see As-built.)*
 
 **Cross-cutting**
 - **AC11 (permission/SSR):** no drag affordance and no editable inline inputs when the PO/attribute is read-only or the user lacks edit permission (reuse existing AsDetail gating). `cdkDropList` markup renders server-side without error (drag is browser-only).
@@ -116,3 +116,17 @@ public class PlaylistTrack            // Index removed — order is the array po
 **Manual** (per Angular/Spark guidance — **do not** run `ng serve`/`ng build`/`ng test`; the HR demo host runs the embedded dev server): edit a `Person` with multiple `Jobs` inline, drag to reorder, save, reload → order + edits persist.
 
 **Workflow:** ModelSynchronizer tests → red → `SortableAttribute` + `IsSortable` + synchronizer → green → CDK drag wiring (both branches) → inline gap-closures one at a time (each with its Vitest case) → demo annotation + model regen → manual check.
+
+## As-built notes (implementation, 2026-06-09)
+
+Implemented on `feat/issue-187-sortable-inline` (4 feature commits after the docs commit). The design held; a few items were refined during implementation:
+
+- **Drag gating reduces to `attr.isSortable`.** The AsDetail-array branches live inside `editableAttributes`, which already filters out `isReadOnly` attributes — so the attribute is editable by definition and AC11's "no drag when read-only" is satisfied upstream (no extra per-attribute gate needed). Drag is wired as `cdkDropList`/`cdkDrag` on every AsDetail-array table with `[cdkDropListDisabled]`/`[cdkDragDisabled]="!attr.isSortable"`, and the handle column is `@if (attr.isSortable)`. So a non-sortable table is **behaviorally** unchanged (no handle, no drag) — the only difference from before is inert `cdk-drop-list`/`cdk-drag` marker classes (refines AC3's "no drop list" to "no *active* drop list"). This keeps the cell template single-source for the B-work instead of duplicating it per sortable/non-sortable.
+- **Drag handle icon:** `grip-vertical` (resolves to Bootstrap Icons `bi-grip-vertical`, consistent with the existing `trash`/`pencil`/`plus`).
+- **AC8 nested-AsDetail (refined):** rather than a bespoke "sub-modal", a nested-AsDetail inline cell **escalates to the existing row modal** via `editArrayItem(attr, rowIndex)` — the modal already hosts a recursive `<spark-po-form>` that renders arbitrary nesting and loads its own nested types. Cleaner (zero new state) and handles single *and* array nested children uniformly.
+- **AC6 LookupReference:** `loadAsDetailTypes()` now also loads child-column lookups (deduped) into the shared `lookupReferenceOptions`; the inline cell reuses `getLookupOptions(col)`.
+- **AC10 validation (scope clarified):** consistent with how top-level fields work, per-cell errors are **server-driven display** — the client surfaces `validationErrors` entries keyed `"{attr}[{rowIndex}].{col}"` via `hasInlineError`/`inlineErrorMessage` (`is-invalid` + `invalid-feedback`); client-side blocking is just the native `[required]` attribute. There is no new client-side save-blocking mechanism (top-level fields don't have one either). The server emitting per-row-cell error paths is the remaining half, tracked for when nested validation is added server-side.
+- **`PersistentObjectAttribute` / its JSON converter untouched** (as decided) — the flag rides `EntityAttributeDefinition` (default STJ), so the model JSON round-trips with no converter edit.
+- **Tests:** 4 new `ModelSynchronizerTests` (set/absent/ignored/idempotent) + 9 new po-form Vitest cases (4 drag: reorder, no-op, handle-iff-sortable; 5 inline parity: B1 read-only render, B2 lookup load + resolve, B3 edit-renderer resolve + write-back + null, B5 error-path keying). Full suites green (1003 .NET, 205 Vitest).
+- **Demo (kept minimal):** `[Sortable]` on HR `Person.Jobs` only — regen added exactly one model-JSON line (`"isSortable": true`), no `isSortable: false` churn (the nullable `bool?` choice). `CarreerJob`'s columns (a `Reference` + two dates) exercise drag + inline Reference + inline date editing; B1–B5 are covered by Vitest rather than by gold-plating the demo entity.
+- **Outstanding:** manual browser verify (drag/save/reload in the HR demo); open PR; consumer adoption in `C:\Repos\MintPlayer` (drop `PlaylistTrack.Index`, annotate `Playlist.Tracks`).
