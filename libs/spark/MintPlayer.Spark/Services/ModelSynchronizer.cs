@@ -325,6 +325,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var referenceAttr = property.GetCachedCustomAttribute<ReferenceAttribute>();
             var lookupRefAttr = property.GetCachedCustomAttribute<LookupReferenceAttribute>();
+            var sortableAttr = property.GetCachedCustomAttribute<SortableAttribute>();
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
@@ -355,6 +356,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
 
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
+
+            // [Sortable] only takes effect on AsDetail arrays. Derived purely from the CLR
+            // shape (like IsArray), so it's always refreshed. Null (not false) for the
+            // non-sortable case keeps the flag absent from the model JSON.
+            bool? isSortable = sortableAttr != null && dataType == "AsDetail" && isArray ? true : null;
 
             // Auto-resolve query name for reference attributes when not explicitly specified
             string? resolvedQuery = referenceAttr?.Query;
@@ -397,6 +403,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // IsArray is derived purely from the CLR property shape, so always
                 // refresh it (covers Reference/scalar arrays, not just AsDetail).
                 existingAttr.IsArray = isArray;
+                existingAttr.IsSortable = isSortable;
 
                 if (dataType == "AsDetail")
                 {
@@ -441,6 +448,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
                     IsArray = isArray,
+                    IsSortable = isSortable,
                     LookupReferenceType = lookupReferenceType,
                     // Set InCollectionType/InQueryType flags only when projection type exists
                     InCollectionType = projectionType != null ? (inCollectionType ? null : false) : null,

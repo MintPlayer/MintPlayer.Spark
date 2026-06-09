@@ -80,6 +80,13 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public string? EditMode { get; set; }
     /// <summary>
+    /// For array AsDetail attributes, when true the rows can be drag-reordered in the
+    /// PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the synchronizer.
+    /// Null/absent for non-sortable attributes. Only meaningful when
+    /// <see cref="DataType"/> is "AsDetail" and <see cref="IsArray"/> is true.
+    /// </summary>
+    public bool? IsSortable { get; set; }
+    /// <summary>
     /// For LookupReference attributes, specifies the lookup reference type name.
     /// Example: "CarStatus", "CarBrand"
     /// </summary>

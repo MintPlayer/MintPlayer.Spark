@@ -346,6 +346,72 @@ describe('SparkPoFormComponent', () => {
     });
   });
 
+  describe('AsDetail drag-reorder ([Sortable])', () => {
+    const stepType: EntityType = {
+      id: 't-step',
+      name: 'Step',
+      clrType: 'Test.Step',
+      attributes: [attr({ id: 's-label', name: 'Label', order: 1 })],
+    };
+    const sortableParent = (isSortable: boolean): EntityType => ({
+      id: 't-parent',
+      name: 'Parent',
+      clrType: 'Test.Parent',
+      attributes: [
+        attr({
+          id: 'a-steps', name: 'Steps', dataType: 'AsDetail', isArray: true,
+          editMode: 'inline', asDetailType: 'Test.Step', isSortable, order: 1,
+        }),
+      ],
+    });
+
+    it('onAsDetailReorder moves a row to the new index in formData', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const steps = attr({ name: 'Steps', dataType: 'AsDetail', isArray: true, isSortable: true });
+      component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }, { Label: 'c' }] });
+
+      component.onAsDetailReorder(steps, { previousIndex: 2, currentIndex: 0 } as any);
+
+      expect(component.formData()['Steps'].map((r: any) => r.Label)).toEqual(['c', 'a', 'b']);
+    });
+
+    it('onAsDetailReorder is a no-op when the index is unchanged', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const steps = attr({ name: 'Steps', dataType: 'AsDetail', isArray: true, isSortable: true });
+      const before = [{ Label: 'a' }, { Label: 'b' }];
+      component.formData.set({ Steps: before });
+
+      component.onAsDetailReorder(steps, { previousIndex: 1, currentIndex: 1 } as any);
+
+      // Reference is untouched — no needless re-emit / change-flag.
+      expect(component.formData()['Steps']).toBe(before);
+    });
+
+    it('renders a drag handle per row when the AsDetail array is sortable', async () => {
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([sortableParent(true), stepType]),
+      });
+      component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }] });
+      await setEntityType(fixture, sortableParent(true));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.bi-grip-vertical').length).toBe(2);
+    });
+
+    it('renders no drag handle when the AsDetail array is not sortable', async () => {
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([sortableParent(false), stepType]),
+      });
+      component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }] });
+      await setEntityType(fixture, sortableParent(false));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.bi-grip-vertical').length).toBe(0);
+    });
+  });
+
   describe('outputs and helpers', () => {
     it('hasError returns true when validationErrors contain the given attribute', async () => {
       const { fixture, component } = createComponent();
