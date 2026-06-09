@@ -36,6 +36,45 @@ function attributeValueForForm(attr: PersistentObjectAttribute): any {
 }
 
 /**
+ * Reserved key under which {@link nestedPoToDisplayRow} stashes the server-resolved breadcrumb of
+ * each reference attribute (keyed by attribute name). Lets an AsDetail reference cell render the
+ * label the server already resolved by id — page-independent — instead of guessing from a single
+ * reference-query options page. Prefixed to avoid colliding with a real attribute name.
+ */
+export const AS_DETAIL_BREADCRUMBS_KEY = '__sparkBreadcrumbs';
+
+/**
+ * Like {@link nestedPoToDict}, but for the read-only detail display path. In addition to each
+ * attribute's value it preserves the server-resolved per-reference `breadcrumb` under
+ * {@link AS_DETAIL_BREADCRUMBS_KEY}, so an AsDetail reference cell can render the label by id
+ * regardless of whether the referenced document fits on the reference query's first options page.
+ * The form/edit path keeps using {@link nestedPoToDict}, which never carries breadcrumbs.
+ */
+export function nestedPoToDisplayRow(po: PersistentObject | null | undefined): Record<string, any> {
+  if (!po) return {};
+  const dict: Record<string, any> = {};
+  let breadcrumbs: Record<string, string> | undefined;
+  for (const attr of po.attributes ?? []) {
+    dict[attr.name] = displayValueForAttribute(attr);
+    if (attr.dataType === 'Reference' && !attr.isArray && typeof attr.breadcrumb === 'string' && attr.breadcrumb !== '') {
+      (breadcrumbs ??= {})[attr.name] = attr.breadcrumb;
+    }
+  }
+  // Only attach the side channel when something resolved — keeps reference-free rows (the common
+  // case) byte-for-byte identical to the plain flat dict.
+  if (breadcrumbs) dict[AS_DETAIL_BREADCRUMBS_KEY] = breadcrumbs;
+  return dict;
+}
+
+function displayValueForAttribute(attr: PersistentObjectAttribute): any {
+  if (attr.dataType === 'AsDetail') {
+    if (attr.isArray) return (attr.objects ?? []).map(po => nestedPoToDisplayRow(po));
+    return attr.object ? nestedPoToDisplayRow(attr.object) : null;
+  }
+  return attr.value;
+}
+
+/**
  * Builds a nested `PersistentObject` from a flat dict against the schema in
  * <paramref name="entityType"/>. Used when the form is about to save — AsDetail attributes
  * are no longer sent as flat dicts in `attribute.value`; the server now requires

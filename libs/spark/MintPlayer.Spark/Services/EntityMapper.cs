@@ -106,6 +106,10 @@ public interface IEntityMapper
 internal partial class EntityMapper : IEntityMapper
 {
     [Inject] private readonly IModelLoader modelLoader;
+    // Optional so the many test sites that construct `new EntityMapper(modelLoader)` keep compiling
+    // (the source generator gives a nullable [Inject] field a `= null` default). Only used to read
+    // the configured breadcrumb reference separator when rendering an embedded row's own breadcrumb.
+    [Inject] private readonly Configuration.SparkOptions? options;
 
     public T ToEntity<T>(PersistentObject persistentObject) where T : class
         => (T)ToEntity(persistentObject);
@@ -185,9 +189,17 @@ internal partial class EntityMapper : IEntityMapper
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
-        // Embedded AsDetail objects have no id and aren't in the result → fall back to the type name;
-        // the frontend renders nested AsDetail display from the breadcrumb template itself.
+        // Embedded AsDetail objects have no id and aren't keyed in the result → render their own
+        // [Breadcrumb] template in place, substituting the resolved breadcrumb for each reference
+        // token (the resolver descended into AsDetail children, so those targets are resolved).
         var breadcrumb = breadcrumbs?.Get(po.Id);
+        if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null && string.IsNullOrEmpty(po.Id))
+        {
+            var def = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
+            if (def is not null)
+                breadcrumb = EmbeddedBreadcrumbRenderer.Render(
+                    entity, def, breadcrumbs, options?.Breadcrumb.ReferenceSeparator ?? ", ");
+        }
         if (string.IsNullOrWhiteSpace(breadcrumb))
             breadcrumb = entityType.Name;
         po.Name = breadcrumb;

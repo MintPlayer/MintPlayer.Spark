@@ -17,7 +17,7 @@ import { ReferenceAttrValuePipe } from './reference-attr-value.pipe';
 import { ReferenceLinkRoutePipe } from './reference-link-route.pipe';
 import { ResolveTranslationPipe } from './resolve-translation.pipe';
 import { RouterLinkPipe } from './router-link.pipe';
-import { ELookupDisplayType } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_BREADCRUMBS_KEY, ELookupDisplayType } from '@mintplayer/ng-spark/models';
 
 // ---------------------------------------------------------------------------
 // arrayValue
@@ -101,6 +101,25 @@ describe('AsDetailCellValuePipe', () => {
       { name: 'Country', dataType: 'Reference', query: 'countries' } as any,
       { addr: { Country: [] } });
     expect(result).toBe('XX');
+  });
+
+  it('prefers the server breadcrumb over the options page (issue #185)', () => {
+    // The id is NOT on the options page, but the server resolved it by id — must still render.
+    const result = pipe.transform(
+      { ArtistId: 'Artists/40', [AS_DETAIL_BREADCRUMBS_KEY]: { ArtistId: 'Logic' } },
+      { name: 'Artists' } as any,
+      { name: 'ArtistId', dataType: 'Reference', query: 'GetArtists' } as any,
+      { Artists: { ArtistId: [{ id: 'Artists/41', breadcrumb: 'Alessia Cara', name: 'Artists/41' } as any] } });
+    expect(result).toBe('Logic');
+  });
+
+  it('still uses the options page when no server breadcrumb is present', () => {
+    const result = pipe.transform(
+      { ArtistId: 'Artists/41', [AS_DETAIL_BREADCRUMBS_KEY]: {} },
+      { name: 'Artists' } as any,
+      { name: 'ArtistId', dataType: 'Reference', query: 'GetArtists' } as any,
+      { Artists: { ArtistId: [{ id: 'Artists/41', breadcrumb: 'Alessia Cara', name: 'Artists/41' } as any] } });
+    expect(result).toBe('Alessia Cara');
   });
 });
 

@@ -22,6 +22,22 @@ public class BreadcrumbResolverTests : SparkTestDriver
     public class BR_Post { public string? Id { get; set; } public string Title { get; set; } = ""; public List<string> TagIds { get; set; } = []; }
     public class BR_Tag { public string? Id { get; set; } public string Name { get; set; } = ""; }
     public class BR_VPerson { public string? Id { get; set; } public string FullName { get; set; } = ""; }
+    // AsDetail shapes (#185): a collection root with an embedded array whose children reference a collection.
+    public class BR_Artist { public string? Id { get; set; } public string Name { get; set; } = ""; }
+    public class BR_SongArtist { public string? ArtistId { get; set; } }
+    public class BR_Song { public string? Id { get; set; } public string Title { get; set; } = ""; public List<BR_SongArtist> Artists { get; set; } = []; }
+    // Nested AsDetail-within-AsDetail: Person -> Jobs[] -> Certifications[] -> Issuer (a collection).
+    public class BR_Issuer { public string? Id { get; set; } public string Name { get; set; } = ""; }
+    public class BR_Certification { public string? IssuerId { get; set; } }
+    public class BR_Job { public List<BR_Certification> Certifications { get; set; } = []; }
+    public class BR_Employee { public string? Id { get; set; } public string Name { get; set; } = ""; public List<BR_Job> Jobs { get; set; } = []; }
+    // An AsDetail-nested reference whose target's OWN breadcrumb itself contains a reference.
+    public class BR_Country { public string? Id { get; set; } public string Name { get; set; } = ""; }
+    public class BR_Label { public string? Id { get; set; } public string Name { get; set; } = ""; public string? CountryId { get; set; } }
+    public class BR_Credit { public string? LabelId { get; set; } }
+    public class BR_Release { public string? Id { get; set; } public string Title { get; set; } = ""; public List<BR_Credit> Credits { get; set; } = []; }
+    // A SINGLE (non-array) embedded AsDetail whose reference must also resolve.
+    public class BR_Band { public string? Id { get; set; } public string Name { get; set; } = ""; public BR_SongArtist? Leader { get; set; } }
 
     // --- model builders ---
     private static EntityAttributeDefinition Scalar(string name) =>
@@ -30,6 +46,10 @@ public class BreadcrumbResolverTests : SparkTestDriver
         new() { Id = Guid.NewGuid(), Name = name, DataType = "Reference", ReferenceType = target.FullName, IsArray = isArray };
     private static EntityTypeDefinition Def(Type clr, string breadcrumb, bool? satisfiable, params EntityAttributeDefinition[] attrs) =>
         new() { Id = Guid.NewGuid(), Name = clr.Name, ClrType = clr.FullName!, Breadcrumb = breadcrumb, BreadcrumbProjectionSatisfiable = satisfiable, Attributes = attrs };
+    private static EntityAttributeDefinition AsDetailArr(string name, Type child) =>
+        new() { Id = Guid.NewGuid(), Name = name, DataType = "AsDetail", AsDetailType = child.FullName, IsArray = true };
+    private static EntityAttributeDefinition AsDetailSingle(string name, Type child) =>
+        new() { Id = Guid.NewGuid(), Name = name, DataType = "AsDetail", AsDetailType = child.FullName, IsArray = false };
 
     private static (IBreadcrumbResolver resolver, IRowSecurity rowSecurity) Build(params EntityTypeDefinition[] defs)
         => Build(new SparkOptions(), defs);
@@ -323,5 +343,141 @@ public class BreadcrumbResolverTests : SparkTestDriver
         // First level expands the self-reference once; the re-entry suppresses further expansion
         // (the inner {Manager} contributes empty), so we terminate.
         crumb.Should().StartWith("Self (mgr: Self (mgr: ");
+    }
+
+    // --- #185: references nested inside embedded AsDetail children of the roots ---
+
+    [Fact]
+    public async Task AsDetail_child_references_are_resolved_for_roots_regardless_of_options_page()
+    {
+        // A Song with an AsDetail array of credited artists; each credit references an Artist.
+        // The resolver loads referenced docs BY ID, so page membership of any options query is
+        // irrelevant — every credited artist must resolve, including ones that would sort onto a
+        // later options page (the #185 repro: Songs/43 credits artists/40, /41, /42).
+        using (var seed = Store.OpenAsyncSession())
+        {
+            for (var i = 0; i < 50; i++)
+                await seed.StoreAsync(new BR_Artist { Name = $"Artist{i}" }, $"artists/{i}");
+            await seed.StoreAsync(new BR_Song
+            {
+                Title = "1-800-273-8255",
+                Artists =
+                [
+                    new BR_SongArtist { ArtistId = "artists/40" },
+                    new BR_SongArtist { ArtistId = "artists/41" },
+                    new BR_SongArtist { ArtistId = "artists/42" },
+                ],
+            }, "songs/43");
+            await seed.SaveChangesAsync();
+        }
+
+        var artist = Def(typeof(BR_Artist), "{Name}", null, Scalar("Name"));
+        var songArtist = Def(typeof(BR_SongArtist), "{ArtistId}", null, Ref("ArtistId", typeof(BR_Artist)));
+        var song = Def(typeof(BR_Song), "{Title}", null, Scalar("Title"), AsDetailArr("Artists", typeof(BR_SongArtist)));
+        var (resolver, _) = Build(artist, songArtist, song);
+
+        using var session = Store.OpenAsyncSession();
+        var songEntity = await session.LoadAsync<BR_Song>("songs/43");
+
+        var before = session.Advanced.NumberOfRequests;
+        var result = await resolver.ResolveAsync(session, [songEntity], song);
+        var added = session.Advanced.NumberOfRequests - before;
+
+        result.Get("artists/40").Should().Be("Artist40");
+        result.Get("artists/41").Should().Be("Artist41");
+        result.Get("artists/42").Should().Be("Artist42");
+        added.Should().Be(1, "the AsDetail-nested references load in one batched level — O(depth), not O(rows)");
+    }
+
+    [Fact]
+    public async Task AsDetail_descent_is_recursive_through_nested_AsDetail()
+    {
+        // Employee -> Jobs[] (AsDetail) -> Certifications[] (AsDetail) -> IssuerId (Reference).
+        // The deepest reference, two AsDetail levels down, must still resolve.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Issuer { Name = "Microsoft" }, "issuers/1");
+            await seed.StoreAsync(new BR_Issuer { Name = "Google" }, "issuers/2");
+            await seed.StoreAsync(new BR_Employee
+            {
+                Name = "Ada",
+                Jobs =
+                [
+                    new BR_Job { Certifications = [new BR_Certification { IssuerId = "issuers/1" }] },
+                    new BR_Job { Certifications = [new BR_Certification { IssuerId = "issuers/2" }] },
+                ],
+            }, "employees/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var issuer = Def(typeof(BR_Issuer), "{Name}", null, Scalar("Name"));
+        var cert = Def(typeof(BR_Certification), "{IssuerId}", null, Ref("IssuerId", typeof(BR_Issuer)));
+        var job = Def(typeof(BR_Job), "", null, AsDetailArr("Certifications", typeof(BR_Certification)));
+        var employee = Def(typeof(BR_Employee), "{Name}", null, Scalar("Name"), AsDetailArr("Jobs", typeof(BR_Job)));
+        var (resolver, _) = Build(issuer, cert, job, employee);
+
+        using var session = Store.OpenAsyncSession();
+        var employeeEntity = await session.LoadAsync<BR_Employee>("employees/1");
+
+        var result = await resolver.ResolveAsync(session, [employeeEntity], employee);
+
+        result.Get("issuers/1").Should().Be("Microsoft");
+        result.Get("issuers/2").Should().Be("Google");
+    }
+
+    [Fact]
+    public async Task AsDetail_nested_reference_renders_the_targets_own_recursive_breadcrumb()
+    {
+        // The embedded credit's breadcrumb token {LabelId} points to a reference attribute, so it
+        // must render the Label's OWN breadcrumb — which itself contains a reference ({CountryId}).
+        // i.e. a breadcrumb token pointing to a reference renders that reference's breadcrumb,
+        // recursively, even two AsDetail levels removed from the root.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Country { Name = "Japan" }, "countries/1");
+            await seed.StoreAsync(new BR_Label { Name = "Sony", CountryId = "countries/1" }, "labels/1");
+            await seed.StoreAsync(new BR_Release { Title = "Thriller", Credits = [new BR_Credit { LabelId = "labels/1" }] }, "releases/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var country = Def(typeof(BR_Country), "{Name}", null, Scalar("Name"));
+        var label = Def(typeof(BR_Label), "{Name} ({CountryId})", null, Scalar("Name"), Ref("CountryId", typeof(BR_Country)));
+        var credit = Def(typeof(BR_Credit), "{LabelId}", null, Ref("LabelId", typeof(BR_Label)));
+        var release = Def(typeof(BR_Release), "{Title}", null, Scalar("Title"), AsDetailArr("Credits", typeof(BR_Credit)));
+        var (resolver, _) = Build(country, label, credit, release);
+
+        using var session = Store.OpenAsyncSession();
+        var releaseEntity = await session.LoadAsync<BR_Release>("releases/1");
+
+        var result = await resolver.ResolveAsync(session, [releaseEntity], release);
+
+        result.Get("labels/1").Should().Be("Sony (Japan)", "the AsDetail-nested reference renders the label's full breadcrumb, which itself expands {CountryId}");
+        result.Get("countries/1").Should().Be("Japan");
+    }
+
+    [Fact]
+    public async Task Single_non_array_AsDetail_reference_resolves_and_null_embedded_is_skipped()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            for (var i = 0; i < 3; i++)
+                await seed.StoreAsync(new BR_Artist { Name = $"Artist{i}" }, $"artists/{i}");
+            await seed.StoreAsync(new BR_Band { Name = "Queen", Leader = new BR_SongArtist { ArtistId = "artists/2" } }, "bands/1");
+            await seed.StoreAsync(new BR_Band { Name = "Solo", Leader = null }, "bands/2"); // null embedded → skipped, no crash
+            await seed.SaveChangesAsync();
+        }
+
+        var artist = Def(typeof(BR_Artist), "{Name}", null, Scalar("Name"));
+        var songArtist = Def(typeof(BR_SongArtist), "{ArtistId}", null, Ref("ArtistId", typeof(BR_Artist)));
+        var band = Def(typeof(BR_Band), "{Name}", null, Scalar("Name"), AsDetailSingle("Leader", typeof(BR_SongArtist)));
+        var (resolver, _) = Build(artist, songArtist, band);
+
+        using var session = Store.OpenAsyncSession();
+        var bands = (await session.LoadAsync<BR_Band>(["bands/1", "bands/2"])).Values.Where(b => b is not null).Cast<object>().ToList();
+
+        var result = await resolver.ResolveAsync(session, bands, band);
+
+        result.Get("artists/2").Should().Be("Artist2");
+        result.Get("bands/2").Should().Be("Solo");
     }
 }

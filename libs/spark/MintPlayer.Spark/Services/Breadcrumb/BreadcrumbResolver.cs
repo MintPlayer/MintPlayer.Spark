@@ -94,13 +94,20 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                 var entity = renderEntity[id];
 
                 // Roots (depth 1) follow EVERY reference attribute — each one needs a display label
-                // on the returned PO. Deeper levels follow only the breadcrumb-template references,
-                // since a referenced entity is represented solely by its breadcrumb string.
-                var references = depth == 1 ? GetAllReferences(def) : closure.GetReferences(def);
-                foreach (var reference in references)
-                    foreach (var refId in ExtractIds(entity, reference.AttributeName))
-                        if (!renderEntity.ContainsKey(refId) && !denied.Contains(refId) && neededSet.Add(refId))
-                            needed.Add(refId);
+                // on the returned PO — AND descend into embedded AsDetail children, whose reference
+                // cells are materialized on the PO too and need the same label. Deeper levels follow
+                // only the breadcrumb-template references, since a referenced entity is represented
+                // solely by its breadcrumb string.
+                var collected = new List<string>();
+                if (depth == 1)
+                    CollectRootReferenceIds(entity, def, collected);
+                else
+                    foreach (var reference in closure.GetReferences(def))
+                        collected.AddRange(ExtractIds(entity, reference.AttributeName));
+
+                foreach (var refId in collected)
+                    if (!renderEntity.ContainsKey(refId) && !denied.Contains(refId) && neededSet.Add(refId))
+                        needed.Add(refId);
             }
 
             if (needed.Count == 0) break;
@@ -204,6 +211,50 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             .Where(a => a.DataType == "Reference" && !string.IsNullOrEmpty(a.ReferenceType))
             .Select(a => new BreadcrumbReference(a.Name, a.ReferenceType!, a.IsArray))
             .ToList();
+
+    /// <summary>
+    /// Collects every referenced document id reachable from a root entity for display: its own
+    /// <c>[Reference]</c> attributes plus, recursively, the references nested inside its embedded
+    /// AsDetail children. Those embedded rows are materialized as PersistentObjects on the returned
+    /// PO (<c>EntityMapper.PopulateAsDetail</c>), so each of their reference cells needs a resolved
+    /// breadcrumb exactly like a top-level reference column. AsDetail children are embedded objects
+    /// (a finite document tree, never cyclic), so the recursion is bounded by the document shape.
+    /// </summary>
+    private void CollectRootReferenceIds(object entity, EntityTypeDefinition def, List<string> into)
+    {
+        foreach (var reference in GetAllReferences(def))
+            into.AddRange(ExtractIds(entity, reference.AttributeName));
+
+        foreach (var attr in def.Attributes)
+        {
+            if (attr.DataType != "AsDetail" || string.IsNullOrEmpty(attr.AsDetailType))
+                continue;
+            var childDef = modelLoader.GetEntityTypeByClrType(attr.AsDetailType);
+            if (childDef is null)
+                continue;
+            foreach (var child in ReadChildren(entity, attr.Name))
+                CollectRootReferenceIds(child, childDef, into);
+        }
+    }
+
+    /// <summary>Yields the embedded AsDetail child object(s) of a property — the single value, or
+    /// each non-null element of the collection (an AsDetail value is never a bare string).</summary>
+    private static IEnumerable<object> ReadChildren(object entity, string propertyName)
+    {
+        var value = ReadValue(entity, propertyName);
+        switch (value)
+        {
+            case null or string:
+                yield break;
+            case IEnumerable enumerable:
+                foreach (var item in enumerable)
+                    if (item is not null) yield return item;
+                yield break;
+            default:
+                yield return value;
+                yield break;
+        }
+    }
 
     private static string GetId(object entity)
         => ReadValue(entity, "Id")?.ToString() ?? string.Empty;
