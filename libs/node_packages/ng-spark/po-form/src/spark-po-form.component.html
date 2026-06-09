@@ -198,6 +198,11 @@
                         </button>
                       }
                     </td>
+                    <!-- Drag uses CDK's default clone for both the floating preview (the row with
+                         its controls, follows the cursor) and the in-grid placeholder. The
+                         placeholder clone keeps the dragged row's exact height; we make it
+                         visibility:hidden (see component styles) so the gap is blank but doesn't
+                         collapse and shift the other rows. -->
                   </tr>
                 } @empty {
                   <tr>

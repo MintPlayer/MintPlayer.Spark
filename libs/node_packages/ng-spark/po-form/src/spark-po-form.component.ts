@@ -59,6 +59,10 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
   selector: 'spark-po-form',
   imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
+  // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
+  // height). Hide its contents but keep it occupying space, so the drop gap is blank and
+  // the surrounding rows don't shift. ::ng-deep because the cloned node is styled by CDK.
+  styles: [`:host ::ng-deep .cdk-drag-placeholder { visibility: hidden; }`],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoFormComponent {
