@@ -51,7 +51,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     # No host .NET/Node setup needed: the Dockerfile's `build` stage runs
     # `dotnet restore`, `npm ci`, `nx run @spark-demo/webhooks-demo:build`,
@@ -59,10 +59,10 @@ jobs:
     # already gated upstream by `pull-request.yml` (pre-merge) and
     # `dotnet-build-master.yml` (post-merge, runs in parallel with this job).
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
 
     - name: Authenticate with GHCR
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -70,7 +70,7 @@ jobs:
 
     - name: Extract tags/labels
       id: meta-ghcr
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         github-token: ${{ github.token }}
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -81,7 +81,7 @@ jobs:
     # replayed from a cache entry. See docs/guide-nx-remote-cache.md.
     - name: Build and push Docker image
       id: push-ghcr
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: ./Demo/WebhooksDemo/WebhooksDemo/Dockerfile
@@ -92,7 +92,7 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Generate artifact attestation
-      uses: actions/attest-build-provenance@v1
+      uses: actions/attest-build-provenance@v4
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         subject-digest: ${{ steps.push-ghcr.outputs.digest }}
@@ -111,7 +111,7 @@ jobs:
 
     steps:
     - name: Deploy to VPS
-      uses: appleboy/ssh-action@v1.0.0
+      uses: appleboy/ssh-action@v1.2.5
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
