@@ -34,7 +34,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
 		<PackageReference Include="NCrontab" Version="3.3.3" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.1" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.3" />
 	</ItemGroup>
 
 	<ItemGroup>
