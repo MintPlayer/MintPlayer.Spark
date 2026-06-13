@@ -35,7 +35,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.1" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.3" />
 	</ItemGroup>
 
 	<!-- Global usings required by the MintPlayer.AspNetCore.Endpoints source generator output -->
