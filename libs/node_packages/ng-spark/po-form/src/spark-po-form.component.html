@@ -56,21 +56,14 @@
             </bs-checkbox>
           } @else if (attr.lookupReferenceType) {
             @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
-              <bs-input-group>
-                <input
-                  type="text"
-                  [id]="attr.name"
-                  [value]="attr | lookupDisplayValue:formData():lookupReferenceOptions()"
-                  readonly
-                  [class.is-invalid]="hasError(attr.name)">
-                <button
-                  type="button"
-                  bsInputGroupBtn
-                  [color]="colors.secondary"
-                  (click)="openLookupSelector(attr)">
-                  ...
-                </button>
-              </bs-input-group>
+              <spark-lookup-picker
+                [value]="formData()[attr.name]"
+                [options]="getLookupOptions(attr)"
+                [inputId]="attr.name"
+                [title]="attr.label | resolveTranslation:attr.name"
+                [isInvalid]="hasError(attr.name)"
+                (valueChange)="onLookupValueChange(attr, $event)">
+              </spark-lookup-picker>
             } @else {
               <bs-select
                 [ngModel]="formData()[attr.name]"
@@ -97,21 +90,15 @@
               [ngModelOptions]="{ standalone: true }">
             </bs-tree-select>
           } @else if (attr.dataType === 'Reference') {
-            <bs-input-group>
-              <input
-                type="text"
-                [id]="attr.name"
-                [value]="attr | referenceDisplayValue:formData():referenceOptions()"
-                readonly
-                [class.is-invalid]="hasError(attr.name)">
-              <button
-                type="button"
-                bsInputGroupBtn
-                [color]="colors.secondary"
-                (click)="openReferenceSelector(attr)">
-                ...
-              </button>
-            </bs-input-group>
+            <spark-reference-picker
+              [value]="formData()[attr.name]"
+              [options]="referenceOptions()[attr.name] || []"
+              [referenceType]="attr.referenceType"
+              [inputId]="attr.name"
+              [title]="attr.label | resolveTranslation:attr.name"
+              [isInvalid]="hasError(attr.name)"
+              (valueChange)="onReferenceValueChange(attr, $event)">
+            </spark-reference-picker>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
             <!-- One source of truth for an inline cell, reused by the row and by the drag
                  preview. The preview is a live Angular view (not a cloneNode), so its
@@ -137,29 +124,50 @@
                     (ngModelChange)="onFieldChange()">
                   </bs-checkbox>
                 } @else if (col.dataType === 'Reference' && col.query) {
-                  <bs-select
-                    [(ngModel)]="row[col.name]"
-                    (ngModelChange)="onFieldChange()"
-                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
-                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                    @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
-                      <option [ngValue]="option.id">
-                        {{ option.breadcrumb || option.name || option.id }}
-                      </option>
-                    }
-                  </bs-select>
+                  @if (col.referenceDisplayType === EReferenceDisplayType.Modal) {
+                    <spark-reference-picker
+                      [value]="row[col.name]"
+                      [options]="(attr | inlineRefOptions:col:asDetailReferenceOptions())"
+                      [referenceType]="col.referenceType"
+                      [title]="col.label | resolveTranslation:col.name"
+                      [isInvalid]="hasInlineError(attr, rowIndex, col)"
+                      (valueChange)="row[col.name] = $event; onFieldChange()">
+                    </spark-reference-picker>
+                  } @else {
+                    <bs-select
+                      [(ngModel)]="row[col.name]"
+                      (ngModelChange)="onFieldChange()"
+                      [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                      <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                      @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                        <option [ngValue]="option.id">
+                          {{ option.breadcrumb || option.name || option.id }}
+                        </option>
+                      }
+                    </bs-select>
+                  }
                 } @else if (col.lookupReferenceType) {
-                  <bs-select
-                    [(ngModel)]="row[col.name]"
-                    (ngModelChange)="onFieldChange()"
-                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
-                    <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                    @for (option of getLookupOptions(col); track option.key) {
-                      <option [ngValue]="option.key">
-                        {{ option.values | resolveTranslation:option.key }}
-                      </option>
-                    }
-                  </bs-select>
+                  @if ((col | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
+                    <spark-lookup-picker
+                      [value]="row[col.name]"
+                      [options]="getLookupOptions(col)"
+                      [title]="col.label | resolveTranslation:col.name"
+                      [isInvalid]="hasInlineError(attr, rowIndex, col)"
+                      (valueChange)="row[col.name] = $event; onFieldChange()">
+                    </spark-lookup-picker>
+                  } @else {
+                    <bs-select
+                      [(ngModel)]="row[col.name]"
+                      (ngModelChange)="onFieldChange()"
+                      [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
+                      <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
+                      @for (option of getLookupOptions(col); track option.key) {
+                        <option [ngValue]="option.key">
+                          {{ option.values | resolveTranslation:option.key }}
+                        </option>
+                      }
+                    </bs-select>
+                  }
                 } @else {
                   <input
                     [type]="col.dataType | inputType"
@@ -370,136 +378,6 @@
     <div bsModalFooter>
       <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'common.cancel' | t }}</button>
       <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'common.save' | t }}</button>
-    </div>
-  </div>
-</bs-modal>
-
-<!-- Modal for selecting Reference items -->
-<bs-modal [isOpen]="showReferenceModal()" (isOpenChange)="!$event && closeReferenceModal()">
-  <div *bsModal class="reference-modal">
-    <div bsModalHeader>
-      <h5 class="modal-title">{{ 'common.select' | t }} {{ editingReferenceAttr()?.label | resolveTranslation:editingReferenceAttr()?.name }}</h5>
-    </div>
-
-    <div bsModalBody>
-      @if (referenceModalEntityType()) {
-        <!-- Search box -->
-        <bs-grid>
-          <div bsRow class="mb-3">
-            <div [md]="6">
-              <bs-input-group>
-                <span class="input-group-text">
-                  <spark-icon name="search" />
-                </span>
-                <input
-                  type="text"
-                  [placeholder]="'common.search' | t"
-                  [(ngModel)]="referenceSearchTerm"
-                  (ngModelChange)="onReferenceSearchChange()">
-                @if (referenceSearchTerm) {
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary"
-                    (click)="clearReferenceSearch()">
-                    <spark-icon name="x-lg" />
-                  </button>
-                }
-              </bs-input-group>
-            </div>
-            <div [md]="6" class="text-end">
-              @if (referenceSearchTerm && referenceModalPagination()) {
-                <span class="text-muted">
-                  {{ referenceModalPagination()!.totalRecords }} {{ referenceModalPagination()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
-                </span>
-              }
-            </div>
-          </div>
-        </bs-grid>
-
-        <bs-datatable
-          [(settings)]="referenceModalSettings"
-          [data]="referenceModalRows()"
-          (rowClick)="selectReferenceItem($event.row)">
-          @for (attr of referenceVisibleAttributes(); track attr.id) {
-            <div *bsDatatableColumn="attr.name; sortable: true">
-              {{ attr.label | resolveTranslation:attr.name }}
-            </div>
-          }
-
-          <ng-container *bsRowTemplate="let item">
-            @for (attr of referenceVisibleAttributes(); track attr.id) {
-              <td>{{ $any(item) | referenceAttrValue:attr.name }}</td>
-            }
-          </ng-container>
-        </bs-datatable>
-      } @else {
-        <div class="text-center p-3">
-          <bs-spinner />
-        </div>
-      }
-    </div>
-
-    <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeReferenceModal()">{{ 'common.cancel' | t }}</button>
-    </div>
-  </div>
-</bs-modal>
-
-<!-- Modal for selecting LookupReference items -->
-<bs-modal [isOpen]="showLookupModal()" (isOpenChange)="!$event && closeLookupModal()">
-  <div *bsModal>
-    <div bsModalHeader>
-      <h5 class="modal-title">{{ 'common.select' | t }} {{ editingLookupAttr()?.label | resolveTranslation:editingLookupAttr()?.name }}</h5>
-    </div>
-
-    <div bsModalBody>
-      <!-- Search box -->
-      <bs-grid>
-        <div bsRow class="mb-3">
-          <div [col]>
-            <bs-input-group>
-              <span class="input-group-text">
-                <spark-icon name="search" />
-              </span>
-              <input
-                type="text"
-                [placeholder]="'common.search' | t"
-                [ngModel]="lookupSearchTerm()"
-                (ngModelChange)="lookupSearchTerm.set($event)">
-              @if (lookupSearchTerm()) {
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  (click)="lookupSearchTerm.set('')">
-                  <spark-icon name="x-lg" />
-                </button>
-              }
-            </bs-input-group>
-          </div>
-        </div>
-      </bs-grid>
-
-      <!-- List of items -->
-      <bs-table [striped]="true" [hover]="true">
-        <tbody class="align-middle">
-          @for (item of filteredLookupItems(); track item.key) {
-            <tr
-              [class.table-primary]="formData()[editingLookupAttr()?.name ?? ''] === item.key"
-              (click)="selectLookupItem(item)"
-              style="cursor: pointer;">
-              <td>{{ item.values | resolveTranslation:item.key }}</td>
-            </tr>
-          } @empty {
-            <tr>
-              <td class="text-center text-muted">{{ 'common.noItemsFound' | t }}</td>
-            </tr>
-          }
-        </tbody>
-      </bs-table>
-    </div>
-
-    <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeLookupModal()">{{ 'common.cancel' | t }}</button>
     </div>
   </div>
 </bs-modal>

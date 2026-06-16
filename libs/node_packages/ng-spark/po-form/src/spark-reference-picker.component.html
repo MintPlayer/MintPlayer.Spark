@@ -1,0 +1,89 @@
+<bs-input-group>
+  <input
+    type="text"
+    [id]="inputId()"
+    [value]="displayValue()"
+    readonly
+    [class.is-invalid]="isInvalid()">
+  <button
+    type="button"
+    bsInputGroupBtn
+    [color]="colors.secondary"
+    (click)="open()">
+    ...
+  </button>
+</bs-input-group>
+
+<bs-modal [isOpen]="showModal()" (isOpenChange)="!$event && close()">
+  <div *bsModal class="reference-modal">
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'common.select' | t }} {{ title() }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <!-- bs-modal portals its content into a CDK overlay outside the host form, so the
+           modal needs its own <bs-form> context for inputs to pick up .form-control styles. -->
+      <bs-form>
+      @if (entityType()) {
+        <!-- Search box -->
+        <bs-grid>
+          <div bsRow class="mb-3">
+            <div [md]="6">
+              <bs-input-group>
+                <span class="input-group-text">
+                  <spark-icon name="search" />
+                </span>
+                <input
+                  type="text"
+                  [placeholder]="'common.search' | t"
+                  [(ngModel)]="searchTerm"
+                  (ngModelChange)="onSearchChange()">
+                @if (searchTerm) {
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="clearSearch()">
+                    <spark-icon name="x-lg" />
+                  </button>
+                }
+              </bs-input-group>
+            </div>
+            <div [md]="6" class="text-end">
+              @if (searchTerm && pagination()) {
+                <span class="text-muted">
+                  {{ pagination()!.totalRecords }} {{ pagination()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
+                </span>
+              }
+            </div>
+          </div>
+        </bs-grid>
+
+        <bs-datatable
+          [(settings)]="settings"
+          [data]="rows()"
+          (rowClick)="select($event.row)">
+          @for (attr of visibleAttributes(); track attr.id) {
+            <div *bsDatatableColumn="attr.name; sortable: true">
+              {{ attr.label | resolveTranslation:attr.name }}
+            </div>
+          }
+
+          <ng-container *bsRowTemplate="let item">
+            @for (attr of visibleAttributes(); track attr.id) {
+              <td>{{ $any(item) | referenceAttrValue:attr.name }}</td>
+            }
+          </ng-container>
+        </bs-datatable>
+      } @else {
+        <div class="text-center p-3">
+          <bs-spinner />
+        </div>
+      }
+      </bs-form>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
+    </div>
+  </div>
+</bs-modal>

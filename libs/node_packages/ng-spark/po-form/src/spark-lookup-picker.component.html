@@ -1,0 +1,77 @@
+<bs-input-group>
+  <input
+    type="text"
+    [id]="inputId()"
+    [value]="displayValue()"
+    readonly
+    [class.is-invalid]="isInvalid()">
+  <button
+    type="button"
+    bsInputGroupBtn
+    [color]="colors.secondary"
+    (click)="open()">
+    ...
+  </button>
+</bs-input-group>
+
+<bs-modal [isOpen]="showModal()" (isOpenChange)="!$event && close()">
+  <div *bsModal>
+    <div bsModalHeader>
+      <h5 class="modal-title">{{ 'common.select' | t }} {{ title() }}</h5>
+    </div>
+
+    <div bsModalBody>
+      <!-- bs-modal portals its content into a CDK overlay outside the host form, so the
+           modal needs its own <bs-form> context for inputs to pick up .form-control styles. -->
+      <bs-form>
+      <!-- Search box -->
+      <bs-grid>
+        <div bsRow class="mb-3">
+          <div [col]>
+            <bs-input-group>
+              <span class="input-group-text">
+                <spark-icon name="search" />
+              </span>
+              <input
+                type="text"
+                [placeholder]="'common.search' | t"
+                [ngModel]="searchTerm()"
+                (ngModelChange)="searchTerm.set($event)">
+              @if (searchTerm()) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  (click)="searchTerm.set('')">
+                  <spark-icon name="x-lg" />
+                </button>
+              }
+            </bs-input-group>
+          </div>
+        </div>
+      </bs-grid>
+
+      <!-- List of items -->
+      <bs-table [striped]="true" [hover]="true">
+        <tbody class="align-middle">
+          @for (item of filteredItems(); track item.key) {
+            <tr
+              [class.table-primary]="value() === item.key"
+              (click)="select(item)"
+              style="cursor: pointer;">
+              <td>{{ item.values | resolveTranslation:item.key }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="text-center text-muted">{{ 'common.noItemsFound' | t }}</td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
+      </bs-form>
+    </div>
+
+    <div bsModalFooter>
+      <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
+    </div>
+  </div>
+</bs-modal>

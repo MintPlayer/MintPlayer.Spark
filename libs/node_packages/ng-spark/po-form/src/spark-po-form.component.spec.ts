@@ -8,6 +8,7 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
   EntityAttributeDefinition,
   EntityType,
+  EReferenceDisplayType,
   LookupReference,
   LookupReferenceValue,
   PersistentObject,
@@ -60,7 +61,7 @@ const allCompanies: PersistentObject[] = [
 const rolesLookup: LookupReference = {
   name: 'Roles',
   isTransient: false,
-  displayType: 1,
+  displayType: 0,
   values: [
     { key: 'admin', values: { en: 'Admin' } as any, isActive: true },
     { key: 'legacy', values: { en: 'Legacy' } as any, isActive: false },
@@ -195,84 +196,28 @@ describe('SparkPoFormComponent', () => {
     });
   });
 
-  describe('lookup modal', () => {
-    it('openLookupSelector seeds items and opens the modal; selectLookupItem updates formData and closes', async () => {
-      const { fixture, component } = createComponent();
-      await setEntityType(fixture, personType);
-      const roleAttr = personType.attributes.find(a => a.name === 'Role')!;
-
-      component.openLookupSelector(roleAttr);
-      expect(component.showLookupModal()).toBe(true);
-      expect(component.lookupModalItems()).toHaveLength(1);
-
-      component.selectLookupItem({ key: 'admin', values: { en: 'Admin' } as any, isActive: true });
-
-      expect(component.formData()['Role']).toBe('admin');
-      expect(component.showLookupModal()).toBe(false);
-      expect(component.editingLookupAttr()).toBeNull();
-    });
-
-    it('filteredLookupItems narrows items by search term (case-insensitive, matches key or translation)', async () => {
-      const { fixture, component } = createComponent();
-      await setEntityType(fixture, personType);
-      const roleAttr = personType.attributes.find(a => a.name === 'Role')!;
-
-      component.openLookupSelector(roleAttr);
-      component.lookupSearchTerm.set('adm');
-
-      expect(component.filteredLookupItems().map(i => i.key)).toEqual(['admin']);
-
-      component.lookupSearchTerm.set('nope');
-      expect(component.filteredLookupItems()).toHaveLength(0);
-    });
-  });
-
-  describe('reference modal', () => {
-    it('openReferenceSelector loads the matching entity type and seeds paginationData', async () => {
-      const companyType: EntityType = { id: 't-company', name: 'Company', clrType: 'Test.Company', attributes: [] };
-      const { fixture, component, service } = createComponent({
-        getEntityTypes: vi.fn().mockResolvedValue([personType, companyType]),
-      });
-      await setEntityType(fixture, personType);
-      const companyAttr = personType.attributes.find(a => a.name === 'Company')!;
-
-      await component.openReferenceSelector(companyAttr);
-
-      expect(service.getEntityTypes).toHaveBeenCalled();
-      expect(component.referenceModalEntityType()?.clrType).toBe('Test.Company');
-      expect(component.showReferenceModal()).toBe(true);
-      expect(component.referenceModalPagination()?.totalRecords).toBe(1);
-    });
-
-    it('selectReferenceItem writes the item id into formData and closes the modal', async () => {
+  describe('picker value-change handlers', () => {
+    // The modal pick UI now lives in spark-reference-picker / spark-lookup-picker;
+    // the form's job is only to write the emitted value back into formData.
+    it('onReferenceValueChange writes the emitted id into formData', async () => {
       const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
       const companyAttr = personType.attributes.find(a => a.name === 'Company')!;
-      await component.openReferenceSelector(companyAttr);
 
-      component.selectReferenceItem(allCompanies[0]);
-
+      component.onReferenceValueChange(companyAttr, 'companies/1');
       expect(component.formData()['Company']).toBe('companies/1');
-      expect(component.showReferenceModal()).toBe(false);
+
+      component.onReferenceValueChange(companyAttr, null);
+      expect(component.formData()['Company']).toBeNull();
     });
 
-    it('onReferenceSearchChange narrows paginationData to matching items by name', async () => {
-      const more = [
-        { id: 'companies/1', name: 'Acme', objectTypeId: 't-company', attributes: [] } as any,
-        { id: 'companies/2', name: 'Globex', objectTypeId: 't-company', attributes: [] } as any,
-      ];
-      const { fixture, component } = createComponent({
-        executeQueryByName: vi.fn().mockResolvedValue({ data: more, totalRecords: 2 }),
-      });
+    it('onLookupValueChange writes the emitted key into formData', async () => {
+      const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
-      const companyAttr = personType.attributes.find(a => a.name === 'Company')!;
-      await component.openReferenceSelector(companyAttr);
+      const roleAttr = personType.attributes.find(a => a.name === 'Role')!;
 
-      component.referenceSearchTerm = 'glob';
-      component.onReferenceSearchChange();
-
-      expect(component.referenceModalPagination()?.data).toHaveLength(1);
-      expect(component.referenceModalPagination()?.data[0].name).toBe('Globex');
+      component.onLookupValueChange(roleAttr, 'admin');
+      expect(component.formData()['Role']).toBe('admin');
     });
   });
 
@@ -497,6 +442,67 @@ describe('SparkPoFormComponent', () => {
       expect(component.hasInlineError(items, 0, label)).toBe(false);
       expect(component.inlineErrorMessage(items, 1, label)).toBe('Label required');
       expect(component.inlineErrorMessage(items, 0, label)).toBeNull();
+    });
+
+    it('B6: an inline Reference column flagged Modal renders the reference picker, not a <bs-select>', async () => {
+      const refChild: EntityType = {
+        id: 't-refchild', name: 'RefChild', clrType: 'Test.RefChild',
+        attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company', referenceDisplayType: EReferenceDisplayType.Modal })],
+      };
+      const refParent: EntityType = {
+        id: 't-refparent', name: 'RefParent', clrType: 'Test.RefParent',
+        attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.RefChild', order: 1 })],
+      };
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([refParent, refChild]),
+      });
+      component.formData.set({ Rows: [{ CompanyId: null }] });
+      await setEntityType(fixture, refParent);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('spark-reference-picker')).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeFalsy();
+    });
+
+    it('B6: an inline Reference column without the flag still renders a <bs-select>', async () => {
+      const refChild: EntityType = {
+        id: 't-refchild2', name: 'RefChild2', clrType: 'Test.RefChild2',
+        attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company' })],
+      };
+      const refParent: EntityType = {
+        id: 't-refparent2', name: 'RefParent2', clrType: 'Test.RefParent2',
+        attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.RefChild2', order: 1 })],
+      };
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([refParent, refChild]),
+      });
+      component.formData.set({ Rows: [{ CompanyId: null }] });
+      await setEntityType(fixture, refParent);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('spark-reference-picker')).toBeFalsy();
+      expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeTruthy();
+    });
+
+    it('B7: an inline lookup column with a Modal-display lookup renders the lookup picker', async () => {
+      const modalLookup = { ...rolesLookup, displayType: 1 } as LookupReference;
+      const lkChild: EntityType = {
+        id: 't-lkchild', name: 'LkChild', clrType: 'Test.LkChild',
+        attributes: [attr({ id: 'c-role', name: 'Role', lookupReferenceType: 'Roles', order: 1 })],
+      };
+      const lkParent: EntityType = {
+        id: 't-lkparent', name: 'LkParent', clrType: 'Test.LkParent',
+        attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.LkChild', order: 1 })],
+      };
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([lkParent, lkChild]),
+        getLookupReference: vi.fn().mockResolvedValue(modalLookup),
+      });
+      component.formData.set({ Rows: [{ Role: null }] });
+      await setEntityType(fixture, lkParent);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('spark-lookup-picker')).toBeTruthy();
     });
   });
 
