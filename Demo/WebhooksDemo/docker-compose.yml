@@ -1,15 +1,20 @@
 services:
 
   spark-raven:
-    image: docker.io/ravendb/ravendb:7.1-latest
+    # Pinned (not 7.1-latest): the floating tag silently advanced to a build
+    # that rejects unsecured access on a 0.0.0.0 bind, breaking deploys on a
+    # plain `docker compose pull`. 7.1-latest resolves to the Ubuntu x64 image.
+    image: docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64
     environment:
       - RAVEN_Setup_Mode=None
-      # R2-L1: PrivateNetwork limits unauth access to RFC1918 / loopback / Docker
-      # bridge networks. The spark-internal network below isolates Raven from
-      # the public 'web' Traefik network; if a future ingress rule routes
-      # spark-raven:8080 by mistake, PrivateNetwork still keeps the admin API
-      # off the public internet.
-      - RAVEN_Security_UnsecuredAccessAllowed=PrivateNetwork
+      # R2-L1: Raven binds to 0.0.0.0 (it has no fixed private IP on the Docker
+      # bridge), and RavenDB only permits unsecured access on a 0.0.0.0 bind
+      # when UnsecuredAccessAllowed=PublicNetwork — PrivateNetwork is rejected
+      # at startup ("potentially unsafe mode"). What actually keeps Raven off
+      # the public internet is the network topology, not this flag: spark-raven
+      # publishes no host ports and lives only on the spark-internal network
+      # below, never on the public 'web' Traefik network.
+      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
     volumes:
       # ravendb:7.1-latest sets RAVEN_DataDir=/var/lib/ravendb/data; mounting the
