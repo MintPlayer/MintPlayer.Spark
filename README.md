@@ -218,6 +218,25 @@ dotnet run
 
 The application will be available at `https://localhost:5001`.
 
+> **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `Demo/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
+
+#### Running multiple modules together (SlnLaunch)
+
+The cross-module demos (HR + Fleet, which replicate data to each other) are launched together with the [`MintPlayer.SlnLaunch`](https://www.nuget.org/packages/MintPlayer.SlnLaunch) dotnet tool, driven by the `MintPlayer.Spark.slnLaunch` profile in the repo root:
+
+```bash
+dnx MintPlayer.SlnLaunch        # runs the "HR + Fleet" profile
+```
+
+Use **10.0.1+**, which builds the projects sequentially before launching them in parallel (earlier versions could fail intermittently because the concurrent `dotnet run` builds raced on the MSBuild server pipe / shared output DLLs). The ASP.NET hosts come up on:
+
+| Module | Host (Spark API + app) |
+| --- | --- |
+| Fleet | `https://localhost:5003` |
+| HR | `https://localhost:5005` |
+
+> The `/spark/*` endpoints live on the **host** port above. Each host also spawns its own Angular dev server on a separate random port (printed as `➜ Local: http://localhost:<port>/`); hitting that dev-server port directly serves `index.html` for every path, so a request like `/spark/program-units` looks like a 404. Always use the host port for API/middleware requests.
+
 **Library HMR:** edit any file under `libs/node_packages/ng-spark/src/**` or `libs/node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
 
 ### Model Synchronization
