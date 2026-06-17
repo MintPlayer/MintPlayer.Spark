@@ -2,6 +2,17 @@ import { ShowedOn } from './showed-on';
 import { TranslatedString } from './translated-string';
 import { ValidationRule } from './validation-rule';
 
+/**
+ * Controls how a Reference attribute is picked in the PO-edit form.
+ * Serialized as a string by the server (mirrors the .NET EReferenceDisplayType).
+ */
+export enum EReferenceDisplayType {
+  /** Renders as a `<bs-select>` listing every referenced item. */
+  Dropdown = 'Dropdown',
+  /** Renders a readonly textbox + "…" button that opens a searchable modal grid picker. */
+  Modal = 'Modal',
+}
+
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
@@ -20,6 +31,11 @@ export interface EntityAttributeDefinition {
   isArray?: boolean;
   /** For array AsDetail attributes: "modal" (default) or "inline" */
   editMode?: 'inline' | 'modal';
+  /**
+   * For Reference attributes: 'Modal' renders the "…" + modal query-grid picker;
+   * 'Dropdown'/absent (default) renders a `<bs-select>`. Hand-set in the model JSON.
+   */
+  referenceDisplayType?: EReferenceDisplayType;
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
   /** For LookupReference attributes, specifies the lookup reference type name */

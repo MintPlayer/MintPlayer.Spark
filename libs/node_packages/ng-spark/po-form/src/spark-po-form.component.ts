@@ -11,21 +11,17 @@ import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { BsTreeSelectComponent, InMemoryTreeSelectProvider, TreeNode } from '@mintplayer/ng-bootstrap/tree-select';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
   InputTypePipe,
-  LookupDisplayValuePipe,
   LookupDisplayTypePipe,
   LookupOptionsPipe,
-  ReferenceDisplayValuePipe,
   AsDetailDisplayValuePipe,
   AsDetailTypePipe,
   AsDetailColumnsPipe,
@@ -33,11 +29,11 @@ import {
   CanCreateDetailRowPipe,
   CanDeleteDetailRowPipe,
   InlineRefOptionsPipe,
-  ReferenceAttrValuePipe,
   ErrorForAttributePipe,
 } from '@mintplayer/ng-spark/pipes';
 import {
   ELookupDisplayType,
+  EReferenceDisplayType,
   EntityPermissions,
   EntityType,
   EntityAttributeDefinition,
@@ -46,7 +42,6 @@ import {
   LookupReference,
   LookupReferenceValue,
   PersistentObject,
-  PersistentObjectAttribute,
   ValidationError,
   ShowedOn,
   hasShowedOnFlag,
@@ -54,10 +49,12 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SparkReferencePickerComponent } from './spark-reference-picker.component';
+import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayValuePipe, LookupDisplayTypePipe, LookupOptionsPipe, ReferenceDisplayValuePipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ReferenceAttrValuePipe, ErrorForAttributePipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -105,25 +102,11 @@ export class SparkPoFormComponent {
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
   asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
 
-  // Modal state for Reference selection
-  editingReferenceAttr = signal<EntityAttributeDefinition | null>(null);
-  showReferenceModal = signal(false);
-  referenceModalItems = signal<PersistentObject[]>([]);
-  referenceModalEntityType = signal<EntityType | null>(null);
-  referenceModalPagination = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
-  referenceModalSettings = signal(new DatatableSettings({
-    perPage: { values: [10, 25, 50], selected: 10 },
-    page: { values: [1], selected: 1 },
-    sortColumns: []
-  }));
-  referenceSearchTerm = '';
-
-  // Modal state for LookupReference selection (Modal display type)
-  editingLookupAttr = signal<EntityAttributeDefinition | null>(null);
-  showLookupModal = signal(false);
-  lookupModalItems = signal<LookupReferenceValue[]>([]);
-  lookupSearchTerm = signal('');
+  // Reference/Lookup picking is owned by the standalone spark-reference-picker /
+  // spark-lookup-picker components (per-instance modal state); the form just feeds them
+  // options and writes the emitted value back into formData / the row.
   ELookupDisplayType = ELookupDisplayType;
+  EReferenceDisplayType = EReferenceDisplayType;
 
   editableAttributes = computed(() => {
     return this.entityType()?.attributes
@@ -162,27 +145,6 @@ export class SparkPoFormComponent {
   attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
     return this.editableAttributes().filter(a => a.group === group.id);
   }
-
-  referenceVisibleAttributes = computed(() => {
-    return this.referenceModalEntityType()?.attributes
-      .filter(a => a.isVisible)
-      .sort((a, b) => a.order - b.order) || [];
-  });
-
-  // Typed rows for the reference-modal datatable so its generic infers
-  // PersistentObject (a `?? []` inline binding would degrade to `unknown`).
-  referenceModalRows = computed<PersistentObject[]>(() => this.referenceModalPagination()?.data ?? []);
-
-  filteredLookupItems = computed(() => {
-    if (!this.lookupSearchTerm().trim()) {
-      return this.lookupModalItems();
-    }
-    const term = this.lookupSearchTerm().toLowerCase().trim();
-    return this.lookupModalItems().filter(item => {
-      const translation = resolveTranslation(item.values);
-      return translation.toLowerCase().includes(term) || item.key.toLowerCase().includes(term);
-    });
-  });
 
   constructor() {
     effect(() => {
@@ -329,38 +291,23 @@ export class SparkPoFormComponent {
     this.lookupReferenceOptions.set(this.toRecord(entries));
   }
 
-  getReferenceOptions(attr: EntityAttributeDefinition): PersistentObject[] {
-    return this.referenceOptions()[attr.name] || [];
-  }
-
   getLookupOptions(attr: EntityAttributeDefinition): LookupReferenceValue[] {
     const lookupRef = attr.lookupReferenceType ? this.lookupReferenceOptions()[attr.lookupReferenceType] : null;
     return lookupRef?.values.filter(v => v.isActive) || [];
   }
 
-  // LookupReference modal methods
-  openLookupSelector(attr: EntityAttributeDefinition): void {
-    this.editingLookupAttr.set(attr);
-    this.lookupSearchTerm.set('');
-    this.lookupModalItems.set(this.getLookupOptions(attr));
-    this.showLookupModal.set(true);
+  // Write the value emitted by a top-level spark-reference-picker / spark-lookup-picker
+  // back into formData (the same write the old in-form modal selectors performed).
+  onReferenceValueChange(attr: EntityAttributeDefinition, id: string | null): void {
+    const data = { ...this.formData() };
+    data[attr.name] = id;
+    this.formData.set(data);
   }
 
-  selectLookupItem(item: LookupReferenceValue): void {
-    const attr = this.editingLookupAttr();
-    if (attr) {
-      const data = { ...this.formData() };
-      data[attr.name] = item.key;
-      this.formData.set(data);
-    }
-    this.closeLookupModal();
-  }
-
-  closeLookupModal(): void {
-    this.showLookupModal.set(false);
-    this.editingLookupAttr.set(null);
-    this.lookupModalItems.set([]);
-    this.lookupSearchTerm.set('');
+  onLookupValueChange(attr: EntityAttributeDefinition, key: string | null): void {
+    const data = { ...this.formData() };
+    data[attr.name] = key;
+    this.formData.set(data);
   }
 
   getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
@@ -526,82 +473,5 @@ export class SparkPoFormComponent {
     moveItemInArray(arr, event.previousIndex, event.currentIndex);
     data[attr.name] = arr;
     this.formData.set(data);
-  }
-
-  // Reference modal methods
-  async openReferenceSelector(attr: EntityAttributeDefinition): Promise<void> {
-    this.editingReferenceAttr.set(attr);
-    this.referenceSearchTerm = '';
-    this.referenceModalItems.set(this.getReferenceOptions(attr));
-
-    const types = await this.sparkService.getEntityTypes();
-    this.referenceModalEntityType.set(types.find(t => t.clrType === attr.referenceType) || null);
-    this.referenceModalSettings.set(new DatatableSettings({
-      perPage: { values: [10, 25, 50], selected: 10 },
-      page: { values: [1], selected: 1 },
-      sortColumns: []
-    }));
-    this.applyReferenceFilter();
-    this.showReferenceModal.set(true);
-  }
-
-  onReferenceSearchChange(): void {
-    this.referenceModalSettings().page.selected = 1;
-    this.applyReferenceFilter();
-  }
-
-  applyReferenceFilter(): void {
-    let filteredItems = this.referenceModalItems();
-
-    if (this.referenceSearchTerm.trim()) {
-      const term = this.referenceSearchTerm.toLowerCase().trim();
-      filteredItems = this.referenceModalItems().filter(item => {
-        if (item.name?.toLowerCase().includes(term)) return true;
-        if (item.breadcrumb?.toLowerCase().includes(term)) return true;
-        return item.attributes.some(attr => {
-          const value = attr.breadcrumb || attr.value;
-          if (value == null) return false;
-          return String(value).toLowerCase().includes(term);
-        });
-      });
-    }
-
-    const totalPages = Math.ceil(filteredItems.length / this.referenceModalSettings().perPage.selected) || 1;
-    this.referenceModalPagination.set({
-      data: filteredItems,
-      totalRecords: filteredItems.length,
-      totalPages: totalPages,
-      perPage: this.referenceModalSettings().perPage.selected,
-      page: this.referenceModalSettings().page.selected
-    });
-
-    this.referenceModalSettings().page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-
-    if (this.referenceModalSettings().page.selected > totalPages) {
-      this.referenceModalSettings().page.selected = 1;
-    }
-  }
-
-  clearReferenceSearch(): void {
-    this.referenceSearchTerm = '';
-    this.onReferenceSearchChange();
-  }
-
-  selectReferenceItem(item: PersistentObject): void {
-    const attr = this.editingReferenceAttr();
-    if (attr) {
-      const data = { ...this.formData() };
-      data[attr.name] = item.id;
-      this.formData.set(data);
-    }
-    this.closeReferenceModal();
-  }
-
-  closeReferenceModal(): void {
-    this.showReferenceModal.set(false);
-    this.editingReferenceAttr.set(null);
-    this.referenceModalItems.set([]);
-    this.referenceModalEntityType.set(null);
-    this.referenceSearchTerm = '';
   }
 }

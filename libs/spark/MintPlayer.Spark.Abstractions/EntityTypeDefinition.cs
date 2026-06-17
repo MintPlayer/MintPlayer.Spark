@@ -80,6 +80,14 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public string? EditMode { get; set; }
     /// <summary>
+    /// For Reference attributes, controls how the value is picked in the PO-edit UI.
+    /// <see cref="EReferenceDisplayType.Modal"/> renders a readonly textbox with a "…" button that
+    /// opens a searchable modal grid; <see cref="EReferenceDisplayType.Dropdown"/> (or null/default)
+    /// renders a <c>&lt;bs-select&gt;</c>. Hand-set in the model JSON and preserved across synchronize
+    /// (like <see cref="EditMode"/>). Only meaningful when <see cref="DataType"/> is "Reference".
+    /// </summary>
+    public EReferenceDisplayType? ReferenceDisplayType { get; set; }
+    /// <summary>
     /// For array AsDetail attributes, when true the rows can be drag-reordered in the
     /// PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the synchronizer.
     /// Null/absent for non-sortable attributes. Only meaningful when
