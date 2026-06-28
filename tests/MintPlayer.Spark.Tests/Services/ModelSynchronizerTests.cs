@@ -213,6 +213,30 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void MultiLineString_dataType_is_preserved_on_re_synchronize()
+    {
+        var ctx = new OrderedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        // Hand-edit: promote the plain string "Name" attribute to a MultiLineString (textarea) presentation.
+        var path = ModelFile("MS_OrderedParent");
+        var tampered = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(path),
+            "(\"name\": \"Name\".*?\"dataType\": )\"string\"",
+            "$1\"MultiLineString\"",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        File.WriteAllText(path, tampered);
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(path);
+        file.PersistentObject.Attributes.Single(a => a.Name == "Name").DataType
+            .Should().Be("MultiLineString", "a hand-set MultiLineString is a presentation override the synchronizer preserves across re-sync");
+    }
+
+    [Fact]
     public void Synthesizes_a_default_breadcrumb_from_the_first_attribute_when_none_authored()
     {
         var ctx = new SinglePersonContext();
