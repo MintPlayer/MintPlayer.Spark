@@ -390,8 +390,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
-                // Update existing attribute, preserving custom settings
-                existingAttr.DataType = dataType;
+                // Update existing attribute, preserving custom settings.
+                // "MultiLineString" is a presentation-only override of a string property (render a
+                // textarea instead of a single-line input): the CLR shape is still string, so keep a
+                // hand-set MultiLineString rather than resetting it to "string" on every sync. Any other
+                // change still wins - switching the property away from string clears it.
+                if (!(existingAttr.DataType == "MultiLineString" && dataType == "string"))
+                {
+                    existingAttr.DataType = dataType;
+                }
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
                 if (referenceAttr != null)

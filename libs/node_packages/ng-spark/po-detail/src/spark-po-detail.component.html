@@ -163,6 +163,8 @@
                 } @else {
                   {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
                 }
+              } @else if (attr.dataType === 'MultiLineString') {
+                <div style="white-space: pre-wrap;">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
               } @else {
                 {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               }

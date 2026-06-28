@@ -168,6 +168,13 @@
                       }
                     </bs-select>
                   }
+                } @else if (col.dataType === 'MultiLineString') {
+                  <textarea
+                    [(ngModel)]="row[col.name]"
+                    [required]="col.isRequired"
+                    rows="3"
+                    [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
+                    (ngModelChange)="onFieldChange()"></textarea>
                 } @else {
                   <input
                     [type]="col.dataType | inputType"
@@ -320,6 +327,15 @@
             </bs-input-group>
           } @else if (getEditRendererComponent(attr); as editComp) {
             <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(attr)"></ng-container>
+          } @else if (attr.dataType === 'MultiLineString') {
+            <textarea
+              [id]="attr.name"
+              [ngModel]="formData()[attr.name]"
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+              [name]="attr.name"
+              [required]="attr.isRequired"
+              rows="6"
+              [class.is-invalid]="hasError(attr.name)"></textarea>
           } @else {
             <input
               [type]="attr.dataType | inputType"
