@@ -20,7 +20,7 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `697097e` | **M12.3 fixes** — consent GET validation, `returnUrl` sanitizing |
 | `d994c28` | Audit recorded, M12 re-sequenced |
 | `cf85533` | D7/D8 decided, M12.5 spec'd |
-| _(this)_ | **M12.5 done** — server-side request binding; closes O1, O9, O11 (33 IdP tests green) |
+| `3f2473e` | **M12.5 done** — server-side request binding; closes O1, O9, O11 (33 IdP tests green) |
 
 **Next action: M12.4's remaining findings**, in order: O2 optimistic concurrency, O3 antiforgery on the `/connect/*` POSTs, O4 lockout, O5/O6 `jti` + stop persisting `Payload`, O7 issuer from options, then O8–O25. **O1, O9 and O11 are already closed by M12.5** — skip them.
 
