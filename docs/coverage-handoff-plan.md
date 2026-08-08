@@ -35,7 +35,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `ab3fbaa` | **Forgery batch** — 138 IdP tests, deterministic over repeat runs; found **N6** |
 | `9bc39c2` | **Two-factor batch** — 164 IdP tests (26 cases; §L.4 complete) |
 | `906b101` | **N7, N8** — remember-me across the 2FA hop; single-use recovery codes under concurrency |
-| _(next)_ | **D9–D11 implemented** — `/connect` rate limiting, hashed recovery codes, audience-gated introspection |
+| `999c4e4` | **D9–D11** — `/connect` rate limiting, hashed recovery codes, audience-gated introspection |
+| _(next)_ | **M12.7 library half** — `IOidcApplicationContext`, `OidcApplicationActions`, `OidcScopeActions` (190 IdP tests green) |
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
@@ -535,6 +536,19 @@ public class CoverageContext : SparkContext
   - `MayIntrospectAnyAudience` defaults off and should be visibly exceptional in the UI (**D11**).
 - **`OidcScope` as a second PersistentObject** — scopes are half the configuration and N6 showed the two halves have to agree.
 - **`security.json` guidance**: these screens administer the identity system; the default must not be `Everyone`.
+
+#### Status — library half done
+
+Shipped in the IdP package:
+
+- **`IOidcApplicationContext`** — the consumer implements it on its own `SparkContext` and runs `--spark-synchronize-model`. The interface adds nothing at runtime; it exists so the compiler reports a missing or misnamed property instead of the screens quietly not appearing. Opting in stays deliberate: these screens configure who may obtain tokens, so they appear because an app asked, not because it referenced the package.
+- **`OidcApplicationActions`** — absolute redirect URIs with no fragment and no duplicates; grant types restricted to the three implemented, with `refresh_token` requiring `authorization_code` (there is no other way to obtain a first refresh token) and `client_credentials` refused for a public client (it has no secret to authenticate with); a secret typed in cleartext hashed on save and an already-hashed one left alone, so re-saving does not invalidate the secret a client already holds; `ClientId` uniqueness checked *after* the write, because a read-then-write check races and both writers would find nothing.
+- **`OidcScopeActions`** — non-empty name, no whitespace in it (scopes are space-delimited on the wire, so `api read` becomes two names that do not exist), no empty audiences, and name uniqueness.
+- **16 validation tests**, all green.
+
+Both classes use `partial` + the `[Inject]` generator, matching every other Actions class in the repo — the IdP now carries the `MintPlayer.SourceGenerators` references for it.
+
+**Still to do:** a demo host exposing both collections, so the synchronizer output is real rather than described; `security.json` guidance in the README; and end-to-end coverage of the screens through the PO endpoints (the 16 tests exercise the validation directly, not the route).
 
 #### Caveat that must not be lost
 

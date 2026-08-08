@@ -31,6 +31,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.*" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.1" />
 	</ItemGroup>
 

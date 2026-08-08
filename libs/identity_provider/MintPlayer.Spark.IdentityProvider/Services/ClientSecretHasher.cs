@@ -36,6 +36,19 @@ public static class ClientSecretHasher
     private const int Iterations = 100_000;
 
     /// <summary>Hashes a client secret for storage. Never store the secret itself.</summary>
+    /// <summary>
+    /// Whether a stored value is already one of our hashes.
+    /// <para>
+    /// Used by the admin screens, where an operator types a secret into the field that otherwise
+    /// holds its hash: anything that is not already hashed is treated as a freshly entered secret
+    /// and hashed on save. That keeps a cleartext secret from surviving a round trip without
+    /// needing a transient property on the persisted model — and it fails safe, because the only
+    /// value mistakable for a hash is a hash.
+    /// </para>
+    /// </summary>
+    public static bool IsHashed(string value)
+        => value.StartsWith(Prefix, StringComparison.Ordinal) && value.Count(c => c == '$') == 4;
+
     public static string Hash(string secret)
     {
         ArgumentException.ThrowIfNullOrEmpty(secret);
