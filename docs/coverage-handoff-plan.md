@@ -410,7 +410,22 @@ Re-consent now reinstates a revoked grant (`Status` back to `valid`, `RevokedAt`
 
 **Current IdP coverage is 33 tests, all pure functions** (`ClientSecretHasherTests`, `OidcReferenceTests`) in `MintPlayer.Spark.Tests`. Zero exercise an endpoint, a session, or a request. Everything M12.2–M12.5 fixed is reasoned-correct, not observed-correct.
 
-**Blocker to resolve first:** `MintPlayer.Spark.E2E.Tests` does not reference `MintPlayer.Spark.IdentityProvider`, and Fleet does not call `AddIdentityProvider()`. Either add the IdP to the Fleet test host behind a flag, or stand up a second minimal host fixture. This is the real cost of M12.6 — the tests themselves are cheap once a host serves `/connect/*`. Note the host will need `SparkIdentityProviderOptions.Issuer` set (O7 made it required outside Development).
+#### Host blocker — resolved, do it this way
+
+Nothing currently serves `/connect/*` under test. `FleetTestHost` launches the **real Fleet project as a `dotnet run` subprocess** (`FleetTestHost.cs:262`) with an `appsettings.E2E.json` override written at startup, so the test project referencing the IdP would achieve nothing — **Fleet itself** must call `AddIdentityProvider()`.
+
+**Take this option: Fleet enables the IdP from configuration.** Fleet gains a `ProjectReference` to the IdP and wires it up when the config says so; the E2E override file turns it on. Reasons it beats a new host:
+- `FleetE2ECollection` is a **shared collection fixture**, so the host starts once for the whole suite. Adding OIDC tests to that collection costs approximately nothing, whereas a second host pays a fresh `dotnet run` plus another embedded Raven.
+- The fixture already seeds a confirmed admin and can seed extra users (`SeedUserAsync`), which the interactive login and consent flows need. A new host would reimplement that.
+- A demo app demonstrating the feature is a reasonable thing to exist anyway.
+
+The alternative — a minimal dedicated host — is only worth it if IdP tests need to run without Fleet's Angular bundle (`EnsureAngularBundleAsync` runs `npm run build`). The `/connect/*` pages are server-rendered HTML and need no SPA, but since the bundle is built once per suite and other tests need it regardless, that saving is theoretical.
+
+⚠️ **The override file must set `Issuer`.** `ASPNETCORE_ENVIRONMENT` is `E2E`, **not** `Development` (`FleetTestHost.cs:269`), so `OidcIssuer.Resolve` will **throw** — O7 made the issuer required outside Development. Add `"Issuer": "{{httpsUrl}}"` to the override JSON, which is easy because `StartFleetAsync` already computes the HTTPS URL before writing the file (`FleetTestHost.cs:226-256`). Treat the throw as the design working: it fails loudly at startup instead of silently trusting the `Host` header.
+
+New application records (`OidcApplication`) will need seeding per test — public client, confidential client, a `client_credentials`-only client, one that is disabled — which is also what M12.7 needs, so build the seeding helper once and share it.
+
+**The case list lives in [idp-e2e-test-matrix.md](./idp-e2e-test-matrix.md)** — every case with its precondition, exact request, expected outcome and what it pins, including which cases are expected to **fail on first run** because they pin still-open findings. Write those anyway: a test authored after the fix only proves the fix compiles.
 
 **Behavioural tests** (`Security/OidcSecurityTests.cs` or similar), each with its expected-failure half:
 - concurrent redemption of one code → exactly one token set, the loser gets `invalid_grant`, and nothing partial is written (O2)

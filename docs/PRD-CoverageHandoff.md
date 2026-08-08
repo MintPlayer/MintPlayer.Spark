@@ -410,6 +410,8 @@ Per CLAUDE.md: never run `ng serve`/`npm start`/`ng build`/`ng test` against the
 
 Nearly every finding in this PR was the same defect repeated across sites — five consent hops re-deriving the request, three token paths racing, three endpoints trusting a signature alone. Re-reading the code proves nothing about the *next* site someone adds, so the verification has to be mechanical:
 
+The concrete case list is [idp-e2e-test-matrix.md](./idp-e2e-test-matrix.md).
+
 1. **Behavioural E2E tests** for anything with observable behaviour — concurrent redemption of one code yields exactly one token set; a POST without an antiforgery token is rejected; a revoked token introspects as `active: false` and is refused by `/connect/userinfo`. These belong in `tests/MintPlayer.Spark.E2E.Tests/Security/`, beside the existing `ConcurrencyTests`, `XsrfCookieFlagTests` and `ReturnUrlValidationTests`.
 2. **Coverage invariants** for anything that must hold across *all* endpoints, enumerated from `EndpointDataSource` rather than a hand-written list — so a route added later is included automatically and the test fails until it complies:
    - every interactive `/connect` POST carries `IAntiforgeryMetadata` with `RequiresValidation`;
