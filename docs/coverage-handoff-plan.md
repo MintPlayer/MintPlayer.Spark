@@ -28,7 +28,11 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `d473564` | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
 | `d738186` | e2e matrix complete (A/T/L/R, ~200 cases); O3 confirmed closed; **O27** + logout-CSRF decided |
 | `f5ccfa6` | **O8, O12, O14, O19, O21, O25** — refresh gating, logout client binding, machine scopes, audiences, URL building, exact client lookup |
-| _(next)_ | **O16, O18, O22 (part), O24, O26** — interactive-only auth, constant-time PKCE, `openid`-gated id_token, error codes, server-side required scopes |
+| `e4ce3df` | **O16, O18, O22 (part), O24, O26** — interactive-only auth, constant-time PKCE, `openid`-gated id_token, error codes, server-side required scopes |
+| `6241984` | `SparkEndpointFactory` gains `configureSpark`; host decision reversed with reasons |
+| _(next)_ | **M12.6 started — 24 e2e tests, all green.** Found **N5** (High) and a wrong O25 fix |
+
+**M12.6 is under way and already paid for itself.** The first 24 tests against `/connect/*` found two defects that six reviewers reading code had missed: a wrong fix I had shipped (O25's `exact: true` inverted the matching) and **N5**, where the serializer re-added a property-initializer default on load, making every grant-type restriction unenforceable. Continue from `OidcTestHost`; the cookie-driven cases (login, consent) need a signed-in session, which is the next piece of fixture work.
 
 **Remaining open:** O10, O13, O15, O17, O20, O22 (the `auth_time`/`azp` half), O23, N2, N4, plus O27 (accepted with a rationale). None is above Medium; the Criticals and Highs are all closed.
 

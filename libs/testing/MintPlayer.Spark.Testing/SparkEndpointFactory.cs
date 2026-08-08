@@ -50,7 +50,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         IDocumentStore testStore,
         IEnumerable<EntityTypeFile> models,
         Action<IServiceCollection>? configureServices = null,
-        Action<ISparkBuilder>? configureSpark = null)
+        Action<ISparkBuilder>? configureSpark = null,
+        string environment = "Testing")
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -71,7 +72,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                 webHost
                     .UseTestServer()
                     .UseContentRoot(_contentRoot)
-                    .UseEnvironment("Testing")
+                    // Overridable because some modules legitimately behave differently by
+                    // environment — the identity provider refuses to invent a signing key
+                    // outside Development, which is correct in production and unhelpful in a
+                    // test that only wants to exercise the protocol flow.
+                    .UseEnvironment(environment)
                     .ConfigureServices(services =>
                     {
                         services.AddRouting();

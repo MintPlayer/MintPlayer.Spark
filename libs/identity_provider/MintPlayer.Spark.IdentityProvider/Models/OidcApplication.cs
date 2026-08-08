@@ -19,7 +19,21 @@ public class OidcApplication
     public List<ClientSecret> Secrets { get; set; } = [];
 
     // --- Grant types ---
-    public List<string> AllowedGrantTypes { get; set; } = ["authorization_code"];
+    /// <summary>
+    /// The grants this client may use. **Must not carry a non-empty initializer.**
+    /// <para>
+    /// RavenDB's serializer populates the collection the property initializer already created
+    /// rather than replacing it, so a default of <c>["authorization_code"]</c> was silently
+    /// re-added to every application on load. A client stored as <c>client_credentials</c>-only
+    /// came back as <c>["authorization_code", "client_credentials"]</c> — which defeats the
+    /// grant gating outright: the interactive flow accepted a machine client no matter what was
+    /// configured, and the check that was supposed to stop it could never fail.
+    /// </para>
+    /// <para>
+    /// Empty now means empty, so a client that declares no grants can use none — fail closed.
+    /// </para>
+    /// </summary>
+    public List<string> AllowedGrantTypes { get; set; } = [];
 
     // --- URIs ---
     public List<string> RedirectUris { get; set; } = [];
