@@ -167,10 +167,36 @@ internal static class Consent
         using var session = store.OpenAsyncSession();
 
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId!, ct);
-        if (app == null)
+        if (app == null || !app.Enabled)
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsync("Unknown client.");
+            return;
+        }
+
+        // Consent is a separately routed endpoint, so everything /connect/authorize validated
+        // arrives here again as raw request input and must be re-validated. Skipping this let
+        // an attacker link a victim to a consent screen naming a trusted client but carrying
+        // their own redirect_uri and code_challenge, then redeem the resulting code — account
+        // takeover from a single click, with no CSRF required.
+        if (!app.RedirectUris.Contains(redirectUri!, StringComparer.Ordinal))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("Invalid redirect_uri.");
+            return;
+        }
+
+        if (app.RequirePkce && string.IsNullOrEmpty(codeChallenge))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("PKCE code_challenge is required.");
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(codeChallenge) && codeChallengeMethod != "S256")
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("Only S256 code_challenge_method is supported.");
             return;
         }
 
@@ -179,6 +205,20 @@ internal static class Consent
         if (grantedScopes.Count == 0 && !string.IsNullOrEmpty(scope))
         {
             grantedScopes = scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        }
+
+        // A user can only grant what the client is allowed to hold. The checkbox markup is
+        // client-side only, so without this a crafted POST grants any scope that exists —
+        // and it is then persisted on the authorization, making the escalation durable.
+        grantedScopes = grantedScopes
+            .Where(s => app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (grantedScopes.Count == 0)
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("No permitted scopes were granted.");
+            return;
         }
 
         // Create or update authorization

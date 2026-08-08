@@ -84,7 +84,10 @@ internal static class Token
         }
 
         // Validate client secret for confidential clients
-        if (app.ClientType == "confidential")
+        // Fail closed: only a client explicitly marked public, holding no secrets, skips
+        // authentication. Comparing == "confidential" meant a stray case or space silently
+        // disabled client authentication altogether.
+        if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
         {
             if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
             {
@@ -112,6 +115,18 @@ internal static class Token
         }
 
         if (codeToken is not { Type: "authorization_code" })
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
+            return;
+        }
+
+        // The code must belong to the client redeeming it (RFC 6749 4.1.3). Without this a
+        // public client can redeem a confidential client's code without any secret — the
+        // redirect_uri check below compares against the code's own stored value, which is the
+        // *issuing* client's registered URI and therefore public information, so it provides
+        // no client binding of its own.
+        if (!string.Equals(codeToken.ApplicationId, app.Id, StringComparison.Ordinal))
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
@@ -249,7 +264,10 @@ internal static class Token
             return;
         }
 
-        if (app.ClientType == "confidential")
+        // Fail closed: only a client explicitly marked public, holding no secrets, skips
+        // authentication. Comparing == "confidential" meant a stray case or space silently
+        // disabled client authentication altogether.
+        if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
         {
             if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
             {
@@ -277,12 +295,23 @@ internal static class Token
         if (refreshTokenDoc is not { Type: "refresh_token", Status: "valid" })
             refreshTokenDoc = null;
 
-        if (refreshTokenDoc == null || refreshTokenDoc.ExpiresAt < DateTime.UtcNow)
+        // Client binding, as on the code grant: without it any client may present another's
+        // refresh token and receive a token carrying the original's subject and scopes.
+        if (refreshTokenDoc == null
+            || refreshTokenDoc.ExpiresAt < DateTime.UtcNow
+            || !string.Equals(refreshTokenDoc.ApplicationId, app.Id, StringComparison.Ordinal))
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
             return;
         }
+
+        // A refresh may narrow scopes but never widen them: re-intersect against what the
+        // client is currently allowed, so revoking a scope from the application takes effect
+        // on the next refresh instead of persisting for the token's whole 14-day life.
+        refreshTokenDoc.Scopes = refreshTokenDoc.Scopes
+            .Where(s => app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .ToList();
 
         // Load user
         var user = await LoadUserAsync(context.RequestServices, refreshTokenDoc.Subject, ct);

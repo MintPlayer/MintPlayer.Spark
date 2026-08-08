@@ -83,18 +83,26 @@ internal class OidcTokenGenerator
             claims.Add(new Claim(JwtRegisteredClaimNames.Sub, user.Id!));
         }
 
-        // Application claims are emitted under their declared type, unprefixed.
+        // Application claims carry the *client's own* authority, so they belong only in a
+        // machine token — one issued to the client acting as itself, with no user behind it.
         //
-        // These were previously namespaced as "client_{Type}", which silently defeated
-        // authorization: Spark resolves group membership purely from "group"/"groups"/role
-        // claims on the principal (ClaimsGroupMembershipProvider), so an application
-        // configured with {Type:"group"} emitted "client_group", matched nothing, and every
-        // machine token authorized as a member of no group at all. The prefix bought no
-        // safety either — an application's claims are operator-configured, exactly like a
-        // user's group membership, and are constrained by AllowedScopes on issuance.
-        foreach (var cc in app.Claims)
+        // They are emitted under their declared type, unprefixed: they were previously
+        // namespaced as "client_{Type}", which silently defeated authorization, because Spark
+        // resolves group membership purely from "group"/"groups"/role claims
+        // (ClaimsGroupMembershipProvider). An application configured with {Type:"group"}
+        // emitted "client_group", matched nothing, and every machine token authorized as a
+        // member of no group at all.
+        //
+        // Restricting them to client_credentials is what makes dropping the prefix safe. On a
+        // delegated grant the token speaks for the *user*, and merging the client's claims in
+        // would hand every user who signs in through a service client that client's groups —
+        // consent alone would make an end user an Administrator.
+        if (user == null)
         {
-            claims.Add(new Claim(cc.Type, cc.Value));
+            foreach (var cc in app.Claims)
+            {
+                claims.Add(new Claim(cc.Type, cc.Value));
+            }
         }
 
         // Determine audience from scope definitions
