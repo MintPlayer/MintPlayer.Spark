@@ -4,6 +4,21 @@ See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md) and [findings-replication
 
 TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE.md, **test suites run once at the end**, not per milestone — intermediate milestones are verified by reading code and type-checking. Committing per milestone is fine.
 
+## Resolved decisions (2026-08-08)
+
+**D1 — External POST credential: OAuth2 `client_credentials` via `MintPlayer.Spark.IdentityProvider`**, not a per-user secret. Same experience for the consumer, better security posture for the application. **Conditional on the package being audited and proven sound** — see M12. Three defects are already known (unsalted SHA-256 + non-constant-time compare in `VerifyClientSecret`; application claims emitted as `client_group` so a machine token resolves to zero groups; no resource-server side at all).
+> ⚠️ **Open — see Q1 in the handover notes.** If `client_credentials` is the upload credential, **M4 (the PAT library) has no consumer.** Confirm whether M4 is dropped, or kept for a different audience.
+
+**D2 — Antiforgery.** CI/workflow posts can't carry XSRF at all, and `client_credentials` is sufficient there → exempt requests not authenticated by an ambient (cookie) credential, keyed on *the scheme that produced the principal*. Separately: Spark **hand-rolls** the XSRF cookie (`SparkMiddleware.cs:48,238-241`) and duplicates `MintPlayer.AspNetCore.SpaServices.Xsrf`, whose `UseAntiforgeryGenerator()` does exactly the same `GetAndStoreTokens` + `XSRF-TOKEN` cookie (`HttpOnly = false`). The demos reference `MintPlayer.AspNetCore.SpaServices` but **not** the `.Xsrf` package. **Adopt the package; delete the duplicate.**
+
+**D3 — Certificate forwarding (my call).** `AddCertificateForwarding` with a **configurable header name**, defaulting to `X-ARR-ClientCert`. Document both Traefik (`passTLSClientCert` → `X-Forwarded-Tls-Client-Cert`, the deployment this repo actually uses) and nginx (`ssl-client-cert`). Ships with a trusted-proxy allowlist — the demos' `KnownProxies.Clear()` must **not** be inherited.
+
+**D4 — `Everyone` stays as-is.** Anonymous vs. authenticated access is already decided by `security.json` and, where needed, the Actions classes. No change. (My "machine caller" phrasing meant a non-human client such as CI; the point stands but needs no special-casing.)
+
+**D5 — Replication → `IPermissionService` needs no new hard dependency.** `IPermissionService`, `IAccessControl` and `IGroupMembershipProvider` live in **`MintPlayer.Spark.Abstractions/Authorization/`**, and `MintPlayer.Spark.Replication.csproj:30` **already references** `MintPlayer.Spark.Abstractions`. Routing `/spark/sync/apply` through the permission pipeline therefore adds **zero** coupling to the Authorization package — that package supplies the `security.json` implementation, not the abstraction.
+
+**D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
+
 ## Sequencing
 
 M1 first: it's the only actively-breaking item, and landing it makes WebhooksDemo runnable again, which M2's manual verification depends on. The contained fixes (M2, M3) follow, then the two large pieces. M6 (docs) is last so it describes what actually shipped — the queue-name format M1 settles and the Actions contract M5 changes.
@@ -17,8 +32,9 @@ Because this is one large PR, **keep each milestone a separate, self-contained c
 | M3 | ng-bootstrap 22.13.0 | Small |
 | M8 | mTLS quick fixes (F1, F2, F5, F6) | Small |
 | M9 | **Scheme plumbing — composite scheme + antiforgery** | Medium, **high blast radius** |
-| M4 | API tokens package | Large |
-| M10 | Credential handlers (cert, client-creds) | Medium |
+| M12 | Port + **audit** the IdentityProvider (client_credentials) | Large |
+| M4 | API tokens package — **pending Q1** | Large |
+| M10 | Credential handlers (cert, cert-forwarding, JWT resource server) | Medium |
 | M5 | Row-level authz on queries + stream | Large |
 | M11 | Retire the authorization bypasses | Medium |
 | M6 | Documentation | Small |
@@ -262,9 +278,11 @@ Prefer the composite over `AddPolicyScheme` + `ForwardDefaultSelector`: the latt
 
 `spark.AddCredentialScheme<THandler>("Name")` so M10's handlers register into the composite rather than each app wiring `AddAuthentication().AddScheme<>()` by hand.
 
-### M9.3 — Antiforgery exemption
+### M9.3 — Antiforgery exemption + adopt the XSRF package (per D2)
 
-`SparkMiddleware.cs:181-201` enforces double-submit on mutating requests unconditionally. Exempt requests not authenticated by an ambient (cookie) credential — CSRF is only a threat for ambient credentials. **See open question Q2: the exemption criterion must be precise, because getting it wrong either breaks browsers or opens a CSRF hole.**
+`SparkMiddleware.cs:181-201` enforces double-submit on mutating requests unconditionally. Exempt requests **whose principal came from a non-cookie scheme** — decide from what authenticated the request, not from what headers or cookies happen to be present, so the gate can't be suppressed by request shape.
+
+Also replace the hand-rolled XSRF cookie generation at `SparkMiddleware.cs:238-241` with `UseAntiforgeryGenerator()` from **`MintPlayer.AspNetCore.SpaServices.Xsrf`** (`C:\Repos\MintPlayer.AspNetCore.SpaServices\MintPlayer.AspNetCore.SpaServices.Xsrf`). It does the identical `GetAndStoreTokens` + `XSRF-TOKEN` cookie with `HttpOnly = false`. Keep `AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN")` (`:48`) — the package supplies the cookie, not the header config. Confirm the package is published to NuGet at a compatible version before taking the dependency.
 
 ### M9.4 — Regression sweep
 
@@ -276,7 +294,29 @@ Each handler's entire authorization integration is emitting `new Claim("group", 
 
 - **M10.1 — Client certificate.** `AddCertificate()` + `OnCertificateValidated`, lifting the pinning and mode ladder from `ModuleCertificateValidator.cs:45-110`. Derive identity from the cert's `CN` (the guide's own generation recipe sets `CN=$MODULE`) rather than the request body — same guarantee, no schema change, removes body-trust. Requires `AllowedCertificateTypes = CertificateTypes.All` and `ValidateCertificateUse = false` or chain validation rejects the self-signed CA the guide tells operators to create. Keep the lookup live (or short-TTL): a cert authenticates the *connection*, so under keep-alive a cached ticket would outlive a revoked pin.
 - **M10.2 — Certificate forwarding.** `AddCertificateForwarding` for proxy-terminated TLS, **with a trusted-proxy allowlist**. The demos currently `KnownProxies.Clear()`; inheriting that posture here would let anyone forge a cert header. Without this the cert scheme cannot work in this repo's own Traefik deployment. **See open question Q3 (which header formats).**
-- **M10.3 — ClientId/Secret.** **See open question Q1** — local `SparkClient` store vs. JWT-bearer against the IdP's JWKS. Whichever is chosen: PBKDF2/Argon2 with a salt and `CryptographicOperations.FixedTimeEquals`, *not* the IdP branch's unsalted SHA-256 + `string.Equals`.
+- **M10.3 — ClientId/Secret consumer side.** Per D1 this is a **JWT-bearer resource-server scheme** validating against the IdP's JWKS, mapping token claims → group claims. The issuing side is M12. This half does not exist on the IdP branch and is a genuine build either way.
+
+## M12 — Port and audit `MintPlayer.Spark.IdentityProvider` (per D1)
+
+The `client_credentials` issuer. **The audit is the deliverable, not a formality** — the user's condition is that the package "works exactly as it's supposed to and doesn't have vulnerabilities."
+
+### M12.1 — Port to `master`
+
+The branch predates the `libs/` reorg (package sits at repo root), Angular 22, and the breadcrumbs redesign. Move to `libs/identity_provider/`, add to `MintPlayer.Spark.sln` (required — CI's bare `dotnet restore` skips anything not in the sln), align to `10.0.0-preview.41`.
+
+### M12.2 — Fix the three known defects
+
+1. `VerifyClientSecret` (`Endpoints/Token.cs`) uses **unsalted single-round SHA-256** and `string.Equals(Ordinal)`, which is **not constant-time**. Replace with PBKDF2/Argon2 + salt and `CryptographicOperations.FixedTimeEquals` — the pattern `libs/webhooks/.../SignatureService.cs:36` already gets right.
+2. `OidcTokenGenerator.GenerateAccessToken` emits application claims as `client_{Type}`, so `{Type:"group"}` becomes `client_group` and never matches `ClaimsGroupMembershipProvider.GroupClaimTypes` → **a machine token authorizes as nobody**. Map to real group claims.
+3. No resource-server side exists (that's M10.3).
+
+### M12.3 — Security audit
+
+Full pass, not a skim, over all 13 endpoints. At minimum: PKCE enforcement, redirect-URI validation (exact match, no open redirect), authorization-code single-use and TTL, refresh-token rotation and reuse detection, signing-key management and rotation, `Introspection`/`Revocation` client authentication, scope escalation between grants, token-cleanup correctness, and confused-deputy risks between `authorization_code` and `client_credentials`. Record findings in a doc alongside `findings-replication-mtls.md`; fix High/Medium before merge.
+
+### M12.4 — Tests
+
+The branch's coverage is unknown. Assume none for the security-relevant paths and write them: grant-type gating per `AllowedGrantTypes`, secret expiry, scope validation against `AllowedScopes`, rejected-secret paths, introspection of expired/revoked tokens.
 
 ## M11 — Retire the authorization bypasses
 
