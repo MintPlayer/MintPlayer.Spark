@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 using Raven.Client.Documents;
 
@@ -38,10 +39,18 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// Use it to register custom actions classes, options, or swap services for mocks without forking
     /// the factory.
     /// </param>
+    /// <param name="configureSpark">
+    /// Optional hook invoked inside <c>AddSpark</c>, after the context is set. This is where Spark
+    /// <em>modules</em> are added — authentication, the identity provider, messaging — since those
+    /// are <see cref="ISparkBuilder"/> extensions and therefore unreachable from
+    /// <paramref name="configureServices"/>. Endpoints and middleware a module registers on the
+    /// builder's registry flow into the pipeline automatically.
+    /// </param>
     public SparkEndpointFactory(
         IDocumentStore testStore,
         IEnumerable<EntityTypeFile> models,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        Action<ISparkBuilder>? configureSpark = null)
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -76,6 +85,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                             // exercise authz override IAccessControl in
                             // configureServices.
                             spark.AllowAnonymousAccess();
+
+                            configureSpark?.Invoke(spark);
                         });
 
                         var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));

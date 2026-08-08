@@ -419,7 +419,33 @@ Re-consent now reinstates a revoked grant (`Status` back to `valid`, `RevokedAt`
 
 **Current IdP coverage is 33 tests, all pure functions** (`ClientSecretHasherTests`, `OidcReferenceTests`) in `MintPlayer.Spark.Tests`. Zero exercise an endpoint, a session, or a request. Everything M12.2–M12.5 fixed is reasoned-correct, not observed-correct.
 
-#### Host blocker — resolved, do it this way
+#### Host blocker — RESOLVED, and the earlier answer here was wrong
+
+**Use `SparkEndpointFactory<TContext>` (`libs/testing/`), in-process, from `MintPlayer.Spark.Tests`.** Not Fleet, not a new host project, no subprocess, no Angular bundle.
+
+It already does everything this needs: boots a Spark host on `TestServer` against a supplied `IDocumentStore`, writes per-test model JSON into a temp content root, exposes `CreateClient()` / `GetService<T>()`, and — the part that matters most here — `MintAntiforgeryAsync()`, which performs the warmup GET and returns the cookie header plus `X-XSRF-TOKEN` for mutating requests. `MintPlayer.Spark.Tests` already references both it and the IdP.
+
+One change was needed and has landed: `SparkEndpointFactory` took `configureServices` but the Spark builder action was fixed, so a caller could add *services* but not *modules* — and authentication and the identity provider are both `ISparkBuilder` extensions. It now also takes `configureSpark`, invoked inside `AddSpark`. Endpoints and middleware a module registers on the builder's registry flow into the pipeline on their own, so `/connect/*` is served with no further plumbing.
+
+```csharp
+new SparkEndpointFactory<TestContext>(store, models, configureSpark: spark =>
+{
+    spark.AddAuthentication<SparkUser>();
+    spark.AddIdentityProvider(o => o.Issuer = "https://idp.test");
+});
+```
+
+**Why the previous answer ("Fleet enables the IdP from configuration") was wrong.** I had not read `libs/testing/` when I wrote it. Two things follow from actually reading it:
+
+1. **The Fleet route is far more invasive than it looked.** `AddSparkFull` is *source-generated* (`SparkFullGenerator.Producer.cs`), gated on feature flags fed from a `.targets` file. Adding the IdP means editing a source generator, its targets, `SparkFullOptions`, and taking a new `ProjectReference` on a **shipped** package — real blast radius on the published dependency graph, in order to test something.
+2. **The cost argument for Fleet evaporates.** It rested on the shared collection fixture amortising the host start. In-process `TestServer` has no host to start, no `dotnet run` subprocess, and no `npm run build`, so it is faster than Fleet *and* isolated per test.
+
+The reviewer's suggestion of a dedicated `IdentityProviderTestHost` subprocess is likewise unnecessary — that pattern exists in `FleetTestHost` because Playwright needs a real browser against a real Angular app. Nothing here does.
+
+**Consequences for the matrix.** `SparkIdentityProviderOptions.Issuer` is set directly in `configureSpark`, so the `ASPNETCORE_ENVIRONMENT=E2E` trap noted earlier does not apply. `TestServer`'s `HttpClient` does **not** manage cookies, so thread them explicitly (see `SparkTestClient`) — this matters for every login/consent case, which are cookie-driven.
+
+<details>
+<summary>Superseded: the Fleet-from-configuration plan</summary>
 
 Nothing currently serves `/connect/*` under test. `FleetTestHost` launches the **real Fleet project as a `dotnet run` subprocess** (`FleetTestHost.cs:262`) with an `appsettings.E2E.json` override written at startup, so the test project referencing the IdP would achieve nothing — **Fleet itself** must call `AddIdentityProvider()`.
 
@@ -431,6 +457,8 @@ Nothing currently serves `/connect/*` under test. `FleetTestHost` launches the *
 The alternative — a minimal dedicated host — is only worth it if IdP tests need to run without Fleet's Angular bundle (`EnsureAngularBundleAsync` runs `npm run build`). The `/connect/*` pages are server-rendered HTML and need no SPA, but since the bundle is built once per suite and other tests need it regardless, that saving is theoretical.
 
 ⚠️ **The override file must set `Issuer`.** `ASPNETCORE_ENVIRONMENT` is `E2E`, **not** `Development` (`FleetTestHost.cs:269`), so `OidcIssuer.Resolve` will **throw** — O7 made the issuer required outside Development. Add `"Issuer": "{{httpsUrl}}"` to the override JSON, which is easy because `StartFleetAsync` already computes the HTTPS URL before writing the file (`FleetTestHost.cs:226-256`). Treat the throw as the design working: it fails loudly at startup instead of silently trusting the `Host` header.
+
+</details>
 
 New application records (`OidcApplication`) will need seeding per test — public client, confidential client, a `client_credentials`-only client, one that is disabled — which is also what M12.7 needs, so build the seeding helper once and share it.
 
