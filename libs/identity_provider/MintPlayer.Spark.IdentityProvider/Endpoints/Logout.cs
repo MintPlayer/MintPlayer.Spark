@@ -37,27 +37,27 @@ internal static class Logout
             var store = context.RequestServices.GetRequiredService<IDocumentStore>();
             using var session = store.OpenAsyncSession();
 
-            var apps = await session.Query<OidcApplication, OidcApplications_ByClientId>()
-                .Where(a => a.Enabled)
-                .ToListAsync(ct);
+            // The URI must be registered by *the client asking*, which means the request has to
+            // say who that is. Validating against every enabled application instead — as this
+            // did — makes one client's registered URI a legal logout destination for every
+            // other client, so anyone who can register an application gains a redirect through
+            // this provider's origin for all of them. client_id is how RP-initiated logout
+            // identifies the caller (OIDC RP-Initiated Logout 1.0 §2).
+            var clientId = query["client_id"].FirstOrDefault();
+            var app = string.IsNullOrEmpty(clientId)
+                ? null
+                : await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
 
-            var isValid = apps.Any(a =>
-                a.PostLogoutRedirectUris.Contains(postLogoutRedirectUri, StringComparer.Ordinal));
-
-            if (!isValid)
+            if (app is not { Enabled: true }
+                || !app.PostLogoutRedirectUris.Contains(postLogoutRedirectUri, StringComparer.Ordinal))
             {
                 context.Response.StatusCode = 400;
                 context.Response.ContentType = "text/html";
-                await context.Response.WriteAsync("<html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered.</p></body></html>");
+                await context.Response.WriteAsync("<html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered for this client.</p></body></html>");
                 return;
             }
 
-            var redirectUrl = postLogoutRedirectUri;
-            if (!string.IsNullOrEmpty(state))
-            {
-                redirectUrl += (redirectUrl.Contains('?') ? "&" : "?") + $"state={Uri.EscapeDataString(state)}";
-            }
-            context.Response.Redirect(redirectUrl);
+            context.Response.Redirect(RedirectUrl.With(postLogoutRedirectUri, ("state", state)));
         }
         else
         {

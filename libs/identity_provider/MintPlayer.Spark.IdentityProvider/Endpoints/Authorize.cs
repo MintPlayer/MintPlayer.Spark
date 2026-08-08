@@ -280,13 +280,9 @@ internal static class Authorize
         await session.SaveChangesAsync(ct);
 
         // Redirect back to client with authorization code
-        var redirectUrl = $"{request.RedirectUri}?code={Uri.EscapeDataString(code)}";
-        if (!string.IsNullOrEmpty(request.State))
-        {
-            redirectUrl += $"&state={Uri.EscapeDataString(request.State)}";
-        }
-
-        context.Response.Redirect(redirectUrl);
+        context.Response.Redirect(RedirectUrl.With(request.RedirectUri,
+            ("code", code),
+            ("state", request.State)));
     }
 
     /// <summary>
@@ -316,19 +312,20 @@ internal static class Authorize
     internal static async Task<OidcApplication?> FindApplicationByClientIdAsync(
         IAsyncDocumentSession session, string clientId, CancellationToken ct)
     {
+        // exact: true because RavenDB compares strings case-insensitively by default, which
+        // would make "acmeapp" resolve the application registered as "AcmeApp" — impersonation
+        // by casing, on the lookup that decides which client every other check is applied to.
         return await session.Query<OidcApplication, OidcApplications_ByClientId>()
-            .Where(a => a.ClientId == clientId)
+            .Where(a => a.ClientId == clientId, exact: true)
             .FirstOrDefaultAsync(ct);
     }
 
     private static void RedirectWithError(HttpContext context, string redirectUri, string? state,
         string error, string description)
     {
-        var url = $"{redirectUri}?error={Uri.EscapeDataString(error)}&error_description={Uri.EscapeDataString(description)}";
-        if (!string.IsNullOrEmpty(state))
-        {
-            url += $"&state={Uri.EscapeDataString(state)}";
-        }
-        context.Response.Redirect(url);
+        context.Response.Redirect(RedirectUrl.With(redirectUri,
+            ("error", error),
+            ("error_description", description),
+            ("state", state)));
     }
 }

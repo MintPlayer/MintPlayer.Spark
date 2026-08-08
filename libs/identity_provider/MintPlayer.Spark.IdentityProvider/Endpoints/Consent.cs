@@ -171,10 +171,10 @@ internal static class Consent
             request.Status = "denied";
             await session.SaveChangesAsync(ct);
 
-            var denyUrl = $"{request.RedirectUri}?error=access_denied&error_description=The+user+denied+the+request.";
-            if (!string.IsNullOrEmpty(request.State))
-                denyUrl += $"&state={Uri.EscapeDataString(request.State)}";
-            context.Response.Redirect(denyUrl);
+            context.Response.Redirect(RedirectUrl.With(request.RedirectUri,
+                ("error", "access_denied"),
+                ("error_description", "The user denied the request."),
+                ("state", request.State)));
             return;
         }
 

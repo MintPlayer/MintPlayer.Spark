@@ -118,6 +118,17 @@ internal class OidcTokenGenerator
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Audiences must be added to `claims` BEFORE the ClaimsIdentity is constructed: its
+        // constructor copies the list rather than aliasing it, so the previous version — which
+        // built the identity first and appended the extra audiences afterwards — silently
+        // dropped every audience but the first. It narrows rather than widens, so it failed
+        // closed, but the comment there described behaviour the code did not have.
+        if (audiences.Count > 1)
+        {
+            foreach (var aud in audiences.Skip(1))
+                claims.Add(new Claim(JwtRegisteredClaimNames.Aud, aud));
+        }
+
         var key = _signingKeyService.GetSigningKey();
         var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
 
@@ -128,26 +139,9 @@ internal class OidcTokenGenerator
             IssuedAt = DateTime.UtcNow,
             Expires = DateTime.UtcNow.AddMinutes(lifetimeMinutes),
             SigningCredentials = credentials,
+            // Scope-defined audiences win; a client with none falls back to itself.
+            Audience = audiences.Count > 0 ? audiences[0] : app.ClientId,
         };
-
-        // Set audience: use scope-defined audiences, or fall back to clientId
-        if (audiences.Count == 1)
-        {
-            descriptor.Audience = audiences[0];
-        }
-        else if (audiences.Count > 1)
-        {
-            // Multiple audiences: add as individual claims since Audiences property is read-only
-            descriptor.Audience = audiences[0];
-            foreach (var aud in audiences.Skip(1))
-            {
-                claims.Add(new Claim(JwtRegisteredClaimNames.Aud, aud));
-            }
-        }
-        else
-        {
-            descriptor.Audience = app.ClientId;
-        }
 
         var handler = new JsonWebTokenHandler();
         return (handler.CreateToken(descriptor), jti);

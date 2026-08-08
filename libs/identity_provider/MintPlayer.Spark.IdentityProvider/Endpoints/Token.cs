@@ -201,7 +201,14 @@ internal static class Token
         // Generate tokens
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
         var idToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes);
-        var refreshTokenValue = tokenGenerator.GenerateRefreshToken();
+
+        // A refresh token is a long-lived credential and must be asked for. This used to be
+        // minted unconditionally, so every browser client silently received a 14-day credential
+        // it never requested and could not decline — the widest-reaching thing this endpoint
+        // handed out, given away by default.
+        var issueRefreshToken = AllowsRefreshTokens(app)
+            && codeToken.Scopes.Contains("offline_access", StringComparer.OrdinalIgnoreCase);
+        var refreshTokenValue = issueRefreshToken ? tokenGenerator.GenerateRefreshToken() : null;
 
         // Store access token
         var accessTokenDoc = new OidcToken
@@ -218,22 +225,23 @@ internal static class Token
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
         };
 
-        // Store refresh token
-        var refreshTokenDoc = new OidcToken
-        {
-            ApplicationId = app.Id!,
-            AuthorizationId = codeToken.AuthorizationId,
-            Subject = codeToken.Subject,
-            Id = OidcTokenReference.DocumentId(refreshTokenValue),
-            Type = "refresh_token",
-            Scopes = codeToken.Scopes,
-            Status = "valid",
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
-        };
-
         await session.StoreAsync(accessTokenDoc, ct);
-        await session.StoreAsync(refreshTokenDoc, ct);
+
+        if (refreshTokenValue != null)
+        {
+            await session.StoreAsync(new OidcToken
+            {
+                ApplicationId = app.Id!,
+                AuthorizationId = codeToken.AuthorizationId,
+                Subject = codeToken.Subject,
+                Id = OidcTokenReference.DocumentId(refreshTokenValue),
+                Type = "refresh_token",
+                Scopes = codeToken.Scopes,
+                Status = "valid",
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
+            }, ct);
+        }
 
         // Marking the code redeemed and issuing the tokens are one batch, so losing the race
         // writes nothing at all. The winner holds the tokens; this request gets the same answer
@@ -249,15 +257,29 @@ internal static class Token
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.Pragma = "no-cache";
 
-        await context.Response.WriteAsJsonAsync(new
+        // Built as a dictionary so an unissued refresh token is absent rather than present-and-
+        // null: RFC 6749 §5.1 makes refresh_token optional, and a client testing for the key
+        // should not have to distinguish "no refresh token" from "a null one".
+        var response = new Dictionary<string, object>
         {
-            access_token = accessToken,
-            token_type = "Bearer",
-            expires_in = app.AccessTokenLifetimeMinutes * 60,
-            id_token = idToken,
-            refresh_token = refreshTokenValue,
-        });
+            ["access_token"] = accessToken,
+            ["token_type"] = "Bearer",
+            ["expires_in"] = app.AccessTokenLifetimeMinutes * 60,
+            ["id_token"] = idToken,
+        };
+
+        if (refreshTokenValue != null)
+            response["refresh_token"] = refreshTokenValue;
+
+        await context.Response.WriteAsJsonAsync(response);
     }
+
+    /// <summary>
+    /// Whether this client may hold refresh tokens at all. Checked both when one is asked for
+    /// and when one would be handed out alongside an authorization code.
+    /// </summary>
+    private static bool AllowsRefreshTokens(OidcApplication app)
+        => app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
 
     private static async Task HandleRefreshTokenGrant(HttpContext context, IFormCollection form, CancellationToken ct)
     {
@@ -283,6 +305,15 @@ internal static class Token
         {
             context.Response.StatusCode = 401;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
+            return;
+        }
+
+        // The other two grants have always checked this; this one did not, so a client never
+        // registered for refresh could still rotate one indefinitely.
+        if (!AllowsRefreshTokens(app))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for refresh_token grant." });
             return;
         }
 
@@ -465,10 +496,15 @@ internal static class Token
             }
         }
 
-        // If no scopes requested, use all allowed scopes
+        // Requiring the caller to name what it wants, rather than defaulting to everything the
+        // client may ever hold. The previous default handed a machine token the client's full
+        // authority — api.admin included — to a caller that asked for nothing at all, which is
+        // least privilege violated by omission and invisible at the call site.
         if (requestedScopes.Count == 0)
         {
-            requestedScopes = app.AllowedScopes.ToList();
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_scope", error_description = "scope is required; name the scopes this token needs." });
+            return;
         }
 
         // Load scope definitions from DB

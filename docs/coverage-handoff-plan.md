@@ -26,7 +26,10 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `9b2958a` | **O5, O6, O7** — `jti` + DB-backed validity, drop `Payload`, issuer from options |
 | `643b876` | e2e matrix §A; O2/O3/O4 marked closed; **O26** raised |
 | `d473564` | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
-| _(next)_ | e2e matrix complete (A/T/L/R, ~200 cases); O3 confirmed closed; **O27** + logout-CSRF decided |
+| `d738186` | e2e matrix complete (A/T/L/R, ~200 cases); O3 confirmed closed; **O27** + logout-CSRF decided |
+| _(next)_ | **O8, O12, O14, O19, O21, O25** — refresh gating, logout client binding, machine scopes, audiences, URL building, exact client lookup |
+
+**Remaining open:** O10, O13, O15, O16, O17, O18, O20, O22, O23, O24, O26, N2, N4, plus O27 (accepted). **O16 is the most valuable** — a Spark API bearer token can drive `/connect/authorize` headlessly, because ambient `context.User` resolves the bearer scheme before the cookie.
 
 **Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
 
