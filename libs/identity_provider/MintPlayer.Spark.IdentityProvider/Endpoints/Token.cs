@@ -10,6 +10,7 @@ using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Exceptions;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -66,6 +67,12 @@ internal static class Token
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
+        // Redemption is the point where a single-use credential is spent, so the write that
+        // spends it must fail if anyone else spent it first. The point-load fixed replay
+        // through a stale index; this fixes replay through simultaneity, where two requests
+        // both load a valid code, both check it, and both save.
+        session.Advanced.UseOptimisticConcurrency = true;
+
         // Validate client
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
@@ -106,8 +113,10 @@ internal static class Token
         {
             // A code presented twice: the first redemption already consumed it. Everything
             // derived from it is now suspect, so the whole authorization is torn down.
+            // Best-effort: if a concurrent request is tearing down the same chain, either
+            // teardown suffices and the caller is refused regardless.
             await RevokeAuthorizationChainAsync(session, codeToken, ct);
-            await session.SaveChangesAsync(ct);
+            await TrySaveAsync(session, ct);
 
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
@@ -137,7 +146,7 @@ internal static class Token
         if (codeToken.ExpiresAt < DateTime.UtcNow)
         {
             codeToken.Status = "expired";
-            await session.SaveChangesAsync(ct);
+            await TrySaveAsync(session, ct);
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Authorization code has expired." });
             return;
@@ -224,7 +233,16 @@ internal static class Token
 
         await session.StoreAsync(accessTokenDoc, ct);
         await session.StoreAsync(refreshTokenDoc, ct);
-        await session.SaveChangesAsync(ct);
+
+        // Marking the code redeemed and issuing the tokens are one batch, so losing the race
+        // writes nothing at all. The winner holds the tokens; this request gets the same answer
+        // a later replay would get.
+        if (!await TrySaveAsync(session, ct))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
+            return;
+        }
 
         context.Response.ContentType = "application/json";
         context.Response.Headers.CacheControl = "no-store";
@@ -256,6 +274,9 @@ internal static class Token
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
+        // Rotation spends the presented token, so it races exactly as code redemption does.
+        session.Advanced.UseOptimisticConcurrency = true;
+
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
@@ -284,8 +305,9 @@ internal static class Token
         {
             // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
             // treated as theft: revoke the entire chain rather than just refusing.
+            // Best-effort, as on the code grant.
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
-            await session.SaveChangesAsync(ct);
+            await TrySaveAsync(session, ct);
 
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
@@ -366,7 +388,15 @@ internal static class Token
 
         await session.StoreAsync(newAccessTokenDoc, ct);
         await session.StoreAsync(newRefreshTokenDoc, ct);
-        await session.SaveChangesAsync(ct);
+
+        // As on the code grant: rotation and issuance are one batch, so the loser of a
+        // simultaneous rotation writes nothing and is answered as a replay.
+        if (!await TrySaveAsync(session, ct))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
+            return;
+        }
 
         context.Response.ContentType = "application/json";
         context.Response.Headers.CacheControl = "no-store";
@@ -530,6 +560,29 @@ internal static class Token
 
         foreach (var sibling in siblings)
             sibling.Status = "revoked";
+    }
+
+    /// <summary>
+    /// Saves, reporting whether this request won the race rather than throwing.
+    /// <para>
+    /// Losing is not an error condition here — it is the expected outcome when a single-use
+    /// credential is presented twice at once, and it means nothing was written, because
+    /// RavenDB applies a session's changes as one batch. Callers that were spending a
+    /// credential must refuse; callers doing best-effort bookkeeping can ignore the result,
+    /// since they are already returning an error.
+    /// </para>
+    /// </summary>
+    private static async Task<bool> TrySaveAsync(IAsyncDocumentSession session, CancellationToken ct)
+    {
+        try
+        {
+            await session.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (ConcurrencyException)
+        {
+            return false;
+        }
     }
 
     internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)

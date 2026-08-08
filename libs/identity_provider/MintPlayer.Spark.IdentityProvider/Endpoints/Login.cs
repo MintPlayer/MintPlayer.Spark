@@ -45,6 +45,7 @@ internal static class Login
         }
 
         sb.Append("<form method=\"post\">");
+        ConnectPage.AppendAntiforgery(sb, context);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
         sb.Append("<div class=\"form-group\">");
         sb.Append("<label for=\"email\">Email</label>");
@@ -53,6 +54,9 @@ internal static class Login
         sb.Append("<div class=\"form-group\">");
         sb.Append("<label for=\"password\">Password</label>");
         sb.Append("<input type=\"password\" id=\"password\" name=\"password\" required />");
+        sb.Append("</div>");
+        sb.Append("<div class=\"form-group\">");
+        sb.Append("<label><input type=\"checkbox\" name=\"rememberMe\" value=\"true\" /> Remember me</label>");
         sb.Append("</div>");
         sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Login</button>");
         sb.Append("</form></body></html>");
@@ -66,6 +70,7 @@ internal static class Login
         var email = form["email"].FirstOrDefault();
         var password = form["password"].FirstOrDefault();
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
+        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
         {
@@ -98,11 +103,19 @@ internal static class Login
             return;
         }
 
-        // Attempt password sign-in
+        // Attempt password sign-in.
+        //
+        // lockoutOnFailure was false, which meant failures never reached AccessFailedAsync: an
+        // unauthenticated, unthrottled endpoint would test passwords forever, and the
+        // IsLockedOut branch below was unreachable. MapIdentityApi's own login passes true, so
+        // this page was strictly weaker than the API beside it.
+        //
+        // isPersistent was hardcoded true, silently issuing every visitor a persistent cookie.
+        // It now follows the checkbox the user actually saw.
         var passwordSignInMethod = signInManagerType.GetMethod("PasswordSignInAsync",
             [userType, typeof(string), typeof(bool), typeof(bool)])!;
         var result = (SignInResult)await (dynamic)passwordSignInMethod.Invoke(
-            signInManager, [user, password, true, false])!;
+            signInManager, [user, password, rememberMe, true])!;
 
         if (result.Succeeded)
         {

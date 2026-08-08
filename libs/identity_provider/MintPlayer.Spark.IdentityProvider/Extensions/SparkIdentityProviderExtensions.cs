@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -93,11 +94,17 @@ public static class SparkIdentityProviderExtensions
         var connectGroup = endpoints.MapGroup("/connect");
         connectGroup.MapGet("/authorize", (Delegate)Authorize.Handle);
         connectGroup.MapGet("/login", (Delegate)Login.HandleGet);
-        connectGroup.MapPost("/login", (Delegate)Login.HandlePost);
+        connectGroup.MapPost("/login", (Delegate)Login.HandlePost).RequireAntiforgery();
         connectGroup.MapGet("/consent", (Delegate)Consent.HandleGet);
-        connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost);
+        connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost).RequireAntiforgery();
         connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
-        connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost);
+        connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost).RequireAntiforgery();
+
+        // Deliberately NOT antiforgery-protected: these are machine endpoints authenticated by
+        // client credentials, never by an ambient cookie, so there is no ambient authority for
+        // a cross-site request to borrow — and a token that has to be presented cannot be
+        // supplied by the browser on the caller's behalf. Requiring a token here would simply
+        // break every conforming OAuth client.
         connectGroup.MapPost("/token", (Delegate)Token.Handle);
         connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle);
         connectGroup.MapGet("/logout", (Delegate)Logout.Handle);
@@ -106,4 +113,13 @@ public static class SparkIdentityProviderExtensions
 
         return endpoints;
     }
+
+    /// <summary>
+    /// Marks a route for antiforgery validation. Spark's middleware validates any endpoint
+    /// carrying <c>IAntiforgeryMetadata</c> (<c>SparkMiddleware</c>); these handlers read the
+    /// body with <c>ReadFormAsync</c> rather than <c>[FromForm]</c>, so minimal APIs never
+    /// inferred the metadata for them and the pages went unprotected.
+    /// </summary>
+    private static RouteHandlerBuilder RequireAntiforgery(this RouteHandlerBuilder builder)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 }

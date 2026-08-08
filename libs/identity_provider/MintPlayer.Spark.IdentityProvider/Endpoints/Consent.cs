@@ -85,7 +85,9 @@ internal static class Consent
         sb.Append("</style></head><body>");
         sb.Append("<h2>").Append(Encode(app.DisplayName)).Append(" wants to access your account</h2>");
         sb.Append("<p>This application is requesting the following permissions:</p>");
-        sb.Append("<form method=\"post\"><ul class=\"scope-list\">");
+        sb.Append("<form method=\"post\">");
+        ConnectPage.AppendAntiforgery(sb, context);
+        sb.Append("<ul class=\"scope-list\">");
 
         foreach (var s in requestedScopes)
         {

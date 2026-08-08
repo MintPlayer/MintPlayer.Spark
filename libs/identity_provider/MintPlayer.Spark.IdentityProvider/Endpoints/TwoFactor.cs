@@ -24,7 +24,7 @@ internal static class TwoFactor
         var useRecoveryCode = context.Request.Query["recovery"].FirstOrDefault() == "true";
 
         context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.WriteAsync(BuildFormHtml(returnUrl, error, useRecoveryCode));
+        await context.Response.WriteAsync(BuildFormHtml(context, returnUrl, error, useRecoveryCode));
     }
 
     public static async Task HandlePost(HttpContext context)
@@ -90,7 +90,7 @@ internal static class TwoFactor
         }
     }
 
-    private static string BuildFormHtml(string returnUrl, string? error, bool useRecoveryCode)
+    private static string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode)
     {
         var sb = new StringBuilder();
         sb.Append("<!DOCTYPE html><html><head><title>Two-Factor Authentication</title>");
@@ -116,6 +116,7 @@ internal static class TwoFactor
         }
 
         sb.Append("<form method=\"post\">");
+        ConnectPage.AppendAntiforgery(sb, context);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
 
         if (useRecoveryCode)
