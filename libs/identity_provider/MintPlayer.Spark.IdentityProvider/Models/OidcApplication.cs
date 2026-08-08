@@ -35,6 +35,17 @@ public class OidcApplication
     /// </summary>
     public List<string> AllowedGrantTypes { get; set; } = [];
 
+    /// <summary>
+    /// Lets this client introspect tokens it neither issued nor is the audience of.
+    /// <para>
+    /// Off by default: introspection discloses a token's subject and scopes, so the caller must
+    /// have a reason to see them — it issued the token, or the token was minted for it. Turn this
+    /// on only for a gateway that introspects on behalf of the resources behind it, and
+    /// understand that it can then read every token in the system.
+    /// </para>
+    /// </summary>
+    public bool MayIntrospectAnyAudience { get; set; }
+
     // --- URIs ---
     public List<string> RedirectUris { get; set; } = [];
     public List<string> PostLogoutRedirectUris { get; set; } = [];

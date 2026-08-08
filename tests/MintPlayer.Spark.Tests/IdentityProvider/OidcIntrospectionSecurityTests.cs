@@ -95,6 +95,87 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
             + "whether a given token value exists");
     }
 
+    /// <summary>
+    /// R-X3 / N2 — a resource server may introspect a token minted <em>for</em> it, even though
+    /// it did not issue it. This is the deployment RFC 7662 exists for, and gating on ownership
+    /// alone had refused it: tokens are issued to clients, so a resource server never owns the
+    /// ones it is meant to accept.
+    /// </summary>
+    [Fact]
+    public async Task A_resource_server_may_introspect_a_token_minted_for_its_audience()
+    {
+        var (app, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
+        await SeedApplicationAsync("billing-api");
+
+        var body = await BodyAsync(await IntrospectAsync("billing-api", Secret, accessToken));
+
+        body.GetProperty("active").GetBoolean().Should().BeTrue(
+            "the token names this resource server as its audience");
+        body.GetProperty("client_id").GetString().Should().Be(app.ClientId, "and reports the true issuer");
+    }
+
+    /// <summary>R-X4 / N2 — but a third party named by nobody still sees nothing.</summary>
+    [Fact]
+    public async Task An_unrelated_client_still_cannot_introspect_by_audience()
+    {
+        var (_, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
+        await SeedApplicationAsync("billing-api");
+        await SeedApplicationAsync("unrelated");
+
+        var body = await BodyAsync(await IntrospectAsync("unrelated", Secret, accessToken));
+
+        body.GetProperty("active").GetBoolean().Should().BeFalse();
+        body.GetRawText().Should().NotContain("SparkUsers/");
+    }
+
+    /// <summary>R-X5 / N2 — the gateway opt-out, which must be explicit.</summary>
+    [Fact]
+    public async Task A_gateway_may_opt_out_of_the_audience_restriction()
+    {
+        var (_, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
+        var gateway = await SeedApplicationAsync("gateway");
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            var stored = await session.LoadAsync<OidcApplication>(gateway.Id!);
+            stored.MayIntrospectAnyAudience = true;
+            await session.SaveChangesAsync();
+        }
+
+        var body = await BodyAsync(await IntrospectAsync("gateway", Secret, accessToken));
+
+        body.GetProperty("active").GetBoolean().Should().BeTrue(
+            "a gateway introspecting for the resources behind it — opted into deliberately");
+    }
+
+    /// <summary>Issues an access token whose granted scope declares <paramref name="audience"/>.</summary>
+    private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenForAudienceAsync(string audience)
+    {
+        var app = await SeedApplicationAsync("webapp", allowedScopes: ["openid", "api.read"]);
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            var scope = await session.LoadAsync<OidcScope>("OidcScopes/api.read");
+            scope.Audiences = [audience];
+            await session.SaveChangesAsync();
+        }
+
+        await SeedUserAsync("alice@test.local");
+        var code = await ObtainCodeAsync(app, "alice@test.local", ["openid", "api.read"]);
+
+        var body = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["client_id"] = app.ClientId,
+                ["client_secret"] = Secret,
+                ["code"] = code,
+                ["redirect_uri"] = app.RedirectUris[0],
+            })));
+
+        return (app, body.GetProperty("access_token").GetString()!);
+    }
+
     /// <summary>R-A1.</summary>
     [Fact]
     public async Task Introspect_rejects_missing_client_credentials()

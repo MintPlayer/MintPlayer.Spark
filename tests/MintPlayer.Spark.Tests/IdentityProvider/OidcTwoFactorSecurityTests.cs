@@ -528,18 +528,21 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     }
 
     /// <summary>
-    /// L-T13 — recovery codes are stored as written. Pinned so a change in either direction is
-    /// visible: today they are cleartext, which a database dump discloses.
+    /// L-T13 — recovery codes are never at rest in the clear. A recovery code is a standing
+    /// second-factor bypass, so a database dump must not be a dump of working bypasses.
     /// </summary>
     [Fact]
-    public async Task Recovery_codes_are_currently_stored_in_cleartext()
+    public async Task Recovery_codes_are_stored_hashed()
     {
         var codes = await SeedTwoFactorUserAsync(Email);
 
         var stored = await WithUserManagerAsync(async users => (await users.FindByEmailAsync(Email))!);
 
-        stored.TwoFactorRecoveryCodes.Should().Contain(codes[0],
-            "documents the current state — see the findings entry before changing this");
+        stored.TwoFactorRecoveryCodes.Should().NotBeEmpty();
+        stored.TwoFactorRecoveryCodes.Should().NotContain(codes[0],
+            "the issued code itself must not be recoverable from the document");
+        stored.TwoFactorRecoveryCodes.Should().OnlyContain(h => h.Length == 64,
+            "each entry should be a SHA-256 hex digest, not a code");
     }
 
     private static string ApplicationCookie(HttpResponseMessage response)

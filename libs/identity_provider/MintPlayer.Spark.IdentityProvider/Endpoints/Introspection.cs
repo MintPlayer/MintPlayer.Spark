@@ -64,8 +64,8 @@ internal static class Introspection
 
         if (refreshDoc != null)
         {
-            // Authenticating as *some* client is not authority over another client's tokens.
-            if (!OwnedBy(refreshDoc.ApplicationId, app))
+            // A refresh token carries no audience, so ownership is the only basis for reading it.
+            if (!OwnedBy(refreshDoc.ApplicationId, app) && !app.MayIntrospectAnyAudience)
             {
                 await WriteInactiveAsync(context);
                 return;
@@ -92,7 +92,7 @@ internal static class Introspection
         var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, token, issuer, ct);
         if (resolved != null)
         {
-            if (resolved.Record == null || !OwnedBy(resolved.Record.ApplicationId, app))
+            if (resolved.Record == null || !MayIntrospect(resolved, app))
             {
                 await WriteInactiveAsync(context);
                 return;
@@ -136,6 +136,28 @@ internal static class Introspection
     /// </summary>
     private static bool OwnedBy(string applicationId, OidcApplication app)
         => string.Equals(applicationId, app.Id, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether this caller may see an access token's claims: it issued the token, or the token
+    /// was minted <em>for</em> it, or it is a gateway that has opted out of the restriction.
+    /// <para>
+    /// The audience arm is not a loosening — it repairs one. Gating on ownership alone (the N1
+    /// fix) also refused the deployment RFC 7662 is written for, where a resource server
+    /// introspects tokens it is meant to accept: those are issued to some *client*, so the
+    /// resource server never owns them and could never ask about them. Audience is what makes a
+    /// resource server the legitimate reader of a token it did not issue.
+    /// </para>
+    /// <para>
+    /// It is also where audience finally means something. Nothing else in the package enforces
+    /// <c>aud</c> — a verifier checking only <c>active</c> would accept a token minted for
+    /// somewhere else — so here the token has to name the caller before its claims are handed
+    /// over.
+    /// </para>
+    /// </summary>
+    private static bool MayIntrospect(ResolvedAccessToken resolved, OidcApplication app)
+        => OwnedBy(resolved.Record!.ApplicationId, app)
+        || resolved.Audiences.Contains(app.ClientId, StringComparer.Ordinal)
+        || app.MayIntrospectAnyAudience;
 
     /// <summary>
     /// RFC 7662 does not require saying <em>why</em> a token is inactive, and saying so would

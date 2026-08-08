@@ -33,7 +33,9 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `6e9ef6b` | **M12.6 started** — 24 e2e tests; found **N5** (High) and a wrong O25 fix |
 | `28633e6` | **M12.6 flow coverage** — 131 IdP tests (98 e2e) across the whole flow |
 | `ab3fbaa` | **Forgery batch** — 138 IdP tests, deterministic over repeat runs; found **N6** |
-| _(next)_ | **Two-factor batch — 164 IdP tests green** (26 cases; §L.4 complete) |
+| `9bc39c2` | **Two-factor batch** — 164 IdP tests (26 cases; §L.4 complete) |
+| `906b101` | **N7, N8** — remember-me across the 2FA hop; single-use recovery codes under concurrency |
+| _(next)_ | **D9–D11 implemented** — `/connect` rate limiting, hashed recovery codes, audience-gated introspection |
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
@@ -73,6 +75,14 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 **D7 — The stored authorization request also carries `OidcAuthorization.Id`.** Consent creates the authorization, writes its id onto the request record, and code issuance reads it from there. This makes **O1 fall out of M12.5** rather than needing a separate fix: today `AuthorizationId` is hardcoded `""` at issuance, which silently kills `Revocation`'s access-token cascade (it has never executed once) *and* the reuse-detection chain revocation added in `dfab40a`. Threading a parameter through `GenerateCodeAndRedirectAsync` would work but leaves the same "remember to pass it" fragility that caused the original bug — the request record is the natural home for state the flow accumulates.
 
 **D8 — The request document uses the natural-id pattern**, `OidcAuthorizationRequests/{sha256(request_id)}`, matching `OidcTokenReference`. Gives point-load consistency (no index staleness on a security decision), single-use enforcement by document existence, and no plaintext handle at rest — the same three properties that fix bought for tokens. One storage idiom across the package rather than two.
+
+**D9 — Rate limiting covers `/connect` as well as `/spark`** (user's call). The limiter partitioned on `/spark` and returned *no limiter* for everything else, so an app that opted in still shipped an unthrottled password endpoint — and lockout is per-account, which does nothing against an attacker spreading attempts across accounts. This is what O27's "accept and mitigate" had assumed existed. It now does.
+
+**D10 — Two-factor recovery codes are hashed at rest** (user's call). A recovery code is a standing second-factor bypass, so a database dump was a dump of working bypasses. Applies F4's own reasoning, which this package had already used to refuse "that is how Identity does it" for a strictly less exposed credential. Redemption compares every stored hash in constant time. **Existing cleartext codes stop working** — users must regenerate; acceptable under no-backward-compatibility, but it is the only change in this PR touching a persisted user format.
+
+**D11 — Audience is enforced at introspection, with an explicit opt-out** (user's call). A caller may read a token's claims if it issued the token, **or** the token names it in `aud`, **or** it sets `MayIntrospectAnyAudience` (for a gateway introspecting on behalf of the resources behind it). The audience arm is not a loosening — it repairs one. N1's ownership gate had also refused the deployment RFC 7662 is written for, where a resource server introspects tokens it is meant to accept: those are issued to *clients*, so a resource server never owns them and could never ask. This is also the only place in the package where `aud` means anything.
+
+**D12 — M12.7 (application registration) is the next milestone** (user's call). It is what actually unblocks Coverage: there is still no way to create an `OidcApplication`, so `client_credentials` — D1's whole premise — cannot be used by anyone. It is also where `RedirectUris`, `AllowedScopes` and `MayIntrospectAnyAudience` get set, which makes it a security surface rather than a convenience. Must account for the index-staleness observation: a newly registered application is not usable the instant registration returns.
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
 
