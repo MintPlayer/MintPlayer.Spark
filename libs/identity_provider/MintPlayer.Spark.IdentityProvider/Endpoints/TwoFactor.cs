@@ -22,9 +22,10 @@ internal static class TwoFactor
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(context.Request.Query["returnUrl"].FirstOrDefault());
         var error = context.Request.Query["error"].FirstOrDefault();
         var useRecoveryCode = context.Request.Query["recovery"].FirstOrDefault() == "true";
+        var rememberMe = context.Request.Query["rememberMe"].FirstOrDefault() == "true";
 
         context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.WriteAsync(BuildFormHtml(context, returnUrl, error, useRecoveryCode));
+        await context.Response.WriteAsync(BuildFormHtml(context, returnUrl, error, useRecoveryCode, rememberMe));
     }
 
     public static async Task HandlePost(HttpContext context)
@@ -34,6 +35,11 @@ internal static class TwoFactor
         var recoveryCode = form["recoveryCode"].FirstOrDefault()?.Replace(" ", "");
         var useRecoveryCode = form["useRecoveryCode"].FirstOrDefault() == "true";
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
+
+        // Carried across the hop as a hidden field, the same way returnUrl is. The choice is made
+        // on the login page and spent here, so without threading it the second factor silently
+        // overrode it — a user who declined a persistent cookie got one anyway.
+        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
 
         if (useRecoveryCode && string.IsNullOrEmpty(recoveryCode))
         {
@@ -78,7 +84,7 @@ internal static class TwoFactor
         {
             // TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient)
             var method = signInManagerType.GetMethod("TwoFactorAuthenticatorSignInAsync")!;
-            var result = (SignInResult)await (dynamic)method.Invoke(signInManager, [code, true, false])!;
+            var result = (SignInResult)await (dynamic)method.Invoke(signInManager, [code, rememberMe, false])!;
 
             if (result.Succeeded)
             {
@@ -90,7 +96,7 @@ internal static class TwoFactor
         }
     }
 
-    private static string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode)
+    private static string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode, bool rememberMe)
     {
         var sb = new StringBuilder();
         sb.Append("<!DOCTYPE html><html><head><title>Two-Factor Authentication</title>");
@@ -118,6 +124,8 @@ internal static class TwoFactor
         sb.Append("<form method=\"post\">");
         ConnectPage.AppendAntiforgery(sb, context);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
+        if (rememberMe)
+            sb.Append("<input type=\"hidden\" name=\"rememberMe\" value=\"true\" />");
 
         if (useRecoveryCode)
         {
@@ -129,7 +137,7 @@ internal static class TwoFactor
             sb.Append("</div>");
             sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Verify</button>");
             sb.Append("</form>");
-            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append("\" class=\"btn-link\">Use authenticator code instead</a>");
+            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">Use authenticator code instead</a>");
         }
         else
         {
@@ -140,7 +148,7 @@ internal static class TwoFactor
             sb.Append("</div>");
             sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Verify</button>");
             sb.Append("</form>");
-            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append("&recovery=true\" class=\"btn-link\">Use a recovery code instead</a>");
+            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append("&recovery=true").Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">Use a recovery code instead</a>");
         }
 
         sb.Append("</body></html>");

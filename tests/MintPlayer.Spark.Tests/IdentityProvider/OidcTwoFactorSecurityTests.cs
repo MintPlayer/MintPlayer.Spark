@@ -390,6 +390,167 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
         location.Should().NotContain("two-factor");
     }
 
+    /// <summary>
+    /// L-T7 — the second factor must not override the choice made on the login page. It used to:
+    /// <c>TwoFactorAuthenticatorSignInAsync</c> was called with <c>isPersistent: true</c>
+    /// hardcoded, and the checkbox value was dropped entirely between the two hops, so a user who
+    /// declined a persistent cookie got one anyway.
+    /// </summary>
+    [Fact]
+    public async Task Declining_remember_me_does_not_yield_a_persistent_cookie_after_two_factor()
+    {
+        await SeedTwoFactorUserAsync(Email);
+        var browser = await PasswordStepAsync(Email);
+
+        var response = await SubmitTwoFactorAsync(browser, code: await AuthenticatorCodeAsync(Email));
+
+        ApplicationCookie(response).Should().NotContain("expires=",
+            "declining remember-me must yield a session cookie, not a persistent one");
+    }
+
+    /// <summary>L-T8 — and accepting it must still work.</summary>
+    [Fact]
+    public async Task Accepting_remember_me_survives_the_two_factor_hop()
+    {
+        await SeedTwoFactorUserAsync(Email);
+
+        var browser = NewBrowser();
+        var page = await browser.GetAsync("/connect/login?returnUrl=%2F");
+        var login = await browser.PostFormAsync("/connect/login", new Dictionary<string, string>
+        {
+            ["email"] = Email,
+            ["password"] = Password,
+            ["returnUrl"] = "/",
+            ["rememberMe"] = "true",
+            ["__RequestVerificationToken"] = AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync()),
+        });
+
+        login.Headers.Location!.OriginalString.Should().Contain("rememberMe=true",
+            "the choice has to travel to the hop that spends it");
+
+        var response = await SubmitTwoFactorAsync(
+            browser, code: await AuthenticatorCodeAsync(Email), rememberMe: true);
+
+        ApplicationCookie(response).Should().Contain("expires=");
+    }
+
+    /// <summary>
+    /// L-T16 — once locked out, even a correct code yields the generic message. TwoFactor.cs has
+    /// no <c>IsLockedOut</c> branch, unlike Login.cs. That is not a defect — it discloses less —
+    /// but it is asymmetric, so pin it as observed behaviour rather than leaving it to be
+    /// "fixed" into an oracle.
+    /// </summary>
+    [Fact]
+    public async Task A_locked_out_account_at_the_second_factor_gets_the_generic_message()
+    {
+        await SeedTwoFactorUserAsync(Email);
+        var browser = await PasswordStepAsync(Email);
+
+        for (var i = 0; i < 8; i++)
+            await SubmitTwoFactorAsync(browser, code: "000000");
+
+        var response = await SubmitTwoFactorAsync(browser, code: await AuthenticatorCodeAsync(Email));
+
+        response.Headers.Location!.OriginalString.Should().Contain("error=invalid_code");
+        response.Headers.Location!.OriginalString.Should().NotContain("locked_out");
+    }
+
+    /// <summary>
+    /// L-T15 — repeated wrong codes must eventually stop working even when the code is right,
+    /// i.e. failures at the second factor feed the same lockout counter as failures at the first.
+    /// Written to observe: this rides framework behaviour, not Spark's own code.
+    /// </summary>
+    [Fact]
+    public async Task Repeated_wrong_codes_eventually_lock_the_account()
+    {
+        await SeedTwoFactorUserAsync(Email);
+        var browser = await PasswordStepAsync(Email);
+
+        for (var i = 0; i < 8; i++)
+            await SubmitTwoFactorAsync(browser, code: "000000");
+
+        var locked = await WithUserManagerAsync(async users =>
+        {
+            var user = await users.FindByEmailAsync(Email);
+            return await users.IsLockedOutAsync(user!);
+        });
+
+        locked.Should().BeTrue("otherwise the second factor is an unthrottled six-digit oracle");
+    }
+
+    /// <summary>L-T18 — 2FA enabled with no authenticator key must fail closed, not fault.</summary>
+    [Fact]
+    public async Task Two_factor_enabled_without_an_authenticator_key_fails_closed()
+    {
+        await SeedUserAsync(Email);
+        await WithUserManagerAsync(async users =>
+        {
+            var user = await users.FindByEmailAsync(Email);
+            return await users.SetTwoFactorEnabledAsync(user!, true);
+        });
+
+        var browser = await PasswordStepAsync(Email);
+        var response = await SubmitTwoFactorAsync(browser, code: "123456");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().Contain("error=invalid_code",
+            "no key means nothing can verify — refuse, do not throw");
+    }
+
+    /// <summary>
+    /// L-T14 — a recovery code is single-use even under concurrent redemption. Read-modify-write
+    /// over the user document meant two requests could each load the user, each remove the same
+    /// code from their own copy, and both succeed.
+    /// </summary>
+    [Fact]
+    public async Task A_recovery_code_cannot_be_spent_twice_concurrently()
+    {
+        var codes = await SeedTwoFactorUserAsync(Email, recoveryCodes: 1);
+
+        var browsers = new List<Browser>();
+        for (var i = 0; i < 4; i++)
+            browsers.Add(await PasswordStepAsync(Email));
+
+        var attempts = await Task.WhenAll(browsers.Select(b => SubmitTwoFactorAsync(b, recoveryCode: codes[0])));
+
+        var succeeded = attempts.Count(r => r.Headers.Location?.OriginalString == "/");
+
+        succeeded.Should().Be(1,
+            "a single-use two-factor bypass spendable more than once is not single-use");
+
+        var remaining = await WithUserManagerAsync(async users =>
+        {
+            var user = await users.FindByEmailAsync(Email);
+            return await users.CountRecoveryCodesAsync(user!);
+        });
+
+        remaining.Should().Be(0);
+    }
+
+    /// <summary>
+    /// L-T13 — recovery codes are stored as written. Pinned so a change in either direction is
+    /// visible: today they are cleartext, which a database dump discloses.
+    /// </summary>
+    [Fact]
+    public async Task Recovery_codes_are_currently_stored_in_cleartext()
+    {
+        var codes = await SeedTwoFactorUserAsync(Email);
+
+        var stored = await WithUserManagerAsync(async users => (await users.FindByEmailAsync(Email))!);
+
+        stored.TwoFactorRecoveryCodes.Should().Contain(codes[0],
+            "documents the current state — see the findings entry before changing this");
+    }
+
+    private static string ApplicationCookie(HttpResponseMessage response)
+    {
+        response.Headers.TryGetValues("Set-Cookie", out var cookies).Should().BeTrue();
+        return cookies!.FirstOrDefault(c => c.StartsWith(".SparkAuth", StringComparison.Ordinal)
+                                         || c.Contains("Identity.Application", StringComparison.Ordinal))
+            ?? throw new InvalidOperationException(
+                "No application cookie in: " + string.Join(" | ", cookies!));
+    }
+
     /// <summary>L-T23 — disabling 2FA signs the user in at the password step, as configured.</summary>
     [Fact]
     public async Task Disabling_two_factor_returns_the_account_to_a_single_step()

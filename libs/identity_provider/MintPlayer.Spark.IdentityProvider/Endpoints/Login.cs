@@ -125,7 +125,9 @@ internal static class Login
 
         if (result.RequiresTwoFactor)
         {
-            context.Response.Redirect($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}");
+            // The remember-me choice is made here and spent on the next hop, so it has to travel.
+            var carry = rememberMe ? "&rememberMe=true" : "";
+            context.Response.Redirect($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}{carry}");
             return;
         }
 

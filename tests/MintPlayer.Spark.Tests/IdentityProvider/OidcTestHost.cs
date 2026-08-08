@@ -300,12 +300,19 @@ public abstract class OidcTestHost : SparkTestDriver
         string? code = null,
         string? recoveryCode = null,
         string returnUrl = "/",
-        bool includeAntiforgery = true)
+        bool includeAntiforgery = true,
+        bool rememberMe = false)
     {
-        var query = recoveryCode is null ? "" : "&recovery=true";
+        // rememberMe travels as a query parameter into the page and a hidden field out of it,
+        // exactly as returnUrl does — a caller that skips it is a browser that never followed
+        // the login redirect.
+        var query = (recoveryCode is null ? "" : "&recovery=true") + (rememberMe ? "&rememberMe=true" : "");
         var page = await browser.GetAsync($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}{query}");
 
         var form = new Dictionary<string, string> { ["returnUrl"] = returnUrl };
+
+        if (rememberMe)
+            form["rememberMe"] = "true";
 
         if (recoveryCode is not null)
         {

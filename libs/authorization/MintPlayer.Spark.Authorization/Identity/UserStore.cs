@@ -39,7 +39,23 @@ public partial class UserStore<TUser> :
         get
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            return session ??= documentStore.OpenAsyncSession();
+
+            if (session != null)
+                return session;
+
+            session = documentStore.OpenAsyncSession();
+
+            // Identity's stores are read-modify-write over a whole user document: load the user,
+            // mutate a field, save. Without optimistic concurrency the last save wins silently,
+            // which loses updates that matter. The sharpest case is a recovery code — two
+            // concurrent redemptions each load the user, each remove the same code from their own
+            // copy, and both succeed, so a single-use two-factor bypass is spendable twice. The
+            // failed-access counter behind lockout has the same shape.
+            //
+            // Identity models this outcome already: UpdateAsync answers ConcurrencyFailure, which
+            // UserManager surfaces as a failed IdentityResult rather than an exception.
+            session.Advanced.UseOptimisticConcurrency = true;
+            return session;
         }
     }
 
@@ -117,7 +133,21 @@ public partial class UserStore<TUser> :
             }
         }
 
-        await Session.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await Session.SaveChangesAsync(cancellationToken);
+        }
+        catch (Raven.Client.Exceptions.ConcurrencyException)
+        {
+            // Someone else wrote this user while we held it. Losing is a normal outcome, not a
+            // fault: the caller re-reads and retries, and a single-use credential stays single-use.
+            return IdentityResult.Failed(new IdentityError
+            {
+                Code = "ConcurrencyFailure",
+                Description = "The user was modified by another request. Please try again.",
+            });
+        }
+
         return IdentityResult.Success;
     }
 
