@@ -28,12 +28,7 @@ internal partial class MessageBus : IMessageBus
     {
         var messageType = typeof(TMessage);
 
-        var queueName = queueNameOverride;
-        if (queueName == null)
-        {
-            var queueAttribute = messageType.GetCachedCustomAttribute<MessageQueueAttribute>();
-            queueName = queueAttribute?.QueueName ?? messageType.FullName!;
-        }
+        var queueName = queueNameOverride ?? QueueNames.ForMessageType(messageType);
 
         var payloadJson = JsonConvert.SerializeObject(message);
 

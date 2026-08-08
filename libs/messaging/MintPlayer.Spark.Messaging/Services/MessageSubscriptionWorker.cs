@@ -47,29 +47,14 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
         // explicit override) so a strict allowlist is the right shape: letters,
         // digits, dot, underscore, dash. Throw at startup so the operator sees
         // the bad config before traffic flows.
-        if (!IsValidQueueName(_queueName))
+        if (!QueueNames.IsValid(_queueName))
             throw new InvalidOperationException(
-                $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._-]+.");
+                $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._+`-]+.");
 
         return new SubscriptionCreationOptions
         {
             Query = $@"from SparkMessages where QueueName = '{_queueName}' and Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())"
         };
-    }
-
-    private static bool IsValidQueueName(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return false;
-        foreach (var c in value)
-        {
-            // Allow standard identifier shape plus '+' (nested CLR type separator —
-            // typeof(Nested).FullName produces "Outer+Inner") and '`' / digits for
-            // generic type parameters. Critically disallowed: `'`, `\`, whitespace,
-            // anything that could break out of the single-quoted RQL literal.
-            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_' || c == '-' || c == '+' || c == '`'))
-                return false;
-        }
-        return true;
     }
 
     protected override async Task ProcessBatchAsync(SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
