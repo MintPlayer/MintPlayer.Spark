@@ -25,7 +25,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `66ea577` | **O2, O3, O4** — redemption race, CSRF on `/connect/*`, password oracle |
 | `9b2958a` | **O5, O6, O7** — `jti` + DB-backed validity, drop `Payload`, issuer from options |
 | `643b876` | e2e matrix §A; O2/O3/O4 marked closed; **O26** raised |
-| _(next)_ | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
+| `d473564` | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
+| _(next)_ | e2e matrix complete (A/T/L/R, ~200 cases); O3 confirmed closed; **O27** + logout-CSRF decided |
 
 **Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
 

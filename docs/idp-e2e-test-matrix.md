@@ -10,6 +10,8 @@ Each case gives a test name, precondition, the exact request with the tampered e
 
 Cases are prefixed by area: **A-** authorize/consent, **T-** token endpoint, **L-** login/session, **R-** resource-server surface (introspect/revoke/userinfo/JWKS).
 
+**Host:** all of these need something serving `/connect/*`; see the plan's M12.6 for the decision (Fleet enables the IdP from configuration, reusing the shared collection fixture). Most cases are plain `HttpClient` + `CookieContainer` in the style of `XsrfCookieFlagTests` — the interactive pages are server-rendered, so **Playwright is not needed anywhere in this matrix**.
+
 **Both halves are mandatory.** A suite of rejection assertions passes trivially against a completely broken endpoint that rejects everything. Every area therefore opens with the flows that must *succeed*.
 
 Notation: **JSON400** = 400 with a JSON error body, no redirect. **ERR-REDIRECT** = 302 to the registered `redirect_uri` carrying `error`/`error_description` (+`state`). **CODE-REDIRECT** = 302 carrying `code` (+`state`) — a credential *is* minted. **NO CODE** = assert no `OidcToken` document was created.
@@ -238,7 +240,83 @@ Two markers are used below. **[EXPECTED-FAIL]** — the case pins correct behavi
 
 ## L — `/connect/login`, `/connect/two-factor`, logout, session
 
-*Awaiting the login-session reviewer; section reserved.*
+Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticationExtensions.SanitizeReturnUrl`, and the antiforgery middleware in `SparkMiddleware.cs:181-201`.
+
+**These are plain `HttpClient` + `CookieContainer` tests**, in the style of `XsrfCookieFlagTests` — the pages are server-rendered HTML, so Playwright buys nothing here. Reserve the browser for anything client-rendered, of which this surface has none.
+
+**Read the lockout threshold off the host's `IdentityOptions`** rather than hardcoding 5, so a fixture that overrides it doesn't silently make the lockout tests vacuous.
+
+### L.1 Antiforgery — the wiring is confirmed working
+
+| # | Test | Request | Expected | Pins |
+|---|---|---|---|---|
+| L-A1 | `Login_succeeds_with_valid_token_and_issues_session` | GET first, then POST with valid creds + correct field + cookie | 302 to `returnUrl`, app cookie set | **positive control — without it the rest of L.1 passes against a dead endpoint** |
+| L-A2 | `Login_rejects_post_without_antiforgery_field` | cookie present, field omitted | 400; **no app cookie, and the lockout counter does not move** — the middleware returns before `next()`, so the handler never runs | O3 |
+| L-A3 | `Login_rejects_post_with_no_cookie_and_no_field` | fresh client, no GET | 400 | O3 |
+| L-A4 | `Login_rejects_field_without_cookie` | correct field, cookie stripped | 400 | O3 |
+| L-A5 | `Login_rejects_cookie_without_field` | cookie present, field stripped | 400 | O3 |
+| L-A6 | `Login_rejects_token_from_a_different_session` | session B's cookie + session A's field | 400 — the token is bound to the cookie's secret | O3 |
+| L-A7 | `Login_rejects_correct_value_under_the_wrong_field_name` | right value, wrong name | 400 — no header is set, so lookup falls to the exact field name | O3 |
+| L-A8 | `Login_accepts_a_token_minted_on_the_two_factor_page` | same session, token harvested from the other page | **succeeds — expected, not a bug.** Tokens are bound to the session cookie, not the route; validity still requires being the legitimate browser for that session | documents the real boundary so this is never filed as a defect |
+| L-A9…L-A14 | the same six cases against `/connect/two-factor` | | identical outcomes | O3 |
+
+### L.2 `returnUrl`
+
+`SanitizeReturnUrl` requires non-empty, no CR/LF, leading `/`, and `[1]` not `/` or `\`. ASP.NET Core decodes the query before the handler sees it, so one level of encoding collapses before the check.
+
+| # | Test | Value | Expected | Pins |
+|---|---|---|---|---|
+| L-R1 | `Login_get_renders_sanitized_returnUrl_in_the_hidden_field` | `http://attacker.test/phish` | hidden field is `/`, never the attacker value | F11 |
+| L-R2 | `Login_post_rejects_absolute_url` | `https://attacker.test/phish` | 302 → `/` | F11 |
+| L-R3 | `Login_post_rejects_protocol_relative` | `//attacker.test` | 302 → `/` | F11 |
+| L-R4 | `Login_post_rejects_backslash_authority` | `/\evil.com` | 302 → `/` | browsers coerce `\`→`/` |
+| L-R5 | `Login_post_rejects_single_encoded_protocol_relative` | `%2F%2Fevil.com` | 302 → `/` — decodes to `//evil.com` **before** the check, so the `//` rule catches it | pins decode-then-check ordering |
+| L-R6 | `Login_post_rejects_double_encoded` | `%252F%252Fevil.com` | 302 → `/` — but for a **different reason**: it decodes to a literal `%2F%2F…` which fails the leading-slash rule. **Document this**, or someone "simplifying" the `//` check will reopen the path | F11 |
+| L-R7 | `Login_post_rejects_javascript_uri` | `javascript:alert(1)` | 302 → `/` | F11 |
+| L-R8 | `Login_post_rejects_whitespace_prefix` | `⎵//evil.com` | 302 → `/` | F11 |
+| L-R9 | `Login_post_rejects_crlf_no_header_injection` | `/ok%0d%0aSet-Cookie:%20x=1` | 302 → `/`, and **no injected `Set-Cookie` in the response** | header splitting |
+| L-R10 | `Login_returnUrl_cannot_chain_into_an_open_redirect` | `/connect/logout?post_logout_redirect_uri=https://evil.com` | login redirects there (a relative path is legal), and the **second hop** 400s because the URI isn't registered | the "passes sanitising but redirects onward" case — no gadget today, **contingent on O12** |
+| L-R11…L-R13 | the same against `/connect/two-factor`, including the recovery-code path | | 302 → `/` | F11 |
+
+### L.3 Lockout and enumeration
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| L-L1 | `Login_engages_lockout_after_the_configured_failures` | after N wrong passwords, the lockout message appears — **and a subsequent attempt with the correct password is also refused** | **O4** — previously unreachable code |
+| L-L2 | `Login_lockout_message_does_not_reveal_password_correctness` | locked-out + right password and locked-out + wrong password produce the same text | the intended asymmetry is locked-vs-not, nothing finer |
+| L-L3 | `Login_lockout_precedes_the_two_factor_step` | a locked-out 2FA user submitting the **correct** password lands on the lockout error, not `/connect/two-factor` | inferred from stock `SignInManager.PreSignInCheck` — **verify empirically, this is not Spark's own code** |
+| L-L4 | `Login_unknown_and_wrong_password_return_identical_text` | both `Invalid email or password.` | confirmed by reading — no message oracle |
+| L-L5 | **[CHARACTERIZATION]** `Login_unknown_email_responds_faster_than_a_wrong_password` | unknown short-circuits before PBKDF2; known runs it | **O27**, accepted risk — see the findings entry. Keep the test informational, never CI-gating: wall-clock assertions over HTTP are too noisy to gate on |
+
+### L.4 Two-factor integrity
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| L-T1 | `TwoFactor_post_without_the_password_step_is_rejected` | a fresh client posting a syntactically valid code with no partial-auth cookie fails — there is no `TwoFactorUserId` principal to resolve | **the "jump straight to 2FA" case**; partial-auth lives in a separate scheme |
+| L-T2 | `Consent_while_only_half_authenticated_redirects_to_login` | password done, 2FA not — `/connect/consent` bounces to login because `context.User` isn't authenticated under the application scheme | the same invariant proved from the consent side |
+| L-T3 | `TwoFactor_recovery_code_is_single_use` | first use succeeds, second fails | |
+| L-T4 | `TwoFactor_brute_force_eventually_locks_out` | repeated wrong codes trip the same lockout counter | **needs empirical confirmation** — the reviewer could find no Spark-side code asserting this; it rides framework defaults. Write the test to *observe*, not to assert from memory |
+
+### L.5 Session and `rememberMe`
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| L-S1 | `Login_mints_a_fresh_auth_cookie` | no app cookie exists before sign-in; one is minted after | classic session fixation does not apply — cookie-auth creates the ticket only at `SignInAsync`. Record as verified-sound rather than leaving it an open question |
+| L-S2 | `Login_as_a_different_user_cannot_complete_a_pending_request` | user A starts the flow; user B follows the same login link and authenticates as B; the consent hop 400s | the subject binding again, reached from the login side — **login has no knowledge of `request_id`, and does not need any** |
+| L-S3 | `Logout_clears_the_auth_cookie` | expired `Set-Cookie`, and a protected route is then unauthenticated | |
+| L-S4 | `Login_without_rememberMe_issues_a_session_cookie` | non-persistent cookie | regression pin for the O4 half that was hardcoded `true` |
+| L-S5 | `Login_with_rememberMe_issues_a_persistent_cookie` | future expiry | |
+
+### L.6 Logout
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| L-G1 | `Logout_redirects_to_a_registered_post_logout_uri` | 302 to it | |
+| L-G2 | `Logout_rejects_an_unregistered_post_logout_uri` | 400 | |
+| L-G3 | `Logout_appends_state_with_a_single_question_mark` | `…/done?state=abc` | `Logout.cs` is the one place that builds URLs correctly — **use it as the model when fixing O21 elsewhere** |
+| L-G4 | **[EXPECTED-FAIL]** `Logout_rejects_another_apps_post_logout_uri` | currently **succeeds** — validation spans every enabled application, so any registered URI is accepted in any client's logout | **O12**, confirmed still reproducing |
+| L-G5 | `Logout_is_idempotent_without_a_session` | 302 to the validated URI even when already signed out | |
+| L-G6 | `Logout_requires_no_antiforgery_token_by_design` | a bare GET succeeds | **accepted risk, decided** — front-channel logout must be plain-navigable; forcing a sign-out is a nuisance, not an escalation. Pinned so the absence reads as a decision |
 
 ## R — introspection, revocation, userinfo, discovery, JWKS
 
