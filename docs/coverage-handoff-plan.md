@@ -1,6 +1,6 @@
 # Implementation plan — Spark hardening for the Coverage integration (M0)
 
-See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md) and [findings-replication-mtls.md](./findings-replication-mtls.md). Base: `master` @ `febea26`. Branch: `feat/spark-hardening-m0`. **Everything ships in a single PR** — the six handoff items *and* the credential/authentication unification (M8–M11).
+See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md), [findings-replication-mtls.md](./findings-replication-mtls.md) and [findings-identity-provider-audit.md](./findings-identity-provider-audit.md). Base: `master` @ `febea26`. Branch: `feat/spark-hardening-m0`. **Everything ships in a single PR** — the six handoff items *and* the credential/authentication unification (M8–M11).
 
 TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE.md, **test suites run once at the end**, not per milestone — intermediate milestones are verified by reading code and type-checking. Committing per milestone is fine.
 
@@ -310,13 +310,39 @@ The branch predates the `libs/` reorg (package sits at repo root), Angular 22, a
 2. `OidcTokenGenerator.GenerateAccessToken` emits application claims as `client_{Type}`, so `{Type:"group"}` becomes `client_group` and never matches `ClaimsGroupMembershipProvider.GroupClaimTypes` → **a machine token authorizes as nobody**. Map to real group claims.
 3. No resource-server side exists (that's M10.3).
 
-### M12.3 — Security audit
+### M12.3 — Security audit ✅ done (partially)
 
-Full pass, not a skim, over all 13 endpoints. At minimum: PKCE enforcement, redirect-URI validation (exact match, no open redirect), authorization-code single-use and TTL, refresh-token rotation and reuse detection, signing-key management and rotation, `Introspection`/`Revocation` client authentication, scope escalation between grants, token-cleanup correctness, and confused-deputy risks between `authorization_code` and `client_credentials`. Record findings in a doc alongside `findings-replication-mtls.md`; fix High/Medium before merge.
+Findings recorded in **[findings-identity-provider-audit.md](./findings-identity-provider-audit.md)**: 11 fixed (4 Critical, 6 High, 1 Medium), 25 open, plus one unreviewed surface.
 
-### M12.4 — Tests
+**Fixed** (`19f4bf2`, `dfab40a`, `09dc3cb`, `697097e`): client-secret crypto; the `client_group` claim defect; authorization-code replay via stale index; plaintext bearer values at rest; refresh reuse detection; `/connect/consent` validating nothing (account takeover); codes and refresh tokens not bound to the redeeming client; `ClientType` failing open; application claims leaking into delegated tokens; `returnUrl` open redirects.
 
-The branch's coverage is unknown. Assume none for the security-relevant paths and write them: grant-type gating per `AllowedGrantTypes`, secret expiry, scope validation against `AllowedScopes`, rejected-secret paths, introspection of expired/revoked tokens.
+**Not audited — the reviewer never reported:** `OidcSigningKeyService`, `Jwks`, `Discovery`, `UserInfo`, and the `Introspection`/`Revocation` caller-auth model. **Re-run before merge.**
+
+### M12.4 — Close the open findings
+
+In the order given in the findings doc:
+
+1. **O1 — populate `AuthorizationId`.** It is hardcoded `""`, so `Revocation`'s access-token cascade has never executed once *and* the reuse-detection chain revocation added in `dfab40a` currently revokes only the presented token. One change, two dead paths revived. **Do first.**
+2. **O2 — optimistic concurrency** on redemption. The point-load fixed replay-by-staleness, not replay-by-concurrency.
+3. **O3 — antiforgery on the three `/connect/*` POSTs**, following `Authorization/Endpoints/Logout.cs`.
+4. **O4 — `lockoutOnFailure: true`** plus rate limiting; `isPersistent` from a checkbox.
+5. **O5/O6 — `jti` on access tokens, introspection consults the database, stop persisting `Payload`** (written 3×, read 0×).
+6. **O7 — issuer from options**, not the `Host` header.
+7. O8–O17 (Medium), then O18–O25 (Low).
+
+### M12.5 — Bind the authorization request server-side
+
+The structural fix (findings §3). Persist the request validated at `/connect/authorize` as a short-lived single-use document; redirect to `/connect/consent?request_id=<opaque>`; render and post from that record only.
+
+The same "re-derive the request from browser input" defect appeared in **five** places and all five are now individually patched — which is exactly why this is worth doing: the sixth page added will be wrong again and nothing will fail loudly. Also closes O9's duplicate-grant race, since the request becomes a point-load by id.
+
+### M12.6 — Tests
+
+Assume no coverage on security-relevant paths. Write: grant-type gating per `AllowedGrantTypes`, secret expiry and rotation, scope validation against `AllowedScopes`, rejected-secret paths, introspection of expired/revoked tokens, code replay, refresh reuse detection, and client binding on both grants.
+
+### M12.7 — Application registration surface
+
+**Blocks Coverage using `client_credentials` at all.** There is no way to create an `OidcApplication` today — the admin screens lived in `Demo/SparkId` and were not ported. Either port them or add a minimal registration API. This is where `RedirectUris` and `AllowedScopes` are set, so it is a security surface, not just convenience.
 
 ## M11 — Retire the authorization bypasses
 

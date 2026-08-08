@@ -141,6 +141,10 @@ So an app upgrading past this fix needs no queue draining and no subscription re
 
 ## 2. API tokens (PAT) for CI upload authentication
 
+> ⚠️ **Superseded in part by decision D1 (2026-08-08).** The machine credential is now OAuth2 **`client_credentials`** via `MintPlayer.Spark.IdentityProvider` (ported in `d51f9fd`), not a bespoke PAT library — one credential subsystem for machine callers rather than two. D1 was made conditional on the package being proven sound; that audit is **[findings-identity-provider-audit.md](./findings-identity-provider-audit.md)**, which found 4 Critical and 6 High issues including a one-click account takeover. All eleven are fixed; 25 remain open and are sequenced as M12.4 in the plan.
+>
+> The section below is retained because its design reasoning still holds — in particular the credential-to-claims seam, the scope→group mapping decision, and the `NoResult()` discipline that lets schemes coexist. Only the *choice of credential* changed.
+
 ### Sequencing: the handoff has it backwards; prior art: it now exists
 
 The handoff says Coverage builds this app-locally first and Spark extracts it later. But Coverage's `PLAN.md` puts `MintPlayer.Spark.Authorization.ApiTokens` in **M0** — a Spark-side PR landing *before* Coverage's scaffolding (M1) and ingestion (M2), with M2 explicitly consuming "the M0 lib." M0's exit criterion is *"a demo app can mint and authenticate with an API token; Spark tests green"* — self-validating in Spark. Build it in Spark now; don't wait on Coverage.
