@@ -544,11 +544,11 @@ Shipped in the IdP package:
 - **`IOidcApplicationContext`** — the consumer implements it on its own `SparkContext` and runs `--spark-synchronize-model`. The interface adds nothing at runtime; it exists so the compiler reports a missing or misnamed property instead of the screens quietly not appearing. Opting in stays deliberate: these screens configure who may obtain tokens, so they appear because an app asked, not because it referenced the package.
 - **`OidcApplicationActions`** — absolute redirect URIs with no fragment and no duplicates; grant types restricted to the three implemented, with `refresh_token` requiring `authorization_code` (there is no other way to obtain a first refresh token) and `client_credentials` refused for a public client (it has no secret to authenticate with); a secret typed in cleartext hashed on save and an already-hashed one left alone, so re-saving does not invalidate the secret a client already holds; `ClientId` uniqueness checked *after* the write, because a read-then-write check races and both writers would find nothing.
 - **`OidcScopeActions`** — non-empty name, no whitespace in it (scopes are space-delimited on the wire, so `api read` becomes two names that do not exist), no empty audiences, and name uniqueness.
-- **16 validation tests**, all green.
+- **16 validation tests**, plus **3 that prove the registration story itself** — a context implementing the interface, run through the real `IModelSynchronizer`, produces `OidcApplication.json` and `OidcScope.json` with the fields an operator must set. That claim was worth testing rather than asserting: an earlier draft of this section concluded the opposite from reading `ModelLoader` alone.
 
 Both classes use `partial` + the `[Inject]` generator, matching every other Actions class in the repo — the IdP now carries the `MintPlayer.SourceGenerators` references for it.
 
-**Still to do:** a demo host exposing both collections, so the synchronizer output is real rather than described; `security.json` guidance in the README; and end-to-end coverage of the screens through the PO endpoints (the 16 tests exercise the validation directly, not the route).
+**Still to do:** a demo host exposing both collections; and coverage of the screens through the PO endpoints themselves (the validation tests exercise the Actions directly, not the route).
 
 #### Caveat that must not be lost
 
