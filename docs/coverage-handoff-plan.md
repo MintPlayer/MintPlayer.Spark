@@ -32,7 +32,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `6241984` | `SparkEndpointFactory` gains `configureSpark`; host decision reversed with reasons |
 | `6e9ef6b` | **M12.6 started** — 24 e2e tests; found **N5** (High) and a wrong O25 fix |
 | `28633e6` | **M12.6 flow coverage** — 131 IdP tests (98 e2e) across the whole flow |
-| _(next)_ | **Forgery batch — 138 IdP tests green, deterministic over repeat runs.** Found **N6** |
+| `ab3fbaa` | **Forgery batch** — 138 IdP tests, deterministic over repeat runs; found **N6** |
+| _(next)_ | **Two-factor batch — 164 IdP tests green** (26 cases; §L.4 complete) |
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
@@ -40,7 +41,9 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 **Forgery is now covered** (R-I10–R-I15): `alg=none`, a foreign signing key, RS256→HS256 confusion using the published modulus as the HMAC secret, a tampered payload with the original signature, a forged `kid`, a foreign issuer, and — the one that would slip past a signature-only check — a token this provider genuinely signed but has no record for. Each goes through both introspection and UserInfo, since they are separate entry points to the same resolver.
 
-**Still untested** (§ references are to the matrix): the concurrency races T-R3/T-R4, which need a parking hook to be meaningful rather than lucky; two-factor entirely (§L.4), since no fixture enables it yet; key rotation (R-J5/R-J6, which would pin the open **N4**); and the enumeration characterizations T-O1/T-O2 for the open **O15**.
+**Two-factor is now covered** — 26 cases, §L.4. The load-bearing group is "cannot be skipped": the partial-authentication cookie fails against `/connect/authorize`, the consent GET and the consent POST, and the 2FA form cannot be completed by someone who never passed the password step. Also settles **L-L3** empirically (lockout precedes password evaluation, so a locked account never reaches the second factor) rather than by inference from framework behaviour.
+
+**Still untested** (§ references are to the matrix): the concurrency races T-R3/T-R4, which need a parking hook to be meaningful rather than lucky; brute-force lockout on the 2FA step specifically (L-T4); key rotation (R-J5/R-J6, which would pin the open **N4**); and the enumeration characterizations T-O1/T-O2 for the open **O15**.
 
 **On determinism:** three separate flakes were fixed rather than tolerated — an index query in the fixture (replaced by a point-load), seeding before the host deployed its indexes, and not waiting for indexing after seeding. The suite now passes repeat full runs. A flaky security test is worse than none: it teaches people to re-run.
 

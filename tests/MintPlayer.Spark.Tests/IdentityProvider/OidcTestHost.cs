@@ -173,6 +173,156 @@ public abstract class OidcTestHost : SparkTestDriver
         return user;
     }
 
+    /// <summary>Runs an action against a scoped <see cref="UserManager{TUser}"/>.</summary>
+    protected async Task<T> WithUserManagerAsync<T>(Func<UserManager<SparkUser>, Task<T>> action)
+    {
+        using var scope = Factory.GetService<IServiceScopeFactory>().CreateScope();
+        return await action(scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>());
+    }
+
+    /// <summary>
+    /// A user with an authenticator configured and recovery codes issued. Returns the codes,
+    /// which are shown to a user exactly once in a real system and are therefore the only way a
+    /// test can hold one.
+    /// </summary>
+    protected async Task<string[]> SeedTwoFactorUserAsync(string email, int recoveryCodes = 3)
+    {
+        await SeedUserAsync(email);
+
+        return await WithUserManagerAsync(async users =>
+        {
+            var user = await users.FindByEmailAsync(email)
+                ?? throw new InvalidOperationException($"Seeded user '{email}' not found.");
+
+            await users.ResetAuthenticatorKeyAsync(user);
+            await users.SetTwoFactorEnabledAsync(user, true);
+
+            var codes = await users.GenerateNewTwoFactorRecoveryCodesAsync(user, recoveryCodes);
+            return codes?.ToArray() ?? throw new InvalidOperationException("No recovery codes issued.");
+        });
+    }
+
+    /// <summary>
+    /// A currently-valid authenticator code, computed from the user's stored key.
+    /// <para>
+    /// Identity cannot produce one for us: <c>AuthenticatorTokenProvider.GenerateAsync</c>
+    /// deliberately returns an empty string, because in the real flow the code comes from the
+    /// user's phone and the server only ever validates. So the test has to play the phone, which
+    /// means implementing RFC 6238 exactly as
+    /// <c>Rfc6238AuthenticationService</c> does — HMAC-SHA1 over a big-endian 30-second
+    /// timestep, dynamically truncated to six digits, no modifier.
+    /// </para>
+    /// </summary>
+    protected async Task<string> AuthenticatorCodeAsync(string email)
+    {
+        var key = await WithUserManagerAsync(async users =>
+        {
+            var user = await users.FindByEmailAsync(email)
+                ?? throw new InvalidOperationException($"No user '{email}'.");
+            return await users.GetAuthenticatorKeyAsync(user)
+                ?? throw new InvalidOperationException($"User '{email}' has no authenticator key.");
+        });
+
+        return ComputeTotp(Base32Decode(key), DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+    }
+
+    private static string ComputeTotp(byte[] key, long timestep)
+    {
+        using var hmac = new HMACSHA1(key);
+        var counter = BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder(timestep));
+        var hash = hmac.ComputeHash(counter);
+
+        var offset = hash[^1] & 0x0f;
+        var binary = ((hash[offset] & 0x7f) << 24)
+                   | ((hash[offset + 1] & 0xff) << 16)
+                   | ((hash[offset + 2] & 0xff) << 8)
+                   | (hash[offset + 3] & 0xff);
+
+        return (binary % 1_000_000).ToString("D6");
+    }
+
+    private static byte[] Base32Decode(string value)
+    {
+        const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+        value = value.TrimEnd('=').Replace(" ", "").ToUpperInvariant();
+
+        var bits = 0;
+        var buffer = 0;
+        var output = new List<byte>();
+
+        foreach (var c in value)
+        {
+            var index = Alphabet.IndexOf(c);
+            if (index < 0) throw new FormatException($"'{c}' is not base32.");
+
+            buffer = (buffer << 5) | index;
+            bits += 5;
+
+            if (bits < 8) continue;
+
+            output.Add((byte)(buffer >> (bits - 8)));
+            bits -= 8;
+        }
+
+        return [.. output];
+    }
+
+    /// <summary>
+    /// Completes the password step only. The returned browser holds the partial-authentication
+    /// cookie and nothing more — which is precisely the state every "can 2FA be skipped?" case
+    /// needs to start from.
+    /// </summary>
+    protected async Task<Browser> PasswordStepAsync(string email, string password = Password, string returnUrl = "/")
+    {
+        var browser = NewBrowser();
+        var page = await browser.GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        var token = AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync());
+
+        var response = await browser.PostFormAsync("/connect/login", new Dictionary<string, string>
+        {
+            ["email"] = email,
+            ["password"] = password,
+            ["returnUrl"] = returnUrl,
+            ["__RequestVerificationToken"] = token,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().StartWith("/connect/two-factor",
+            "a 2FA-enabled account must be sent to the second factor, not signed in");
+
+        return browser;
+    }
+
+    /// <summary>Submits the two-factor form, fetching its antiforgery token first.</summary>
+    protected async Task<HttpResponseMessage> SubmitTwoFactorAsync(
+        Browser browser,
+        string? code = null,
+        string? recoveryCode = null,
+        string returnUrl = "/",
+        bool includeAntiforgery = true)
+    {
+        var query = recoveryCode is null ? "" : "&recovery=true";
+        var page = await browser.GetAsync($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}{query}");
+
+        var form = new Dictionary<string, string> { ["returnUrl"] = returnUrl };
+
+        if (recoveryCode is not null)
+        {
+            form["useRecoveryCode"] = "true";
+            form["recoveryCode"] = recoveryCode;
+        }
+        else if (code is not null)
+        {
+            form["code"] = code;
+        }
+
+        if (includeAntiforgery)
+            form["__RequestVerificationToken"] = AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync());
+
+        return await browser.PostFormAsync("/connect/two-factor", form);
+    }
+
     /// <summary>
     /// A user agent: carries cookies across requests, which <see cref="HttpClient"/> from
     /// <c>TestServer</c> does not do, and does not follow redirects, so a test can assert on

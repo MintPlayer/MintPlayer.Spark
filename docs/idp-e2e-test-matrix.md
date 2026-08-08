@@ -295,7 +295,22 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-T1 | `TwoFactor_post_without_the_password_step_is_rejected` | a fresh client posting a syntactically valid code with no partial-auth cookie fails — there is no `TwoFactorUserId` principal to resolve | **the "jump straight to 2FA" case**; partial-auth lives in a separate scheme |
 | L-T2 | `Consent_while_only_half_authenticated_redirects_to_login` | password done, 2FA not — `/connect/consent` bounces to login because `context.User` isn't authenticated under the application scheme | the same invariant proved from the consent side |
 | L-T3 | `TwoFactor_recovery_code_is_single_use` | first use succeeds, second fails | |
-| L-T4 | `TwoFactor_brute_force_eventually_locks_out` | repeated wrong codes trip the same lockout counter | **needs empirical confirmation** — the reviewer could find no Spark-side code asserting this; it rides framework defaults. Write the test to *observe*, not to assert from memory |
+| L-T4 | `TwoFactor_brute_force_eventually_locks_out` | repeated wrong codes trip the same lockout counter | **still open** — not yet written; see the note below |
+
+### L.4b Two-factor — implemented
+
+26 cases in `OidcTwoFactorSecurityTests`, all green. Grouped as:
+
+- **Succeeds:** the password step redirects to the second factor and issues no application cookie; a valid authenticator code completes sign-in; a valid recovery code does too; and a fully completed sign-in can drive `/connect/authorize` (the positive control — without it every skip case below would pass against a flow that simply never works).
+- **Cannot be skipped:** the partial-authentication cookie cannot drive `/connect/authorize`, cannot reach the consent page, and cannot POST consent; and the two-factor form cannot be completed by someone who never passed the password step. This is the property the whole feature rests on — half-authenticated must be indistinguishable from unauthenticated to everything downstream.
+- **Wrong credentials:** invalid code, invalid recovery code, empty submission, **another user's valid authenticator code**, and another user's recovery code.
+- **Recovery-code lifecycle:** single-use, spending one leaves the rest usable, and the remaining count decrements.
+- **Antiforgery and returnUrl:** the POST is rejected without a token and with a token from another session; four off-origin `returnUrl` shapes are refused on the completed sign-in; the rendered form carries no off-origin destination; the error box does not reflect supplied text.
+- **Account state:** a locked-out account never reaches the second factor (lockout precedes password evaluation, so the correct password gains nothing — this settles L-L3 empirically rather than by inference); disabling 2FA returns the account to a single step.
+
+**Testing note worth keeping.** A valid authenticator code cannot be obtained from Identity: `AuthenticatorTokenProvider.GenerateAsync` deliberately returns an empty string, because in the real flow the code comes from the user's phone and the server only ever validates. The fixture therefore implements RFC 6238 exactly as `Rfc6238AuthenticationService` does — HMAC-SHA1 over a big-endian 30-second timestep, dynamically truncated to six digits, no modifier — and plays the phone. The first run of these tests failed with `error=missing_code`, which is what surfaced this.
+
+**Not yet covered on this surface:** brute-force lockout on the 2FA step specifically (L-T4 above), and whether a failed second factor counts toward the same lockout counter as a failed password.
 
 ### L.5 Session and `rememberMe`
 
