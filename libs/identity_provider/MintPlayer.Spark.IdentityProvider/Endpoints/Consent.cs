@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -12,26 +11,29 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 /// <summary>
 /// Handles both GET (render consent form) and POST (process consent decision).
 /// Renders a minimal inline HTML form (no Razor infrastructure needed).
+/// <para>
+/// Both handlers take a single input from the browser: the <c>request_id</c> minted by
+/// <c>/connect/authorize</c>. Everything the flow acts on — client, redirect URI, scopes,
+/// PKCE challenge, nonce, state — is read from the stored
+/// <see cref="OidcAuthorizationRequest"/>, never from the query string or the form. That is
+/// what makes this endpoint safe by construction rather than by remembering to repeat
+/// <c>/connect/authorize</c>'s checks.
+/// </para>
 /// </summary>
 internal static class Consent
 {
     public static async Task HandleGet(HttpContext context)
     {
         var ct = context.RequestAborted;
-        var query = context.Request.Query;
 
-        var clientId = query["client_id"].FirstOrDefault();
-        var scope = query["scope"].FirstOrDefault();
-        var redirectUri = query["redirect_uri"].FirstOrDefault();
-
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(scope) || string.IsNullOrEmpty(redirectUri))
+        var requestId = context.Request.Query["request_id"].FirstOrDefault();
+        if (string.IsNullOrEmpty(requestId))
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsync("Missing parameters.");
             return;
         }
 
-        // Check authentication
         var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
         {
@@ -40,11 +42,18 @@ internal static class Consent
             return;
         }
 
-        // Load application
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
 
+        var request = await Authorize.LoadPendingRequestAsync(session, requestId, userId, ct);
+        if (request == null)
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("This authorization request is no longer valid. Please start again.");
+            return;
+        }
+
+        var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
         {
             context.Response.StatusCode = 400;
@@ -52,21 +61,8 @@ internal static class Consent
             return;
         }
 
-        // Validate before rendering, not only before minting. The POST rejects a foreign
-        // redirect_uri, so no code can be issued — but without this check the page still
-        // renders a convincing consent screen carrying the real client's display name, on the
-        // identity provider's own origin, for an attacker-supplied destination. That is a
-        // phishing surface even though it grants nothing.
-        if (!app.RedirectUris.Contains(redirectUri, StringComparer.Ordinal))
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("Invalid redirect_uri.");
-            return;
-        }
-
-        var requestedScopes = scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
         // Load scope definitions
+        var requestedScopes = request.Scopes;
         var scopeDefinitions = await session
             .Query<OidcScope>()
             .Where(s => s.Name.In(requestedScopes))
@@ -120,15 +116,8 @@ internal static class Consent
 
         sb.Append("</ul>");
 
-        // Pass through all original query params as hidden fields
-        AppendHidden(sb, "client_id", query["client_id"].FirstOrDefault());
-        AppendHidden(sb, "redirect_uri", query["redirect_uri"].FirstOrDefault());
-        AppendHidden(sb, "scope", query["scope"].FirstOrDefault());
-        AppendHidden(sb, "state", query["state"].FirstOrDefault());
-        AppendHidden(sb, "code_challenge", query["code_challenge"].FirstOrDefault());
-        AppendHidden(sb, "code_challenge_method", query["code_challenge_method"].FirstOrDefault());
-        AppendHidden(sb, "nonce", query["nonce"].FirstOrDefault());
-        AppendHidden(sb, "response_type", "code");
+        // The only thing the form carries back is the handle.
+        AppendHidden(sb, "request_id", requestId);
 
         sb.Append("<div class=\"buttons\">");
         sb.Append("<button type=\"submit\" name=\"decision\" value=\"allow\" class=\"btn btn-allow\">Allow</button>");
@@ -143,28 +132,13 @@ internal static class Consent
         var ct = context.RequestAborted;
         var form = await context.Request.ReadFormAsync(ct);
 
+        var requestId = form["request_id"].FirstOrDefault();
         var decision = form["decision"].FirstOrDefault();
-        var clientId = form["client_id"].FirstOrDefault();
-        var redirectUri = form["redirect_uri"].FirstOrDefault();
-        var scope = form["scope"].FirstOrDefault();
-        var state = form["state"].FirstOrDefault();
-        var codeChallenge = form["code_challenge"].FirstOrDefault();
-        var codeChallengeMethod = form["code_challenge_method"].FirstOrDefault();
-        var nonce = form["nonce"].FirstOrDefault();
 
-        if (string.IsNullOrEmpty(redirectUri))
+        if (string.IsNullOrEmpty(requestId))
         {
             context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("Missing redirect URI.");
-            return;
-        }
-
-        if (decision != "allow")
-        {
-            var denyUrl = $"{redirectUri}?error=access_denied&error_description=The+user+denied+the+request.";
-            if (!string.IsNullOrEmpty(state))
-                denyUrl += $"&state={Uri.EscapeDataString(state)}";
-            context.Response.Redirect(denyUrl);
+            await context.Response.WriteAsync("Missing parameters.");
             return;
         }
 
@@ -179,7 +153,30 @@ internal static class Consent
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId!, ct);
+        var request = await Authorize.LoadPendingRequestAsync(session, requestId, userId, ct);
+        if (request == null)
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("This authorization request is no longer valid. Please start again.");
+            return;
+        }
+
+        // The redirect target comes from the stored request, which /connect/authorize already
+        // matched against the application's registered URIs — so even the denial path cannot
+        // be pointed somewhere of the caller's choosing.
+        if (decision != "allow")
+        {
+            request.Status = "denied";
+            await session.SaveChangesAsync(ct);
+
+            var denyUrl = $"{request.RedirectUri}?error=access_denied&error_description=The+user+denied+the+request.";
+            if (!string.IsNullOrEmpty(request.State))
+                denyUrl += $"&state={Uri.EscapeDataString(request.State)}";
+            context.Response.Redirect(denyUrl);
+            return;
+        }
+
+        var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
         {
             context.Response.StatusCode = 400;
@@ -187,44 +184,14 @@ internal static class Consent
             return;
         }
 
-        // Consent is a separately routed endpoint, so everything /connect/authorize validated
-        // arrives here again as raw request input and must be re-validated. Skipping this let
-        // an attacker link a victim to a consent screen naming a trusted client but carrying
-        // their own redirect_uri and code_challenge, then redeem the resulting code — account
-        // takeover from a single click, with no CSRF required.
-        if (!app.RedirectUris.Contains(redirectUri!, StringComparer.Ordinal))
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("Invalid redirect_uri.");
-            return;
-        }
-
-        if (app.RequirePkce && string.IsNullOrEmpty(codeChallenge))
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("PKCE code_challenge is required.");
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(codeChallenge) && codeChallengeMethod != "S256")
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("Only S256 code_challenge_method is supported.");
-            return;
-        }
-
-        // Collect granted scopes (from checkboxes)
-        var grantedScopes = form["scopes"].Where(s => s != null).Select(s => s!).ToList();
-        if (grantedScopes.Count == 0 && !string.IsNullOrEmpty(scope))
-        {
-            grantedScopes = scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-        }
-
-        // A user can only grant what the client is allowed to hold. The checkbox markup is
-        // client-side only, so without this a crafted POST grants any scope that exists —
-        // and it is then persisted on the authorization, making the escalation durable.
-        grantedScopes = grantedScopes
-            .Where(s => app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+        // The checkboxes can only narrow what the request already carries. They are attacker-
+        // controlled markup, so a crafted POST must not be able to grant a scope the client was
+        // never allowed — and request.Scopes was intersected with AllowedScopes upstream.
+        var grantedScopes = form["scopes"]
+            .Where(s => !string.IsNullOrEmpty(s))
+            .Select(s => s!)
+            .Where(s => request.Scopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (grantedScopes.Count == 0)
@@ -234,38 +201,10 @@ internal static class Consent
             return;
         }
 
-        // Create or update authorization
-        var existingAuth = await session
-            .Query<OidcAuthorization, OidcAuthorizations_BySubjectAndApplication>()
-            .Where(a => a.Subject == userId && a.ApplicationId == app.Id! && a.Status == "valid")
-            .FirstOrDefaultAsync(ct);
+        request.Scopes = grantedScopes;
+        request.AuthorizationId = await Authorize.EnsureAuthorizationAsync(session, app, userId, grantedScopes, ct);
 
-        if (existingAuth != null)
-        {
-            foreach (var s in grantedScopes)
-            {
-                if (!existingAuth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
-                    existingAuth.GrantedScopes.Add(s);
-            }
-        }
-        else
-        {
-            var auth = new OidcAuthorization
-            {
-                ApplicationId = app.Id!,
-                Subject = userId,
-                Status = "valid",
-                GrantedScopes = grantedScopes,
-                CreatedAt = DateTime.UtcNow,
-            };
-            await session.StoreAsync(auth, ct);
-        }
-
-        await session.SaveChangesAsync(ct);
-
-        await Authorize.GenerateCodeAndRedirectAsync(
-            context, session, app, userId, grantedScopes,
-            redirectUri, state, codeChallenge, codeChallengeMethod, nonce, ct);
+        await Authorize.GenerateCodeAndRedirectAsync(context, session, request, ct);
     }
 
     private static string Encode(string value) =>

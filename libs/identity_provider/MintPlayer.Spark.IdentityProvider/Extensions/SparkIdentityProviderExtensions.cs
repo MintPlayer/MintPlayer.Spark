@@ -65,7 +65,6 @@ public static class SparkIdentityProviderExtensions
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
             new OidcTokens_ByExpiration().Execute(documentStore);
-            new OidcAuthorizations_BySubjectAndApplication().Execute(documentStore);
         });
 
         return builder;

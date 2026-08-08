@@ -1,6 +1,5 @@
 using MintPlayer.Spark.IdentityProvider.Services;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.IdentityProvider.Configuration;
@@ -55,6 +54,17 @@ internal static class Authorize
             return;
         }
 
+        // The client must be registered for this grant. Without it, a client provisioned
+        // solely for client_credentials — a machine identity, typically holding broader
+        // application claims than any user — could still be driven through the interactive
+        // flow.
+        if (!app.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for authorization_code grant." });
+            return;
+        }
+
         // Validate redirect URI
         if (!app.RedirectUris.Contains(redirectUri, StringComparer.Ordinal))
         {
@@ -98,50 +108,48 @@ internal static class Authorize
             return;
         }
 
-        // Check existing consent
+        // Everything above validated the request against the application record. Persist that
+        // verdict now and hand the browser nothing but an opaque handle to it, so no later hop
+        // has to — or is able to — re-derive it from request input.
+        var (request, requestId) = await CreateRequestAsync(
+            session, app, userId, requestedScopes, redirectUri, state, codeChallenge, codeChallengeMethod, nonce, ct);
+
         var options = context.RequestServices.GetRequiredService<SparkIdentityProviderOptions>();
 
         if (app.ConsentType == "implicit" && options.AutoApproveImplicitConsent)
         {
-            // Auto-approve — generate code and redirect
-            await GenerateCodeAndRedirectAsync(context, session, app, userId, requestedScopes,
-                redirectUri, state, codeChallenge, codeChallengeMethod, nonce, ct);
+            request.AuthorizationId = await EnsureAuthorizationAsync(session, app, userId, requestedScopes, ct);
+            await GenerateCodeAndRedirectAsync(context, session, request, ct);
             return;
         }
 
         // Check if user already consented for these scopes
-        var existingAuth = await session
-            .Query<OidcAuthorization, OidcAuthorizations_BySubjectAndApplication>()
-            .Where(a => a.Subject == userId && a.ApplicationId == app.Id! && a.Status == "valid")
-            .FirstOrDefaultAsync(ct);
+        var existingAuth = await session.LoadAsync<OidcAuthorization>(
+            OidcAuthorizationReference.DocumentId(userId, app.Id!), ct);
 
-        if (existingAuth != null)
+        if (existingAuth is { Status: "valid" })
         {
             var allScopesCovered = requestedScopes.All(s =>
                 existingAuth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase));
 
             if (allScopesCovered)
             {
-                await GenerateCodeAndRedirectAsync(context, session, app, userId, requestedScopes,
-                    redirectUri, state, codeChallenge, codeChallengeMethod, nonce, ct);
+                request.AuthorizationId = existingAuth.Id!;
+                await GenerateCodeAndRedirectAsync(context, session, request, ct);
                 return;
             }
         }
 
-        // Redirect to consent page
-        var consentUrl = $"/connect/consent?client_id={Uri.EscapeDataString(clientId)}" +
-            $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
-            $"&scope={Uri.EscapeDataString(scope)}" +
-            $"&state={Uri.EscapeDataString(state ?? "")}" +
-            $"&code_challenge={Uri.EscapeDataString(codeChallenge ?? "")}" +
-            $"&code_challenge_method={Uri.EscapeDataString(codeChallengeMethod ?? "")}" +
-            $"&nonce={Uri.EscapeDataString(nonce ?? "")}" +
-            $"&response_type=code";
-        context.Response.Redirect(consentUrl);
+        await session.SaveChangesAsync(ct);
+        context.Response.Redirect($"/connect/consent?request_id={Uri.EscapeDataString(requestId)}");
     }
 
-    internal static async Task GenerateCodeAndRedirectAsync(
-        HttpContext context,
+    /// <summary>
+    /// Records a validated authorization request and returns it together with the handle the
+    /// browser carries. The document is stored but not yet saved — the caller decides whether
+    /// this request goes to a consent screen or straight to code issuance.
+    /// </summary>
+    private static async Task<(OidcAuthorizationRequest Request, string RequestId)> CreateRequestAsync(
         IAsyncDocumentSession session,
         OidcApplication app,
         string userId,
@@ -153,46 +161,147 @@ internal static class Authorize
         string? nonce,
         CancellationToken ct)
     {
-        // Generate opaque authorization code
-        var code = GenerateAuthorizationCode();
+        var requestId = OidcRequestReference.GenerateValue();
+        var request = new OidcAuthorizationRequest
+        {
+            Id = OidcRequestReference.DocumentId(requestId),
+            ApplicationId = app.Id!,
+            Subject = userId,
+            RedirectUri = redirectUri,
+            Scopes = scopes,
+            CodeChallenge = codeChallenge,
+            CodeChallengeMethod = codeChallengeMethod,
+            Nonce = nonce,
+            State = state,
+            Status = "pending",
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+        };
 
-        // Create OidcToken document for the authorization code
+        await session.StoreAsync(request, ct);
+        return (request, requestId);
+    }
+
+    /// <summary>
+    /// Returns the id of the user's valid authorization for this application, widening its
+    /// granted scopes to cover <paramref name="scopes"/>, and creating it if there is none.
+    /// <para>
+    /// Every path that mints a code goes through here, which is what keeps
+    /// <see cref="OidcToken.AuthorizationId"/> populated. While it was left empty, both
+    /// revocation cascades — the one on the revocation endpoint and the reuse-detection
+    /// teardown on the token endpoint — silently swept nothing.
+    /// </para>
+    /// </summary>
+    internal static async Task<string> EnsureAuthorizationAsync(
+        IAsyncDocumentSession session,
+        OidcApplication app,
+        string userId,
+        List<string> scopes,
+        CancellationToken ct)
+    {
+        var authorizationId = OidcAuthorizationReference.DocumentId(userId, app.Id!);
+        var auth = await session.LoadAsync<OidcAuthorization>(authorizationId, ct);
+
+        if (auth == null)
+        {
+            auth = new OidcAuthorization
+            {
+                Id = authorizationId,
+                ApplicationId = app.Id!,
+                Subject = userId,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            await session.StoreAsync(auth, ct);
+        }
+
+        // Consenting again reinstates a grant the user previously revoked — that is precisely
+        // what they have just asked for. Tokens issued before the revocation stay revoked;
+        // only the grant itself comes back.
+        auth.Status = "valid";
+        auth.RevokedAt = null;
+
+        foreach (var s in scopes)
+        {
+            if (!auth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+                auth.GrantedScopes.Add(s);
+        }
+
+        await session.SaveChangesAsync(ct);
+        return authorizationId;
+    }
+
+    /// <summary>
+    /// Mints an authorization code for an already-validated request and redirects the browser
+    /// back to the client. Everything the code carries comes from <paramref name="request"/>,
+    /// never from the current HTTP request.
+    /// </summary>
+    internal static async Task GenerateCodeAndRedirectAsync(
+        HttpContext context,
+        IAsyncDocumentSession session,
+        OidcAuthorizationRequest request,
+        CancellationToken ct)
+    {
+        var code = OidcTokenReference.GenerateValue();
+
         var token = new OidcToken
         {
-            ApplicationId = (string)app.Id!,
-            AuthorizationId = "", // Will be linked when consent is created
-            Subject = userId,
             // The id is the hash of the code, so redemption is a strongly-consistent
             // point-load and the code itself is never persisted.
             Id = OidcTokenReference.DocumentId(code),
+            ApplicationId = request.ApplicationId,
+            AuthorizationId = request.AuthorizationId,
+            Subject = request.Subject,
             Type = "authorization_code",
-            CodeChallenge = codeChallenge,
-            CodeChallengeMethod = codeChallengeMethod,
-            RedirectUri = redirectUri,
-            Scopes = scopes,
+            CodeChallenge = request.CodeChallenge,
+            CodeChallengeMethod = request.CodeChallengeMethod,
+            RedirectUri = request.RedirectUri,
+            Scopes = [.. request.Scopes],
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minute lifetime
-            State = nonce, // Store nonce for ID token generation
+            State = request.Nonce, // Store nonce for ID token generation
         };
+
+        // A request mints exactly one code. Re-submitting the consent form, or replaying the
+        // handle from browser history, finds a consumed request rather than a second code.
+        request.Status = "consumed";
 
         await session.StoreAsync(token, ct);
         await session.SaveChangesAsync(ct);
 
         // Redirect back to client with authorization code
-        var redirectUrl = $"{redirectUri}?code={Uri.EscapeDataString(code)}";
-        if (!string.IsNullOrEmpty(state))
+        var redirectUrl = $"{request.RedirectUri}?code={Uri.EscapeDataString(code)}";
+        if (!string.IsNullOrEmpty(request.State))
         {
-            redirectUrl += $"&state={Uri.EscapeDataString(state)}";
+            redirectUrl += $"&state={Uri.EscapeDataString(request.State)}";
         }
 
         context.Response.Redirect(redirectUrl);
     }
 
-    private static string GenerateAuthorizationCode()
+    /// <summary>
+    /// Loads the request behind a <c>request_id</c>, or null if it is unknown, expired,
+    /// already used, or belongs to a different signed-in user.
+    /// </summary>
+    internal static async Task<OidcAuthorizationRequest?> LoadPendingRequestAsync(
+        IAsyncDocumentSession session, string requestId, string userId, CancellationToken ct)
     {
-        var bytes = RandomNumberGenerator.GetBytes(32);
-        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var request = await session.LoadAsync<OidcAuthorizationRequest>(
+            OidcRequestReference.DocumentId(requestId), ct);
+
+        if (request is not { Status: "pending" })
+            return null;
+
+        if (request.ExpiresAt < DateTime.UtcNow)
+            return null;
+
+        // The handle is bound to the user it was issued for: one user must not be able to
+        // hand another a link that consents on their behalf.
+        if (!string.Equals(request.Subject, userId, StringComparison.Ordinal))
+            return null;
+
+        return request;
     }
 
     internal static async Task<OidcApplication?> FindApplicationByClientIdAsync(

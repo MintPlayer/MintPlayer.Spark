@@ -31,7 +31,7 @@ Severity uses the reviewers' ratings. "Fixed in" refers to commits on `feat/spar
 
 ### Highest value
 
-**O1 — `AuthorizationId` is always `""`, so every revocation cascade is dead code.** `Authorize.cs` hardcodes it with the comment *"Will be linked when consent is created"*; nothing ever fills it, and `Token.cs` propagates the empty string onto every issued token. Consequences: `Revocation.cs`'s access-token cascade **has never executed once**, and the reuse-detection chain revocation added in `dfab40a` currently revokes only the presented token. *Fix: thread the real `OidcAuthorization.Id` through code issuance.* **Do this first — it un-breaks two paths at once.**
+**~~O1~~ — CLOSED by M12.5.** `AuthorizationId` was always `""`, so every revocation cascade was dead code: `Authorize.cs` hardcoded it with the comment *"Will be linked when consent is created"* and nothing ever filled it, while `Token.cs` propagated the empty string onto every issued token. `Revocation.cs`'s access-token cascade had **never executed once**, and the reuse-detection chain revocation added in `dfab40a` revoked only the presented token. Now every code-issuing path goes through `Authorize.EnsureAuthorizationAsync`, and the id travels on the stored request record (D7) rather than as a parameter someone must remember to pass.
 
 **O2 — Parallel-redemption race (Medium→High).** `dfab40a` fixed replay-by-staleness via point-loads, **not** replay-by-concurrency. Two simultaneous redemptions still both load, both validate, and both save; there is no `UseOptimisticConcurrency` or compare-exchange anywhere in the package. *Fix: optimistic concurrency on the redemption session, or compare-exchange on the code value.*
 
@@ -47,9 +47,9 @@ Severity uses the reviewers' ratings. "Fixed in" refers to commits on `feat/spar
 
 - **O7** — `iss` derived from the attacker-controllable `Host` header on every issuance and validation path. A forged `Host` mints tokens claiming a different issuer, signed with the real key. *Fix: issuer from options; request-derived only in Development.*
 - **O8** — `HandleRefreshTokenGrant` never checks `AllowedGrantTypes` (the other two grants do). Symmetrically, code redemption **always** mints a refresh token regardless of `AllowedGrantTypes` or `offline_access`, so every browser client silently receives a 14-day credential it never requested.
-- **O9** — Consent duplicate-grant race and lost revocation: the existing-grant lookup rides an index, so concurrent consents create duplicate `OidcAuthorization` documents (revocation then revokes one, the other keeps auto-approving); and the grant is mutated without optimistic concurrency, so a consent POST can write `Status = "valid"` back over a concurrent `"revoked"`.
+- **~~O9~~ — CLOSED by M12.5.** The existing-grant lookup rode an index, so concurrent consents created duplicate `OidcAuthorization` documents (revocation then revoked one while the other kept auto-approving), and a revoked grant could still satisfy the skip-consent check until the index caught up. `OidcAuthorization` now has a natural id derived from `(subject, applicationId)`, so the pair maps to exactly one document and both reads are point-loads. The index is deleted. **Residual:** the grant is still mutated without optimistic concurrency — that half is O2's remit, and now merges rather than races, since both writers address the same document.
 - **O10** — `AllowRememberConsent` and `ConsentLifetimeSeconds` are declared and **never read**. Remembered consent never expires and ignores the client's own setting.
-- **O11** — `/connect/authorize` never checks `AllowedGrantTypes`, so a `client_credentials`-only client can drive users through the full interactive flow; rejection happens only at the token endpoint.
+- **~~O11~~ — CLOSED by M12.5.** `/connect/authorize` now rejects a client not registered for `authorization_code` up front, instead of letting a `client_credentials`-only client — typically holding broader application claims than any user — drive the whole interactive flow and fail only at the token endpoint.
 - **O12** — `post_logout_redirect_uri` validated against **every** enabled application, so one client's URI is accepted in another's logout. Also loads the whole application collection per logout.
 - **O13** — Cleanup service deletes only `valid|redeemed`; **`revoked` and `expired` documents accumulate forever**. `Take(1000)` once per hour also caps throughput.
 - **O14** — `client_credentials` grants **every** allowed scope when none is requested. Least privilege violated by omission.
@@ -76,9 +76,11 @@ F6, F7's amplification, the scope escalation, and `nonce`/`code_challenge` tampe
 
 The same defect appeared in **five** places (authorize, consent GET, consent POST, login `returnUrl`, two-factor `returnUrl`). All five are now correct; the sixth page someone adds will be wrong again, and nothing will fail loudly.
 
-**Fix:** persist the validated request at the end of `Authorize.Handle` as a short-lived, single-use server-side document, and redirect to `/connect/consent?request_id=<opaque>`. The page renders from that record; the POST carries only `request_id` and the decision. `redirect_uri`, `scope`, `code_challenge` and `nonce` are then **never request parameters after the first hop** — there is nothing to re-validate and no way to forget. Being a point-load by id, it also closes O9's duplicate-grant race.
+**Fix:** persist the validated request at the end of `Authorize.Handle` as a short-lived, single-use server-side document, and redirect to `/connect/consent?request_id=<opaque>`. The page renders from that record; the POST carries only `request_id` and the decision. `redirect_uri`, `scope`, `code_challenge` and `nonce` are then **never request parameters after the first hop** — there is nothing to re-validate and no way to forget.
 
-This is planned as **M12.5**.
+**Shipped as M12.5.** The per-hop checks added in `09dc3cb`/`697097e` were deliberately kept as belt-and-braces: they cost nothing and fail closed if a future path ever reintroduces a parameter-carrying hop.
+
+Implementing it surfaced that the same "eventually-consistent index behind a security decision" mistake was one document further down — `OidcAuthorization` itself. That is now natural-id'd too (see O9). The lesson generalises: **in this package, if a document backs an authorization decision, address it by a derived id, never by index.** Three types now follow that rule (`OidcTokenReference`, `OidcRequestReference`, `OidcAuthorizationReference`); the remaining index-backed lookup is `OidcApplications_ByClientId`, which O17 and O25 both concern.
 
 ---
 

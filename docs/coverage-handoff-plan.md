@@ -19,10 +19,12 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `09dc3cb` | **M12.3 fixes** — account takeover, client binding, `ClientType` fail-closed, delegated-claim leak |
 | `697097e` | **M12.3 fixes** — consent GET validation, `returnUrl` sanitizing |
 | `d994c28` | Audit recorded, M12 re-sequenced |
+| `cf85533` | D7/D8 decided, M12.5 spec'd |
+| _(this)_ | **M12.5 done** — server-side request binding; closes O1, O9, O11 (33 IdP tests green) |
 
-**Next action: M12.5** (the `request_id` refactor, spec'd below). It subsumes **O1**, so do not fix O1 separately.
+**Next action: M12.4's remaining findings**, in order: O2 optimistic concurrency, O3 antiforgery on the `/connect/*` POSTs, O4 lockout, O5/O6 `jti` + stop persisting `Payload`, O7 issuer from options, then O8–O25. **O1, O9 and O11 are already closed by M12.5** — skip them.
 
-**Then:** M12.4's remaining findings in order (O2 optimistic concurrency, O3 antiforgery, O4 lockout, O5/O6 `jti` + stop persisting `Payload`, O7 issuer), M12.6 tests, M12.7 registration surface.
+**Then:** M12.6 tests, M12.7 registration surface.
 
 **Not started:** M2, M3, M8, M9, M10, M11, M6, M7. Note **M9 gates M10 and M11** — Spark endpoints carry no authorization metadata, so a credential scheme registered before the composite default scheme exists is dead code.
 
@@ -45,7 +47,7 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 
 **D7 — The stored authorization request also carries `OidcAuthorization.Id`.** Consent creates the authorization, writes its id onto the request record, and code issuance reads it from there. This makes **O1 fall out of M12.5** rather than needing a separate fix: today `AuthorizationId` is hardcoded `""` at issuance, which silently kills `Revocation`'s access-token cascade (it has never executed once) *and* the reuse-detection chain revocation added in `dfab40a`. Threading a parameter through `GenerateCodeAndRedirectAsync` would work but leaves the same "remember to pass it" fragility that caused the original bug — the request record is the natural home for state the flow accumulates.
 
-**D8 — The request document uses the natural-id pattern**, `OidcRequests/{sha256(request_id)}`, matching `OidcTokenReference`. Gives point-load consistency (no index staleness on a security decision), single-use enforcement by document existence, and no plaintext handle at rest — the same three properties that fix bought for tokens. One storage idiom across the package rather than two.
+**D8 — The request document uses the natural-id pattern**, `OidcAuthorizationRequests/{sha256(request_id)}`, matching `OidcTokenReference`. Gives point-load consistency (no index staleness on a security decision), single-use enforcement by document existence, and no plaintext handle at rest — the same three properties that fix bought for tokens. One storage idiom across the package rather than two.
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
 
@@ -360,15 +362,17 @@ In the order given in the findings doc:
 6. **O7 — issuer from options**, not the `Host` header.
 7. O8–O17 (Medium), then O18–O25 (Low).
 
-### M12.5 — Bind the authorization request server-side
+### M12.5 — Bind the authorization request server-side — **DONE**
 
-The structural fix (findings §3). The same "re-derive the request from browser input" defect appeared in **five** places and all five are now individually patched — which is exactly why this is worth doing: the sixth page added will be wrong again and nothing will fail loudly.
+The structural fix (findings §3). The same "re-derive the request from browser input" defect appeared in **five** places and all five had been individually patched — which is exactly why this was worth doing: the sixth page added would have been wrong again and nothing would have failed loudly.
 
-Per **D7** and **D8**. Concretely:
+**Outcome:** the consent hop now carries one input, an opaque `request_id`. `/connect/consent` reads no client, redirect URI, scope, challenge, nonce or state from the browser — all of it comes from the stored request. **Closes O1, O9, O11.** Two further consistency defects were found and fixed while in here (see below). 33 IdP tests green; package builds clean.
+
+Per **D7** and **D8**. What landed:
 
 **New `Models/OidcAuthorizationRequest.cs`** — `Id` (natural, per D8), `ApplicationId`, `Subject`, `RedirectUri`, `Scopes`, `CodeChallenge`, `CodeChallengeMethod`, `Nonce`, `State`, `AuthorizationId` (filled by consent, per D7), `CreatedAt`, `ExpiresAt` (~10 min), `Status`.
 
-**New `Services/OidcRequestReference.cs`** — mirror `OidcTokenReference`: `GenerateValue()`, `DocumentId(value)`.
+**New `Services/OidcRequestReference.cs`** — mirror `OidcTokenReference`: `GenerateValue()`, `DocumentId(value)`. The hash/generate primitive moved into a shared internal `Services/OpaqueHandle.cs` so the two facades cannot drift; each names its own collection so no caller ever passes a prefix around.
 
 **`Authorize.Handle`** — after the existing validation (`client_id`, `redirect_uri`, `RequirePkce`, `S256`, `AllowedScopes`, `Enabled`, plus **O11**'s missing `AllowedGrantTypes` check while here), store the request and redirect to `/connect/consent?request_id=<opaque>`. The auto-approve path (`ConsentType == "implicit"`) writes the request too, so code issuance has one source of truth.
 
@@ -380,9 +384,16 @@ Per **D7** and **D8**. Concretely:
 
 Afterwards the per-hop `redirect_uri`/scope/PKCE checks added in `09dc3cb` and `697097e` become redundant belt-and-braces. **Keep them** — they cost nothing and they fail closed if a future path ever reintroduces a parameter-carrying hop.
 
-Also closes **O9**'s duplicate-grant race (the request is a point-load by id) and removes the `nonce`/`code_challenge` tampering surface entirely.
+Removes the `nonce`/`code_challenge` tampering surface entirely.
 
-**Spike first:** confirm a natural-id document can be `StoreAsync`'d with an explicit id under Spark's Guid-based id convention (`SparkMiddleware.cs:75-79` overrides HiLo) — `OidcTokenReference` already relies on this working, so this is a confirmation, not an open question.
+**Two defects found while implementing — both fixed here:**
+
+- **The grant record was itself read through a stale index.** `OidcAuthorizations_BySubjectAndApplication` backed *two* security decisions: whether to skip the consent screen, and which authorization a code belongs to. Eventual consistency meant a consent revoked moments earlier could still satisfy the skip check, and concurrent authorize requests could each miss the other's write and create rival grant records — splitting the very token chain revocation sweeps by `AuthorizationId`. Fixed by giving `OidcAuthorization` a natural id derived from `(subject, applicationId)` (new internal `Services/OidcAuthorizationReference.cs`), which makes "one grant per user per application" true by construction. The index is deleted and its registration removed. This is the same reasoning as D8, applied one document further; O9 is closed by *this*, not by the request handle alone.
+- **The composite id was not injective.** The first cut hashed `$"{subject} {applicationId}"`, under which `("x y", "z")` and `("x", "y z")` collide — one user's grant answering for another's. Now length-framed. Caught by writing the test, not by review; `OidcReferenceTests` pins it.
+
+Re-consent now reinstates a revoked grant (`Status` back to `valid`, `RevokedAt` cleared). That is the correct reading of the user's action, and it is the only sane behaviour once the id is fixed per pair — previously a revoked row simply left an orphan behind and a fresh one was created.
+
+**Spike:** confirmed, not run as a separate exercise — `Authorization/Identity/RoleStore.cs:147-152` already stores natural-id documents (`SparkRoles/{name}`) under the same conventions, and `AsyncDocumentIdGenerator` (`SparkMiddleware.cs:75-79`) is only consulted when `Id` is null. Two existing precedents settle it.
 
 ### M12.6 — Tests
 
