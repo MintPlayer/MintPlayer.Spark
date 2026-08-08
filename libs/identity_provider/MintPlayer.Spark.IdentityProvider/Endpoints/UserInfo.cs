@@ -32,19 +32,16 @@ internal static class UserInfo
 
         // Validate the access token JWT
         var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
-        var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+        var issuer = OidcIssuer.Resolve(context);
 
-        var handler = new JsonWebTokenHandler();
-        var validationResult = await handler.ValidateTokenAsync(accessToken, new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = issuer,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            IssuerSigningKey = signingKeyService.GetSigningKey(),
-        });
+        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
+        using var session = store.OpenAsyncSession();
 
-        if (!validationResult.IsValid)
+        // Signature and expiry alone cannot tell that a token was revoked, so this endpoint
+        // went on serving a revoked token's claims for the rest of its lifetime.
+        var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, accessToken, issuer, ct);
+
+        if (resolved is not { IsActive: true })
         {
             context.Response.StatusCode = 401;
             context.Response.Headers["WWW-Authenticate"] = "Bearer error=\"invalid_token\"";
@@ -52,10 +49,8 @@ internal static class UserInfo
             return;
         }
 
-        validationResult.Claims.TryGetValue("sub", out var subObj);
-        var subject = subObj?.ToString();
-        validationResult.Claims.TryGetValue("scope", out var scopeObj);
-        var scopeString = scopeObj?.ToString() ?? "";
+        var subject = resolved.Subject;
+        var scopeString = resolved.Scope ?? "";
 
         if (string.IsNullOrEmpty(subject))
         {
@@ -82,9 +77,6 @@ internal static class UserInfo
 
         // Load scope definitions from DB to resolve claims
         var scopeNames = scopeString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
-        using var session = store.OpenAsyncSession();
 
         var grantedScopes = await session
             .Query<OidcScope>()

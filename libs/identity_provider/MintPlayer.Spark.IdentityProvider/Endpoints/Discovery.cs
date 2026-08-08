@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -10,8 +11,10 @@ internal static class Discovery
     public static async Task Handle(HttpContext context)
     {
         var ct = context.RequestAborted;
-        var request = context.Request;
-        var issuer = $"{request.Scheme}://{request.Host}";
+
+        // Must be the same value the tokens carry, or a relying party that discovers us here
+        // will reject everything we mint.
+        var issuer = OidcIssuer.Resolve(context);
 
         // Load scopes dynamically from DB
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();

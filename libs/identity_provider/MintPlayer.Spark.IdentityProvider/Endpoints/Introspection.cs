@@ -80,34 +80,22 @@ internal static class Introspection
         if (tokenTypeHint is null or "access_token")
         {
             var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
-            var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+            var issuer = OidcIssuer.Resolve(context);
 
-            var handler = new JsonWebTokenHandler();
-            var validationResult = await handler.ValidateTokenAsync(token, new TokenValidationParameters
+            var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, token, issuer, ct);
+            if (resolved != null)
             {
-                ValidateIssuer = true,
-                ValidIssuer = issuer,
-                ValidateAudience = false,
-                ValidateLifetime = false, // We check expiry ourselves to return active=false instead of error
-                IssuerSigningKey = signingKeyService.GetSigningKey(),
-            });
+                resolved.Claims.TryGetValue("exp", out var expObj);
+                resolved.Claims.TryGetValue("iat", out var iatObj);
 
-            if (validationResult.IsValid)
-            {
-                validationResult.Claims.TryGetValue("sub", out var subObj);
-                validationResult.Claims.TryGetValue("scope", out var scopeObj);
-                validationResult.Claims.TryGetValue("client_id", out var cidObj);
-                validationResult.Claims.TryGetValue("exp", out var expObj);
-                validationResult.Claims.TryGetValue("iat", out var iatObj);
-
-                var isExpired = validationResult.SecurityToken is JsonWebToken jwt && jwt.ValidTo < DateTime.UtcNow;
-
+                // active reflects the database, not merely the signature. Reporting a revoked
+                // token as active is precisely the failure RFC 7662 exists to prevent.
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    active = !isExpired,
-                    sub = subObj?.ToString(),
-                    client_id = cidObj?.ToString() ?? app.ClientId,
-                    scope = scopeObj?.ToString(),
+                    active = resolved.IsActive,
+                    sub = resolved.Subject,
+                    client_id = resolved.ClientId ?? app.ClientId,
+                    scope = resolved.Scope,
                     token_type = "access_token",
                     exp = expObj,
                     iat = iatObj,

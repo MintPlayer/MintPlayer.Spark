@@ -55,6 +55,19 @@ internal static class Revocation
         // eventually-consistent index could miss a token issued moments earlier and report
         // success while leaving it live.
         var tokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(token), ct);
+
+        // An access token is a JWT, so the presented value is not itself the handle — its jti
+        // is. Without this branch, revoking an access token silently did nothing: the lookup
+        // above could never hit, and RFC 7009 mandates 200 either way, so the caller was told
+        // it had succeeded.
+        if (tokenDoc == null && tokenTypeHint is null or "access_token")
+        {
+            var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
+            var issuer = OidcIssuer.Resolve(context);
+            var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, token, issuer, ct);
+            tokenDoc = resolved?.Record;
+        }
+
         if (tokenDoc is not { Status: "valid" })
             tokenDoc = null;
 

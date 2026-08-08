@@ -62,8 +62,13 @@ internal class OidcTokenGenerator
     /// Generates an access token with scope and audience claims driven by the database.
     /// Client claims (OidcApplication.Claims) are included.
     /// user may be null for client_credentials grant.
+    /// <para>
+    /// Returns the <c>jti</c> alongside the token: the caller must store the governing
+    /// <see cref="OidcToken"/> under <see cref="OidcTokenReference.DocumentId"/> of it, or the
+    /// token can never be revoked (see <see cref="AccessTokens"/>).
+    /// </para>
     /// </summary>
-    public string GenerateAccessToken(
+    public (string Token, string Jti) GenerateAccessToken(
         SparkUser? user,
         OidcApplication app,
         string issuer,
@@ -71,9 +76,11 @@ internal class OidcTokenGenerator
         int lifetimeMinutes = 60)
     {
         var scopeNames = grantedScopes.Select(s => s.Name).ToList();
+        var jti = OidcTokenReference.GenerateValue();
 
         var claims = new List<Claim>
         {
+            new(JwtRegisteredClaimNames.Jti, jti),
             new("client_id", app.ClientId),
             new("scope", string.Join(" ", scopeNames)),
         };
@@ -143,7 +150,7 @@ internal class OidcTokenGenerator
         }
 
         var handler = new JsonWebTokenHandler();
-        return handler.CreateToken(descriptor);
+        return (handler.CreateToken(descriptor), jti);
     }
 
     public string GenerateRefreshToken()

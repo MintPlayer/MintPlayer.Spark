@@ -195,22 +195,23 @@ internal static class Token
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, codeToken.Scopes, ct);
 
-        var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+        var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate tokens
-        var accessToken = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
         var idToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes);
         var refreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
         // Store access token
         var accessTokenDoc = new OidcToken
         {
+            // Keyed by jti so the token can be looked up, and therefore revoked.
+            Id = OidcTokenReference.DocumentId(accessTokenJti),
             ApplicationId = app.Id!,
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
             Type = "access_token",
-            Payload = accessToken,
             Scopes = codeToken.Scopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
@@ -347,11 +348,11 @@ internal static class Token
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc.Scopes, ct);
 
-        var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+        var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate new tokens
-        var newAccessToken = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
         var newIdToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes);
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
@@ -362,11 +363,11 @@ internal static class Token
         // Store new tokens
         var newAccessTokenDoc = new OidcToken
         {
+            Id = OidcTokenReference.DocumentId(newAccessTokenJti),
             ApplicationId = app.Id!,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
             Type = "access_token",
-            Payload = newAccessToken,
             Scopes = refreshTokenDoc.Scopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
@@ -473,19 +474,21 @@ internal static class Token
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, requestedScopes, ct);
 
-        var issuer = $"{context.Request.Scheme}://{context.Request.Host}";
+        var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate access token only (no user, no ID token, no refresh token)
-        var accessToken = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
 
         // Store access token
         var accessTokenDoc = new OidcToken
         {
+            // Without this key a machine token was unrevocable outright: nothing tied the JWT
+            // to a record, so there was no handle to revoke.
+            Id = OidcTokenReference.DocumentId(accessTokenJti),
             ApplicationId = app.Id!,
             Subject = $"client:{app.ClientId}",
             Type = "access_token",
-            Payload = accessToken,
             Scopes = requestedScopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,

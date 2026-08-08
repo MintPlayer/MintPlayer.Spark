@@ -14,7 +14,9 @@ public class OidcToken
     public string? CodeChallengeMethod { get; set; }
     public string? RedirectUri { get; set; }
     public List<string> Scopes { get; set; } = [];
-    public string? Payload { get; set; }
+    // No Payload: the signed JWT was stored in cleartext, written three times and read never.
+    // Access-token records are keyed by the token's jti instead (see AccessTokens), which is
+    // what makes them revocable — storing the token bought nothing but a liability.
     public string Status { get; set; } = "valid";
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }

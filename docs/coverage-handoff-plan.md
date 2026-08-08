@@ -22,7 +22,12 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `cf85533` | D7/D8 decided, M12.5 spec'd |
 | `3f2473e` | **M12.5 done** — server-side request binding; closes O1, O9, O11 (33 IdP tests green) |
 
-**Next action: M12.4's remaining findings**, in order: O2 optimistic concurrency, O3 antiforgery on the `/connect/*` POSTs, O4 lockout, O5/O6 `jti` + stop persisting `Payload`, O7 issuer from options, then O8–O25. **O1, O9 and O11 are already closed by M12.5** — skip them.
+| `66ea577` | **O2, O3, O4** — redemption race, CSRF on `/connect/*`, password oracle |
+| _(next)_ | **O5, O6, O7** — `jti` + DB-backed validity, drop `Payload`, issuer from options |
+
+**Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
+
+⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
 
 **Then:** M12.6 tests, M12.7 registration surface.
 
