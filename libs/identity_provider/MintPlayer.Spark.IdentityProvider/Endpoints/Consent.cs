@@ -22,8 +22,9 @@ internal static class Consent
 
         var clientId = query["client_id"].FirstOrDefault();
         var scope = query["scope"].FirstOrDefault();
+        var redirectUri = query["redirect_uri"].FirstOrDefault();
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(scope))
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(scope) || string.IsNullOrEmpty(redirectUri))
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsync("Missing parameters.");
@@ -44,10 +45,22 @@ internal static class Consent
         using var session = store.OpenAsyncSession();
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
 
-        if (app == null)
+        if (app == null || !app.Enabled)
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsync("Unknown client.");
+            return;
+        }
+
+        // Validate before rendering, not only before minting. The POST rejects a foreign
+        // redirect_uri, so no code can be issued — but without this check the page still
+        // renders a convincing consent screen carrying the real client's display name, on the
+        // identity provider's own origin, for an attacker-supplied destination. That is a
+        // phishing surface even though it grants nothing.
+        if (!app.RedirectUris.Contains(redirectUri, StringComparer.Ordinal))
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("Invalid redirect_uri.");
             return;
         }
 

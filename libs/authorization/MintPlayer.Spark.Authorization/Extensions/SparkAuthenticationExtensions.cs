@@ -234,7 +234,9 @@ internal static class SparkAuthenticationExtensions
     /// (header-splitting). Returns "/" for anything else — never throws so
     /// callers can use it unconditionally.
     /// </summary>
-    private static string SanitizeReturnUrl(string? returnUrl)
+    /// <summary>Shared with the IdentityProvider package: both flows redirect to a caller-supplied
+    /// returnUrl and must reject off-origin targets. Duplicating it would let the two drift.</summary>
+    internal static string SanitizeReturnUrl(string? returnUrl)
     {
         if (string.IsNullOrEmpty(returnUrl)) return "/";
         if (returnUrl.IndexOfAny(['\r', '\n']) >= 0) return "/";

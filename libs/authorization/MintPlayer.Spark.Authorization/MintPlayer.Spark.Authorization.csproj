@@ -27,6 +27,7 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.IdentityProvider" />
 	</ItemGroup>
 
 	<ItemGroup>

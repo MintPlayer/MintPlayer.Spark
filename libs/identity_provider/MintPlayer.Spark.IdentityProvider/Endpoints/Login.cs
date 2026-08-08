@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Authorization.Extensions;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +16,10 @@ internal static class Login
 {
     public static async Task HandleGet(HttpContext context)
     {
-        var returnUrl = context.Request.Query["returnUrl"].FirstOrDefault() ?? "/";
+        // Sanitized at the point of read: an unvalidated returnUrl sends a freshly-authenticated
+        // user off-origin, which is high-value phishing precisely because they really did just
+        // authenticate here. Shared with the Authorization package rather than duplicated.
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(context.Request.Query["returnUrl"].FirstOrDefault());
         var error = context.Request.Query["error"].FirstOrDefault();
 
         context.Response.ContentType = "text/html; charset=utf-8";
@@ -61,7 +65,7 @@ internal static class Login
         var form = await context.Request.ReadFormAsync(context.RequestAborted);
         var email = form["email"].FirstOrDefault();
         var password = form["password"].FirstOrDefault();
-        var returnUrl = form["returnUrl"].FirstOrDefault() ?? "/";
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
         {

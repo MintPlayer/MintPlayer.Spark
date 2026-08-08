@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Authorization.Extensions;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +16,10 @@ internal static class TwoFactor
 {
     public static async Task HandleGet(HttpContext context)
     {
-        var returnUrl = context.Request.Query["returnUrl"].FirstOrDefault() ?? "/";
+        // Sanitized at the point of read: an unvalidated returnUrl sends a freshly-authenticated
+        // user off-origin, which is high-value phishing precisely because they really did just
+        // authenticate here. Shared with the Authorization package rather than duplicated.
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(context.Request.Query["returnUrl"].FirstOrDefault());
         var error = context.Request.Query["error"].FirstOrDefault();
         var useRecoveryCode = context.Request.Query["recovery"].FirstOrDefault() == "true";
 
@@ -29,7 +33,7 @@ internal static class TwoFactor
         var code = form["code"].FirstOrDefault()?.Replace(" ", "").Replace("-", "");
         var recoveryCode = form["recoveryCode"].FirstOrDefault()?.Replace(" ", "");
         var useRecoveryCode = form["useRecoveryCode"].FirstOrDefault() == "true";
-        var returnUrl = form["returnUrl"].FirstOrDefault() ?? "/";
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
 
         if (useRecoveryCode && string.IsNullOrEmpty(recoveryCode))
         {
