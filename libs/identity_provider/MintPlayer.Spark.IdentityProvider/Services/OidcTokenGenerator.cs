@@ -83,10 +83,18 @@ internal class OidcTokenGenerator
             claims.Add(new Claim(JwtRegisteredClaimNames.Sub, user.Id!));
         }
 
-        // Add client claims
+        // Application claims are emitted under their declared type, unprefixed.
+        //
+        // These were previously namespaced as "client_{Type}", which silently defeated
+        // authorization: Spark resolves group membership purely from "group"/"groups"/role
+        // claims on the principal (ClaimsGroupMembershipProvider), so an application
+        // configured with {Type:"group"} emitted "client_group", matched nothing, and every
+        // machine token authorized as a member of no group at all. The prefix bought no
+        // safety either — an application's claims are operator-configured, exactly like a
+        // user's group membership, and are constrained by AllowedScopes on issuance.
         foreach (var cc in app.Claims)
         {
-            claims.Add(new Claim($"client_{cc.Type}", cc.Value));
+            claims.Add(new Claim(cc.Type, cc.Value));
         }
 
         // Determine audience from scope definitions

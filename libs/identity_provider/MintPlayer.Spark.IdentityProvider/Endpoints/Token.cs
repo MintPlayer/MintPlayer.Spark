@@ -450,14 +450,21 @@ internal static class Token
     {
         if (secrets.Count == 0) return false;
 
-        var secretBytes = Encoding.UTF8.GetBytes(secret);
-        var hashBytes = SHA256.HashData(secretBytes);
-        var computed = Convert.ToBase64String(hashBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
         var now = DateTime.UtcNow;
-        return secrets.Any(s =>
-            string.Equals(computed, s.Hash, StringComparison.Ordinal) &&
-            (s.ExpiresAt == null || s.ExpiresAt > now));
+
+        // Every unexpired secret is checked even once one matches: short-circuiting on the
+        // first hit would leak, through timing, which of a rotating set was presented.
+        var matched = false;
+        foreach (var candidate in secrets)
+        {
+            if (candidate.ExpiresAt != null && candidate.ExpiresAt <= now)
+                continue;
+
+            if (ClientSecretHasher.Verify(secret, candidate.Hash))
+                matched = true;
+        }
+
+        return matched;
     }
 
     private static string ComputeS256Challenge(string codeVerifier)
