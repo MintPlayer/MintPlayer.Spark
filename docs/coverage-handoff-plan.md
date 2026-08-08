@@ -23,7 +23,9 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `3f2473e` | **M12.5 done** — server-side request binding; closes O1, O9, O11 (33 IdP tests green) |
 
 | `66ea577` | **O2, O3, O4** — redemption race, CSRF on `/connect/*`, password oracle |
-| _(next)_ | **O5, O6, O7** — `jti` + DB-backed validity, drop `Payload`, issuer from options |
+| `9b2958a` | **O5, O6, O7** — `jti` + DB-backed validity, drop `Payload`, issuer from options |
+| `643b876` | e2e matrix §A; O2/O3/O4 marked closed; **O26** raised |
+| _(next)_ | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
 
 **Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
 

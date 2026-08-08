@@ -140,7 +140,101 @@ Driven from `EndpointDataSource`, so a route added later is included automatical
 
 ## T — `/connect/token`
 
-*Awaiting the token-grants reviewer; section reserved.*
+Source: `Endpoints/Token.cs`, `Services/ClientSecretHasher.cs`, `Services/OidcTokenGenerator.cs`.
+
+Two markers are used below. **[EXPECTED-FAIL]** — the case pins correct behaviour that the code does not yet have; write it, mark it skipped, remove the skip when the fix lands. **[CHARACTERIZATION]** — the case passes today but asserts something *undesirable*; invert the assertion when the finding is fixed rather than deleting the test.
+
+### T.1 Must succeed
+
+| # | Test | Precondition | Expected | Pins |
+|---|---|---|---|---|
+| T-H1 | `Token_issues_access_id_and_refresh_for_valid_code` | confidential app, `RequirePkce`, valid unexpired code with matching challenge/redirect | 200 with `access_token` (carrying `jti`), `id_token` (`sub`, `aud`=client, scope-driven claims, **no** application claims merged), `refresh_token`. DB: code→`redeemed` with `RedeemedAt`; access + refresh docs `valid` under the same `AuthorizationId`. Headers `Cache-Control: no-store`, `Pragma: no-cache` | RFC 6749 §4.1 |
+| T-H2 | `Token_refresh_rotates_and_retires_the_old_token` | valid refresh doc | 200 with a new triple; `id_token` has **no** `nonce`; old refresh→`redeemed`; new refresh `valid` under the same `AuthorizationId` | RFC 6749 §6 |
+| T-H3 | `Token_client_credentials_issues_access_token_only` | machine client with `Claims=[{group, Administrators}]` | 200 with **only** `access_token`/`token_type`/`expires_in`. JWT has no `sub`, carries `client_id`, `scope`, and the application's `group` claim unprefixed. DB: one access doc, `Subject="client:{ClientId}"` | the delegated/machine claim split |
+
+### T.2 Client authentication
+
+| # | Test | Precondition | Expected | Pins |
+|---|---|---|---|---|
+| T-A1 | `Token_rejects_missing_secret_for_confidential_client` | 1 valid secret | 401 `invalid_client`; **no DB mutation** — the secret check runs before the code point-load | |
+| T-A2 | `Token_rejects_wrong_secret` | | 401 `invalid_client` | |
+| T-A3 | `Token_rejects_expired_secret` | sole secret with past `ExpiresAt` | 401 `invalid_client` | rotation window |
+| T-A4 | `Token_accepts_either_secret_during_rotation` | two unexpired secrets | both succeed | |
+| T-A5 | `VerifyClientSecret_hashes_every_candidate_even_after_a_match` | 5 valid secrets | **unit test, not e2e** — call the `internal static` directly with a counting fake and assert no short-circuit. Wall-clock timing over HTTP is too noisy to assert on | the deliberate non-short-circuit |
+| T-A6 | `Token_public_client_with_no_secrets_may_omit_it` | `ClientType="public"`, `Secrets=[]` | 200 | RFC 6749 §2.3 |
+| T-A7 | `Token_ClientType_public_is_matched_case_insensitively` | `ClientType="PUBLIC"`, `Secrets=[]` | 200 | pins the intended boundary |
+| T-A8 | `Token_ClientType_with_whitespace_still_requires_a_secret` | `ClientType=" public"`, `Secrets=[]` | 401 — fails closed into "must authenticate", and with no secrets it then *cannot* authenticate. A config footgun, **not** a bypass; pin it so the fail-closed direction is never loosened | regression guard for the `ClientType` fix |
+| T-A9 | `Token_rejects_disabled_application_identically_to_unknown` | `Enabled=false` | 401 `invalid_client`, byte-identical to the unknown-client response | positive result — no oracle here |
+
+### T.3 Client binding — RFC 6749 §4.1.3
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-B1 | `Token_rejects_code_belonging_to_another_client` | 400 `invalid_grant`; **the code stays `valid`** — a mismatch is refused but not treated as theft, so the rightful client can still redeem it. Assert the status explicitly | |
+| T-B2 | `Token_rejects_refresh_token_belonging_to_another_client` | 400 `invalid_grant`; the refresh doc stays `valid` for the same reason | |
+
+### T.4 Single-use and replay — RFC 6819 §5.2.2.3
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-R1 | `Token_replayed_code_revokes_the_whole_chain` | 400 `invalid_grant`; code→`revoked`; **and the access *and* refresh tokens minted by the first redemption also flip to `revoked`** — asserting only that the HTTP call failed would miss the entire point of the fix | O1 + F5 |
+| T-R2 | `Token_reused_refresh_token_revokes_the_whole_chain` | 400; old doc→`revoked`; the successor access **and** refresh tokens revoked — these are the attacker's other stolen credentials | F5 |
+| T-R3 | `Token_concurrent_code_redemption_yields_exactly_one_token_set` | one 200, one 400 `invalid_grant`; exactly one access/refresh pair exists for that `AuthorizationId`; code ends `redeemed` (**not** `revoked` — the concurrency loser fails at the save, which does not trigger the theft teardown that a point-load-detected replay does) | O2 |
+| T-R4 | `Token_concurrent_refresh_rotation_yields_exactly_one_token_set` | as above | O2 |
+
+> **On making T-R3/T-R4 deterministic.** True simultaneity over HTTP is not guaranteed, so a single run can pass by luck. Best: a test-only hook that parks both requests between the point-load and the save, then releases them together. Failing that, loop the race ~20× and assert the invariant "never more than one valid pair per `AuthorizationId`" every iteration — that still catches a regression that drops `UseOptimisticConcurrency`, because without it both requests would occasionally win. A two-session unit test is the fallback. **Do not** write a single-shot race test and call it covered.
+
+### T.5 PKCE
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-P1 | `Token_rejects_missing_verifier_when_challenge_present` | 400 `invalid_grant` | |
+| T-P2 | `Token_rejects_wrong_verifier` | 400 `invalid_grant` | |
+| T-P3 | `Token_rejects_verifier_from_a_different_authorization` | 400 — cross-authorization confusion closed | |
+| T-P4 | `Token_fails_closed_on_a_plain_method_code` | seed a `plain` code directly (unreachable via `/connect/authorize`). Redemption computes S256 unconditionally, so an unhashed challenge never matches → 400. Fails closed *despite* the endpoint never reading `CodeChallengeMethod` | flags `OidcToken.CodeChallengeMethod` as written-but-never-read |
+| T-P5 | `Token_succeeds_without_pkce_when_no_challenge_was_set` | 200 | |
+
+### T.6 redirect_uri, expiry, scope
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-D1 | `Token_rejects_mismatched_redirect_uri` | 400 `invalid_grant` "redirect_uri mismatch" | |
+| T-D2 | `Token_missing_redirect_uri_is_invalid_request_not_invalid_grant` | 400 `invalid_request` — a *different* code, caught earlier. Pin it so a refactor merging the paths doesn't silently change the wire contract | |
+| T-D3 | `Token_rejects_redirect_uri_differing_by_trailing_slash` | 400 `invalid_grant` — ordinal, no normalization | |
+| T-E1 | `Token_rejects_expired_code` | 400; code→`expired` (not `revoked` — a timeout is not theft) | |
+| T-E2 | `Token_rejects_expired_refresh_token` | 400; **DB untouched** — this path is read-only, unlike the code path. Harmless inconsistency; pin it so it's deliberate | |
+| T-S1 | `Token_refresh_narrows_scopes_when_AllowedScopes_shrinks` | 200; the removed scope is gone from the new token and persisted narrower | revoking a scope takes effect next refresh |
+| T-S2 | `Token_refresh_ignores_an_injected_scope_parameter` | 200 with the original scopes — the handler never reads `scope` on this grant. Not exploitable (intersection is always against stored scopes) but pin that it is ignored rather than honoured | |
+
+### T.7 Grant gating and machine scopes — open findings
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-G1 | `Token_rejects_code_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | |
+| T-G2 | `Token_rejects_client_credentials_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | |
+| T-G3 | **[EXPECTED-FAIL]** `Token_rejects_refresh_grant_for_client_not_allowing_it` | **should** be 400 `unauthorized_client`; **currently 200** — `HandleRefreshTokenGrant` has no `AllowedGrantTypes` check at all, unlike the other two handlers | **O8** (first half) |
+| T-G4 | **[EXPECTED-FAIL]** `Token_does_not_mint_a_refresh_token_when_the_grant_is_not_allowed` | **should** omit it; **currently** every code redemption mints and stores a refresh token unconditionally — no check against `AllowedGrantTypes` or `offline_access`, so every browser client silently receives a 14-day credential it never asked for | **O8** (second half) |
+| T-G5 | **[EXPECTED-FAIL]** `Token_client_credentials_without_scope_does_not_grant_everything` | **currently** an omitted `scope` grants **all** `AllowedScopes`, `api.admin` included — least privilege violated by omission | **O14** |
+| T-G6 | `Token_client_credentials_rejects_scope_outside_AllowedScopes` | 400 `invalid_scope`, whole request fails, no partial grant | |
+
+### T.8 Enumeration oracles
+
+| # | Test | Compare | Pins |
+|---|---|---|---|
+| T-O1 | **[CHARACTERIZATION]** `Token_distinguishes_unknown_client_from_bad_secret` | unknown client → `{"error":"invalid_client"}` with **no** `error_description`; known client + wrong secret → the same error **with** a description. That difference binary-searches the whole `client_id` namespace with no secret needed. **Invert this assertion when O15 is fixed** | **O15** |
+| T-O2 | **[CHARACTERIZATION]** `Token_distinguishes_never_issued_code_from_expired_code` | different `error_description` text. Narrower (needs a captured code first), same bug class | **O15** |
+| T-O3 | `Token_refresh_grant_has_no_such_oracle` | never-issued and expired both produce the identical message from one shared branch — **this grant is already right; use it as the model when fixing T-O1/T-O2** | contrast |
+| T-O4 | `Token_timing_unknown_vs_known_client` | unknown returns before any PBKDF2; known runs 100k iterations per unexpired secret. **Do not gate CI on HTTP wall-clock timing.** If asserted at all, wide margins over many reps, informational only; the durable form is a benchmark, not an e2e test | O15 (timing half) |
+
+### T.9 Protocol basics and token shape
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-M1 | `Token_rejects_unsupported_grant_type` | 400 `unsupported_grant_type` | |
+| T-M2 | `Token_rejects_non_form_content_type` | 400 `invalid_request` | |
+| T-M3 | `Token_rejects_missing_required_parameters` | 400 `invalid_request`, each parameter omitted in turn | |
+| T-M4 | **[EXPECTED-FAIL]** `Token_multi_audience_access_token_carries_every_audience` | two granted scopes with different `Audiences` → **currently only the first reaches the token.** `OidcTokenGenerator` builds `new ClaimsIdentity(claims)` *before* appending the remaining audiences, and the constructor copies the list rather than aliasing it, so the later `claims.Add` calls go nowhere. Fails closed (narrows), but the code's own comment describes behaviour it does not have | **O19**, confirmed by reading, not just cited |
+| T-M5 | `Token_id_token_nonce_round_trips` | the original `nonce` appears in the `id_token`. Regression guard only: the value is right today despite `OidcToken.State` being the field that holds it, and a future refactor that also stores the real OAuth `state` there would break this silently | O20 |
 
 ## L — `/connect/login`, `/connect/two-factor`, logout, session
 
@@ -148,4 +242,112 @@ Driven from `EndpointDataSource`, so a route added later is included automatical
 
 ## R — introspection, revocation, userinfo, discovery, JWKS
 
-*Awaiting the token-lifecycle reviewer; section reserved. This surface has never been audited — expect new findings rather than only test cases.*
+Source: `Endpoints/{Introspection,Revocation,UserInfo,Discovery,Jwks}.cs`, `Services/{AccessTokens,OidcIssuer,OidcSigningKeyService}.cs`.
+
+This surface produced the audit's only **Critical** (N1, now fixed) precisely because it was the part nobody had read. Sections R.4 and R.5 cover code that had never been reviewed at all before 2026-08-08.
+
+### R.1 Caller authentication
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-A1 | `Introspect_rejects_missing_client_credentials` | 400 `invalid_request` | |
+| R-A2 | `Introspect_rejects_unknown_client` | 401 `invalid_client` | |
+| R-A3 | `Introspect_rejects_wrong_secret` | 401, same shape as R-A2 — no oracle | O15 |
+| R-A4 | `Introspect_rejects_disabled_client` | 401 `invalid_client` | |
+| R-A5 | `Revoke_rejects_wrong_secret_and_leaves_token_live` | 401, **and** the token still introspects `active:true` afterwards — assert the non-effect, not just the status | |
+| R-A6 | `Introspect_rejects_non_form_content_type` | 400 `invalid_request` | |
+
+### R.2 Introspection — must succeed
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-I1 | `Introspect_reports_own_valid_access_token_active` | `active:true`, correct `sub`, `scope`, `token_type`, `exp`/`iat`, and `aud` present | O5, N2 |
+| R-I2 | `Introspect_reports_own_valid_refresh_token_active` | `active:true` with the granted scopes | O5 |
+| R-I3 | `Introspect_reports_machine_token_active_with_no_sub` | `active:true`, `sub` absent | machine tokens carry no subject |
+| R-I4 | `Introspect_resolves_regardless_of_token_type_hint` | a live access token with `token_type_hint=refresh_token` still reports `active:true` | **N3** — was a false negative |
+
+### R.3 Introspection — must refuse
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-I5 | `Introspect_reports_revoked_access_token_inactive` | `active:false` | **O5 — the whole point of that fix** |
+| R-I6 | `Introspect_reports_revoked_refresh_token_inactive` | `active:false` | O5 |
+| R-I7 | `Introspect_reports_expired_tokens_inactive` | `active:false`, both types | |
+| R-I8 | `Introspect_reports_never_issued_token_inactive` | `active:false`, no 500 | |
+| R-I9 | `Introspect_reports_garbage_string_inactive` | `active:false`, no 500 or stack trace | |
+| R-I10 | `Introspect_rejects_token_signed_by_a_foreign_key` | `active:false` — signature fails before any DB lookup | forgery |
+| R-I11 | `Introspect_rejects_alg_none_token` | `active:false` | forgery |
+| R-I12 | `Introspect_rejects_hmac_confusion_token` | HS256 signed with the RSA public key as the secret → `active:false` | pins that `IssuerSigningKey` is set directly rather than resolved from the header |
+| R-I13 | `Introspect_rejects_tampered_payload_with_original_signature` | `active:false` | integrity |
+| R-I14 | `Introspect_ignores_the_tokens_own_kid` | forged `kid` + attacker key → `active:false` — the key is pinned server-side, never chosen by the token | forgery |
+| R-I15 | `Introspect_rejects_token_from_a_different_issuer` | `active:false` | O7 regression pin |
+
+### R.4 Ownership — the Critical
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-N1 | `Introspect_refuses_another_clients_refresh_token` | client B introspecting client A's refresh token gets `active:false` — **not** `sub` and `scope` of A's user | **N1 (fixed)** |
+| R-N2 | `Introspect_refuses_another_clients_access_token` | as above; before the fix this returned `active:true` *and* the true owning `client_id`, confirming a cross-client read | **N1 (fixed)** |
+| R-N3 | `Introspect_ownership_failure_is_indistinguishable_from_never_issued` | the R-N1/R-N2 responses are byte-identical to R-I8's | the gate must not become its own oracle |
+
+### R.5 Revocation
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-V1 | `Revoke_own_access_token_takes_effect` | 200, then `active:false` | |
+| R-V2 | `Revoke_refresh_token_cascades_to_its_access_tokens` | every token under the same `AuthorizationId` goes inactive | O1 made this reachable |
+| R-V3 | `Revoke_access_token_resolves_via_jti` | 200 and actually inactive — proves the `jti` fallback fires, since an access token's document is not keyed by the presented value | O5 |
+| R-V4 | `Revoke_works_regardless_of_token_type_hint` | an access token revoked with `token_type_hint=refresh_token` **is** revoked. Previously it matched nothing, revoked nothing, and still answered 200 — a caller responding to a breach was told the credential was dead while it stayed live | **N3 (fixed)** |
+| R-V5 | `Revoke_already_revoked_token_returns_200` | 200, no error, no state change | RFC 7009 §2.2 |
+| R-V6 | `Revoke_another_clients_token_returns_200_but_does_not_revoke` | 200 (the RFC forbids revealing failure) **and** the token still introspects `active:true` for its owner | the gate introspection was missing |
+| R-V7 | `Revoke_never_issued_token_returns_200` | 200, no document created | |
+| R-V8 | `Revoke_negative_outcomes_are_indistinguishable` | foreign-client, never-issued and already-revoked produce identical status, body and headers | RFC 7009 non-disclosure |
+
+### R.6 UserInfo
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-U1 | `UserInfo_returns_only_claims_for_granted_scopes` | `openid profile email` → the mapped claims and no others | |
+| R-U2 | `UserInfo_with_openid_only_returns_sub_alone` | no `name`, `email`, `role` keys at all | ungranted scopes yield nothing |
+| R-U3 | `UserInfo_rejects_missing_or_malformed_bearer` | 401 + `WWW-Authenticate`, for absent header, wrong scheme, and empty value | |
+| R-U4 | `UserInfo_rejects_revoked_access_token` | 401 | **O5 — "kept serving claims" was the bug** |
+| R-U5 | `UserInfo_rejects_expired_access_token` | 401 | |
+| R-U6 | `UserInfo_rejects_token_without_sub` | a machine token → 401 | |
+| R-U7 | `UserInfo_rejects_token_whose_user_was_deleted` | 401 | |
+| R-U8 | `UserInfo_rejects_an_id_token_presented_as_an_access_token` | 401 — id tokens carry no `jti` and have no governing record, so they cannot resolve. Token-type confusion is closed incidentally; pin it so it stays closed | |
+| R-U9 | `UserInfo_rejects_a_refresh_token_presented_as_a_bearer` | 401, no 500 on non-JWT input | |
+| R-U10 | `UserInfo_rejects_forged_and_foreign_signed_tokens` | 401 for `alg=none` and attacker-key variants | forgery |
+| R-U11 | `UserInfo_drops_claims_for_a_scope_disabled_after_issuance` | 200, but that scope's claims are absent — resolution re-checks `Enabled` live. **Document as intended**: it is dynamic claim revocation, not a bug | |
+
+### R.7 Discovery and JWKS
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-D1 | `Discovery_issuer_matches_configuration_exactly` | equals the configured `Issuer`, no trailing slash | O7 |
+| R-D2 | `Discovery_advertised_endpoints_all_resolve` | every `*_endpoint` and `jwks_uri` returns something other than 404 — cross-check against the route table rather than trusting the document | |
+| R-D3 | `Discovery_advertises_only_what_is_enforced` | `response_types_supported=["code"]` and `code_challenge_methods_supported=["S256"]`, **and** `/connect/authorize` actually rejects `token`, `id_token` and `plain` | advertised-vs-enforced |
+| R-D4 | `Discovery_omits_disabled_and_hidden_scopes` | neither appears in `scopes_supported` | |
+| R-D5 | `Discovery_and_jwks_need_no_credentials` | 200 unauthenticated — these are public by design | |
+| R-D6 | `Forged_host_header_does_not_move_the_issuer` | spoofed `Host` on discovery, introspection and userinfo changes nothing | **O7 regression pin** |
+| R-J1 | `Jwks_exposes_no_private_key_material` | keys carry only `kty/use/kid/alg/n/e` — assert the **absence** of `d/p/q/dp/dq/qi` | |
+| R-J2 | `Jwks_kid_matches_the_kid_in_issued_tokens` | exact match, so a relying party can select the key | |
+| R-J3 | `Jwks_published_key_verifies_a_real_token` | verify a freshly issued token offline using only the published `n`/`e` | end-to-end trust chain |
+| R-J4 | `Jwks_publishes_exactly_one_key` | length 1 — pins today's no-overlap behaviour so N4's fix visibly changes it | **N4** |
+| R-J5 | **[EXPECTED-FAIL]** `Jwks_kid_changes_when_the_key_is_replaced` | **currently** the literal `"spark-oidc-key-1"` survives rotation, so a relying party caching by `kid` keeps the stale key | **N4** |
+| R-J6 | **[EXPECTED-FAIL]** `Tokens_issued_before_rotation_remain_valid_until_expiry` | **currently** they fail instantly — one key is held, so rotation is a hard cutover with no overlap window | **N4** |
+
+### R.8 Signing key service
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-K1 | `SigningKey_missing_in_production_fails_startup` | throws naming the path; the app must not invent a key and start | fails closed |
+| R-K2 | `SigningKey_auto_generated_in_development_only` | generated and persisted; **reused** on the next start, not regenerated | |
+| R-K3 | `SigningKey_is_stable_across_restarts` | tokens signed in run 1 verify against JWKS from run 2 | |
+| R-K4 | `SigningKey_corrupt_file_fails_loudly` | a clean exception, never a silent fallback to a fresh in-memory key | |
+
+### R.9 Audience — the open gap
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| R-X1 | `Introspection_reports_aud_so_a_resource_server_can_check_it` | `aud` present in the response | **N2**, disclosure half — fixed |
+| R-X2 | **[CHARACTERIZATION]** `Audience_is_not_enforced_anywhere` | a token minted for resource A introspects `active:true` and is accepted at `/connect/userinfo` regardless of audience. Documents the current gap; invert if N2's enforcement half is ever decided in favour of enforcing here | **N2**, open |

@@ -78,5 +78,12 @@ internal sealed record ResolvedAccessToken(
     public string? Scope => Claim("scope");
     public string? ClientId => Claim("client_id");
 
+    /// <summary>
+    /// The audiences the token was minted for. Not validated here — a token is "active"
+    /// regardless of who it was meant for — but surfaced so introspection can report it and a
+    /// resource server can decide for itself.
+    /// </summary>
+    public IReadOnlyList<string> Audiences => Jwt.Audiences?.ToList() ?? [];
+
     private string? Claim(string type) => Claims.TryGetValue(type, out var value) ? value?.ToString() : null;
 }

@@ -29,6 +29,20 @@ Severity uses the reviewers' ratings. "Fixed in" refers to commits on `feat/spar
 
 ## 2. Open
 
+### From the never-audited surface (found 2026-08-08, while building the e2e matrix)
+
+**~~N1~~ — CRITICAL, now FIXED. `/connect/introspect` never checked token ownership.** After authenticating the caller as *some* enabled client, neither branch compared the resolved record to that client. Any client holding valid credentials could present a token it had come across and read back `sub` and `scope` — whose token it was never entered into it. Because each resource server is its own `OidcApplication`, one resource server's introspection credentials read another's users. `Revocation.cs` has always gated on `tokenDoc.ApplicationId == app.Id`; introspection simply never did, and **I carried the omission into the access-token branch myself** when rewriting it for O5 in `9b2958a`. Both branches now gate, and a mismatch returns `{active:false}` — indistinguishable from never-issued, so the gate is not itself an oracle.
+
+> **This contradicted a claim in this document.** O5's entry said the three consumers "resolve through one `AccessTokens` so they cannot drift on what *still valid* means." True and beside the point: the shared resolver answers *whether* a token is live, and nothing downstream asked *whose* it was. Sharing a validity check is not sharing an authorization check — worth remembering the next time consolidation is offered as evidence of soundness.
+
+**~~N3~~ — FIXED. `token_type_hint` gated the search instead of merely hinting it.** RFC 7662 §2.1 and RFC 7009 §2.1 both require extending the search when the hinted type does not resolve. Introspection returned `active:false` for a live access token presented with `token_type_hint=refresh_token` — a false negative. Worse, **revocation silently did nothing**: an access token revoked with the wrong hint matched no branch, was never revoked, and still returned the RFC-mandated 200. A caller responding to a breach was told the credential was dead while it stayed live for its full lifetime. Neither endpoint gates on the hint now.
+
+**N2 — MEDIUM, OPEN. Audience is neither validated nor exposed.** `AccessTokens.ResolveAsync` sets `ValidateAudience = false`, so no path in the package asks "was this token minted for me?". Introspection now reports `aud` so a resource server can decide for itself — the disclosure half is fixed — but nothing *enforces* audience anywhere. A token minted for resource A is still accepted at resource B if B only checks `active`. Decide whether enforcement belongs here or is the resource server's job, and document whichever.
+
+**N4 — LOW/MEDIUM, OPEN. Signing-key `kid` is the hardcoded literal `"spark-oidc-key-1"`** (`OidcSigningKeyService.cs:65`) regardless of the key material loaded, and the server holds exactly one key. So JWKS advertises the same `kid` after a key file is replaced — a relying party caching by `kid` keeps the stale key — and rotation is a hard cutover: every unexpired token signed by the old key fails validation the instant the file changes, with no overlap window. Fails closed, so not a bypass, but it makes key rotation an outage. Fix shape: derive `kid` from the key (e.g. a thumbprint), hold and publish a set, validate against any of them, sign with the newest.
+>
+> Also noted, not elevated: the Development auto-generated private key is written with a plain `File.WriteAllText` and no permission hardening. Fine for a local run; a problem the moment that path is reused for anything shared.
+
 ### Highest value
 
 **~~O1~~ — CLOSED by M12.5.** `AuthorizationId` was always `""`, so every revocation cascade was dead code: `Authorize.cs` hardcoded it with the comment *"Will be linked when consent is created"* and nothing ever filled it, while `Token.cs` propagated the empty string onto every issued token. `Revocation.cs`'s access-token cascade had **never executed once**, and the reuse-detection chain revocation added in `dfab40a` revoked only the presented token. Now every code-issuing path goes through `Authorize.EnsureAuthorizationAsync`, and the id travels on the stored request record (D7) rather than as a parameter someone must remember to pass.
@@ -87,11 +101,17 @@ Implementing it surfaced that the same "eventually-consistent index behind a sec
 
 ---
 
-## 4. Not yet audited
+## 4. Previously not audited — now covered
 
-The endpoints/keys reviewer never reported. **Unreviewed surface:** `OidcSigningKeyService` (key generation, storage, permissions, rotation, multi-instance behaviour), `Jwks.cs` (private-key exposure), `Discovery.cs` (advertised-vs-enforced mismatches), `UserInfo.cs`, and the `Introspection`/`Revocation` caller-authentication model.
+The first attempt at this surface never reported, leaving `OidcSigningKeyService`, `Jwks.cs`, `Discovery.cs`, `UserInfo.cs` and the `Introspection`/`Revocation` caller model unreviewed. **A second pass covered it on 2026-08-08** and produced N1–N4 above — including the only Critical in the whole audit, which had been sitting in the one file nobody had read. Worth noting as a process point: the gap was recorded honestly in this document for weeks and still nearly shipped, because "known unreviewed" reads like "known" once it has been written down.
 
-Partial coverage exists from the token reviewer: RS256 is hardcoded at both signing sites with no negotiation, so **`alg=none` is not reachable**; both verification paths pin `IssuerSigningKey` to the single RSA key rather than resolving from the token header, so **`alg` confusion is closed there**; and production refuses to auto-generate a key. That is not a substitute for reviewing the key service itself.
+**Verified sound on that surface** (do not regress):
+- **`alg=none` unreachable** — RS256 hardcoded at both signing sites, no negotiation.
+- **Algorithm confusion (RS256→HS256 with the public key as the HMAC secret) closed** — every verification path sets `IssuerSigningKey` directly rather than resolving a key from the token's own header, so there is no attacker-steerable key lookup. `ValidAlgorithms` is therefore not load-bearing, but setting it would make the property explicit rather than emergent.
+- **JWKS exposes only `n`/`e`** — never `d/p/q/dp/dq/qi`. No private-key leak.
+- **Issuer validated on every path** from the single `OidcIssuer.Resolve` source, failing closed outside Development.
+- **Discovery matches enforcement** on response types (`code` only) and PKCE methods (`S256` only). It advertises `client_secret_post` only, which is honest — Basic genuinely isn't implemented (O23).
+- **A missing key file in Production throws at construction** — the app refuses to start rather than inventing a key.
 
 ---
 

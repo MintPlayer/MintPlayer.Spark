@@ -28,7 +28,8 @@ internal static class Revocation
 
         var form = await context.Request.ReadFormAsync(ct);
         var token = form["token"].FirstOrDefault();
-        var tokenTypeHint = form["token_type_hint"].FirstOrDefault();
+        // token_type_hint is accepted and ignored: both token types are searched regardless
+        // (see below), so the hint can only ever be an optimisation we decline to take.
         var clientId = form["client_id"].FirstOrDefault();
         var clientSecret = form["client_secret"].FirstOrDefault();
 
@@ -60,7 +61,13 @@ internal static class Revocation
         // is. Without this branch, revoking an access token silently did nothing: the lookup
         // above could never hit, and RFC 7009 mandates 200 either way, so the caller was told
         // it had succeeded.
-        if (tokenDoc == null && tokenTypeHint is null or "access_token")
+        //
+        // token_type_hint deliberately does not gate this. RFC 7009 §2.1 requires extending the
+        // search when the hinted type does not resolve, and here the cost of obeying the hint
+        // was silence: an access token revoked with token_type_hint=refresh_token matched
+        // nothing, was never revoked, and still answered 200. A caller acting on a breach would
+        // be told the credential was dead while it stayed live for its full lifetime.
+        if (tokenDoc == null)
         {
             var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
             var issuer = OidcIssuer.Resolve(context);
