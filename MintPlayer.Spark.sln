@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.3.11429.125
@@ -111,6 +112,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "migrations", "migrations", "{0D691833-5EFF-DD08-8FD0-98136A9ECFB6}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.Migrations", "libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj", "{37650DC2-5A98-45C7-BAD9-DAB1AB3DAE21}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "identity_provider", "identity_provider", "{C67AD53A-A3A9-DC61-60F2-8254CEC355F2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MintPlayer.Spark.IdentityProvider", "libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj", "{7210E558-8281-475D-AB69-8EC8CFBD27DC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -518,6 +523,18 @@ Global
 		{37650DC2-5A98-45C7-BAD9-DAB1AB3DAE21}.Release|x64.Build.0 = Release|Any CPU
 		{37650DC2-5A98-45C7-BAD9-DAB1AB3DAE21}.Release|x86.ActiveCfg = Release|Any CPU
 		{37650DC2-5A98-45C7-BAD9-DAB1AB3DAE21}.Release|x86.Build.0 = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|x64.Build.0 = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Debug|x86.Build.0 = Debug|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|x64.ActiveCfg = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|x64.Build.0 = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|x86.ActiveCfg = Release|Any CPU
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -575,6 +592,8 @@ Global
 		{034C0450-791B-163A-E4F8-C04060224C39} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
 		{0D691833-5EFF-DD08-8FD0-98136A9ECFB6} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
 		{37650DC2-5A98-45C7-BAD9-DAB1AB3DAE21} = {0D691833-5EFF-DD08-8FD0-98136A9ECFB6}
+		{C67AD53A-A3A9-DC61-60F2-8254CEC355F2} = {6C4D298B-81FB-2B6B-5AB6-46205EDDC72C}
+		{7210E558-8281-475D-AB69-8EC8CFBD27DC} = {C67AD53A-A3A9-DC61-60F2-8254CEC355F2}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BE3C450D-A8DE-4D9E-B4D4-3F32F348E7EA}
