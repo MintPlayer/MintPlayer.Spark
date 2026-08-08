@@ -4,6 +4,32 @@ See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md), [findings-replication-mt
 
 TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE.md, **test suites run once at the end**, not per milestone — intermediate milestones are verified by reading code and type-checking. Committing per milestone is fine.
 
+## Status — resume here
+
+Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree clean.
+
+| Commit | What |
+|---|---|
+| `9a181e6` | PRD + plan + mTLS findings |
+| `5220564` | Decisions D1–D6, IdP milestone |
+| `7ac799a` | **M1 done** — queue-name derivation (18 tests green) |
+| `d51f9fd` | **M12.1 done** — IdP ported to `libs/identity_provider/`, added to sln, builds unchanged |
+| `19f4bf2` | **M12.2 done** — PBKDF2 + constant-time secret verify; claim-prefix fix (18 tests green) |
+| `dfab40a` | **M12.3 fixes** — natural-id token lookups, no plaintext bearer values, reuse detection |
+| `09dc3cb` | **M12.3 fixes** — account takeover, client binding, `ClientType` fail-closed, delegated-claim leak |
+| `697097e` | **M12.3 fixes** — consent GET validation, `returnUrl` sanitizing |
+| `d994c28` | Audit recorded, M12 re-sequenced |
+
+**Next action: M12.5** (the `request_id` refactor, spec'd below). It subsumes **O1**, so do not fix O1 separately.
+
+**Then:** M12.4's remaining findings in order (O2 optimistic concurrency, O3 antiforgery, O4 lockout, O5/O6 `jti` + stop persisting `Payload`, O7 issuer), M12.6 tests, M12.7 registration surface.
+
+**Not started:** M2, M3, M8, M9, M10, M11, M6, M7. Note **M9 gates M10 and M11** — Spark endpoints carry no authorization metadata, so a credential scheme registered before the composite default scheme exists is dead code.
+
+**Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Only targeted filters have been run so far (`QueueNamesTests`, `IdentityProvider`), both green. The four demo ClientApps have not been built or exercised since the IdP port.
+
+**Known-unreviewed:** the IdP's signing-key service, JWKS, discovery, UserInfo, and introspection/revocation caller-auth were never audited — the reviewer covering them never reported. Re-run before merge.
+
 ## Resolved decisions (2026-08-08)
 
 **D1 — External POST credential: OAuth2 `client_credentials` via `MintPlayer.Spark.IdentityProvider`**, not a per-user secret. Same experience for the consumer, better security posture for the application. **Conditional on the package being audited and proven sound** — see M12. Three defects are already known (unsalted SHA-256 + non-constant-time compare in `VerifyClientSecret`; application claims emitted as `client_group` so a machine token resolves to zero groups; no resource-server side at all).
@@ -16,6 +42,10 @@ TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE
 **D4 — `Everyone` stays as-is.** Anonymous vs. authenticated access is already decided by `security.json` and, where needed, the Actions classes. No change. (My "machine caller" phrasing meant a non-human client such as CI; the point stands but needs no special-casing.)
 
 **D5 — Replication → `IPermissionService` needs no new hard dependency.** `IPermissionService`, `IAccessControl` and `IGroupMembershipProvider` live in **`MintPlayer.Spark.Abstractions/Authorization/`**, and `MintPlayer.Spark.Replication.csproj:30` **already references** `MintPlayer.Spark.Abstractions`. Routing `/spark/sync/apply` through the permission pipeline therefore adds **zero** coupling to the Authorization package — that package supplies the `security.json` implementation, not the abstraction.
+
+**D7 — The stored authorization request also carries `OidcAuthorization.Id`.** Consent creates the authorization, writes its id onto the request record, and code issuance reads it from there. This makes **O1 fall out of M12.5** rather than needing a separate fix: today `AuthorizationId` is hardcoded `""` at issuance, which silently kills `Revocation`'s access-token cascade (it has never executed once) *and* the reuse-detection chain revocation added in `dfab40a`. Threading a parameter through `GenerateCodeAndRedirectAsync` would work but leaves the same "remember to pass it" fragility that caused the original bug — the request record is the natural home for state the flow accumulates.
+
+**D8 — The request document uses the natural-id pattern**, `OidcRequests/{sha256(request_id)}`, matching `OidcTokenReference`. Gives point-load consistency (no index staleness on a security decision), single-use enforcement by document existence, and no plaintext handle at rest — the same three properties that fix bought for tokens. One storage idiom across the package rather than two.
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
 
@@ -332,9 +362,27 @@ In the order given in the findings doc:
 
 ### M12.5 — Bind the authorization request server-side
 
-The structural fix (findings §3). Persist the request validated at `/connect/authorize` as a short-lived single-use document; redirect to `/connect/consent?request_id=<opaque>`; render and post from that record only.
+The structural fix (findings §3). The same "re-derive the request from browser input" defect appeared in **five** places and all five are now individually patched — which is exactly why this is worth doing: the sixth page added will be wrong again and nothing will fail loudly.
 
-The same "re-derive the request from browser input" defect appeared in **five** places and all five are now individually patched — which is exactly why this is worth doing: the sixth page added will be wrong again and nothing will fail loudly. Also closes O9's duplicate-grant race, since the request becomes a point-load by id.
+Per **D7** and **D8**. Concretely:
+
+**New `Models/OidcAuthorizationRequest.cs`** — `Id` (natural, per D8), `ApplicationId`, `Subject`, `RedirectUri`, `Scopes`, `CodeChallenge`, `CodeChallengeMethod`, `Nonce`, `State`, `AuthorizationId` (filled by consent, per D7), `CreatedAt`, `ExpiresAt` (~10 min), `Status`.
+
+**New `Services/OidcRequestReference.cs`** — mirror `OidcTokenReference`: `GenerateValue()`, `DocumentId(value)`.
+
+**`Authorize.Handle`** — after the existing validation (`client_id`, `redirect_uri`, `RequirePkce`, `S256`, `AllowedScopes`, `Enabled`, plus **O11**'s missing `AllowedGrantTypes` check while here), store the request and redirect to `/connect/consent?request_id=<opaque>`. The auto-approve path (`ConsentType == "implicit"`) writes the request too, so code issuance has one source of truth.
+
+**`Consent.HandleGet` / `HandlePost`** — read `request_id` only. Point-load the request; reject if missing, expired, not `valid`, or belonging to another subject. Render from the record. The POST carries `request_id` + decision + the scope checkboxes, which are intersected against `request.Scopes` (already validated) rather than re-validated from scratch.
+
+**`GenerateCodeAndRedirectAsync`** — take the request document instead of eight loose parameters, and copy `AuthorizationId` from it onto the code (this is O1's fix).
+
+**Mark the request consumed** when the code is issued, so it is genuinely single-use.
+
+Afterwards the per-hop `redirect_uri`/scope/PKCE checks added in `09dc3cb` and `697097e` become redundant belt-and-braces. **Keep them** — they cost nothing and they fail closed if a future path ever reintroduces a parameter-carrying hop.
+
+Also closes **O9**'s duplicate-grant race (the request is a point-load by id) and removes the `nonce`/`code_challenge` tampering surface entirely.
+
+**Spike first:** confirm a natural-id document can be `StoreAsync`'d with an explicit id under Spark's Guid-based id convention (`SparkMiddleware.cs:75-79` overrides HiLo) — `OidcTokenReference` already relies on this working, so this is a confirmation, not an open question.
 
 ### M12.6 — Tests
 
