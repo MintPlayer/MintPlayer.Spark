@@ -86,13 +86,29 @@ internal static class Authorize
             return;
         }
 
-        // Validate requested scopes
+        // Validate requested scopes against BOTH sources of truth.
+        //
+        // The application's AllowedScopes says what this client may ask for; the OidcScope
+        // documents say what the provider actually defines. Only the first was checked here,
+        // while token issuance resolves against the second — so a scope listed on the client but
+        // undefined (or disabled) was accepted, consented to, and carried on the code, and then
+        // silently vanished from the issued token's `scope` claim. The user saw success at every
+        // screen and got a token that authorized less than they granted. Rejecting here makes the
+        // disagreement surface at the point of request instead.
         var requestedScopes = scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var definedScopes = await Token.LoadScopesAsync(session, requestedScopes, ct);
+
         foreach (var s in requestedScopes)
         {
             if (!app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
             {
                 RedirectWithError(context, redirectUri, state, "invalid_scope", $"Scope '{s}' is not allowed for this client.");
+                return;
+            }
+
+            if (!definedScopes.Any(d => string.Equals(d.Name, s, StringComparison.OrdinalIgnoreCase)))
+            {
+                RedirectWithError(context, redirectUri, state, "invalid_scope", $"Scope '{s}' is not available.");
                 return;
             }
         }

@@ -31,13 +31,18 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `e4ce3df` | **O16, O18, O22 (part), O24, O26** — interactive-only auth, constant-time PKCE, `openid`-gated id_token, error codes, server-side required scopes |
 | `6241984` | `SparkEndpointFactory` gains `configureSpark`; host decision reversed with reasons |
 | `6e9ef6b` | **M12.6 started** — 24 e2e tests; found **N5** (High) and a wrong O25 fix |
-| _(next)_ | **M12.6 flow coverage — 131 IdP tests green** (98 e2e across authorize, consent, token, login, logout, introspect, revoke, userinfo, discovery, JWKS) |
+| `28633e6` | **M12.6 flow coverage** — 131 IdP tests (98 e2e) across the whole flow |
+| _(next)_ | **Forgery batch — 138 IdP tests green, deterministic over repeat runs.** Found **N6** |
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
 It paid for itself twice. The first 24 tests found two defects six reviewers reading code had missed: a wrong fix I had shipped (O25's `exact: true` inverted the matching) and **N5**, where the serializer re-added a property-initializer default on load, making every grant-type restriction unenforceable.
 
-**Still untested** (§ references are to the matrix): the concurrency races T-R3/T-R4, which need a parking hook to be meaningful rather than lucky; two-factor entirely (§L.4), since no fixture enables 2FA yet; JWT forgery variants beyond `alg=none` (R-I10–R-I14); key rotation (R-J5/R-J6, pinning **N4**); and the enumeration characterizations T-O1/T-O2 for the still-open **O15**.
+**Forgery is now covered** (R-I10–R-I15): `alg=none`, a foreign signing key, RS256→HS256 confusion using the published modulus as the HMAC secret, a tampered payload with the original signature, a forged `kid`, a foreign issuer, and — the one that would slip past a signature-only check — a token this provider genuinely signed but has no record for. Each goes through both introspection and UserInfo, since they are separate entry points to the same resolver.
+
+**Still untested** (§ references are to the matrix): the concurrency races T-R3/T-R4, which need a parking hook to be meaningful rather than lucky; two-factor entirely (§L.4), since no fixture enables it yet; key rotation (R-J5/R-J6, which would pin the open **N4**); and the enumeration characterizations T-O1/T-O2 for the open **O15**.
+
+**On determinism:** three separate flakes were fixed rather than tolerated — an index query in the fixture (replaced by a point-load), seeding before the host deployed its indexes, and not waiting for indexing after seeding. The suite now passes repeat full runs. A flaky security test is worse than none: it teaches people to re-run.
 
 **Remaining open:** O10, O13, O15, O17, O20, O22 (the `auth_time`/`azp` half), O23, N2, N4, plus O27 (accepted with a rationale). None is above Medium; the Criticals and Highs are all closed.
 

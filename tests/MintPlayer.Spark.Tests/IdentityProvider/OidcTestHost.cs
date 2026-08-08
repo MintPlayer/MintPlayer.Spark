@@ -11,6 +11,7 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -82,6 +83,12 @@ public abstract class OidcTestHost : SparkTestDriver
         string consentType = "explicit",
         string clientType = "confidential")
     {
+        // Boot the host before seeding: the IdP deploys OidcApplications_ByClientId from its
+        // startup middleware, and waiting for an index that does not exist yet returns
+        // immediately — which is why the suite failed a different test on each run depending on
+        // which class happened to seed before anything booted.
+        _ = Factory;
+
         var app = new OidcApplication
         {
             ClientId = clientId,
@@ -101,7 +108,41 @@ public abstract class OidcTestHost : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         await session.StoreAsync(app);
+
+        // Define every scope the client is allowed to ask for. A real deployment does this; a
+        // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
+        // issuance resolves scopes from OidcScope documents rather than from the client's list.
+        // Addressed by a derived id, not found through an index: two applications sharing a
+        // scope seed concurrently, and an index query is eventually consistent, so the second
+        // would not see the first and would create a duplicate. That made the suite fail only
+        // under full-run load — the same staleness trap this package's own lookups kept falling
+        // into.
+        foreach (var name in app.AllowedScopes)
+        {
+            var id = "OidcScopes/" + name.ToLowerInvariant();
+            if (await session.LoadAsync<OidcScope>(id) != null)
+                continue;
+
+            await session.StoreAsync(new OidcScope
+            {
+                Id = id,
+                Name = name,
+                DisplayName = name,
+                Enabled = true,
+                Required = name == "openid",
+            });
+        }
+
         await session.SaveChangesAsync();
+
+        // Client lookup rides OidcApplications_ByClientId, which is eventually consistent, so a
+        // just-seeded application is not immediately findable. Without this the suite failed a
+        // different pair of tests on each run, under full-suite load only.
+        //
+        // Worth carrying into M12.7: whatever registers an application cannot assume it is
+        // usable the instant it returns.
+        WaitForIndexing(Store);
+
         return app;
     }
 
