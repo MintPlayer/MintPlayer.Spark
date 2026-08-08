@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
+using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
@@ -179,6 +180,14 @@ internal static class Authorize
         };
 
         await session.StoreAsync(request, ct);
+
+        // Let RavenDB reap the document. Most requests are consumed within seconds and none is
+        // of any use after ExpiresAt, so without this the collection would grow with one dead
+        // document per sign-in, forever. Security does not rest on the deletion actually having
+        // happened — LoadPendingRequestAsync refuses an expired request either way — which is
+        // just as well, since the server sweeps on its own schedule.
+        session.Advanced.GetMetadataFor(request)[Constants.Documents.Metadata.Expires] = request.ExpiresAt;
+
         return (request, requestId);
     }
 

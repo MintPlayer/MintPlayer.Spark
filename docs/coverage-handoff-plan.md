@@ -382,6 +382,8 @@ Per **D7** and **D8**. What landed:
 
 **Mark the request consumed** when the code is issued, so it is genuinely single-use.
 
+**Lifetime.** Requests live in RavenDB alongside everything else, in collection `OidcAuthorizationRequests`, in the database from `options.RavenDb.Database` — there is one document store per app. `ExpiresAt` (10 min) is enforced on read, so an expired request is refused whether or not the document still exists. Physical removal is by RavenDB's own expiration feature: the document carries `@expires`, and the IdP enables `ConfigureExpirationOperation` at startup with the same `DeleteFrequencyInSec` as Messaging (they write the same database-level setting, so they must agree). No sweeper service, and nothing accumulates — otherwise this collection would grow by one dead document per sign-in, forever.
+
 Afterwards the per-hop `redirect_uri`/scope/PKCE checks added in `09dc3cb` and `697097e` become redundant belt-and-braces. **Keep them** — they cost nothing and they fail closed if a future path ever reintroduces a parameter-carrying hop.
 
 Removes the `nonce`/`code_challenge` tampering surface entirely.
