@@ -392,9 +392,9 @@ Out of scope: historical PRD/plan docs correctly describing past states, and sto
 ## 7. Non-goals
 
 - **The Raven Skip/Take pushdown.** Becomes possible once `GetRowFilter` exists (§5), but it's a performance change with its own correctness surface and deserves its own PR and benchmarks. Explicitly *not* folded in.
-- **`MintPlayer.Spark.IdentityProvider`** — stays on its unmerged branch (`feat/identity-provider`) **for the purposes of this PR**. Coverage is an OIDC *client/verifier*, never a provider (§2, "Forward consideration"); nothing in its M0–M7 needs Spark to issue OIDC tokens. Merging it would be a large port against a `master` that has since reorganized `libs/` (the branch still has the package at repo root), upgraded to Angular 22, and redesigned breadcrumbs.
+- ~~**`MintPlayer.Spark.IdentityProvider`** stays on its unmerged branch~~ — **REVERSED.** The user directed that if an OIDC-provider branch existed it be folded into this PR so Coverage can reuse the `client_credentials` flow. It was ported (not merged — the merge base was 113 commits behind, spanning the `libs/` reorg and Angular 22) and now lives at `libs/identity_provider/`. It is in scope, and its security audit is **M12**, the largest single body of work in this PR. See [findings-identity-provider-audit.md](./findings-identity-provider-audit.md).
 
-  **Do not read this as "Spark never needs the IdP."** That branch already implements a working OAuth2 **`client_credentials`** grant (`Endpoints/Token.cs:41,358`) over an `OidcApplication` model with client id, `ClientType`, **rotatable hashed secrets with expiry** (`Models/OidcApplication.cs:13-22,44-46`), per-application `AllowedGrantTypes`, plus `Introspection`, `Revocation`, `Jwks`, and `Discovery` endpoints. If Spark later wants standards-based machine-to-machine authentication for *external* applications, that is a **port, not a build** — see the separate authentication-unification work.
+  The original reasoning still holds on one point: Coverage is an OIDC *client/verifier*, never a provider, so nothing in Coverage's own M0–M7 needs Spark to *issue* OIDC tokens. What changed is the upload credential — D1 makes `client_credentials` the CI-upload mechanism, which does need a provider.
 - GitHub Actions OIDC JWT-bearer validation — Coverage's M7, not M0.
 - Promoting `BsShellTopbarDirective` upstream (§4).
 - Adding `ClientSecret` to `GitHubWebhooksOptions` (§6).
@@ -402,9 +402,22 @@ Out of scope: historical PRD/plan docs correctly describing past states, and sto
 
 ## 8. Verification
 
-`npx nx run-many --target=test` — requires `RAVENDB_LICENSE` (JSON) or the root `raven-license.log`. No Docker; the "E2E" suite is embedded-Raven integration testing, not a browser suite. Per repo convention, the full suite runs **once** at the end, not per milestone.
+`npx nx run-many --target=test` — requires `RAVENDB_LICENSE` (JSON) or the root `raven-license.log`. No Docker; the "E2E" suite is embedded-Raven integration testing (`tests/MintPlayer.Spark.E2E.Tests/`, a real Fleet host over HTTPS on a random port), with Playwright available but mostly unused. Per repo convention, the full suite runs **once** at the end, not per milestone.
 
 Per CLAUDE.md: never run `ng serve`/`npm start`/`ng build`/`ng test` against these workspaces — the ASP.NET hosts run the dev server themselves.
+
+### How we re-check that a fix landed *everywhere*, not just where it was found
+
+Nearly every finding in this PR was the same defect repeated across sites — five consent hops re-deriving the request, three token paths racing, three endpoints trusting a signature alone. Re-reading the code proves nothing about the *next* site someone adds, so the verification has to be mechanical:
+
+1. **Behavioural E2E tests** for anything with observable behaviour — concurrent redemption of one code yields exactly one token set; a POST without an antiforgery token is rejected; a revoked token introspects as `active: false` and is refused by `/connect/userinfo`. These belong in `tests/MintPlayer.Spark.E2E.Tests/Security/`, beside the existing `ConcurrencyTests`, `XsrfCookieFlagTests` and `ReturnUrlValidationTests`.
+2. **Coverage invariants** for anything that must hold across *all* endpoints, enumerated from `EndpointDataSource` rather than a hand-written list — so a route added later is included automatically and the test fails until it complies:
+   - every interactive `/connect` POST carries `IAntiforgeryMetadata` with `RequiresValidation`;
+   - the machine endpoints (`/token`, `/introspect`, `/revoke`) deliberately do **not** (asserting the exemption is intentional keeps someone from "fixing" it and breaking every OAuth client);
+   - no registered RavenDB index is queried on an authorization decision — the derived-id rule from findings §3.
+3. **A final audit sweep before merge**, covering both the remaining open findings and the surface that was never reviewed (signing keys, JWKS, introspection/revocation caller-auth). The IdP arrived as unreviewed third-party-shaped code; a second pass over what changed since is the point at which "audited and proven sound" (D1) is actually earned.
+
+Item 2 is the one that answers "is it implemented everywhere?" durably. Items 1 and 3 answer "does it work?" and "what did we miss?".
 
 ## 9. Release mechanics
 

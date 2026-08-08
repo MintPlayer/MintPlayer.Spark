@@ -35,6 +35,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 
 **Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Only targeted filters have been run so far (`QueueNamesTests`, `IdentityProvider`), both green. The four demo ClientApps have not been built or exercised since the IdP port.
 
+**No IdP behaviour is tested.** All 33 IdP tests are pure-function unit tests; nothing exercises an endpoint. Every fix from M12.2 onward — the takeover fix, client binding, the redemption race, antiforgery, revocation — is reasoned-correct and unobserved. **M12.6 is not optional polish; it is where this PR's central claim gets evidence.** See M12.6 for the host blocker that gates it.
+
 **Known-unreviewed:** the IdP's signing-key service, JWKS, discovery, UserInfo, and introspection/revocation caller-auth were never audited — the reviewer covering them never reported. Re-run before merge.
 
 ## Resolved decisions (2026-08-08)
@@ -404,7 +406,30 @@ Re-consent now reinstates a revoked grant (`Status` back to `valid`, `RevokedAt`
 
 ### M12.6 — Tests
 
-Assume no coverage on security-relevant paths. Write: grant-type gating per `AllowedGrantTypes`, secret expiry and rotation, scope validation against `AllowedScopes`, rejected-secret paths, introspection of expired/revoked tokens, code replay, refresh reuse detection, and client binding on both grants.
+**Correction to an earlier assumption in this plan:** it said "assume no coverage on security-relevant paths", which is wrong about the *repo* and right only about the *IdP*. `tests/MintPlayer.Spark.E2E.Tests/Security/` already holds ~14 security tests against a real Fleet host running over HTTPS on a random port (`FleetTestHost`, `FleetE2ECollection`), including `ConcurrencyTests`, `XsrfCookieFlagTests`, `ReturnUrlValidationTests` and `ReplicationEndpointAuthTests`. Extend that suite — do not build a parallel one.
+
+**Current IdP coverage is 33 tests, all pure functions** (`ClientSecretHasherTests`, `OidcReferenceTests`) in `MintPlayer.Spark.Tests`. Zero exercise an endpoint, a session, or a request. Everything M12.2–M12.5 fixed is reasoned-correct, not observed-correct.
+
+**Blocker to resolve first:** `MintPlayer.Spark.E2E.Tests` does not reference `MintPlayer.Spark.IdentityProvider`, and Fleet does not call `AddIdentityProvider()`. Either add the IdP to the Fleet test host behind a flag, or stand up a second minimal host fixture. This is the real cost of M12.6 — the tests themselves are cheap once a host serves `/connect/*`. Note the host will need `SparkIdentityProviderOptions.Issuer` set (O7 made it required outside Development).
+
+**Behavioural tests** (`Security/OidcSecurityTests.cs` or similar), each with its expected-failure half:
+- concurrent redemption of one code → exactly one token set, the loser gets `invalid_grant`, and nothing partial is written (O2)
+- POST to `/connect/{login,consent,two-factor}` **without** an antiforgery token → rejected; with one → accepted (O3)
+- repeated bad passwords → lockout engages (O4)
+- revoked access token → introspects `active: false`, `/connect/userinfo` returns 401 (O5)
+- revoking an access token directly (not just its refresh token) actually takes effect (O5)
+- consent POST carrying a `request_id` issued to a *different* user → rejected (M12.5)
+- replaying a consumed `request_id` → rejected, no second code (M12.5)
+- code replay and refresh reuse → whole chain revoked, not just the presented token (O1 + F5)
+- client binding: client B redeeming client A's code → `invalid_grant` (already fixed, never tested)
+- grant-type gating per `AllowedGrantTypes` on all three grants, scope validation against `AllowedScopes`, secret expiry and rotation, rejected-secret paths
+
+**Coverage invariants** — enumerated from `EndpointDataSource`, not a hand-written list, so a route added later is included automatically:
+- every interactive `/connect` POST carries `IAntiforgeryMetadata` with `RequiresValidation`
+- `/token`, `/introspect`, `/revoke` deliberately do **not** — assert the exemption so nobody "fixes" it and breaks every conforming OAuth client
+- the registered index list contains no index used for an authorization decision (the derived-id rule, findings §3)
+
+This second group is what makes the fixes durable: the recurring failure mode in this package was one defect at five sites, and re-reading code says nothing about the sixth.
 
 ### M12.7 — Application registration surface
 
