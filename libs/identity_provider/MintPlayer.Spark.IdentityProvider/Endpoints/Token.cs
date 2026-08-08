@@ -95,12 +95,23 @@ internal static class Token
         }
 
         // Find the authorization code token
-        var codeToken = await session
-            .Query<OidcToken, OidcTokens_ByReferenceId>()
-            .Where(t => t.ReferenceId == code && t.Type == "authorization_code" && t.Status == "valid")
-            .FirstOrDefaultAsync(ct);
+        // Point-load, not an index query: index results are eventually consistent, so a code
+        // redeemed moments ago could still read back as "valid" and be replayed. Status is
+        // therefore checked on the loaded document rather than in the lookup predicate.
+        var codeToken = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(code), ct);
+        if (codeToken is { Type: "authorization_code", Status: not "valid" })
+        {
+            // A code presented twice: the first redemption already consumed it. Everything
+            // derived from it is now suspect, so the whole authorization is torn down.
+            await RevokeAuthorizationChainAsync(session, codeToken, ct);
+            await session.SaveChangesAsync(ct);
 
-        if (codeToken == null)
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
+            return;
+        }
+
+        if (codeToken is not { Type: "authorization_code" })
         {
             context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
@@ -188,8 +199,8 @@ internal static class Token
             ApplicationId = app.Id!,
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
+            Id = OidcTokenReference.DocumentId(refreshTokenValue),
             Type = "refresh_token",
-            ReferenceId = refreshTokenValue,
             Scopes = codeToken.Scopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
@@ -249,10 +260,22 @@ internal static class Token
         }
 
         // Find refresh token
-        var refreshTokenDoc = await session
-            .Query<OidcToken, OidcTokens_ByReferenceId>()
-            .Where(t => t.ReferenceId == refreshToken && t.Type == "refresh_token" && t.Status == "valid")
-            .FirstOrDefaultAsync(ct);
+        // Point-load for the same reason as the authorization-code path above.
+        var refreshTokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken), ct);
+        if (refreshTokenDoc is { Type: "refresh_token", Status: not "valid" })
+        {
+            // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
+            // treated as theft: revoke the entire chain rather than just refusing.
+            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await session.SaveChangesAsync(ct);
+
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
+            return;
+        }
+
+        if (refreshTokenDoc is not { Type: "refresh_token", Status: "valid" })
+            refreshTokenDoc = null;
 
         if (refreshTokenDoc == null || refreshTokenDoc.ExpiresAt < DateTime.UtcNow)
         {
@@ -304,8 +327,8 @@ internal static class Token
             ApplicationId = app.Id!,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
+            Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
             Type = "refresh_token",
-            ReferenceId = newRefreshTokenValue,
             Scopes = refreshTokenDoc.Scopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
@@ -444,6 +467,40 @@ internal static class Token
             .Query<OidcScope>()
             .Where(s => s.Name.In(scopeNames) && s.Enabled)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Revokes every token issued under the same authorization as <paramref name="compromised"/>.
+    /// <para>
+    /// Presenting a consumed authorization code, or a refresh token that has already been
+    /// rotated away, is not a benign retry — the legitimate client holds the successor, so a
+    /// replay means the old value leaked. RFC 6819 §5.2.2.3 calls for revoking the whole
+    /// chain rather than merely refusing the request, which would leave the attacker's other
+    /// stolen tokens working.
+    /// </para>
+    /// <para>
+    /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent
+    /// index: a token issued moments before the replay may be missed. That is a deliberate
+    /// asymmetry — <em>detection</em> is exact (a point-load by id), only the blast-radius
+    /// cleanup is best-effort, and it errs toward revoking too little rather than failing
+    /// closed on a legitimate request.
+    /// </para>
+    /// </summary>
+    private static async Task RevokeAuthorizationChainAsync(
+        IAsyncDocumentSession session, OidcToken compromised, CancellationToken ct)
+    {
+        compromised.Status = "revoked";
+
+        if (string.IsNullOrEmpty(compromised.AuthorizationId))
+            return;
+
+        var siblings = await session
+            .Query<OidcToken>()
+            .Where(t => t.AuthorizationId == compromised.AuthorizationId && t.Status == "valid")
+            .ToListAsync(ct);
+
+        foreach (var sibling in siblings)
+            sibling.Status = "revoked";
     }
 
     internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.IdentityProvider.Services;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
@@ -161,8 +162,10 @@ internal static class Authorize
             ApplicationId = (string)app.Id!,
             AuthorizationId = "", // Will be linked when consent is created
             Subject = userId,
+            // The id is the hash of the code, so redemption is a strongly-consistent
+            // point-load and the code itself is never persisted.
+            Id = OidcTokenReference.DocumentId(code),
             Type = "authorization_code",
-            ReferenceId = code,
             CodeChallenge = codeChallenge,
             CodeChallengeMethod = codeChallengeMethod,
             RedirectUri = redirectUri,

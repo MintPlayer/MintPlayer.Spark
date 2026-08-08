@@ -7,7 +7,9 @@ public class OidcToken
     public string AuthorizationId { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
-    public string? ReferenceId { get; set; }
+    // No ReferenceId: the bearer value is never persisted. The document id is its SHA-256
+    // (see OidcTokenReference), so lookups are point-loads and a database leak yields
+    // nothing replayable.
     public string? CodeChallenge { get; set; }
     public string? CodeChallengeMethod { get; set; }
     public string? RedirectUri { get; set; }

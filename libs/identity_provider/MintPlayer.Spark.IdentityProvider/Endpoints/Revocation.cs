@@ -1,3 +1,4 @@
+using MintPlayer.Spark.IdentityProvider.Services;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
@@ -50,11 +51,12 @@ internal static class Revocation
             return;
         }
 
-        // Try to find token by ReferenceId (refresh tokens, auth codes)
-        var tokenDoc = await session
-            .Query<OidcToken, OidcTokens_ByReferenceId>()
-            .Where(t => t.ReferenceId == token && t.Status == "valid")
-            .FirstOrDefaultAsync(ct);
+        // Point-load by the hash of the presented value. Revoking through an
+        // eventually-consistent index could miss a token issued moments earlier and report
+        // success while leaving it live.
+        var tokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(token), ct);
+        if (tokenDoc is not { Status: "valid" })
+            tokenDoc = null;
 
         if (tokenDoc != null && tokenDoc.ApplicationId == app.Id)
         {

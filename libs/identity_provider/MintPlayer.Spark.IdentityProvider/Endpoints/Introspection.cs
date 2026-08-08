@@ -51,13 +51,13 @@ internal static class Introspection
             return;
         }
 
-        // Try refresh token first (by ReferenceId)
+        // Try refresh token first — point-load by the hash of the presented value.
         if (tokenTypeHint is null or "refresh_token")
         {
             var refreshDoc = await session
-                .Query<OidcToken, OidcTokens_ByReferenceId>()
-                .Where(t => t.ReferenceId == token && t.Type == "refresh_token")
-                .FirstOrDefaultAsync(ct);
+                .LoadAsync<OidcToken>(OidcTokenReference.DocumentId(token), ct);
+            if (refreshDoc is not { Type: "refresh_token" })
+                refreshDoc = null;
 
             if (refreshDoc != null)
             {
