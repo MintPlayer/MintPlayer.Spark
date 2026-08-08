@@ -27,9 +27,12 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `643b876` | e2e matrix §A; O2/O3/O4 marked closed; **O26** raised |
 | `d473564` | **N1 (Critical), N3** — introspection ownership gate, `token_type_hint` no longer gates the search |
 | `d738186` | e2e matrix complete (A/T/L/R, ~200 cases); O3 confirmed closed; **O27** + logout-CSRF decided |
-| _(next)_ | **O8, O12, O14, O19, O21, O25** — refresh gating, logout client binding, machine scopes, audiences, URL building, exact client lookup |
+| `f5ccfa6` | **O8, O12, O14, O19, O21, O25** — refresh gating, logout client binding, machine scopes, audiences, URL building, exact client lookup |
+| _(next)_ | **O16, O18, O22 (part), O24, O26** — interactive-only auth, constant-time PKCE, `openid`-gated id_token, error codes, server-side required scopes |
 
-**Remaining open:** O10, O13, O15, O16, O17, O18, O20, O22, O23, O24, O26, N2, N4, plus O27 (accepted). **O16 is the most valuable** — a Spark API bearer token can drive `/connect/authorize` headlessly, because ambient `context.User` resolves the bearer scheme before the cookie.
+**Remaining open:** O10, O13, O15, O17, O20, O22 (the `auth_time`/`azp` half), O23, N2, N4, plus O27 (accepted with a rationale). None is above Medium; the Criticals and Highs are all closed.
+
+**Next real work is M12.6, not more findings.** What is left is a short tail of Medium/Low items, while *every* fix in this branch — two Criticals, a one-click account takeover, a cross-client disclosure — is still reasoned rather than observed. Weigh a day of tail-chasing against the first test that actually exercises `/connect/*`.
 
 **Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
 

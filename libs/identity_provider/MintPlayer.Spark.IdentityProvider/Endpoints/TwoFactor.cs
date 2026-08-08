@@ -37,13 +37,13 @@ internal static class TwoFactor
 
         if (useRecoveryCode && string.IsNullOrEmpty(recoveryCode))
         {
-            RedirectWithError(context, returnUrl, "Please enter a recovery code.", recovery: true);
+            RedirectWithError(context, returnUrl, "missing_recovery_code", recovery: true);
             return;
         }
 
         if (!useRecoveryCode && string.IsNullOrEmpty(code))
         {
-            RedirectWithError(context, returnUrl, "Please enter your authentication code.");
+            RedirectWithError(context, returnUrl, "missing_code");
             return;
         }
 
@@ -72,7 +72,7 @@ internal static class TwoFactor
                 return;
             }
 
-            RedirectWithError(context, returnUrl, "Invalid recovery code.", recovery: true);
+            RedirectWithError(context, returnUrl, "invalid_recovery_code", recovery: true);
         }
         else
         {
@@ -86,7 +86,7 @@ internal static class TwoFactor
                 return;
             }
 
-            RedirectWithError(context, returnUrl, "Invalid authentication code.");
+            RedirectWithError(context, returnUrl, "invalid_code");
         }
     }
 
@@ -112,7 +112,7 @@ internal static class TwoFactor
 
         if (!string.IsNullOrEmpty(error))
         {
-            sb.Append("<div class=\"error\">").Append(Encode(error)).Append("</div>");
+            sb.Append("<div class=\"error\">").Append(Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
         }
 
         sb.Append("<form method=\"post\">");

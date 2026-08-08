@@ -41,7 +41,7 @@ internal static class Login
 
         if (!string.IsNullOrEmpty(error))
         {
-            sb.Append("<div class=\"error\">").Append(Encode(error)).Append("</div>");
+            sb.Append("<div class=\"error\">").Append(Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
         }
 
         sb.Append("<form method=\"post\">");
@@ -74,7 +74,7 @@ internal static class Login
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
         {
-            RedirectWithError(context, returnUrl, "Email and password are required.");
+            RedirectWithError(context, returnUrl, "missing_fields");
             return;
         }
 
@@ -99,7 +99,7 @@ internal static class Login
 
         if (user == null)
         {
-            RedirectWithError(context, returnUrl, "Invalid email or password.");
+            RedirectWithError(context, returnUrl, "invalid_credentials");
             return;
         }
 
@@ -131,11 +131,11 @@ internal static class Login
 
         if (result.IsLockedOut)
         {
-            RedirectWithError(context, returnUrl, "Account is locked out. Please try again later.");
+            RedirectWithError(context, returnUrl, "locked_out");
             return;
         }
 
-        RedirectWithError(context, returnUrl, "Invalid email or password.");
+        RedirectWithError(context, returnUrl, "invalid_credentials");
     }
 
     private static void RedirectWithError(HttpContext context, string returnUrl, string error)

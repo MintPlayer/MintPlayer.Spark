@@ -170,8 +170,13 @@ internal static class Token
                 return;
             }
 
+            // Constant-time, for consistency with the deliberate timing hygiene in
+            // VerifyClientSecret. The stored side is the public challenge rather than the
+            // secret verifier, so the leak here is slight — but "slight" is a judgement that
+            // has to be re-made every time someone reads this line, and FixedTimeEquals costs
+            // nothing.
             var computedChallenge = ComputeS256Challenge(codeVerifier);
-            if (!string.Equals(computedChallenge, codeToken.CodeChallenge, StringComparison.Ordinal))
+            if (!FixedTimeEquals(computedChallenge, codeToken.CodeChallenge))
             {
                 context.Response.StatusCode = 400;
                 await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "PKCE verification failed." });
@@ -200,7 +205,12 @@ internal static class Token
 
         // Generate tokens
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
-        var idToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes);
+        // An id_token asserts an authentication event, which is what the openid scope requests.
+        // Issuing one regardless meant a client that only asked for API access still received a
+        // signed identity assertion it never sought.
+        var idToken = GrantsOpenId(codeToken.Scopes)
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes)
+            : null;
 
         // A refresh token is a long-lived credential and must be asked for. This used to be
         // minted unconditionally, so every browser client silently received a 14-day credential
@@ -265,8 +275,10 @@ internal static class Token
             ["access_token"] = accessToken,
             ["token_type"] = "Bearer",
             ["expires_in"] = app.AccessTokenLifetimeMinutes * 60,
-            ["id_token"] = idToken,
         };
+
+        if (idToken != null)
+            response["id_token"] = idToken;
 
         if (refreshTokenValue != null)
             response["refresh_token"] = refreshTokenValue;
@@ -280,6 +292,10 @@ internal static class Token
     /// </summary>
     private static bool AllowsRefreshTokens(OidcApplication app)
         => app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether an authentication assertion was actually asked for.</summary>
+    private static bool GrantsOpenId(List<string> scopes)
+        => scopes.Contains("openid", StringComparer.OrdinalIgnoreCase);
 
     private static async Task HandleRefreshTokenGrant(HttpContext context, IFormCollection form, CancellationToken ct)
     {
@@ -384,7 +400,9 @@ internal static class Token
 
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
-        var newIdToken = tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes);
+        var newIdToken = GrantsOpenId(refreshTokenDoc.Scopes)
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes)
+            : null;
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
         // Revoke old refresh token
@@ -434,14 +452,18 @@ internal static class Token
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.Pragma = "no-cache";
 
-        await context.Response.WriteAsJsonAsync(new
+        var response = new Dictionary<string, object>
         {
-            access_token = newAccessToken,
-            token_type = "Bearer",
-            expires_in = app.AccessTokenLifetimeMinutes * 60,
-            id_token = newIdToken,
-            refresh_token = newRefreshTokenValue,
-        });
+            ["access_token"] = newAccessToken,
+            ["token_type"] = "Bearer",
+            ["expires_in"] = app.AccessTokenLifetimeMinutes * 60,
+            ["refresh_token"] = newRefreshTokenValue,
+        };
+
+        if (newIdToken != null)
+            response["id_token"] = newIdToken;
+
+        await context.Response.WriteAsJsonAsync(response);
     }
 
     private static async Task HandleClientCredentialsGrant(HttpContext context, IFormCollection form, CancellationToken ct)
@@ -644,6 +666,10 @@ internal static class Token
 
         return matched;
     }
+
+    private static bool FixedTimeEquals(string a, string b)
+        => CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
     private static string ComputeS256Challenge(string codeVerifier)
     {

@@ -1,5 +1,4 @@
 using MintPlayer.Spark.IdentityProvider.Services;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.IdentityProvider.Configuration;
@@ -99,7 +98,7 @@ internal static class Authorize
         }
 
         // Check user authentication
-        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
         {
             // User not authenticated — redirect to MVC login page

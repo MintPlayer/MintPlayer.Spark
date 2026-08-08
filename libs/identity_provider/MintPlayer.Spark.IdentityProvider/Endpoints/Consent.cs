@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,7 +33,7 @@ internal static class Consent
             return;
         }
 
-        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
         {
             var returnUrl = context.Request.Path + context.Request.QueryString;
@@ -144,7 +143,7 @@ internal static class Consent
             return;
         }
 
-        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
         {
             context.Response.StatusCode = 401;
@@ -195,6 +194,20 @@ internal static class Consent
             .Where(s => request.Scopes.Contains(s, StringComparer.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // A scope marked Required is not the user's to decline: the page renders it as a
+        // disabled checkbox, but that is markup, and a forged POST simply omits it. Re-adding
+        // it here is what makes Required mean something on the server rather than in the UI.
+        var requiredScopes = await session
+            .Query<OidcScope>()
+            .Where(s => s.Name.In(request.Scopes) && s.Required)
+            .ToListAsync(ct);
+
+        foreach (var required in requiredScopes)
+        {
+            if (!grantedScopes.Contains(required.Name, StringComparer.OrdinalIgnoreCase))
+                grantedScopes.Add(required.Name);
+        }
 
         if (grantedScopes.Count == 0)
         {
