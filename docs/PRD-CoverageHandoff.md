@@ -400,6 +400,25 @@ Out of scope: historical PRD/plan docs correctly describing past states, and sto
 - Adding `ClientSecret` to `GitHubWebhooksOptions` (§6).
 - Rewriting historical PRDs to match current state (§6).
 
+### What the audit and its tests actually returned
+
+Worth stating plainly, because it should change how the remaining milestones are planned.
+
+**Two rounds of adversarial review** produced F1–F11 and O1–O27; a second round, covering the surface the first round's reviewer never reported on, produced N1–N10 including the only Critical. **The e2e suite then found four defects that every reviewer had read past:**
+
+| Found by | Defect |
+|---|---|
+| e2e | **N5** — a property initializer re-added by the serializer on load, making every grant-type restriction unenforceable |
+| e2e | **O25's fix was wrong** — `exact: true` against a lowercasing index inverted the matching, so the *correct* client id stopped resolving |
+| a test guard | **N6** — authorize and issuance validated scopes against different sources, so a granted scope silently vanished from the token |
+| a decision | **N1's fix broke standard introspection** — gating on ownership alone also refused the resource server RFC 7662 is written for |
+
+In every case **the code read correctly at each individual point.** The defect lived in a round-trip, a seam between two components, or a case the tests hadn't thought to cover. Reading found the majority of the issues and could not have found these.
+
+**Sequencing consequence for M5 and M8–M11:** those milestones change authorization behaviour on paths that have no tests at all today. On this evidence, budget the test infrastructure *before* the fixes — the IdP work spent roughly a third of its effort on fixtures and got it back inside the first 24 tests.
+
+**Determinism is not optional.** Three separate flakes were fixed rather than tolerated. A flaky security test is worse than none: it teaches people to re-run until green, and the entire value of the suite is that red means something.
+
 ## 8. Verification
 
 `npx nx run-many --target=test` — requires `RAVENDB_LICENSE` (JSON) or the root `raven-license.log`. No Docker; the "E2E" suite is embedded-Raven integration testing (`tests/MintPlayer.Spark.E2E.Tests/`, a real Fleet host over HTTPS on a random port), with Playwright available but mostly unused. Per repo convention, the full suite runs **once** at the end, not per milestone.

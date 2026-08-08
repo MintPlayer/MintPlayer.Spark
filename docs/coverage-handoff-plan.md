@@ -504,7 +504,42 @@ This second group is what makes the fixes durable: the recurring failure mode in
 
 ### M12.7 — Application registration surface
 
-**Blocks Coverage using `client_credentials` at all.** There is no way to create an `OidcApplication` today — the admin screens lived in `Demo/SparkId` and were not ported. Either port them or add a minimal registration API. This is where `RedirectUris` and `AllowedScopes` are set, so it is a security surface, not just convenience.
+**Blocks Coverage entirely.** There is no way to create an `OidcApplication` today — the admin screens lived in `Demo/SparkId` and were not ported — so `client_credentials`, which D1 makes the CI upload credential, cannot be used by anyone. This is also where `RedirectUris`, `AllowedScopes`, `AllowedGrantTypes` and `MayIntrospectAnyAudience` are set, every one of which the audit showed to be load-bearing. It is a security surface, not a convenience.
+
+**D13 — registration is a Spark PersistentObject, not a bespoke API** (user's call). It inherits the authorization pipeline, `security.json` governance, and the admin UI instead of inventing a parallel set of all three. Same argument that drives M11: a second path to the same data is a second place for the rules to be wrong.
+
+#### How a library type becomes a PersistentObject
+
+No framework change is needed, and an earlier draft of this section was wrong to claim one. Reading `ModelLoader` alone suggests entity definitions can only come from `{ContentRoot}/App_Data/Model/*.json`, which is true but is not the whole workflow: `ModelSynchronizer` **generates** those files by scanning the `IRavenQueryable<T>` properties on the app's `SparkContext` (`ModelSynchronizer.cs:43`), and it runs on `--spark-synchronize-model`.
+
+So the consumer exposes the library's type on its own context —
+
+```csharp
+public class CoverageContext : SparkContext
+{
+    public IRavenQueryable<OidcApplication> OidcApplications { get; set; }
+    public IRavenQueryable<OidcScope> OidcScopes { get; set; }
+}
+```
+
+— runs the synchronizer once, and gets the screens. The entity type living in a package makes no difference; the context property is the whole registration. That also keeps the decision where it belongs: an app opts into administering its own identity configuration rather than having admin screens appear because it referenced a package.
+
+#### What to build
+
+- **`OidcApplicationActions : DefaultPersistentObjectActions<OidcApplication>`** carrying the rules the endpoints assume and the audit proved cannot be left to callers:
+  - a **secret is accepted in cleartext once and stored hashed** — never round-tripped back to the client, so the edit screen must show a placeholder and treat "unchanged" as "leave alone";
+  - `RedirectUris` and `PostLogoutRedirectUris` must be absolute, and must not carry a fragment;
+  - `AllowedGrantTypes` restricted to the three implemented grants — an unknown value silently grants nothing and looks like a working config (**N5**'s lesson);
+  - `AllowedScopes` entries must have an enabled `OidcScope` (**N6** — authorize now rejects otherwise, so accepting it here would just move the silent failure);
+  - `ClientId` uniqueness, which today is unenforced (**O17**) and is a real impersonation surface;
+  - `MayIntrospectAnyAudience` defaults off and should be visibly exceptional in the UI (**D11**).
+- **`OidcScope` as a second PersistentObject** — scopes are half the configuration and N6 showed the two halves have to agree.
+- **`security.json` guidance**: these screens administer the identity system; the default must not be `Everyone`.
+
+#### Caveat that must not be lost
+
+Client lookup rides `OidcApplications_ByClientId`, which is eventually consistent, so **a newly registered application is not usable the instant registration returns**. Harmless in production provisioning, but the screen should not imply otherwise, and any test must wait for indexing — this cost the e2e suite three separate flakes before it was understood.
+
 
 ## M11 — Retire the authorization bypasses
 
