@@ -30,9 +30,14 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `f5ccfa6` | **O8, O12, O14, O19, O21, O25** — refresh gating, logout client binding, machine scopes, audiences, URL building, exact client lookup |
 | `e4ce3df` | **O16, O18, O22 (part), O24, O26** — interactive-only auth, constant-time PKCE, `openid`-gated id_token, error codes, server-side required scopes |
 | `6241984` | `SparkEndpointFactory` gains `configureSpark`; host decision reversed with reasons |
-| _(next)_ | **M12.6 started — 24 e2e tests, all green.** Found **N5** (High) and a wrong O25 fix |
+| `6e9ef6b` | **M12.6 started** — 24 e2e tests; found **N5** (High) and a wrong O25 fix |
+| _(next)_ | **M12.6 flow coverage — 131 IdP tests green** (98 e2e across authorize, consent, token, login, logout, introspect, revoke, userinfo, discovery, JWKS) |
 
-**M12.6 is under way and already paid for itself.** The first 24 tests against `/connect/*` found two defects that six reviewers reading code had missed: a wrong fix I had shipped (O25's `exact: true` inverted the matching) and **N5**, where the serializer re-added a property-initializer default on load, making every grant-type restriction unenforceable. Continue from `OidcTestHost`; the cookie-driven cases (login, consent) need a signed-in session, which is the next piece of fixture work.
+**M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
+
+It paid for itself twice. The first 24 tests found two defects six reviewers reading code had missed: a wrong fix I had shipped (O25's `exact: true` inverted the matching) and **N5**, where the serializer re-added a property-initializer default on load, making every grant-type restriction unenforceable.
+
+**Still untested** (§ references are to the matrix): the concurrency races T-R3/T-R4, which need a parking hook to be meaningful rather than lucky; two-factor entirely (§L.4), since no fixture enables 2FA yet; JWT forgery variants beyond `alg=none` (R-I10–R-I14); key rotation (R-J5/R-J6, pinning **N4**); and the enumeration characterizations T-O1/T-O2 for the still-open **O15**.
 
 **Remaining open:** O10, O13, O15, O17, O20, O22 (the `auth_time`/`azp` half), O23, N2, N4, plus O27 (accepted with a rationale). None is above Medium; the Criticals and Highs are all closed.
 
