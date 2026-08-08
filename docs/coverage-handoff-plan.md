@@ -36,21 +36,13 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 
 **Remaining open:** O10, O13, O15, O17, O20, O22 (the `auth_time`/`azp` half), O23, N2, N4, plus O27 (accepted with a rationale). None is above Medium; the Criticals and Highs are all closed.
 
-**Next real work is M12.6, not more findings.** What is left is a short tail of Medium/Low items, while *every* fix in this branch — two Criticals, a one-click account takeover, a cross-client disclosure — is still reasoned rather than observed. Weigh a day of tail-chasing against the first test that actually exercises `/connect/*`.
-
-**Next action: M12.4's remaining findings**, resuming at **O8** and working down through O25. Everything in the "highest value" tier is now closed (O1–O7), as are O9 and O11.
-
 ⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
-
-**Then:** M12.6 tests, M12.7 registration surface.
 
 **Not started:** M2, M3, M8, M9, M10, M11, M6, M7. Note **M9 gates M10 and M11** — Spark endpoints carry no authorization metadata, so a credential scheme registered before the composite default scheme exists is dead code.
 
-**Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Only targeted filters have been run so far (`QueueNamesTests`, `IdentityProvider`), both green. The four demo ClientApps have not been built or exercised since the IdP port.
+**Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Targeted filters are green: 57 IdentityProvider tests (33 unit + 24 e2e) and 18 `QueueNamesTests`. The four demo ClientApps have not been built or exercised since the IdP port. **Coverage is still thin** — §T and §L of the matrix have no tests at all, and everything cookie-driven is untested pending the signed-in-session fixture.
 
-**No IdP behaviour is tested.** All 33 IdP tests are pure-function unit tests; nothing exercises an endpoint. Every fix from M12.2 onward — the takeover fix, client binding, the redemption race, antiforgery, revocation — is reasoned-correct and unobserved. **M12.6 is not optional polish; it is where this PR's central claim gets evidence.** See M12.6 for the host blocker that gates it.
-
-**Known-unreviewed:** the IdP's signing-key service, JWKS, discovery, UserInfo, and introspection/revocation caller-auth were never audited — the reviewer covering them never reported. Re-run before merge.
+**Next action:** continue M12.6 from `tests/.../IdentityProvider/OidcTestHost.cs`. Build the signed-in-session helper (register a user via `UserManager`, POST `/connect/login` with an antiforgery token, keep the cookie), which unlocks §A's consent cases and all of §L. Then §T and §R.
 
 ## Resolved decisions (2026-08-08)
 
