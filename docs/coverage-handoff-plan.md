@@ -160,6 +160,8 @@ Preview package, so no compatibility was required, but each of these changes beh
 | The external-login callback reports refusals to a popup instead of redirecting | With `?popup`, all three failure branches now return the postMessage page | They redirected unconditionally, so a cancelled or refused login left the opener's listener waiting on a window nobody would close (**M2**) |
 | **`BsAccordionTabHeaderComponent` → `*bsAccordionTabHeader`** | An app using the accordion header must migrate to the structural directive on an `<ng-container>` | ng-bootstrap 22.13 converted the component to a directive. Affects consumers of the demos' shell pattern, not `@mintplayer/ng-spark` itself (**M3**) |
 | `spark.UseGroupMembershipProvider<T>()` added | A custom `IGroupMembershipProvider` now has a supported registration path | The documented extension point's only helper was `internal`; the workaround left both providers registered and let order decide (**M6**) |
+| **ng-bootstrap 22.13 needs `@mintplayer/web-components` ≥ 2.5** | An app on `web-components@2.0.x` fails to build: `Missing "./accordion" specifier` | ng-bootstrap's peer range (`^2.0.0`) admits versions that lack the subpath it imports, so a satisfied range is not a working one (**M3.3**) |
+| Consumers styling the accordion via Bootstrap classes must restyle | `.accordion-item` / `.accordion-button` / `.accordion-body` no longer exist in the light DOM, so `::ng-deep` rules silently stop applying | 22.13 moved the internals into a web component's shadow DOM. Use `data-bs-theme` / `--bs-*` tokens or `mp-accordion::part(...)`. Failure mode is invisible — the CSS does not error, it just stops matching (**M3.3**) |
 
 ## Resolved decisions (2026-08-08)
 
@@ -400,9 +402,38 @@ produce. Worth a follow-up: a `tsc --noEmit` gate on the two library projects wo
 this the day it was written. (`type: 'retry-action'` itself is correct — it is a client-side
 marker built in `spark.service.ts`, not the wire discriminator, which is `retry`.)
 
-**M3.3 — the visual check — is not done** and cannot be until the demo hosts run: the header now
-renders into a named shadow-DOM slot instead of light-DOM projection, so a clean typecheck does
-not imply identical rendering. It stays on the final-verification list.
+**M3.3 — done, and it found two defects the static checks could not.** Verified by running DemoApp
+(`dotnet run`, which spawns the dev server itself) and driving it with Playwright.
+
+**1. The bump did not build at all.** `@mintplayer/ng-bootstrap@22.13`'s accordion imports
+`@mintplayer/web-components/accordion`, and the installed `web-components@2.0.0` has no such export
+— Vite failed dependency optimization and the dev server never came up. `npm install` had bumped
+ng-bootstrap but left `web-components` at the version already in the lockfile, since `^2.0.0` still
+matched. Fixed with `npm update @mintplayer/web-components` (2.0.0 → 2.10.0, lockfile only; nothing
+added to `package.json`). **The PRD's "peers already present" conclusion was right about the ranges
+and wrong about reality** — a peer range can be satisfied by a version that lacks the subpath the
+dependant imports.
+
+**2. The accordion rendered white-on-white** (found by the user looking at it, after my
+accessibility-snapshot check had passed). The header content projects correctly, but 22.13 moved the
+accordion's *internals* into a Lit web component's shadow DOM, so the demos' `::ng-deep`
+`.accordion-item` / `.accordion-button` / `.accordion-body` overrides match nothing — confirmed by
+querying the live page: **zero** such elements exist in the light DOM. The rules did not error, they
+silently stopped applying, and Bootstrap's default white card showed through under the sidebar's
+white text.
+
+Fixed in all four demo shells via the seams the component actually exposes:
+`data-bs-theme="dark"` on the sidebar `<nav>` (the component derives every `--bs-accordion-*` token
+from the `--bs-body-*` globals, so this carries the chevron icon too), `--bs-primary-bg-subtle` for
+the open-tab tint, and `mp-accordion::part(content)` for the padding. Setting `--bs-accordion-*`
+directly does **not** work — the component's `:host` block re-declares each one, and a `:host`
+declaration beats an inherited value; that dead end is written into the SCSS comment so the next
+person does not rediscover it.
+
+**The lesson, since it generalises past this milestone:** all three static checks passed — every
+imported symbol resolved, every `<bs-*>` tag still matched a selector, both libraries typechecked.
+None of them can see a missing package subpath or CSS that stopped matching. A component-to-directive
+migration needs a rendered page, not a compiled one.
 
 ### M3.1 — Dependency
 

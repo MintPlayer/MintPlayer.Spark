@@ -384,3 +384,6 @@ libs/node_packages/ng-spark-auth/dist/
 # E2E test fixture writes per-session config overrides here; auto-cleaned on DisposeAsync.
 Demo/*/*/appsettings.E2E.json
 Demo/*/*/appsettings.json.e2e-backup
+
+# Playwright MCP session artifacts (snapshots, console logs, screenshots)
+.playwright-mcp/
