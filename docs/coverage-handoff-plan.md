@@ -66,9 +66,10 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `036ab5b` | **D15a** — the two-axis rule and the surface table, in the plan, PRD and guide |
 | `64296b6` | **M2 done** — the popup handshake is reachable, reports refusals, and lives in the library |
 | `9a4e60a` | **M3 done** (bar the visual check) — ng-bootstrap 22.13, accordion header migrated, 22.13 API use verified three ways |
-| `(head)` | **M6 done** — doc sweep; found an extension point with no public API, and an M5 release note describing code that never shipped |
+| `133d666` | **M6 done** — doc sweep; found an extension point with no public API, and an M5 release note describing code that never shipped |
+| `(head)` | **M7 done** — 21 packages to `preview.42`, `ng-spark-auth` to `22.1.0`, and a consumer-facing release note |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: only release mechanics (**M7**) remain, plus the deferred verification sweep. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. **Every milestone is now implemented.** What stands between this and ready-for-review is the deferred verification sweep, not more code. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
 **The intermittent failure — probable cause found, and six latent defects with it.** Six assertions in the IdentityProvider tests queried an **index** with no preceding wait: `OidcConsentSecurityTests` (×4), `OidcAuthorizeSecurityTests`, `OidcTokenSecurityTests`. Under full-suite load index lag grows, which is exactly the shape of an intermittent that never reproduces under a filter.
 
@@ -100,13 +101,24 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 ⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
 
-**Not started:** M7 (release mechanics). **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
+**Not started:** nothing. What remains is verification — see "Final verification" below. **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
 
 ~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
 
-**Next action:** **M7** — `<Version>` bumps across the csprojs, `@mintplayer/ng-spark-auth` for M2's added public API, and the release note assembled from the breaking-changes table below. Then the deferred verification sweep: the full test suite, the four demo ClientApps, and M3.3's visual check.
+**Next action:** the deferred verification sweep — `npx nx run-many --target=test` across all suites,
+then the four demo ClientApps (which have not been built since the IdP port), then M3.3's visual
+check of the migrated accordion headers. Two known gaps are worth closing before review rather than
+after: **no E2E test exercises a *successful* cross-module sync** (F13 proved that gap is
+load-bearing — it was documented and then walked into), and **no demo registers the certificate or
+JWT schemes**, so M10's handlers have tested guards but no end-to-end exercise of a real credential.
 
 ## Breaking changes — release notes for M7
+
+> **Shipped as [release-notes-preview-42.md](./release-notes-preview-42.md)** — the consumer-facing
+> version of this table, ordered by what breaks and how loudly rather than by when it was decided.
+> Point the PR body and the GitHub release at that file. The table below stays as the working
+> record, including the *why* for each row; the release note keeps the why only where a consumer
+> needs it to decide what to do.
 
 Preview package, so no compatibility was required, but each of these changes behaviour a consumer can observe. Collected here because they were decided one at a time across the audit and a release note assembled from memory will miss one.
 
@@ -978,9 +990,33 @@ Since several of these samples **don't compile as written**, treat compilability
 
 ---
 
-## M7 — Release
+## M7 — Release ✅ done
 
-Bump `<Version>` in each affected csproj — hand-maintained across 20 files, no script. The new ApiTokens package ships at the same preview number. Bump `@mintplayer/ng-spark-auth`'s `version` (M2.3 adds public API); **`@mintplayer/ng-spark` needs no bump** — M3 doesn't touch its source and its caret peer range already admits 22.13.0.
+**Shipped:** all 21 `libs/**` csprojs at `10.0.0-preview.42`; `@mintplayer/ng-spark-auth` at
+`22.1.0` (minor — M2 adds `loginWithProvider` and the external-login model types);
+`@mintplayer/ng-spark` **unbumped** at `22.0.8`, since M3 touched only its spec files and its caret
+peer range already admitted 22.13.0. The two webhooks READMEs' `<PackageReference>` samples were
+moved to `.42` in the same pass so the documented version is the one being published.
+
+**No ApiTokens package ships.** The plan assumed one; D1 replaced it with `client_credentials`
+through the IdentityProvider, and **Q1 — whether M4 is dropped outright or kept for a different
+audience — was never answered**, so M4 is neither built nor formally cancelled. The PRD's item table
+said "✅ Yes" for it; corrected to say so plainly rather than let a checkmark imply a package that
+does not exist.
+
+The release note is [release-notes-preview-42.md](./release-notes-preview-42.md), written from the
+35-row table above rather than from memory, and re-ordered for the reader: the four changes most
+likely to break a running app first (hashed recovery codes, authorized replication, the composite
+scheme, row-level filtering), then the OIDC, authorization, API and frontend groups. Each entry says
+whether the old behaviour was a fail-open — because most of these will present as "my app stopped
+working" when the honest description is "my app was serving requests it should not have been."
+
+**Publishing is automatic on merge to master** (`--skip-duplicate`, so an unbumped version silently
+no-ops). Never `dotnet nuget push` / `npm publish` by hand from the branch.
+
+### Original plan, for reference
+
+Bump `<Version>` in each affected csproj — hand-maintained, no script. Bump `@mintplayer/ng-spark-auth`'s `version` (M2.3 adds public API); **`@mintplayer/ng-spark` needs no bump** — M3 doesn't touch its source and its caret peer range already admits 22.13.0.
 
 **Release note — must not be buried.** M5 is a behavior change for every row-scoped app. It is
 **not** a signature change: the plan's `GetRowFilter` / `OnQueryAsync`-removal was dropped during

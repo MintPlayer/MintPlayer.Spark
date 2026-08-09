@@ -14,10 +14,17 @@
 
 Six work items surfaced by the first real out-of-tree consumer of the published Spark packages (MintPlayer/CodeCoverage). Every claim in the handoff was verified against source; **four were confirmed, three were materially wrong or mis-scoped**, and one bug turned out to be worse than reported.
 
+> **Item 2 did not ship as a PAT library and no `MintPlayer.Spark.Authorization.ApiTokens` package
+> exists.** D1 chose OAuth2 `client_credentials` through `MintPlayer.Spark.IdentityProvider` as the
+> external-POST credential instead, which is what M12 built and audited. That leaves the PAT library
+> with no consumer — the open **Q1** in the plan asks whether it is dropped outright or kept for a
+> different audience, and it was never answered, so M4 is neither built nor formally cancelled.
+> Recorded here rather than left implied by a ✅ in the table.
+
 | # | Item | Handoff said | Verified verdict | In this PR? |
 |---|---|---|---|---|
 | 1 | Generic message types → invalid queue names | High | **Confirmed, and worse** — flagship demo is broken at HEAD | ✅ Yes |
-| 2 | API tokens (PAT) library | Extract from Coverage later | **Sequencing reversed** — Coverage's own plan puts it in Spark *first*; prior art to port appeared mid-investigation | ✅ Yes |
+| 2 | API tokens (PAT) library | Extract from Coverage later | **Sequencing reversed** — Coverage's own plan puts it in Spark *first*; prior art to port appeared mid-investigation | ⚠️ **No — superseded**, see below |
 | 3 | External-login popup handshake | Propagate a query param | **Confirmed, wider** — all failure paths broken too | ✅ Yes |
 | 4 | ng-bootstrap 22.4.0 → 22.13.x | New peers + attribute directive | **Mostly wrong** — peers already present; it's a *structural* directive | ✅ Yes |
 | 5 | R4-H1 row-level authz gap | Decide: fix or track | **Confirmed, plus a second bypass** — row-level only; type-level *is* enforced | ✅ Yes |

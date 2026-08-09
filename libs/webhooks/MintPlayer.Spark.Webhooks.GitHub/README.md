@@ -141,10 +141,10 @@ This sidesteps a classic footgun: if you use a **separate** OAuth App for login 
 ## Installation
 
 ```xml
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.41" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.42" />
 
 <!-- Development only: -->
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.41" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.42" />
 ```
 
 ## Quick start

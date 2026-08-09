@@ -8,7 +8,7 @@ Development-only tunneling for [MintPlayer.Spark.Webhooks.GitHub](../MintPlayer.
 
 ```xml
 <!-- Development only -->
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.41" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.42" />
 ```
 
 Both tunnels are wired through the core package's options object, so you configure them inside `spark.AddGithubWebhooks(...)`.
