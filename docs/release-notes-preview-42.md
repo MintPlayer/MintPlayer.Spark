@@ -126,6 +126,7 @@ Only relevant if you use `MintPlayer.Spark.IdentityProvider`.
 | Change | Migration |
 |---|---|
 | **`IDatabaseAccess`'s untyped document family is renamed `…UncheckedAsync`** | Rename every call: `GetDocumentAsync` → `GetDocumentUncheckedAsync`, and likewise for `GetDocumentsAsync`, `GetDocumentsByObjectTypeIdAsync`, `SaveDocumentAsync`, `DeleteDocumentAsync`. They perform **no** authorization while sitting beside `SavePersistentObjectAsync`, which invited the inference that anything on that interface is authorized |
+| **`IPersistentObjectActions<T>.OnQueryAsync` is removed** | Any override stops compiling — and it was never running. The framework declared the hook and called it from nowhere, so an Actions class scoping rows there was writing dead code. `Demo/WebhooksDemo` did exactly that and leaked its whole project list. **If you override it, move the logic to `IsAllowedAsync(string action, T entity)`**, which every read path consults |
 | `IDatabaseAccess` gains `EnsureSaveAuthorizedAsync` | Any hand-written implementation must add it |
 | `IOidcApplicationContext` members are get-only | An auto-property implementation stops compiling. It returned null, and a null queryable answers as an empty result — screens that render and are always empty |
 | `SparkTestDriver` applies Spark's id conventions | Downstream test projects get `{Collection}/{Guid}` where they previously got RavenDB's sequential ids |

@@ -11,13 +11,6 @@ namespace MintPlayer.Spark.Actions;
 public interface IPersistentObjectActions<T> where T : class
 {
     /// <summary>
-    /// Called when querying all entities of this type.
-    /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
-    /// <returns>Collection of entities</returns>
-    Task<IEnumerable<T>> OnQueryAsync(IAsyncDocumentSession session);
-
-    /// <summary>
     /// Called when loading a single entity by ID.
     /// </summary>
     /// <param name="session">The RavenDB async document session</param>

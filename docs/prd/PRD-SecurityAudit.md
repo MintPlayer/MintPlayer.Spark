@@ -88,6 +88,45 @@ For reference when reading the findings. Auth marked with `*` means imperative c
 
 **Note:** Could be reframed as "documentation/API shape" rather than a bug. See §5 for triage question.
 
+**RESOLVED (M5, 2026-08-09)** — and it was worse than described here. See H-2a.
+
+---
+
+#### H-2a — The row-level hook existed and the query path never called it
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed (fixed)
+
+**Where:**
+- `MintPlayer.Spark/Services/QueryExecutor.cs:126,194` — type-level `EnsureAuthorizedAsync` only
+- `MintPlayer.Spark/Endpoints/Queries/Execute.cs` — no authorization calls at all
+- `MintPlayer.Spark/Streaming/StreamingQueryExecutor.cs` — likewise
+
+H-2 describes row-level authorization as absent. It was not: `DefaultPersistentObjectActions<T>.IsAllowedAsync(string action, T entity)`
+existed and **was** enforced on the detail and edit paths. The defect is narrower and nastier — the
+**query and stream paths never consulted it**, and Spark's list screens use the query path.
+
+**Attack scenario:** An application scopes rows correctly, verifies it by opening a record it should
+not see and getting a 404, and ships. The list screen that enumerates those same records returns every
+one of them. The Fleet demo's `CarActions.IsAllowedAsync` — the worked example already in the
+repository — behaved exactly this way. A developer following the documented pattern got a system that
+was protected where they tested and open where they did not.
+
+**Fixed:** all read paths (PO get, PO list, query execute for both `Database.*` and `Custom.*`, stream,
+breadcrumbs) now route through one `IRowSecurity` component, so the rule is written once and enforced
+everywhere. Fail-open branches were flipped: a projection with no readable `Id`, or one whose base
+document will not load, is now dropped rather than shown — unevaluable is not permitted.
+
+**Test asserts:** `RowLevelAuthzTests` (E2E) — a row denied by `IsAllowedAsync` is absent from
+`/spark/queries/{id}/execute` and from `/stream`, and `totalItems` reflects the post-filter count.
+
+**Related, found later:** the sibling hook `OnQueryAsync` was declared, overridable and **never called
+by anything** — see F16 in `findings-replication-mtls.md`. `Demo/WebhooksDemo` had implemented its
+whole org-scoping rule there, so its list leaked. The hook is now deleted; the demo migrated to
+`IsAllowedAsync`.
+
+**Naming note:** earlier planning documents call this "R4-H1". That identifier is fabricated — it
+appears in no audit round. This entry is the record.
+
 ---
 
 #### H-3 — Query execute accepts arbitrary `parentId` without parent-ownership check

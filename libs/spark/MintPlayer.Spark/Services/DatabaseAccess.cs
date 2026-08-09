@@ -139,8 +139,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
         // to rows the Actions class says the caller may see. For projection queries, the row
         // filter takes the base entity (CarActions typed on Car, not VCar) so we load the
-        // matching base docs through the session cache. Callers that need a query-level
-        // filter for large collections can override OnQueryAsync directly.
+        // matching base docs through the session cache. This filters after materialization, so a
+        // row-scoped type reads its whole collection per query; pushing the predicate into RavenDB
+        // is a known follow-up.
         entities = (await rowSecurity.FilterAsync(session, entities, entityType, queryType, "Query")).ToList();
 
         // Resolve breadcrumbs for the page. The .Include() from QueryEntitiesWithIncludesAsync

@@ -17,9 +17,9 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     /// <summary>
     /// The org-membership rule, applied to every path: list, query, stream, detail and write.
     /// <para>
-    /// This used to live in <see cref="OnQueryAsync"/>, which reads like the right place and is
-    /// <b>never called by the framework</b> — the hook is declared and overridable and has no call
-    /// sites at all. So this demo's project list returned every project to any authenticated caller,
+    /// This used to live in <c>OnQueryAsync</c>, which read like the right place and was never called
+    /// by the framework — declared, overridable, and with no call sites at all. So this demo's
+    /// project list returned every project to any authenticated caller,
     /// regardless of org membership, while three separate org checks in this file made it look
     /// protected. <c>IsAllowedAsync</c> is the hook the read paths actually consult (M5).
     /// </para>

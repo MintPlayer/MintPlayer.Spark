@@ -220,6 +220,7 @@ Preview package, so no compatibility was required, but each of these changes beh
 | **ETL deployment requires `Replicate/{Collection}`** | An owner must grant `Module:{Name}` the collections it will share, or `/spark/etl/deploy` refuses | Nothing checked which collections a module could ask for, so any authenticated module could have `SparkUsers` pushed into a database it controls, continuously (**F12**) |
 | Authorization precedes validation on create/update | An unauthorized caller gets 401/403 where a malformed payload previously returned 400 with validation errors | Those errors told a caller who may not create a type which of its attributes were required (**N23/M11.4**) |
 | **`IDatabaseAccess`'s untyped document family is renamed `…UncheckedAsync`** | `GetDocumentAsync`, `GetDocumentsAsync`, `GetDocumentsByObjectTypeIdAsync`, `SaveDocumentAsync`, `DeleteDocumentAsync` — every caller must rename | They perform **no** authorization while sitting beside `SavePersistentObjectAsync`, which invited the inference that anything on that interface is authorized. Only custom actions call them (gated at `Action/{Name}`), so the asymmetry is sound today — the name is what keeps it sound (**D15**) |
+| **`OnQueryAsync` removed from `IPersistentObjectActions<T>`** | Any override stops compiling; it was never called, so it was already doing nothing | The hook had no call sites anywhere. `Demo/WebhooksDemo` scoped its org membership there and leaked its list as a result (**F16**, and M5.3's framework half, finally done) |
 | `IDatabaseAccess` gains `EnsureSaveAuthorizedAsync` | Any hand-written `IDatabaseAccess` implementation must add it | Lets an endpoint authorize before validating without moving the decision out of the chokepoint (**N23/M11.4**) |
 | `SparkTestDriver` applies Spark's id conventions | Downstream test projects deriving from it get `{Collection}/{Guid}` ids where they previously got RavenDB's sequential ids | The suite was testing a store whose conventions had been substituted; nothing exercised production's id generation (**M14.2**) |
 | Both demos gain `Module:{Name}` grants | `Demo/Fleet` grants `Module:HR`, `Demo/HR` grants `Module:Fleet` | Without them M11 silently breaks cross-module sync — which is what it would have done as shipped (**F13**) |
@@ -556,7 +557,10 @@ which is a genuinely different shape from a client secret an operator registers.
 > interaction has four states — but it means **the Actions contract did not change**, which
 > deletes the loudest item from the M7 release note. Corrected there. What *did* ship from this
 > spec: the single chokepoint (M5.2's goal), the fail-closed flips (M5.4) and the stream path
-> (M5.5). Left undone: M5.3, and the recorded finding (M5.6).
+> (M5.5). **M5.3 and M5.6 were finished later the same day**: `OnQueryAsync` is deleted — it turned out
+> to have no call sites at all, and `Demo/WebhooksDemo` was leaking its whole project list through it
+> (**F16**) — and the finding is recorded as **H-2a** in `docs/prd/PRD-SecurityAudit.md`, which also
+> notes that the "R4-H1" identifier used in planning documents is fabricated.
 
 See PRD §5 for the verified findings. Two bypasses, one root cause.
 
