@@ -310,6 +310,8 @@ internal static class Authorize
 
         auth.Status = "valid";
         auth.RevokedAt = null;
+        // LastRevokedAt is deliberately NOT cleared: tokens issued before the withdrawal must stay
+        // dead even though the grant is live again.
 
         foreach (var s in scopes)
         {

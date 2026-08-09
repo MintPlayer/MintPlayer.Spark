@@ -58,19 +58,17 @@ internal static class AccessTokens
         if (record is not { Type: "access_token" })
             record = null;
 
-        // The user's standing consent, when there is a user. Loaded here rather than in
-        // IsActive because that is a pure property and this is a database read — and resolved
-        // once, here, so all three consumers (introspection, userinfo, revocation) get the same
-        // answer instead of each deciding for itself whether consent still matters.
+        // Whether the user's consent still stands. Resolved here rather than in IsActive because
+        // that is a pure property and this is a database read — and resolved once, so all three
+        // consumers get the same answer instead of each deciding for itself.
         //
-        // An empty AuthorizationId means no user grant exists: client_credentials tokens, and
-        // tokens minted before the id was threaded through. Those must stay active — treating
-        // "no grant" as "withdrawn grant" would kill every machine token in the system.
-        OidcAuthorization? grant = null;
-        if (record is { AuthorizationId.Length: > 0 })
-            grant = await session.LoadAsync<OidcAuthorization>(record.AuthorizationId, ct);
+        // Carried as a flag with Record left populated, deliberately: Revocation reads .Record and
+        // applies its own status check rather than reading IsActive, so nulling the record here
+        // would make revoking a withdrawn token a silent no-op that still returns the RFC-mandated
+        // 200 — telling a caller responding to a breach that a live credential is dead.
+        var grantPermits = record is null || await OidcGrants.PermitsAsync(session, record, ct);
 
-        return new ResolvedAccessToken(jwt, validation.Claims, record, grant);
+        return new ResolvedAccessToken(jwt, validation.Claims, record, grantPermits);
     }
 }
 
@@ -79,7 +77,7 @@ internal sealed record ResolvedAccessToken(
     JsonWebToken Jwt,
     IDictionary<string, object> Claims,
     OidcToken? Record,
-    OidcAuthorization? Grant = null)
+    bool GrantPermits = true)
 {
     /// <summary>
     /// True only if we issued it, it has not been revoked, it has not expired, and the user's
@@ -93,14 +91,7 @@ internal sealed record ResolvedAccessToken(
     /// </summary>
     public bool IsActive => Record is { Status: "valid" }
         && Jwt.ValidTo > DateTime.UtcNow
-        && !GrantWithdrawn;
-
-    /// <summary>
-    /// A grant that exists and is no longer valid, or one that should exist and has been
-    /// deleted. A token with no <c>AuthorizationId</c> has no grant to withdraw and is unaffected.
-    /// </summary>
-    private bool GrantWithdrawn
-        => Record is { AuthorizationId.Length: > 0 } && Grant is not { Status: "valid" };
+        && GrantPermits;
 
     public string? Subject => Claim("sub");
     public string? Scope => Claim("scope");

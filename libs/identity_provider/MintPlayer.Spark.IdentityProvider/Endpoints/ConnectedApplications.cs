@@ -113,8 +113,11 @@ internal static class ConnectedApplications
             if (grant is null || grant.Status != "valid")
                 return true;
 
+            var now = DateTime.UtcNow;
             grant.Status = "revoked";
-            grant.RevokedAt = DateTime.UtcNow;
+            grant.RevokedAt = now;
+            // Never cleared on reinstate — see OidcAuthorization.LastRevokedAt.
+            grant.LastRevokedAt = now;
 
             await RevokeTokensAsync(session, grantId, ct);
 

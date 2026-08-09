@@ -326,42 +326,6 @@ internal static class Token
     private static bool GrantsOpenId(List<string> scopes)
         => scopes.Contains("openid", StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Whether the user's consent still stands behind this token.
-    /// <para>
-    /// A refresh token outlives everything that authorized it, and rotation resets its expiry —
-    /// so a client that keeps refreshing holds its authority indefinitely. Consent was recorded
-    /// and then consulted nowhere, which meant withdrawing it changed nothing that mattered.
-    /// This is the point where it starts to.
-    /// </para>
-    /// <para>
-    /// An empty <see cref="OidcToken.AuthorizationId"/> means <em>no user grant exists</em>, and
-    /// must be allowed rather than refused. Two populations land here: <c>client_credentials</c>
-    /// tokens, which have no user by construction, and every token minted before the id was
-    /// threaded through at all — failing closed on those would be a silent multi-day outage on
-    /// any database seeded earlier, presenting as "refresh randomly broke".
-    /// </para>
-    /// <para>
-    /// A missing document, by contrast, fails closed: the only way to reach it is for someone to
-    /// have deleted the grant, and deleting a grant should end access rather than grant it
-    /// forever. Same reasoning as a missing token record in <see cref="AccessTokens"/>.
-    /// </para>
-    /// </summary>
-    private static async Task<bool> GrantPermitsIssuanceAsync(
-        IAsyncDocumentSession session, OidcToken token, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(token.AuthorizationId))
-            return true;
-
-        // Read the stored id verbatim rather than re-deriving it from (Subject, ApplicationId):
-        // the derivation does not hold for synthetic subjects, and any later change to the
-        // subject format would silently orphan every grant instead of failing visibly.
-        // Point-load, so a withdrawal committed a moment ago is seen — an index query here would
-        // be the same staleness trap that made revoked credentials replayable twice before.
-        var grant = await session.LoadAsync<OidcAuthorization>(token.AuthorizationId, ct);
-
-        return grant is { Status: "valid" };
-    }
 
     private static async Task HandleRefreshTokenGrant(HttpContext context, IFormCollection form, CancellationToken ct)
     {
@@ -445,7 +409,7 @@ internal static class Token
         // Has the user withdrawn this grant? Checked here rather than inside LoadScopesAsync or
         // GrantedNames: all three grants funnel through those, and client_credentials has no
         // grant document by construction, so a check there would refuse every machine token.
-        if (!await GrantPermitsIssuanceAsync(session, refreshTokenDoc, ct))
+        if (!await OidcGrants.PermitsAsync(session, refreshTokenDoc, ct))
         {
             // A withdrawn grant is not a narrowing — the whole chain goes. Anything still
             // outstanding under it was issued on an authority the user has since taken back.

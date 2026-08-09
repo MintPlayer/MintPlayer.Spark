@@ -334,6 +334,134 @@ public class OidcConsentWithdrawalTests : OidcTestHost
         refreshed.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// W-E1 — re-consenting must not resurrect tokens issued before the withdrawal.
+    /// <para>
+    /// The sweep at withdrawal is best-effort: it rides an eventually-consistent index and can
+    /// miss a token minted moments earlier. A survivor sits at <c>Status: "valid"</c>, so once the
+    /// grant is live again it springs back — for up to <c>RefreshTokenLifetimeDays</c>. The user's
+    /// model is "I removed it and then let it back in, so it starts fresh", and the token that
+    /// survives is exactly the one an attacker would be holding.
+    /// </para>
+    /// <para>
+    /// Simulated by putting the survivor back to <c>valid</c> after the sweep, which is precisely
+    /// the state the sweep leaves behind when it misses one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Re_consenting_does_not_resurrect_tokens_from_before_the_withdrawal()
+    {
+        var app = await SeedRefreshableAppAsync("w-epoch");
+        await SeedUserAsync("epoch@test.local");
+
+        var (browser, tokens) = await EstablishGrantAsync(app, "epoch@test.local", ["openid", "api.read", "offline_access"]);
+        var refreshToken = tokens.GetProperty("refresh_token").GetString()!;
+
+        await WithdrawAsync(browser, app.Id!);
+
+        // Stand in for a token the sweep missed.
+        using (var session = Store.OpenAsyncSession())
+        {
+            var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken));
+            doc.Status = "valid";
+            await session.SaveChangesAsync();
+        }
+
+        // The user lets the application back in.
+        await ObtainCodeAsync(app, "epoch@test.local", ["openid"]);
+
+        var refreshed = await RefreshAsync(app, refreshToken);
+
+        refreshed.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "it was issued before the withdrawal, so granting access again must not hand it back");
+    }
+
+    /// <summary>
+    /// W-E2 — a machine token has no user grant, and must be unaffected by anyone's withdrawal.
+    /// The grant check runs on the single chokepoint every access token passes through, so getting
+    /// this wrong would refuse every `client_credentials` token in the system at once.
+    /// </summary>
+    [Fact]
+    public async Task A_machine_token_is_unaffected_by_a_withdrawal()
+    {
+        var machine = await SeedApplicationAsync("w-machine",
+            allowedScopes: ["api.read"], grantTypes: ["client_credentials"], redirectUris: []);
+
+        var interactive = await SeedRefreshableAppAsync("w-machine-user");
+        await SeedUserAsync("machine@test.local");
+
+        var token = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = machine.ClientId,
+                ["client_secret"] = Secret,
+                ["scope"] = "api.read",
+            })));
+
+        var (browser, _) = await EstablishGrantAsync(interactive, "machine@test.local", ["openid", "offline_access"]);
+        await WithdrawAsync(browser, interactive.Id!);
+
+        var introspection = await BodyAsync(await Client.PostAsync("/connect/introspect",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = machine.ClientId,
+                ["client_secret"] = Secret,
+                ["token"] = token.GetProperty("access_token").GetString()!,
+            })));
+
+        introspection.GetProperty("active").GetBoolean().Should().BeTrue(
+            "a machine token has no user and no grant by construction — treating 'no grant' as "
+            + "'withdrawn grant' would kill every one of them");
+    }
+
+    /// <summary>
+    /// W-E3 — a withdrawn token must still be revocable. Revocation reads the token record and
+    /// applies its own status check rather than reading `IsActive`, so masking the record when the
+    /// grant is withdrawn would make revoking it a silent no-op that still returns the
+    /// RFC-mandated 200 — telling a caller responding to a breach that a live credential is dead.
+    /// </summary>
+    [Fact]
+    public async Task A_withdrawn_tokens_record_can_still_be_revoked()
+    {
+        var app = await SeedRefreshableAppAsync("w-revocable");
+        await SeedUserAsync("revocable@test.local");
+
+        var (browser, tokens) = await EstablishGrantAsync(app, "revocable@test.local", ["openid", "offline_access"]);
+        var accessToken = tokens.GetProperty("access_token").GetString()!;
+
+        await WithdrawAsync(browser, app.Id!);
+
+        // Put it back to valid, as the sweep would have left it had it missed the token.
+        var jti = JsonDocument.Parse(
+            System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
+                accessToken.Split('.')[1].Replace('-', '+').Replace('_', '/')
+                    .PadRight(accessToken.Split('.')[1].Length + (4 - accessToken.Split('.')[1].Length % 4) % 4, '='))))
+            .RootElement.GetProperty("jti").GetString()!;
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti));
+            doc.Status = "valid";
+            await session.SaveChangesAsync();
+        }
+
+        await Client.PostAsync("/connect/revoke", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["client_id"] = app.ClientId,
+            ["client_secret"] = Secret,
+            ["token"] = accessToken,
+        }));
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti));
+            doc.Status.Should().Be("revoked",
+                "the endpoint returns 200 either way, so a caller acting on a breach has no other "
+                + "way to find out whether the credential actually died");
+        }
+    }
+
     /// <summary>W-A1 — a signed-out visitor is sent to log in, not shown an empty list.</summary>
     [Fact]
     public async Task An_anonymous_visitor_is_redirected_to_login()
