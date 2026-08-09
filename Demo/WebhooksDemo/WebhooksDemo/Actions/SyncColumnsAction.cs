@@ -18,7 +18,7 @@ public partial class SyncColumnsAction : SparkCustomAction
         if (source?.Id is null)
             throw new InvalidOperationException("No item selected");
 
-        var project = await dbAccess.GetDocumentAsync<GitHubProject>(source.Id);
+        var project = await dbAccess.GetDocumentUncheckedAsync<GitHubProject>(source.Id);
         if (project is null)
             throw new InvalidOperationException("Project not found");
 
@@ -26,6 +26,6 @@ public partial class SyncColumnsAction : SparkCustomAction
         project.StatusFieldId = statusFieldId;
         project.Columns = columns;
 
-        await dbAccess.SaveDocumentAsync(project);
+        await dbAccess.SaveDocumentUncheckedAsync(project);
     }
 }

@@ -25,24 +25,24 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
 
-    public async Task<T?> GetDocumentAsync<T>(string id) where T : class
+    public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
         return await session.LoadAsync<T>(id);
     }
 
-    public async Task<IEnumerable<T>> GetDocumentsAsync<T>() where T : class
+    public async Task<IEnumerable<T>> GetDocumentsUncheckedAsync<T>() where T : class
     {
         return await session.Query<T>().ToListAsync();
     }
 
-    public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdAsync<T>(Guid objectTypeId) where T : class
+    public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdUncheckedAsync<T>(Guid objectTypeId) where T : class
     {
         return await session.Query<T>()
             .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
             .ToListAsync();
     }
 
-    public async Task<T> SaveDocumentAsync<T>(T document) where T : class
+    public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
     {
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
@@ -61,7 +61,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return document;
     }
 
-    public async Task DeleteDocumentAsync<T>(string id) where T : class
+    public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
         session.Delete(id);
         await session.SaveChangesAsync();

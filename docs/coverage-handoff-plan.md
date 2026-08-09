@@ -163,6 +163,22 @@ Preview package, so no compatibility was required, but each of these changes beh
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
 
+**D15 — Framework-internal writes stay outside the authorization chokepoint** (user-requested investigation, 2026-08-09). Once M11 routed cross-module writes through `IPermissionService`, the question was whether the framework's own writes — message-queue entries, sync-action records, module registrations, OIDC tokens, migration markers, cron locks — should follow. **They should not**, and the rule that decides it is:
+
+> A write goes through the chokepoint **if and only if there is a caller identity for `security.json` to name.**
+
+A person has one; a module has one since M11; an OAuth client has one under the protocol's own rules. A GitHub webhook does not — GitHub is not a Spark principal — and a background worker does not. The module case is the precedent that shows this is not an exemption for awkward callers: M11 did not special-case modules to skip authorization, it *gave them an identity* and put them through the same path as a person. Where an identity can exist, it should, and then the write is governed.
+
+Checked against the four configurations rather than argued. Gating framework writes **breaks the deny-all default outright** (at startup and on every background tick), **breaks a configured `security.json` silently** (no operator grants rights on framework resource names they do not know exist — Fleet and HR grant `Everyone` exactly one right each), and in the `AllowAll`-with-no-config case only "works" by falling through to allow-anyone. One of four configurations is unaffected, two break, the fourth gains nothing.
+
+The decisive mechanism: a background worker has no `HttpContext`, and `ClaimsGroupMembershipProvider` returns an **empty group list** rather than throwing — so calling `IPermissionService` there evaluates the worker **as an anonymous caller**, not as a trusted system. That is a footgun, not a control.
+
+Nothing is lost, because the queue is not where authority is exercised: an anonymous delivery may enqueue, and if the recipient then writes application data *that* write is authorized. **The control sits at the data, not at the plumbing.**
+
+Two limitations recorded rather than hidden: there is **no system principal** (a background job needing elevated rights has no way to say so — adding one means generalizing the `Module:{Name}` shape), and a framework collection can simultaneously be application data (`OidcApplication`/`OidcScope` are deliberately exposed as PersistentObjects), so the exemption keys on the **write path**, not the collection.
+
+*Acted on:* `IDatabaseAccess`'s untyped document family did no authorization at all while sitting beside `SavePersistentObjectAsync`, which invited the inference that anything on that interface is authorized. Renamed to `…UncheckedAsync` — the only callers are custom actions, gated separately at `Action/{Name}`, so the asymmetry is sound today and the name is what keeps it sound as callers appear.
+
 **D14 — `IHasNaturalId` stays in core and stays always-on; no separate package, no `spark.AddNaturalIds()` opt-in.** Investigated on request (three parallel agents, 2026-08-09) after the natural-id support landed in `38379e2`. The proposal was to extract the convention into its own package and expose it as `services.AddSpark(spark => spark.AddNaturalIds(…))`. Rejected on both halves, for different reasons.
 
 *Against the opt-in:* **implementing the interface is already the opt-in.** An entity gets a derived id only if its author wrote `GetId()`. A second, separate `AddNaturalIds()` call turns that into a two-part opt-in where **either half alone silently does nothing** — implement the interface without the call and RavenDB's always-present `AsyncDocumentIdGenerator` fallback assigns a GUID, so every `LoadAsync<Car>(Car.GetId(plate))` returns `null`. That reads as "not found", not as a wiring bug.

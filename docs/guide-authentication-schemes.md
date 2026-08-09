@@ -230,13 +230,73 @@ and `..._for_Car_reports_no_access`.*
 
 ---
 
+## 5a. Which writes are authorized — and why the framework's own are not
+
+Once cross-module writes went through the permission chokepoint (M11), the obvious next question is
+where that stops. The framework writes documents constantly: message-queue entries, sync-action
+records, module registrations, OIDC tokens, migration markers, cron locks. Should those be
+authorized too?
+
+**No, and the rule that says so is:**
+
+> A write goes through the chokepoint **if and only if there is a caller identity for
+> `security.json` to name.**
+
+| Caller | Identity | Writes authorized? |
+|---|---|---|
+| A person | cookie or bearer token | Yes |
+| A module | client certificate → `Module:{Name}` | Yes, since M11 |
+| An OAuth client | `client_id`/secret | Yes, by the protocol's own rules (RFC 6749/7009), not `security.json` |
+| A GitHub webhook | **none** — GitHub has no Spark identity | No. Gated by HMAC at a different layer |
+| A background worker | **none** | No. Writes its own bookkeeping directly |
+
+The module case is the important precedent, because it shows the rule is not "exempt awkward
+callers". M11 did not special-case modules to skip authorization — it gave them an identity
+(`Module:HR`) and put them through the *same* path as a person. Where an identity can exist, it
+should, and then the write is governed.
+
+### Why gating framework bookkeeping would break working applications
+
+This was checked against the four configurations rather than argued:
+
+| Configuration | Framework write today | If routed through the chokepoint |
+|---|---|---|
+| Neither opt-in (`DenyAllAccessControl`) | Works | **Breaks unconditionally** — at startup and on every background tick |
+| `AllowAnonymousAccess()` | Works | Works, because authorization is already a no-op |
+| `security.json` | Works | **Breaks silently** unless the operator grants rights on framework resource names they do not know exist |
+| `AllowAll` default, no `security.json` | Works | "Works" only by falling through to allow-anyone — no safer than not gating |
+
+So one configuration is unaffected, two break, and the fourth gains nothing. A background worker has
+no `HttpContext`, and `ClaimsGroupMembershipProvider` returns an empty group list rather than
+throwing — so calling `IPermissionService` there would evaluate the worker **as an anonymous
+caller**, not as a trusted system. That is a footgun rather than a control.
+
+### Where the control actually lands
+
+Nothing is lost by leaving the queue ungated, because the queue is not where authority is exercised.
+An anonymous GitHub delivery can enqueue a `SparkMessage`; if the recipient of that message then
+writes application data, **that** write goes through `IDatabaseAccess` and is authorized — as
+anonymous, because that is who caused it. The control sits at the data, not at the plumbing.
+
+### Two limitations this leaves, stated rather than hidden
+
+- **There is no system principal.** A background job that legitimately needs to write app data with
+  elevated rights has no way to say so: the framework understands "a caller with a principal" and
+  "nothing", and "nothing" resolves to anonymous. Adding one means minting a synthetic identity per
+  system actor and requiring apps to grant it — the `Module:{Name}` shape, generalized. Not built.
+- **A framework collection can also be application data.** `OidcApplication` and `OidcScope` are
+  deliberately exposed as PersistentObjects (via `IOidcApplicationContext`, which the HR demo
+  implements), so they are administered through the ordinary authorized path *and* written by the
+  provider's own internals. The exemption above therefore keys on the **write path**, not on the
+  collection.
+
 ## 6. The four authorization configurations
 
 Which `IAccessControl` is registered last wins.
 
 | Configuration | Behaviour | Where |
 |---|---|---|
-| Neither opt-in called | **Denies everything**, unconditionally | `DenyAllAccessControl`, the DI default (`SparkExtensions.cs:65`) |
+| Neither opt-in called | **Denies everything**, unconditionally | `DenyAllAccessControl`, the DI default (`SparkMiddleware.cs:65`) |
 | `spark.AddAuthorization()` | `security.json` groups + rights, with `Everyone` always added | `AccessControlService` |
 | `spark.AllowAnonymousAccess()` | **Allows everything.** `security.json`, groups and `Everyone` are never consulted at all | `AllowAllAccessControl` |
 | `AddAuthorization(o => o.DefaultBehavior = AllowAll)` | `security.json` as above, but an unmatched resource is *allowed* instead of denied | `AccessControlService`, both the empty-groups branch and the final fallthrough |
