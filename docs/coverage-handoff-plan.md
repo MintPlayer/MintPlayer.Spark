@@ -41,8 +41,13 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `f01bfca` | Registration story proven end to end; **O17** re-scoped honestly (**193 IdP tests green**) |
 | `d2ec998` | Draft PR recorded; breaking changes collected for M7 |
 | `9489006` | **M12.7 complete** — route coverage, HR as demo host, `SparkValidationException`; found **N11, N12, N13** (**205 IdP tests green**) |
+| `fcaa6b9` | **M13** — consent withdrawal; **N15** (Critical) plus **N16–N18**, three defects in N11's own fix |
+| `d92b673` | **M5** — row-level authz on the query and stream paths (user-requested) |
+| _(next)_ | E2E seeding flake fixed; **full suite green** |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09, 32 commits, 70 files, +9,597/−76. Deliberately a draft: handoff items 3–6 are untouched, M8–M11 has had no work, and release mechanics are not done.
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 3, 4 and 6 are untouched, M8–M11 has had no work, and release mechanics are not done. Item 5 (row-level authz) is now **done** — see M5 above.
+
+**Full test suite, all four projects, green:** 1244 (`MintPlayer.Spark.Tests`) + 61 (E2E) + 54 (source generators) + 38 (client) = **1397 passed, 0 failed**. This is the first complete run on the branch; earlier entries in this document that describe it as unrun are superseded. One pre-existing E2E flake was fixed rather than tolerated — the seeding helper queried an eventually-consistent index with no wait, so a row-level authz case intermittently failed during setup and read like a product failure.
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
@@ -62,7 +67,7 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 **Not started:** M2, M3, M8, M9, M10, M11, M6, M7. Note **M9 gates M10 and M11** — Spark endpoints carry no authorization metadata, so a credential scheme registered before the composite default scheme exists is dead code.
 
-**Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Targeted filters are green: 57 IdentityProvider tests (33 unit + 24 e2e) and 18 `QueueNamesTests`. The four demo ClientApps have not been built or exercised since the IdP port. **Coverage is still thin** — §T and §L of the matrix have no tests at all, and everything cookie-driven is untested pending the signed-in-session fixture.
+~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
 
 **Next action:** continue M12.6 from `tests/.../IdentityProvider/OidcTestHost.cs`. Build the signed-in-session helper (register a user via `UserManager`, POST `/connect/login` with an antiforgery token, keep the cookie), which unlocks §A's consent cases and all of §L. Then §T and §R.
 

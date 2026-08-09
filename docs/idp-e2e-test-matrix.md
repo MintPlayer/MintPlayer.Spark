@@ -456,6 +456,52 @@ This surface produced the audit's only **Critical** (N1, now fixed) precisely be
 | R-X1 | `Introspection_reports_aud_so_a_resource_server_can_check_it` | `aud` present in the response | **N2**, disclosure half — fixed |
 | R-X2 | **[CHARACTERIZATION]** `Audience_is_not_enforced_anywhere` | a token minted for resource A introspects `active:true` and is accepted at `/connect/userinfo` regardless of audience. Documents the current gap; invert if N2's enforcement half is ever decided in favour of enforcing here | **N2**, open |
 
+## W — consent withdrawal (M13)
+
+`OidcConsentWithdrawalTests`. These are deliberately **seam tests**: the predicted failure for this
+feature was that the page and the token endpoint would disagree about what "withdrawn" is written
+as — the page asserting the document changed, the token endpoint asserting a seeded grant is
+honoured, both green, and the feature a no-op behind a UI that confirms success. So **nothing here
+seeds a withdrawn grant.** Every case withdraws through the real endpoint and then asks the real
+endpoint that is supposed to notice.
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| W-H1 | `A_granted_application_can_refresh` | 200 — the refusals below are only meaningful against this | |
+| W-S1 | `Withdrawing_through_the_page_stops_the_refresh_token` | withdraw over HTTP, then refresh over HTTP → 400 `invalid_grant`. **The seam.** The document shape is deliberately not asserted, because it is exactly what the two halves are allowed to disagree about | **N14** |
+| W-S2 | `Withdrawal_makes_the_access_token_inactive_to_introspection` | `active:true` before, `active:false` after — the one window the architecture can actually close | **N14** |
+| W-R1 | `Re_consenting_does_not_restore_the_old_scope_set` | withdraw a grant carrying `api.read`, re-authorize asking only `openid`, assert `GrantedScopes == [openid]` | **N15** |
+| W-R2 | `An_implicit_client_cannot_silently_resurrect_a_withdrawn_grant` | after withdrawal an implicit client is sent to `/connect/consent`, not handed a code | **N15** |
+| W-C1 | `Withdrawal_requires_an_antiforgery_token` | 400, **and the refresh token still works** — proving nothing was written | |
+| W-I1 | `A_user_cannot_withdraw_someone_elses_grant` | attacker holds their own grant (so their page carries a valid token) and posts the victim's application id; the victim's refresh token keeps working | IDOR |
+| W-L1 | `The_list_shows_only_the_signed_in_users_grants` | another user's application name does not appear in the markup | |
+| W-L2 | `The_page_refuses_to_be_framed` | `Content-Security-Policy: frame-ancestors 'none'` | clickjacking |
+| W-A1 | `An_anonymous_visitor_is_redirected_to_login` | 302 to `/connect/login`, not an empty list | |
+
+### Not covered
+
+- **A withdrawal racing an in-flight refresh.** Bounded to one access-token lifetime by design — every refresh re-reads the grant and the sweep catches the freshly minted pair — but not exercised, because it needs a parking hook in the token endpoint. Same gap as T-R3/T-R4.
+- **Back-channel logout.** Withdrawal does not end the user's session at the client app; there is no back-channel logout in the package at all.
+
+## Q — row-level authorization on queries (M5)
+
+`RowLevelQueryAuthorizationTests`, using the **real** `RowSecurity` against a real Actions class —
+the rule was never wrong, so a mocked rule would test nothing. The defect was which paths consulted
+it.
+
+| # | Test | Expected |
+|---|---|---|
+| Q-R1 | `A_list_query_returns_only_the_callers_rows` | 2 of 3 seeded rows, the caller's |
+| Q-R2 | `Another_users_rows_are_not_disclosed` | a different caller sees only their own row |
+| Q-R3 | `A_caller_who_owns_nothing_sees_nothing` | empty, not everything |
+| Q-R4 | `An_entity_with_no_row_rule_is_unaffected` | all rows — types that never declared a rule must behave exactly as before, which is what makes failing closed on unverifiable rows safe |
+| Q-R5 | `HasRowRule_distinguishes_an_override_from_the_inherited_default` | the permissive default is not a rule |
+
+### Not covered
+
+- The **stream** path is filtered per batch but has no test; `StreamingQueryExecutorUnitTests` uses a permissive double. Worth adding when streaming gets its own fixture.
+- Projection types (`V*`) with a row rule: the code loads the underlying document to judge, and drops the row if it cannot, but no test exercises a projected row rule.
+
 ## M — the admin screens (M12.7)
 
 Registration is a PersistentObject, so it inherits the authorization pipeline and the antiforgery
