@@ -57,6 +57,32 @@ So the cert check is all-or-nothing: once a module authenticates, there is no no
 
 **This is a third instance of the root cause behind PRD §5** — a data path that doesn't route through the single enforcement point. The first two are the query/stream read paths and the dead `OnQueryAsync`. Whatever chokepoint M5 establishes should be designed to cover **write** paths too, or this recurs.
 
+## F12 — `/spark/etl/deploy` has no read authorization at all (High) — raised 2026-08-09
+
+F4 covers the **write** direction. This is the **read** direction, and this document did not mention `/spark/etl/deploy` at all.
+
+A consumer POSTs `EtlScriptRequest { RequestingModule, TargetDatabase, TargetUrls[], Scripts[] }`. Each `EtlScriptItem` carries a free-text `SourceCollection` and a raw RavenDB JS transform. `EtlDeploy.cs` runs the mTLS gate and then calls `EtlTaskManager.DeployAsync` **unconditionally**; the manager builds `RavenEtlConfiguration.Transforms` verbatim from the request. The only scope limit anywhere is the self-loop refusal (`TargetDatabase == documentStore.Database`), which is an infinite-loop guard, not a security control.
+
+**So the certificate answered "who are you" and nothing ever answered "what may you read."** Any module holding a valid pinned certificate could name `SourceCollection = "SparkUsers"` and have the owner stand up a *continuous* RavenDB ETL task pushing every user document — through a transform the caller wrote, which can `loadDocument` to pivot into other collections — into a database the caller controls.
+
+Three things make this worse than the equivalent one-shot read:
+
+1. **It is ongoing.** An ETL task keeps running and keeps pushing new and changed documents until someone removes it.
+2. **`[Replicated]` gives false confidence.** It reads like a declaration of what may be shared. It lives on the *consumer*, is consumed only by `EtlScriptCollector` when building the outbound request, and **the owner never sees it** — so "what gets replicated" was entirely the requester's say-so.
+3. **The target is attacker-supplied**, the same property R2-C1 flagged for the write path.
+
+**Fixed 2026-08-09.** `EtlDeploy` now checks `IPermissionService.IsAllowedAsync("Replicate", SourceCollection)` per script, after establishing the module identity. An owner declares what it will share by granting `Module:{Name}` the right `Replicate/{Collection}` in `security.json`.
+
+## F13 — The replication endpoints validated a caller without authenticating it (High) — raised and fixed 2026-08-09
+
+Found immediately after M11 shipped, and it is a defect **in M11's own fix**.
+
+`SyncApply` and `EtlDeploy` call `IModuleCertificateValidator.ValidateAsync`, which decides whether the request proceeds — and never touches `HttpContext.User`. Validating is not authenticating. That was harmless while the endpoints did their own gating, and became a defect the moment M11 routed cross-module writes through `IPermissionService`: the writes arrived **anonymous**, holding only `Everyone`'s rights, so every cross-module sync would have been refused. The gate said "yes, this is HR" and the permission check was never told.
+
+No test caught it, for the reason M11's own notes had already recorded: **nothing exercises a successful cross-module sync end to end.** The routing was unit-tested against a substitute; the identity it depended on was not.
+
+Both endpoints now call `HttpContext.EstablishModuleIdentity(module)` after validation, emitting the same `Module:{Name}` group claim as the certificate authentication scheme — so an operator writes one `security.json` entry regardless of which path established the identity. Trusting the body's module name is sound *there* precisely because validation has already run: in Production it was checked against that module's pinned thumbprint.
+
 ## F5 — Dead code and a non-functional documented feature (Medium)
 
 `IReplicationHttpClientProvider` is registered (`SparkReplicationExtensions.cs:38`) and **never resolved**. Both outbound paths use named clients instead — `EtlScriptDeploymentRecipient.cs:31` (`"spark-etl"`), `SyncActionSubscriptionWorker.cs:56` (`"spark-sync"`) — built by `BuildDefaultHandler` (`:57-69`), which only ever attaches the default certificate.

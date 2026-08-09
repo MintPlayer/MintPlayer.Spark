@@ -58,7 +58,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `af6bcb9` | Anonymous-CRUD E2E gap closed; a vacuous row-level assertion fixed; **N23** raised (**65 E2E green**) |
 | `9617ab1` | Plan and PRD brought current through M9, M14 and N23 |
 | `09cf22c` | **M10 done** — module certificate, certificate forwarding, JWT resource server (**1286 tests green**) |
-| `(head)` | **M11 done** — sync writes routed through the chokepoint; **N23 fixed**; F11 corrected (**1289 + 65 E2E green**) |
+| `fdcb140` | **M11** — sync writes routed through the chokepoint; **N23 fixed**; F11 corrected (**1289 + 65 E2E green**) |
+| `(head)` | **F12, F13** — ETL read authorization; the identity M11 depended on and did not establish (**1291 + 65 E2E green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 2, 3 and 6 are untouched, **M10 and M11 remain**, and release mechanics (M7) are not done. Item 5 (row-level authz) is **done** — see M5. **M8, M9 and M14 are done**; M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
@@ -130,6 +131,7 @@ Preview package, so no compatibility was required, but each of these changes beh
 | `AddModuleCertificateForwarding` throws without a `KnownProxies` entry | Forwarding cannot be enabled without naming the proxy | A forwarded certificate is a plain header; accepting it from anywhere lets any caller claim any module identity (**M10.2**, **D3**) |
 | **Cross-module sync is authorized** | A module must be granted rights in `security.json` (`Module:{Name}`) or `/spark/sync/apply` refuses it | The write path skipped the chokepoint, so an authenticated module could write anything anywhere (**F4/M11.1**). **The most disruptive change in this PR for existing replication users** — see the M11.3 migration note |
 | A sync action against an unregistered entity type is refused | Previously written via a CLR-reflection fallback | It has no name for `security.json` to grant rights on, so no authorization decision exists — unevaluable is not permitted (**M11.1**) |
+| **ETL deployment requires `Replicate/{Collection}`** | An owner must grant `Module:{Name}` the collections it will share, or `/spark/etl/deploy` refuses | Nothing checked which collections a module could ask for, so any authenticated module could have `SparkUsers` pushed into a database it controls, continuously (**F12**) |
 | Authorization precedes validation on create/update | An unauthorized caller gets 401/403 where a malformed payload previously returned 400 with validation errors | Those errors told a caller who may not create a type which of its attributes were required (**N23/M11.4**) |
 
 ## Resolved decisions (2026-08-08)

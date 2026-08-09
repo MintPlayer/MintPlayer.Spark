@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
@@ -51,6 +52,12 @@ internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGrou
                     request.RequestingModule, certValidation);
                 return Results.Json(new { error = "Forbidden" }, statusCode: 403);
         }
+
+        // Validation established WHO is calling; this is what tells the authorization pipeline.
+        // Without it the writes M11 routed through IPermissionService arrive anonymous and are
+        // refused for holding only Everyone's rights — the gate says "yes, this is HR" and the
+        // permission check never hears about it.
+        httpContext.EstablishModuleIdentity(request.RequestingModule ?? string.Empty);
 
         if (syncActionHandler == null)
         {

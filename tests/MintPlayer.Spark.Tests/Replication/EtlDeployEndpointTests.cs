@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Replication.Endpoints;
 using MintPlayer.Spark.Replication.Services;
 using NSubstitute;
@@ -20,9 +21,15 @@ public class EtlDeployEndpointTests
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private readonly IModuleCertificateValidator _certValidator = Substitute.For<IModuleCertificateValidator>();
+    private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
 
     private EtlDeploy NewEndpoint() =>
-        new(NullLogger<EtlTaskManager>.Instance, null!, _certValidator);
+        new(NullLogger<EtlTaskManager>.Instance, null!, _certValidator, _permissionService);
+
+    /// <summary>Grants the caller the right to replicate every collection it asks for.</summary>
+    private void AllowReplication() =>
+        _permissionService.IsAllowedAsync("Replicate", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
 
     private void Cert(ModuleCertificateValidation result) =>
         _certValidator.ValidateAsync(Arg.Any<HttpContext>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -64,6 +71,57 @@ public class EtlDeployEndpointTests
         Cert(ModuleCertificateValidation.ThumbprintMismatch);
         var ctx = NewContext(DeployBody("HR"));
         (await StatusAsync(await NewEndpoint().HandleAsync(ctx), ctx)).Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// The read-authorization gap, now closed. A certificate answers "who are you"; it never
+    /// answered "what may you read", and the mTLS gate was the only gate — so any module holding a
+    /// valid pinned certificate could ask the owner to push <b>any</b> collection into a database it
+    /// controls, continuously, through a caller-supplied JavaScript transform.
+    /// <para>
+    /// The example is the one that matters: <c>SparkUsers</c>. The requesting module's
+    /// <c>[Replicated]</c> attributes constrain nothing here — they live on the consumer and the
+    /// owner never sees them, so "what gets replicated" was entirely the requester's say-so.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_module_may_not_replicate_a_collection_it_has_no_right_to()
+    {
+        Cert(ModuleCertificateValidation.Ok);
+        _permissionService.IsAllowedAsync("Replicate", "SparkUsers", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        var ctx = NewContext(new
+        {
+            requestingModule = "HR",
+            targetDatabase = "hr-db",
+            targetUrls = new[] { "http://hr.example/raven" },
+            scripts = new[] { new { sourceCollection = "SparkUsers", script = "loadToSparkUsers(this)" } },
+        });
+
+        (await StatusAsync(await NewEndpoint().HandleAsync(ctx), ctx))
+            .Should().Be(HttpStatusCode.Forbidden,
+                "an authenticated module is not thereby entitled to every collection the owner holds");
+    }
+
+    /// <summary>
+    /// The control. Without it the test above passes for any reason at all — including the endpoint
+    /// refusing every deployment — and would not show that the check is what refused.
+    /// </summary>
+    [Fact]
+    public async Task A_module_may_replicate_a_collection_it_is_granted()
+    {
+        Cert(ModuleCertificateValidation.Ok);
+        AllowReplication();
+
+        var ctx = NewContext(DeployBody("HR"));
+
+        // EtlTaskManager is null here, so reaching it throws rather than returning 403: passing the
+        // authorization check is exactly what this asserts.
+        var act = async () => await NewEndpoint().HandleAsync(ctx);
+
+        await act.Should().ThrowAsync<NullReferenceException>(
+            "a granted collection must pass the read check and proceed to deployment");
     }
 
     private static object DeployBody(string module) => new
