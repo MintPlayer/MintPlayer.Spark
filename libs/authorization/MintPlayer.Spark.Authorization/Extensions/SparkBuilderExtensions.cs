@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -33,6 +34,13 @@ public static class SparkBuilderAuthorizationExtensions
 
         var identityBuilder = builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
         configureProviders?.Invoke(identityBuilder);
+
+        // Identity's own two schemes, declared separately rather than as the combined
+        // BearerAndApplication scheme. The combination would authenticate a request without saying
+        // which half did it, and the antiforgery gate needs exactly that: the cookie is ambient and
+        // must be defended against CSRF, the bearer is not and must not be obstructed by it.
+        builder.AddCredentialScheme(IdentityConstants.ApplicationScheme, isAmbient: true);
+        builder.AddCredentialScheme(IdentityConstants.BearerScheme);
 
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -15,8 +16,12 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// </summary>
 public sealed class SparkEndpointFactory : SparkEndpointFactory<TestSparkContext>
 {
-    public SparkEndpointFactory(IDocumentStore testStore, EntityTypeFile[] models, Action<IServiceCollection>? configureServices = null)
-        : base(testStore, models, configureServices)
+    public SparkEndpointFactory(
+        IDocumentStore testStore,
+        EntityTypeFile[] models,
+        Action<IServiceCollection>? configureServices = null,
+        Action<ISparkBuilder>? configureSpark = null)
+        : base(testStore, models, configureServices, configureSpark)
     {
     }
 }

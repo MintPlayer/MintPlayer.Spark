@@ -52,7 +52,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `8f73301` | **M8 done** — F1, F2, F5, F6; two tests that proved nothing replaced (81 replication tests green) |
 | `38379e2` | **Natural ids** — `IHasNaturalId`, ported from CronosCore |
 | `1279f07` | **D14** — package + opt-in proposal declined with reasons; conventions split and renamed |
-| `(head)` | **M14.2** — the suite stops substituting the store it tests (**1266 tests green**) |
+| `6b2b0b5` | **M14.2** — the suite stops substituting the store it tests (**1266 tests green**) |
+| `(head)` | **M9 done** — composite scheme + antiforgery exemption; XSRF package swap declined (**1273 + 61 E2E green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 3, 4 and 6 are untouched, M8–M11 has had no work, and release mechanics are not done. Item 5 (row-level authz) is now **done** — see M5 above.
 
@@ -86,7 +87,7 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 ⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
 
-**Not started:** M2, M3, M8, M9, M10, M11, M6, M7. Note **M9 gates M10 and M11** — Spark endpoints carry no authorization metadata, so a credential scheme registered before the composite default scheme exists is dead code.
+**Not started:** M2, M3, M10, M11, M6, M7. **M8, M9 and M14 are done** — M9 unblocks M10 and M11, which were dead code before a composite default scheme existed.
 
 ~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
 
@@ -115,13 +116,19 @@ Preview package, so no compatibility was required, but each of these changes beh
 | Relative and `file:` redirect URIs are refused | A client registered with `/callback` **on Linux** stops saving | It was already impossible to use; the validation just accepted it on Unix and rejected it on Windows (**N22**) |
 | An Actions class refusal is now a 400, not a 500 | `SparkValidationException` maps into the standard `errors` envelope; other exceptions still 500 | Business validation had no path to the user anywhere in Spark — every message reached the operator as an empty 500 (**N12**). Framework-wide, not IdP-only |
 | `IOidcApplicationContext` members are get-only | An auto-property implementation stops compiling | It returned null, and the query executor answers a null queryable with an empty result — screens that render and are always empty, silently (**N13**) |
+| **The default authenticate scheme is now Spark's composite** | Every registered credential scheme runs on Spark endpoints; an app that overrode `DefaultAuthenticateScheme` itself is overridden in turn | Spark endpoints name no scheme, so only the default ever ran — a registered certificate or bearer handler was dead code and its caller arrived anonymous with `Everyone` rights, silently (**F7, M9**) |
+| A non-ambient credential is exempt from antiforgery | Bearer/certificate callers can POST without an `XSRF-TOKEN` cookie | CSRF is an attack on ambient authority; demanding a token of a caller that cannot be made to send one protected nothing and made external POSTs impossible (**F8, D2**) |
+| A refused credential is logged and reported as a failure | Previously indistinguishable from presenting none | Both outcomes were anonymous-with-`Everyone`, silently — refusal should be legible (**F7**) |
+| `UseAuthentication()` runs whenever any credential scheme is registered | An app with credential schemes but no `IdentityUserType` now authenticates | It was gated on Identity alone, so a machine-only app never authenticated anyone (**M9**) |
 
 ## Resolved decisions (2026-08-08)
 
 **D1 — External POST credential: OAuth2 `client_credentials` via `MintPlayer.Spark.IdentityProvider`**, not a per-user secret. Same experience for the consumer, better security posture for the application. **Conditional on the package being audited and proven sound** — see M12. Three defects are already known (unsalted SHA-256 + non-constant-time compare in `VerifyClientSecret`; application claims emitted as `client_group` so a machine token resolves to zero groups; no resource-server side at all).
 > ⚠️ **Open — see Q1 in the handover notes.** If `client_credentials` is the upload credential, **M4 (the PAT library) has no consumer.** Confirm whether M4 is dropped, or kept for a different audience.
 
-**D2 — Antiforgery.** CI/workflow posts can't carry XSRF at all, and `client_credentials` is sufficient there → exempt requests not authenticated by an ambient (cookie) credential, keyed on *the scheme that produced the principal*. Separately: Spark **hand-rolls** the XSRF cookie (`SparkMiddleware.cs:48,238-241`) and duplicates `MintPlayer.AspNetCore.SpaServices.Xsrf`, whose `UseAntiforgeryGenerator()` does exactly the same `GetAndStoreTokens` + `XSRF-TOKEN` cookie (`HttpOnly = false`). The demos reference `MintPlayer.AspNetCore.SpaServices` but **not** the `.Xsrf` package. **Adopt the package; delete the duplicate.**
+**D2 — Antiforgery.** CI/workflow posts can't carry XSRF at all, and `client_credentials` is sufficient there → exempt requests not authenticated by an ambient (cookie) credential, keyed on *the scheme that produced the principal*. Separately: Spark **hand-rolls** the XSRF cookie (`SparkMiddleware.cs:48,238-241`) and duplicates `MintPlayer.AspNetCore.SpaServices.Xsrf`, whose `UseAntiforgeryGenerator()` does exactly the same `GetAndStoreTokens` + `XSRF-TOKEN` cookie (`HttpOnly = false`). The demos reference `MintPlayer.AspNetCore.SpaServices` but **not** the `.Xsrf` package. ~~**Adopt the package; delete the duplicate.**~~
+
+> **REVERSED at implementation (M9.3).** "Does exactly the same" was assumed, not read. The package sets only `Path` and `HttpOnly`; Spark additionally sets `SameSite=Strict`, `Secure=Request.IsHttps`, and guards a null token. Adopting it would have removed `Secure` from the CSRF token cookie — a security regression bought with twenty lines of de-duplication. The exemption half of D2 stands and is implemented; the package half is declined. See M9.3.
 
 **D3 — Certificate forwarding (my call).** `AddCertificateForwarding` with a **configurable header name**, defaulting to `X-ARR-ClientCert`. Document both Traefik (`passTLSClientCert` → `X-Forwarded-Tls-Client-Cert`, the deployment this repo actually uses) and nginx (`ssl-client-cert`). Ships with a trusted-proxy allowlist — the demos' `KnownProxies.Clear()` must **not** be inherited.
 
@@ -422,19 +429,45 @@ A Spark-owned composite handler: try each registered credential scheme in turn, 
 
 Prefer the composite over `AddPolicyScheme` + `ForwardDefaultSelector`: the latter sniffs and selects exactly one scheme, whereas handlers already return `NoResult` correctly, which is what a composite wants.
 
+**Done**, with one addition the spec didn't call for. `NoResult` falls through as designed, but a scheme returning `Fail` is no longer discarded: if something was presented and every scheme refused it, the composite returns the failure and logs a warning naming the schemes tried. Previously — and this is the whole of F7 — a caller presenting an unrecognised credential was indistinguishable from a caller presenting none. Both arrived anonymous with `Everyone` rights, silently. Refusal should be legible in a log; "authenticated as nobody" should not be the same event as "did not try to authenticate".
+
+Only `DefaultAuthenticateScheme` is redirected, via `PostConfigure` so it wins regardless of the order an app calls `AddAuthentication` and `AddCredentialScheme` in. Challenge, sign-in and sign-out stay with Identity — the composite reads credentials and issues none, so a sign-in pointed at it would have nothing to write to and login would break. Pinned by `AddAuthentication_leaves_sign_in_and_challenge_with_Identity`.
+
 ### M9.2 — Registration surface
 
-`spark.AddCredentialScheme<THandler>("Name")` so M10's handlers register into the composite rather than each app wiring `AddAuthentication().AddScheme<>()` by hand.
+**Done.** Two overloads: `spark.AddCredentialScheme(name, isAmbient)` declares a scheme registered by its own package's extension (`AddJwtBearer`, `AddCertificate`, Identity's), and `spark.AddCredentialScheme<TOptions, THandler>(name, configure, isAmbient)` registers and declares in one step.
+
+Both live in `MintPlayer.Spark.Abstractions`, not core — the Authorization package references only Abstractions, and it is the first caller. Unlike the natural-ids case (D14), this costs nothing: ASP.NET's authentication types are in the shared framework, and `SparkModuleRegistry` already depends on `IApplicationBuilder`. No new package dependency anywhere.
+
+`AddAuthentication<TUser>` now declares Identity's two schemes **separately** rather than the combined `Identity.BearerAndApplication`, because the antiforgery gate has to know which one authenticated: the cookie is ambient and needs CSRF defence, the bearer is not and must not be obstructed by it. The combined scheme cannot answer that question.
+
+`UseSpark` also stops gating `UseAuthentication()` on `IdentityUserType != null`. An app whose only callers are machines registers no user type, and that condition would have left the middleware out entirely — so every certificate or token caller arrived anonymous.
 
 ### M9.3 — Antiforgery exemption + adopt the XSRF package (per D2)
 
 `SparkMiddleware.cs:181-201` enforces double-submit on mutating requests unconditionally. Exempt requests **whose principal came from a non-cookie scheme** — decide from what authenticated the request, not from what headers or cookies happen to be present, so the gate can't be suppressed by request shape.
 
-Also replace the hand-rolled XSRF cookie generation at `SparkMiddleware.cs:238-241` with `UseAntiforgeryGenerator()` from **`MintPlayer.AspNetCore.SpaServices.Xsrf`** (`C:\Repos\MintPlayer.AspNetCore.SpaServices\MintPlayer.AspNetCore.SpaServices.Xsrf`). It does the identical `GetAndStoreTokens` + `XSRF-TOKEN` cookie with `HttpOnly = false`. Keep `AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN")` (`:48`) — the package supplies the cookie, not the header config. Confirm the package is published to NuGet at a compatible version before taking the dependency.
+**Done.** The gate reads `ISparkAuthenticatedSchemeFeature`, stamped by the composite handler on success, and skips validation only when the scheme that produced the principal is non-ambient. Anonymous requests stay gated: the conservative reading of D2, and the one that cannot be talked into exempting a caller who presented nothing.
+
+That the decision keys on the *authenticating scheme* rather than on request shape is the security property, not an implementation detail. Were it keyed on "did the caller send an `Authorization` header", an attacker could disable CSRF protection for a cookie-authenticated victim by attaching a junk header. A junk header authenticates nothing, so no scheme records itself and the gate still runs — pinned by `An_unrecognised_credential_does_not_suppress_the_antiforgery_gate`.
+
+**The XSRF package swap is declined — D2's premise was false.** D2 recorded that `UseAntiforgeryGenerator()` from `MintPlayer.AspNetCore.SpaServices.Xsrf` "does the identical `GetAndStoreTokens` + `XSRF-TOKEN` cookie with `HttpOnly = false`". It does not. The package is published (`10.2.1`) and was read rather than assumed:
+
+| | Spark (`SparkMiddleware.cs:239-259`) | Package (`AntiforgeryMiddleware.cs:19`) |
+|---|---|---|
+| `SameSite` | `Strict` | not set → browser-default Lax |
+| `Secure` | `Request.IsHttps` | **not set** — token cookie travels over plain HTTP |
+| null `RequestToken` | guarded | unguarded |
+
+Adopting it would trade twenty lines of duplication for a weaker cookie on the CSRF token — losing `Secure` outright. Duplication is a cost; it is not this cost. **Spark's implementation stays.** Revisit if the package gains the attributes upstream; that is a change in a different repository and not this PR's to make.
 
 ### M9.4 — Regression sweep
 
-Non-negotiable, because the failure mode is silent. Verify against all four demos that browser login still works, that mutating PO requests still require XSRF, and that an unrecognised credential still lands as anonymous rather than erroring. Add a test asserting the default scheme is the composite.
+**Done, with one gap stated.** 1273 unit tests and **61 E2E tests** green. The E2E run is the load-bearing part: it starts the real Fleet host via `dotnet run` against its unmodified `Program.cs`, so it exercises cookie login, the antiforgery gate and the new default scheme together, on the real pipeline rather than a substituted one.
+
+The exemption was verified to be load-bearing rather than assumed — disabling `IsNonAmbientCredential` was confirmed to fail exactly the two tests that assert the exemption while leaving both gate tests passing. A test that passes for the wrong reason is the failure mode this milestone is most exposed to, since the whole change is invisible when it goes wrong.
+
+*Gap:* only Fleet is covered end to end. DemoApp, HR and WebhooksDemo have no E2E host, so "browser login still works" is verified for one of four demos, by test rather than by hand. Recorded rather than claimed.
 
 ## M10 — Credential handlers
 
