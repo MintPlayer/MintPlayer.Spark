@@ -164,7 +164,10 @@ Preview package, so no compatibility was required, but each of these changes beh
 ## Resolved decisions (2026-08-08)
 
 **D1 — External POST credential: OAuth2 `client_credentials` via `MintPlayer.Spark.IdentityProvider`**, not a per-user secret. Same experience for the consumer, better security posture for the application. **Conditional on the package being audited and proven sound** — see M12. Three defects are already known (unsalted SHA-256 + non-constant-time compare in `VerifyClientSecret`; application claims emitted as `client_group` so a machine token resolves to zero groups; no resource-server side at all).
-> ⚠️ **Open — see Q1 in the handover notes.** If `client_credentials` is the upload credential, **M4 (the PAT library) has no consumer.** Confirm whether M4 is dropped, or kept for a different audience.
+> ✅ **Q1 answered (user, 2026-08-09): M4 is dropped.** `client_credentials` is the upload
+> credential, it is built into the packages Spark already ships, and a PAT library would be a second
+> way to do the same thing with its own storage, hashing and revocation surface to keep correct.
+> Two machine-credential systems is one more than the framework needs.
 
 **D2 — Antiforgery.** CI/workflow posts can't carry XSRF at all, and `client_credentials` is sufficient there → exempt requests not authenticated by an ambient (cookie) credential, keyed on *the scheme that produced the principal*. Separately: Spark **hand-rolls** the XSRF cookie (`SparkMiddleware.cs:48,238-241`) and duplicates `MintPlayer.AspNetCore.SpaServices.Xsrf`, whose `UseAntiforgeryGenerator()` does exactly the same `GetAndStoreTokens` + `XSRF-TOKEN` cookie (`HttpOnly = false`). The demos reference `MintPlayer.AspNetCore.SpaServices` but **not** the `.Xsrf` package. ~~**Adopt the package; delete the duplicate.**~~
 
@@ -263,7 +266,6 @@ Because this is one large PR, **keep each milestone a separate, self-contained c
 | M8 | mTLS quick fixes (F1, F2, F5, F6) | Small |
 | M9 | **Scheme plumbing — composite scheme + antiforgery** | Medium, **high blast radius** |
 | M12 | Port + **audit** the IdentityProvider (client_credentials) | Large |
-| M4 | API tokens package — **pending Q1** | Large |
 | M10 | Credential handlers (cert, cert-forwarding, JWT resource server) | Medium |
 | M5 | Row-level authz on queries + stream | Large |
 | M11 | Retire the authorization bypasses | Medium |
@@ -271,7 +273,7 @@ Because this is one large PR, **keep each milestone a separate, self-contained c
 | M7 | Release | Small |
 
 **Ordering constraints that are not negotiable:**
-- **M9 gates M4, M10 and M11.** Spark's endpoints carry no authorization metadata, so extra schemes never run until a composite default scheme exists ([findings](./findings-replication-mtls.md) F7). A credential handler merged before M9 is dead code on Spark's endpoints. M4 moved after M9 for this reason.
+- **M9 gates M10 and M11.** Spark's endpoints carry no authorization metadata, so extra schemes never run until a composite default scheme exists ([findings](./findings-replication-mtls.md) F7). A credential handler merged before M9 is dead code on Spark's endpoints.
 - **M5 before M11** — M11 routes the sync write path through the chokepoint M5 establishes.
 - M8 is independent and cheap; do it early to get the silent-auth-bypass fixes in regardless of what happens downstream.
 
@@ -422,56 +424,21 @@ Headers now render into a named shadow-DOM slot rather than light-DOM projection
 
 ---
 
-## M4 — API tokens package
+## M4 — API tokens package — ❌ **cancelled (Q1, 2026-08-09)**
 
-### M4.1 — Project skeleton
+Not built, and deliberately so. The plan carried it from the handoff, but D1 chose OAuth2
+`client_credentials` through `MintPlayer.Spark.IdentityProvider` as the external-POST credential, and
+M12 built and audited exactly that. A PAT library would then be a **second** machine-credential
+system — its own token storage, hashing, prefixing, scoping, expiry and revocation, all of which the
+IdP already implements and all of which would have to stay correct independently.
 
-`libs/authorization/MintPlayer.Spark.Authorization.ApiTokens/` with a csproj modelled on `MintPlayer.Spark.Authorization.csproj` (`<Version>10.0.0-preview.41</Version>` — matching the current line; the release bump happens once in M6). **Add a project entry to `MintPlayer.Spark.sln`** — required, or CI's bare `dotnet restore` skips it and the `--no-restore` build fails. Add `<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />`.
+The user's call, and the right one: *"if unused, and since it's built-in to the Spark core library
+now, we should drop it."* Coverage's own `ApiTokenAuthenticationHandler` stays in Coverage, where it
+is an application detail rather than framework surface.
 
-> **Before starting M4, re-read `C:\Repos\Coverage\Coverage\ApiTokens\`.** Coverage is being developed concurrently; that directory appeared mid-way through writing this plan and is the reference implementation for M4.2–M4.4.
-
-### M4.2 — Document + service
-
-`Identity/SparkApiToken.cs` — id `ApiTokens/{sha256-hex}`, plus `Prefix`, `Scopes`, `CreatedByUserId`, `CreatedOnUtc`, `ExpiresOnUtc?`, `RevokedOnUtc?`.
-
-`Services/ApiTokenService.cs` — port from `Coverage/ApiTokens/ApiTokenService.cs`, generalizing the prefix to a configurable option:
-- `GenerateTokenValue()` — `{prefix}` + base64url of `RandomNumberGenerator.GetBytes(32)` (`+`→`-`, `/`→`_`, trailing `=` trimmed).
-- `Hash(value)` — `Convert.ToHexStringLower(SHA256.HashData(...))`; the hash **is** the document id.
-- `LooksLikeToken(value)` — cheap prefix+length pre-filter, checked *before* hashing.
-- Plus issue / validate / list-by-user / revoke over `IAsyncDocumentSession`, mirroring `UserStore`/`RoleStore` — **not** the `PersistentObject` pipeline.
-
-Tests: round-trip issue→validate, revoked rejected, expired rejected, unknown rejected, and that the plaintext never appears in the stored document.
-
-### M4.3 — Authentication handler
-
-`Authentication/ApiTokenAuthenticationHandler.cs` — port from `Coverage/ApiTokens/ApiTokenAuthenticationHandler.cs`. Plain `AuthenticationHandler<AuthenticationSchemeOptions>`; no bespoke options class needed.
-
-**The `NoResult()` discipline is the load-bearing detail** — return `AuthenticateResult.NoResult()` when the header is missing, isn't `Bearer`/`Token`, or lacks our prefix, so cookie and other bearer schemes still get their turn. Reserve `Fail()` for a token that *is* ours but is unknown or revoked. This is what makes three schemes coexist without per-endpoint configuration.
-
-Claims: namespaced types (`{prefix}:scope`, `…:hash`, plus app-defined ones), emitting optional claims only when present.
-
-**Scope→group mapping is a required decision, not a detail** (PRD §2 risk 2). `ClaimsGroupMembershipProvider.cs:19-26` reads only `"group"`/`"groups"`/role claims, so scope claims alone grant nothing. Default: emit scopes as scope claims *and* document that apps map scopes→groups via the existing `AddGroupMembershipProvider<TProvider>()` (`SparkAuthorizationExtensions.cs:66-78`). Don't let it look automatic.
-
-### M4.4 — Registration
-
-`Extensions/ApiTokenBuilderExtensions.cs` — `AddApiTokens(this ISparkBuilder builder, …)`, **not** an `IdentityBuilder` extension. Coverage's working code registers the scheme outside the Identity pipeline (`Coverage/Program.cs:83-84`):
-
-```csharp
-builder.Services.AddAuthentication()
-    .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(SchemeName, null);
-```
-
-A PAT scheme is orthogonal to Identity provider configuration, so the `configureProviders`/`IdentityBuilder` route the handoff assumed is both unnecessary and wrong-layer. This was M4's biggest unknown and is now closed (PRD §2 risk 1).
-
-### M4.5 — Endpoints
-
-`Endpoints/ApiTokensGroup.cs` (`Prefix => "/spark/auth/tokens"`) + `IssueToken` / `ListTokens` / `RevokeToken`, following the `IEndpointBase` pattern. Cookie-authenticated (these are user-facing management ops, not the CI-facing token path), with `RequireAntiforgeryTokenAttribute(true)` stamped directly on each mutating endpoint as `Logout.cs:14` does.
-
-Integration tests: issue via cookie auth, then authenticate a request with the returned token; revoke, then confirm the token no longer authenticates; confirm an anonymous caller cannot issue.
-
-### M4.6 — Demo wiring
-
-Coverage's M0 exit criterion is *"a demo app can mint and authenticate with an API token."* Wire it into one demo (WebhooksDemo, which already uses `spark.AddAuthentication<SparkUser>(configureProviders: …)` at `Program.cs:29-30`) and add a token-authenticated endpoint to prove the scheme end to end.
+The full M4.1–M4.6 spec is in this file's git history if the decision is ever revisited — the likely
+trigger would be a consumer that needs a credential a *user* can mint and revoke for themselves,
+which is a genuinely different shape from a client secret an operator registers.
 
 ---
 

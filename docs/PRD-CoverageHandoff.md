@@ -5,7 +5,7 @@
 **Author:** Investigation team (6 parallel investigators) + synthesis
 **Origin:** `C:\Repos\Coverage\docs\spark-handoff.md`, generated during the Coverage-analyzer investigation. Cross-checked against Coverage's own `docs/PRD.md` §10 and `docs/PLAN.md` M0.
 **Base:** `master` @ `febea26`. The handoff asked to "confirm intended base" because it was written against a `security-audit` checkout; that state is older than current `master`, so `master` is the base.
-**Scope:** `MintPlayer.Spark.Messaging`, `MintPlayer.Spark.Authorization` (+ a new `…Authorization.ApiTokens` package), `MintPlayer.Spark.Webhooks.GitHub` (docs), the four demo ClientApps, root `package.json`.
+**Scope:** `MintPlayer.Spark.Messaging`, `MintPlayer.Spark.Authorization`, `MintPlayer.Spark.IdentityProvider`, `MintPlayer.Spark.Replication`, `MintPlayer.Spark.Webhooks.GitHub` (docs), the four demo ClientApps, root `package.json`. (An `…Authorization.ApiTokens` package was in the original scope and is cancelled — see item 2.)
 **Backward compatibility:** Not required — framework is in preview (`10.0.0-preview.41`). We may rename/replace existing shapes.
 
 ---
@@ -14,17 +14,17 @@
 
 Six work items surfaced by the first real out-of-tree consumer of the published Spark packages (MintPlayer/CodeCoverage). Every claim in the handoff was verified against source; **four were confirmed, three were materially wrong or mis-scoped**, and one bug turned out to be worse than reported.
 
-> **Item 2 did not ship as a PAT library and no `MintPlayer.Spark.Authorization.ApiTokens` package
-> exists.** D1 chose OAuth2 `client_credentials` through `MintPlayer.Spark.IdentityProvider` as the
-> external-POST credential instead, which is what M12 built and audited. That leaves the PAT library
-> with no consumer — the open **Q1** in the plan asks whether it is dropped outright or kept for a
-> different audience, and it was never answered, so M4 is neither built nor formally cancelled.
-> Recorded here rather than left implied by a ✅ in the table.
+> **Item 2 shipped as something else, and the PAT library is cancelled.** D1 chose OAuth2
+> `client_credentials` through `MintPlayer.Spark.IdentityProvider` as the external-POST credential,
+> which is what M12 built and audited; no `MintPlayer.Spark.Authorization.ApiTokens` package exists
+> and none will. **Q1 is answered (user, 2026-08-09): dropped** — the capability is built into the
+> packages Spark already ships, and a PAT library alongside it would be a second machine-credential
+> system with its own storage, hashing and revocation to keep correct.
 
 | # | Item | Handoff said | Verified verdict | In this PR? |
 |---|---|---|---|---|
 | 1 | Generic message types → invalid queue names | High | **Confirmed, and worse** — flagship demo is broken at HEAD | ✅ Yes |
-| 2 | API tokens (PAT) library | Extract from Coverage later | **Sequencing reversed** — Coverage's own plan puts it in Spark *first*; prior art to port appeared mid-investigation | ⚠️ **No — superseded**, see below |
+| 2 | API tokens (PAT) library | Extract from Coverage later | **Superseded** — `client_credentials` covers the need; a PAT library would duplicate it | ❌ Cancelled (Q1) |
 | 3 | External-login popup handshake | Propagate a query param | **Confirmed, wider** — all failure paths broken too | ✅ Yes |
 | 4 | ng-bootstrap 22.4.0 → 22.13.x | New peers + attribute directive | **Mostly wrong** — peers already present; it's a *structural* directive | ✅ Yes |
 | 5 | R4-H1 row-level authz gap | Decide: fix or track | **Confirmed, plus a second bypass** — row-level only; type-level *is* enforced | ✅ Yes |
@@ -148,6 +148,10 @@ So an app upgrading past this fix needs no queue draining and no subscription re
 
 ## 2. API tokens (PAT) for CI upload authentication
 
+> ❌ **Cancelled outright (Q1, 2026-08-09).** No PAT package is being built. Read the rest of this
+> section as design reasoning that outlived its subject, not as work to do — in particular the
+> phrase "Build it in Spark now" below is dead.
+>
 > ⚠️ **Superseded in part by decision D1 (2026-08-08).** The machine credential is now OAuth2 **`client_credentials`** via `MintPlayer.Spark.IdentityProvider` (ported in `d51f9fd`), not a bespoke PAT library — one credential subsystem for machine callers rather than two. D1 was made conditional on the package being proven sound; that audit is **[findings-identity-provider-audit.md](./findings-identity-provider-audit.md)**, which found 4 Critical and 6 High issues including a one-click account takeover. All eleven are fixed; 25 remain open and are sequenced as M12.4 in the plan.
 >
 > The section below is retained because its design reasoning still holds — in particular the credential-to-claims seam, the scope→group mapping decision, and the `NoResult()` discipline that lets schemes coexist. Only the *choice of credential* changed.
