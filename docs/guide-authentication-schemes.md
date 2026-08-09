@@ -69,7 +69,12 @@ that swap would fail the suite rather than pass quietly.
 | `Identity.External` | same | Transient cookie during an OAuth round trip | — | No |
 | `Identity.TwoFactorUserId` | same | Cookie holding a **partially** authenticated user between password and second factor | — | **No** |
 | `Identity.TwoFactorRememberMe` | same | "Don't ask again on this device" cookie | — | No |
-| External providers (GitHub, Google, Microsoft, Apple) | `configureProviders` on `spark.AddAuthentication<TUser>()`; GitHub via `GitHubAuthenticationExtensions.cs` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No |
+| External providers (GitHub, Google, Microsoft, Apple) | `configureProviders` on `spark.AddAuthentication<TUser>()`; GitHub via `GitHubAuthenticationExtensions.cs` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No — challenge-only; never authenticates an incoming Spark request |
+
+**Exactly two schemes reach the composite today**, both wired by the single
+`spark.AddAuthentication<TUser>()` call. There is no certificate scheme and no JWT-bearer
+resource-server scheme anywhere in the repository yet — that is M10's scope. Everything else in this
+document authenticates through a mechanism of its own, outside the scheme system.
 
 **The two-factor schemes are deliberately absent from the composite.** A `TwoFactorUserId` cookie
 represents someone who proved a password and nothing else. It must never satisfy a Spark
@@ -90,6 +95,15 @@ produced — the bearer scheme — so an API access token satisfied "is a user s
 `/connect/authorize` and the consent pages, and could drive the whole interactive grant headlessly.
 M9 changes the ambient principal's *ordering* (cookie is now tried first), but the IdP's explicit
 resolution is what makes the guarantee, and it is unaffected.
+
+The rest of the identity provider's surface also sits outside the scheme system, deliberately: the
+token and introspection endpoints authenticate **OIDC clients** from `client_id`/`client_secret` in
+the form body (`Token.cs:754-773`, reused by `Introspection.cs:46-52`), and `/connect/userinfo`
+parses the `Authorization: Bearer` header itself and validates the JWT against the provider's own
+signing keys (`UserInfo.cs:22-50`). These authenticate protocol participants, not `PersistentObject`
+callers, so none of them belongs in Spark's composite. The scheme that *would* — a JWT-bearer
+resource server validating the provider's access tokens for Spark's own endpoints — does not exist
+yet and is M10.
 
 ---
 
@@ -187,7 +201,7 @@ not copy the pairing into an app that matters.
 | Demo | Wiring | Effective posture |
 |---|---|---|
 | **Fleet** | `AddSparkFull` → `AddAuthorization()` + `AddAuthentication<SparkUser>` | `security.json`; anonymous gets `QueryRead/Company` |
-| **HR** | `AddSpark` + `AddAuthorization()` (`Program.cs:28`) | same |
+| **HR** | `AddSpark` + `AddAuthorization()` (`Program.cs:28`) — also hosts the **OIDC identity provider** (`spark.AddIdentityProvider`, `:35-39`) | same |
 | **DemoApp** | `AllowAnonymousAccess()` (`Program.cs:30`) | **everything allowed, no authorization at all** |
 | **WebhooksDemo** | `AddAuthorization(DefaultBehavior = AllowAll)`, no `security.json` | **everything allowed** |
 
@@ -197,18 +211,22 @@ not copy the pairing into an app that matters.
 
 | Behaviour | Covered | Where |
 |---|---|---|
-| Browser cookie login succeeds and grants group rights | **E2E** | `SparkClientFactory.LoginAsync` used across the Fleet E2E suite |
-| Anonymous caller gets `Everyone` rights and no more | **E2E** | `PermissionsEndpointAuthTests` (both cases) |
-| Anonymous caller is denied what `Everyone` does not grant | **E2E** | `PermissionsEndpointAuthTests.Unauthenticated_GET_permissions_for_Car_reports_no_access` |
+| Anonymous caller **cannot list or create** a protected entity (`Car`) | **E2E** | `AnonymousPersistentObjectAccessTests` (4 tests) |
+| Anonymous caller **can** read what `Everyone` grants (`Company`) | **E2E** | same |
+| Anonymous caller gets `Everyone` rights and no more, as reported | **E2E** | `PermissionsEndpointAuthTests` (2 tests) |
 | Anonymous caller sees only permitted metadata | **E2E** | `MetadataEndpointAuthTests` (4 tests) |
+| Anonymous caller cannot mutate lookup references | **E2E** | `LookupReferenceAuthTests` (2 tests) |
 | Denied and non-existent are indistinguishable to the client | **E2E** | `NotFoundVsForbiddenTests` |
-| Mutating request without an XSRF token is rejected | **unit only** | `AntiforgerySecurityTests` — no E2E equivalent |
+| Browser cookie login grants group rights | **E2E, indirectly** | every admin-authenticated `Security/*` test succeeds at a Car operation; no test asserts login→rights as its own subject |
+| Mutating request without an XSRF token is rejected | **unit only** | `AntiforgerySecurityTests`, `CredentialSchemeTests` — no E2E equivalent |
 | The XSRF cookie carries `Secure` and `SameSite=Strict` | **E2E** | `XsrfCookieFlagTests` (2 tests) |
-| Non-ambient credential is exempt from antiforgery | **unit** | `CredentialSchemeTests` (4 tests) |
+| Non-ambient credential is exempt from antiforgery | **unit** | `CredentialSchemeTests` |
 | A refused credential does **not** suppress the antiforgery gate | **unit** | `CredentialSchemeTests` |
 | A refused credential is indistinguishable from anonymity | **unit** | `AuthenticationOutcomeTests` (3 tests) |
 | Composite is the default authenticate scheme; sign-in/challenge are not | **unit** | `SparkBuilderExtensionsTests` (3 tests) |
-| Row-level filtering on list/query/stream | **E2E + unit** | `RowLevelAuthzTests`; `RowLevelQueryAuthorizationTests` |
+| Row-level filtering on get-by-id, list and child query | **E2E** | `RowLevelAuthzTests` (3 tests) |
+| Row-level filtering on a **stream** | **unit only** | `RowLevelQueryAuthorizationTests` — no E2E |
+| `DenyAllAccessControl` denies an unconfigured app | **unit only** | `PermissionServiceDefaultsTests` |
 | Replication endpoints refuse an unauthenticated caller | **E2E** | `ReplicationEndpointAuthTests` (3 tests) |
 | Development-mode mTLS still verifies module registration | **unit** | `ModuleCertificateValidatorTests` |
 
@@ -216,16 +234,41 @@ not copy the pairing into an app that matters.
 
 - **Only Fleet has an E2E host.** DemoApp, HR and WebhooksDemo are not exercised end to end at all,
   so "login works" is verified for one demo of four.
-- **No E2E test authenticates with a bearer token.** The bearer scheme's participation in the
-  composite is covered only by unit tests.
+- **No E2E test authenticates with a bearer token.** Nor with a certificate — no certificate or
+  JWT-bearer scheme exists anywhere yet (M10). `CredentialSchemeTests` proves the composite plumbing
+  works for *whatever* handler is eventually registered, using a stub; it is not evidence that a
+  real bearer credential authenticates.
+- **A rejected credential's *authorization* outcome is untested.** `AuthenticationOutcomeTests`
+  proves the principal is anonymous, and `CredentialSchemeTests` proves the antiforgery gate stays
+  armed — but nothing asserts that a garbage bearer token yields exactly `Everyone` rights on a real
+  permission check.
+- **Logout is not proven to revoke anything.** `LogoutTests` asserts that `SignOutAsync` was *called*
+  with the right scheme, against a mock. No test logs in, logs out, and retries with the stale
+  cookie.
 - **A 2FA-pending principal is not tested against a Spark endpoint.** It is excluded by construction
-  (the scheme is never registered as a credential), which is a strong argument but not a test. The
-  equivalent guarantee *is* tested for the identity provider's own endpoints
-  (`OidcTwoFactor*` tests, §L.4 of the [IdP matrix](./idp-e2e-test-matrix.md)).
-- **`DenyAllAccessControl` has no E2E coverage** — no demo ships without an authorization opt-in, so
-  the fail-closed default is only unit-tested.
+  — the two-factor schemes are never registered as credentials, so the composite never consults them
+  — which is a strong argument but not a test. The equivalent guarantee *is* tested for the identity
+  provider's own endpoints (21 tests, §L.4 of the [IdP matrix](./idp-e2e-test-matrix.md)), which is
+  a different subsystem and should not be read as covering this one.
 - **The two non-scheme paths (replication sync-apply, webhooks) are known bypasses**, not gaps in
   testing. See F4/F11 and M11 in the [handoff plan](./coverage-handoff-plan.md).
+
+### N23 — validation precedes authorization on the create path
+
+`CreatePersistentObject` validates the posted object (`Create.cs:62`) before the authorization check,
+which lives inside `SavePersistentObjectAsync` (`:68`). A caller with no right to create an entity
+type therefore gets a **400 with validation errors** when the payload is malformed, and only reaches
+`401`/`403` when it is well-formed.
+
+The refusal itself is never in doubt. What leaks is which attributes an entity type requires, for a
+type the caller cannot create — a mild oracle, and inconsistent with the standard
+`NotFoundVsForbiddenTests` exists to hold. Pinned as current behaviour in
+`AnonymousPersistentObjectAccessTests.Anonymous_cannot_create_a_Company_despite_being_able_to_read_them`
+so the reorder is a visible, deliberate change when it happens.
+
+Not fixed here: separating "may I create this?" from "is this valid?" means `DatabaseAccess` exposing
+the authorization check independently of the save, and adding a second check ahead of the chokepoint
+is the duplication M5 and M11 exist to remove. It belongs with M11.
 
 ---
 

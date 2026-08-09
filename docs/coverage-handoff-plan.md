@@ -781,6 +781,10 @@ The risk worth checking was ordering, not the obvious `Id.Should().Be(...)` asse
 
 This is the phase that actually delivers "no duplication per credential type" — M9 and M10 only prevent *new* duplication.
 
+**M11.4 — N23, found while documenting the authentication story (2026-08-09).** `CreatePersistentObject` validates the posted object (`Create.cs:62`) *before* the authorization check, which lives inside `SavePersistentObjectAsync` (`:68`). An anonymous caller posting a malformed payload for an entity type it may not create gets a 400 listing the validation errors, and only reaches 401/403 when the payload happens to be well-formed. The refusal is never in doubt; what leaks is which attributes a type requires, for a type the caller cannot touch — the same class of oracle `NotFoundVsForbiddenTests` exists to prevent.
+
+It lands here rather than as its own fix because the correct repair is the one M11 is already making: `DatabaseAccess` exposing "may I?" independently of "do it", so the check can move ahead of validation **without** adding a second copy of the decision in front of the chokepoint. Current behaviour is pinned by `AnonymousPersistentObjectAccessTests.Anonymous_cannot_create_a_Company_despite_being_able_to_read_them`, which asserts the 400 and says in its own comment that it becomes 401 when this is reordered.
+
 - **M11.1** — route `/spark/sync/apply` through the principal + `IPermissionService`. Today `SyncActionHandler` reflectively invokes `OnSaveAsync`/`OnDeleteAsync`, skipping the `DatabaseAccess` chokepoint entirely, so an authenticated module can write anything anywhere.
 - **M11.2** — route the webhook processor through the same. Its crypto is correct (`FixedTimeEquals`); it just never establishes an identity.
 - **M11.3** — migration note. Existing replication users will need `security.json` entries for their modules or cross-module sync starts failing. **See open question Q5.**
