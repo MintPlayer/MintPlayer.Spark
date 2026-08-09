@@ -47,7 +47,12 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `7cb1abe` | **N19** — optimistic concurrency on the grant document |
 | `3a37833` | **N20, N21** — the revocation epoch, and one shared grant rule |
 | `e3de54f` | Ported `WaitForIndexing`; **six unwaited index assertions guarded**, two of which could pass vacuously |
-| `(head)` | **N22** — redirect-URI validation failed open on Linux; **CI green** |
+| `e3de54f` | **N22** — redirect-URI validation failed open on Linux; **CI green** |
+| `10f024f` | PRD/plan/matrix brought current through N22 |
+| `8f73301` | **M8 done** — F1, F2, F5, F6; two tests that proved nothing replaced (81 replication tests green) |
+| `38379e2` | **Natural ids** — `IHasNaturalId`, ported from CronosCore |
+| `1279f07` | **D14** — package + opt-in proposal declined with reasons; conventions split and renamed |
+| `(head)` | **M14.2** — the suite stops substituting the store it tests (**1266 tests green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 3, 4 and 6 are untouched, M8–M11 has had no work, and release mechanics are not done. Item 5 (row-level authz) is now **done** — see M5 above.
 
@@ -151,6 +156,12 @@ Auto-wiring via the source generator was evaluated and rejected as a substitute:
 The cron/migrations precedent does not rescue the opt-in either. `AddCronJobs()` / `AddMigrations()` have the *same* gap — forget the call and every job silently never runs — but there the forgotten call is a single line reviewed once at setup, and everything added afterwards is auto-discovered. Natural ids have no per-instance registration to auto-discover; they are one global convention flip, so the mitigation that makes cron's gap tolerable does not transfer.
 
 *Against the package:* the split is **forced, not chosen**. All four `Demo/*/[Name].Library` entity assemblies reference `MintPlayer.Spark.Abstractions` and never `RavenDB.Client`, so the interface must live in Abstractions while the convention needs a Raven-aware assembly. A natural-ids package would therefore contain **exactly one file** — and at ~60 lines it would be five times smaller than `Migrations` (324 lines), the current floor. Cron and Migrations earn their own packages by carrying real dependencies (NCrontab, a hosted background service, a scheduler); natural ids carries none, needing exactly the `RavenDB.Client` core already pins. Against that, every new package auto-publishes on push to master and needs its own version bumped forever ([CI doctrine](../CLAUDE.md)). The cost is not the ~4 mechanical touch points — CI and Nx need zero changes — it is a permanent versioning obligation for one extension method.
+
+*The one real argument for a builder-level call, and why it points somewhere else.* C# interfaces are inherited transitively and RavenDB matches them with `IsAssignableFrom`, so a **shared base class** — or an entity type shipped by a third-party package — that implements `IHasNaturalId` hands derived ids to every subclass and every consumer, including authors who never wrote `GetId()` and never read the base's derivation. Because the interface lives in Abstractions, which every `*.Library` project already references, a library is in a position to do this.
+
+That is a real concern, but it is the **opposite shape** to the proposal: it argues for an opt-*out* kill switch against behaviour imposed on you, not for gating behaviour you deliberately asked for behind a second call. Not live today — every demo entity across DemoApp/Fleet/HR/WebhooksDemo is a flat class with no shared base, and nothing in the repo implements the interface except the test's own `Car`. Recorded as the escape hatch to add if and when a shared base or a third-party entity type appears, rather than built speculatively now.
+
+*Costs that were checked rather than assumed.* `RavenDB.Client` 7.2.1 was decompiled to settle it: `GenerateDocumentIdAsync` scans `_listOfRegisteredIdConventionsAsync` with one `IsAssignableFrom` per registered convention and falls through to `AsyncDocumentIdGenerator` when none matches. Registration is a one-time sorted insert; the per-operation cost with a single registered convention is one type-assignability check, against session tracking and network I/O. **There is no cost to gate**, which removes the last argument for opt-in that did not depend on precedent. A proposed runtime "scan for implementers and skip registration if none" optimisation was withdrawn on the same evidence — and would have been actively wrong, since the demos' entities live in a separate `*.Library` assembly that an entry-assembly scan would miss, silently disabling the feature for every current demo.
 
 *What was kept from the proposal:* the naming complaint was fair. See M14.
 
@@ -714,18 +725,22 @@ Scope came out of D14. The packaging and opt-in halves of the proposal were decl
 
 Called as `store.Conventions.UseNaturalIds().UseGeneratedIds()` at the single production site. This also puts the name the user asked for — *natural ids* — on the thing that actually is natural ids, rather than on a method that also owns Spark's default id scheme.
 
-### M14.2 — No test exercises Spark's document-id generation
+### M14.2 — The unit/integration suite substitutes the store it is testing
 
-Found while checking where a convention hook would have to reach. **Spark's production id conventions are installed by zero tests.**
+Found while checking where a convention hook would have to reach. **`MintPlayer.Spark.Tests` never runs Spark's production id conventions.**
 
 - The 47 fixtures deriving from `SparkTestDriver` get their store from `RavenTestDriver.GetDocumentStore()` (`SparkTestDriver.cs:69`), which never routes through `AddSpark`.
-- The 24 using `SparkEndpointFactory` *do* call `AddSpark` — and then **remove the registered `IDocumentStore` and substitute the test store** (`SparkEndpointFactory.cs:97-99`), which is the same `RavenTestDriver` store. So the production store factory never executes there either.
+- The 23 that layer `SparkEndpointFactory` on top *do* call `AddSpark` — and then **remove the registered `IDocumentStore` and substitute the test store** (`SparkEndpointFactory.cs:97-99`), which is the same `RavenTestDriver` store. So the production store factory never executes there either.
 
-Every fixture therefore runs on Raven's stock sequential ids (`trailers/1`) while production runs on `Trailers/{guid}`. `NaturalIdConventionTests` is the only file that has ever exercised the real rules, and only because it installs them by hand in `PreInitialize`.
+Every fixture therefore runs on Raven's stock sequential ids (`trailers/1`) while production runs on `Trailers/{guid}`. `NaturalIdConventionTests` is the only file in the project that has exercised the real rules, and only because it installs them by hand in `PreInitialize`.
 
-This is pre-existing and predates natural ids — the GUID generator has been unconditional since `AddSpark` was introduced. It is recorded here rather than in the IdP findings because it is a Spark-wide testing gap, and because it is the same shape as the two vacuous assertions M8 fixed: a test suite that looks like it covers something it never touches.
+The E2E suite is **not** affected: `FleetTestHost.cs:274` shells out `dotnet run` against the real Fleet project, so it gets the unmodified `Program.cs` and the real factory. An earlier draft of this section claimed "no test anywhere," which was too strong and is corrected here.
 
-**Not yet fixed — scoping first.** Aligning the fixtures means swapping sequential ids for GUIDs, and the risk is not the obvious `Id.Should().Be(...)` assertions but ordering: `trailers/1` and `trailers/2` sort in insertion order, GUIDs do not. Any test that stores several documents and asserts on their order would start failing for a reason unrelated to what it tests. Breakage assessment is in progress; if it is broad, the honest move is to record the gap and fix it in its own PR rather than bury a suite-wide id change inside this one.
+This is pre-existing and predates natural ids — the GUID generator has been unconditional since `AddSpark` was introduced. It is recorded here rather than in the IdP findings because it is a Spark-wide testing gap, and because it is the same shape as the two vacuous assertions M8 fixed: a test that looks like it covers something whose subject was quietly swapped out.
+
+**Fixed in two files.** `SparkTestDriver` applies the conventions in `PreInitialize`, so all 47 fixtures pick them up; `NaturalIdConventionTests`'s hand-rolled override became redundant and was deleted. **1266 tests green, zero breakage** — which is the outcome the analysis below predicted, and the reason it was worth doing the analysis rather than guessing.
+
+The risk worth checking was ordering, not the obvious `Id.Should().Be(...)` assertions — `trailers/1` and `trailers/2` sort in insertion order and GUIDs do not, so any test storing several documents and asserting on their order would fail for a reason unrelated to its subject. It was checked as a **closed set**: an id-order dependency is only reachable from a `StoreAsync`/`Store` call that omits an explicit id, and every such call site in `tests/` was enumerated and inspected. All of them either sort explicitly by a field (`SparkQuery.SortColumns`) or assert order-independently (`BeEquivalentTo`, `ContainSingle`, `HaveCount`). The 24 id-shape assertions in the tree all trace to explicitly-assigned ids. The single JSON fixture (`Reflection/Fixtures/people.json`) carries `@metadata.@id` on every document, as Raven's import format requires.
 
 ## M11 — Retire the authorization bypasses
 

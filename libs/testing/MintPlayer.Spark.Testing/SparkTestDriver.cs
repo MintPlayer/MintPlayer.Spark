@@ -1,4 +1,6 @@
 using System.Reflection;
+using MintPlayer.Spark;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.Embedded;
 using Raven.TestDriver;
@@ -36,6 +38,28 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     }
 
     protected IDocumentStore Store { get; private set; } = null!;
+
+    /// <summary>
+    /// Installs Spark's own document-id rules, so a test sees the ids production would assign.
+    /// <para>
+    /// Without this the suite tested a store it had quietly substituted. <see cref="Store"/> comes
+    /// from <see cref="RavenTestDriver.GetDocumentStore"/> and never routes through
+    /// <c>AddSpark</c>; <c>SparkEndpointFactory</c> looks like it closes that gap but does not — it
+    /// calls <c>AddSpark</c> and then removes the <see cref="IDocumentStore"/> that registered,
+    /// putting this one back in its place. So every fixture ran on RavenDB's stock sequential ids
+    /// (<c>trailers/1</c>) while production ran on <c>Trailers/{guid}</c>, and
+    /// <see cref="IHasNaturalId"/> derivation never ran at all.
+    /// </para>
+    /// <para>
+    /// Conventions freeze at <c>Initialize()</c>, which is why this is the hook: it is the same
+    /// point in the lifecycle where <c>AddSpark</c> installs them on the real store.
+    /// </para>
+    /// </summary>
+    protected override void PreInitialize(IDocumentStore documentStore)
+    {
+        documentStore.Conventions.UseNaturalIds().UseGeneratedIds();
+        base.PreInitialize(documentStore);
+    }
 
     /// <summary>
     /// Waits for every enabled index to catch up. Shadows <see cref="RavenTestDriver"/>'s method

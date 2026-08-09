@@ -33,17 +33,8 @@ public class NaturalIdConventionTests : SparkTestDriver
         public string? Label { get; set; }
     }
 
-    /// <summary>
-    /// Conventions freeze at <c>Initialize()</c>, so they have to be installed here rather than
-    /// on <see cref="SparkTestDriver.Store"/> after the fact — the same point in the lifecycle
-    /// where <c>AddSpark</c> installs them on the real store.
-    /// </summary>
-    protected override void PreInitialize(IDocumentStore documentStore)
-    {
-        documentStore.Conventions.UseNaturalIds().UseGeneratedIds();
-        base.PreInitialize(documentStore);
-    }
-
+    // No PreInitialize override: SparkTestDriver installs Spark's id conventions for every
+    // fixture. This file used to do it by hand, which is how the gap was noticed.
     private IDocumentStore SparkStore() => Store;
 
     [Fact]

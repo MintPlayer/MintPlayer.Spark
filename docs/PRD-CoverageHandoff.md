@@ -443,7 +443,11 @@ The general form is worth carrying further than this one bug: **an API whose con
 
 The same investigation is where the practice of not trusting agent output paid: a draft of D14 asserted "no source generator in this repo emits diagnostics," which was **false** — `SPARK001`/`SPARK002` and five translation descriptors exist and ride on core as an analyzer reference. It was caught by asking for the claim to be verified before it shipped, not by review afterwards. The corrected fact strengthened the argument rather than weakening it, which is the usual outcome when a convenient claim turns out to be wrong.
 
-**And what it found that nobody asked about — no test exercises Spark's document-id generation.** All 47 `SparkTestDriver` fixtures take their store from `RavenTestDriver`, bypassing `AddSpark` entirely; the 24 `SparkEndpointFactory` fixtures call `AddSpark` and then *remove* the store it registered (`SparkEndpointFactory.cs:97-99`). So the production id conventions have never run under test, and the whole suite operates on sequential ids while production uses GUIDs. This is the M8 lesson at suite scale: **the tests that most need attention are not the failing ones, they are the ones whose subject was quietly substituted.** Scoped as M14.2.
+**And what it found that nobody asked about — the unit/integration suite substitutes the thing it is testing.** All 47 `SparkTestDriver` fixtures take their store from `RavenTestDriver`, bypassing `AddSpark` entirely. The 23 that layer `SparkEndpointFactory` on top *do* call `AddSpark` — and then **remove the `IDocumentStore` it registered and substitute the same `RavenTestDriver` store** (`SparkEndpointFactory.cs:97-99`). So every fixture in `MintPlayer.Spark.Tests` runs on Raven's stock sequential ids while production runs on GUIDs.
+
+An earlier draft of this paragraph said "no test anywhere" — **too strong, and corrected**. The E2E suite does exercise the real conventions, because `FleetTestHost.cs:274` shells out `dotnet run` against the actual Fleet project and gets its unmodified `Program.cs`. The divergence is specific to the unit/integration project, which is also where it is least visible.
+
+This is the M8 lesson at suite scale: **the tests that most need attention are not the failing ones, they are the ones whose subject was quietly substituted.** Scoped as M14.2.
 
 ## 8. Verification
 
