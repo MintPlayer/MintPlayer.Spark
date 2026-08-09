@@ -64,9 +64,10 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `413f2dc` | **F12, F13** — ETL read authorization; the identity M11 depended on and did not establish (**1291 + 65 E2E green**) |
 | `01c4002` | **D15** — where the chokepoint stops; `IDatabaseAccess`'s unchecked family renamed |
 | `036ab5b` | **D15a** — the two-axis rule and the surface table, in the plan, PRD and guide |
-| `(head)` | **M2 done** — the popup handshake is reachable, reports refusals, and lives in the library |
+| `64296b6` | **M2 done** — the popup handshake is reachable, reports refusals, and lives in the library |
+| `(head)` | **M3 done** (bar the visual check) — ng-bootstrap 22.13, accordion header migrated, 22.13 API use verified three ways |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: **M3** (ng-bootstrap 22.13) and **M6** (the documentation sweep) are untouched, and release mechanics (**M7**) are not done. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: **M6** (the documentation sweep) is untouched and release mechanics (**M7**) are not done. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
 **The intermittent failure — probable cause found, and six latent defects with it.** Six assertions in the IdentityProvider tests queried an **index** with no preceding wait: `OidcConsentSecurityTests` (×4), `OidcAuthorizeSecurityTests`, `OidcTokenSecurityTests`. Under full-suite load index lag grows, which is exactly the shape of an intermittent that never reproduces under a filter.
 
@@ -98,11 +99,11 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 ⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
 
-**Not started:** M3, M6, M7. **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
+**Not started:** M6, M7. **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
 
 ~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
 
-**Next action:** **M3** — the ng-bootstrap 22.13 bump and the accordion-header migration across the four demo shells. It is the only remaining milestone that touches the ClientApps, so it should land before the deferred build/test sweep rather than after. Then **M6** (documentation) and **M7** (versions and the release note).
+**Next action:** **M6** — the documentation sweep (PRD §6 rows plus the broken API references the sweep found). Then **M7**: `<Version>` bumps across ~20 csprojs, `@mintplayer/ng-spark-auth` for M2's added public API, and the release note assembled from the breaking-changes table below.
 
 ## Breaking changes — release notes for M7
 
@@ -356,7 +357,35 @@ Add unit tests under the package's Vitest setup.
 
 ---
 
-## M3 — ng-bootstrap 22.13.0
+## M3 — ng-bootstrap 22.13.0 ✅ done (M3.3 pending)
+
+The PRD's read held: peers were already satisfied, `ng-swiper` fell out of the tree on its own,
+and no `overrides` were needed. The accordion header was the only API change the repo touches —
+verified rather than assumed, three ways:
+
+1. **Every `@mintplayer/ng-bootstrap` symbol imported anywhere** in `libs/node_packages/` and
+   `Demo/` (45 symbols across 21 entry points) exists in 22.13's typings.
+2. **Every `<bs-*>` tag** used in any template (21 distinct) still maps to a 22.13 component
+   selector — this is what would catch another component-to-directive conversion, which a
+   TypeScript check cannot see.
+3. Both libraries **typecheck clean** against 22.13 (`tsc --noEmit` on each spec project).
+
+The only `bs*` attribute in a template with no matching 22.13 selector is `bsInputGroupBtn`
+(three `ng-spark` templates). It predates this branch, binds nothing, and is inert — Angular
+ignores an unmatched plain attribute. Left alone; noted so the next reader does not re-derive it.
+
+**Two pre-existing type errors surfaced** while running that typecheck, both in `ng-spark`
+specs: `RetryActionPayload.step` is the server's `int` counter, and both specs passed a
+semantic string (`'confirm-overwrite'`), which also masked a missing required `type`. Fixed to
+`step: 0` / `type: 'retry-action'`. They survived because **the Vitest suites are transpiled,
+not typechecked** — the tests still passed, asserting against a payload the server can never
+produce. Worth a follow-up: a `tsc --noEmit` gate on the two library projects would have caught
+this the day it was written. (`type: 'retry-action'` itself is correct — it is a client-side
+marker built in `spark.service.ts`, not the wire discriminator, which is `retry`.)
+
+**M3.3 — the visual check — is not done** and cannot be until the demo hosts run: the header now
+renders into a named shadow-DOM slot instead of light-DOM projection, so a clean typecheck does
+not imply identical rendering. It stays on the final-verification list.
 
 ### M3.1 — Dependency
 

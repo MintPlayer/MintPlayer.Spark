@@ -3,7 +3,8 @@ import { RetryActionService } from './retry-action.service';
 import { RetryActionPayload } from '@mintplayer/ng-spark/models';
 
 const payload: RetryActionPayload = {
-  step: 'confirm-overwrite',
+  type: 'retry-action',
+  step: 0,
   title: 'Overwrite?',
   message: 'A newer version exists.',
   options: ['Overwrite', 'Cancel'],
@@ -34,7 +35,7 @@ describe('RetryActionService', () => {
 
     const result = await promise;
     expect(result.option).toBe('Overwrite');
-    expect(result.step).toBe('confirm-overwrite');
+    expect(result.step).toBe(0);
     expect(service.payload()).toBeNull();
   });
 
@@ -42,7 +43,7 @@ describe('RetryActionService', () => {
     const service = new RetryActionService();
 
     expect(() =>
-      service.respond({ step: 'x', option: 'Cancel', persistentObject: {} as any }),
+      service.respond({ step: 0, option: 'Cancel', persistentObject: {} as any }),
     ).not.toThrow();
   });
 
@@ -50,7 +51,7 @@ describe('RetryActionService', () => {
     const service = new RetryActionService();
     service.show(payload);
 
-    const second: RetryActionPayload = { ...payload, step: 'second' };
+    const second: RetryActionPayload = { ...payload, step: 1 };
     service.show(second);
 
     expect(service.payload()).toBe(second);

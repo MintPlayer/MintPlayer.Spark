@@ -39,11 +39,11 @@
     <bs-accordion class="d-block">
       @for (group of programUnitGroups(); track group.id) {
       <bs-accordion-tab>
-        <bs-accordion-tab-header>
+        <ng-container *bsAccordionTabHeader>
           <span class="triangle me-2"></span>
           <spark-icon [name]="group.icon | iconName:'bi-folder'" />
           <span class="ms-2">{{ group.name | resolveTranslation }}</span>
-        </bs-accordion-tab-header>
+        </ng-container>
         @for (unit of group.programUnits; track unit.id) {
         <a [routerLink]="unit | routerLink"
            routerLinkActive="active"

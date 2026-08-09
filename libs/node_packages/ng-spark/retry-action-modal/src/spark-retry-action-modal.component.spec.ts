@@ -28,7 +28,8 @@ const scaffoldedPo: PersistentObject = {
 };
 
 const samplePayload: RetryActionPayload = {
-  step: 'confirm-overwrite',
+  type: 'retry-action',
+  step: 0,
   title: 'Overwrite the existing record?',
   message: 'This will replace the current values.',
   options: ['Overwrite', 'Cancel'],
