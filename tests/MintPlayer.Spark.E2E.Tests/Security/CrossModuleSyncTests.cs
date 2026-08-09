@@ -21,19 +21,21 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// passes just as happily when the feature is broken end to end.
 /// </para>
 /// <para>
-/// <b>What this does not cover:</b> the certificate itself. The host runs with
-/// <c>ClientCertificate.Mode = Development</c>, which verifies the caller names a registered module
-/// but does not check a thumbprint, so these tests exercise the authorization chain
-/// (identity → <c>security.json</c> → chokepoint) and the module-registration gate, not mTLS.
-/// Thumbprint pinning is covered by unit tests over <c>ModuleCertificateValidator</c>; an end-to-end
+/// <b>What this does not cover:</b> the certificate itself. These run against a dedicated host in
+/// <c>Development</c> certificate mode, which verifies the caller names a registered module but does
+/// not check a thumbprint — so what is exercised here is the authorization chain
+/// (identity → <c>security.json</c> → chokepoint) and the module-registration gate, not mTLS. The
+/// requirement to present a certificate at all is covered end to end by
+/// <c>ReplicationEndpointAuthTests</c> against the strict shared host, which is why that host was
+/// left alone rather than relaxed. Thumbprint <i>pinning</i> has unit coverage only; an end-to-end
 /// mTLS test needs a host configured with a real client certificate and is still missing.
 /// </para>
 /// </summary>
-[Collection(FleetE2ECollection.Name)]
+[Collection(CrossModuleE2ECollection.Name)]
 public class CrossModuleSyncTests
 {
-    private readonly FleetE2ECollectionFixture _fixture;
-    public CrossModuleSyncTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
+    private readonly CrossModuleE2EFixture _fixture;
+    public CrossModuleSyncTests(CrossModuleE2EFixture fixture) => _fixture = fixture;
 
     /// <summary>Fleet's security.json grants this module <c>Replicate/Cars</c> + <c>ReadEditNew/Car</c>.</summary>
     private const string GrantedModule = "HR";

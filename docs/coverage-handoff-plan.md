@@ -116,10 +116,21 @@ green against a 400 from my own malformed payload), and chasing the remaining fa
 **F14** — a configured `SparkModulesUrls` was appended after the hardcoded default instead of
 replacing it, so every configured deployment still talked to `localhost:8080`.
 
-*Honest scope:* these run with `ClientCertificate.Mode = Development`, so they exercise the
-authorization chain (identity → `security.json` → chokepoint) and the module-registration gate —
-**not** mTLS thumbprint pinning, which still has only unit coverage. The ETL positive asserts it got
-*past* authorization rather than a 200, because the embedded RavenDB's licence has no ETL feature.
+*Honest scope:* these run against a **second Fleet host** in `ClientCertificate.Mode = Development`,
+so they exercise the authorization chain (identity → `security.json` → chokepoint) and the
+module-registration gate — **not** mTLS thumbprint pinning, which still has only unit coverage. The
+ETL positive asserts it got *past* authorization rather than a 200, because the embedded RavenDB's
+licence has no ETL feature.
+
+The second host is the point, not an accident. Relaxing the *shared* host would have been cheaper
+and wrong: `ReplicationEndpointAuthTests` asserts `401` there for a caller presenting no
+certificate, and Development mode turns that into a `403` — silently deleting the only end-to-end
+coverage of the certificate requirement while all tests stayed green. Two hosts keep both properties
+provable. Their startup then raced (xUnit runs distinct collections in parallel, and two
+`dotnet run`s building Fleet at once hit `CS2012`, taking the whole suite down), so the build now
+happens once behind a gate and each host runs `--no-build`.
+
+**Full E2E suite: 70/70 green locally.**
 
 **Next action:** the deferred verification sweep — `npx nx run-many --target=test` across all suites,
 then the four demo ClientApps (which have not been built since the IdP port), then M3.3's visual

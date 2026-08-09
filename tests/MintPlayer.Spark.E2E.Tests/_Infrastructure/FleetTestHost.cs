@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
@@ -19,6 +20,27 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 /// </summary>
 public sealed class FleetTestHost : IAsyncLifetime
 {
+    /// <summary>
+    /// The ASP.NET environment this host runs as, which also names its <c>appsettings.{Env}.json</c>
+    /// override. Parameterised so two hosts with different replication settings can run in the same
+    /// test session — they would otherwise fight over one override file in the Fleet project
+    /// directory, each deleting the other's on dispose.
+    /// <para>
+    /// Must never be <c>Development</c>: <c>SparkReplicationCertificateMode.Auto</c> resolves to
+    /// Development there, which would silently relax the certificate requirement the default host
+    /// exists to prove.
+    /// </para>
+    /// </summary>
+    public string EnvironmentName { get; init; } = "E2E";
+
+    /// <summary>
+    /// Cross-module certificate enforcement. Defaults to <c>Production</c> — the strict setting, so
+    /// the shared host keeps proving that an uncertificated caller is refused. A host that needs to
+    /// exercise what happens <i>after</i> authentication succeeds sets <c>Development</c>, which
+    /// accepts any caller naming a registered module.
+    /// </summary>
+    public SparkReplicationCertificateMode CertificateMode { get; init; } = SparkReplicationCertificateMode.Production;
+
     private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
     private readonly string _password = GeneratePassword();
     private string TestDatabase => $"SparkFleetE2E-{_suffix}";
@@ -37,6 +59,22 @@ public sealed class FleetTestHost : IAsyncLifetime
         var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=');
         return $"Aa1!{token}";
     }
+
+    /// <summary>
+    /// Serialises the one-time build work every host would otherwise do concurrently.
+    /// <para>
+    /// xUnit runs distinct collections in parallel, so two hosts start together — and two
+    /// <c>dotnet run</c>s racing to build Fleet produced <c>CS2012: cannot open … .dll for writing,
+    /// being used by another process</c>. Both hosts then timed out waiting for a server that never
+    /// started, which surfaced as every test in the suite failing in a millisecond.
+    /// </para>
+    /// <para>
+    /// Building once behind this gate and running with <c>--no-build</c> removes the race rather
+    /// than narrowing it: no amount of retrying makes two compilers safe on one output directory.
+    /// </para>
+    /// </summary>
+    private static readonly SemaphoreSlim BuildGate = new(1, 1);
+    private static bool _fleetBuilt;
 
     private SparkTestDriverHost? _raven;
     private Process? _fleetProcess;
@@ -211,7 +249,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(TestDatabase)));
         _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(TestModulesDatabase)));
 
-        await EnsureAngularBundleAsync();
+        await BuildOnceAsync();
 
         _fleetUrl = await StartFleetAsync(ravenUrls);
 
@@ -296,6 +334,43 @@ public sealed class FleetTestHost : IAsyncLifetime
         await session.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Builds Fleet and its Angular bundle exactly once per test process, whichever host asks first.
+    /// </summary>
+    private static async Task BuildOnceAsync()
+    {
+        await BuildGate.WaitAsync();
+        try
+        {
+            if (_fleetBuilt)
+                return;
+
+            await EnsureAngularBundleAsync();
+
+            var repoRoot = FindRepoRoot();
+            var fleetProject = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "Fleet.csproj");
+            var psi = new ProcessStartInfo("dotnet", $"build \"{fleetProject}\" --configuration Debug")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var proc = Process.Start(psi)!;
+            var stdout = await proc.StandardOutput.ReadToEndAsync();
+            var stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"Building Fleet failed (exit {proc.ExitCode}).\nstdout: {stdout}\nstderr: {stderr}");
+
+            _fleetBuilt = true;
+        }
+        finally
+        {
+            BuildGate.Release();
+        }
+    }
+
     private static async Task EnsureAngularBundleAsync()
     {
         var repoRoot = FindRepoRoot();
@@ -336,7 +411,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         // that's `Directory.GetCurrentDirectory()` — i.e. the working directory of the Fleet
         // process, which we set below to fleetDir (the project source dir). So the override
         // file must sit next to fleetDir/appsettings.json. DisposeAsync cleans it up.
-        _overrideSettingsFile = Path.Combine(fleetDir, "appsettings.E2E.json");
+        _overrideSettingsFile = Path.Combine(fleetDir, $"appsettings.{EnvironmentName}.json");
         var overrideJson = $$"""
         {
           "Spark": {
@@ -350,7 +425,7 @@ public sealed class FleetTestHost : IAsyncLifetime
               "ModuleUrl": "{{httpsUrl}}",
               "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
               "SparkModulesDatabase": "{{TestModulesDatabase}}",
-              "ClientCertificate": { "Mode": "Development" }
+              "ClientCertificate": { "Mode": "{{CertificateMode}}" }
             }
           }
         }
@@ -361,14 +436,14 @@ public sealed class FleetTestHost : IAsyncLifetime
         // (a) ASP.NET Core's ContentRoot resolves to the project source, making
         // appsettings.{env}.json + ClientApp/dist/ paths work, and (b) `--no-launch-profile`
         // keeps launchSettings.json from overriding our ASPNETCORE_URLS / ENVIRONMENT.
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{fleetProject}\" --configuration Debug --no-launch-profile")
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{fleetProject}\" --configuration Debug --no-build --no-launch-profile")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = fleetDir,
         };
-        psi.Environment["ASPNETCORE_ENVIRONMENT"] = "E2E";
+        psi.Environment["ASPNETCORE_ENVIRONMENT"] = EnvironmentName;
         psi.Environment["ASPNETCORE_URLS"] = $"{httpsUrl};http://localhost:{httpPort}";
 
         _fleetProcess = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Fleet process");
