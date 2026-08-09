@@ -71,18 +71,28 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
                 idp.SigningKeyPath = builder.Configuration["SparkIdentityProvider:SigningKeyPath"]
                     ?? idp.SigningKeyPath;
             });
+        }
 
+        // Who this app TRUSTS is a separate question from who it IS, and configuring them
+        // separately is the difference between a demo and the real topology. These were briefly the
+        // same value here, which quietly made "validate tokens from SparkId" impossible: Fleet could
+        // only trust an issuer it was also hosting at that URL. Defaulting to the self-hosted issuer
+        // keeps the single-app demo working; setting Spark:JwtBearer:Authority points Fleet at a
+        // separate provider, which is what a real deployment does.
+        var authority = builder.Configuration["Spark:JwtBearer:Authority"] ?? issuer;
+        if (!string.IsNullOrWhiteSpace(authority))
+        {
             // The consumer half of client_credentials, and the reason a CI job can POST here at all.
             // Audience is required by the extension: without it this app would accept every token
             // the issuer ever minted, including ones a client obtained for a different resource.
             spark.AddJwtBearerCredential(jwt =>
             {
-                jwt.Authority = issuer;
+                jwt.Authority = authority;
                 jwt.Audience = builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api";
 
                 // Discovery is fetched over the issuer's own scheme. Left at the default this
                 // demands HTTPS, which a local http issuer cannot satisfy.
-                jwt.RequireHttpsMetadata = issuer.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                jwt.RequireHttpsMetadata = authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
             });
         }
     };

@@ -17,6 +17,8 @@ sweep, not after each step.
 | **H2** | Shareable `SparkModules` registry + a two-host fixture | Small | Not started |
 | **R1** | Resolve the open question: can a consumer distinguish a licence failure from a security failure? | Tiny, **blocking R2** | Not started |
 | **R2** | Scenario 1 — real consumer → real owner ETL deployment | Medium | Not started |
+| **S1** | New `Demo/SparkId` app — the provider, no ClientApp | Small | Not started |
+| **R3** | SparkId issues, Fleet validates — the real token topology | Small | Not started (product-side unblocked) |
 | **O1** | `AddOidcLogin` — the OIDC relying-party extension | Medium | Not started |
 | **O2** | Demo wiring: Fleet signs users in through HR | Small | Not started |
 | **O3** | Scenario 2 — cross-app sign-in, end to end | Medium | Not started |
@@ -36,6 +38,10 @@ the dist path.
 - Introduce a small descriptor — demo directory, project file, whether an Angular bundle is needed —
   and take it as an `init` property defaulting to Fleet, so every existing fixture keeps working
   unchanged.
+- **Three config *values* are Fleet-shaped too**, not just paths: the app-database prefix
+  (`SparkFleetE2E-`), the `Spark:Replication:ModuleName` written into the override (`"Fleet"`), and the
+  `Spark:JwtBearer` section (audience `"fleet-api"`). The JWT section should be emitted only for a host
+  that actually validates tokens, rather than always.
 - **Make the build gate per project.** It is currently one static `_fleetBuilt` flag; with two
   different apps it would build the first and run the second `--no-build` against nothing. Key it by
   project path.
@@ -63,9 +69,14 @@ therefore share a registry by sharing a database *name*.
   which server they were talking to; a fixture that proves the precondition turns that class of bug
   into a setup failure instead of a mysterious refusal downstream.
 
-**Cost check.** The suite runs 77 tests in ~44s in CI with two Fleet hosts. A third host adds a startup,
-not a build (gated). If the total climbs past roughly 2 minutes, split the two-host collection into its
-own CI step rather than making the tests shallower.
+**Cost check — and a correction.** An earlier draft of this plan said a second app "adds a startup, not
+a build". That is wrong: a *different* app must be built, and `BuildGate` is a single semaphore that
+serialises builds deliberately (two concurrent `dotnet run`s once raced on Fleet's output DLL). So HR's
+`dotnet build` — plus, on a cold CI machine, its Angular production build — lands **serially on the
+front of the critical path**. A cold Angular build is commonly tens of seconds. Measure it in CI rather
+than estimating; if it hurts, skip HR's bundle (H1) since its UI is not exercised. If the suite climbs
+past roughly 2 minutes, split the multi-host collection into its own CI step rather than making the
+tests shallower.
 
 ## R1 — Can the consumer tell *why* it was refused? (blocking)
 
@@ -125,6 +136,37 @@ rather than Spark's.
 **Then the negative**, which is the one with teeth: revoke one `Replicate/{Collection}` grant and assert
 the whole batch is refused — pinning F15's behaviour deliberately rather than leaving it as a demo
 config that happens to be right.
+
+## S1 — `Demo/SparkId`
+
+A minimal Spark app whose only job is to be the identity provider: `AddIdentityProvider`, a
+`SparkContext` for the OIDC PersistentObjects (copy HR's, which M12.7 already built), `security.json`,
+and **no Angular ClientApp**. The `/connect/*` pages are server-rendered, so there is nothing for an
+SPA to do — and skipping it keeps the harness's one serial cost (a cold Angular build behind the build
+gate) off the critical path.
+
+Model it on HR's Program.cs minus the business wiring. Pin the issuer from configuration; it is
+required outside Development (O7).
+
+Then **retire Fleet's self-issuing** in the same milestone: it exists only because there was no second
+host, and leaving it would leave two ways to configure the same thing. Fleet keeps
+`Spark:JwtBearer:Authority` (already decoupled) and drops `AddIdentityProvider`. Keep HR's provider or
+retire it too — that is a demo-story decision, not a technical one.
+
+## R3 — SparkId issues, Fleet validates (the real token topology)
+
+Scenario 1's sibling, and cheap now. Fleet's demo wiring bound `jwt.Authority` to the issuer it
+self-hosts, so it could only trust a provider it was also *being* — which made "HR issues, Fleet
+validates" impossible to configure. **Already fixed**: `Spark:JwtBearer:Authority` is now independent
+and falls back to the self-hosted issuer, so the single-app demo is unchanged.
+
+With a two-host fixture, point Fleet's authority at SparkId's issuer, register an `OidcApplication` on
+SparkId with an audience Fleet accepts, and assert a token minted there authorizes a write on Fleet.
+This is the topology Coverage will actually deploy, and it needs no new product code — only the
+fixture and S1.
+
+Worth doing **before** the OIDC milestones: it is the same participants and the same harness, without
+needing a relying party to exist.
 
 ## O1 — `AddOidcLogin`
 

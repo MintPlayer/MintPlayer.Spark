@@ -217,6 +217,31 @@ a thin, separate addition, not a reason to drive the protocol through a browser.
 
 ---
 
+## 3a. Decision — a dedicated `Demo/SparkId` app hosts the provider
+
+Three apps could play issuer: HR (which does today), `DemoApp`, or a new one. **A new
+`Demo/SparkId/` — with no Angular ClientApp.**
+
+The original IdentityProvider PRD already specified `Demo/SparkId/`; the M12.1 port brought the
+library across and left the demo behind, which is how HR ended up doubling as an identity provider and
+Fleet ended up self-issuing. Neither is the shape anyone deploys.
+
+The reason that is more than aesthetic: **an identity provider needs no SPA.** Every `/connect/*` page
+is server-rendered. HR and `DemoApp` both carry an Angular ClientApp, and the harness's one serial
+cost is exactly that — `BuildGate` deliberately serialises builds, so a cold Angular production build
+lands on the front of the critical path. A provider with no ClientApp adds a `dotnet build` and a
+process start, and nothing else.
+
+It also lets Fleet stop self-issuing. Fleet hosts a provider today only because there was no second
+host to issue from; once there is, that wiring becomes a demo of something nobody does.
+
+**Costs:** one csproj, one solution entry, one more project in CI's build. Demos are not published, so
+no version bump. Against that, using `DemoApp` would cost an Angular build on the critical path and
+keep the conceptual muddle of a business app moonlighting as an identity provider.
+
+**Consequence for scenario 2:** SparkId issues, Fleet consumes — which is also the topology Coverage
+will deploy, so the relying-party extension gets exercised the way it will actually be used.
+
 ## 4. Non-goals
 
 - **Proving data actually replicates.** Licence-bound; see §2.
