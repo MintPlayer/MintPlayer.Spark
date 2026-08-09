@@ -280,8 +280,8 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                 Logger.LogError(ex, "Unexpected error processing message {MessageId} (queue: {QueueName})", sparkMessage.Id, sparkMessage.QueueName);
 
                 sparkMessage.Status = EMessageStatus.Failed;
-                var delayIndex = Math.Min(sparkMessage.AttemptCount - 1, _options.BackoffDelays.Length - 1);
-                sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + _options.BackoffDelays[Math.Max(0, delayIndex)];
+                var delayIndex = Math.Min(sparkMessage.AttemptCount - 1, _options.ResolvedBackoffDelays.Length - 1);
+                sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + _options.ResolvedBackoffDelays[Math.Max(0, delayIndex)];
 
                 await session.SaveChangesAsync(cancellationToken);
             }
@@ -319,8 +319,8 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                 .Select(h => h.AttemptCount)
                 .DefaultIfEmpty(0)
                 .Max();
-            var delayIndex = Math.Min(maxAttempt - 1, _options.BackoffDelays.Length - 1);
-            sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + _options.BackoffDelays[Math.Max(0, delayIndex)];
+            var delayIndex = Math.Min(maxAttempt - 1, _options.ResolvedBackoffDelays.Length - 1);
+            sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + _options.ResolvedBackoffDelays[Math.Max(0, delayIndex)];
 
             Logger.LogInformation("Message {MessageId} has failing handlers, retrying at {NextAttempt}",
                 sparkMessage.Id, sparkMessage.NextAttemptAtUtc);

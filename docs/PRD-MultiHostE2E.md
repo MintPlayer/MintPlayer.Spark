@@ -87,9 +87,38 @@ of the consumer's outbound path:
 
 F15 sits squarely in step 1 — the batching — which is why no existing test could see it.
 
-### The ceiling, stated plainly
+### The ceiling is a licence setting, not a law — **measured, 2026-08-09**
 
-**A test cannot assert that an ETL task was created.** The embedded server *is* licensed —
+> **Correction.** An earlier draft of this section said the ceiling was absolute. It is not. Running the
+> same assertion under two licences settles it:
+>
+> | Licence | `/spark/etl/deploy` result |
+> |---|---|
+> | `raven-license.log` (the repo default) | **500** — `LicenseLimitException` |
+> | `dev-license.tmp` (a RavenDB **developer** licence) | **200 OK** — the ETL task deploys |
+>
+> So with the developer licence, a test **can** assert real ETL deployment, and §2's whole
+> assert-by-elimination apparatus becomes unnecessary. The residue named below shrinks to nothing.
+>
+> **✅ Resolved the same day.** The `RAVENDB_LICENSE` organisation secret now holds the developer
+> licence, so CI has the ETL feature. `Etl_deployment_is_accepted_for_a_granted_collection` was
+> strengthened accordingly: it asserts **200** and that the ongoing ETL task `spark-etl-HR` exists on
+> the owner, instead of asserting the absence of a refusal.
+>
+> **Design the test to say which world it is in.** If the licence lacks ETL, the strict assertion should
+> **skip with a stated reason**, not quietly weaken to something that passes anyway. A test that silently
+> lowers its own bar is indistinguishable from a passing one, which is the failure mode this document
+> keeps returning to.
+
+### The workaround below is now history, kept for the reasoning
+
+Everything from here to the end of §2 was designed around a licence that could not deploy ETL. With
+the developer licence in place it is **no longer needed** — R2 can assert the ETL task directly. It is
+retained because the reasoning is reusable: it is what to do when a test can observe only the absence
+of the wrong failure, and because the distinction it draws (authorization refusal is visible; internal
+failure is deliberately opaque) remains true of the endpoint regardless of licence.
+
+**Under a licence without the ETL feature, a test cannot assert that an ETL task was created.** The embedded server *is* licensed —
 `SparkTestDriver` loads `raven-license.log` before any test runs — and `AddEtlOperation` still throws
 `LicenseLimitException`, because that licence tier excludes the ETL feature. The existing single-host
 test already documents this and asserts "got past authorization" instead of success.

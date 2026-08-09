@@ -279,6 +279,27 @@ public sealed class FleetTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Whether an ongoing RavenDB ETL task with this name exists on the app database — the real
+    /// proof that a deployment took effect, as opposed to merely being authorized.
+    /// <para>
+    /// Requires a licence that includes the ETL feature. The repository's default licence does not;
+    /// a RavenDB developer licence does. <see cref="MintPlayer.Spark.Testing.SparkTestDriver"/> reads
+    /// <c>RAVENDB_LICENSE</c> or the repo-root <c>raven-license.log</c>.
+    /// </para>
+    /// </summary>
+    public async Task<bool> EtlTaskExistsAsync(string taskName)
+    {
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+
+        var task = await appStore.Maintenance.SendAsync(
+            new Raven.Client.Documents.Operations.OngoingTasks.GetOngoingTaskInfoOperation(
+                taskName, Raven.Client.Documents.Operations.OngoingTasks.OngoingTaskType.RavenEtl));
+
+        return task is not null;
+    }
+
+    /// <summary>
     /// Point-loads a document from the app database by id. Deliberately not a query: these
     /// assertions include "this was NOT written", and an absence assertion against an
     /// eventually-consistent index passes whether or not the property holds.

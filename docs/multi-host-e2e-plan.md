@@ -17,6 +17,7 @@ sweep, not after each step.
 | **H2** | Shareable `SparkModules` registry + a two-host fixture | Small | Not started |
 | **R1** | Can a consumer distinguish a licence failure from a security failure? | — | ✅ **Resolved** — partly; see below |
 | **R1a** | Bind `Spark:Messaging:*` from configuration (blocks R2's determinism) | Small | Not started |
+| **R1b** | Decide the CI licence | — | ✅ **Resolved** — secret now holds a licence with ETL |
 | **R2** | Scenario 1 — real consumer → real owner ETL deployment | Medium | Not started |
 | **S1** | New `Demo/SparkId` app — the provider, no ClientApp | Small | Not started |
 | **R3** | SparkId issues, Fleet validates — the real token topology | Small | Not started (product-side unblocked) |
@@ -124,6 +125,22 @@ this scenario in-process via `SparkEndpointFactory` to inject options directly �
 realism (a real `dotnet run`, real Kestrel, real certificate handshake) that the subprocess harness
 exists to provide.
 
+## R1b — The licence — ✅ **resolved**
+
+Measured: the repo's `raven-license.log` refuses ETL (500); a RavenDB **developer** licence deploys it
+(200). Same test, same code, only the licence differed. The `RAVENDB_LICENSE` organisation secret now
+holds the developer licence, **so CI has the ETL feature**.
+
+Consequences, already applied to the existing single-host test and carried into R2:
+
+- `Etl_deployment_is_accepted_for_a_granted_collection` asserts **200** and that the ongoing ETL task
+  exists, rather than asserting the absence of a refusal.
+- R2 does **not** need the connection-string proxy, the `LastError` elimination, or owner-log scraping.
+  Assert the ETL task directly.
+- **Local runs still need the licence.** `LicenseHelper` reads `RAVENDB_LICENSE` first, then repo-root
+  `raven-license.log`. A checkout whose `raven-license.log` predates the change will fail this test —
+  update that file, or set the environment variable.
+
 ## R2 — Scenario 1
 
 **Shape:** HR (consumer) boots naturally so its real `UseSparkReplication` startup task runs; Fleet
@@ -148,14 +165,13 @@ so it is complete. The Fleet → HR direction is the one F15 just repaired, whic
 
 **Assertions, strongest first:**
 
-1. The **owner's** store has the connection string `spark-etl-{RequestingModule}` — note the name comes
-   from the *requesting* module, so HR pulling from Fleet creates `spark-etl-HR` on Fleet.
-   `PutConnectionStringOperation` completes before the licence-gated call, so this survives the failure
-   and is licence-independent proof the deployment reached RavenDB past authorization.
-2. The consumer's message did **not** fail for `Forbidden` — the F15 shape.
-3. The consumer's message did **not** fail to connect — the F14 shape.
-4. The **owner's log** carries the licence-limit exception — per R1, the only place the true cause is
-   provable rather than inferred.
+1. The **owner's** store has the ongoing ETL task `spark-etl-{RequestingModule}` — note the name comes
+   from the *requesting* module, so HR pulling from Fleet creates `spark-etl-HR` on Fleet. This is the
+   direct proof, available now that CI's licence includes ETL (R1b).
+2. The consumer's message reached `Completed`, not `DeadLettered` — the whole pipeline, end to end.
+3. R1's elimination assertions are **no longer needed** for the happy path. Keep them in mind only for
+   the negative cases, where distinguishing "refused by authorization" from "failed internally" still
+   matters.
 
 **Pin the translation at unit level in the same milestone.** The two-host test cannot observe the
 owner's copy of the script text — it lands only in the licence-gated `AddEtlOperation` call — so

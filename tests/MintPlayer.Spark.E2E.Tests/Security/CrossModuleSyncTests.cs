@@ -180,25 +180,18 @@ public class CrossModuleSyncTests
         // The paired positive: F12's check must gate on the right, not refuse everything. Without
         // it, a fix that returned 403 unconditionally would look correct.
         //
-        // This deliberately does NOT assert 200. The embedded RavenDB runs on a licence without the
-        // ETL feature, so deployment fails with a LicenseLimitException *after* authorization has
-        // admitted it — asserting success would pin the licence, not the security behaviour.
-        //
-        // Nor is "anything but 403" enough on its own: an earlier version of this test asserted
-        // exactly that and went green against a 400 caused by a malformed payload of my own,
-        // proving nothing at all. Two things close that hole. The status must not be 400 either,
-        // and the body's error must not be the authorization refusal — which is the only place
-        // EtlDeploy emits "Forbidden".
-        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden,
-            "HR is granted Replicate/Cars, so authorization must admit this deployment.\n"
-            + "--- Fleet log ---\n" + _fixture.Host.RecentLog(20));
-        response.StatusCode.Should().NotBe(HttpStatusCode.BadRequest,
-            "a 400 would mean the payload never reached the authorization check");
+        // Asserts the deployment SUCCEEDED, not merely that it was authorized. That became possible
+        // once the licence in use included the RavenDB ETL feature — the repository default does not,
+        // a developer licence does — so this test now proves the thing it is named for instead of
+        // proving the absence of a refusal.
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            "HR is granted Replicate/Cars, so the deployment must be authorized and succeed — got {0}.\n"
+            + "--- Fleet log ---\n{1}", response.StatusCode, _fixture.Host.RecentLog(25));
 
-        // Read as text, not JSON: the licence failure surfaces as a bare 500 with an empty body,
-        // and deserializing that throws a JsonException that would mask what the test is checking.
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().NotContain("Forbidden",
-            "that string is emitted only by the per-collection Replicate check this test must pass");
+        // And the state it should have produced. A 200 alone would pass if the endpoint reported
+        // success without creating anything; the task name is derived from the *requesting* module,
+        // so HR pulling from Fleet creates "spark-etl-HR" on Fleet.
+        (await _fixture.Host.EtlTaskExistsAsync($"spark-etl-{GrantedModule}"))
+            .Should().BeTrue("a successful deployment creates the ongoing ETL task it reported creating");
     }
 }
