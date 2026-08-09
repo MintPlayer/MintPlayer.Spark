@@ -66,13 +66,9 @@ public class EtlScriptDeploymentRecipientTests : SparkTestDriver
 
     private EtlScriptDeploymentRecipient NewRecipient(StubHttpMessageHandler handler)
     {
-        var registration = new ModuleRegistrationService(
-            Options.Create(DefaultOptions()),
-            Store,
-            NullLogger<ModuleRegistrationService>.Instance);
         return new EtlScriptDeploymentRecipient(
-            new StubHttpClientFactory(handler),
-            registration,
+            new StubReplicationHttpClientProvider(handler),
+            new ModuleDirectory(Options.Create(DefaultOptions())),
             NullLogger<EtlScriptDeploymentRecipient>.Instance);
     }
 
@@ -196,10 +192,21 @@ public class EtlScriptDeploymentRecipientTests : SparkTestDriver
         }
     }
 
-    private sealed class StubHttpClientFactory : IHttpClientFactory
+    /// <summary>
+    /// Stands in for the real provider, which picks the client certificate to present based on
+    /// the target module. Records the target so the recipient's choice of peer stays assertable.
+    /// </summary>
+    private sealed class StubReplicationHttpClientProvider : IReplicationHttpClientProvider
     {
         private readonly StubHttpMessageHandler _handler;
-        public StubHttpClientFactory(StubHttpMessageHandler handler) => _handler = handler;
-        public HttpClient CreateClient(string name) => new(_handler, disposeHandler: false);
+        public StubReplicationHttpClientProvider(StubHttpMessageHandler handler) => _handler = handler;
+
+        public string? LastTargetModule { get; private set; }
+
+        public HttpClient GetClient(string targetModule)
+        {
+            LastTargetModule = targetModule;
+            return new HttpClient(_handler, disposeHandler: false);
+        }
     }
 }

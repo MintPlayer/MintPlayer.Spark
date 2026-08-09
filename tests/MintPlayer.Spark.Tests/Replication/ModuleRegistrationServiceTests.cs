@@ -13,9 +13,8 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// <summary>
 /// Pins <see cref="ModuleRegistrationService"/> against a real RavenDB instance:
 /// auto-creating the SparkModules database when missing, storing a fresh
-/// <see cref="ModuleInformation"/> on first registration, updating it in-place
-/// on re-registration, and exposing a connected <c>SparkModules</c> store via
-/// <see cref="ModuleRegistrationService.CreateModulesStore"/>.
+/// <see cref="ModuleInformation"/> on first registration, and updating it in-place
+/// on re-registration.
 /// </summary>
 public class ModuleRegistrationServiceTests : SparkTestDriver
 {
@@ -32,23 +31,71 @@ public class ModuleRegistrationServiceTests : SparkTestDriver
     private ModuleRegistrationService NewService(SparkReplicationOptions? opts = null)
         => new(Options.Create(opts ?? DefaultOptions()), Store, NullLogger<ModuleRegistrationService>.Instance);
 
+    /// <summary>
+    /// The connection to the shared SparkModules database now belongs to
+    /// <see cref="ModuleDirectory"/>, which caches one per process. Each call here gets its own
+    /// so the tests stay isolated from each other.
+    /// </summary>
+    private ModuleDirectory NewDirectory(SparkReplicationOptions? opts = null)
+        => new(Options.Create(opts ?? DefaultOptions()));
+
     [Fact]
-    public void CreateModulesStore_returns_an_initialized_store_pointing_at_the_configured_database()
+    public void The_module_directory_connects_to_the_configured_SparkModules_database()
     {
-        var service = NewService();
+        using var directory = NewDirectory();
 
-        using var modulesStore = service.CreateModulesStore();
+        directory.Store.Database.Should().Be(_modulesDatabase);
+        directory.Store.Urls.Should().BeEquivalentTo(Store.Urls);
+    }
 
-        modulesStore.Should().NotBeNull();
-        modulesStore.Database.Should().Be(_modulesDatabase);
-        modulesStore.Urls.Should().BeEquivalentTo(Store.Urls);
+    /// <summary>
+    /// One store for the process, not one per lookup. Before this, every mTLS validation
+    /// constructed and initialized a fresh <c>DocumentStore</c> (F6) — meaning unauthenticated
+    /// inbound requests drove store creation and teardown.
+    /// </summary>
+    [Fact]
+    public void The_module_directory_reuses_a_single_store()
+    {
+        using var directory = NewDirectory();
+
+        directory.Store.Should().BeSameAs(directory.Store);
+    }
+
+    /// <summary>
+    /// "Not registered" and "registered" have to be distinguishable, because that distinction is
+    /// the whole of the Development-mode authentication check (F1).
+    /// </summary>
+    [Fact]
+    public async Task The_module_directory_returns_null_for_a_module_that_never_registered()
+    {
+        var opts = DefaultOptions(moduleName: "HR");
+        using var directory = NewDirectory(opts);
+        await NewService(opts).RegisterAsync(directory.Store);
+
+        (await directory.FindAsync("HR", CancellationToken.None)).Should().NotBeNull();
+        (await directory.FindAsync("Never-Registered", CancellationToken.None)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// An empty name resolves to "no such module" rather than to an argument exception, so no
+    /// caller has to guard for it separately — the answer is the same refusal either way.
+    /// Deliberately checked before the registry is reachable: this must not depend on it.
+    /// </summary>
+    [Fact]
+    public async Task The_module_directory_treats_an_empty_name_as_no_such_module()
+    {
+        using var directory = NewDirectory();
+
+        (await directory.FindAsync("", CancellationToken.None)).Should().BeNull();
     }
 
     [Fact]
     public async Task RegisterAsync_creates_the_SparkModules_database_when_missing_and_stores_module_info()
     {
-        var service = NewService(DefaultOptions(moduleName: "HR"));
-        using var modulesStore = service.CreateModulesStore();
+        var opts = DefaultOptions(moduleName: "HR");
+        var service = NewService(opts);
+        using var directory = NewDirectory(opts);
+        var modulesStore = directory.Store;
 
         await service.RegisterAsync(modulesStore);
 
@@ -70,24 +117,22 @@ public class ModuleRegistrationServiceTests : SparkTestDriver
     public async Task RegisterAsync_updates_in_place_on_re_registration_with_a_changed_url()
     {
         var initialOpts = DefaultOptions(moduleName: "Fleet", moduleUrl: "http://fleet.test:5000");
-        var initialService = NewService(initialOpts);
-        using (var modulesStore = initialService.CreateModulesStore())
+        using (var directory = NewDirectory(initialOpts))
         {
-            await initialService.RegisterAsync(modulesStore);
+            await NewService(initialOpts).RegisterAsync(directory.Store);
         }
 
         // Restart with a rotated URL — should overwrite the existing document.
         var rotatedOpts = DefaultOptions(moduleName: "Fleet", moduleUrl: "http://fleet.internal:8080");
-        var rotatedService = NewService(rotatedOpts);
-        using (var modulesStore = rotatedService.CreateModulesStore())
+        using (var directory = NewDirectory(rotatedOpts))
         {
-            await rotatedService.RegisterAsync(modulesStore);
+            await NewService(rotatedOpts).RegisterAsync(directory.Store);
         }
 
-        // Verify the document carries the rotated URL, no duplicate documents.
-        using var verify = NewService().CreateModulesStore();
-        using var session = verify.OpenAsyncSession();
-        var info = await session.LoadAsync<ModuleInformation>("moduleInformations/Fleet");
+        // Verify the document carries the rotated URL, no duplicate documents — read through
+        // the same derived-id lookup the runtime uses, not a hand-written id string.
+        using var verify = NewDirectory();
+        var info = await verify.FindAsync("Fleet", CancellationToken.None);
         info.Should().NotBeNull();
         info!.AppUrl.Should().Be("http://fleet.internal:8080");
     }

@@ -15,8 +15,8 @@ namespace MintPlayer.Spark.Replication.Workers;
 /// </summary>
 internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<SparkSyncAction>
 {
-    [Inject] private readonly IHttpClientFactory httpClientFactory;
-    [Inject] private readonly ModuleRegistrationService registrationService;
+    [Inject] private readonly IReplicationHttpClientProvider httpClientProvider;
+    [Inject] private readonly IModuleDirectory moduleDirectory;
     private readonly RetryNumerator retryNumerator = new();
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
@@ -53,7 +53,7 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
                     "Sending {ActionCount} sync action(s) to owner module '{OwnerModule}' at {Url}",
                     request.Actions.Count, syncAction.OwnerModuleName, url);
 
-                var client = httpClientFactory.CreateClient("spark-sync");
+                var client = httpClientProvider.GetClient(syncAction.OwnerModuleName);
                 var response = await client.PostAsJsonAsync(url, request, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
@@ -122,11 +122,7 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
 
     private async Task<string> ResolveModuleUrlAsync(string moduleName, CancellationToken cancellationToken)
     {
-        using var modulesStore = registrationService.CreateModulesStore();
-        using var session = modulesStore.OpenAsyncSession();
-
-        var moduleId = $"moduleInformations/{moduleName}";
-        var moduleInfo = await session.LoadAsync<ModuleInformation>(moduleId, cancellationToken);
+        var moduleInfo = await moduleDirectory.FindAsync(moduleName, cancellationToken);
 
         if (moduleInfo == null)
         {

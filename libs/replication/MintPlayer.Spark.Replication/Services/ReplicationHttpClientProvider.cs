@@ -61,7 +61,7 @@ internal sealed class ReplicationHttpClientProvider : IReplicationHttpClientProv
 
             if (!string.IsNullOrEmpty(certFile))
             {
-                var cert = new X509Certificate2(certFile, certPassword);
+                var cert = X509CertificateLoader.LoadPkcs12FromFile(certFile, certPassword);
                 handler.ClientCertificates.Add(cert);
                 handler.ClientCertificateOptions = ClientCertificateOption.Manual;
             }

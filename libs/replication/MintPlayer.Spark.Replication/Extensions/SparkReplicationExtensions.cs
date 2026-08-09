@@ -25,6 +25,7 @@ internal static class SparkReplicationExtensions
     {
         services.Configure(configure);
         services.AddSingleton<ModuleRegistrationService>();
+        services.AddSingleton<IModuleDirectory, ModuleDirectory>();
         services.AddMintPlayerSparkReplication();
         services.AddSingleton<EtlScriptCollector>();
         services.AddSingleton<EtlTaskManager>();
@@ -35,37 +36,17 @@ internal static class SparkReplicationExtensions
         // *this* module's identity — same cert presented to every target by
         // default. Per-target overrides exist for advanced multi-CA cases.
         // Operators set the cert via SparkReplicationOptions.ClientCertificate.
+        //
+        // Both outbound paths know their target module, so both resolve this provider.
+        // They previously used named clients whose handler only ever attached the default
+        // certificate, which is why PerTargetOverrides was documented but did nothing (F5).
         services.AddSingleton<IReplicationHttpClientProvider, ReplicationHttpClientProvider>();
-        services.AddHttpClient("spark-etl").ConfigurePrimaryHttpMessageHandler(sp => BuildDefaultHandler(sp));
-        services.AddHttpClient("spark-sync").ConfigurePrimaryHttpMessageHandler(sp => BuildDefaultHandler(sp));
 
         // Sync action services
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
         services.AddHostedService<SyncActionSubscriptionWorker>();
 
         return services;
-    }
-
-    /// <summary>
-    /// Builds the default <see cref="HttpClientHandler"/> attached to the named
-    /// <c>spark-etl</c> / <c>spark-sync</c> clients — uses
-    /// <see cref="SparkReplicationCertificateOptions.CertificateFile"/>. Outbound
-    /// code paths that know their target module ahead of time should resolve
-    /// <see cref="IReplicationHttpClientProvider"/> instead, which honors per-
-    /// target overrides.
-    /// </summary>
-    private static System.Net.Http.HttpMessageHandler BuildDefaultHandler(IServiceProvider sp)
-    {
-        var options = sp.GetRequiredService<IOptions<SparkReplicationOptions>>().Value.ClientCertificate;
-        var handler = new System.Net.Http.HttpClientHandler();
-        if (!string.IsNullOrEmpty(options.CertificateFile))
-        {
-            var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(
-                options.CertificateFile, options.CertificatePassword);
-            handler.ClientCertificates.Add(cert);
-            handler.ClientCertificateOptions = System.Net.Http.ClientCertificateOption.Manual;
-        }
-        return handler;
     }
 
     /// <summary>
@@ -78,6 +59,7 @@ internal static class SparkReplicationExtensions
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SparkReplication");
         var options = app.Services.GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
         var registrationService = app.Services.GetRequiredService<ModuleRegistrationService>();
+        var moduleDirectory = app.Services.GetRequiredService<IModuleDirectory>();
         var collector = app.Services.GetRequiredService<EtlScriptCollector>();
         var appStore = app.Services.GetRequiredService<IDocumentStore>();
 
@@ -93,8 +75,7 @@ internal static class SparkReplicationExtensions
                 using var scope = app.Services.CreateScope();
                 var messageBus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
                 // Step 1: Register this module in the shared SparkModules database
-                using var modulesStore = registrationService.CreateModulesStore();
-                await registrationService.RegisterAsync(modulesStore);
+                await registrationService.RegisterAsync(moduleDirectory.Store);
 
                 // Step 2: Scan assemblies for [Replicated] attributes
                 var assemblies = options.AssembliesToScan.Length > 0

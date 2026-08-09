@@ -99,7 +99,8 @@ public class SparkReplicationCertificateOptions
     public string? Thumbprint { get; set; }
 
     /// <summary>
-    /// Path to the PFX/PEM file containing THIS module's client certificate. Attached
+    /// Path to the PKCS#12 (.pfx) file containing THIS module's client certificate and its
+    /// private key — mTLS needs the key, so a bare PEM certificate cannot stand in. Attached
     /// to every outbound replication HttpClient by default. Leave null in
     /// <see cref="SparkReplicationCertificateMode.Development"/> when running on a
     /// trusted network.
@@ -124,7 +125,7 @@ public class SparkReplicationCertificateOptions
 /// </summary>
 public class SparkOutboundCertificate
 {
-    /// <summary>Path to the PFX/PEM file presented when calling the target module.</summary>
+    /// <summary>Path to the PKCS#12 (.pfx) file presented when calling the target module.</summary>
     public required string CertificateFile { get; set; }
 
     /// <summary>Optional password for <see cref="CertificateFile"/>.</summary>

@@ -255,13 +255,13 @@ public sealed class FleetTestHost : IAsyncLifetime
               "Urls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
               "Database": "{{TestDatabase}}",
               "EnsureDatabaseCreated": true
+            },
+            "Replication": {
+              "ModuleName": "Fleet",
+              "ModuleUrl": "{{httpsUrl}}",
+              "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
+              "SparkModulesDatabase": "{{TestModulesDatabase}}"
             }
-          },
-          "SparkReplication": {
-            "ModuleName": "Fleet",
-            "ModuleUrl": "{{httpsUrl}}",
-            "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
-            "SparkModulesDatabase": "{{TestModulesDatabase}}"
           }
         }
         """;

@@ -20,20 +20,6 @@ internal partial class ModuleRegistrationService
     private SparkReplicationOptions Options => optionsAccessor.Value;
 
     /// <summary>
-    /// Creates a dedicated DocumentStore for the shared SparkModules database.
-    /// </summary>
-    internal IDocumentStore CreateModulesStore()
-    {
-        var store = new DocumentStore
-        {
-            Urls = Options.SparkModulesUrls,
-            Database = Options.SparkModulesDatabase,
-        };
-        store.Initialize();
-        return store;
-    }
-
-    /// <summary>
     /// Ensures the SparkModules database exists (development), then stores this module's information.
     /// </summary>
     public async Task RegisterAsync(IDocumentStore modulesStore, CancellationToken cancellationToken = default)
@@ -55,7 +41,7 @@ internal partial class ModuleRegistrationService
             logger.LogWarning(ex, "Could not ensure SparkModules database exists (may already exist or lack permissions)");
         }
 
-        var documentId = $"moduleInformations/{Options.ModuleName}";
+        var documentId = ModuleInformation.DocumentId(Options.ModuleName);
         var thumbprint = Options.ClientCertificate.Thumbprint;
 
         using var session = modulesStore.OpenAsyncSession();

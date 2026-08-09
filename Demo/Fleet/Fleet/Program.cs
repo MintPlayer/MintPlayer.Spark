@@ -15,15 +15,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddControllers();
 builder.Services.AddSparkFull(builder.Configuration, options =>
 {
-    options.Replication = opt =>
-    {
-        var section = builder.Configuration.GetSection("SparkReplication");
-        opt.ModuleName = section["ModuleName"] ?? "Fleet";
-        opt.ModuleUrl = section["ModuleUrl"] ?? "https://localhost:5003";
-        opt.SparkModulesUrls = section.GetSection("SparkModulesUrls").Get<string[]>() ?? ["http://localhost:8080"];
-        opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
-        opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
-    };
+    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
+    // Assemblies are the one setting configuration cannot express.
+    options.Replication = opt => opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
     options.RateLimiter = _ => { };
 });
 

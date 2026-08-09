@@ -40,15 +40,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
     spark.AddMessaging();
 
-    spark.AddReplication(opt =>
-    {
-        var section = builder.Configuration.GetSection("SparkReplication");
-        opt.ModuleName = section["ModuleName"] ?? "HR";
-        opt.ModuleUrl = section["ModuleUrl"] ?? "https://localhost:5002";
-        opt.SparkModulesUrls = section.GetSection("SparkModulesUrls").Get<string[]>() ?? ["http://localhost:8080"];
-        opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
-        opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly];
-    });
+    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
+    // Assemblies are the one setting configuration cannot express.
+    spark.AddReplication(opt => opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly]);
 });
 
 builder.Services.ConfigureApplicationCookie(options =>
