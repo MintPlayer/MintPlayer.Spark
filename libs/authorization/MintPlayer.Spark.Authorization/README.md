@@ -369,7 +369,30 @@ The generated setup file includes the following helpers:
 | `setupSparkAuthRoutes(config?)` | Returns route array with login, register, forgot-password, reset-password pages |
 | `sparkAuthGuard` | Route guard that redirects unauthenticated users to login |
 | `SparkAuthBarComponent` | Auth bar component (`<spark-auth-bar>`) for login/logout UI |
-| `SparkAuthService` | Injectable service with `login()`, `register()`, `logout()`, `user` signal, etc. |
+| `SparkAuthService` | Injectable service with `login()`, `register()`, `logout()`, `loginWithProvider()`, `user` signal, etc. |
+
+### External Login (GitHub, Google, …)
+
+Once a provider is registered server-side (Step 3), sign-in is one call — `SparkAuthService`
+owns the whole handshake:
+
+```typescript
+const result = await this.authService.loginWithProvider('GitHub', { returnUrl: '/projects' });
+if (result.success) this.router.navigate(['/projects']);
+```
+
+It defaults to a popup and resolves once the flow ends, whichever way it ends. Pass
+`{ mode: 'redirect' }` for a full-page navigation instead; that promise never settles,
+because the outcome arrives as the next page load rather than as a value.
+
+On failure `result.error` is one of `no_login_info` (the user cancelled at the provider),
+`email_not_verified` (the provider did not attest the address, so no account was created),
+`account_creation_failed`, `popup_blocked` or `popup_closed`. The codes are deliberately
+coarse: they never distinguish "no such account" from anything else.
+
+Do not hand-roll `window.open` plus a `message` listener. The popup can end in four ways —
+success, a server-side refusal, a blocked window, and a user who simply closes it — and a
+listener that is only removed on success leaks on the other three.
 
 ### Customizing the Generated File
 

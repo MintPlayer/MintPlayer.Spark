@@ -110,6 +110,10 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         popupResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var popupBody = await popupResponse.Content.ReadAsStringAsync();
         popupBody.Should().Contain("postMessage");
+        // M2: the payload is namespaced and carries an explicit outcome, so one listener can
+        // distinguish this app's messages from anything else on the origin and tell success
+        // from failure without inferring it from which message did *not* arrive.
+        popupBody.Should().Contain("{ type: 'spark:external-login', success: true }");
         // Critically, the popup branch's HTML no longer carries returnUrl at all —
         // the postMessage payload is a static string.
         popupBody.Should().NotContain("'/home'", "popup HTML must be returnUrl-free (R2-C4)");
@@ -232,6 +236,60 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         response.Headers.Location!.OriginalString.Should().Be("/oops");
         // Bail-out happens before AddLogin / SignIn — confirm we did not proceed.
         await _userManager.DidNotReceive().AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>());
+        await _signInManager.DidNotReceive().SignInAsync(Arg.Any<SparkUser>(), Arg.Any<bool>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task Callback_reports_an_unverified_email_to_the_popup_opener()
+    {
+        // R2-H11 refuses to auto-provision from an unattested email. In a popup that refusal
+        // used to be a redirect — indistinguishable, from the opener's side, from the user
+        // still deciding. It now arrives as a message the caller can act on.
+        var info = NewLoginInfo(email: "unverified@test.org", name: "unverified", tokens: null, emailVerified: false);
+
+        using var server = await StartHostAsync((sim, um) =>
+        {
+            sim.GetExternalLoginInfoAsync().Returns(info);
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+                .Returns(SignInResult.Failed);
+        });
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync("/spark/auth/external-login-callback?popup=1&returnUrl=%2Fhome");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("success: false");
+        body.Should().Contain("email_not_verified");
+        await _userManager.DidNotReceive().CreateAsync(Arg.Any<SparkUser>());
+    }
+
+    [Fact]
+    public async Task Callback_reports_a_failed_account_creation_to_the_popup_opener()
+    {
+        var info = NewLoginInfo(email: "broken@test.org", name: "broken", tokens: null);
+        var failure = IdentityResult.Failed(new IdentityError { Code = "X", Description = "boom" });
+
+        using var server = await StartHostAsync((sim, um) =>
+        {
+            sim.GetExternalLoginInfoAsync().Returns(info);
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+                .Returns(SignInResult.Failed);
+            um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
+            um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
+            um.CreateAsync(Arg.Any<SparkUser>()).Returns(failure);
+        });
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync("/spark/auth/external-login-callback?popup=1&returnUrl=%2Foops");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("success: false");
+        body.Should().Contain("account_creation_failed");
+        // The refusal is reported, not smuggled: nothing about the Identity error reaches
+        // the browser, and the flow still stops before AddLogin/SignIn.
+        body.Should().NotContain("boom");
         await _signInManager.DidNotReceive().SignInAsync(Arg.Any<SparkUser>(), Arg.Any<bool>(), Arg.Any<string?>());
     }
 

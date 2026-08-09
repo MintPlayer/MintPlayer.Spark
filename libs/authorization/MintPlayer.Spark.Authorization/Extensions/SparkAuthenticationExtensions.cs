@@ -108,7 +108,8 @@ internal static class SparkAuthenticationExtensions
             HttpContext context,
             SignInManager<TUser> signInManager,
             string provider,
-            string? returnUrl) =>
+            string? returnUrl,
+            string? popup) =>
         {
             // R2-M3: validate returnUrl at the entry point. Even if R2-C4's
             // callback fix were bypassed, accepting an absolute attacker URL here
@@ -116,6 +117,14 @@ internal static class SparkAuthenticationExtensions
             // unchanged. Substitute the default for anything non-local.
             var safeReturnUrl = SanitizeReturnUrl(returnUrl);
             var callbackUrl = $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
+            // The callback is a fresh top-level navigation, so the only thing that survives
+            // this hop is the URL — carrying the popup flag forward here is what makes the
+            // callback's postMessage branch reachable at all. Plain query string, not OAuth
+            // `state`: this URL never reaches the provider (ASP.NET encrypts it into `state`
+            // itself as AuthenticationProperties.RedirectUri, and the provider only ever sees
+            // the registered CallbackPath).
+            if (popup is not null)
+                callbackUrl += "&popup=1";
             var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, callbackUrl);
             return Results.Challenge(properties, [provider]);
         });
@@ -136,7 +145,7 @@ internal static class SparkAuthenticationExtensions
 
             var info = await signInManager.GetExternalLoginInfoAsync();
             if (info is null)
-                return Results.Redirect(safeReturnUrl);
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.NoLoginInfo);
 
             // Try signing in with existing external login
             var result = await signInManager.ExternalLoginSignInAsync(
@@ -164,7 +173,7 @@ internal static class SparkAuthenticationExtensions
                         StringComparison.OrdinalIgnoreCase);
 
                 if (string.IsNullOrEmpty(email) || !emailVerified)
-                    return Results.Redirect(safeReturnUrl);
+                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.EmailNotVerified);
 
                 var userName = info.Principal.FindFirstValue(ClaimTypes.Name)
                     ?? info.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -178,7 +187,7 @@ internal static class SparkAuthenticationExtensions
 
                 var createResult = await userManager.CreateAsync(user);
                 if (!createResult.Succeeded)
-                    return Results.Redirect(safeReturnUrl);
+                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
 
                 await userManager.AddLoginAsync(user, info);
                 await signInManager.SignInAsync(user, isPersistent: true);
@@ -203,28 +212,66 @@ internal static class SparkAuthenticationExtensions
             // payloads, the popup branch (window.opener.postMessage) is unaffected
             // (no caller-data interpolation), and the non-popup branch is now a
             // standard server redirect that the framework HTML-encodes for us.
-            // Popup callers detect success via the explicit JSON content type
-            // rather than a hard navigation.
-            if (context.Request.Query.ContainsKey("popup"))
-            {
-                var popupHtml = """
-                    <!DOCTYPE html>
-                    <html><head><title>Signing in...</title></head>
-                    <body>
-                    <script>
-                    if (window.opener) {
-                        window.opener.postMessage({ type: 'external-login-success' }, window.location.origin);
-                        window.close();
-                    }
-                    </script>
-                    </body></html>
-                    """;
-                return Results.Content(popupHtml, "text/html");
-            }
-            return Results.Redirect(safeReturnUrl);
+            return ExternalLoginOutcome(context, safeReturnUrl, error: null);
         }).AllowAnonymous();
 
         return endpoints;
+    }
+
+    /// <summary>
+    /// Why an external login did not sign anyone in. These codes are the popup handshake's
+    /// public vocabulary — they reach browser code — so they are deliberately coarse: enough
+    /// for the opener to show the right message, never enough to distinguish "no such account"
+    /// from anything else.
+    /// </summary>
+    internal static class ExternalLoginErrors
+    {
+        /// <summary>No external login info on the request — usually the user cancelled at the provider.</summary>
+        public const string NoLoginInfo = "no_login_info";
+        /// <summary>The issuer did not attest the email address, so no account was auto-provisioned (R2-H11).</summary>
+        public const string EmailNotVerified = "email_not_verified";
+        /// <summary>Identity refused to create the local account (validation, duplicate, store failure).</summary>
+        public const string AccountCreationFailed = "account_creation_failed";
+    }
+
+    /// <summary>
+    /// How the external-login callback reports its result, in whichever way the caller can
+    /// actually receive it: a popup cannot navigate its opener, so it must post a message and
+    /// close, while a full-page flow simply redirects.
+    /// <para>
+    /// Every exit path goes through here — success <i>and</i> all three refusals. A branch that
+    /// redirected unconditionally would leave a popup opener's listener waiting forever on a
+    /// window the user had already closed, which is precisely the bug this milestone fixes.
+    /// </para>
+    /// </summary>
+    /// <param name="error">
+    /// <see langword="null"/> for success, otherwise a constant from <see cref="ExternalLoginErrors"/>.
+    /// It is interpolated into a JS object literal below, which is safe only while it stays a
+    /// compile-time constant — never pass caller-supplied text.
+    /// </param>
+    private static IResult ExternalLoginOutcome(HttpContext context, string safeReturnUrl, string? error)
+    {
+        if (!context.Request.Query.ContainsKey("popup"))
+            return Results.Redirect(safeReturnUrl);
+
+        var payload = error is null
+            ? "{ type: 'spark:external-login', success: true }"
+            : $"{{ type: 'spark:external-login', success: false, error: '{error}' }}";
+
+        var html = $$"""
+            <!DOCTYPE html>
+            <html><head><title>Signing in...</title></head>
+            <body>
+            <script>
+            if (window.opener) {
+                window.opener.postMessage({{payload}}, window.location.origin);
+            }
+            window.close();
+            </script>
+            </body></html>
+            """;
+
+        return Results.Content(html, "text/html");
     }
 
     /// <summary>

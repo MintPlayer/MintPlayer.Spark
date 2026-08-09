@@ -242,6 +242,20 @@ Message contract becomes `{ type: 'spark:external-login', success: true }` / `{ 
 
 `loginWithProvider` is purely additive to `ng-spark-auth`'s public surface (nothing called the old pattern through the library — there wasn't one), so a minor bump suffices. The postMessage payload shape changes, but its only consumer is rewritten in the same PR. **No OAuth provider-side registration changes anywhere.**
 
+### Shipped — option (b), and one thing the analysis missed
+
+Done as recommended. The analysis counted three failure branches and one success branch; the
+popup has a **fourth** ending that no server change can reach — the user closing the window —
+plus a fifth if the browser blocks it. Both are observable only in the browser, which is the
+argument for (b) restated more sharply than the original write-up made it: the server can be
+made to report every refusal it knows about and the handshake would *still* hang, because the
+endings the opener cares about are not all the server's to report.
+
+`loginWithProvider` therefore settles on all five, through a single `settle()` path that tears
+down the listener and the close-poll. The demo drops to two lines with no `window.open`, no
+`addEventListener` and no `NgZone` — the zone re-entry moved into the library too. See the
+plan's M2 section for the error vocabulary and the redirect-mode promise.
+
 ---
 
 ## 4. ng-bootstrap 22.4.0 → 22.13.0
