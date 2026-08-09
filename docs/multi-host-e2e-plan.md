@@ -15,7 +15,8 @@ sweep, not after each step.
 |---|---|---|---|
 | **H1** | Generalise `FleetTestHost` to run any demo app | Small | Not started |
 | **H2** | Shareable `SparkModules` registry + a two-host fixture | Small | Not started |
-| **R1** | Resolve the open question: can a consumer distinguish a licence failure from a security failure? | Tiny, **blocking R2** | Not started |
+| **R1** | Can a consumer distinguish a licence failure from a security failure? | — | ✅ **Resolved** — partly; see below |
+| **R1a** | Bind `Spark:Messaging:*` from configuration (blocks R2's determinism) | Small | Not started |
 | **R2** | Scenario 1 — real consumer → real owner ETL deployment | Medium | Not started |
 | **S1** | New `Demo/SparkId` app — the provider, no ClientApp | Small | Not started |
 | **R3** | SparkId issues, Fleet validates — the real token topology | Small | Not started (product-side unblocked) |
@@ -78,25 +79,50 @@ than estimating; if it hurts, skip HR's bundle (H1) since its UI is not exercise
 past roughly 2 minutes, split the multi-host collection into its own CI step rather than making the
 tests shallower.
 
-## R1 — Can the consumer tell *why* it was refused? (blocking)
+## R1 — Can the consumer tell *why* it was refused? — ✅ **resolved**
 
-`EtlTaskManager` catches the real exception and returns `ETL_DEPLOY_FAILED`; `EtlDeploy` returns a bare
-500; the recipient throws `HttpRequestException` and the message eventually dead-letters.
+**Partly yes, and the boundary is by design.**
 
-**Establish, before writing any assertion, whether the terminal error distinguishes:**
+- **Authorization refusal is distinguishable.** `EtlDeploy` returns `403` with a real JSON body
+  containing `"Forbidden"`; the recipient puts the response body verbatim into
+  `SparkMessage.Handlers[0].LastError`. Consumer-side, deterministic, licence-independent. This is the
+  F15 shape, and the existing single-host test already leans on it.
+- **Internal failures are not distinguishable from each other.** Every `EtlTaskManager` failure —
+  licence limit, self-loop, any future bug — returns a bare `500` with **no body**. The descriptive
+  error it builds is thrown away rather than serialised, deliberately (R2-L6, to avoid leaking
+  connection-string detail to a caller). So the consumer sees `InternalServerError` and an empty
+  string, and *cannot* prove the licence was the cause — only that it was not authorization.
+- **The real cause is observable on the owner**, in its process log: `EtlTaskManager` logs the actual
+  exception, and `FleetTestHost` already captures host stdout (`RecentLog`).
 
-- refused by authorization (`403 Forbidden` — the F15 shape),
-- failed at RavenDB for the licence (the expected outcome in tests),
-- failed to connect at all (the F14 shape).
+**Assertion strategy, therefore — two independent claims, neither of them "the message failed":**
 
-If it does not distinguish them, **say so in the plan and change the assertion strategy** — do not write
-a test that asserts "the message failed". That passes when replication is broken for any reason, which
-is the exact failure mode this work exists to eliminate. The fallback is owner-side observation: assert
-the connection string exists (proving the deploy reached RavenDB past authorization) and assert the
-owner logged no authorization refusal.
+1. *Consumer-side:* the message reaches `DeadLettered` and its `LastError` does **not** contain
+   `Forbidden` — proving it got past authorization.
+2. *Owner-side:* the captured log contains the licence-limit exception — the only place the true cause
+   is provable rather than inferred.
 
-If it does not distinguish them and that seems wrong, note it as a finding — a consumer that cannot tell
-"you may not replicate this" from "the server is down" cannot retry sensibly either.
+Do not merge these into one assertion, and do not claim the test proves an ETL task would have been
+created. It proves the live pipeline reached the owner and was refused **only** by the licence.
+
+### R1a — messaging retry policy is not configurable (blocks R2's determinism)
+
+Making a failed deploy settle in seconds needs `MaxAttempts = 1`: it is captured onto the message at
+broadcast time, and the worker dead-letters on the first attempt without scheduling any backoff (already
+pinned by `MessageSubscriptionWorkerE2ETests`). Defaults are `MaxAttempts = 5` with backoff
+`[5s, 30s, 2m, 10m, 1h]` — minutes per test.
+
+**But there is no configuration key for it.** `AddReplication` binds `Spark:Replication` from
+`IConfiguration`; `AddMessaging` takes only a C# delegate baked into `Program.cs`. No `Spark:Messaging:*`
+key exists anywhere in the repo, so the harness — which configures hosts exclusively through a generated
+`appsettings.{Environment}.json` — cannot reach it.
+
+**Decision: add the binding**, mirroring `AddReplication`'s existing pattern. It is a small, precedented
+diff, and it is not test-only plumbing: **an operator cannot tune retry or backoff policy from
+configuration today either**, which is a real gap in a durable message bus. The alternative — running
+this scenario in-process via `SparkEndpointFactory` to inject options directly — trades away exactly the
+realism (a real `dotnet run`, real Kestrel, real certificate handshake) that the subprocess harness
+exists to provide.
 
 ## R2 — Scenario 1
 
@@ -109,20 +135,27 @@ so it is complete. The Fleet → HR direction is the one F15 just repaired, whic
 
 **Make it deterministic before making it thorough:**
 
-- Shorten the messaging retry schedule from the E2E configuration so a failed deploy reaches its
-  terminal state in seconds. Default backoff would make this test minutes long.
-- Poll a terminal state; never assume delivery. The chain is a detached startup task plus a polling
-  subscription worker.
-- Point-load where possible. Absence assertions against an eventually-consistent index pass whether or
-  not the property holds — that trap has been hit three times on this branch.
+- Set `MaxAttempts = 1` via R1a's new configuration key, so a failed deploy dead-letters on the first
+  attempt with no backoff scheduled.
+- **The polling pattern that avoids the staleness trap:** the test does not know the message id (the
+  consumer's own startup broadcasts it), so query `SparkMessages` for
+  `QueueName == 'spark-etl-deployment'` in a 100 ms loop until it appears, then **switch to
+  point-loading by id** for the rest of the wait. The loop self-heals past the query's staleness window,
+  so no `WaitForIndexing` is needed and no assertion is ever made against a stale index — the trap this
+  branch has hit three times.
+- Wait for `DeadLettered`, not `Completed`: under the licence limitation the deploy fails, so a test
+  waiting for success would wait forever.
 
 **Assertions, strongest first:**
 
-1. The owner's RavenDB has the connection string the deployment creates (licence-independent proof it
-   got past authorization and reached RavenDB).
-2. The deployment did **not** fail for `Forbidden` — the F15 shape.
-3. The deployment did **not** fail to connect — the F14 shape.
-4. *(If R1 allows)* the terminal failure is specifically the licence limitation.
+1. The **owner's** store has the connection string `spark-etl-{RequestingModule}` — note the name comes
+   from the *requesting* module, so HR pulling from Fleet creates `spark-etl-HR` on Fleet.
+   `PutConnectionStringOperation` completes before the licence-gated call, so this survives the failure
+   and is licence-independent proof the deployment reached RavenDB past authorization.
+2. The consumer's message did **not** fail for `Forbidden` — the F15 shape.
+3. The consumer's message did **not** fail to connect — the F14 shape.
+4. The **owner's log** carries the licence-limit exception — per R1, the only place the true cause is
+   provable rather than inferred.
 
 **Pin the translation at unit level in the same milestone.** The two-host test cannot observe the
 owner's copy of the script text — it lands only in the licence-gated `AddEtlOperation` call — so

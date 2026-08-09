@@ -132,13 +132,20 @@ data*. That is RavenDB's behaviour, not Spark's, and it is a reasonable thing to
 > lacks the ETL feature. If the organisation holds a tier that includes it, pointing CI at that licence
 > collapses this entire section into a direct end-to-end assertion and makes the layering unnecessary.
 
-> **Open question (blocking the assertion design, not the harness).** `EtlTaskManager` catches the
-> real exception and returns `ETL_DEPLOY_FAILED`; `EtlDeploy` then returns a bare 500. If the licence
-> reason never reaches the consumer, "assert by elimination" is impossible and the test must assert
-> the *owner-side* connection string plus the consumer-side "did not fail for Forbidden" only.
-> **Resolve before writing the assertions.** Under no circumstances should this test assert merely
-> "the message failed" — that passes when replication is broken for any reason, which is the failure
-> mode this whole document exists to eliminate.
+**Resolved (see the plan's R1).** The consumer *can* tell authorization apart from everything else — a
+`403` carries a body containing `Forbidden`, which lands verbatim in the message's `LastError`. It
+*cannot* tell a licence failure from any other internal failure: every `EtlTaskManager` error returns a
+bare `500` with no body, deliberately (R2-L6). The true cause is provable only on the **owner**, in its
+process log, which the harness already captures.
+
+So the test makes two independent claims — the consumer's message dead-lettered *without* `Forbidden`,
+and the owner's log carries the licence exception — rather than one weak claim that "the message
+failed", which would pass whenever replication is broken for any reason at all.
+
+One more thing this exposed: **the message bus's retry policy cannot be configured.** `AddMessaging`
+takes a C# delegate and binds no configuration section, so `MaxAttempts` and the backoff schedule are
+compile-time constants. That blocks the test's determinism (defaults would make it minutes long) and is
+a real gap for operators, who cannot tune a durable bus's retry behaviour from `appsettings` either.
 
 ### Determinism
 
