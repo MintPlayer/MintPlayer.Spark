@@ -36,7 +36,11 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `9bc39c2` | **Two-factor batch** — 164 IdP tests (26 cases; §L.4 complete) |
 | `906b101` | **N7, N8** — remember-me across the 2FA hop; single-use recovery codes under concurrency |
 | `999c4e4` | **D9–D11** — `/connect` rate limiting, hashed recovery codes, audience-gated introspection |
-| _(next)_ | **M12.7 library half** — `IOidcApplicationContext`, `OidcApplicationActions`, `OidcScopeActions` (190 IdP tests green) |
+| `0b2ae01` | M12.7 spec'd as a PersistentObject (D13); PRD records what the tests returned |
+| `94ac56d` | **M12.7 library half** — `IOidcApplicationContext`, `OidcApplicationActions`, `OidcScopeActions` |
+| `f01bfca` | Registration story proven end to end; **O17** re-scoped honestly (**193 IdP tests green**) |
+
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09, 32 commits, 70 files, +9,597/−76. Deliberately a draft: handoff items 3–6 are untouched, M8–M11 has had no work, and release mechanics are not done.
 
 **M12.6 has covered the flow, success and failure.** 131 IdentityProvider tests green — 33 unit plus **98 e2e** spanning `/connect/authorize`, the consent hop, all three token grants, login, logout, introspection, revocation, UserInfo, discovery and JWKS. Every fix in this branch that has observable behaviour now has a test asserting both that the legitimate path works and that the attack is refused.
 
@@ -59,6 +63,22 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 **Verification debt:** the full suite (`npx nx run-many --target=test`) has **not** been run — per CLAUDE.md it runs once at the end. Targeted filters are green: 57 IdentityProvider tests (33 unit + 24 e2e) and 18 `QueueNamesTests`. The four demo ClientApps have not been built or exercised since the IdP port. **Coverage is still thin** — §T and §L of the matrix have no tests at all, and everything cookie-driven is untested pending the signed-in-session fixture.
 
 **Next action:** continue M12.6 from `tests/.../IdentityProvider/OidcTestHost.cs`. Build the signed-in-session helper (register a user via `UserManager`, POST `/connect/login` with an antiforgery token, keep the cookie), which unlocks §A's consent cases and all of §L. Then §T and §R.
+
+## Breaking changes — release notes for M7
+
+Preview package, so no compatibility was required, but each of these changes behaviour a consumer can observe. Collected here because they were decided one at a time across the audit and a release note assembled from memory will miss one.
+
+| Change | Effect | Why |
+|---|---|---|
+| `SparkIdentityProviderOptions.Issuer` **required** outside Development | Token issuance throws at startup if unset | It was derived from the `Host` header, which the caller controls — a forged header minted tokens claiming any issuer, signed with the real key (**O7**) |
+| `/connect/logout` requires `client_id` | Logout without it is refused | `post_logout_redirect_uri` was validated against *every* enabled application, so one client's registered URI was a legal destination for all of them (**O12**) |
+| `client_credentials` requires an explicit `scope` | A request omitting it is refused | Omitting it granted the client's entire authority (**O14**) |
+| Refresh tokens require `offline_access` | Clients that never asked stop receiving one | Every browser client was silently issued a 14-day credential it could not decline (**O8**) |
+| `id_token` requires `openid` | Clients not asking for it stop receiving one | A client wanting only API access still got a signed identity assertion (**O22**) |
+| Scopes must have an enabled `OidcScope` | Authorize refuses an undefined scope | Authorize and issuance validated against different sources, so a granted scope silently vanished from the token (**N6**) |
+| `AllowedGrantTypes` no longer defaults | A client declaring no grants can use none | The default was re-added by the serializer on load, making every grant restriction unenforceable (**N5**) |
+| **Two-factor recovery codes are hashed** | **Existing codes stop working — users must regenerate** | A database dump was a dump of working second-factor bypasses (**D10/N9**). **The only change touching a persisted user format** — needs the most prominent release note |
+| Rate limiter covers `/connect` | Interactive OIDC endpoints are throttled where the limiter is enabled | It was scoped to `/spark`, so an app opting in still shipped an unthrottled password endpoint (**D9**) |
 
 ## Resolved decisions (2026-08-08)
 
