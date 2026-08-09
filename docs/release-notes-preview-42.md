@@ -139,9 +139,26 @@ Only relevant if you use `MintPlayer.Spark.IdentityProvider`.
 |---|---|
 | **The external-login popup message changed shape** | `{ type: 'external-login-success' }` became `{ type: 'spark:external-login', success, error? }`. If you hand-rolled a listener, replace it with `SparkAuthService.loginWithProvider(provider, { returnUrl })` — it owns the whole handshake and, unlike a hand-rolled version, settles on a blocked popup and on one the user closed |
 | The external-login callback reports refusals to a popup | With `?popup`, all three failure branches now post a message instead of redirecting. A cancelled login used to leave the opener waiting on a window nobody would close |
+| **ng-bootstrap 22.13 needs `@mintplayer/web-components` ≥ 2.5** | An app on `web-components@2.0.x` **fails to build**: `Missing "./accordion" specifier`. Update it — `npm update @mintplayer/web-components`. ng-bootstrap's peer range (`^2.0.0`) admits versions lacking the subpaths it imports, so a satisfied range is not a working one |
 | **`BsAccordionTabHeaderComponent` → `*bsAccordionTabHeader`** | ng-bootstrap 22.13 made it a structural directive: `<ng-container *bsAccordionTabHeader>…</ng-container>`, and swap the symbol in your `imports`. Affects consumers of the demo shell pattern, not `@mintplayer/ng-spark` |
 
 ---
+
+## Added
+
+- **Messaging retry policy is configurable.** `AddMessaging` now binds the `Spark:Messaging` section
+  (`MaxAttempts`, `BackoffDelays`, `FallbackPollInterval`, `RetentionDays`), so a durable bus can be
+  tuned per environment instead of only from a C# delegate compiled into `Program.cs`. Code still wins
+  over configuration.
+  - *Minor observable change:* `SparkMessagingOptions.BackoffDelays` now defaults to **empty**, with
+    the schedule applied by `ResolvedBackoffDelays`. Anything reading the raw property directly sees
+    `[]` rather than the five delays. This is deliberate — .NET's binder *appends* to a non-empty
+    collection, so an initialised default would have survived binding and stayed first, silently
+    overriding a configured schedule (the same defect as `SparkModulesUrls` below).
+- **`spark.UseGroupMembershipProvider<T>()`** — a supported registration path for a custom
+  `IGroupMembershipProvider`; the documented extension point previously had only an `internal` helper.
+- **`SparkFullOptions.Configure`** — an escape hatch to the `ISparkBuilder` for apps using
+  `AddSparkFull`, which previously could not register a credential scheme at all.
 
 ## Fixed
 
@@ -151,6 +168,12 @@ Only relevant if you use `MintPlayer.Spark.IdentityProvider`.
   definition plus each argument's own derived name. If you were relying on a derived queue *name*,
   don't — route by CLR type.
 - **Redirect-URI validation failed open on Linux.**
+- **A configured `SparkModulesUrls` never took effect.** It initialised to
+  `["http://localhost:8080"]`, and .NET's configuration binder *appends* to a non-empty collection
+  rather than replacing it — so the configured URL landed second and `DocumentStore` connected to the
+  first. Every deployment that configured where its module registry lived was still talking to
+  localhost, silently, with a config file that said otherwise. **If you run replication, verify which
+  server your modules actually registered with.**
 - **The dev-tunnel allow-list failed open**: an empty `AllowedDevUsers` meant "any authenticated
   GitHub user", who could then subscribe to every private-repo webhook the dev app receives. Empty
   now means nobody.

@@ -70,9 +70,19 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `1d2bc51` | **M7 done** — 21 packages to `preview.42`, `ng-spark-auth` to `22.1.0`, and a consumer-facing release note |
 | `c0e4728` | **Q1 answered** — M4 (the PAT library) cancelled: one machine-credential system, not two |
 | `cfd8d23` | **M3.3 done** — the bump did not build (`web-components@2.0.0`) and the accordion rendered white-on-white; both fixed |
-| `(head)` | **Cross-module E2E + F14** — the success case is covered at last, and it found a config-binding bug |
+| `ca17fc8` | **Cross-module E2E + F14** — the success case at last; found a configured `SparkModulesUrls` that never replaced the default |
+| `21d6084` | Two specs CI caught — an `as any` that hid a wrong `step` type, and a jsdom stub that worked only locally |
+| `b172aed` | **Two-host E2E** — a second host rather than relaxing the strict one; build gate added after the hosts raced on Fleet's DLL |
+| `4970bc2` | **Module certificate registered in Fleet** — 4 E2E tests; found `AddSparkFull`'s missing escape hatch and Kestrel's chain check |
+| `8e3ca12` | **`client_credentials` accepted in Fleet** — 3 E2E tests, a real token round trip |
+| `9436832` | **F15** — one ungranted collection refuses a module's whole ETL batch; `Demo/HR` was missing `Replicate/Companies` |
+| `965fac9` | **Multi-host E2E specced** — [PRD](./PRD-MultiHostE2E.md) + [plan](./multi-host-e2e-plan.md) |
+| `3dac5fd` | Fleet's trusted authority decoupled from its self-hosted issuer; `Demo/SparkId` decided |
+| `36339ae` | R1 resolved — a consumer can prove "not authorization", not "licence" |
+| `be6e335` | **`Spark:Messaging` binding** (F14's trap avoided) + the ETL test now asserts a real deployment |
+| `d9143ac` | The collection-initializer rule moved to class level on both options types |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. **Every milestone is now implemented.** What stands between this and ready-for-review is the deferred verification sweep, not more code. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
+**PR [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09, **ready for review**. Every milestone is implemented and the verification sweep is done: CI green on Linux with 1299 unit + 77 E2E + 54 source-generator + 38 client + 282 Angular tests, the demo ClientApps built, and the accordion checked visually in a running host. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
 **The intermittent failure — probable cause found, and six latent defects with it.** Six assertions in the IdentityProvider tests queried an **index** with no preceding wait: `OidcConsentSecurityTests` (×4), `OidcAuthorizeSecurityTests`, `OidcTokenSecurityTests`. Under full-suite load index lag grows, which is exactly the shape of an intermittent that never reproduces under a filter.
 
@@ -218,6 +228,8 @@ Preview package, so no compatibility was required, but each of these changes beh
 | **`BsAccordionTabHeaderComponent` → `*bsAccordionTabHeader`** | An app using the accordion header must migrate to the structural directive on an `<ng-container>` | ng-bootstrap 22.13 converted the component to a directive. Affects consumers of the demos' shell pattern, not `@mintplayer/ng-spark` itself (**M3**) |
 | `spark.UseGroupMembershipProvider<T>()` added | A custom `IGroupMembershipProvider` now has a supported registration path | The documented extension point's only helper was `internal`; the workaround left both providers registered and let order decide (**M6**) |
 | **One ungranted collection blocks a module's whole ETL deployment** | An owner must grant `Replicate/{Collection}` for **every** collection a consumer replicates from it, not just some | Scripts are batched per source module and the per-script check refuses the batch. `Demo/HR` granted `Replicate/People` but not `Replicate/Companies`, so Fleet's real deployment would have been refused in full (**F15**) |
+| `SparkMessagingOptions.BackoffDelays` defaults to empty | Code reading the raw property sees `[]`; read `ResolvedBackoffDelays` | The binder appends to a non-empty collection, so an initialised default survives binding and stays first — silently overriding a configured schedule, exactly as **F14** did to `SparkModulesUrls` (**R1a**) |
+| `AddMessaging` binds `Spark:Messaging` | Configuration now affects retry policy where it previously did not | Retry and backoff were compile-time constants, so no operator could tune a durable bus per environment without a redeploy (**R1a**) |
 | **ng-bootstrap 22.13 needs `@mintplayer/web-components` ≥ 2.5** | An app on `web-components@2.0.x` fails to build: `Missing "./accordion" specifier` | ng-bootstrap's peer range (`^2.0.0`) admits versions that lack the subpath it imports, so a satisfied range is not a working one (**M3.3**) |
 | Consumers styling the accordion via Bootstrap classes must restyle | `.accordion-item` / `.accordion-button` / `.accordion-body` no longer exist in the light DOM, so `::ng-deep` rules silently stop applying | 22.13 moved the internals into a web component's shadow DOM. Use `data-bs-theme` / `--bs-*` tokens or `mp-accordion::part(...)`. Failure mode is invisible — the CSS does not error, it just stops matching (**M3.3**) |
 
@@ -1086,9 +1098,7 @@ Merging to `master` publishes automatically (`--skip-duplicate` means an unbumpe
 
 ---
 
-## Final verification
-
-Once **all** milestones are implemented:
+## Final verification — ✅ done
 
 ```
 npx nx run-many --target=test
@@ -1096,11 +1106,22 @@ npx nx run-many --target=test
 
 Requires `RAVENDB_LICENSE` (JSON) or the root `raven-license.log`. No Docker. Covers the .NET suites and both Vitest packages.
 
-Then the manual checks that tests can't cover:
-- The four demo sidebars — expand/collapse and header content (M3.3).
-- WebhooksDemo GitHub popup login end to end: success, provider-side cancellation, and manually closing the popup (M2).
-- Fleet's Cars list as a non-admin, confirming it now matches what `/spark/po` returns (M5).
-- WebhooksDemo's project list as a user outside the org, confirming it is now filtered (M5.3).
+**Green on CI (Linux):** 1299 unit + 77 E2E + 54 source-generator + 38 client + 282 Angular.
+
+⚠️ **The licence now matters.** `Etl_deployment_is_accepted_for_a_granted_collection` asserts a real
+ETL deployment, which needs a licence including the RavenDB ETL feature. A checkout whose
+`raven-license.log` lacks it will fail that one test — CI's `RAVENDB_LICENSE` secret has it.
+
+Manual checks:
+- ✅ The demo sidebar — expand/collapse, header content, computed colours, zero console errors, driven
+  with Playwright in a running DemoApp (M3.3). This is what caught the accordion rendering white on
+  white; the three static checks all passed straight over it.
+- ⬜ WebhooksDemo GitHub popup login end to end: success, provider-side cancellation, and manually
+  closing the popup (M2). Needs real GitHub credentials, so it cannot run unattended — the server half
+  and the client handshake are covered by unit and E2E tests.
+- ⬜ Fleet's Cars list as a non-admin, confirming it matches what `/spark/po` returns (M5). Covered by
+  `RowLevelAuthzTests` at the API level; the visual pass is not done.
+- ⬜ WebhooksDemo's project list as a user outside the org (M5.3).
 
 ## Follow-ups filed, not done here
 
