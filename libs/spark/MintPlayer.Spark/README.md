@@ -185,6 +185,42 @@ The universal data container that replaces traditional DTOs. Contains an ID, typ
 
 A registry pattern (similar to EF Core's DbContext) that tracks available entity types through `IRavenQueryable<T>` properties. The framework discovers entities by reflecting over these properties.
 
+### Natural IDs
+
+By default Spark stores documents under `{Collection}/{Guid}`. An entity that has a real
+business key can derive its own id instead by implementing `IHasNaturalId`:
+
+```csharp
+public class Car : IHasNaturalId
+{
+    public static string GetId(string licencePlate) => $"cars/{licencePlate.ToUpperInvariant()}";
+    string IHasNaturalId.GetId() => GetId(LicencePlate);
+
+    public string? Id { get; set; }
+    public string LicencePlate { get; set; } = null!;
+}
+```
+
+Declare the derivation twice — a `static` overload taking the key, and an explicit interface
+implementation delegating to it. The static is what callers use, because they need the id
+*before* they have a document:
+
+```csharp
+var car = await session.LoadAsync<Car>(Car.GetId("1-ABC-234"));
+```
+
+That call is a point-load. The alternative — finding the car by querying an index on
+`LicencePlate` — is eventually consistent, so a car written moments earlier may not be found
+yet. Deriving the id removes that window, which is why it matters most for lookups that gate a
+decision rather than merely display a row.
+
+**The derivation's inputs must not change after the document exists.** RavenDB has no rename:
+storing the entity again after the key changes writes a *second* document and leaves the
+original behind. Derive from a licence plate or an external system's key, not from a display
+name.
+
+Entities that don't implement the interface are unaffected and keep the generated id.
+
 ### Actions Classes
 
 Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>` to add validation or custom behavior:

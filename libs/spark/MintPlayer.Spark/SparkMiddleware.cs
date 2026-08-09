@@ -71,12 +71,8 @@ public static class SparkExtensions
                 Database = options.RavenDb.Database,
             };
 
-            // Use GUID-based document IDs instead of HiLo
-            store.Conventions.AsyncDocumentIdGenerator = (dbName, entity) =>
-            {
-                var collectionName = store.Conventions.GetCollectionName(entity.GetType());
-                return Task.FromResult($"{collectionName}/{Guid.NewGuid()}");
-            };
+            // Derived ids for IHasNaturalId entities, GUIDs for everything else.
+            store.Conventions.ApplySparkIdConventions();
 
             // Register custom JSON converters for RavenDB document serialization
             store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
