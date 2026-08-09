@@ -53,9 +53,11 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `38379e2` | **Natural ids** — `IHasNaturalId`, ported from CronosCore |
 | `1279f07` | **D14** — package + opt-in proposal declined with reasons; conventions split and renamed |
 | `6b2b0b5` | **M14.2** — the suite stops substituting the store it tests (**1266 tests green**) |
-| `(head)` | **M9 done** — composite scheme + antiforgery exemption; XSRF package swap declined (**1273 + 61 E2E green**) |
+| `ccfcc9a` | **M9 done** — composite scheme + antiforgery exemption; XSRF package swap declined (**1273 + 61 E2E green**) |
+| `50069d4` | **Authentication guide** — schemes, `Everyone`, the failure case; two doc defects corrected |
+| `(head)` | Anonymous-CRUD E2E gap closed; a vacuous row-level assertion fixed; **N23** raised (**65 E2E green**) |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 3, 4 and 6 are untouched, M8–M11 has had no work, and release mechanics are not done. Item 5 (row-level authz) is now **done** — see M5 above.
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 2, 3 and 6 are untouched, **M10 and M11 remain**, and release mechanics (M7) are not done. Item 5 (row-level authz) is **done** — see M5. **M8, M9 and M14 are done**; M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
 **The intermittent failure — probable cause found, and six latent defects with it.** Six assertions in the IdentityProvider tests queried an **index** with no preceding wait: `OidcConsentSecurityTests` (×4), `OidcAuthorizeSecurityTests`, `OidcTokenSecurityTests`. Under full-suite load index lag grows, which is exactly the shape of an intermittent that never reproduces under a filter.
 
