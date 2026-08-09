@@ -130,7 +130,37 @@ provable. Their startup then raced (xUnit runs distinct collections in parallel,
 `dotnet run`s building Fleet at once hit `CS2012`, taking the whole suite down), so the build now
 happens once behind a gate and each host runs `--no-build`.
 
-**Full E2E suite: 70/70 green locally.**
+**Credential schemes are now registered in a demo and proven end to end.** Fleet registers both
+`AddModuleCertificateAuthentication()` and `AddJwtBearerCredential(…)`, and seven E2E tests carry a
+real credential through the composite scheme, into `security.json`, and out of an ordinary endpoint —
+the path that existed nowhere before, since M9/M10 had unit-tested guards and no consumer.
+
+- **Certificate (4):** a registered certificate creates a Car through its `Module:HR` grant; the same
+  POST succeeds with no XSRF token (the non-ambient exemption, D2/F8); an unregistered CN is refused;
+  and the right CN with the wrong key is refused — the case the thumbprint pin exists for.
+- **JWT (3):** a real `client_credentials` exchange against the running issuer, whose token then
+  authorizes a write through its `group` claim; a token for a different audience is refused; garbage
+  is refused without a 500. Fleet plays both roles, which is a simplification of the real topology
+  (one SparkId, many resource servers) and the only way to make the round trip testable in one host.
+
+Four obstacles worth recording, because each would stop anyone repeating this:
+
+1. **`AddSparkFull` had no escape hatch.** An app on the bundle could not register a credential
+   scheme at all. Added `SparkFullOptions.Configure`, invoked last with the same `ISparkBuilder`.
+2. **Kestrel validates the client certificate chain during the handshake**, before any handler runs,
+   so certificates from an operator-created CA never reached Spark — indistinguishable from a
+   misconfigured scheme. Fleet defers with `AllowAnyClientCertificate()`; the trust decision is the
+   thumbprint pin, which is strictly narrower.
+3. **A refused credential returns 400, not 401**, on a mutating request: it falls back to the
+   anonymous path where antiforgery answers first. The tests assert that and say so; the
+   accepted/refused *pair* is the discriminator.
+4. **The IdP auto-generates a signing key only in Development** — correct, and it means the E2E must
+   supply one, which incidentally exercises the configured-key path rather than the convenience one.
+   The issuer also runs on **http** in tests, because the JWT handler fetches discovery from the
+   issuer itself and https would require the host to trust its own dev certificate — true locally,
+   not on a CI runner. Fleet's HTTPS redirection is now configurable for that reason.
+
+**Full E2E suite: 77/77 green locally.**
 
 **Next action:** the deferred verification sweep — `npx nx run-many --target=test` across all suites,
 then the four demo ClientApps (which have not been built since the IdP port), then M3.3's visual

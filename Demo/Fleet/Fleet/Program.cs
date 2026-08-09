@@ -3,6 +3,8 @@ using Fleet;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark.Replication.Authentication;
+using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +53,38 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // exactly like a person. Nothing here is replication-specific — the credential works on
         // every Spark endpoint, which is the point of M9's composite scheme.
         spark.AddModuleCertificateAuthentication();
+
+        // Fleet both issues and consumes machine tokens here. In a real topology those are separate
+        // deployments — a central SparkId issues, each resource server validates — but keeping both
+        // in one app is what makes the round trip demonstrable, and the two halves are configured
+        // independently either way.
+        var issuer = builder.Configuration["SparkIdentityProvider:Issuer"];
+        if (!string.IsNullOrWhiteSpace(issuer))
+        {
+            spark.AddIdentityProvider(idp =>
+            {
+                idp.Issuer = issuer;
+
+                // Outside Development the provider requires a key rather than generating one, so
+                // this has to be configurable — a key that appears on first use is a key nobody
+                // backed up, and every token in flight dies at the next restart.
+                idp.SigningKeyPath = builder.Configuration["SparkIdentityProvider:SigningKeyPath"]
+                    ?? idp.SigningKeyPath;
+            });
+
+            // The consumer half of client_credentials, and the reason a CI job can POST here at all.
+            // Audience is required by the extension: without it this app would accept every token
+            // the issuer ever minted, including ones a client obtained for a different resource.
+            spark.AddJwtBearerCredential(jwt =>
+            {
+                jwt.Authority = issuer;
+                jwt.Audience = builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api";
+
+                // Discovery is fetched over the issuer's own scheme. Left at the default this
+                // demands HTTPS, which a local http issuer cannot satisfy.
+                jwt.RequireHttpsMetadata = issuer.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            });
+        }
     };
 });
 
@@ -68,7 +102,11 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
-app.UseHttpsRedirection();
+// Deployments that terminate TLS at a proxy — and the E2E host, whose issuer must be reachable
+// over plain http so the JWT handler can fetch discovery from itself without a trusted certificate
+// — turn this off. Defaults to on, so nothing changes for an ordinary run.
+if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 

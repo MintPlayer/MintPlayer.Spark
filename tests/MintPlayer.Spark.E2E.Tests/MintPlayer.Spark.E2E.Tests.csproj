@@ -34,6 +34,8 @@
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <!-- SyncActionRequest / ModuleInformation payloads for the cross-module sync tests. -->
     <ProjectReference Include="..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+    <!-- OidcApplication / OidcScope seeding for the JWT credential tests. -->
+    <ProjectReference Include="..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
     <!-- Typed HTTP client used by Security/*.cs tests in place of hand-built JSON. -->
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <!-- Auth extensions (LoginAsync/LogoutAsync/RegisterAsync/GetCurrentUserAsync). -->

@@ -5,6 +5,8 @@ using System.Net.Sockets;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
+using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
@@ -79,11 +81,19 @@ public sealed class FleetTestHost : IAsyncLifetime
     private SparkTestDriverHost? _raven;
     private Process? _fleetProcess;
     private string? _fleetUrl;
+    private string? _fleetHttpUrl;
     private readonly List<string> _fleetLog = new();
     private readonly object _logLock = new();
 
     /// <summary>Base URL of the running Fleet instance (HTTPS, self-signed — use <see cref="BrowserOptions"/>).</summary>
     public string FleetUrl => _fleetUrl ?? throw new InvalidOperationException("Host not initialized");
+    /// <summary>
+    /// The plain-http base URL. The OIDC issuer runs here in tests: the JWT handler fetches the
+    /// discovery document from the issuer itself, and over https that means the host trusting its
+    /// own development certificate — which is true on a dev machine and not on a CI runner.
+    /// </summary>
+    public string FleetHttpUrl => _fleetHttpUrl ?? throw new InvalidOperationException("Host not initialized");
+
     /// <summary>URLs of the embedded Raven server, for tests that build cross-module payloads.</summary>
     public string[] RavenUrls => _raven?.Store.Urls ?? throw new InvalidOperationException("Host not initialized");
     public string AdminName => AdminUserName;
@@ -224,6 +234,51 @@ public sealed class FleetTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Registers a confidential <c>client_credentials</c> application and the scope that gives its
+    /// tokens an audience, then returns the client secret.
+    /// <para>
+    /// The <c>group</c> claim is the entire authorization integration: a machine token carrying
+    /// <c>group = "{group}"</c> is governed by the same <c>security.json</c> as a person, because
+    /// group membership is resolved from claims and nothing else knows what a client is.
+    /// </para>
+    /// </summary>
+    public async Task<string> SeedMachineClientAsync(string clientId, string scopeName, string audience, string group)
+    {
+        var secret = $"S{Guid.NewGuid():N}!a";
+
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+        using var session = appStore.OpenAsyncSession();
+
+        await session.StoreAsync(new OidcScope
+        {
+            Name = scopeName,
+            DisplayName = scopeName,
+            Enabled = true,
+            // The audience comes from the scope, not the client — so this is what makes the issued
+            // token addressed to this resource server rather than to everything the issuer serves.
+            Audiences = [audience],
+        });
+
+        await session.StoreAsync(new OidcApplication
+        {
+            ClientId = clientId,
+            DisplayName = clientId,
+            ClientType = "confidential",
+            Enabled = true,
+            Secrets = [new ClientSecret { Hash = ClientSecretHasher.Hash(secret), CreatedAt = DateTime.UtcNow }],
+            AllowedGrantTypes = ["client_credentials"],
+            AllowedScopes = [scopeName],
+            Claims = [new ClientClaim { Type = "group", Value = group }],
+        });
+
+        await session.SaveChangesAsync();
+        appStore.WaitForIndexing(TestDatabase);
+
+        return secret;
+    }
+
+    /// <summary>
     /// Point-loads a document from the app database by id. Deliberately not a query: these
     /// assertions include "this was NOT written", and an absence assertion against an
     /// eventually-consistent index passes whether or not the property holds.
@@ -275,6 +330,12 @@ public sealed class FleetTestHost : IAsyncLifetime
         if (_overrideSettingsFile is not null && File.Exists(_overrideSettingsFile))
         {
             try { File.Delete(_overrideSettingsFile); }
+            catch { /* best-effort */ }
+        }
+
+        if (_signingKeyFile is not null && File.Exists(_signingKeyFile))
+        {
+            try { File.Delete(_signingKeyFile); }
             catch { /* best-effort */ }
         }
 
@@ -397,12 +458,37 @@ public sealed class FleetTestHost : IAsyncLifetime
     }
 
     private string? _overrideSettingsFile;
+    private string? _signingKeyFile;
+
+    /// <summary>
+    /// An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.
+    /// </summary>
+    private static string NewSigningKeyJson()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var p = rsa.ExportParameters(true);
+        static string B64(byte[] data) =>
+            Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            N = B64(p.Modulus!),
+            E = B64(p.Exponent!),
+            D = B64(p.D!),
+            P = B64(p.P!),
+            Q = B64(p.Q!),
+            DP = B64(p.DP!),
+            DQ = B64(p.DQ!),
+            QI = B64(p.InverseQ!),
+        });
+    }
 
     private async Task<string> StartFleetAsync(string[] ravenUrls)
     {
         var httpsPort = GetFreeTcpPort();
         var httpPort = GetFreeTcpPort();
         var httpsUrl = $"https://localhost:{httpsPort}";
+        _fleetHttpUrl = $"http://localhost:{httpPort}";
 
         var repoRoot = FindRepoRoot();
         var fleetDir = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet");
@@ -413,6 +499,14 @@ public sealed class FleetTestHost : IAsyncLifetime
         // process, which we set below to fleetDir (the project source dir). So the override
         // file must sit next to fleetDir/appsettings.json. DisposeAsync cleans it up.
         _overrideSettingsFile = Path.Combine(fleetDir, $"appsettings.{EnvironmentName}.json");
+
+        // The provider auto-generates a signing key only in Development, and deliberately: a key
+        // that materialises on first use in production is a key nobody backed up, and it silently
+        // invalidates every token still in flight when the host restarts. Tests are not Development,
+        // so they supply one — which also means the E2E exercises the configured-key path rather
+        // than the convenience path.
+        _signingKeyFile = Path.Combine(fleetDir, $"oidc-signing-key.{EnvironmentName}.json");
+        await File.WriteAllTextAsync(_signingKeyFile, NewSigningKeyJson());
         var overrideJson = $$"""
         {
           "Spark": {
@@ -427,7 +521,13 @@ public sealed class FleetTestHost : IAsyncLifetime
               "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
               "SparkModulesDatabase": "{{TestModulesDatabase}}",
               "ClientCertificate": { "Mode": "{{CertificateMode}}" }
-            }
+            },
+            "HttpsRedirection": false,
+            "JwtBearer": { "Audience": "fleet-api" }
+          },
+          "SparkIdentityProvider": {
+            "Issuer": "http://localhost:{{httpPort}}",
+            "SigningKeyPath": "oidc-signing-key.{{EnvironmentName}}.json"
           }
         }
         """;
