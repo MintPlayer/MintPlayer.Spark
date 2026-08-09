@@ -7,6 +7,7 @@ using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Streaming;
 using NSubstitute;
 using Raven.Client.Documents;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Streaming;
 
@@ -30,7 +31,7 @@ public class StreamingQueryExecutorUnitTests
 
     private StreamingQueryExecutor CreateExecutor() => new(
         _documentStore, _entityMapper, _modelLoader,
-        _permissionService, _actionsResolver, _breadcrumbResolver);
+        _permissionService, _actionsResolver, _breadcrumbResolver, new PermissiveRowSecurity());
 
     private static SparkQuery Q(string source, string? entityType = "TestEntity") => new()
     {

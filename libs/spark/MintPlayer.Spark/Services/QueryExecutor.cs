@@ -27,6 +27,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
     {
@@ -166,7 +167,14 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplySorting(queryable, sortType, query.SortColumns);
         }
 
-        var entities = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+        var materialized = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+
+        // Row-level authorization. The type-level check above answers "may this principal query
+        // this type at all"; it says nothing about which rows. Without this, an entity whose
+        // Actions class scopes rows to their owner was filtered correctly when opened and listed
+        // in full here — and the list screen is the one that shows every row at once.
+        var entities = (await rowSecurity.FilterAsync(
+            session, materialized, entityType, resultType, "Query")).ToList();
 
         // Referenced docs were primed into the session cache by .Include() above; the resolver's
         // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
@@ -278,8 +286,16 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
+        // Row-level authorization, as on the database path. A custom query is a developer saying
+        // *where* rows come from; it is not permission to skip *whether* the caller may see them.
+        var entityList = await rowSecurity.FilterAsync(
+            session,
+            entities as IReadOnlyList<object> ?? entities.ToList(),
+            entityType,
+            methodInfo.ResultElementType,
+            "Query");
+
         // Resolve breadcrumbs (recursive, batched) for the custom query's results.
-        var entityList = entities as IReadOnlyList<object> ?? entities.ToList();
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
 
         return entityList

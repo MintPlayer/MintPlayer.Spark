@@ -19,6 +19,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly Services.Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
+    [Inject] private readonly Services.IRowSecurity rowSecurity;
 
     public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -83,8 +84,20 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // Iterate via IAsyncEnumerable reflection
         await foreach (var batch in IterateAsyncEnumerable(result, methodInfo.ElementType, methodInfo.IsSingleItemStream, cancellationToken))
         {
+            // Row-level authorization, per batch. A stream is a long-lived subscription that
+            // keeps delivering rows, so skipping the check here would not merely disclose the
+            // rows present when it opened — it would keep disclosing every new one for as long
+            // as the client stays connected.
+            var batchList = await rowSecurity.FilterAsync(
+                session,
+                batch as IReadOnlyList<object> ?? batch.ToList(),
+                entityType,
+                methodInfo.ElementType,
+                "Query");
+
+            if (batchList.Count == 0) continue;
+
             // Resolve breadcrumbs (recursive, batched) for this batch.
-            var batchList = batch as IReadOnlyList<object> ?? batch.ToList();
             var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, batchList, entityTypeDef, cancellationToken);
 
             var persistentObjects = batchList

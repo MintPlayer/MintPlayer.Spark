@@ -10,6 +10,7 @@ using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -75,7 +76,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         var session = Store.OpenAsyncSession();
         return new QueryExecutor(
             session, entityMapper, _modelLoader, _contextResolver,
-            _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, breadcrumbResolver);
+            _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, breadcrumbResolver,
+            new PermissiveRowSecurity());
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()
