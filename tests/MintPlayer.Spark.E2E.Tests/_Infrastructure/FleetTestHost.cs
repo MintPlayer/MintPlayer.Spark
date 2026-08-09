@@ -83,7 +83,15 @@ public sealed class FleetTestHost : IAsyncLifetime
         appStore.Initialize();
 
         using var session = appStore.OpenAsyncSession();
+
+        // Registration writes the document; finding it again goes through an index, and indexes
+        // are eventually consistent. Without this wait the lookup intermittently ran before the
+        // index caught up and the test failed during *setup*, reporting a seeding error for a
+        // row-level authorization case — which reads like the feature broke rather than the
+        // fixture racing. A flaky security test is worse than no test: it teaches people to
+        // re-run until green.
         var user = await session.Query<SparkUser>()
+            .Customize(x => x.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
             .FirstOrDefaultAsync(u => u.NormalizedEmail == email.ToUpperInvariant())
             ?? throw new InvalidOperationException($"Seeded user '{email}' not visible in '{TestDatabase}' after register.");
 
