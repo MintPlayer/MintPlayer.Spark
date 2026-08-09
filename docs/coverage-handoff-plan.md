@@ -67,7 +67,10 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `64296b6` | **M2 done** — the popup handshake is reachable, reports refusals, and lives in the library |
 | `9a4e60a` | **M3 done** (bar the visual check) — ng-bootstrap 22.13, accordion header migrated, 22.13 API use verified three ways |
 | `133d666` | **M6 done** — doc sweep; found an extension point with no public API, and an M5 release note describing code that never shipped |
-| `(head)` | **M7 done** — 21 packages to `preview.42`, `ng-spark-auth` to `22.1.0`, and a consumer-facing release note |
+| `1d2bc51` | **M7 done** — 21 packages to `preview.42`, `ng-spark-auth` to `22.1.0`, and a consumer-facing release note |
+| `c0e4728` | **Q1 answered** — M4 (the PAT library) cancelled: one machine-credential system, not two |
+| `cfd8d23` | **M3.3 done** — the bump did not build (`web-components@2.0.0`) and the accordion rendered white-on-white; both fixed |
+| `(head)` | **Cross-module E2E + F14** — the success case is covered at last, and it found a config-binding bug |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. **Every milestone is now implemented.** What stands between this and ready-for-review is the deferred verification sweep, not more code. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
@@ -104,6 +107,19 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 **Not started:** nothing. What remains is verification — see "Final verification" below. **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
 
 ~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
+
+**The load-bearing E2E gap is closed.** `CrossModuleSyncTests` covers a *successful* cross-module
+write plus three refusals (unregistered module, registered-but-unauthorized, ETL on a collection the
+module may not replicate) and the paired ETL positive. Writing them paid for itself immediately:
+three of five failed on first run, one **passed for the wrong reason** (asserted "not 403", went
+green against a 400 from my own malformed payload), and chasing the remaining failure uncovered
+**F14** — a configured `SparkModulesUrls` was appended after the hardcoded default instead of
+replacing it, so every configured deployment still talked to `localhost:8080`.
+
+*Honest scope:* these run with `ClientCertificate.Mode = Development`, so they exercise the
+authorization chain (identity → `security.json` → chokepoint) and the module-registration gate —
+**not** mTLS thumbprint pinning, which still has only unit coverage. The ETL positive asserts it got
+*past* authorization rather than a 200, because the embedded RavenDB's licence has no ETL feature.
 
 **Next action:** the deferred verification sweep — `npx nx run-many --target=test` across all suites,
 then the four demo ClientApps (which have not been built since the IdP port), then M3.3's visual

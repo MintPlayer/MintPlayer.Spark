@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.ServerWide;
@@ -45,6 +46,8 @@ public sealed class FleetTestHost : IAsyncLifetime
 
     /// <summary>Base URL of the running Fleet instance (HTTPS, self-signed — use <see cref="BrowserOptions"/>).</summary>
     public string FleetUrl => _fleetUrl ?? throw new InvalidOperationException("Host not initialized");
+    /// <summary>URLs of the embedded Raven server, for tests that build cross-module payloads.</summary>
+    public string[] RavenUrls => _raven?.Store.Urls ?? throw new InvalidOperationException("Host not initialized");
     public string AdminName => AdminUserName;
     public string AdminEmailAddress => AdminEmail;
     public string AdminPass => AdminPassword;
@@ -106,6 +109,92 @@ public sealed class FleetTestHost : IAsyncLifetime
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
 
         await session.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Registers a module in the shared SparkModules database, the way a real module registers
+    /// itself at startup. Cross-module endpoints refuse a caller naming a module with no entry
+    /// here, so this is the difference between "unknown module" and "known but maybe unauthorized"
+    /// — which are the two refusals worth telling apart.
+    /// </summary>
+    /// <remarks>
+    /// Writes a point-loadable document id rather than relying on a query, matching how
+    /// <c>IModuleDirectory</c> looks modules up: an index would answer these authentication-gating
+    /// lookups from a possibly-stale view.
+    /// </remarks>
+    public async Task SeedModuleAsync(string moduleName)
+    {
+        using var modulesStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestModulesDatabase };
+        modulesStore.Initialize();
+
+        var documentId = ModuleInformation.DocumentId(moduleName);
+        using (var session = modulesStore.OpenAsyncSession())
+        {
+            await session.StoreAsync(new ModuleInformation
+            {
+                AppName = moduleName,
+                AppUrl = $"https://localhost:1/{moduleName}",
+                DatabaseName = $"{moduleName}-e2e",
+                DatabaseUrls = _raven.Store.Urls,
+                RegisteredAtUtc = DateTime.UtcNow,
+            }, documentId);
+            await session.SaveChangesAsync();
+        }
+
+        // Read back through a fresh session. A seeding helper that silently writes nowhere turns
+        // every downstream assertion into a mystery — the failure surfaces as "the endpoint
+        // refused a registered module", which reads like the product is broken.
+        using var verify = modulesStore.OpenAsyncSession();
+        _ = await verify.LoadAsync<ModuleInformation>(documentId)
+            ?? throw new InvalidOperationException(
+                $"Seeded module '{moduleName}' is not readable at '{documentId}' in '{TestModulesDatabase}'. "
+                + $"Modules present: {await DescribeModulesAsync()}");
+    }
+
+    /// <summary>
+    /// Everything in the shared SparkModules database, for failure messages. The interesting case
+    /// is a lookup that misses while the document plainly exists — which points at the two
+    /// processes disagreeing about the database, not at the document.
+    /// </summary>
+    public async Task<string> DescribeModulesAsync()
+    {
+        using var modulesStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestModulesDatabase };
+        modulesStore.Initialize();
+        using var session = modulesStore.OpenAsyncSession();
+
+        var all = await session.Advanced.AsyncRawQuery<ModuleInformation>("from @all_docs where startsWith(id(), 'moduleInformations/')").ToListAsync();
+        var ids = all.Select(m => session.Advanced.GetDocumentId(m) ?? "(no id)");
+
+        // Also sweep every other database on the server. The failure worth diagnosing is a record
+        // that exists somewhere other than where the lookup reads, and naming only the expected
+        // database cannot tell that apart from a record that was never written.
+        var elsewhere = new List<string>();
+        foreach (var name in _raven.Store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 100)))
+        {
+            if (name == TestModulesDatabase) continue;
+            using var other = session.Advanced.DocumentStore.OpenAsyncSession(name);
+            var found = await other.Advanced
+                .AsyncRawQuery<ModuleInformation>("from @all_docs where startsWith(id(), 'moduleInformations/')")
+                .ToListAsync();
+            if (found.Count > 0)
+                elsewhere.Add($"{name}:[{string.Join(",", found.Select(f => other.Advanced.GetDocumentId(f)))}]");
+        }
+
+        return $"db='{TestModulesDatabase}' urls=[{string.Join(",", _raven.Store.Urls)}] docs=[{string.Join(", ", ids)}]"
+             + (elsewhere.Count > 0 ? $" ALSO-IN {string.Join(" ", elsewhere)}" : " (no module docs in any other database)");
+    }
+
+    /// <summary>
+    /// Point-loads a document from the app database by id. Deliberately not a query: these
+    /// assertions include "this was NOT written", and an absence assertion against an
+    /// eventually-consistent index passes whether or not the property holds.
+    /// </summary>
+    public async Task<T?> LoadAsync<T>(string documentId) where T : class
+    {
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+        using var session = appStore.OpenAsyncSession();
+        return await session.LoadAsync<T>(documentId);
     }
 
     public async Task InitializeAsync()
@@ -260,7 +349,8 @@ public sealed class FleetTestHost : IAsyncLifetime
               "ModuleName": "Fleet",
               "ModuleUrl": "{{httpsUrl}}",
               "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
-              "SparkModulesDatabase": "{{TestModulesDatabase}}"
+              "SparkModulesDatabase": "{{TestModulesDatabase}}",
+              "ClientCertificate": { "Mode": "Development" }
             }
           }
         }

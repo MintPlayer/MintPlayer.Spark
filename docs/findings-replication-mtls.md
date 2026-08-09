@@ -113,6 +113,37 @@ The refactor itself is small and the payoff is direct, because `ClaimsGroupMembe
 
 ---
 
+## F14 — A configured `SparkModulesUrls` never replaced the default (High) — found and fixed 2026-08-09
+
+`SparkReplicationOptions.SparkModulesUrls` initialised to `["http://localhost:8080"]`. **.NET's
+configuration binder does not replace a collection that already has elements — it appends to it.**
+So binding a configured URL produced `["http://localhost:8080", "<configured>"]`, and
+`DocumentStore` connects to the *first* URL in the array. Every deployment that configured where
+SparkModules lives was still talking to `localhost:8080`.
+
+Silent in every direction: no error, no warning, and a config file that plainly stated the right
+value. The neighbouring scalars in the same section (`SparkModulesDatabase`, `ModuleUrl`) bound
+correctly, which is what made it hard to see — the section was obviously being read, so the array
+was assumed to be too.
+
+**How it surfaced.** The M11/F12 cross-module E2E tests refused a module that was demonstrably
+registered. Chasing "the endpoint is wrong" was a dead end; the two processes were reading
+*different RavenDB servers*. The tell was that the test's own view of the shared database contained
+the seeded module and **not** the record the running host had just logged registering — so the
+record existed somewhere the lookup was not reading. Sweeping every database on the server for
+module documents, and finding none, is what turned it from "the write failed" into "we are looking
+at the wrong server".
+
+**Fix:** default the property to `[]` and apply the fallback at the point of use
+(`ResolvedSparkModulesUrls`). The documented default survives for unconfigured apps; a configured
+value now wins. Pinned by `SparkReplicationOptionsBindingTests`, which asserts the *first* element —
+asserting "contains the configured URL" would have passed against the broken behaviour.
+
+**Worth a sweep, done:** this was the only non-empty collection default in any options type across
+the framework, so the blast radius is exactly this property.
+
+---
+
 # Part 2 — Making *any* external credential work
 
 The first investigation asked whether mTLS could be generalized. The second asked what it would take for every credential type to share one authorization pipeline. The answer to the second reframes the first.

@@ -63,7 +63,7 @@ internal sealed class ModuleDirectory : IModuleDirectory, IDisposable
         var options = optionsAccessor.Value;
         var created = new DocumentStore
         {
-            Urls = options.SparkModulesUrls,
+            Urls = options.ResolvedSparkModulesUrls,
             Database = options.SparkModulesDatabase,
         };
         created.Initialize();

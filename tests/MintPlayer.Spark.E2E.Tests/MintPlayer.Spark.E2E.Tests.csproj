@@ -32,6 +32,8 @@
     <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <!-- SparkUser / SparkUserClaim types for direct admin seeding -->
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <!-- SyncActionRequest / ModuleInformation payloads for the cross-module sync tests. -->
+    <ProjectReference Include="..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
     <!-- Typed HTTP client used by Security/*.cs tests in place of hand-built JSON. -->
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <!-- Auth extensions (LoginAsync/LogoutAsync/RegisterAsync/GetCurrentUserAsync). -->

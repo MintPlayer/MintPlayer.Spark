@@ -11,8 +11,30 @@ public class SparkReplicationOptions
     /// <summary>The publicly reachable URL of this module (e.g. "https://localhost:5001").</summary>
     public required string ModuleUrl { get; set; }
 
-    /// <summary>RavenDB URLs for the shared SparkModules database.</summary>
-    public string[] SparkModulesUrls { get; set; } = ["http://localhost:8080"];
+    /// <summary>
+    /// RavenDB URLs for the shared SparkModules database. Defaults to
+    /// <see cref="DefaultSparkModulesUrl"/> when left unset — read it through
+    /// <see cref="ResolvedSparkModulesUrls"/>, never directly.
+    /// </summary>
+    /// <remarks>
+    /// Empty by default <b>on purpose</b>. .NET's configuration binder does not replace a
+    /// collection that already has elements, it appends to it — so a hardcoded initializer here
+    /// survived binding and stayed <i>first</i> in the array, which is the URL
+    /// <c>DocumentStore</c> actually connects to. An app that configured this setting was still
+    /// talking to <c>localhost:8080</c>, with no error and a config file that said otherwise.
+    /// </remarks>
+    public string[] SparkModulesUrls { get; set; } = [];
+
+    /// <summary>Where SparkModules lives when nothing is configured.</summary>
+    public const string DefaultSparkModulesUrl = "http://localhost:8080";
+
+    /// <summary>
+    /// The URLs to actually connect to: what was configured, or the default when nothing was.
+    /// Applying the default here rather than in the property initializer is what keeps a
+    /// configured value from queueing up behind it.
+    /// </summary>
+    public string[] ResolvedSparkModulesUrls =>
+        SparkModulesUrls.Length > 0 ? SparkModulesUrls : [DefaultSparkModulesUrl];
 
     /// <summary>Name of the shared SparkModules database where all modules register.</summary>
     public string SparkModulesDatabase { get; set; } = "SparkModules";
