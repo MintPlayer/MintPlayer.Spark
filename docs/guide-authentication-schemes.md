@@ -12,6 +12,53 @@ test, it says so rather than implying otherwise.
 
 ---
 
+## 0. The rule, in one table
+
+**Authentication varies by surface. Authorization is `security.json` unless there is no Spark
+identity to name.**
+
+Two axes, and conflating them is the common mistake — it leads to "the certificate is the whole
+answer for module traffic", which is exactly the property F4 and F12 existed to remove.
+
+| Surface | Authentication (who are you) | Authorization (what may you do) |
+|---|---|---|
+| Spark endpoints — browser | Identity cookie | `security.json` |
+| Spark endpoints — API client | Identity bearer, or external JWT (`Spark:JwtBearer`) | `security.json` |
+| Spark endpoints — anonymous | none | `security.json` (`Everyone` only) |
+| Inter-module: `/spark/sync/apply`, `/spark/etl/deploy` | client certificate → `Module:{Name}` | **`security.json`** |
+| OAuth protocol: `/connect/token`, introspect, revoke | `client_id` + secret | the protocol's own rules — **not** `security.json` |
+| GitHub webhooks | HMAC signature | none — no identity exists |
+| Background jobs, framework bookkeeping | none | none |
+
+Two things this table corrects, because both are easy to assume and both are wrong:
+
+- **Spark endpoints are not cookie-or-anonymous.** Four credentials reach them — cookie, Identity
+  bearer, module certificate, external JWT — and all four resolve to group claims and go through
+  `security.json`. The cookie is just the browser case.
+- **Inter-module traffic is not "certificate instead of `security.json`".** The certificate only
+  *authenticates*. Authorization is still `security.json`, via `Module:HR` → `Replicate/Cars`,
+  `ReadEditNew/Car`. Treating the certificate as the whole answer is what made an authenticated
+  module omnipotent (F4 on the write side, F12 on the read side).
+
+### The three exceptions, and why each is legitimate
+
+- **OAuth protocol endpoints.** An OAuth client is a principal in a *different* model — its authority
+  is scopes, grant types and consent, governed by RFC 6749/7009. `security.json` has nothing to say
+  about "may this client refresh this token". Note the boundary: the `OidcApplication`/`OidcScope`
+  **admin screens** are PersistentObjects, so *configuring* the OAuth system is `security.json`-
+  governed. Only the protocol traffic is not.
+- **Webhooks.** GitHub has no Spark identity and cannot be given one. HMAC proves the delivery is
+  genuine, which is a different question from what a caller may do. Whatever the delivery ultimately
+  causes in application data *is* authorized — as anonymous.
+- **Framework bookkeeping.** No identity, and gating it breaks two of the four authorization
+  configurations outright (§5a).
+
+The unifying test is the same one throughout: **is there a caller identity for `security.json` to
+name?** Cookie, bearer, certificate — yes, so authorize. Webhook, background tick — no, so the
+control lands downstream, at the data.
+
+---
+
 ## 1. How a request acquires an identity
 
 Spark's endpoints carry **no** `[Authorize]` and **no** `RequireAuthorization`. They are anonymous at

@@ -59,7 +59,9 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `9617ab1` | Plan and PRD brought current through M9, M14 and N23 |
 | `09cf22c` | **M10 done** — module certificate, certificate forwarding, JWT resource server (**1286 tests green**) |
 | `fdcb140` | **M11** — sync writes routed through the chokepoint; **N23 fixed**; F11 corrected (**1289 + 65 E2E green**) |
-| `(head)` | **F12, F13** — ETL read authorization; the identity M11 depended on and did not establish (**1291 + 65 E2E green**) |
+| `413f2dc` | **F12, F13** — ETL read authorization; the identity M11 depended on and did not establish (**1291 + 65 E2E green**) |
+| `01c4002` | **D15** — where the chokepoint stops; `IDatabaseAccess`'s unchecked family renamed |
+| `(head)` | **D15a** — the two-axis rule and the surface table, in the plan, PRD and guide |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 2, 3 and 6 are untouched, **M10 and M11 remain**, and release mechanics (M7) are not done. Item 5 (row-level authz) is **done** — see M5. **M8, M9 and M14 are done**; M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
@@ -162,6 +164,25 @@ Preview package, so no compatibility was required, but each of these changes beh
 **D12 — M12.7 (application registration) is the next milestone** (user's call). It is what actually unblocks Coverage: there is still no way to create an `OidcApplication`, so `client_credentials` — D1's whole premise — cannot be used by anyone. It is also where `RedirectUris`, `AllowedScopes` and `MayIntrospectAnyAudience` get set, which makes it a security surface rather than a convenience. Must account for the index-staleness observation: a newly registered application is not usable the instant registration returns.
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
+
+**D15a — Authentication varies by surface; authorization is `security.json` wherever an identity exists.** The framing the investigation settled on, stated because conflating the two axes is the mistake that produces wrong designs here.
+
+| Surface | Authentication | Authorization |
+|---|---|---|
+| Spark endpoints — browser | Identity cookie | `security.json` |
+| Spark endpoints — API client | Identity bearer, or external JWT | `security.json` |
+| Spark endpoints — anonymous | none | `security.json` (`Everyone`) |
+| Inter-module (`/spark/sync/apply`, `/spark/etl/deploy`) | client certificate → `Module:{Name}` | **`security.json`** |
+| OAuth protocol (`/connect/token`, introspect, revoke) | `client_id` + secret | protocol rules (RFC 6749/7009) — **not** `security.json` |
+| GitHub webhooks | HMAC | none — no identity exists |
+| Background jobs, framework bookkeeping | none | none |
+
+Two corrections worth keeping, because both are natural assumptions and both are wrong:
+
+1. **Spark endpoints are not cookie-or-anonymous.** Since M9/M10 four credentials reach them — cookie, Identity bearer, module certificate, external JWT — all resolving to group claims and all governed by `security.json`.
+2. **Inter-module traffic is not "certificate instead of `security.json`".** The certificate *authenticates*; `security.json` still *authorizes*. Treating the certificate as the whole answer is precisely what made an authenticated module omnipotent — F4 on the write side, F12 on the read side.
+
+The three exceptions are legitimate for different reasons: an OAuth client is a principal in another model entirely (though the `OidcApplication`/`OidcScope` **admin screens** are PersistentObjects, so *configuring* OAuth is `security.json`-governed); GitHub cannot be given a Spark identity, so HMAC proves the delivery and the consequences are authorized downstream; framework bookkeeping has no identity at all, per D15.
 
 **D15 — Framework-internal writes stay outside the authorization chokepoint** (user-requested investigation, 2026-08-09). Once M11 routed cross-module writes through `IPermissionService`, the question was whether the framework's own writes — message-queue entries, sync-action records, module registrations, OIDC tokens, migration markers, cron locks — should follow. **They should not**, and the rule that decides it is:
 
