@@ -173,6 +173,30 @@ changed, because changing it needs a decision about what a consumer should do wi
 
 ---
 
+## F16 — `OnQueryAsync` is declared, overridable, and never called (Medium) — found and partly fixed 2026-08-09
+
+`IPersistentObjectActions.OnQueryAsync` has **no call sites**. The framework declares it, the default
+implementation exists, `DatabaseAccess` has a comment recommending it — and nothing invokes it. An
+Actions class overriding it to scope rows is writing code that never runs.
+
+**It was doing real harm.** `Demo/WebhooksDemo`'s `GitHubProjectActions` implemented its entire
+org-membership rule there, so the project list returned **every project to any authenticated caller**,
+regardless of which organisations they belong to. Three separate org checks elsewhere in the same file
+(`OnLoadAsync`, `OnBeforeSaveAsync`) made the class look protected; the one governing the list did
+nothing. Migrated to `IsAllowedAsync`, which M5 made the hook every read path actually consults.
+
+**Why it survived review:** the plan's M5.3 was "delete `OnQueryAsync`, migrate its one consumer", and
+when M5's implementation diverged — reusing `IsAllowedAsync` rather than adding `GetRowFilter` —
+M5.3 was dropped along with the rest of that design. The *consequence* of dropping it was never
+restated, so a dead hook and a leaking demo stayed behind. Deferring part of a plan needs the deferral
+written down in terms of what is now untrue, not just which milestone was skipped.
+
+**Still open:** the framework hook itself. Deleting it is a breaking change to a public interface and
+wants its own decision — but leaving it is leaving a trap that has already caught one consumer, and
+the recommending comment in `DatabaseAccess` should go with it.
+
+---
+
 # Part 2 — Making *any* external credential work
 
 The first investigation asked whether mTLS could be generalized. The second asked what it would take for every credential type to share one authorization pipeline. The answer to the second reframes the first.
