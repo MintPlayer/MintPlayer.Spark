@@ -183,6 +183,9 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
 
         await Client.GetAsync(Url());
 
+        // Asserting absence through an index: without the wait a stale read is indistinguishable
+        // from the property holding, and the test passes either way.
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var requests = await session.Query<OidcAuthorizationRequest>().ToListAsync();
 

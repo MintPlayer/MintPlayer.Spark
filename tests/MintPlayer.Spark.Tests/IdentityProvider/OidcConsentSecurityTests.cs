@@ -63,6 +63,7 @@ public class OidcConsentSecurityTests : OidcTestHost
         location.Should().StartWith(RedirectUri + "?code=");
         location.Should().Contain("state=st-1", "the client's CSRF defence depends on state coming back");
 
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var codes = await session.Query<OidcToken>().ToListAsync();
         codes.Should().ContainSingle().Which.Type.Should().Be("authorization_code");
@@ -150,6 +151,7 @@ public class OidcConsentSecurityTests : OidcTestHost
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         (await session.Query<OidcToken>().ToListAsync()).Should().ContainSingle("a replay must not mint a second code");
     }
@@ -250,6 +252,7 @@ public class OidcConsentSecurityTests : OidcTestHost
             ["__RequestVerificationToken"] = token,
         });
 
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var code = (await session.Query<OidcToken>().ToListAsync()).SingleOrDefault();
         code?.Scopes.Should().NotContain("admin", "the grant is bounded by what authorize validated");
@@ -295,6 +298,10 @@ public class OidcConsentSecurityTests : OidcTestHost
 
     private async Task AssertNoCodeAsync()
     {
+        // The wait matters most here, and not for flakiness. This asserts *absence*: a stale index
+        // returns nothing, so without it the assertion passes whether or not a code was minted —
+        // a security check that succeeds for the wrong reason and would never be noticed.
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var tokens = await session.Query<OidcToken>().ToListAsync();
         tokens.Should().BeEmpty("no authorization code may exist");

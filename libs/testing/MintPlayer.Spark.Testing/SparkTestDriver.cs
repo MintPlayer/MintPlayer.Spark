@@ -38,6 +38,24 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     protected IDocumentStore Store { get; private set; } = null!;
 
     /// <summary>
+    /// Waits for every enabled index to catch up. Shadows <see cref="RavenTestDriver"/>'s method
+    /// of the same name so all ~50 existing call sites route to <see cref="RavenIndexingExtensions"/>
+    /// without being touched — one implementation, one behaviour, whether a test derives from this
+    /// driver or (like the E2E host) drives a real server and calls
+    /// <c>store.WaitForIndexing()</c> directly.
+    /// <para>
+    /// Two implementations of "wait for the indexes" is how they drift, and this one is the ported
+    /// version that reports the actual index errors when they never settle rather than leaving a
+    /// mystery failure downstream.
+    /// </para>
+    /// </summary>
+    protected new void WaitForIndexing(
+        IDocumentStore store,
+        string? database = null,
+        TimeSpan? timeout = null)
+        => store.WaitForIndexing(database, timeout);
+
+    /// <summary>
     /// Assemblies whose <c>AbstractIndexCreationTask</c> types should be deployed automatically
     /// at <see cref="InitializeAsync"/> and waited on for completion. Default: empty. Override
     /// in a subclass to guarantee that every test in the fixture sees its indexes live before

@@ -135,6 +135,7 @@ public class OidcTokenSecurityTests : OidcTestHost
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
+        WaitForIndexing(Store);
         using var session = Store.OpenAsyncSession();
         var issued = await session.Query<OidcToken>().Where(t => t.Type != "authorization_code").ToListAsync();
         issued.Should().NotBeEmpty();
