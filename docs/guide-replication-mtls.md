@@ -20,14 +20,26 @@ picked to close that gap.
 
 ## Modes
 
-Configured via `Spark.Replication.ClientCertificate.Mode`:
+Configured via `Spark:Replication:ClientCertificate:Mode`:
 
 | Mode | Inbound behaviour | Outbound behaviour | When to use |
 |------|-------------------|--------------------|-------------|
 | `Auto` (default) | `Production` outside `Development` env | Same | Most apps — picks the right mode from `ASPNETCORE_ENVIRONMENT` |
 | `Production` | Require cert, verify thumbprint | Attach configured cert | Production-like environments |
 | `Development` | Skip thumbprint check, warn per call, still verify the module is registered | Attach cert if configured, skip otherwise | Local dev with multiple modules on `localhost` |
-| `Disabled` | Pass-through, no validation, no warning | No cert attached | Legacy demos only — new apps should pick one of the above |
+| `Disabled` | Pass-through, no validation, **warns per call** | No cert attached | Legacy demos only — new apps should pick one of the above |
+
+> **`Development` is not a way to turn authentication off.** It relaxes the
+> certificate check only; the caller must still name a module that has registered in
+> `SparkModules`. Until preview.42 the code did not do this despite the comment and
+> this guide both saying it did, which made `ASPNETCORE_ENVIRONMENT=Development` — a
+> variable that says nothing about mTLS — silently disable authentication on both
+> endpoints. If you are on an earlier build, treat `Development` as equivalent to
+> `Disabled`.
+
+> **`Disabled` now logs a warning on every accepted call.** It previously accepted
+> silently, which meant a process running with authentication switched off was
+> indistinguishable afterwards from one that had never been configured.
 
 ## Quick start (development)
 
@@ -176,6 +188,10 @@ R2-H7.
 | Inbound returns 403 `"Forbidden"`, log says `UnknownModule` | `RequestingModule` field in the body refers to a module that never registered. Verify the module ran far enough to call `RegisterAsync` once. |
 | Outbound calls fail TLS handshake | Peer doesn't trust the issuing CA — step 4 above. |
 | Pre-mTLS legacy entries fail closed | Existing `moduleInformations/{X}` documents without `ClientCertificateThumbprint`. Delete and re-register each, OR temporarily set `Mode = Development` while rolling out. |
+
+## Related documentation
+
+- **[Authentication Schemes & `Everyone`](./guide-authentication-schemes.md)** — how this fits with the rest of the repo's authentication. Note in particular that mTLS here authenticates the *module* inside the endpoint and does **not** set `HttpContext.User`, so an authenticated module reaches the authorization pipeline as anonymous.
 
 ## Related security findings
 

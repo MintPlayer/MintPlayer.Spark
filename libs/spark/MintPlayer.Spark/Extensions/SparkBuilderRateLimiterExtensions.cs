@@ -39,10 +39,17 @@ public static class SparkBuilderRateLimiterExtensions
         {
             rl.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                // Only Spark routes are throttled. SPA static files, controllers, and any
-                // non-framework endpoints remain unmetered so the limiter never starves
-                // browser asset loads.
-                if (!httpContext.Request.Path.StartsWithSegments("/spark"))
+                // Only framework routes are throttled. SPA static files, controllers, and any
+                // application endpoints remain unmetered so the limiter never starves browser
+                // asset loads.
+                //
+                // /connect belongs here as much as /spark: it carries the interactive login,
+                // two-factor and consent pages. Scoping to /spark alone meant an app that opted
+                // into the limiter still shipped an unthrottled password endpoint, and lockout —
+                // which is per-account — does nothing against an attacker spreading attempts
+                // across many accounts.
+                var path = httpContext.Request.Path;
+                if (!path.StartsWithSegments("/spark") && !path.StartsWithSegments("/connect"))
                     return RateLimitPartition.GetNoLimiter("no-limit");
 
                 var clientKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";

@@ -185,6 +185,42 @@ The universal data container that replaces traditional DTOs. Contains an ID, typ
 
 A registry pattern (similar to EF Core's DbContext) that tracks available entity types through `IRavenQueryable<T>` properties. The framework discovers entities by reflecting over these properties.
 
+### Natural IDs
+
+By default Spark stores documents under `{Collection}/{Guid}`. An entity that has a real
+business key can derive its own id instead by implementing `IHasNaturalId`:
+
+```csharp
+public class Car : IHasNaturalId
+{
+    public static string GetId(string licencePlate) => $"cars/{licencePlate.ToUpperInvariant()}";
+    string IHasNaturalId.GetId() => GetId(LicencePlate);
+
+    public string? Id { get; set; }
+    public string LicencePlate { get; set; } = null!;
+}
+```
+
+Declare the derivation twice — a `static` overload taking the key, and an explicit interface
+implementation delegating to it. The static is what callers use, because they need the id
+*before* they have a document:
+
+```csharp
+var car = await session.LoadAsync<Car>(Car.GetId("1-ABC-234"));
+```
+
+That call is a point-load. The alternative — finding the car by querying an index on
+`LicencePlate` — is eventually consistent, so a car written moments earlier may not be found
+yet. Deriving the id removes that window, which is why it matters most for lookups that gate a
+decision rather than merely display a row.
+
+**The derivation's inputs must not change after the document exists.** RavenDB has no rename:
+storing the entity again after the key changes writes a *second* document and leaves the
+original behind. Derive from a licence plate or an external system's key, not from a display
+name.
+
+Entities that don't implement the interface are unaffected and keep the generated id.
+
 ### Actions Classes
 
 Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>` to add validation or custom behavior:
@@ -192,14 +228,14 @@ Customization hooks for entity-specific business logic. Inherit from `DefaultPer
 ```csharp
 public class PersonActions : DefaultPersistentObjectActions<Person>
 {
-    public override Task OnBeforeSaveAsync(Person entity)
+    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
     {
         if (string.IsNullOrEmpty(entity.FirstName))
-            throw new ValidationException("FirstName is required");
+            throw new SparkValidationException("FirstName is required");
         return Task.CompletedTask;
     }
 
-    public override Task OnAfterSaveAsync(Person entity)
+    public override Task OnAfterSaveAsync(PersistentObject obj, Person entity)
     {
         // Post-save logic (notifications, logging, etc.)
         return Task.CompletedTask;
@@ -208,20 +244,27 @@ public class PersonActions : DefaultPersistentObjectActions<Person>
 ```
 
 Available hooks:
-- `OnQueryAsync` - Customize list queries
+- `OnQueryAsync` - Customize list queries (*where* to find entities of this type)
 - `OnLoadAsync` - Customize single entity loading
 - `OnSaveAsync` - Customize save operation
 - `OnDeleteAsync` - Customize delete operation
 - `OnBeforeSaveAsync` - Pre-save validation/logic
 - `OnAfterSaveAsync` - Post-save logic
 - `OnBeforeDeleteAsync` - Pre-delete logic
+- `IsAllowedAsync(string action, T entity)` - **Row-level security**: *whether* the caller may act on
+  each row. Overriding it filters lists, queries and streams as well as single-entity reads, and a
+  denied read is a 404 rather than a 403 so existence is not leaked. The default permits everything;
+  overriding is the signal that this class takes responsibility for row-level policy.
+
+Throw `SparkValidationException` for business-rule failures — it reaches the caller as a 400 with
+the standard `errors` envelope. Any other exception is a 500 and the message never leaves the
+server.
 
 ## Entity Attributes
 
 | Attribute | Purpose | Example |
 |-----------|---------|---------|
 | `[Reference]` | Foreign key to another entity | `[Reference(typeof(Company), "GetCompanies")]` |
-| `[LookupReferenceName]` | Reference to lookup values by name | `[LookupReferenceName("CarStatus")]` |
 | `[LookupReference]` | Reference to lookup values by type | `[LookupReference(typeof(CarStatus))]` |
 | `[FromIndex]` | Links projection class to RavenDB index | `[FromIndex(typeof(People_Overview))]` |
 
@@ -258,17 +301,17 @@ All mutation endpoints (POST, PUT, DELETE) require an `X-XSRF-TOKEN` header. The
 | `AddSparkFull(IConfiguration)` | **AllFeatures**: Registers all Spark services, actions, auth, messaging in one call |
 | `UseSparkFull(args)` | **AllFeatures**: Adds middleware + synchronizes models if `--spark-synchronize-model` is passed |
 | `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
-| `AddSpark(IConfiguration)` | Register Spark services with configuration |
-| `AddSpark(Action<SparkOptions>)` | Register Spark services with options delegate |
-| `AddSparkActions()` | Register all entity-specific Actions classes |
-| `AddSparkActions<TActions, TEntity>()` | Register specific Actions class |
+| `AddSpark(IConfiguration, Action<ISparkBuilder>)` | Register Spark services, bound to the `Spark` configuration section |
+| `AddSpark(Action<ISparkBuilder>)` | Register Spark services without configuration binding |
+| `spark.AddActions()` | Register all entity-specific Actions classes (source-generated) |
+| `AddSparkActions<TActions, TEntity>()` | Register a specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
 | `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with options (e.g. `SynchronizeModelsIfRequested`) |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
 | `SynchronizeSparkModelsIfRequested<T>(args)` | Sync if `--spark-synchronize-model` flag present |
-| `CreateSparkIndexes()` | Deploy RavenDB indexes from loaded assemblies |
-| `CreateSparkIndexesAsync()` | Async version of index deployment |
+
+RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
 
 ## Model Synchronization
 

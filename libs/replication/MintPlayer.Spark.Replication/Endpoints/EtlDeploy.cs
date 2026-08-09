@@ -1,6 +1,8 @@
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
@@ -12,6 +14,7 @@ internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup
     [Inject] private readonly ILogger<EtlTaskManager> logger;
     [Inject] private readonly EtlTaskManager etlTaskManager;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -62,6 +65,30 @@ internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup
                     Success = false,
                     Error = "Forbidden"
                 }, statusCode: 403);
+        }
+
+        httpContext.EstablishModuleIdentity(request.RequestingModule ?? string.Empty);
+
+        // Read authorization. The certificate answers "who are you"; it has never answered "what
+        // may you read". Until now the mTLS gate was binary, so any module holding a valid pinned
+        // certificate could ask the owner to push ANY collection — SparkUsers included — into a
+        // database it controls, continuously, via a caller-supplied JS transform. The owner had no
+        // declared notion of what it was willing to share: [Replicated] lives on the *consumer* and
+        // is never consulted here.
+        foreach (var script in request.Scripts)
+        {
+            if (!await permissionService.IsAllowedAsync("Replicate", script.SourceCollection))
+            {
+                logger.LogWarning(
+                    "ETL deployment refused: module '{Module}' may not replicate collection '{Collection}'.",
+                    request.RequestingModule, script.SourceCollection);
+
+                return Results.Json(new EtlDeploymentResult
+                {
+                    Success = false,
+                    Error = "Forbidden",
+                }, statusCode: 403);
+            }
         }
 
         var result = await etlTaskManager.DeployAsync(request);

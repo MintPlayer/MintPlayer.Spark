@@ -141,10 +141,10 @@ This sidesteps a classic footgun: if you use a **separate** OAuth App for login 
 ## Installation
 
 ```xml
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.22" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.42" />
 
 <!-- Development only: -->
-<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.22" />
+<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.42" />
 ```
 
 ## Quick start
@@ -223,7 +223,7 @@ public partial class LogIssues : IRecipient<GitHubWebhookMessage<IssuesEvent>>
 
         if (message.Event.Action == IssuesActionValue.Opened)
         {
-            var githubClient = await _gitHubInstallationService.CreateClientAsync(message.InstallationId);
+            var githubClient = await _gitHubInstallationService.CreateInstallationClientAsync(message.InstallationId);
             await githubClient.Issue.Comment.Create(
                 message.Event.Repository!.Id, (int)issue.Number, "Thanks for creating this issue");
         }
@@ -231,7 +231,7 @@ public partial class LogIssues : IRecipient<GitHubWebhookMessage<IssuesEvent>>
 }
 ```
 
-`CreateClientAsync` authenticates as the GitHub App by creating a JWT signed with the app's private key, then exchanges it for a short-lived installation access token. This requires `ClientId` and either `PrivateKeyPem` or `PrivateKeyPath` to be configured in options.
+`CreateInstallationClientAsync` authenticates as the GitHub App by creating a JWT signed with the app's private key, then exchanges it for a short-lived installation access token. This requires `ClientId` and either `PrivateKeyPem` or `PrivateKeyPath` to be configured in options.
 
 ## Catch-all recipient
 
@@ -255,12 +255,17 @@ Both the typed and catch-all messages are broadcast for every event, so you can 
 
 ## Message types
 
-| Type | Queue | Use case |
-|---|---|---|
-| `GitHubWebhookMessage<TEvent>` | `spark-github-{event-name}` (e.g., `spark-github-pull-request`) | Handle a specific event type with full IntelliSense on the Octokit event model |
-| `GitHubWebhookMessage` | `spark-github-all` | Handle all events generically; provides `EventType` (string) and `EventJson` (raw JSON) |
+| Type | Use case |
+|---|---|
+| `GitHubWebhookMessage<TEvent>` | Handle a specific event type with full IntelliSense on the Octokit event model |
+| `GitHubWebhookMessage` | Handle all events generically; provides `EventType` (string) and `EventJson` (raw JSON) |
 
 Both records include `Headers`, `InstallationId`, and `RepositoryFullName`.
+
+You route by **CLR type**, not by queue name: declare `IRecipient<GitHubWebhookMessage<PushEvent>>`
+and messaging delivers push events to it. The queue behind a typed message is derived from the
+type and is an implementation detail — don't write it down or match on it. The one name worth
+knowing is `spark-github-all`, which the non-generic `GitHubWebhookMessage` declares explicitly.
 
 ## Configuration
 
@@ -340,11 +345,10 @@ environment:
 | `ProductionAppId` | `null` | GitHub App ID for the production app. |
 | `DevelopmentAppId` | `null` | GitHub App ID for the dev app. When set, webhooks from this app are forwarded to dev clients instead of being processed locally. |
 | `DevWebSocketPath` | `"/spark/github/dev-ws"` | WebSocket endpoint path for dev client connections. |
-| `AllowedDevUsers` | `[]` | GitHub usernames allowed to connect via WebSocket. Empty = all authenticated users. |
+| `AllowedDevUsers` | `[]` | GitHub usernames allowed to connect via WebSocket. **Empty means nobody** — the dev tunnel stays closed until you name someone (R2-H12). |
 | `ClientId` | `null` | GitHub App Client ID. Required for `IGitHubInstallationService` API calls. |
 | `PrivateKeyPem` | `null` | GitHub App private key PEM content (inline). Either this or `PrivateKeyPath` is required for API calls. |
 | `PrivateKeyPath` | `null` | Path to the GitHub App private key `.pem` file. Relative paths are resolved from the working directory. |
-| `ClientSecret` | `null` | GitHub App Client Secret. Required for GitHub OAuth login (not needed for webhook processing). |
 
 ### Full Program.cs example
 
@@ -478,18 +482,20 @@ When webhooks arrive through smee.io, the JSON body may be reformatted during SS
 
 The processor currently handles these Octokit event types:
 
-| Event type | Queue name |
-|---|---|
-| `PushEvent` | `spark-github-push` |
-| `IssuesEvent` | `spark-github-issues` |
-| `IssueCommentEvent` | `spark-github-issue-comment` |
-| `PullRequestEvent` | `spark-github-pull-request` |
-| `PullRequestReviewEvent` | `spark-github-pull-request-review` |
-| `PullRequestReviewCommentEvent` | `spark-github-pull-request-review-comment` |
-| `CheckRunEvent` | `spark-github-check-run` |
-| `CheckSuiteEvent` | `spark-github-check-suite` |
-| `InstallationEvent` | `spark-github-installation` |
-| `RepositoryEvent` | `spark-github-repository` |
+Subscribe with `IRecipient<GitHubWebhookMessage<T>>` for any of these `T`:
+
+| Event type |
+|---|
+| `PushEvent` |
+| `IssuesEvent` |
+| `IssueCommentEvent` |
+| `PullRequestEvent` |
+| `PullRequestReviewEvent` |
+| `PullRequestReviewCommentEvent` |
+| `CheckRunEvent` |
+| `CheckSuiteEvent` |
+| `InstallationEvent` |
+| `RepositoryEvent` |
 
 Adding a new event type requires a single one-liner override in `SparkWebhookEventProcessor`. Unhandled events are silently dropped by Octokit.
 

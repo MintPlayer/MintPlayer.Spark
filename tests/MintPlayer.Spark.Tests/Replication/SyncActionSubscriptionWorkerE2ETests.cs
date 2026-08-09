@@ -84,11 +84,22 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         }
     }
 
-    private sealed class StubHttpClientFactory : IHttpClientFactory
+    /// <summary>
+    /// Stands in for the real provider, which picks the client certificate to present based on
+    /// the target module. Records the target so the worker's choice of peer stays assertable.
+    /// </summary>
+    private sealed class StubReplicationHttpClientProvider : IReplicationHttpClientProvider
     {
         private readonly StubHttpMessageHandler _handler;
-        public StubHttpClientFactory(StubHttpMessageHandler handler) => _handler = handler;
-        public HttpClient CreateClient(string name) => new(_handler, disposeHandler: false);
+        public StubReplicationHttpClientProvider(StubHttpMessageHandler handler) => _handler = handler;
+
+        public string? LastTargetModule { get; private set; }
+
+        public HttpClient GetClient(string targetModule)
+        {
+            LastTargetModule = targetModule;
+            return new HttpClient(_handler, disposeHandler: false);
+        }
     }
 
     private SparkReplicationOptions DefaultOptions() => new()
@@ -102,16 +113,12 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
     private SyncActionSubscriptionWorker NewWorker(StubHttpMessageHandler handler, SparkReplicationOptions? opts = null)
     {
         var options = opts ?? DefaultOptions();
-        var registration = new ModuleRegistrationService(
-            Options.Create(options),
-            Store,
-            NullLogger<ModuleRegistrationService>.Instance);
 
-        // Generated ctor order: own [Inject] fields first (httpClientFactory, registrationService),
+        // Generated ctor order: own [Inject] fields first (httpClientProvider, moduleDirectory),
         // then base [Inject] members (loggerFactory field, DocumentStore property).
         return new SyncActionSubscriptionWorker(
-            new StubHttpClientFactory(handler),
-            registration,
+            new StubReplicationHttpClientProvider(handler),
+            new ModuleDirectory(Options.Create(options)),
             NullLoggerFactory.Instance,
             Store);
     }

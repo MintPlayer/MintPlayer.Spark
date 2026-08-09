@@ -17,16 +17,16 @@
       <spark-auth-bar />
     </div>
   </div>
-  <nav bsShellSidebar class="sidebar-inner text-light p-2">
+  <nav bsShellSidebar data-bs-theme="dark" class="sidebar-inner text-light p-2">
     <h5 class="p-3 border-bottom">Spark Demo</h5>
     <bs-accordion class="d-block">
       @for (group of programUnitGroups(); track group.id) {
       <bs-accordion-tab>
-        <bs-accordion-tab-header>
+        <ng-container *bsAccordionTabHeader>
           <span class="triangle me-2"></span>
           <spark-icon [name]="group.icon | iconName:'bi-folder'" />
           <span class="ms-2">{{ group.name | resolveTranslation }}</span>
-        </bs-accordion-tab-header>
+        </ng-container>
         @for (unit of group.programUnits; track unit.id) {
         <a [routerLink]="unit | routerLink"
            routerLinkActive="active"

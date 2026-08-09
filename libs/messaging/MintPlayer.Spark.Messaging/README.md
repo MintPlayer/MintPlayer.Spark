@@ -108,17 +108,20 @@ The checkpoint is a free-form string -- use an index, offset, cursor, or any ser
 
 ```csharp
 // Program.cs
-builder.Services.AddSparkMessaging();    // Register MessageBus, MessageProcessor, RecipientRegistry
-builder.Services.AddSparkRecipients();   // Source-generated: auto-discovers all IRecipient<T> classes
-
-var app = builder.Build();
-
-app.CreateSparkMessagingIndexes();       // Deploy the SparkMessages/ByQueue RavenDB index
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddMessaging();     // MessageBus, MessageProcessor, RecipientRegistry
+    spark.AddRecipients();    // Source-generated: auto-discovers all IRecipient<T> classes
+});
 ```
 
-`AddSparkMessaging()` reuses the `IDocumentStore` singleton already registered by `AddSpark()`. It does not depend on any Spark CRUD types.
+`AddMessaging()` reuses the `IDocumentStore` singleton already registered by `AddSpark()`, and
+deploys the `SparkMessages/ByQueue` index for you — there is nothing to call after `Build()`. It
+does not depend on any Spark CRUD types.
 
-`AddSparkRecipients()` is generated at compile time by the `RecipientRegistrationGenerator` source generator. It discovers all `IRecipient<T>` implementations in your project and registers them automatically.
+`AddRecipients()` is generated at compile time by the `RecipientRegistrationGenerator` source
+generator. It discovers all `IRecipient<T>` implementations in your project and registers them
+automatically.
 
 ### 4. Broadcast Messages
 
@@ -237,7 +240,7 @@ Messages in different queues cannot block each other. For example, a failing mes
 ## Configuration
 
 ```csharp
-builder.Services.AddSparkMessaging(options =>
+spark.AddMessaging(options =>
 {
     options.MaxAttempts = 5;                                  // Default: 5
     options.FallbackPollInterval = TimeSpan.FromSeconds(30);  // Default: 30s
@@ -328,15 +331,13 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 | Method | Description |
 |--------|-------------|
-| `AddSparkMessaging(Action<SparkMessagingOptions>?)` | Register messaging services |
-| `AddRecipient<TMessage, TRecipient>()` | Register a single recipient (usually called by generated code) |
-| `CreateSparkMessagingIndexes()` | Deploy the `SparkMessages/ByQueue` RavenDB index |
+| `spark.AddMessaging(Action<SparkMessagingOptions>?)` | Register messaging services and deploy the `SparkMessages/ByQueue` index |
 
 ### Source-Generated
 
 | Method | Description |
 |--------|-------------|
-| `AddSparkRecipients()` | Auto-registers all `IRecipient<T>` implementations in your project |
+| `spark.AddRecipients()` | Auto-registers all `IRecipient<T>` implementations in your project |
 
 ## Complete Example
 

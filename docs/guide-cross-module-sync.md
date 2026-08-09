@@ -77,22 +77,28 @@ The consumer's C# class only needs the properties it cares about -- the ETL scri
 
 ## Step 3: Wire Up the Pipeline
 
-In each module's `Program.cs`, add the startup calls and endpoint mappings:
+In each module's `Program.cs`, opt in on the builder. There are no separate startup or
+endpoint-mapping calls: `AddReplication()` registers the module, deploys its ETL scripts, and
+exposes the endpoints as part of `UseSpark()` / `MapSpark()`.
 
 ```csharp
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();
+    spark.AddMessaging();
+    spark.AddReplication(options => { /* … */ });
+});
+
 var app = builder.Build();
 
-app.UseSpark();
-app.CreateSparkIndexes();
-app.CreateSparkMessagingIndexes();
-app.UseSparkReplication();     // Register module + deploy ETL scripts
+app.UseSpark();          // also registers the module and deploys ETL scripts
 
-// ... in endpoint mapping:
-endpoints.MapSpark();
-endpoints.MapSparkReplication();   // Expose /spark/etl/deploy and /spark/sync/apply
+app.UseEndpoints(endpoints => endpoints.MapSpark());   // also exposes /spark/etl/deploy and /spark/sync/apply
 ```
 
-Both the source and consumer modules need `MapSparkReplication()` -- the source receives ETL deployment requests, and both modules can receive sync action requests.
+Both the source and consumer modules need `AddReplication()` -- the source receives ETL deployment
+requests, and both modules can receive sync action requests.
 
 ## How ETL Replication Works
 

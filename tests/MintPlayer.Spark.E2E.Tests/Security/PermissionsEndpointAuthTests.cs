@@ -45,17 +45,19 @@ public class PermissionsEndpointAuthTests
 
         // Company has QueryRead/Company granted to Everyone — anon can read, but must not
         // see any mutation permissions.
-        try
-        {
-            var perms = await client.GetPermissionsAsync("Company");
-            perms.Should().NotBeNull();
-            perms!.CanCreate.Should().BeFalse();
-            perms.CanEdit.Should().BeFalse();
-            perms.CanDelete.Should().BeFalse();
-        }
-        catch (SparkClientException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-        {
-            // Acceptable: server chose to fail-closed rather than return permissions to anon.
-        }
+        //
+        // CanRead is asserted, not merely implied by the test name. Without it this test passed
+        // whether or not the Everyone grant existed at all: it only checked the three write flags,
+        // which are false for anonymous regardless. The read grant is the entire subject here, and
+        // it is the one thing the assertions did not cover.
+        var perms = await client.GetPermissionsAsync("Company");
+
+        perms.Should().NotBeNull();
+        perms!.CanRead.Should().BeTrue(
+            "security.json grants QueryRead/Company to Everyone, and Everyone applies to callers "
+            + "who never authenticated");
+        perms.CanCreate.Should().BeFalse();
+        perms.CanEdit.Should().BeFalse();
+        perms.CanDelete.Should().BeFalse();
     }
 }

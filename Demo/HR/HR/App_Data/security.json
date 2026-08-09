@@ -1,9 +1,28 @@
 {
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Everyone", "fr": "Tout le monde", "nl": "Iedereen" },
-    "b1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators", "fr": "Administrateurs", "nl": "Beheerders" },
-    "b1b2c3d4-0000-0000-0000-000000000002": { "en": "HR managers", "fr": "Responsables RH", "nl": "HR-managers" },
-    "b1b2c3d4-0000-0000-0000-000000000003": { "en": "Viewers", "fr": "Lecteurs", "nl": "Lezers" }
+    "00000000-0000-0000-0000-000000000000": {
+      "en": "Everyone",
+      "fr": "Tout le monde",
+      "nl": "Iedereen"
+    },
+    "b1b2c3d4-0000-0000-0000-000000000001": {
+      "en": "Administrators",
+      "fr": "Administrateurs",
+      "nl": "Beheerders"
+    },
+    "b1b2c3d4-0000-0000-0000-000000000002": {
+      "en": "HR managers",
+      "fr": "Responsables RH",
+      "nl": "HR-managers"
+    },
+    "b1b2c3d4-0000-0000-0000-000000000003": {
+      "en": "Viewers",
+      "fr": "Lecteurs",
+      "nl": "Lezers"
+    },
+    "b0000002-0000-0000-0000-000000000001": {
+      "en": "Module:Fleet"
+    }
   },
   "rights": [
     {
@@ -51,6 +70,18 @@
     {
       "id": "a0000001-0000-0000-0000-000000000007",
       "resource": "QueryReadEditNewDelete/AddressDescription",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "a0000001-0000-0000-0000-000000000008",
+      "resource": "QueryReadEditNewDelete/OidcApplication",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "a0000001-0000-0000-0000-000000000009",
+      "resource": "QueryReadEditNewDelete/OidcScope",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -124,6 +155,24 @@
       "id": "c0000003-0000-0000-0000-000000000006",
       "resource": "QueryRead/CarreerJob",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000011",
+      "resource": "Replicate/People",
+      "groupId": "b0000002-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000012",
+      "resource": "ReadEditNew/Person",
+      "groupId": "b0000002-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000012",
+      "resource": "Replicate/Companies",
+      "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
     }
   ]

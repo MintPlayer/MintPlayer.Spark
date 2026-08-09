@@ -23,25 +23,26 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
-    public async Task<T?> GetDocumentAsync<T>(string id) where T : class
+    public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
         return await session.LoadAsync<T>(id);
     }
 
-    public async Task<IEnumerable<T>> GetDocumentsAsync<T>() where T : class
+    public async Task<IEnumerable<T>> GetDocumentsUncheckedAsync<T>() where T : class
     {
         return await session.Query<T>().ToListAsync();
     }
 
-    public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdAsync<T>(Guid objectTypeId) where T : class
+    public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdUncheckedAsync<T>(Guid objectTypeId) where T : class
     {
         return await session.Query<T>()
             .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
             .ToListAsync();
     }
 
-    public async Task<T> SaveDocumentAsync<T>(T document) where T : class
+    public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
     {
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
@@ -60,7 +61,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return document;
     }
 
-    public async Task DeleteDocumentAsync<T>(string id) where T : class
+    public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
         session.Delete(id);
         await session.SaveChangesAsync();
@@ -95,7 +96,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // whether this specific instance is visible to the current caller. Returning null
         // here propagates as 404 through the endpoint — same shape as a genuinely missing
         // record, per M-3 (authorized-but-forbidden must be indistinguishable from not-found).
-        if (!await IsAllowedEntityViaActionsAsync(entityType, "Read", entity))
+        if (!await rowSecurity.IsAllowedAsync(entityType, "Read", entity))
             return null;
 
         // Resolve breadcrumbs (recursive, batched) for this entity and its references.
@@ -138,9 +139,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
         // to rows the Actions class says the caller may see. For projection queries, the row
         // filter takes the base entity (CarActions typed on Car, not VCar) so we load the
-        // matching base docs through the session cache. Callers that need a query-level
-        // filter for large collections can override OnQueryAsync directly.
-        entities = (await FilterByRowLevelAuthAsync(session, entities, entityType, queryType)).ToList();
+        // matching base docs through the session cache. This filters after materialization, so a
+        // row-scoped type reads its whole collection per query; pushing the predicate into RavenDB
+        // is a known follow-up.
+        entities = (await rowSecurity.FilterAsync(session, entities, entityType, queryType, "Query")).ToList();
 
         // Resolve breadcrumbs for the page. The .Include() from QueryEntitiesWithIncludesAsync
         // primed level-1 references into the session cache, so the resolver's first batched
@@ -157,33 +159,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// and evaluate the filter against those — the Actions class is typed on the base
     /// entity, not the projection.
     /// </summary>
-    private async Task<IEnumerable<object>> FilterByRowLevelAuthAsync(
-        IAsyncDocumentSession session,
-        IReadOnlyList<object> entities,
-        Type entityType,
-        Type queryType)
+    /// <summary>
+    /// Answers "may this caller save this object?" without saving it.
+    /// <para>
+    /// Exists so an endpoint can ask <b>before</b> spending work on the request — specifically
+    /// before validating it. Validation used to run first (N23), so a caller with no right to
+    /// create an entity type received a 400 listing that type's validation errors and only reached
+    /// 401/403 when the payload happened to be well-formed. The refusal was never in doubt; what
+    /// leaked was which attributes a type requires, to someone who cannot create one.
+    /// </para>
+    /// <para>
+    /// This is not a second copy of the rule. <see cref="SavePersistentObjectAsync"/> calls this
+    /// same method, so there is one implementation of the decision and the chokepoint remains
+    /// authoritative — the endpoint merely asks it earlier.
+    /// </para>
+    /// </summary>
+    public async Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject)
     {
-        if (entities.Count == 0) return entities;
+        var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
+            ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var idProperty = queryType.GetCachedProperty("Id");
-        if (idProperty is null || !idProperty.CanRead) return entities; // Can't resolve IDs — fail open.
-        var idGetter = AccessorCache.GetGetter(idProperty);
-
-        var visible = new List<object>(entities.Count);
-        foreach (var entity in entities)
-        {
-            object? subject = entity;
-            if (queryType != entityType)
-            {
-                var id = idGetter(entity)?.ToString();
-                if (string.IsNullOrEmpty(id)) { visible.Add(entity); continue; }
-                subject = await LoadEntityAsync(session, entityType, id);
-                if (subject is null) { visible.Add(entity); continue; }
-            }
-            if (await IsAllowedEntityViaActionsAsync(entityType, "Query", subject))
-                visible.Add(entity);
-        }
-        return visible;
+        // Id decides the verb: absent means this is a creation, present means an edit.
+        var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
+        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
     }
 
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
@@ -191,8 +189,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
-        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
+        await EnsureSaveAuthorizedAsync(persistentObject);
 
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
@@ -220,7 +217,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                         throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
                 }
 
-                if (!await IsAllowedEntityViaActionsAsync(entityType, "Edit", existing))
+                if (!await rowSecurity.IsAllowedAsync(entityType, "Edit", existing))
                     throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
             }
         }
@@ -264,7 +261,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
         var existing = await LoadEntityAsync(session, entityType, id);
         if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
-        if (!await IsAllowedEntityViaActionsAsync(entityType, "Delete", existing))
+        if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
             throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
 
         // Delete locally first (includes before hook)
@@ -430,19 +427,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// Dispatches to the Actions class's virtual <c>IsAllowedAsync(string, T)</c> via reflection,
     /// so H-2/H-3 row-level authorization fires regardless of entity type.
     /// </summary>
-    private async Task<bool> IsAllowedEntityViaActionsAsync(Type entityType, string action, object entity)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var actionsType = actions.GetType();
-        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
-            ("DatabaseAccess.IsAllowedAsync", actionsType, entityType),
-            static k => k.Actions.GetMethod("IsAllowedAsync", [typeof(string), k.Entity]));
-        if (method is null)
-            return true; // Unknown shape — fail open rather than dropping valid rows.
-        var task = (Task)method.Invoke(actions, [action, entity])!;
-        await task;
-        return (bool)task.GetCompletedTaskResult()!;
-    }
 
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {

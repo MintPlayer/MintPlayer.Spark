@@ -18,10 +18,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     [Inject] private readonly IEntityMapper entityMapper;
 
     /// <inheritdoc />
-    public virtual async Task<IEnumerable<T>> OnQueryAsync(IAsyncDocumentSession session)
-        => await session.Query<T>().ToListAsync();
-
-    /// <inheritdoc />
     public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
         => await session.LoadAsync<T>(id);
 
@@ -84,9 +80,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// Actions class to enforce row-level policy. Overriding is a clear signal to code
     /// reviewers that the class takes responsibility for row-level security.
     ///
-    /// Intentionally distinct from <see cref="OnQueryAsync"/>: the latter describes
-    /// *where* to find entities of this type; this hook answers *whether* the caller
-    /// may act on each one. Keeping the concerns apart keeps row-level security explicit.
+    /// This is the hook every read path consults — list, query, stream and detail alike.
     ///
     /// Inject <c>IHttpContextAccessor</c> into your Actions class to reach the current
     /// <c>ClaimsPrincipal</c>.

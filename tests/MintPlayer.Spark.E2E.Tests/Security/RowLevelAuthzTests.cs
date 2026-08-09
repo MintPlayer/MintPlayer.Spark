@@ -67,12 +67,32 @@ public class RowLevelAuthzTests
         }
     }
 
+    /// <summary>
+    /// The list path filters rows the caller may not see.
+    /// <para>
+    /// The assertion is absence, and <c>ListPersistentObjectsAsync</c> reads through an
+    /// eventually-consistent RavenDB index — so on its own, <c>NotContain</c> passes whenever the
+    /// freshly-created car has simply not been indexed yet, <b>whether or not row-level filtering
+    /// works at all</b>. The admin's list is therefore asserted first as a positive control: it
+    /// establishes that the row exists and is visible to someone, which is what makes its absence
+    /// for user B evidence of filtering rather than evidence of lag. A stale index now fails the
+    /// control loudly instead of passing the real assertion quietly.
+    /// </para>
+    /// </summary>
     [Fact]
     public async Task User_B_cannot_list_User_As_private_cars()
     {
         var (userBClient, adminCarId) = await SeedTwoUsersAndAdminCarAsync();
         using (userBClient)
         {
+            using (var adminClient = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host))
+            {
+                var adminCars = await adminClient.ListPersistentObjectsAsync(CarFixture.TypeId);
+                adminCars.Should().Contain(po => po.Id == adminCarId,
+                    "the car must be indexed and visible to its creator before its absence for "
+                    + $"another user means anything\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
+            }
+
             var cars = await userBClient.ListPersistentObjectsAsync(CarFixture.TypeId);
 
             cars.Should().NotContain(po => po.Id == adminCarId,

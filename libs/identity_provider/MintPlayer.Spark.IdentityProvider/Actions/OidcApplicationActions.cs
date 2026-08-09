@@ -1,0 +1,163 @@
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
+
+namespace MintPlayer.Spark.IdentityProvider.Actions;
+
+/// <summary>
+/// Validation for the OIDC client admin screen.
+/// <para>
+/// Everything enforced here is something the protocol endpoints already assume. The audit found
+/// each of these assumptions failing quietly rather than loudly — an unknown grant type that
+/// grants nothing, a scope that vanishes from the issued token, a duplicate client id that makes
+/// "which application is this?" a matter of index ordering. A configuration screen that accepts
+/// those hands the operator a client that looks configured and does not work, with nothing
+/// anywhere saying why. Refusing at the point of entry is the only place the operator can act on
+/// the answer.
+/// </para>
+/// </summary>
+public partial class OidcApplicationActions : DefaultPersistentObjectActions<OidcApplication>
+{
+    private static readonly string[] SupportedGrantTypes =
+        ["authorization_code", "refresh_token", "client_credentials"];
+
+    public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcApplication entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity.ClientId))
+            throw new SparkValidationException("Client id is required.", nameof(entity.ClientId));
+
+        ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        ValidateGrantTypes(entity);
+        HashAnyNewSecrets(entity);
+
+        await base.OnBeforeSaveAsync(obj, entity);
+    }
+
+    /// <summary>
+    /// A redirect URI is compared verbatim at authorize time, so anything that would not match
+    /// exactly is a client that can never complete a flow.
+    /// <para>
+    /// <c>Uri.TryCreate(..., UriKind.Absolute, ...)</c> alone is <b>not</b> an absoluteness test,
+    /// and the difference is platform-dependent: on Unix a bare path like <c>/callback</c> parses
+    /// successfully as <c>file:///callback</c>, while on Windows it fails. So this validation
+    /// passed on a developer's machine and <b>failed open on Linux</b> — which is where CI runs
+    /// and where the app is deployed. Requiring the string to declare the scheme the parser
+    /// reports closes it on every platform, and keeps custom schemes
+    /// (<c>com.example.app:/cb</c>) working for native clients.
+    /// </para>
+    /// </summary>
+    private static void ValidateRedirectUris(List<string> uris, string field)
+    {
+        foreach (var uri in uris)
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+                || !uri.StartsWith(parsed.Scheme + ":", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SparkValidationException($"'{uri}' is not an absolute URI.", field);
+            }
+
+            // Only reachable when the operator typed the scheme, since the check above now rejects
+            // the path that silently acquired it. A browser will not navigate to a local file from
+            // an HTTPS page anyway, so a client registered this way could never complete a flow.
+            if (parsed.IsFile)
+                throw new SparkValidationException(
+                    $"'{uri}' is a file URI. A redirect target has to be somewhere a browser can be sent.", field);
+
+            if (!string.IsNullOrEmpty(parsed.Fragment))
+                throw new SparkValidationException(
+                    $"'{uri}' carries a fragment. Browsers never send one to the server, so it can never match.", field);
+        }
+
+        var duplicate = uris.GroupBy(u => u, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate != null)
+            throw new SparkValidationException($"'{duplicate.Key}' is listed more than once.", field);
+    }
+
+    /// <summary>
+    /// Only the three implemented grants. An unrecognised value is not inert: the token endpoint
+    /// tests membership of this list, so a typo produces a client that is refused every grant and
+    /// reads as correctly configured.
+    /// </summary>
+    private static void ValidateGrantTypes(OidcApplication entity)
+    {
+        if (entity.AllowedGrantTypes.Count == 0)
+            throw new SparkValidationException(
+                "At least one grant type is required — a client with none can obtain no tokens.",
+                nameof(entity.AllowedGrantTypes));
+
+        foreach (var grant in entity.AllowedGrantTypes)
+        {
+            if (!SupportedGrantTypes.Contains(grant, StringComparer.OrdinalIgnoreCase))
+                throw new SparkValidationException(
+                    $"Grant type '{grant}' is not supported. Use one of: {string.Join(", ", SupportedGrantTypes)}.",
+                    nameof(entity.AllowedGrantTypes));
+        }
+
+        // refresh_token without authorization_code cannot produce a first refresh token, so the
+        // combination is unreachable rather than merely unusual.
+        if (entity.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase)
+            && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
+        {
+            throw new SparkValidationException(
+                "refresh_token requires authorization_code — there is no other way for this client to obtain a refresh token.",
+                nameof(entity.AllowedGrantTypes));
+        }
+
+        var isConfidential = !string.Equals(entity.ClientType, "public", StringComparison.OrdinalIgnoreCase);
+        if (!isConfidential && entity.AllowedGrantTypes.Contains("client_credentials", StringComparer.OrdinalIgnoreCase))
+        {
+            throw new SparkValidationException(
+                "A public client cannot use client_credentials — it has no secret to authenticate with.",
+                nameof(entity.AllowedGrantTypes));
+        }
+    }
+
+    /// <summary>
+    /// Accepts a secret typed in cleartext and stores it hashed. The value is never readable
+    /// again, so the screen shows the hash and an operator replaces it to rotate.
+    /// </summary>
+    private static void HashAnyNewSecrets(OidcApplication entity)
+    {
+        foreach (var secret in entity.Secrets)
+        {
+            if (string.IsNullOrWhiteSpace(secret.Hash))
+                throw new SparkValidationException("A client secret cannot be empty.", nameof(entity.Secrets));
+
+            if (!ClientSecretHasher.IsHashed(secret.Hash))
+                secret.Hash = ClientSecretHasher.Hash(secret.Hash);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a duplicate <c>ClientId</c>. Nothing enforced this, and the lookup that resolves a
+    /// client returns whichever document the index yields first — so a second application claiming
+    /// an existing id is impersonation decided by ordering.
+    /// <para>
+    /// Checked after the write rather than before it: a read-then-write check races, since two
+    /// concurrent saves both find nothing and both proceed. Reading afterwards catches the loser,
+    /// which then fails loudly instead of silently shadowing the original.
+    /// </para>
+    /// </summary>
+    public override async Task<OidcApplication> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
+    {
+        var entity = await base.OnSaveAsync(session, obj);
+
+        var clash = await session.Query<OidcApplication>()
+            .Where(a => a.ClientId == entity.ClientId, exact: true)
+            .ToListAsync();
+
+        if (clash.Any(a => !string.Equals(a.Id, entity.Id, StringComparison.Ordinal)))
+        {
+            throw new SparkValidationException(
+                $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
+              + "the lookup that resolves them returns whichever document is found first.",
+                nameof(entity.ClientId));
+        }
+
+        return entity;
+    }
+}

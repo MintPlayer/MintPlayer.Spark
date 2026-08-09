@@ -14,15 +14,18 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     [Inject] private readonly IGitHubProjectService _projectService;
     [Inject] private readonly IOrganizationAccessService _orgAccess;
 
-    public override async Task<IEnumerable<GitHubProject>> OnQueryAsync(IAsyncDocumentSession session)
-    {
-        var owners = await _orgAccess.GetAllowedOwnersAsync();
-        if (owners.Length == 0) return [];
-
-        return await session.Query<GitHubProject>()
-            .Where(p => owners.Contains(p.OwnerLogin))
-            .ToListAsync();
-    }
+    /// <summary>
+    /// The org-membership rule, applied to every path: list, query, stream, detail and write.
+    /// <para>
+    /// This used to live in <c>OnQueryAsync</c>, which read like the right place and was never called
+    /// by the framework — declared, overridable, and with no call sites at all. So this demo's
+    /// project list returned every project to any authenticated caller,
+    /// regardless of org membership, while three separate org checks in this file made it look
+    /// protected. <c>IsAllowedAsync</c> is the hook the read paths actually consult (M5).
+    /// </para>
+    /// </summary>
+    public override async Task<bool> IsAllowedAsync(string action, GitHubProject entity)
+        => await _orgAccess.IsOwnerAllowedAsync(entity.OwnerLogin);
 
     public override async Task<GitHubProject?> OnLoadAsync(IAsyncDocumentSession session, string id)
     {

@@ -15,8 +15,8 @@ namespace MintPlayer.Spark.Replication.Messages;
 /// </summary>
 internal partial class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploymentMessage>
 {
-    [Inject] private readonly IHttpClientFactory httpClientFactory;
-    [Inject] private readonly ModuleRegistrationService registrationService;
+    [Inject] private readonly IReplicationHttpClientProvider httpClientProvider;
+    [Inject] private readonly IModuleDirectory moduleDirectory;
     [Inject] private readonly ILogger<EtlScriptDeploymentRecipient> logger;
 
     public async Task HandleAsync(EtlScriptDeploymentMessage message, CancellationToken cancellationToken)
@@ -28,7 +28,7 @@ internal partial class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploy
             "Sending ETL scripts to module '{SourceModule}' at {Url} ({ScriptCount} scripts)",
             message.SourceModuleName, url, message.Request.Scripts.Count);
 
-        var client = httpClientFactory.CreateClient("spark-etl");
+        var client = httpClientProvider.GetClient(message.SourceModuleName);
         var response = await client.PostAsJsonAsync(url, message.Request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -46,10 +46,7 @@ internal partial class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploy
 
     private async Task<string> ResolveSourceUrlAsync(string sourceModuleName, CancellationToken cancellationToken)
     {
-        using var modulesStore = registrationService.CreateModulesStore();
-        using var session = modulesStore.OpenAsyncSession();
-        var sourceInfo = await session.LoadAsync<ModuleInformation>(
-            $"moduleInformations/{sourceModuleName}", cancellationToken);
+        var sourceInfo = await moduleDirectory.FindAsync(sourceModuleName, cancellationToken);
 
         if (sourceInfo is null || string.IsNullOrEmpty(sourceInfo.AppUrl))
         {

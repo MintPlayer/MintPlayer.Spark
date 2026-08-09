@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 using Raven.Client.Documents;
 
@@ -38,10 +39,19 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// Use it to register custom actions classes, options, or swap services for mocks without forking
     /// the factory.
     /// </param>
+    /// <param name="configureSpark">
+    /// Optional hook invoked inside <c>AddSpark</c>, after the context is set. This is where Spark
+    /// <em>modules</em> are added — authentication, the identity provider, messaging — since those
+    /// are <see cref="ISparkBuilder"/> extensions and therefore unreachable from
+    /// <paramref name="configureServices"/>. Endpoints and middleware a module registers on the
+    /// builder's registry flow into the pipeline automatically.
+    /// </param>
     public SparkEndpointFactory(
         IDocumentStore testStore,
         IEnumerable<EntityTypeFile> models,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        Action<ISparkBuilder>? configureSpark = null,
+        string environment = "Testing")
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -62,7 +72,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                 webHost
                     .UseTestServer()
                     .UseContentRoot(_contentRoot)
-                    .UseEnvironment("Testing")
+                    // Overridable because some modules legitimately behave differently by
+                    // environment — the identity provider refuses to invent a signing key
+                    // outside Development, which is correct in production and unhelpful in a
+                    // test that only wants to exercise the protocol flow.
+                    .UseEnvironment(environment)
                     .ConfigureServices(services =>
                     {
                         services.AddRouting();
@@ -76,6 +90,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                             // exercise authz override IAccessControl in
                             // configureServices.
                             spark.AllowAnonymousAccess();
+
+                            configureSpark?.Invoke(spark);
                         });
 
                         var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));

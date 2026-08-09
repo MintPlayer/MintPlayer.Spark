@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// Integration tests for <see cref="IDatabaseAccess"/> covering the reflective dispatch
 /// paths that the ReflectionCache migration touched: SavePersistentObjectAsync,
 /// DeletePersistentObjectAsync, optimistic-concurrency check, and the generic flat APIs
-/// (GetDocumentsAsync, SaveDocumentAsync, DeleteDocumentAsync) that hit
+/// (GetDocumentsUncheckedAsync, SaveDocumentUncheckedAsync, DeleteDocumentUncheckedAsync) that hit
 /// <c>typeof(T).GetProperty("Id")</c>. Sister file to
 /// <see cref="DatabaseAccessRowLevelAuthzTests"/> which covers the Get/list authz path.
 /// </summary>
@@ -152,14 +152,14 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         await act.Should().NotThrowAsync();
     }
 
-    // --- Generic flat APIs (hit the typeof(T).GetProperty("Id") line in SaveDocumentAsync) -----
+    // --- Generic flat APIs (hit the typeof(T).GetProperty("Id") line in SaveDocumentUncheckedAsync) -----
 
     [Fact]
     public async Task SaveDocumentAsync_persists_the_typed_document_and_returns_it_with_Id()
     {
         var doc = new GuardedDoc { Name = "via-generic-save", IsVisible = true };
 
-        var saved = await _dbAccess.SaveDocumentAsync(doc);
+        var saved = await _dbAccess.SaveDocumentUncheckedAsync(doc);
 
         saved.Id.Should().NotBeNullOrEmpty();
         using var session = Store.OpenAsyncSession();
@@ -175,7 +175,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         await SeedAsync(new GuardedDoc { Name = "b", IsVisible = true });
         WaitForIndexing(Store);
 
-        var docs = (await _dbAccess.GetDocumentsAsync<GuardedDoc>()).ToList();
+        var docs = (await _dbAccess.GetDocumentsUncheckedAsync<GuardedDoc>()).ToList();
 
         docs.Should().HaveCount(2);
         docs.Select(d => d.Name).Should().BeEquivalentTo(["a", "b"]);
@@ -186,7 +186,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     {
         var id = await SeedAsync(new GuardedDoc { Name = "loadme", IsVisible = true });
 
-        var loaded = await _dbAccess.GetDocumentAsync<GuardedDoc>(id);
+        var loaded = await _dbAccess.GetDocumentUncheckedAsync<GuardedDoc>(id);
 
         loaded.Should().NotBeNull();
         loaded!.Name.Should().Be("loadme");
@@ -195,7 +195,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     [Fact]
     public async Task GetDocumentAsync_returns_null_when_the_document_does_not_exist()
     {
-        var loaded = await _dbAccess.GetDocumentAsync<GuardedDoc>("docs/nonexistent");
+        var loaded = await _dbAccess.GetDocumentUncheckedAsync<GuardedDoc>("docs/nonexistent");
 
         loaded.Should().BeNull();
     }
@@ -205,14 +205,14 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     {
         var id = await SeedAsync(new GuardedDoc { Name = "doomed-typed", IsVisible = true });
 
-        await _dbAccess.DeleteDocumentAsync<GuardedDoc>(id);
+        await _dbAccess.DeleteDocumentUncheckedAsync<GuardedDoc>(id);
 
         using var session = Store.OpenAsyncSession();
         var loaded = await session.LoadAsync<GuardedDoc>(id);
         loaded.Should().BeNull();
     }
 
-    // --- GetDocumentsByObjectTypeIdAsync (generic typed list filtered by ObjectTypeId) ---
+    // --- GetDocumentsByObjectTypeIdUncheckedAsync (generic typed list filtered by ObjectTypeId) ---
 
     [Fact]
     public async Task GetDocumentsByObjectTypeIdAsync_returns_empty_when_no_documents_have_the_id()
@@ -220,7 +220,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         // GuardedDoc has no ObjectTypeId field, so the LINQ Where short-circuits to empty.
         // Pin the empty-result shape so a future change to GuardedDoc doesn't accidentally
         // make this throw.
-        var act = () => _dbAccess.GetDocumentsByObjectTypeIdAsync<GuardedDoc>(Guid.NewGuid());
+        var act = () => _dbAccess.GetDocumentsByObjectTypeIdUncheckedAsync<GuardedDoc>(Guid.NewGuid());
 
         // GuardedDoc isn't a PersistentObject so the cast in the LINQ Where will fail at runtime;
         // that's the framework's documented contract — only PersistentObject-derived types

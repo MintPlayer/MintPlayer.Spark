@@ -2,7 +2,7 @@ import { Component, OnInit, ChangeDetectionStrategy, inject, signal, afterNextRe
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
-import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
+import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell';
 import { BsShellTopbarDirective } from './bs-shell-topbar.directive';
@@ -13,7 +13,7 @@ import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective, BsNavbarTogglerComponent, SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

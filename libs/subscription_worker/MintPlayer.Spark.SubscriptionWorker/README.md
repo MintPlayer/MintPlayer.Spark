@@ -36,12 +36,14 @@ using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
 
-public class OrderProcessingWorker : SparkSubscriptionWorker<Order>
+public partial class OrderProcessingWorker : SparkSubscriptionWorker<Order>
 {
     private readonly RetryNumerator _retryNumerator = new();
 
-    public OrderProcessingWorker(IDocumentStore store, ILogger<OrderProcessingWorker> logger)
-        : base(store, logger) { }
+    // No constructor: the base class takes its IDocumentStore and ILoggerFactory through
+    // [Inject], and the source generator emits the constructor. Declare your own dependencies
+    // the same way — which is why the class must be `partial`.
+    [Inject] private readonly IOrderService _orders;
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
         => new() { Query = "from Orders where Status = 'Pending'" };
@@ -62,11 +64,12 @@ public class OrderProcessingWorker : SparkSubscriptionWorker<Order>
             }
             catch (Exception ex)
             {
-                var willRetry = await _retryNumerator.TrackRetryAsync(
+                var retry = await _retryNumerator.TrackRetryAsync(
                     session, item.Result, ex, Logger);
-                if (!willRetry)
+                if (!retry.WillRetry)
                 {
-                    Logger.LogError(ex, "Permanently failed processing order {Id}", item.Id);
+                    Logger.LogError(ex, "Permanently failed processing order {Id} after {Attempts} attempts",
+                        item.Id, retry.AttemptCount);
                 }
             }
         }
@@ -93,15 +96,18 @@ protected override string SubscriptionName => "MyCustomSubscription";
 
 #### Option A: Source-Generated Registration (Recommended)
 
-If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and generates an `AddSparkSubscriptionWorkers()` extension method:
+If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and generates an `AddSubscriptionWorkers()` extension on `ISparkBuilder`:
 
 ```csharp
 // Program.cs
 builder.Services.AddSparkSubscriptions();
-builder.Services.AddSparkSubscriptionWorkers(); // source-generated
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddSubscriptionWorkers();   // source-generated
+});
 ```
 
-The generated code calls `AddSubscriptionWorker<T>()` for each worker class found. `AddSparkSubscriptionWorkers()` is generated at compile time by the `SubscriptionWorkerRegistrationGenerator` and registers each discovered worker as a hosted service.
+The generated code calls `AddSubscriptionWorker<T>()` for each worker class found, registering each as a hosted service. It is emitted by `SubscriptionWorkerRegistrationGenerator` into your own root namespace, so it is only visible from your assembly.
 
 #### Option B: Manual Registration
 
@@ -267,9 +273,10 @@ protected override async Task ProcessBatchAsync(
         }
         catch (Exception ex)
         {
-            var willRetry = await _retryNumerator.TrackRetryAsync(
+            var retry = await _retryNumerator.TrackRetryAsync(
                 session, item.Result, ex, Logger);
-            // willRetry = false when max attempts are exhausted
+            // retry.WillRetry is false when max attempts are exhausted;
+            // retry.AttemptCount and retry.NextAttemptAtUtc describe this failure.
         }
     }
 
@@ -284,11 +291,8 @@ Call `ClearRetryAsync()` after successful processing to remove any leftover retr
 For change detection (comparing previous vs. current document state), subscribe to `Revision<T>`:
 
 ```csharp
-public class CompanyChangeWorker : SparkSubscriptionWorker<Revision<Company>>
+public partial class CompanyChangeWorker : SparkSubscriptionWorker<Revision<Company>>
 {
-    public CompanyChangeWorker(IDocumentStore store, ILogger<CompanyChangeWorker> logger)
-        : base(store, logger) { }
-
     protected override SubscriptionCreationOptions ConfigureSubscription()
         => new() { Query = "from Companies (Revisions = true)" };
 
@@ -357,7 +361,7 @@ This demonstrates a pattern where the subscription query does server-side filter
 
 | Method | Description |
 |--------|-------------|
-| `AddSparkSubscriptionWorkers()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project |
+| `spark.AddSubscriptionWorkers()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project |
 
 ### Source Generator Details
 
@@ -367,14 +371,13 @@ The `SubscriptionWorkerRegistrationGenerator` source generator scans your projec
 // Auto-generated: SparkSubscriptionWorkerRegistrations.g.cs
 namespace YourProject
 {
-    internal static class SparkSubscriptionWorkersExtensions
+    internal static class SparkSubscriptionWorkersBuilderExtensions
     {
-        internal static IServiceCollection AddSparkSubscriptionWorkers(
-            this IServiceCollection services)
+        internal static ISparkBuilder AddSubscriptionWorkers(this ISparkBuilder builder)
         {
-            SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(services);
-            SparkSubscriptionExtensions.AddSubscriptionWorker<CompanyChangeWorker>(services);
-            return services;
+            SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(builder.Services);
+            SparkSubscriptionExtensions.AddSubscriptionWorker<CompanyChangeWorker>(builder.Services);
+            return builder;
         }
     }
 }

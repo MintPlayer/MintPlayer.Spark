@@ -6,6 +6,13 @@ namespace MintPlayer.Spark.Replication.Abstractions.Models;
 /// </summary>
 public class ModuleInformation
 {
+    /// <summary>
+    /// The document id a module registers under. Derived rather than queried, so every
+    /// lookup is a point-load — which matters for the ones that gate authentication:
+    /// an index would answer from a possibly-stale view.
+    /// </summary>
+    public static string DocumentId(string moduleName) => $"moduleInformations/{moduleName}";
+
     public string? Id { get; set; }
     public required string AppName { get; set; }
     public required string AppUrl { get; set; }

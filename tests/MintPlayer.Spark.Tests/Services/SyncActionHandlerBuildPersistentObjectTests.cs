@@ -21,10 +21,11 @@ public class SyncActionHandlerBuildPersistentObjectTests
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
+    private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
     private readonly ILogger<SyncActionHandler> _logger = Substitute.For<ILogger<SyncActionHandler>>();
 
     private SyncActionHandler CreateHandler()
-        => new(_documentStore, _actionsResolver, _modelLoader, _entityMapper, _logger);
+        => new(_documentStore, _actionsResolver, _modelLoader, _entityMapper, _databaseAccess, _logger);
 
     private sealed class TestCar { public string? Id { get; set; } public string? LicensePlate { get; set; } public int Year { get; set; } }
     private sealed class UnregisteredEntity { public string? Id { get; set; } public string? Name { get; set; } }

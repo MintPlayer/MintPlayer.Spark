@@ -20,7 +20,7 @@ public partial class CarCopyAction : SparkCustomAction
         var carId = source.Id
             ?? throw new InvalidOperationException("Selected item has no ID");
 
-        var car = await dbAccess.GetDocumentAsync<Car>(carId);
+        var car = await dbAccess.GetDocumentUncheckedAsync<Car>(carId);
         if (car == null)
             throw new InvalidOperationException("Car not found");
 
@@ -34,6 +34,6 @@ public partial class CarCopyAction : SparkCustomAction
             Status = car.Status,
         };
 
-        await dbAccess.SaveDocumentAsync(copy);
+        await dbAccess.SaveDocumentUncheckedAsync(copy);
     }
 }

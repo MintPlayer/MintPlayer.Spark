@@ -5,6 +5,7 @@ using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
@@ -27,17 +28,21 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddAuthorization();
     spark.AddAuthentication<SparkUser>();
 
+    // HR doubles as the identity provider: it serves /connect/* and administers its own clients
+    // and scopes through the PersistentObject screens (see HRContext). Issuer is pinned rather
+    // than derived from the Host header — outside Development the provider requires it, because a
+    // caller-controlled issuer is a caller-controlled token audience.
+    spark.AddIdentityProvider(options =>
+    {
+        options.Issuer = builder.Configuration["SparkIdentityProvider:Issuer"]
+            ?? "https://localhost:5002";
+    });
+
     spark.AddMessaging();
 
-    spark.AddReplication(opt =>
-    {
-        var section = builder.Configuration.GetSection("SparkReplication");
-        opt.ModuleName = section["ModuleName"] ?? "HR";
-        opt.ModuleUrl = section["ModuleUrl"] ?? "https://localhost:5002";
-        opt.SparkModulesUrls = section.GetSection("SparkModulesUrls").Get<string[]>() ?? ["http://localhost:8080"];
-        opt.SparkModulesDatabase = section["SparkModulesDatabase"] ?? "SparkModules";
-        opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly];
-    });
+    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
+    // Assemblies are the one setting configuration cannot express.
+    spark.AddReplication(opt => opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly]);
 });
 
 builder.Services.ConfigureApplicationCookie(options =>

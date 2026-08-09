@@ -104,9 +104,8 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
                 continue;
 
             var messageType = serviceType.GetGenericArguments()[0];
-            var queueAttribute = messageType.GetCachedCustomAttribute<MessageQueueAttribute>();
-            var queueName = queueAttribute?.QueueName ?? messageType.FullName!;
-            queueNames.Add(queueName);
+            // Qualified: this type has its own QueueNames property, which would shadow the helper.
+            queueNames.Add(Services.QueueNames.ForMessageType(messageType));
         }
 
         return queueNames;

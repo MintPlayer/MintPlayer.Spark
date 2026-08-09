@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
@@ -60,6 +61,81 @@ public class SparkBuilderReplicationExtensionsTests
             .GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
         resolved.ModuleName.Should().Be("Captured");
         resolved.ModuleUrl.Should().Be("http://captured.test");
+    }
+
+    /// <summary>
+    /// F2. The operator guide documents <c>Spark:Replication:*</c>, including the whole
+    /// <c>ClientCertificate</c> node that turns mTLS on. Nothing bound it: hosts hand-mapped four
+    /// properties by name, so an operator could follow the guide exactly, restart, and get zero
+    /// behaviour change and no error — with the mode silently left at its default.
+    /// <para>
+    /// <c>ClientCertificate.Mode</c> is the assertion that matters, because it is the key whose
+    /// silent absence means "authentication is not doing what the operator configured".
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AddReplication_binds_the_documented_configuration_section()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Spark:Replication:ModuleName"] = "Fleet",
+            ["Spark:Replication:ModuleUrl"] = "https://fleet.internal:5101",
+            ["Spark:Replication:SparkModulesDatabase"] = "SharedModules",
+            ["Spark:Replication:ClientCertificate:Mode"] = "Production",
+            ["Spark:Replication:ClientCertificate:Thumbprint"] = "AB12CD34",
+            ["Spark:Replication:ClientCertificate:CertificateFile"] = "/secrets/Fleet.pfx",
+            ["Spark:Replication:ClientCertificate:PerTargetOverrides:Audit:CertificateFile"] = "/secrets/Fleet-to-Audit.pfx",
+        }).Build();
+
+        var builder = new SparkBuilder(new ServiceCollection(), configuration);
+        builder.AddReplication(_ => { });
+
+        var resolved = builder.Services.BuildServiceProvider()
+            .GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
+
+        resolved.ModuleName.Should().Be("Fleet");
+        resolved.ModuleUrl.Should().Be("https://fleet.internal:5101");
+        resolved.SparkModulesDatabase.Should().Be("SharedModules");
+        resolved.ClientCertificate.Mode.Should().Be(SparkReplicationCertificateMode.Production);
+        resolved.ClientCertificate.Thumbprint.Should().Be("AB12CD34");
+        resolved.ClientCertificate.CertificateFile.Should().Be("/secrets/Fleet.pfx");
+        resolved.ClientCertificate.PerTargetOverrides.Should().ContainKey("Audit");
+        resolved.ClientCertificate.PerTargetOverrides["Audit"].CertificateFile
+            .Should().Be("/secrets/Fleet-to-Audit.pfx");
+    }
+
+    /// <summary>
+    /// Code wins over configuration, so a host can still override a bound value — and, more to
+    /// the point, can set what JSON cannot express (the assemblies to scan) without having to
+    /// restate everything else.
+    /// </summary>
+    [Fact]
+    public void AddReplication_lets_the_configure_callback_override_bound_configuration()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Spark:Replication:ModuleName"] = "FromConfig",
+            ["Spark:Replication:ModuleUrl"] = "https://config.test",
+        }).Build();
+
+        var builder = new SparkBuilder(new ServiceCollection(), configuration);
+        builder.AddReplication(o => o.ModuleName = "FromCode");
+
+        var resolved = builder.Services.BuildServiceProvider()
+            .GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
+
+        resolved.ModuleName.Should().Be("FromCode");
+        resolved.ModuleUrl.Should().Be("https://config.test", "an override of one key must not blank the rest");
+    }
+
+    [Fact]
+    public void AddReplication_works_without_any_configuration()
+    {
+        var builder = NewBuilder();
+
+        var act = () => builder.AddReplication(o => o.ModuleName = "Mod");
+
+        act.Should().NotThrow("ISparkBuilder.Configuration is optional");
     }
 
     [Fact]

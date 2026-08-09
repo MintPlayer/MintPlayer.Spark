@@ -1,8 +1,34 @@
 namespace MintPlayer.Spark.Replication.Abstractions.Configuration;
 
 /// <summary>
-/// Configuration options for Spark module replication.
+/// Configuration options for Spark module replication, bound from the <c>Spark:Replication</c>
+/// configuration section and then overridable in code.
 /// </summary>
+/// <remarks>
+/// <b>Never give a collection property a non-empty initializer here.</b> The rule is about
+/// <i>collections</i>, not initializers in general. Scalars are replaced by a configured value, so
+/// initialize them freely. Collections are <b>appended to</b>: the configured values land <i>after</i>
+/// whatever the initializer put there, so the hardcoded default ends up <b>first</b> — and first is
+/// the position that decides behaviour (<c>DocumentStore</c> connects to <c>Urls[0]</c>).
+/// <para>
+/// That ordering is what made F14 silent rather than loud: the configured URL <i>was</i> bound, just
+/// second, and nothing ever read it.
+/// </para>
+/// <para>
+/// This is where that shipped, as <b>F14</b>. <see cref="SparkModulesUrls"/> initialised to
+/// <c>["http://localhost:8080"]</c>; a configured URL landed <i>after</i> it; and
+/// <c>DocumentStore</c> connects to the first URL. Every deployment that configured where its module
+/// registry lived was still talking to localhost, with no error and a config file that said
+/// otherwise. Nothing caught it for days — it surfaced only when two processes could not see each
+/// other's data.
+/// </para>
+/// <para>
+/// The pattern to follow instead is <see cref="SparkModulesUrls"/> as it stands now: default the
+/// property to empty, put the real default in a separate <c>Default*</c> constant, and expose a
+/// <c>Resolved*</c> member that picks one. Consumers read the resolved member; nothing reads the raw
+/// property.
+/// </para>
+/// </remarks>
 public class SparkReplicationOptions
 {
     /// <summary>Name of this module (e.g. "Fleet", "HR").</summary>
@@ -11,8 +37,30 @@ public class SparkReplicationOptions
     /// <summary>The publicly reachable URL of this module (e.g. "https://localhost:5001").</summary>
     public required string ModuleUrl { get; set; }
 
-    /// <summary>RavenDB URLs for the shared SparkModules database.</summary>
-    public string[] SparkModulesUrls { get; set; } = ["http://localhost:8080"];
+    /// <summary>
+    /// RavenDB URLs for the shared SparkModules database. Defaults to
+    /// <see cref="DefaultSparkModulesUrl"/> when left unset — read it through
+    /// <see cref="ResolvedSparkModulesUrls"/>, never directly.
+    /// </summary>
+    /// <remarks>
+    /// Empty by default <b>on purpose</b>. .NET's configuration binder does not replace a
+    /// collection that already has elements, it appends to it — so a hardcoded initializer here
+    /// survived binding and stayed <i>first</i> in the array, which is the URL
+    /// <c>DocumentStore</c> actually connects to. An app that configured this setting was still
+    /// talking to <c>localhost:8080</c>, with no error and a config file that said otherwise.
+    /// </remarks>
+    public string[] SparkModulesUrls { get; set; } = [];
+
+    /// <summary>Where SparkModules lives when nothing is configured.</summary>
+    public const string DefaultSparkModulesUrl = "http://localhost:8080";
+
+    /// <summary>
+    /// The URLs to actually connect to: what was configured, or the default when nothing was.
+    /// Applying the default here rather than in the property initializer is what keeps a
+    /// configured value from queueing up behind it.
+    /// </summary>
+    public string[] ResolvedSparkModulesUrls =>
+        SparkModulesUrls.Length > 0 ? SparkModulesUrls : [DefaultSparkModulesUrl];
 
     /// <summary>Name of the shared SparkModules database where all modules register.</summary>
     public string SparkModulesDatabase { get; set; } = "SparkModules";
@@ -99,7 +147,8 @@ public class SparkReplicationCertificateOptions
     public string? Thumbprint { get; set; }
 
     /// <summary>
-    /// Path to the PFX/PEM file containing THIS module's client certificate. Attached
+    /// Path to the PKCS#12 (.pfx) file containing THIS module's client certificate and its
+    /// private key — mTLS needs the key, so a bare PEM certificate cannot stand in. Attached
     /// to every outbound replication HttpClient by default. Leave null in
     /// <see cref="SparkReplicationCertificateMode.Development"/> when running on a
     /// trusted network.
@@ -124,7 +173,7 @@ public class SparkReplicationCertificateOptions
 /// </summary>
 public class SparkOutboundCertificate
 {
-    /// <summary>Path to the PFX/PEM file presented when calling the target module.</summary>
+    /// <summary>Path to the PKCS#12 (.pfx) file presented when calling the target module.</summary>
     public required string CertificateFile { get; set; }
 
     /// <summary>Optional password for <see cref="CertificateFile"/>.</summary>

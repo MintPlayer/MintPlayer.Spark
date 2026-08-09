@@ -98,6 +98,61 @@ public class MapSparkIdentityApiTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task ExternalLogin_carries_the_popup_flag_through_to_the_callback_url()
+    {
+        // M2: the callback's postMessage branch keys off ?popup, and /external-login was the
+        // only thing that could ever set it — but it did not even accept the parameter, so the
+        // branch was unreachable in production. Assert the propagation itself, not merely that
+        // some callback URL was built.
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+        client.DefaultRequestVersion = HttpVersion.Version11;
+
+        var response = await client.GetAsync("/spark/auth/external-login?provider=TestExternal&returnUrl=%2Fhome&popup=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // The callback URL is nested inside the cookie scheme's own ReturnUrl, so it arrives
+        // double-encoded; decode once to read the callback query as the callback will see it.
+        var callbackUrl = Uri.UnescapeDataString(response.Headers.Location!.OriginalString);
+        callbackUrl.Should().Contain("external-login-callback");
+        callbackUrl.Should().Contain("popup=1");
+    }
+
+    [Fact]
+    public async Task ExternalLogin_omits_the_popup_flag_when_the_caller_did_not_ask_for_one()
+    {
+        // The other half: a full-page flow must not acquire a popup callback, or it would
+        // land on a page that posts a message to an opener that does not exist and then
+        // closes itself, instead of redirecting the user back into the app.
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+        client.DefaultRequestVersion = HttpVersion.Version11;
+
+        var response = await client.GetAsync("/spark/auth/external-login?provider=TestExternal&returnUrl=%2Fhome");
+
+        var callbackUrl = Uri.UnescapeDataString(response.Headers.Location!.OriginalString);
+        callbackUrl.Should().NotContain("popup");
+    }
+
+    [Fact]
+    public async Task ExternalLoginCallback_reports_a_cancelled_login_to_the_popup_opener()
+    {
+        // No external auth cookie is what a provider-side cancellation looks like from here.
+        // In a popup that must come back as a message: a redirect would navigate the popup
+        // to the app, leaving the opener's listener waiting on a window nobody will close.
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync("/spark/auth/external-login-callback?popup=1&returnUrl=%2Fhome");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("'spark:external-login'");
+        body.Should().Contain("success: false");
+        body.Should().Contain("no_login_info");
+    }
+
+    [Fact]
     public async Task ExternalLoginCallback_with_no_external_info_redirects_to_returnUrl()
     {
         // No external auth cookie → SignInManager.GetExternalLoginInfoAsync() returns null →

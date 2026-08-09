@@ -5,6 +5,7 @@ using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -29,7 +30,8 @@ public class QueryExecutorUnitTests
 
     private QueryExecutor CreateExecutor() => new(
         _session, _entityMapper, _modelLoader, _contextResolver,
-        _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver);
+        _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
+        new PermissiveRowSecurity());
 
     private static SparkQuery Q(string source) => new()
     {

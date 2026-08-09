@@ -61,6 +61,9 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;
 
+            // Authorize before validating — see the note in Create.cs (N23).
+            await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+
             var validationResult = validationService.Validate(obj);
             if (!validationResult.IsValid)
             {
@@ -78,6 +81,10 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             // attacker can use as a side channel. Return a generic 409; clients
             // know to re-fetch on 409 regardless of the body content.
             return ClientResult.Envelope(clientAccessor, new { error = "Concurrency conflict" }, 409);
+        }
+        catch (SparkValidationException ex)
+        {
+            return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
         catch (SparkRetryActionException ex)
         {

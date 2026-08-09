@@ -1,8 +1,8 @@
-import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef, NgZone } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
-import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent } from '@mintplayer/ng-bootstrap/accordion';
+import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell';
 import { BsShellTopbarDirective } from './bs-shell-topbar.directive';
@@ -17,7 +17,7 @@ import { KeyValuePipe } from '@angular/common';
 
 @Component({
   selector: 'app-shell',
-  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderComponent, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, FormsModule, KeyValuePipe],
+  imports: [CommonModule, RouterModule, BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective, BsNavbarTogglerComponent, BsSelectComponent, BsSelectOption, SparkIconComponent, ResolveTranslationPipe, TranslateKeyPipe, IconNamePipe, RouterLinkPipe, FormsModule, KeyValuePipe],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -27,7 +27,6 @@ export class ShellComponent {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
-  private readonly zone = inject(NgZone);
   readonly authService = inject(SparkAuthService);
 
   readonly lang = inject(SparkLanguageService);
@@ -52,24 +51,9 @@ export class ShellComponent {
     this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
   }
 
-  loginWithGitHub(): void {
-    const url = '/spark/auth/external-login?provider=GitHub&returnUrl=/github-projects';
-    const popup = window.open(url, 'github-login', 'width=600,height=700');
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'external-login-success') return;
-
-      window.removeEventListener('message', onMessage);
-      popup?.close();
-
-      this.zone.run(async () => {
-        await this.authService.checkAuth();
-        this.router.navigate(['/github-projects']);
-      });
-    };
-
-    window.addEventListener('message', onMessage);
+  async loginWithGitHub(): Promise<void> {
+    const result = await this.authService.loginWithProvider('GitHub', { returnUrl: '/github-projects' });
+    if (result.success) this.router.navigate(['/github-projects']);
   }
 
   async logout(): Promise<void> {

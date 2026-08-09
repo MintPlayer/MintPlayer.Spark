@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Reflection;
@@ -71,12 +72,7 @@ public static class SparkExtensions
                 Database = options.RavenDb.Database,
             };
 
-            // Use GUID-based document IDs instead of HiLo
-            store.Conventions.AsyncDocumentIdGenerator = (dbName, entity) =>
-            {
-                var collectionName = store.Conventions.GetCollectionName(entity.GetType());
-                return Task.FromResult($"{collectionName}/{Guid.NewGuid()}");
-            };
+            store.Conventions.UseNaturalIds().UseGeneratedIds();
 
             // Register custom JSON converters for RavenDB document serialization
             store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
@@ -157,8 +153,11 @@ public static class SparkExtensions
     {
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
-        // If authentication is registered, add auth middleware
-        if (registry.IdentityUserType != null)
+        // Any registered credential is a reason to authenticate, not just Identity. An app whose
+        // only callers are machines — client certificates, or bearer tokens from the identity
+        // provider — registers no user type, and gating on that alone would leave its middleware
+        // out entirely, so every such caller would arrive anonymous.
+        if (registry.IdentityUserType != null || registry.CredentialSchemes.Count > 0)
         {
             app.UseAuthentication();
         }
@@ -182,7 +181,9 @@ public static class SparkExtensions
         {
             var endpoint = context.GetEndpoint();
             var metadata = endpoint?.Metadata.GetMetadata<IAntiforgeryMetadata>();
-            if (metadata is { RequiresValidation: true } && IsMutatingMethod(context.Request.Method))
+            if (metadata is { RequiresValidation: true }
+                && IsMutatingMethod(context.Request.Method)
+                && !IsNonAmbientCredential(context))
             {
                 var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
                 try
@@ -450,8 +451,30 @@ public static class SparkExtensions
     private static bool IsMutatingMethod(string method) =>
         HttpMethods.IsPost(method)
         || HttpMethods.IsPut(method)
-        || HttpMethods.IsPatch(method)
-        || HttpMethods.IsDelete(method);
+        || HttpMethods.IsDelete(method)
+        || HttpMethods.IsPatch(method);
+
+    /// <summary>
+    /// True when the request was authenticated by a credential the browser does not attach on its
+    /// own — a bearer token, a client certificate, an API key.
+    /// <para>
+    /// CSRF is an attack on <i>ambient</i> authority: it works because a cross-site page can make
+    /// the browser replay a cookie it is holding. A caller that had to construct its own
+    /// <c>Authorization</c> header, or complete a TLS handshake with a private key, cannot be made
+    /// to do either by a third-party page. Demanding an antiforgery token of such a caller protects
+    /// nothing and makes external POSTs impossible — a CI job has no <c>XSRF-TOKEN</c> cookie to
+    /// echo, so it got a bare 400 with no body (F8).
+    /// </para>
+    /// <para>
+    /// The decision reads the scheme that actually produced <c>HttpContext.User</c>, not the shape
+    /// of the request. That distinction is the security property: were this keyed on "did the
+    /// caller send an <c>Authorization</c> header", an attacker could disable the check on a
+    /// cookie-authenticated victim by attaching a junk header. A junk header authenticates nothing,
+    /// so no scheme records itself here and the gate still runs.
+    /// </para>
+    /// </summary>
+    private static bool IsNonAmbientCredential(HttpContext context)
+        => context.Features.Get<ISparkAuthenticatedSchemeFeature>() is { Scheme.IsAmbient: false };
 
     /// <summary>
     /// Spark's implementation of <see cref="IAntiforgeryValidationFeature"/> used to record

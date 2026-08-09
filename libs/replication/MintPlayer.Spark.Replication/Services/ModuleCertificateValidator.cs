@@ -4,8 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
-using MintPlayer.Spark.Replication.Abstractions.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Replication.Services;
 
@@ -34,7 +32,7 @@ internal enum ModuleCertificateValidation
 internal partial class ModuleCertificateValidator : IModuleCertificateValidator
 {
     [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
-    [Inject] private readonly ModuleRegistrationService registrationService;
+    [Inject] private readonly IModuleDirectory moduleDirectory;
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<ModuleCertificateValidator> logger;
 
@@ -58,16 +56,25 @@ internal partial class ModuleCertificateValidator : IModuleCertificateValidator
 
         if (mode == SparkReplicationCertificateMode.Disabled)
         {
-            // Explicit passthrough — no validation, no warning. Caller chose this.
+            // Explicit passthrough. It still logs: a mode that turns authentication off on
+            // the two most dangerous endpoints in the framework, one JSON string away and
+            // leaving no trace, is indistinguishable afterwards from never having been set.
+            logger.LogWarning(
+                "Cross-module call from '{Module}' accepted with certificate validation Disabled — " +
+                "/spark/etl/deploy and /spark/sync/apply are unauthenticated in this process.",
+                requestingModule);
             return ModuleCertificateValidation.Ok;
         }
 
         if (mode == SparkReplicationCertificateMode.Development)
         {
-            // Dev mode: skip cert thumbprint check, still log every call so the
-            // relaxed posture is visible in logs. Requesting module must still
-            // exist in SparkModules — that's free identity-level sanity.
-            if (string.IsNullOrEmpty(requestingModule))
+            // Dev mode skips the thumbprint check, but the caller must still name a module
+            // that actually registered. This lookup is the part the comment here used to
+            // claim and not perform (F1) — without it, Development was a full
+            // authentication no-op and `{"RequestingModule": "anything"}` from an
+            // unauthenticated caller could write any document in any collection.
+            var devModule = await moduleDirectory.FindAsync(requestingModule, cancellationToken);
+            if (devModule is null)
                 return ModuleCertificateValidation.UnknownModule;
 
             logger.LogWarning(
@@ -85,14 +92,7 @@ internal partial class ModuleCertificateValidator : IModuleCertificateValidator
         if (clientCert is null)
             return ModuleCertificateValidation.MissingCertificate;
 
-        // RavenDB lookup of the pinned thumbprint. We use the registration service's
-        // dedicated SparkModules store rather than the app's request-scoped session
-        // because this collection lives in a different database.
-        using var modulesStore = registrationService.CreateModulesStore();
-        using var session = modulesStore.OpenAsyncSession();
-        var moduleInfo = await session.LoadAsync<ModuleInformation>(
-            $"moduleInformations/{requestingModule}", cancellationToken);
-
+        var moduleInfo = await moduleDirectory.FindAsync(requestingModule, cancellationToken);
         if (moduleInfo is null)
             return ModuleCertificateValidation.UnknownModule;
 

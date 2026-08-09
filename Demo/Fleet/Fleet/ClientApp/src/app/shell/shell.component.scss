@@ -9,31 +9,30 @@ bs-shell {
   min-height: 0;
 }
 
+// ng-bootstrap 22.13 moved the accordion's internals into a Lit web component's shadow
+// DOM. The Bootstrap classes these rules used to target (.accordion-item,
+// .accordion-button, .accordion-body) no longer exist in the light DOM at all, so
+// ::ng-deep cannot reach them and the overrides silently became dead CSS — leaving the
+// accordion painting Bootstrap's default white card with the sidebar's white text on it.
+//
+// Style through the two seams the component does expose: Bootstrap's --bs-* tokens, which
+// inherit across the shadow boundary, and ::part(). Note that setting --bs-accordion-*
+// directly does NOT work: the component's :host block re-declares every one of them from
+// the --bs-body-* globals, and a :host declaration beats an inherited value. So the colours
+// come from `data-bs-theme="dark"` on the sidebar <nav> (see the template), which flips
+// those globals — and the chevron icon with them.
 ::ng-deep bs-shell {
-  bs-accordion {
-    bs-accordion-tab {
-      .accordion-item {
-        background-color: transparent;
-        border: none;
-      }
+  nav.sidebar-inner {
+    // The header tint while a tab is open. The component maps its active background to
+    // --bs-primary-bg-subtle, so that is the knob to turn.
+    --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
+    // Restores the borderless look; the accordion derives its border from --bs-border-color.
+    --bs-border-color: transparent;
+  }
 
-      .accordion-header {
-        .accordion-button {
-          background-color: transparent;
-          color: inherit;
-          box-shadow: none;
-
-          &:not(.collapsed) {
-            background-color: rgba(255, 255, 255, 0.1);
-          }
-        }
-      }
-
-      .accordion-body {
-        background-color: rgba(0, 0, 0, 0.2);
-        padding: 0;
-      }
-    }
+  // Nav links run edge to edge — the component's own body padding would inset them.
+  mp-accordion::part(content) {
+    padding: 0;
   }
 
   .nav-link {
