@@ -168,6 +168,12 @@
       "resource": "ReadEditNew/Person",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "b0000002-0000-0000-0000-000000000012",
+      "resource": "Replicate/Companies",
+      "groupId": "b0000002-0000-0000-0000-000000000001",
+      "isDenied": false
     }
   ]
 }

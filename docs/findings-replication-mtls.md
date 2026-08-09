@@ -144,6 +144,35 @@ the framework, so the blast radius is exactly this property.
 
 ---
 
+## F15 — One ungranted collection silently blocks a module's entire replication (Medium) — found and fixed 2026-08-09
+
+F12 made `/spark/etl/deploy` authorize each script's `SourceCollection`, which was right. What it did
+not account for is that **scripts are batched per source module**: `EtlScriptCollector` groups every
+`[Replicated]` type sharing a `SourceModule` into one `EtlScriptRequest`, and `EtlDeploy`'s loop
+returns `403` for the whole batch on the first collection the caller may not replicate.
+
+So a single missing grant does not remove one collection from the deployment — it removes **all** of
+them, including the ones that were granted.
+
+**It was already live in the demos.** Fleet declares `[Replicated]` copies of HR's `People` *and*
+`Companies`; HR's `security.json` granted `Module:Fleet` only `Replicate/People`. Fleet's real
+deployment to HR would therefore have been refused in full, and even the authorized `People`
+replication would never have been created. Granting `Replicate/Companies` fixes the demo.
+
+Invisible until now for a specific reason: **no test exercises a real consumer module's outbound
+path.** The E2E tests hand-build the inbound request, so they choose the collections themselves and
+never batch two of them with one grant missing. Found by an investigation into what a two-host test
+would add — which is exactly the answer.
+
+**The design question is left open, deliberately.** All-or-nothing is defensible — a partial deploy
+would replicate some collections and silently skip others, which is worse than a loud refusal. But
+the consumer's diagnosis is poor: it gets a bare `"Forbidden"`, the owner logs which collection at
+Warning, and the message bus then retries to dead-letter. If this bites in practice, the fix is a
+better error body (naming the refused collections), not partial deployment. Recorded rather than
+changed, because changing it needs a decision about what a consumer should do with a partial answer.
+
+---
+
 # Part 2 — Making *any* external credential work
 
 The first investigation asked whether mTLS could be generalized. The second asked what it would take for every credential type to share one authorization pipeline. The answer to the second reframes the first.
