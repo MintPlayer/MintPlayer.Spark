@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -16,6 +17,25 @@ public static class SparkBuilderAuthorizationExtensions
         Action<AuthorizationOptions>? configureOptions = null)
     {
         builder.Services.AddSparkAuthorization(configureOptions);
+        return builder;
+    }
+
+    /// <summary>
+    /// Replaces how Spark decides which groups the current caller belongs to — the input to every
+    /// <c>security.json</c> decision. The default reads <c>group</c>/<c>groups</c> claims; supply
+    /// your own to resolve them from Identity roles, a directory, or a database.
+    /// </summary>
+    /// <remarks>
+    /// This exists because the interface was a documented extension point with no public way to
+    /// register an implementation — the replacement helper was <c>internal</c>, so consumers could
+    /// only reach it by knowing that a later <c>AddScoped</c> happens to win. Removing the previous
+    /// registration is the part worth owning here: leaving both in the container makes which
+    /// provider runs depend on registration order.
+    /// </remarks>
+    public static ISparkBuilder UseGroupMembershipProvider<TProvider>(this ISparkBuilder builder)
+        where TProvider : class, IGroupMembershipProvider
+    {
+        builder.Services.AddGroupMembershipProvider<TProvider>();
         return builder;
     }
 

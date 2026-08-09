@@ -27,23 +27,25 @@ dotnet add package MintPlayer.Spark.Authorization
 
 In `Program.cs`, add the authorization services:
 
+Everything is configured through the `ISparkBuilder` that `AddSpark` hands you:
+
 ```csharp
-using MintPlayer.Spark.Authorization;
+using MintPlayer.Spark.Authorization.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSpark(builder.Configuration);
-builder.Services.AddSparkActions();
-builder.Services.AddScoped<SparkContext, MySparkContext>();
-
-// Add authorization
-builder.Services.AddSparkAuthorization();
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();
+    spark.AddAuthorization();
+});
 ```
 
-The `AddSparkAuthorization()` method accepts optional configuration:
+`AddAuthorization()` accepts optional configuration:
 
 ```csharp
-builder.Services.AddSparkAuthorization(options =>
+spark.AddAuthorization(options =>
 {
     options.SecurityFilePath = "App_Data/security.json";   // default
     options.DefaultBehavior = DefaultAccessBehavior.DenyAll; // default
@@ -192,19 +194,19 @@ When checking a request:
 The authorization package includes built-in ASP.NET Core Identity support with RavenDB-backed user and role stores. To enable authentication:
 
 ```csharp
-using MintPlayer.Spark.Authorization;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSpark(builder.Configuration);
-builder.Services.AddSparkActions();
-builder.Services.AddScoped<SparkContext, MySparkContext>();
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MySparkContext>();
+    spark.AddActions();
+    spark.AddAuthorization();
+    spark.AddAuthentication<SparkUser>();
+});
 
-// Authorization + Authentication
-builder.Services.AddSparkAuthorization();
-builder.Services.AddSparkAuthentication<SparkUser>();
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.Name = ".SparkAuth.MyApp";
@@ -219,23 +221,22 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseAuthentication();       // Must come before UseAuthorization
-app.UseAuthorization();
-app.UseSparkAntiforgery();     // XSRF protection for cookie auth
-app.UseSpark();
-app.CreateSparkIndexes();
+app.UseSpark();      // authentication, authorization, antiforgery and the XSRF-TOKEN cookie
 
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapControllers();
-    endpoints.MapSpark();
-    endpoints.MapSparkIdentityApi<SparkUser>();  // Maps /spark/auth/* endpoints
+    endpoints.MapSpark();   // Spark's endpoints, including /spark/auth/* from AddAuthentication
 });
 ```
 
+`UseSpark()` owns the whole pipeline — it calls `UseAuthentication()` / `UseAuthorization()` in the
+right order and wires antiforgery. There is no `UseSparkAntiforgery()`; see Step 4.
+
 #### Identity Endpoints
 
-`MapSparkIdentityApi<TUser>()` maps the following endpoints under `/spark/auth/`:
+`AddAuthentication<TUser>()` registers the identity endpoints itself, so you never map them by
+hand. They live under `/spark/auth/`:
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -267,46 +268,57 @@ public class MyGroupProvider : IGroupMembershipProvider
 }
 ```
 
-Register it after `AddSparkAuthorization()`:
+Register it alongside `AddAuthorization()`:
 
 ```csharp
-builder.Services.AddSparkAuthorization()
-    .AddGroupMembershipProvider<MyGroupProvider>();
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddAuthorization();
+    spark.UseGroupMembershipProvider<MyGroupProvider>();
+});
 ```
+
+`UseGroupMembershipProvider` removes the default registration rather than adding a second one, so
+which provider runs does not depend on registration order.
 
 ### Step 4: XSRF/Antiforgery Protection
 
-When using cookie-based authentication, mutation endpoints (POST, PUT, DELETE) are protected with XSRF tokens.
+When using cookie-based authentication, mutation endpoints (POST, PUT, DELETE) are protected with
+XSRF tokens. **You do not wire this up** — `UseSpark()` does all of it: it generates the
+`XSRF-TOKEN` cookie on every response *and* validates the `X-XSRF-TOKEN` header on incoming
+mutations. The Angular frontend reads the cookie and echoes it back in the header
+(the double-submit pattern), which Angular's `HttpClient` does by default.
 
-The `UseSpark()` middleware generates a `XSRF-TOKEN` cookie on every response. The Angular frontend reads this cookie and sends the value as an `X-XSRF-TOKEN` header on mutation requests.
+There is no `UseSparkAntiforgery()` method, and never was — do not call `UseAuthentication()`,
+`UseAuthorization()` or `UseAntiforgery()` yourself either. `UseSpark()` orders all four, and
+adding your own copy changes that order.
 
-When using the authorization package with cookie auth, call `UseSparkAntiforgery()` in the middleware pipeline to validate the XSRF token on incoming requests:
-
-```csharp
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseSparkAntiforgery();  // Validates X-XSRF-TOKEN header
-app.UseSpark();              // Generates XSRF-TOKEN cookie
-```
+Antiforgery applies only to **ambient** credentials — a cookie, which a browser attaches to a
+cross-site request whether or not the user meant to. A caller presenting a bearer token or a
+client certificate is exempt, because a token that must be attached deliberately cannot be
+attached by an attacker's page, and demanding a cookie-derived header of a CI job that has no
+cookie would only make legitimate calls impossible. See
+[Authentication Schemes](../../../docs/guide-authentication-schemes.md) for the full rule.
 
 ## How Authorization Integrates with Spark
 
-When `IAccessControl` is registered (by calling `AddSparkAuthorization()`), Spark's core `PermissionService` delegates authorization checks to it. If `IAccessControl` is **not** registered, all operations are permitted:
+Spark's core `PermissionService` delegates every check to the registered `IAccessControl`. There
+is always one: `AddSpark` registers a **deny-all** default, so an app that forgets
+`spark.AddAuthorization()` refuses requests rather than serving them.
 
 ```csharp
 // From MintPlayer.Spark/Services/PermissionService.cs
 public async Task EnsureAuthorizedAsync(string action, string target, ...)
 {
-    if (accessControl is null)
-        return; // No authorization package = allow everything
-
     var resource = $"{action}/{target}";
     if (!await accessControl.IsAllowedAsync(resource, cancellationToken))
         throw new SparkAccessDeniedException(resource);
 }
 ```
 
-This means authorization is entirely opt-in. Add the package and call `AddSparkAuthorization()` when you are ready to restrict access.
+Earlier versions returned early when no `IAccessControl` was registered, which meant a missing
+package silently opened every endpoint. That branch was removed (R2-H1). If you genuinely want an
+open app, say so explicitly with `spark.AllowAnonymousAccess()`.
 
 ## Angular Frontend Setup
 
@@ -494,8 +506,9 @@ The corresponding `security.json`:
 
 ## Complete Example
 
-See the Fleet and HR demo apps for working authorization setups:
-- `../Demo/Fleet/Fleet/Program.cs` -- full setup with `AddSparkAuthorization`, `AddSparkAuthentication`, and `UseSparkAntiforgery`
+See the demo apps for working authorization setups:
+- `../Demo/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthorization(…)` + `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
+- `../Demo/Fleet/Fleet/Program.cs` -- the same thing through `AddSparkFull` / `UseSparkFull`, which bundle the common packages
 - `../Demo/Fleet/Fleet/App_Data/security.json` -- role-based permissions including custom action permissions
 - `../Demo/HR/HR/App_Data/security.json` -- role-based permissions for HR entities
 - `Services/AccessControlService.cs` -- permission evaluation logic
@@ -506,7 +519,7 @@ See the Fleet and HR demo apps for working authorization setups:
 - .NET 10.0+
 - RavenDB 6.2+
 - Node.js (for automatic npm integration)
-- Angular 21+ (for frontend components)
+- Angular 22+ (for frontend components)
 
 ## License
 

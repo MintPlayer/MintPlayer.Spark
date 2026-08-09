@@ -65,9 +65,10 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `01c4002` | **D15** — where the chokepoint stops; `IDatabaseAccess`'s unchecked family renamed |
 | `036ab5b` | **D15a** — the two-axis rule and the surface table, in the plan, PRD and guide |
 | `64296b6` | **M2 done** — the popup handshake is reachable, reports refusals, and lives in the library |
-| `(head)` | **M3 done** (bar the visual check) — ng-bootstrap 22.13, accordion header migrated, 22.13 API use verified three ways |
+| `9a4e60a` | **M3 done** (bar the visual check) — ng-bootstrap 22.13, accordion header migrated, 22.13 API use verified three ways |
+| `(head)` | **M6 done** — doc sweep; found an extension point with no public API, and an M5 release note describing code that never shipped |
 
-**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: **M6** (the documentation sweep) is untouched and release mechanics (**M7**) are not done. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
+**Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: only release mechanics (**M7**) remain, plus the deferred verification sweep. Everything else has landed — items 1, 3, 4 and 5 of the handoff, plus the credential/authentication unification (M8–M11) and M14. M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
 **The intermittent failure — probable cause found, and six latent defects with it.** Six assertions in the IdentityProvider tests queried an **index** with no preceding wait: `OidcConsentSecurityTests` (×4), `OidcAuthorizeSecurityTests`, `OidcTokenSecurityTests`. Under full-suite load index lag grows, which is exactly the shape of an intermittent that never reproduces under a filter.
 
@@ -99,11 +100,11 @@ It paid for itself twice. The first 24 tests found two defects six reviewers rea
 
 ⚠️ **O7 introduced a required setting.** `SparkIdentityProviderOptions.Issuer` must be configured outside Development or token issuance throws. Any demo or deployment wiring up the IdP needs it — check this before M7.
 
-**Not started:** M6, M7. **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
+**Not started:** M7 (release mechanics). **M2, M5, M8, M9, M10, M11 and M14 are done** — M9 unblocked M10 and M11, which were dead code before a composite default scheme existed.
 
 ~~**Verification debt:** the full suite has not been run…~~ **Superseded — see the status block at the top of this document.** The full suite is now green across all four projects (1397 tests), and §T and §L of the matrix are covered. What remains unverified: **the four demo ClientApps have not been built or exercised since the IdP port**, and the concurrency races (T-R3/T-R4, and a withdrawal racing an in-flight refresh) still need a parking hook in the token endpoint.
 
-**Next action:** **M6** — the documentation sweep (PRD §6 rows plus the broken API references the sweep found). Then **M7**: `<Version>` bumps across ~20 csprojs, `@mintplayer/ng-spark-auth` for M2's added public API, and the release note assembled from the breaking-changes table below.
+**Next action:** **M7** — `<Version>` bumps across the csprojs, `@mintplayer/ng-spark-auth` for M2's added public API, and the release note assembled from the breaking-changes table below. Then the deferred verification sweep: the full test suite, the four demo ClientApps, and M3.3's visual check.
 
 ## Breaking changes — release notes for M7
 
@@ -145,6 +146,8 @@ Preview package, so no compatibility was required, but each of these changes beh
 | Both demos gain `Module:{Name}` grants | `Demo/Fleet` grants `Module:HR`, `Demo/HR` grants `Module:Fleet` | Without them M11 silently breaks cross-module sync — which is what it would have done as shipped (**F13**) |
 | **The external-login popup message changes shape** | `{ type: 'external-login-success' }` becomes `{ type: 'spark:external-login', success, error? }` | A bare success ping cannot report a refusal, so every failure looked identical to the user still deciding. Namespacing also lets one listener tell Spark's messages from anything else on the origin (**M2**) |
 | The external-login callback reports refusals to a popup instead of redirecting | With `?popup`, all three failure branches now return the postMessage page | They redirected unconditionally, so a cancelled or refused login left the opener's listener waiting on a window nobody would close (**M2**) |
+| **`BsAccordionTabHeaderComponent` → `*bsAccordionTabHeader`** | An app using the accordion header must migrate to the structural directive on an `<ng-container>` | ng-bootstrap 22.13 converted the component to a directive. Affects consumers of the demos' shell pattern, not `@mintplayer/ng-spark` itself (**M3**) |
+| `spark.UseGroupMembershipProvider<T>()` added | A custom `IGroupMembershipProvider` now has a supported registration path | The documented extension point's only helper was `internal`; the workaround left both providers registered and let order decide (**M6**) |
 
 ## Resolved decisions (2026-08-08)
 
@@ -460,9 +463,22 @@ Coverage's M0 exit criterion is *"a demo app can mint and authenticate with an A
 
 ---
 
-## M5 — Row-level authorization on queries and `/stream`
+## M5 — Row-level authorization on queries and `/stream` — ⚠️ **spec superseded by what shipped**
 
-See PRD §5 for the verified findings. Two bypasses, one root cause. This changes the public Actions contract, so it needs its own commit and its own release note.
+> **Read the as-built M5 section further down instead.** This section is the *plan*, and the
+> implementation deliberately diverged: `GetRowFilter` was **not** added and `OnQueryAsync` was
+> **not** deleted. Row filtering reuses the `IsAllowedAsync(string, T)` hook the detail path
+> already had, applied at every read path through `IRowSecurity`. The four-state detection, the
+> composable `Expression<Func<T,bool>>` predicate, the Raven-side pushdown and the startup warning
+> below never existed in shipped code.
+>
+> That divergence is the right call — one hook, enforced everywhere, beats two hooks whose
+> interaction has four states — but it means **the Actions contract did not change**, which
+> deletes the loudest item from the M7 release note. Corrected there. What *did* ship from this
+> spec: the single chokepoint (M5.2's goal), the fail-closed flips (M5.4) and the stream path
+> (M5.5). Left undone: M5.3, and the recorded finding (M5.6).
+
+See PRD §5 for the verified findings. Two bypasses, one root cause.
 
 ### M5.1 — Failing tests
 
@@ -918,7 +934,36 @@ It lands here rather than as its own fix because the correct repair is the one M
 
 ---
 
-## M6 — Documentation
+## M6 — Documentation ✅ done
+
+Every row of PRD §6 and the swept items are applied. Three things worth recording beyond the list:
+
+**1. A documented extension point had no public way to use it.** The Authorization README told you
+to implement `IGroupMembershipProvider` and register it with `AddGroupMembershipProvider<T>()` —
+which is `internal`. The only route left was a bare `AddScoped`, which works solely because a later
+registration happens to win `GetRequiredService`; both providers stay in the container and which one
+runs depends on registration order. Documenting that workaround would have been documenting a bug,
+so the fix is a public `spark.UseGroupMembershipProvider<T>()` that *replaces* the default. Small
+API addition inside a docs milestone, and deliberate — see the "absorb API churn while in preview"
+working preference.
+
+**2. The M7 release note described an M5 that never shipped.** It led with "breaking change to the
+public Actions contract (`OnQueryAsync` removed, `GetRowFilter` added)" — neither happened. The
+implementation reused the existing `IsAllowedAsync(string, T)` hook through `IRowSecurity` instead,
+which is the better design and, crucially, **not a signature change at all**. Corrected in the
+release note, and the superseded spec section is now marked as such. This is the fourth time in this
+branch a document has confidently described code that does not exist; it was found by checking the
+core README's hook list against the interface, not by reading the plan.
+
+**3. The webhooks PRD's queue-naming section is now marked superseded** rather than edited into
+agreement with the code. It is a design document describing a decision that was later reversed for a
+reason worth keeping (M1); rewriting it would erase the reversal.
+
+Also fixed beyond the list: `docs/guide-cross-module-sync.md` told readers to call
+`CreateSparkMessagingIndexes()`, `UseSparkReplication()` and `MapSparkReplication()` by hand. All
+three are internal — `spark.AddReplication()` wires them — so the guide's Step 3 could not compile.
+
+Original scope, for reference:
 
 Apply every row of PRD §6 **and** the "Additional broken API references" section — the sweep found substantially more than the handoff listed.
 
@@ -937,12 +982,13 @@ Since several of these samples **don't compile as written**, treat compilability
 
 Bump `<Version>` in each affected csproj — hand-maintained across 20 files, no script. The new ApiTokens package ships at the same preview number. Bump `@mintplayer/ng-spark-auth`'s `version` (M2.3 adds public API); **`@mintplayer/ng-spark` needs no bump** — M3 doesn't touch its source and its caret peer range already admits 22.13.0.
 
-**Release note — must not be buried.** M5 is a breaking change to the public Actions contract (`OnQueryAsync` removed, `GetRowFilter` added) *and* a behavior change for every row-scoped app. Call out explicitly:
+**Release note — must not be buried.** M5 is a behavior change for every row-scoped app. It is
+**not** a signature change: the plan's `GetRowFilter` / `OnQueryAsync`-removal was dropped during
+implementation, so no consumer has to edit an override. Call out explicitly:
 1. Apps overriding `IsAllowedAsync` now get fewer rows and smaller `totalItems` on queries and streams. That's the fix, but it is user-visible — Fleet's Cars list changes for non-admins.
-2. `OnQueryAsync` is gone; anyone overriding it was silently getting nothing and must migrate to `GetRowFilter`.
-3. Fail-closed flips drop rows in apps unknowingly relying on the old fail-open branches — chiefly projection-backed queries with unloadable base documents.
-4. Per-instance-only apps see O(collection) reads on query paths plus a startup warning.
-5. Streams may emit mid-stream `remove` patches as rows become invisible.
+2. Fail-closed flips drop rows in apps unknowingly relying on the old fail-open branches — chiefly projection-backed queries with unloadable base documents, and projections with no readable `Id` (which now return **nothing** for a type that has a row rule).
+3. Row filtering runs after materialization, so a row-scoped type costs O(collection) on query paths. There is no pushdown and no startup warning; see the follow-up below.
+4. Streams may emit mid-stream `remove` patches as rows become invisible.
 
 Merging to `master` publishes automatically (`--skip-duplicate` means an unbumped version silently no-ops). Never `dotnet nuget push` / `npm publish` by hand from the branch.
 
@@ -966,6 +1012,6 @@ Then the manual checks that tests can't cover:
 
 ## Follow-ups filed, not done here
 
-- **Raven Skip/Take pushdown** — unlocked by `GetRowFilter` (M5.2) but deliberately out of scope: a performance change with its own correctness surface, wanting its own PR and benchmarks.
+- **Raven-side row filtering (pushdown)** — M5 filters after materialization, so a row-scoped type reads its whole collection per query. Pushing the predicate into the `IQueryable` (the plan's `GetRowFilter`) would fix that and let `Skip`/`Take` and `TotalResults` come from Raven. Deliberately out of scope: it is a performance change with its own correctness surface — a predicate that cannot compose into a projection must fall back rather than silently pass everything — and it wants its own PR and benchmarks. A startup warning naming row-scoped types would be a cheap first step.
 - **`BsShellTopbarDirective`** — needs an upstream ng-bootstrap contribution before the four demo copies can go.
 - **Report back to Coverage** that `spark-handoff.md` §2 contradicts their own `PLAN.md` on sequencing; that their docs use four different names for the token concept; and that their `PRD.md:145` describes the PAT handler as wired through `configureProviders`/`IdentityBuilder` when their own working code correctly registers it as a standalone scheme instead.

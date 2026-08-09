@@ -108,7 +108,7 @@ public record GitHubWebhookMessage<TEvent> where TEvent : WebhookEvent
 }
 ```
 
-**Queue naming**: The generic record's queue name is derived from the Octokit event type name at broadcast time:
+**Queue naming** — *superseded; see the note below.* As designed, the generic record's queue name was derived from the Octokit event type name at broadcast time:
 
 ```csharp
 // e.g., "PullRequestEvent" → "spark-github-pull-request"
@@ -118,7 +118,12 @@ await messageBus.BroadcastAsync(genericMessage, queueName, ct);
 await messageBus.BroadcastAsync(catchAllMessage, ct); // uses [MessageQueue] attribute
 ```
 
-The `GitHubQueueNames` helper converts PascalCase event type names to kebab-case queue names with a `spark-github-` prefix, stripping the `Event` suffix.
+> **As built, this is gone.** `GitHubQueueNames` was deleted: hand-derived names were the source of
+> the invalid-queue-name bug that broke the demo at HEAD. Both broadcasts now go through the
+> plain `BroadcastAsync(message, ct)` overload, and messaging derives the queue from the CLR type
+> — including the generic arguments — in `QueueNames.Derive`. Recipients were already routed by
+> type, so nothing downstream changed. The `spark-github-*` names below never existed in shipped
+> code; `spark-github-all`, declared by `[MessageQueue]` on the non-generic message, is real.
 
 **Supported event types**: All event types from `Octokit.Webhooks` are supported automatically. The `SparkWebhookEventProcessor` overrides the most commonly used events initially, and more can be added trivially (each override is ~5 lines of identical code). Unhandled events are logged and silently dropped.
 
@@ -358,8 +363,8 @@ private async Task HandleWebhookAsync<TEvent>(
     var installationId = evt.Installation?.Id ?? 0;
     var repoFullName = evt.Repository?.FullName ?? string.Empty;
 
-    // Event-specific message (e.g., queue "spark-github-pull-request")
-    var queueName = GitHubQueueNames.FromEventType<TEvent>();
+    // Event-specific message. As built there is no queue name here: BroadcastAsync
+    // derives it from the CLR type (see the note in §5.2).
     var typedMessage = new GitHubWebhookMessage<TEvent>
     {
         Headers = headers,
@@ -465,7 +470,6 @@ MintPlayer.Spark.Webhooks.GitHub/
 │   └── GitHubWebhooksOptions.cs           # Options POCO (with internal Services for deferred registration)
 ├── Messages/
 │   ├── GitHubWebhookMessage.cs            # Non-generic catch-all + generic GitHubWebhookMessage<TEvent>
-│   └── GitHubQueueNames.cs               # Event type → queue name helper
 ├── Services/
 │   ├── SparkWebhookEventProcessor.cs      # Extends WebhookEventProcessor
 │   ├── IDevWebSocketService.cs            # Interface for dev forwarding
@@ -575,7 +579,7 @@ Demo/WebhooksDemo/                               # New demo application
 2. Add to solution file and verify NuGet packaging
 
 ### Phase 1: Core Package (`MintPlayer.Spark.Webhooks.GitHub`)
-1. Create project, define `GitHubWebhookMessage` (catch-all) + `GitHubWebhookMessage<TEvent>` (generic) records and `GitHubQueueNames` helper
+1. Create project, define `GitHubWebhookMessage` (catch-all) + `GitHubWebhookMessage<TEvent>` (generic) records
 2. Implement `SparkWebhookEventProcessor` with generic `HandleWebhookAsync<TEvent>` — broadcasts both catch-all and typed messages to `IMessageBus`
 3. Implement `AddGithubWebhooks()` extension method on `ISparkBuilder` + `GitHubWebhooksOptions`
 4. Implement webhook signature validation (HMAC-SHA256 via `X-Hub-Signature-256`)

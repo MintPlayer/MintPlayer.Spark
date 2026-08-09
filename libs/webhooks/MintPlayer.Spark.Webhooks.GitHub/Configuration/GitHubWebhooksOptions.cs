@@ -26,8 +26,13 @@ public class GitHubWebhooksOptions
     public string DevWebSocketPath { get; set; } = "/spark/github/dev-ws";
 
     /// <summary>
-    /// Allowed GitHub usernames for WebSocket dev connections.
-    /// If empty, all authenticated connections are accepted.
+    /// GitHub usernames allowed to connect to the dev-forwarding WebSocket.
+    /// <para>
+    /// <b>Empty means nobody</b> — the dev tunnel is off until you name someone. A webhook
+    /// delivered to <c>DevelopmentAppId</c> carries private-repo data, so an unset allow-list
+    /// must not mean "any authenticated GitHub user"; that let a throwaway account subscribe
+    /// to all of it (R2-H12).
+    /// </para>
     /// </summary>
     public List<string> AllowedDevUsers { get; set; } = [];
 

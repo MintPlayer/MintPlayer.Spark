@@ -17,7 +17,7 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 | Component | Technology |
 |-----------|------------|
 | Backend | .NET 10.0 |
-| Frontend | Angular 21 |
+| Frontend | Angular 22 |
 | Database | RavenDB 6.2+ |
 | UI Library | @mintplayer/ng-bootstrap |
 
