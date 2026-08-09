@@ -22,8 +22,8 @@ public class OidcAdminRegistrationTests : OidcTestHost
     /// <summary>Exactly what a consuming app writes — the interface is the whole registration.</summary>
     private sealed class AdminContext : SparkContext, IOidcApplicationContext
     {
-        public IRavenQueryable<OidcApplication> OidcApplications { get; set; } = default!;
-        public IRavenQueryable<OidcScope> OidcScopes { get; set; } = default!;
+        public IRavenQueryable<OidcApplication> OidcApplications => Session.Query<OidcApplication>();
+        public IRavenQueryable<OidcScope> OidcScopes => Session.Query<OidcScope>();
     }
 
     private JsonElement Synchronize(string entityName)

@@ -79,6 +79,10 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             // know to re-fetch on 409 regardless of the body content.
             return ClientResult.Envelope(clientAccessor, new { error = "Concurrency conflict" }, 409);
         }
+        catch (SparkValidationException ex)
+        {
+            return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
+        }
         catch (SparkRetryActionException ex)
         {
             return ClientResult.Retry(clientAccessor, ex);

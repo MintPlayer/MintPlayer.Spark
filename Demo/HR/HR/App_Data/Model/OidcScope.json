@@ -1,0 +1,164 @@
+{
+  "persistentObject": {
+    "id": "36383521-7c87-4608-aef7-d2948ddf5c97",
+    "name": "OidcScope",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.OidcScope",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "90a28e51-647e-453a-899b-b4b799e8c6de",
+        "name": "Name",
+        "label": {
+          "en": "Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1264075b-08d9-41b2-ac2d-629a35d371c6",
+        "name": "DisplayName",
+        "label": {
+          "en": "Display Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "23876b12-271b-4bdc-9137-e06580f71a39",
+        "name": "Description",
+        "label": {
+          "en": "Description"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "14398804-9777-4993-a506-1b515c7eb6db",
+        "name": "ClaimTypes",
+        "label": {
+          "en": "Claim Types"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "15c0b02c-61a5-486a-8d54-b8c4ddc9a66a",
+        "name": "Audiences",
+        "label": {
+          "en": "Audiences"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "989a037b-d4ee-4218-9128-641924aa9ac9",
+        "name": "Required",
+        "label": {
+          "en": "Required"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4acd3959-e06f-47b1-afcc-9db4e76f994b",
+        "name": "Emphasize",
+        "label": {
+          "en": "Emphasize"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4c03d813-b0fa-4332-836b-19bfdd414fa1",
+        "name": "ShowInDiscoveryDocument",
+        "label": {
+          "en": "Show In Discovery Document"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "aa00c22e-f3f8-4b73-a4c1-a14c28f5fec5",
+        "name": "Enabled",
+        "label": {
+          "en": "Enabled"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "5a140896-24e7-4c15-9a12-3d0f1662e308",
+      "name": "GetOidcScopes",
+      "source": "Database.OidcScopes",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "isStreamingQuery": false
+    }
+  ]
+}

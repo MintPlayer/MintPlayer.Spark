@@ -60,6 +60,12 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
             await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
+        catch (SparkValidationException ex)
+        {
+            // A delete can be refused for a business reason too — "this client still has live
+            // tokens", say. Same envelope, so the screen shows it the same way.
+            return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
+        }
         catch (SparkRetryActionException ex)
         {
             return ClientResult.Retry(clientAccessor, ex);

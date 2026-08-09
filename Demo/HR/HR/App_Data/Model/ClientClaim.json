@@ -1,0 +1,44 @@
+{
+  "persistentObject": {
+    "id": "7a3a9d1b-f334-47d2-b87b-b1844d79ca65",
+    "name": "ClientClaim",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.ClientClaim",
+    "breadcrumb": "{Type}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d66f145a-f4a2-40d6-9fca-4a319c3c46bd",
+        "name": "Type",
+        "label": {
+          "en": "Type"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b0f8e954-b69f-41d8-858d-d0e7e4170a29",
+        "name": "Value",
+        "label": {
+          "en": "Value"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

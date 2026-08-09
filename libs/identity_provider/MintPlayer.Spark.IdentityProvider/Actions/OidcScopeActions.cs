@@ -19,18 +19,19 @@ public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope
     public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcScope entity)
     {
         if (string.IsNullOrWhiteSpace(entity.Name))
-            throw new InvalidOperationException("Scope name is required.");
+            throw new SparkValidationException("Scope name is required.", nameof(entity.Name));
 
         // Scope names travel space-delimited in the `scope` parameter and the `scope` claim, so a
         // name containing whitespace silently becomes two scopes, neither of which exists.
         if (entity.Name.Any(char.IsWhiteSpace))
-            throw new InvalidOperationException(
-                $"Scope name '{entity.Name}' contains whitespace. Scopes are space-delimited on the wire, so it would be read as two.");
+            throw new SparkValidationException(
+                $"Scope name '{entity.Name}' contains whitespace. Scopes are space-delimited on the wire, so it would be read as two.",
+                nameof(entity.Name));
 
         foreach (var audience in entity.Audiences)
         {
             if (string.IsNullOrWhiteSpace(audience))
-                throw new InvalidOperationException("An audience cannot be empty.");
+                throw new SparkValidationException("An audience cannot be empty.", nameof(entity.Audiences));
         }
 
         await base.OnBeforeSaveAsync(obj, entity);
@@ -46,9 +47,10 @@ public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope
 
         if (clash.Any(s => !string.Equals(s.Id, entity.Id, StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException(
+            throw new SparkValidationException(
                 $"Scope '{entity.Name}' already exists. Duplicates make the effective definition "
-              + "whichever document the lookup returns first.");
+              + "whichever document the lookup returns first.",
+                nameof(entity.Name));
         }
 
         return entity;

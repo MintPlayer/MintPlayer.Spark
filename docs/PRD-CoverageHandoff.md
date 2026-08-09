@@ -413,9 +413,19 @@ Worth stating plainly, because it should change how the remaining milestones are
 | a test guard | **N6** — authorize and issuance validated scopes against different sources, so a granted scope silently vanished from the token |
 | a decision | **N1's fix broke standard introspection** — gating on ownership alone also refused the resource server RFC 7662 is written for |
 
+**M12.7's route tests then found three more**, after the library half was already written, reviewed and unit-tested:
+
+| Found by | Defect |
+|---|---|
+| writing a route test | **N12** — an Actions class refusal had no path to the caller at all: unhandled exception, 500, no body. Every validation message the audit phrased for an operator was unreachable. **Framework-wide** — `Demo/Fleet`'s `CarActions` throws the same way, so business validation has never reached a user anywhere in Spark |
+| a route test needing a token | **N11** — every grant recorded the *requested* scopes on the token document while minting the JWT from the *granted* ones. Introspection reads the document, so it over-reported; disabling a scope narrowed the token and left introspection vouching for it |
+| wiring the demo host | **N13** — `IOidcApplicationContext` declared its members `{ get; set; }`. An auto-property returns null and the query executor answers null with an empty result: screens that render and are always empty. The interface's own doc comment showed the broken shape, and the registration test had copied it |
+
 In every case **the code read correctly at each individual point.** The defect lived in a round-trip, a seam between two components, or a case the tests hadn't thought to cover. Reading found the majority of the issues and could not have found these.
 
 **Sequencing consequence for M5 and M8–M11:** those milestones change authorization behaviour on paths that have no tests at all today. On this evidence, budget the test infrastructure *before* the fixes — the IdP work spent roughly a third of its effort on fixtures and got it back inside the first 24 tests.
+
+**And a second, sharper one, from M12.7:** unit tests against a class are not evidence that anything reaches it. Every one of N11–N13 sat behind a component that was individually correct and individually tested — the validation rules passed, the JWT was minted correctly, the interface compiled. What was missing was any test that traversed the seam: the route to the Actions class, the token to its record, the interface to a real host. **For each remaining milestone, name the seam before naming the fix.**
 
 **Determinism is not optional.** Three separate flakes were fixed rather than tolerated. A flaky security test is worse than none: it teaches people to re-run until green, and the entire value of the suite is that red means something.
 

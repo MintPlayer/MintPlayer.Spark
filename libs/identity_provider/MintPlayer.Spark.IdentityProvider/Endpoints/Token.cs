@@ -199,6 +199,7 @@ internal static class Token
 
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, codeToken.Scopes, ct);
+        var grantedScopeNames = GrantedNames(grantedScopes);
 
         var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
@@ -229,7 +230,7 @@ internal static class Token
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
             Type = "access_token",
-            Scopes = codeToken.Scopes,
+            Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
@@ -246,7 +247,7 @@ internal static class Token
                 Subject = codeToken.Subject,
                 Id = OidcTokenReference.DocumentId(refreshTokenValue),
                 Type = "refresh_token",
-                Scopes = codeToken.Scopes,
+                Scopes = grantedScopeNames,
                 Status = "valid",
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
@@ -283,7 +284,35 @@ internal static class Token
         if (refreshTokenValue != null)
             response["refresh_token"] = refreshTokenValue;
 
+        AnnounceScope(response, codeToken.Scopes, grantedScopeNames);
+
         await context.Response.WriteAsJsonAsync(response);
+    }
+
+    /// <summary>
+    /// The scopes a token is actually issued with: those the request carried that resolve to a
+    /// defined, enabled <c>OidcScope</c>.
+    /// <para>
+    /// This is what must be recorded, because the JWT is minted from it. Storing the requested
+    /// list instead made the token document over-report — and introspection reads the document, so
+    /// a resource server asking what a token may do was told about scopes the token does not
+    /// carry, which is the dangerous direction to be wrong in. It also made disabling a scope a
+    /// half-measure: the JWT dropped it at the next issuance while introspection kept vouching for
+    /// it, for as long as the refresh token lived.
+    /// </para>
+    /// </summary>
+    private static List<string> GrantedNames(List<OidcScope> granted)
+        => [.. granted.Select(s => s.Name)];
+
+    /// <summary>
+    /// Echoes <c>scope</c> when less was granted than asked for. RFC 6749 §5.1 requires it, and
+    /// the reason is this case exactly: narrowing is otherwise invisible to the client, which goes
+    /// on to call an API it believes it has access to.
+    /// </summary>
+    private static void AnnounceScope(Dictionary<string, object> response, List<string> requested, List<string> granted)
+    {
+        if (granted.Count != requested.Count)
+            response["scope"] = string.Join(' ', granted);
     }
 
     /// <summary>
@@ -394,6 +423,7 @@ internal static class Token
 
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc.Scopes, ct);
+        var grantedScopeNames = GrantedNames(grantedScopes);
 
         var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
@@ -417,7 +447,7 @@ internal static class Token
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
             Type = "access_token",
-            Scopes = refreshTokenDoc.Scopes,
+            Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
@@ -430,7 +460,7 @@ internal static class Token
             Subject = refreshTokenDoc.Subject,
             Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
             Type = "refresh_token",
-            Scopes = refreshTokenDoc.Scopes,
+            Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
@@ -462,6 +492,10 @@ internal static class Token
 
         if (newIdToken != null)
             response["id_token"] = newIdToken;
+
+        // A refresh token outlives the configuration it was minted under. Disabling a scope is
+        // meant to take capability away, and this is where the client finds out it has.
+        AnnounceScope(response, refreshTokenDoc.Scopes, grantedScopeNames);
 
         await context.Response.WriteAsJsonAsync(response);
     }
@@ -531,6 +565,25 @@ internal static class Token
 
         // Load scope definitions from DB
         var grantedScopes = await LoadScopesAsync(session, requestedScopes, ct);
+        var grantedScopeNames = GrantedNames(grantedScopes);
+
+        // Refused rather than narrowed. There is no user and no consent step here: the caller
+        // named exactly what it needs, so silently issuing a token for less produces a machine
+        // client that fails later, at a call site far from the cause. The client's AllowedScopes
+        // check above does not cover this — a scope can be listed on the client and yet be
+        // undefined or disabled provider-side, which is the mismatch that let a granted scope
+        // vanish from the token in the first place.
+        if (grantedScopeNames.Count != requestedScopes.Count)
+        {
+            var missing = requestedScopes.Except(grantedScopeNames, StringComparer.Ordinal);
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "invalid_scope",
+                error_description = $"No enabled scope is defined for: {string.Join(", ", missing)}.",
+            });
+            return;
+        }
 
         var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
@@ -547,7 +600,7 @@ internal static class Token
             ApplicationId = app.Id!,
             Subject = $"client:{app.ClientId}",
             Type = "access_token",
-            Scopes = requestedScopes,
+            Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
@@ -565,6 +618,7 @@ internal static class Token
             access_token = accessToken,
             token_type = "Bearer",
             expires_in = app.AccessTokenLifetimeMinutes * 60,
+            scope = string.Join(' ', grantedScopeNames),
         });
     }
 

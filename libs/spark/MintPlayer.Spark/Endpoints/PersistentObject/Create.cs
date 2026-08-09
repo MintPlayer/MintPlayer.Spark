@@ -69,6 +69,10 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return ClientResult.Envelope(clientAccessor, result, 201);
         }
+        catch (SparkValidationException ex)
+        {
+            return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
+        }
         catch (SparkRetryActionException ex)
         {
             return ClientResult.Retry(clientAccessor, ex);

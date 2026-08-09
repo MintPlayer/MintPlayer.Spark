@@ -219,6 +219,17 @@ Two markers are used below. **[EXPECTED-FAIL]** — the case pins correct behavi
 | T-G5 | **[EXPECTED-FAIL]** `Token_client_credentials_without_scope_does_not_grant_everything` | **currently** an omitted `scope` grants **all** `AllowedScopes`, `api.admin` included — least privilege violated by omission | **O14** |
 | T-G6 | `Token_client_credentials_rejects_scope_outside_AllowedScopes` | 400 `invalid_scope`, whole request fails, no partial grant | |
 
+### T.10 Scope integrity — the token and its record must agree (N11)
+
+The JWT is minted from the scopes that resolve to a defined, **enabled** `OidcScope`; the token document used to record the *requested* list. Introspection reads the document, so it over-reported — and a resource server has no way to notice. These are in `OidcScopeIntegrityTests`.
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| T-S1 | `A_machine_token_carries_the_scopes_it_asked_for` | `scope` echoed and the JWT's `scope` claims match — so the refusals below are not passing trivially | |
+| T-S2 | `A_disabled_scope_is_refused_rather_than_dropped` | 400 `invalid_scope` naming the scope. No user, no consent step: silently issuing less produces a client that fails later, far from the cause | **N11** |
+| T-S3 | `The_stored_record_matches_what_the_token_carries` | introspection's `scope` equals the JWT's claims | **N11** |
+| T-S4 | `Disabling_a_scope_narrows_the_next_refresh_and_says_so` | the refreshed token drops the scope, the response announces the narrowing (RFC 6749 §5.1), and introspection agrees. A refresh token outlives the configuration it was minted under, so this is the window in which an operator's revocation takes effect or does not | **N11** |
+
 ### T.8 Enumeration oracles
 
 | # | Test | Compare | Pins |
@@ -444,3 +455,40 @@ This surface produced the audit's only **Critical** (N1, now fixed) precisely be
 |---|---|---|---|
 | R-X1 | `Introspection_reports_aud_so_a_resource_server_can_check_it` | `aud` present in the response | **N2**, disclosure half — fixed |
 | R-X2 | **[CHARACTERIZATION]** `Audience_is_not_enforced_anywhere` | a token minted for resource A introspects `active:true` and is accepted at `/connect/userinfo` regardless of audience. Documents the current gap; invert if N2's enforcement half is ever decided in favour of enforcing here | **N2**, open |
+
+## M — the admin screens (M12.7)
+
+Registration is a PersistentObject, so it inherits the authorization pipeline and the antiforgery
+middleware rather than running as a parallel API. These cases go through `/spark/po/{type}` —
+`OidcApplicationActionsTests` calls the Actions class directly, which proves the rules and nothing
+about whether anything reaches them. In `OidcAdminRouteTests`, against the model the **synchronizer
+generates**, not a hand-authored one.
+
+| # | Test | Expected | Pins |
+|---|---|---|---|
+| M-A1 | `Registering_a_client_through_the_route_persists_it` | 201, document stored with its redirect URI | the happy path the refusals below are measured against |
+| M-A2 | `A_client_registered_through_the_route_can_obtain_a_token` | `client_credentials` succeeds against a client and scope registered entirely through the screens | the claim M12.7 rests on, end to end |
+| M-A3 | `The_secret_an_operator_types_is_stored_hashed` | stored value is not the plaintext, and `ClientSecretHasher.Verify` accepts what was typed | a secret that cannot authenticate against its own registration is this milestone's failure mode |
+| M-A4 | `A_refused_registration_returns_the_reason_rather_than_a_500` | 400 with the message in the standard `errors` envelope | **N12** — before this, an Actions refusal was an unhandled exception with no body |
+| M-A5 | `An_unsupported_grant_type_is_refused_at_the_route` | 400 naming the supported grants | |
+| M-A6 | `A_duplicate_client_id_is_refused_at_the_route` | 400; two applications sharing a `client_id` makes impersonation a matter of index ordering | **O17** |
+| M-A7 | `A_scope_name_with_whitespace_is_refused_at_the_route` | 400 — scopes are space-delimited on the wire | **N6**-adjacent |
+| M-A8 | `Registration_requires_an_antiforgery_token` | 400 and **nothing written** — a registration a cross-site POST can perform is a client-registration endpoint open to any page the operator visits | |
+
+### Registration — the model itself
+
+`OidcAdminRegistrationTests` runs a context implementing `IOidcApplicationContext` through the real
+`IModelSynchronizer`. Worth testing rather than asserting: an earlier draft of the plan concluded
+the opposite from reading `ModelLoader` alone and proposed a registry for a problem that does not
+exist.
+
+| # | Test | Expected |
+|---|---|---|
+| M-R1 | `A_library_entity_on_the_context_becomes_a_persistent_object` | `OidcApplication.json` generated, `clrType` still pointing into the package |
+| M-R2 | `The_generated_model_carries_the_fields_an_operator_must_set` | `ClientId`, `RedirectUris`, `AllowedScopes`, `AllowedGrantTypes`, `Enabled`, `MayIntrospectAnyAudience` — the audit found each failing silently when wrong |
+| M-R3 | `Scopes_are_registered_alongside_applications` | `OidcScope.json` with `Audiences` (D11) |
+
+### Not covered
+
+- **Authorization on these screens is demonstrated, not asserted.** HR's `security.json` grants them to Administrators alone, but no test drives the routes as a non-administrator. `SparkEndpointFactory` opts into `AllowAnonymousAccess()`, so a case would have to override `IAccessControl` — worth adding when M5 (row-level authz) is picked up, since it needs the same fixture.
+- The Angular screens themselves. These are generated pages with no bespoke code; the four demo ClientApps have not been exercised since the IdP port either.

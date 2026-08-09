@@ -39,6 +39,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `0b2ae01` | M12.7 spec'd as a PersistentObject (D13); PRD records what the tests returned |
 | `94ac56d` | **M12.7 library half** — `IOidcApplicationContext`, `OidcApplicationActions`, `OidcScopeActions` |
 | `f01bfca` | Registration story proven end to end; **O17** re-scoped honestly (**193 IdP tests green**) |
+| `d2ec998` | Draft PR recorded; breaking changes collected for M7 |
+| _(this)_ | **M12.7 complete** — route coverage, HR as demo host, `SparkValidationException`; found **N11, N12, N13** (**205 IdP tests green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09, 32 commits, 70 files, +9,597/−76. Deliberately a draft: handoff items 3–6 are untouched, M8–M11 has had no work, and release mechanics are not done.
 
@@ -79,6 +81,11 @@ Preview package, so no compatibility was required, but each of these changes beh
 | `AllowedGrantTypes` no longer defaults | A client declaring no grants can use none | The default was re-added by the serializer on load, making every grant restriction unenforceable (**N5**) |
 | **Two-factor recovery codes are hashed** | **Existing codes stop working — users must regenerate** | A database dump was a dump of working second-factor bypasses (**D10/N9**). **The only change touching a persisted user format** — needs the most prominent release note |
 | Rate limiter covers `/connect` | Interactive OIDC endpoints are throttled where the limiter is enabled | It was scoped to `/spark`, so an app opting in still shipped an unthrottled password endpoint (**D9**) |
+| `client_credentials` refuses an undefined or disabled scope | Previously narrowed silently; now 400 `invalid_scope` | No user and no consent step here — issuing less than the caller named produces a client that fails later, far from the cause (**N11**) |
+| Token responses announce `scope` when narrowed | New key in the code and refresh grant responses | RFC 6749 §5.1 requires it, precisely so a client can tell it got less than it asked for (**N11**) |
+| `OidcToken.Scopes` records **granted**, not requested, scopes | Introspection reports less than before wherever a scope was undefined or disabled | The record over-reported, and introspection is how a resource server learns a token's authority (**N11**) |
+| An Actions class refusal is now a 400, not a 500 | `SparkValidationException` maps into the standard `errors` envelope; other exceptions still 500 | Business validation had no path to the user anywhere in Spark — every message reached the operator as an empty 500 (**N12**). Framework-wide, not IdP-only |
+| `IOidcApplicationContext` members are get-only | An auto-property implementation stops compiling | It returned null, and the query executor answers a null queryable with an empty result — screens that render and are always empty, silently (**N13**) |
 
 ## Resolved decisions (2026-08-08)
 
@@ -568,7 +575,16 @@ Shipped in the IdP package:
 
 Both classes use `partial` + the `[Inject]` generator, matching every other Actions class in the repo — the IdP now carries the `MintPlayer.SourceGenerators` references for it.
 
-**Still to do:** a demo host exposing both collections; and coverage of the screens through the PO endpoints themselves (the validation tests exercise the Actions directly, not the route).
+#### Status — complete
+
+The route half and the demo host are done. Both were worth doing rather than declaring finished: each turned up a defect the library half could not have shown.
+
+- **8 route tests** (`OidcAdminRouteTests`) drive `/spark/po/{type}` against the model the **synchronizer generates**, not a hand-authored one — so a change to the entity that breaks the screens fails here rather than in a deployment. They cover registration persisting, an operator's cleartext secret round-tripping through the hash, refusals arriving as readable 400s, duplicate `ClientId`, whitespace in a scope name, and antiforgery. The strongest of them ends where the milestone actually claims to end: a client registered through the screen obtains a `client_credentials` token.
+- **`SparkValidationException`** (**N12**) — writing those tests showed an Actions refusal had *no path to the caller at all*: unhandled exception, 500, no body. Every message the audit phrased for an operator was unreachable. Framework-wide, not IdP-specific — `Demo/Fleet`'s `CarActions` throws the same way. Now mapped by Create/Update/Delete into the same `errors` envelope the declarative validator produces.
+- **HR is the demo host.** Deliberately not `DemoApp`, which runs `AllowAnonymousAccess()` — wiring client registration into it would publish a registration endpoint to anonymous callers, exactly what the interface's own doc warns against. HR runs deny-by-default authorization, so `security.json` can show the other half: `QueryReadEditNewDelete/OidcApplication` and `/OidcScope` granted to **Administrators only**, with HR managers and Viewers getting nothing.
+- **N13, found by building the host:** `IOidcApplicationContext` declared its members `{ get; set; }`. An auto-property returns null, and `QueryExecutor` answers a null queryable with an empty result — screens that render and are always empty, silently. Get-only now, so only the working shape compiles. The interface's doc comment had been showing the broken form, and the registration test had copied it.
+
+**Also fixed here (N11)**, because the token test needed it: every grant recorded the *requested* scopes on the token document while minting the JWT from the *granted* ones. Introspection reads the document, so it over-reported. Details in the findings doc.
 
 #### Caveat that must not be lost
 

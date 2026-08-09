@@ -27,7 +27,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcApplication entity)
     {
         if (string.IsNullOrWhiteSpace(entity.ClientId))
-            throw new InvalidOperationException("Client id is required.");
+            throw new SparkValidationException("Client id is required.", nameof(entity.ClientId));
 
         ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
         ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
@@ -46,16 +46,16 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         foreach (var uri in uris)
         {
             if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
-                throw new InvalidOperationException($"{field}: '{uri}' is not an absolute URI.");
+                throw new SparkValidationException($"'{uri}' is not an absolute URI.", field);
 
             if (!string.IsNullOrEmpty(parsed.Fragment))
-                throw new InvalidOperationException(
-                    $"{field}: '{uri}' carries a fragment. Browsers never send one to the server, so it can never match.");
+                throw new SparkValidationException(
+                    $"'{uri}' carries a fragment. Browsers never send one to the server, so it can never match.", field);
         }
 
         var duplicate = uris.GroupBy(u => u, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
         if (duplicate != null)
-            throw new InvalidOperationException($"{field}: '{duplicate.Key}' is listed more than once.");
+            throw new SparkValidationException($"'{duplicate.Key}' is listed more than once.", field);
     }
 
     /// <summary>
@@ -66,14 +66,16 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     private static void ValidateGrantTypes(OidcApplication entity)
     {
         if (entity.AllowedGrantTypes.Count == 0)
-            throw new InvalidOperationException(
-                "At least one grant type is required — a client with none can obtain no tokens.");
+            throw new SparkValidationException(
+                "At least one grant type is required — a client with none can obtain no tokens.",
+                nameof(entity.AllowedGrantTypes));
 
         foreach (var grant in entity.AllowedGrantTypes)
         {
             if (!SupportedGrantTypes.Contains(grant, StringComparer.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    $"Grant type '{grant}' is not supported. Use one of: {string.Join(", ", SupportedGrantTypes)}.");
+                throw new SparkValidationException(
+                    $"Grant type '{grant}' is not supported. Use one of: {string.Join(", ", SupportedGrantTypes)}.",
+                    nameof(entity.AllowedGrantTypes));
         }
 
         // refresh_token without authorization_code cannot produce a first refresh token, so the
@@ -81,15 +83,17 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         if (entity.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase)
             && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException(
-                "refresh_token requires authorization_code — there is no other way for this client to obtain a refresh token.");
+            throw new SparkValidationException(
+                "refresh_token requires authorization_code — there is no other way for this client to obtain a refresh token.",
+                nameof(entity.AllowedGrantTypes));
         }
 
         var isConfidential = !string.Equals(entity.ClientType, "public", StringComparison.OrdinalIgnoreCase);
         if (!isConfidential && entity.AllowedGrantTypes.Contains("client_credentials", StringComparer.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException(
-                "A public client cannot use client_credentials — it has no secret to authenticate with.");
+            throw new SparkValidationException(
+                "A public client cannot use client_credentials — it has no secret to authenticate with.",
+                nameof(entity.AllowedGrantTypes));
         }
     }
 
@@ -102,7 +106,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         foreach (var secret in entity.Secrets)
         {
             if (string.IsNullOrWhiteSpace(secret.Hash))
-                throw new InvalidOperationException("A client secret cannot be empty.");
+                throw new SparkValidationException("A client secret cannot be empty.", nameof(entity.Secrets));
 
             if (!ClientSecretHasher.IsHashed(secret.Hash))
                 secret.Hash = ClientSecretHasher.Hash(secret.Hash);
@@ -129,9 +133,10 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
 
         if (clash.Any(a => !string.Equals(a.Id, entity.Id, StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException(
+            throw new SparkValidationException(
                 $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
-              + "the lookup that resolves them returns whichever document is found first.");
+              + "the lookup that resolves them returns whichever document is found first.",
+                nameof(entity.ClientId));
         }
 
         return entity;
