@@ -591,6 +591,74 @@ The route half and the demo host are done. Both were worth doing rather than dec
 Client lookup rides `OidcApplications_ByClientId`, which is eventually consistent, so **a newly registered application is not usable the instant registration returns**. Harmless in production provisioning, but the screen should not imply otherwise, and any test must wait for indexing — this cost the e2e suite three separate flakes before it was understood.
 
 
+## M13 — Consent withdrawal (user-requested, 2026-08-09)
+
+**Origin.** The user asked whether an application could still reach resources after a user removed a scope. The answer was yes, indefinitely — see **N14** in the findings. Four adversarial investigations ran against the design before any code was written; they turned up **N15** (Critical) and three defects in **N11's own fix** (N16–N18).
+
+### The decision: revoke, do not narrow
+
+RFC 6749 §6 makes narrowing self-contradictory:
+
+> "If a new refresh token is issued, the refresh token scope MUST be identical to that of the refresh token included by the client in the request."
+
+Narrow and you must not rotate; rotate and you must not narrow. Every major provider treats user-facing withdrawal as **all-or-nothing per application** (Duende, Auth0, Keycloak, Google; only Okta models per-scope grants, and only in an admin API). FAPI Grant Management writes the asymmetry normatively: the AS **MUST** revoke the grant and all refresh tokens, **SHOULD** revoke access tokens.
+
+So withdrawal sets `Status = "revoked"`, sweeps the token chain, and issuance refuses. There is no scope intersection anywhere in this design — the shape the first sketch of it had, and which the review showed would have been a **no-op**, because a fully withdrawn grant still has a fully populated `GrantedScopes`.
+
+### The accepted limitation, stated rather than hidden
+
+Already-issued access tokens are self-contained JWTs. A resource server validating offline against JWKS cannot be told to stop. RFC 7009 §3 anticipated this and prescribes **short access-token lifetimes** as the mitigation rather than a revocation list; Auth0 documents the same window to its own users. `AccessTokenLifetimeMinutes` defaults to 60. The page says so. A page implying immediacy the architecture cannot deliver would be worse than no page.
+
+Adding the grant check to `AccessTokens.ResolveAsync` does close the window for `/connect/introspect` and `/connect/userinfo` — the consumers that ask us rather than validating alone.
+
+### Enforcement — the three-way rule
+
+Read `refreshTokenDoc.AuthorizationId` **verbatim**; never re-derive it from `(Subject, ApplicationId)`, or `client:acme` subjects break and any future subject-format change silently orphans every grant.
+
+| Grant state | Action |
+|---|---|
+| `AuthorizationId` empty | **Allow.** Two populations: `client_credentials` (no user by construction) and **every refresh token minted before M12.5**, when `AuthorizationId` was always empty (O1). Failing closed here would be a silent multi-day outage on any database seeded before that commit. |
+| `AuthorizationId` set, document **missing** | **Fail closed.** Only reachable if someone deleted the grant, and deleting a grant should end access. Matches the package's own precedent at `AccessTokens.cs:25`. |
+| Document present, `Status != "valid"` | **`invalid_grant` + revoke the chain.** Not merely narrow. |
+
+The check goes **inline in `HandleRefreshTokenGrant`**, between the client-binding check and the narrowing — never in `LoadScopesAsync` or `GrantedNames`, which all three grants funnel through, because `client_credentials` has no grant document and would 400 outright.
+
+### Surface — a server-rendered `/connect` page, and why not a PersistentObject
+
+`GET /connect/applications` + `POST /connect/applications/revoke`.
+
+The PersistentObject route is blocked, for a reason worth recording precisely because the first reading of it was wrong. It is *not* that the list endpoint lacks row filtering — `DatabaseAccess.GetPersistentObjectsAsync:143` does filter. It is that **Spark's list screens do not use that endpoint**: `SparkQueryListComponent` calls `/spark/queries/{id}/execute` → `QueryExecutor`, which has only type-level `EnsureAuthorizedAsync("Query", …)` at `:126`/`:194` and no row filtering at all. A grants list as a PersistentObject would show every user every other user's grants, and overriding `IsAllowedAsync` would not save it because that hook is never invoked on the query path. **This is M5, now in scope — see below.**
+
+Three reasons it stays a `/connect` page even after M5 lands:
+- `OidcAuthorization` has no display name; `Subject` is a raw user id and `ApplicationId` a document id, so a grid needs a join to render anything human-readable.
+- The document id is a SHA-256 hash — a meaningless key column.
+- **A generic `Delete` would leave the token chain live**, making withdrawal cosmetic. The sweep is code, not a CRUD screen.
+
+Security properties, each load-bearing:
+- User resolved via `GetInteractiveUserIdAsync()` — `ApplicationScheme` only, so a mid-2FA cookie and a bearer token both yield null. Using `context.User` or a bare `.RequireAuthorization()` reopens **O16**.
+- The form carries the **application** id; the server derives the grant id from the *session's* user. IDOR cannot exist by construction — there is no parameter that could name another user's grant. Same idiom `Consent.cs` uses for its request handle.
+- `.RequireAntiforgery()` on the route **and** `AppendAntiforgery` in the markup. Omitting the route half is invisible: the form still works and only the protection disappears. This is O3's shape, and the findings doc predicted "the sixth page someone adds will be wrong again."
+- One response shape for every outcome, so "not yours" and "doesn't exist" cannot be distinguished.
+- `Content-Security-Policy: frame-ancestors 'none'` across `/connect/*` — nothing set it, and a framed one-click "Allow" on `/connect/consent` is worse than a framed "Remove".
+
+**A new index is required and did not exist.** The grant id is a hash, so it is not prefix-scannable by subject, and O9 deliberately deleted this collection's index. `OidcAuthorizations_BySubject` is added **for listing only** and must never back an authorization decision — the withdrawal itself point-loads. The post-withdrawal confirmation renders from the document just written, not a re-query, or index lag shows the user the app they just removed.
+
+### Also fixed here, because withdrawal made them reachable
+
+- **N15** — reinstatement must not resurrect a withdrawn grant without a screen, and must **replace** `GrantedScopes` rather than union. Ships in the same commit as the surface: shipping the surface alone would have made withdrawal an escalation vector.
+- **N16** — an empty granted set is refused rather than minting a scopeless but valid subject-bearing JWT.
+- **N17/N18** — N11's own defects: stop mutating the stored scope list, announce the narrowing, and carry the presented scopes onto the rotated refresh token per §6.
+
+## M5 — Row-level authorization on queries (user-requested, 2026-08-09)
+
+Moved from "not started" into this PR at the user's direction, after the withdrawal work established that the query path has no row filtering at all.
+
+**The gap.** `QueryExecutor.cs:126` and `:194` do only type-level `EnsureAuthorizedAsync("Query", entityTypeDefinition.Name)`. `Execute.cs` has no authorization calls anywhere. Spark's list screens use this path. So any owner-scoped entity — the Fleet demo's `CarActions.IsAllowedAsync` scoping to `CreatedBy == CurrentUserId` is the worked example already in the repo — is correctly filtered on the detail and edit paths and **leaks wholesale on the list screen**.
+
+`IRowSecurity` exists (`Services/RowSecurity.cs`) with two consumers, neither of them a query path.
+
+**Shape:** row filtering applied at the one place every query result passes through, sharing the same `IsAllowedAsync` hook the detail path already uses, so an entity's ownership rule is written once and enforced everywhere.
+
 ## M11 — Retire the authorization bypasses
 
 This is the phase that actually delivers "no duplication per credential type" — M9 and M10 only prevent *new* duplication.

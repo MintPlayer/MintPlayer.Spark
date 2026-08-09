@@ -425,6 +425,8 @@ In every case **the code read correctly at each individual point.** The defect l
 
 **Sequencing consequence for M5 and M8–M11:** those milestones change authorization behaviour on paths that have no tests at all today. On this evidence, budget the test infrastructure *before* the fixes — the IdP work spent roughly a third of its effort on fixtures and got it back inside the first 24 tests.
 
+**And a third, from M13 (consent withdrawal):** the four adversarial investigations run before that design was written found **three defects in N11's own fix**, shipped one commit earlier — no empty-scope floor, an announcement that never fired for the case it was written for, and a rotation that violated RFC 6749 §6 and turned a temporary scope disablement into a permanent one. N11 itself had been found by attacking N6's fix. **A fix is a change, and deserves the same adversarial treatment as the code it replaced.** Reviewing the diff is not the same as attacking the result: every one of these read correctly as a diff.
+
 **And a second, sharper one, from M12.7:** unit tests against a class are not evidence that anything reaches it. Every one of N11–N13 sat behind a component that was individually correct and individually tested — the validation rules passed, the JWT was minted correctly, the interface compiled. What was missing was any test that traversed the seam: the route to the Actions class, the token to its record, the interface to a real host. **For each remaining milestone, name the seam before naming the fix.**
 
 **Determinism is not optional.** Three separate flakes were fixed rather than tolerated. A flaky security test is worse than none: it teaches people to re-run until green, and the entire value of the suite is that red means something.
