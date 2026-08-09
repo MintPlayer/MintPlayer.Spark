@@ -122,6 +122,9 @@ public class SparkFullProducer : Producer
                 {
                     writer.WriteLine("global::MintPlayer.Spark.Extensions.SparkBuilderRateLimiterExtensions.AddRateLimiter(spark, options.RateLimiter);");
                 }
+
+                // Last, so an app can add to — or override — anything the bundle wired above.
+                writer.WriteLine("options.Configure?.Invoke(spark);");
             }
             writer.WriteLine(");");
             writer.WriteLine("return services;");

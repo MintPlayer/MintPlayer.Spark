@@ -160,7 +160,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// <c>IModuleDirectory</c> looks modules up: an index would answer these authentication-gating
     /// lookups from a possibly-stale view.
     /// </remarks>
-    public async Task SeedModuleAsync(string moduleName)
+    public async Task SeedModuleAsync(string moduleName, string? clientCertificateThumbprint = null)
     {
         using var modulesStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestModulesDatabase };
         modulesStore.Initialize();
@@ -175,6 +175,7 @@ public sealed class FleetTestHost : IAsyncLifetime
                 DatabaseName = $"{moduleName}-e2e",
                 DatabaseUrls = _raven.Store.Urls,
                 RegisteredAtUtc = DateTime.UtcNow,
+                ClientCertificateThumbprint = clientCertificateThumbprint,
             }, documentId);
             await session.SaveChangesAsync();
         }
