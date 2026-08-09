@@ -461,6 +461,8 @@ That the decision keys on the *authenticating scheme* rather than on request sha
 
 Adopting it would trade twenty lines of duplication for a weaker cookie on the CSRF token — losing `Secure` outright. Duplication is a cost; it is not this cost. **Spark's implementation stays.** Revisit if the package gains the attributes upstream; that is a change in a different repository and not this PR's to make.
 
+*Confirmed independently:* `XsrfCookieFlagTests` (E2E) asserts `Secure` and `SameSite=Strict` on the minted cookie. The swap D2 prescribed would have **failed the existing suite** rather than regressing silently — the one case in this audit where the tests would have caught a decision made on a false premise before it shipped.
+
 ### M9.4 — Regression sweep
 
 **Done, with one gap stated.** 1273 unit tests and **61 E2E tests** green. The E2E run is the load-bearing part: it starts the real Fleet host via `dotnet run` against its unmodified `Program.cs`, so it exercises cookie login, the antiforgery gate and the new default scheme together, on the real pipeline rather than a substituted one.

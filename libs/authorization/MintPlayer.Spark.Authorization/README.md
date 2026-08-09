@@ -4,12 +4,16 @@ Optional authorization package for MintPlayer.Spark. Adds permission-based acces
 
 ## Overview
 
-Without the authorization package, all Spark endpoints are open to any caller. When you add `MintPlayer.Spark.Authorization`, the framework checks every request against the `security.json` configuration before allowing any CRUD operation on entities and queries. If no matching permission is found, access is denied (by default).
+Without this package, Spark **denies everything**. `AddSpark` registers a deny-all `IAccessControl` as its default, so an app that adds neither this package nor `spark.AllowAnonymousAccess()` refuses every request rather than accepting every request (R2-H1 — an earlier version of this README described the opposite, which was the fail-open behaviour that finding closed).
+
+When you add `MintPlayer.Spark.Authorization`, the framework checks every request against the `security.json` configuration before allowing any CRUD operation on entities and queries. If no matching permission is found, access is denied (by default).
 
 The authorization model is based on:
 - **Groups** -- named sets of users (e.g. "Administrators", "Viewers", "Everyone")
 - **Rights** -- permission assignments linking a group to a resource (e.g. "Administrators can Read/Edit/New/Delete Person")
 - **Resources** -- action/entity pairs (e.g. `Query/Person`, `Edit/Car`, `New/Company`)
+
+> **`Everyone` applies to every caller, including unauthenticated ones**, and is added on top of whatever groups a signed-in user belongs to. A right granted to `Everyone` is granted to the public internet. See **[Authentication Schemes & `Everyone`](../../../docs/guide-authentication-schemes.md)** for the full picture: which schemes exist, what each authentication outcome yields, and why a *rejected* credential is treated identically to no credential at all.
 
 ## Installation
 

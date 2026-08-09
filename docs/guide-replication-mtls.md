@@ -189,6 +189,10 @@ R2-H7.
 | Outbound calls fail TLS handshake | Peer doesn't trust the issuing CA — step 4 above. |
 | Pre-mTLS legacy entries fail closed | Existing `moduleInformations/{X}` documents without `ClientCertificateThumbprint`. Delete and re-register each, OR temporarily set `Mode = Development` while rolling out. |
 
+## Related documentation
+
+- **[Authentication Schemes & `Everyone`](./guide-authentication-schemes.md)** — how this fits with the rest of the repo's authentication. Note in particular that mTLS here authenticates the *module* inside the endpoint and does **not** set `HttpContext.User`, so an authenticated module reaches the authorization pipeline as anonymous.
+
 ## Related security findings
 
 - R2-C1 — unauthenticated `/spark/etl/deploy` accepting arbitrary RavenDB ETL
