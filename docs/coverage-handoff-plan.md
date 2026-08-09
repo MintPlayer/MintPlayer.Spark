@@ -40,7 +40,7 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `94ac56d` | **M12.7 library half** — `IOidcApplicationContext`, `OidcApplicationActions`, `OidcScopeActions` |
 | `f01bfca` | Registration story proven end to end; **O17** re-scoped honestly (**193 IdP tests green**) |
 | `d2ec998` | Draft PR recorded; breaking changes collected for M7 |
-| _(this)_ | **M12.7 complete** — route coverage, HR as demo host, `SparkValidationException`; found **N11, N12, N13** (**205 IdP tests green**) |
+| `9489006` | **M12.7 complete** — route coverage, HR as demo host, `SparkValidationException`; found **N11, N12, N13** (**205 IdP tests green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09, 32 commits, 70 files, +9,597/−76. Deliberately a draft: handoff items 3–6 are untouched, M8–M11 has had no work, and release mechanics are not done.
 
