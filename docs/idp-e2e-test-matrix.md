@@ -478,6 +478,12 @@ endpoint that is supposed to notice.
 | W-L2 | `The_page_refuses_to_be_framed` | `Content-Security-Policy: frame-ancestors 'none'` | clickjacking |
 | W-A1 | `An_anonymous_visitor_is_redirected_to_login` | 302 to `/connect/login`, not an empty list | |
 
+| W-E1 | `Re_consenting_does_not_resurrect_tokens_from_before_the_withdrawal` | a token the sweep missed stays dead after re-consent. **Verified to fail (200 instead of 400) with the epoch check disabled** | **N20** |
+| W-E2 | `A_machine_token_is_unaffected_by_a_withdrawal` | `client_credentials` tokens have no grant; the check runs on the chokepoint every access token passes through, so getting this wrong refuses all of them at once | **N21** |
+| W-E3 | `A_withdrawn_tokens_record_can_still_be_revoked` | revocation reads `.Record`, not `IsActive` — masking the record would make revoking a no-op that still returns 200 | **N19**-adjacent |
+| W-W1 | `Withdrawing_twice_reports_success_both_times` | idempotent | |
+| W-W2 | `A_post_with_no_application_changes_nothing` | an empty application id must not derive an id that resolves | |
+
 ### Not covered
 
 - **A withdrawal racing an in-flight refresh.** Bounded to one access-token lifetime by design — every refresh re-reads the grant and the sweep catches the freshly minted pair — but not exercised, because it needs a parking hook in the token endpoint. Same gap as T-R3/T-R4.
@@ -516,6 +522,8 @@ generates**, not a hand-authored one.
 | M-A2 | `A_client_registered_through_the_route_can_obtain_a_token` | `client_credentials` succeeds against a client and scope registered entirely through the screens | the claim M12.7 rests on, end to end |
 | M-A3 | `The_secret_an_operator_types_is_stored_hashed` | stored value is not the plaintext, and `ClientSecretHasher.Verify` accepts what was typed | a secret that cannot authenticate against its own registration is this milestone's failure mode |
 | M-A4 | `A_refused_registration_returns_the_reason_rather_than_a_500` | 400 with the message in the standard `errors` envelope | **N12** — before this, an Actions refusal was an unhandled exception with no body |
+| M-A4b | `A_redirect_uri_without_a_usable_scheme_is_rejected` (Theory ×4) | `/callback`, `callback`, `//evil.example.com/cb`, `file:///etc/passwd` all refused. Pinned as a Theory because the original single case **passed on Windows and failed on Linux** — `Uri.TryCreate(…, Absolute, …)` accepts a bare path on Unix | **N22** |
+| M-A4c | `A_custom_scheme_is_still_accepted_for_native_clients` | `com.example.app:/oauth2redirect` accepted — tightening absoluteness must not shut out native clients | **N22** |
 | M-A5 | `An_unsupported_grant_type_is_refused_at_the_route` | 400 naming the supported grants | |
 | M-A6 | `A_duplicate_client_id_is_refused_at_the_route` | 400; two applications sharing a `client_id` makes impersonation a matter of index ordering | **O17** |
 | M-A7 | `A_scope_name_with_whitespace_is_refused_at_the_route` | 400 — scopes are space-delimited on the wire | **N6**-adjacent |

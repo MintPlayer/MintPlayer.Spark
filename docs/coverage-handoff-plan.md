@@ -43,7 +43,11 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `9489006` | **M12.7 complete** — route coverage, HR as demo host, `SparkValidationException`; found **N11, N12, N13** (**205 IdP tests green**) |
 | `fcaa6b9` | **M13** — consent withdrawal; **N15** (Critical) plus **N16–N18**, three defects in N11's own fix |
 | `d92b673` | **M5** — row-level authz on the query and stream paths (user-requested) |
-| _(next)_ | E2E seeding flake fixed; **full suite green** |
+| `a855c2b` | E2E seeding flake fixed; **first green full-suite run** |
+| `7cb1abe` | **N19** — optimistic concurrency on the grant document |
+| `3a37833` | **N20, N21** — the revocation epoch, and one shared grant rule |
+| `e3de54f` | Ported `WaitForIndexing`; **six unwaited index assertions guarded**, two of which could pass vacuously |
+| `(head)` | **N22** — redirect-URI validation failed open on Linux; **CI green** |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 3, 4 and 6 are untouched, M8–M11 has had no work, and release mechanics are not done. Item 5 (row-level authz) is now **done** — see M5 above.
 
@@ -53,7 +57,9 @@ Two of them were worse than flaky. `AssertNoCodeAsync` and the authorize-request
 
 The mechanism came from the user pointing at `CronosCore.RavenDB.UnitTests`: its `WaitForIndexing` is now ported into `MintPlayer.Spark.Testing` as an extension method on `IDocumentStore`, and `SparkTestDriver` shadows `RavenTestDriver`'s method so all ~50 existing call sites route to the single implementation without being edited. Verified by making it throw and confirming the existing call sites hit it. It also **throws with the actual index errors** when indexes never settle, instead of leaving a mystery failure downstream — and it works on any store, which is why the E2E host (not a `RavenTestDriver` subclass, and previously with no equivalent at all) can now use it.
 
-*Honest status:* the original failure was never identified — output was not captured — so this is a strongly probable cause, not a proven one. Ten-plus clean full-suite runs since, but absence of a 1-in-7 flake over ten runs is weak evidence. Treat as fixed-pending-observation.
+*Honest status:* the original failure was never identified — output was not captured — so this is a strongly probable cause, not a proven one. Ten-plus clean full-suite runs since, plus a green CI run, but absence of a ~1-in-7 flake over that many runs is only moderate evidence. Treat as fixed-pending-observation.
+
+**Test tooling, while here.** `WaitForIndexing` is now a single implementation — an extension method on `IDocumentStore` in `MintPlayer.Spark.Testing` (`RavenIndexingExtensions`), ported from `CronosCore.RavenDB.UnitTests`. `SparkTestDriver` shadows `RavenTestDriver`'s method of the same name so every existing call site routes to it unedited; the routing was *verified* by making it throw, not assumed. `testenvironments.json` (WSL/Ubuntu) is added at the root so tests can be run locally under the same OS CI uses — which is what made **N22** reproducible rather than merely inferred.
 
 ~~**One unidentified intermittent failure, recorded rather than waved away.**~~ During verification a full run reported `Failed: 1, Passed: 1248` — and the output was not captured, so the test is unknown. Six consecutive full-suite runs since have been clean (1249/1249 each), and the E2E suite is clean across every run. So: roughly a 1-in-7 intermittent that has not reproduced, in a suite whose own standard is that determinism is not optional. **Do not treat the green runs below as proof it is gone.** The likely shape, given everything else in this document, is index staleness surfacing only under full-suite load — the same trap that produced three earlier flakes. Next step is a run with per-test output captured, then fixing whatever it names.
 
@@ -99,6 +105,9 @@ Preview package, so no compatibility was required, but each of these changes beh
 | `client_credentials` refuses an undefined or disabled scope | Previously narrowed silently; now 400 `invalid_scope` | No user and no consent step here — issuing less than the caller named produces a client that fails later, far from the cause (**N11**) |
 | Token responses announce `scope` when narrowed | New key in the code and refresh grant responses | RFC 6749 §5.1 requires it, precisely so a client can tell it got less than it asked for (**N11**) |
 | `OidcToken.Scopes` records **granted**, not requested, scopes | Introspection reports less than before wherever a scope was undefined or disabled | The record over-reported, and introspection is how a resource server learns a token's authority (**N11**) |
+| Row-level rules now apply to list, query and stream results | An app relying on the previous (leaky) behaviour sees fewer rows | The rule was enforced on the detail path and skipped on the path list screens use (**M5**) |
+| A withdrawn grant refuses issuance, and tokens predating a withdrawal stay dead through re-consent | Clients must re-authorize after a user removes access | Consent was recorded and consulted nowhere (**N14**); re-consent used to resurrect survivors of the sweep (**N20**) |
+| Relative and `file:` redirect URIs are refused | A client registered with `/callback` **on Linux** stops saving | It was already impossible to use; the validation just accepted it on Unix and rejected it on Windows (**N22**) |
 | An Actions class refusal is now a 400, not a 500 | `SparkValidationException` maps into the standard `errors` envelope; other exceptions still 500 | Business validation had no path to the user anywhere in Spark — every message reached the operator as an empty 500 (**N12**). Framework-wide, not IdP-only |
 | `IOidcApplicationContext` members are get-only | An auto-property implementation stops compiling | It returned null, and the query executor answers a null queryable with an empty result — screens that render and are always empty, silently (**N13**) |
 
