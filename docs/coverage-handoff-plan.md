@@ -138,6 +138,24 @@ Preview package, so no compatibility was required, but each of these changes beh
 
 **D6 — Row-level scoping is the Actions classes' `IsAllowedAsync(string action, T entity)`**, which already exists (`DefaultPersistentObjectActions.cs:98`). M5 is what makes it actually enforced on the query and stream paths. **Phase D collapses into M5** — no separate design exercise. The only residue is that `security.json`'s *property-level* rights are documented but dead (`MatchesResource` is exact string equality); that becomes a doc fix in M6.
 
+**D14 — `IHasNaturalId` stays in core and stays always-on; no separate package, no `spark.AddNaturalIds()` opt-in.** Investigated on request (three parallel agents, 2026-08-09) after the natural-id support landed in `38379e2`. The proposal was to extract the convention into its own package and expose it as `services.AddSpark(spark => spark.AddNaturalIds(…))`. Rejected on both halves, for different reasons.
+
+*Against the opt-in:* **implementing the interface is already the opt-in.** An entity gets a derived id only if its author wrote `GetId()`. A second, separate `AddNaturalIds()` call turns that into a two-part opt-in where **either half alone silently does nothing** — implement the interface without the call and RavenDB's always-present `AsyncDocumentIdGenerator` fallback assigns a GUID, so every `LoadAsync<Car>(Car.GetId(plate))` returns `null`. That reads as "not found", not as a wiring bug.
+
+The decisive framing: **the opt-in would create that hazard, not remove one.** The convention is unconditional today (`SparkMiddleware.cs:75`, inside `AddSparkCore`, which every `AddSpark`/`AddSparkFull` caller runs), so no Spark app can currently get it wrong. Making it opt-in introduces a failure mode and then needs new machinery to defend against it.
+
+That machinery is buildable — an earlier draft of this decision claimed "no generator in this repo emits diagnostics," which is **false** and was corrected before it shipped. Two analyzers exist: `ProjectionPropertyAnalyzer` (`SPARK001`/`SPARK002`, `libs/source_generators/.../Diagnostics/ProjectionPropertyAnalyzer.Rules.cs:7,16`) and `TranslationsDiagnostics` (five descriptors). They ride on core as an `Analyzer` reference (`MintPlayer.Spark.csproj:43`), so they reach every consumer regardless of bootstrap style. A guard would therefore be a copy of an existing pattern, not new capability. It is still the wrong trade: an analyzer *plus* a startup scan-and-throw, to protect against a problem that does not exist until we introduce it.
+
+Auto-wiring via the source generator was evaluated and rejected as a substitute: `SparkFullGenerator` is packed as an analyzer only by `MintPlayer.Spark.AllFeatures.csproj:49-52`, so it runs **only** for AllFeatures consumers. Fleet references AllFeatures and calls `AddSparkFull`; HR does not reference it at all and calls plain `AddSpark`. Auto-wiring would make the same `IHasNaturalId` class behave differently depending on bootstrap style — both of which this repo ships in production.
+
+The cron/migrations precedent does not rescue the opt-in either. `AddCronJobs()` / `AddMigrations()` have the *same* gap — forget the call and every job silently never runs — but there the forgotten call is a single line reviewed once at setup, and everything added afterwards is auto-discovered. Natural ids have no per-instance registration to auto-discover; they are one global convention flip, so the mitigation that makes cron's gap tolerable does not transfer.
+
+*Against the package:* the split is **forced, not chosen**. All four `Demo/*/[Name].Library` entity assemblies reference `MintPlayer.Spark.Abstractions` and never `RavenDB.Client`, so the interface must live in Abstractions while the convention needs a Raven-aware assembly. A natural-ids package would therefore contain **exactly one file** — and at ~60 lines it would be five times smaller than `Migrations` (324 lines), the current floor. Cron and Migrations earn their own packages by carrying real dependencies (NCrontab, a hosted background service, a scheduler); natural ids carries none, needing exactly the `RavenDB.Client` core already pins. Against that, every new package auto-publishes on push to master and needs its own version bumped forever ([CI doctrine](../CLAUDE.md)). The cost is not the ~4 mechanical touch points — CI and Nx need zero changes — it is a permanent versioning obligation for one extension method.
+
+*What was kept from the proposal:* the naming complaint was fair. See M14.
+
+*Recorded because it is worth not re-deriving:* the DI-drain mechanism (a contributor interface resolved via `sp.GetServices<T>()` inside the store factory, immediately before `Initialize()`) was validated and **works** — `sp` there is the root provider, registration order is irrelevant because the factory body is lazy, and `configure(builder)` at `SparkMiddleware.cs:116` provably completes before the factory first runs at `:378`. Two invariants if it is ever needed: contributors must be singletons (root-resolved), and must not depend on `IDocumentStore` (circular resolution mid-construction). It was not needed here, but it is the answer for any future package that must configure conventions before they freeze — which is a hook Spark genuinely lacks, since `SparkModuleRegistry`'s existing extension points all fire *after* `Initialize()`.
+
 ## Sequencing
 
 M1 first: it's the only actively-breaking item, and landing it makes WebhooksDemo runnable again, which M2's manual verification depends on. The contained fixes (M2, M3) follow, then the two large pieces. M6 (docs) is last so it describes what actually shipped — the queue-name format M1 settles and the Actions contract M5 changes.
@@ -682,6 +700,32 @@ Moved from "not started" into this PR at the user's direction, after the withdra
 `IRowSecurity` exists (`Services/RowSecurity.cs`) with two consumers, neither of them a query path.
 
 **Shape:** row filtering applied at the one place every query result passes through, sharing the same `IsAllowedAsync` hook the detail path already uses, so an entity's ownership rule is written once and enforced everywhere.
+
+## M14 — Natural ids: naming, and the coverage gap the investigation found (user-requested, 2026-08-09)
+
+Scope came out of D14. The packaging and opt-in halves of the proposal were declined there; two things survive.
+
+### M14.1 — The rename (done)
+
+`ApplySparkIdConventions` was a fair complaint: vague, and it did two unrelated things behind one name. Split, since they are genuinely independent mechanisms — RavenDB consults registered id conventions first and reaches the fallback generator only when none matches, so neither is a mode of the other:
+
+- `conventions.UseNaturalIds()` — derives ids for `IHasNaturalId` entities.
+- `conventions.UseGeneratedIds()` — `{Collection}/{Guid}` for everything else.
+
+Called as `store.Conventions.UseNaturalIds().UseGeneratedIds()` at the single production site. This also puts the name the user asked for — *natural ids* — on the thing that actually is natural ids, rather than on a method that also owns Spark's default id scheme.
+
+### M14.2 — No test exercises Spark's document-id generation
+
+Found while checking where a convention hook would have to reach. **Spark's production id conventions are installed by zero tests.**
+
+- The 47 fixtures deriving from `SparkTestDriver` get their store from `RavenTestDriver.GetDocumentStore()` (`SparkTestDriver.cs:69`), which never routes through `AddSpark`.
+- The 24 using `SparkEndpointFactory` *do* call `AddSpark` — and then **remove the registered `IDocumentStore` and substitute the test store** (`SparkEndpointFactory.cs:97-99`), which is the same `RavenTestDriver` store. So the production store factory never executes there either.
+
+Every fixture therefore runs on Raven's stock sequential ids (`trailers/1`) while production runs on `Trailers/{guid}`. `NaturalIdConventionTests` is the only file that has ever exercised the real rules, and only because it installs them by hand in `PreInitialize`.
+
+This is pre-existing and predates natural ids — the GUID generator has been unconditional since `AddSpark` was introduced. It is recorded here rather than in the IdP findings because it is a Spark-wide testing gap, and because it is the same shape as the two vacuous assertions M8 fixed: a test suite that looks like it covers something it never touches.
+
+**Not yet fixed — scoping first.** Aligning the fixtures means swapping sequential ids for GUIDs, and the risk is not the obvious `Id.Should().Be(...)` assertions but ordering: `trailers/1` and `trailers/2` sort in insertion order, GUIDs do not. Any test that stores several documents and asserts on their order would start failing for a reason unrelated to what it tests. Breakage assessment is in progress; if it is broad, the honest move is to record the gap and fix it in its own PR rather than bury a suite-wide id change inside this one.
 
 ## M11 — Retire the authorization bypasses
 

@@ -40,7 +40,7 @@ public class NaturalIdConventionTests : SparkTestDriver
     /// </summary>
     protected override void PreInitialize(IDocumentStore documentStore)
     {
-        documentStore.Conventions.ApplySparkIdConventions();
+        documentStore.Conventions.UseNaturalIds().UseGeneratedIds();
         base.PreInitialize(documentStore);
     }
 

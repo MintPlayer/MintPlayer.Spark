@@ -71,8 +71,7 @@ public static class SparkExtensions
                 Database = options.RavenDb.Database,
             };
 
-            // Derived ids for IHasNaturalId entities, GUIDs for everything else.
-            store.Conventions.ApplySparkIdConventions();
+            store.Conventions.UseNaturalIds().UseGeneratedIds();
 
             // Register custom JSON converters for RavenDB document serialization
             store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions

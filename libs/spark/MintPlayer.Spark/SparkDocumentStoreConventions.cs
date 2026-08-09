@@ -10,25 +10,40 @@ namespace MintPlayer.Spark;
 /// <c>DocumentStore</c> against a second database — exercises the same rules the framework applies,
 /// instead of a hand-written copy that can drift from them.
 /// </para>
+/// <para>
+/// Both must be installed before <c>DocumentStore.Initialize()</c>: RavenDB freezes conventions
+/// there and throws on any later change.
+/// </para>
 /// </summary>
 public static class SparkDocumentStoreConventions
 {
     /// <summary>
-    /// An entity implementing <see cref="IHasNaturalId"/> is stored under the id it derives;
-    /// everything else gets <c>{Collection}/{Guid}</c>.
-    /// <para>
-    /// The two are not alternatives to choose between: RavenDB consults registered id conventions
-    /// first and only falls back to <see cref="DocumentConventions.AsyncDocumentIdGenerator"/> when
-    /// none matches, so both are installed and the entity decides.
-    /// </para>
+    /// Stores an entity implementing <see cref="IHasNaturalId"/> under the id it derives from its
+    /// own contents, rather than a generated one.
     /// </summary>
-    public static DocumentConventions ApplySparkIdConventions(this DocumentConventions conventions)
+    public static DocumentConventions UseNaturalIds(this DocumentConventions conventions)
     {
         conventions.RegisterAsyncIdConvention<IHasNaturalId>(
             (_, entity) => Task.FromResult(entity.GetId()));
 
-        // GUIDs rather than HiLo: HiLo reserves ranges from the server, which serializes writes
-        // behind a cluster-wide operation and makes ids guessable in sequence.
+        return conventions;
+    }
+
+    /// <summary>
+    /// Gives every other entity <c>{Collection}/{Guid}</c>.
+    /// <para>
+    /// GUIDs rather than HiLo: HiLo reserves ranges from the server, which serializes writes behind
+    /// a cluster-wide operation and makes ids guessable in sequence.
+    /// </para>
+    /// <para>
+    /// This is a fallback, not an alternative to <see cref="UseNaturalIds"/>. RavenDB consults
+    /// registered id conventions first and reaches this generator only when none matches, so
+    /// installing both is what lets the entity decide — the order they are installed in does not
+    /// matter.
+    /// </para>
+    /// </summary>
+    public static DocumentConventions UseGeneratedIds(this DocumentConventions conventions)
+    {
         conventions.AsyncDocumentIdGenerator = (_, entity) =>
             Task.FromResult($"{conventions.GetCollectionName(entity.GetType())}/{Guid.NewGuid()}");
 
