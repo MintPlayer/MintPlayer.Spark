@@ -82,7 +82,7 @@ describe('SparkRetryActionModalComponent', () => {
 
     const result = await promise;
     expect(result.option).toBe('Overwrite');
-    expect(result.step).toBe('confirm-overwrite');
+    expect(result.step).toBe(0);
     expect(service.payload()).toBeNull();
   });
 
@@ -98,11 +98,12 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     // have no security grant and would be filtered out of the types list otherwise.
     const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
     const promise = service.show({
-      step: 'confirm',
+      type: 'retry-action',
+      step: 1,
       title: 'Delete car',
       options: ['Delete', 'Cancel'],
       persistentObject: scaffoldedPo,
-    } as any);
+    });
     fixture.detectChanges();
     // Allow the effect + getEntityTypes promise to resolve.
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -119,11 +120,12 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
   it('populates the submitted PO with formData values on option click', async () => {
     const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
     const promise = service.show({
-      step: 'confirm',
+      type: 'retry-action',
+      step: 1,
       title: 'Delete car',
       options: ['Delete', 'Cancel'],
       persistentObject: scaffoldedPo,
-    } as any);
+    });
     fixture.detectChanges();
     await new Promise(resolve => setTimeout(resolve, 0));
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -148,11 +150,12 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     // values flow through formData → back onto the outgoing PO.
     const { component, service, fixture } = setupWithTypes([]);
     const promise = service.show({
-      step: 'confirm',
+      type: 'retry-action',
+      step: 1,
       title: 'Delete car',
       options: ['Delete', 'Cancel'],
       persistentObject: scaffoldedPo,
-    } as any);
+    });
     fixture.detectChanges();
     await new Promise(resolve => setTimeout(resolve, 0));
     await new Promise(resolve => setTimeout(resolve, 0));
