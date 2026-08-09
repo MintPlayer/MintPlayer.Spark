@@ -64,9 +64,25 @@ public static class SparkIdentityProviderExtensions
                 app.UseCors("SparkOidcCors");
             }
 
+            // The interactive pages must not be framable. Every one of them turns a single click
+            // into a security decision — granting a client access, or removing it — and a framed
+            // page makes that click something an attacker can arrange. Nothing set this before;
+            // the consent screen has been framable since it was written.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/connect"))
+                {
+                    context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'none'";
+                    context.Response.Headers["X-Frame-Options"] = "DENY";
+                }
+
+                await next();
+            });
+
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
             new OidcTokens_ByExpiration().Execute(documentStore);
+            new OidcAuthorizations_BySubject().Execute(documentStore);
 
             // Authorization requests carry @expires, so RavenDB reaps them itself rather than
             // needing a sweeper. Deletion is housekeeping only — an expired request is refused
@@ -99,6 +115,8 @@ public static class SparkIdentityProviderExtensions
         connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost).RequireAntiforgery();
         connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
         connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost).RequireAntiforgery();
+        connectGroup.MapGet("/applications", (Delegate)ConnectedApplications.HandleGet);
+        connectGroup.MapPost("/applications/revoke", (Delegate)ConnectedApplications.HandleRevoke).RequireAntiforgery();
 
         // Deliberately NOT antiforgery-protected: these are machine endpoints authenticated by
         // client credentials, never by an ambient cookie, so there is no ambient authority for

@@ -55,6 +55,103 @@ public class OidcScopeIntegrityTests : OidcTestHost
         WaitForIndexing(Store);
     }
 
+    private async Task EnableScopeAsync(string name, bool enabled)
+    {
+        using var session = Store.OpenAsyncSession();
+        var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
+        scope.Enabled = enabled;
+        await session.SaveChangesAsync();
+        WaitForIndexing(Store);
+    }
+
+    private const string Password2 = Password;
+
+    private async Task<JsonElement> EstablishRefreshableAsync(string clientId, string email, string[] scopes)
+    {
+        var app = await SeedApplicationAsync(clientId,
+            allowedScopes: scopes, grantTypes: ["authorization_code", "refresh_token"]);
+        await SeedUserAsync(email);
+
+        var code = await ObtainCodeAsync(app, email, scopes);
+
+        return await BodyAsync(await TokenAsync(new()
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = clientId,
+            ["client_secret"] = Secret,
+            ["code"] = code,
+            ["redirect_uri"] = app.RedirectUris[0],
+        }));
+    }
+
+    /// <summary>
+    /// T-S5 — disabling a scope must not remove it from the chain permanently. The rotated refresh
+    /// token used to inherit the *narrowed* set, which made a temporary disablement a one-way
+    /// ratchet: re-enabling could not put back what the successor no longer carried. RFC 6749 §6
+    /// requires the successor's scope to be identical to the presented token's, and this is why.
+    /// </summary>
+    [Fact]
+    public async Task Re_enabling_a_scope_restores_it_on_the_next_refresh()
+    {
+        var first = await EstablishRefreshableAsync(
+            "svc-ratchet", "ratchet@test.local", ["openid", "api.read", "offline_access"]);
+
+        await EnableScopeAsync("api.read", false);
+
+        var narrowed = await BodyAsync(await TokenAsync(new()
+        {
+            ["grant_type"] = "refresh_token",
+            ["client_id"] = "svc-ratchet",
+            ["client_secret"] = Secret,
+            ["refresh_token"] = first.GetProperty("refresh_token").GetString()!,
+        }));
+
+        ScopeClaims(narrowed.GetProperty("access_token").GetString()!).Should().NotContain("api.read",
+            "while disabled it must not be issued");
+
+        await EnableScopeAsync("api.read", true);
+
+        var restored = await BodyAsync(await TokenAsync(new()
+        {
+            ["grant_type"] = "refresh_token",
+            ["client_id"] = "svc-ratchet",
+            ["client_secret"] = Secret,
+            ["refresh_token"] = narrowed.GetProperty("refresh_token").GetString()!,
+        }));
+
+        ScopeClaims(restored.GetProperty("access_token").GetString()!).Should().Contain("api.read",
+            "the operator turned it back on — a scope disabled for an hour must not be lost forever "
+            + "by every client that happened to refresh during it");
+    }
+
+    /// <summary>
+    /// T-S6 — when nothing is left to grant, refuse. Minting anyway produced a signed,
+    /// subject-bearing, hour-long JWT with no scopes at all, plus a successor that rotates forever
+    /// into more of the same — and a resource server checking signature and `active` but not scope
+    /// reads the holder as an authenticated user.
+    /// </summary>
+    [Fact]
+    public async Task A_refresh_with_nothing_left_to_grant_is_refused()
+    {
+        var first = await EstablishRefreshableAsync(
+            "svc-floor", "floor@test.local", ["openid", "api.read", "offline_access"]);
+
+        await EnableScopeAsync("openid", false);
+        await EnableScopeAsync("api.read", false);
+        await EnableScopeAsync("offline_access", false);
+
+        var response = await TokenAsync(new()
+        {
+            ["grant_type"] = "refresh_token",
+            ["client_id"] = "svc-floor",
+            ["client_secret"] = Secret,
+            ["refresh_token"] = first.GetProperty("refresh_token").GetString()!,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await BodyAsync(response)).GetProperty("error").GetString().Should().Be("invalid_scope");
+    }
+
     /// <summary>T-S1 — the happy path, so the refusals below are not passing trivially.</summary>
     [Fact]
     public async Task A_machine_token_carries_the_scopes_it_asked_for()

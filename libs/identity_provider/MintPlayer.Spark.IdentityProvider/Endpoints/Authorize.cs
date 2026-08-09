@@ -132,16 +132,24 @@ internal static class Authorize
 
         var options = context.RequestServices.GetRequiredService<SparkIdentityProviderOptions>();
 
-        if (app.ConsentType == "implicit" && options.AutoApproveImplicitConsent)
+        // Load the user's standing grant once: both the implicit branch and the skip-consent
+        // check below need it, and the implicit branch used to run without consulting it at all.
+        var existingAuth = await session.LoadAsync<OidcAuthorization>(
+            OidcAuthorizationReference.DocumentId(userId, app.Id!), ct);
+
+        var withdrawn = existingAuth is not null && existingAuth.Status != "valid";
+
+        // Auto-approval says "this user already trusts this client", which is exactly the
+        // statement a withdrawal retracts. Skipping the screen here — the branch returned before
+        // the Status check below ever ran — meant a withdrawn grant came back with no screen, no
+        // click, and no human, on the client's next redirect. A user who has withdrawn must be
+        // asked again, whatever the client's consent type.
+        if (app.ConsentType == "implicit" && options.AutoApproveImplicitConsent && !withdrawn)
         {
             request.AuthorizationId = await EnsureAuthorizationAsync(session, app, userId, requestedScopes, ct);
             await GenerateCodeAndRedirectAsync(context, session, request, ct);
             return;
         }
-
-        // Check if user already consented for these scopes
-        var existingAuth = await session.LoadAsync<OidcAuthorization>(
-            OidcAuthorizationReference.DocumentId(userId, app.Id!), ct);
 
         if (existingAuth is { Status: "valid" })
         {
@@ -239,9 +247,21 @@ internal static class Authorize
             await session.StoreAsync(auth, ct);
         }
 
-        // Consenting again reinstates a grant the user previously revoked — that is precisely
-        // what they have just asked for. Tokens issued before the revocation stay revoked;
-        // only the grant itself comes back.
+        // Consenting again reinstates a grant the user previously withdrew — that is precisely
+        // what they have just asked for. Tokens issued before the withdrawal stay revoked; only
+        // the grant itself comes back.
+        //
+        // But it comes back as *this* consent, not as everything the grant ever accumulated.
+        // The merge below only ever adds, and the list is never reset, so unioning on
+        // reinstatement handed back the full historical set: withdraw a grant carrying
+        // `api.admin`, let the client ask for `openid` alone, and the user silently got
+        // `api.admin` again — thereafter auto-approved, because a grant that covers the request
+        // skips the consent screen entirely. Withdrawal has to mean the scope history is gone
+        // too, or it is not withdrawal.
+        var reinstating = auth.Status != "valid";
+        if (reinstating)
+            auth.GrantedScopes.Clear();
+
         auth.Status = "valid";
         auth.RevokedAt = null;
 

@@ -326,6 +326,43 @@ internal static class Token
     private static bool GrantsOpenId(List<string> scopes)
         => scopes.Contains("openid", StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Whether the user's consent still stands behind this token.
+    /// <para>
+    /// A refresh token outlives everything that authorized it, and rotation resets its expiry —
+    /// so a client that keeps refreshing holds its authority indefinitely. Consent was recorded
+    /// and then consulted nowhere, which meant withdrawing it changed nothing that mattered.
+    /// This is the point where it starts to.
+    /// </para>
+    /// <para>
+    /// An empty <see cref="OidcToken.AuthorizationId"/> means <em>no user grant exists</em>, and
+    /// must be allowed rather than refused. Two populations land here: <c>client_credentials</c>
+    /// tokens, which have no user by construction, and every token minted before the id was
+    /// threaded through at all — failing closed on those would be a silent multi-day outage on
+    /// any database seeded earlier, presenting as "refresh randomly broke".
+    /// </para>
+    /// <para>
+    /// A missing document, by contrast, fails closed: the only way to reach it is for someone to
+    /// have deleted the grant, and deleting a grant should end access rather than grant it
+    /// forever. Same reasoning as a missing token record in <see cref="AccessTokens"/>.
+    /// </para>
+    /// </summary>
+    private static async Task<bool> GrantPermitsIssuanceAsync(
+        IAsyncDocumentSession session, OidcToken token, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(token.AuthorizationId))
+            return true;
+
+        // Read the stored id verbatim rather than re-deriving it from (Subject, ApplicationId):
+        // the derivation does not hold for synthetic subjects, and any later change to the
+        // subject format would silently orphan every grant instead of failing visibly.
+        // Point-load, so a withdrawal committed a moment ago is seen — an index query here would
+        // be the same staleness trap that made revoked credentials replayable twice before.
+        var grant = await session.LoadAsync<OidcAuthorization>(token.AuthorizationId, ct);
+
+        return grant is { Status: "valid" };
+    }
+
     private static async Task HandleRefreshTokenGrant(HttpContext context, IFormCollection form, CancellationToken ct)
     {
         var clientId = form["client_id"].FirstOrDefault();
@@ -405,10 +442,31 @@ internal static class Token
             return;
         }
 
-        // A refresh may narrow scopes but never widen them: re-intersect against what the
-        // client is currently allowed, so revoking a scope from the application takes effect
-        // on the next refresh instead of persisting for the token's whole 14-day life.
-        refreshTokenDoc.Scopes = refreshTokenDoc.Scopes
+        // Has the user withdrawn this grant? Checked here rather than inside LoadScopesAsync or
+        // GrantedNames: all three grants funnel through those, and client_credentials has no
+        // grant document by construction, so a check there would refuse every machine token.
+        if (!await GrantPermitsIssuanceAsync(session, refreshTokenDoc, ct))
+        {
+            // A withdrawn grant is not a narrowing — the whole chain goes. Anything still
+            // outstanding under it was issued on an authority the user has since taken back.
+            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await session.SaveChangesAsync(ct);
+
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
+            return;
+        }
+
+        // What the presented token entitles the client to ask for. Never mutated: it is the
+        // ceiling the successor must inherit (RFC 6749 §6), it is what the stored record should
+        // continue to say this token carried, and it is the baseline a narrowing is announced
+        // against. Overwriting it did all three kinds of damage at once.
+        var presentedScopes = refreshTokenDoc.Scopes;
+
+        // A refresh may narrow but never widen: re-intersect against what the client is
+        // currently allowed, so removing a scope from the application takes effect on the next
+        // refresh rather than persisting for the token's life.
+        var permittedScopes = presentedScopes
             .Where(s => app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
@@ -422,15 +480,34 @@ internal static class Token
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc.Scopes, ct);
+        var grantedScopes = await LoadScopesAsync(session, permittedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
+
+        // Nothing left to grant. Minting anyway produced a signed, subject-bearing, 60-minute
+        // JWT with no scopes at all, plus a successor that rotates forever into more of the
+        // same — and a resource server that checks signature and `active` but not scope reads
+        // the holder as an authenticated user. Refuse instead, and tear the chain down: a grant
+        // that can no longer authorize anything is spent, not merely empty.
+        if (grantedScopeNames.Count == 0)
+        {
+            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await session.SaveChangesAsync(ct);
+
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "invalid_scope",
+                error_description = "No scope on this refresh token is still available to this client.",
+            });
+            return;
+        }
 
         var issuer = OidcIssuer.Resolve(context);
         var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
 
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
-        var newIdToken = GrantsOpenId(refreshTokenDoc.Scopes)
+        var newIdToken = GrantsOpenId(grantedScopeNames)
             ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes)
             : null;
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
@@ -460,7 +537,14 @@ internal static class Token
             Subject = refreshTokenDoc.Subject,
             Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
             Type = "refresh_token",
-            Scopes = grantedScopeNames,
+            // RFC 6749 §6: "If a new refresh token is issued, the refresh token scope MUST be
+            // identical to that of the refresh token included by the client in the request."
+            // Writing the narrowed set here was also a one-way ratchet — a scope disabled for an
+            // hour was gone from the chain permanently, because re-enabling it could not put back
+            // what the successor no longer carried. The refresh token's list is the grant
+            // ceiling; every issuance re-intersects, so an entry that is currently unavailable is
+            // inert rather than dangerous.
+            Scopes = presentedScopes,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
@@ -493,9 +577,12 @@ internal static class Token
         if (newIdToken != null)
             response["id_token"] = newIdToken;
 
-        // A refresh token outlives the configuration it was minted under. Disabling a scope is
-        // meant to take capability away, and this is where the client finds out it has.
-        AnnounceScope(response, refreshTokenDoc.Scopes, grantedScopeNames);
+        // A refresh token outlives the configuration it was minted under. Disabling a scope, or
+        // removing one from the client, is meant to take capability away — this is where the
+        // client finds out it has. Measured against the scopes it *presented*: comparing against
+        // the narrowed list (which the old code had already overwritten in place) made the counts
+        // equal and the announcement silent for exactly the cases it existed to report.
+        AnnounceScope(response, presentedScopes, grantedScopeNames);
 
         await context.Response.WriteAsJsonAsync(response);
     }

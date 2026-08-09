@@ -58,7 +58,19 @@ internal static class AccessTokens
         if (record is not { Type: "access_token" })
             record = null;
 
-        return new ResolvedAccessToken(jwt, validation.Claims, record);
+        // The user's standing consent, when there is a user. Loaded here rather than in
+        // IsActive because that is a pure property and this is a database read — and resolved
+        // once, here, so all three consumers (introspection, userinfo, revocation) get the same
+        // answer instead of each deciding for itself whether consent still matters.
+        //
+        // An empty AuthorizationId means no user grant exists: client_credentials tokens, and
+        // tokens minted before the id was threaded through. Those must stay active — treating
+        // "no grant" as "withdrawn grant" would kill every machine token in the system.
+        OidcAuthorization? grant = null;
+        if (record is { AuthorizationId.Length: > 0 })
+            grant = await session.LoadAsync<OidcAuthorization>(record.AuthorizationId, ct);
+
+        return new ResolvedAccessToken(jwt, validation.Claims, record, grant);
     }
 }
 
@@ -66,13 +78,29 @@ internal static class AccessTokens
 internal sealed record ResolvedAccessToken(
     JsonWebToken Jwt,
     IDictionary<string, object> Claims,
-    OidcToken? Record)
+    OidcToken? Record,
+    OidcAuthorization? Grant = null)
 {
     /// <summary>
-    /// True only if we issued it, it has not been revoked, and it has not expired. A token
-    /// whose record has gone fails closed.
+    /// True only if we issued it, it has not been revoked, it has not expired, and the user's
+    /// consent still stands behind it. A token whose record has gone fails closed.
+    /// <para>
+    /// The consent clause cannot reach a resource server that validates the JWT offline against
+    /// JWKS — nothing in this package can, which is why withdrawal also revokes the refresh
+    /// token and why access-token lifetimes are meant to be short. It does cover every consumer
+    /// that asks us: <c>/connect/introspect</c> and <c>/connect/userinfo</c>.
+    /// </para>
     /// </summary>
-    public bool IsActive => Record is { Status: "valid" } && Jwt.ValidTo > DateTime.UtcNow;
+    public bool IsActive => Record is { Status: "valid" }
+        && Jwt.ValidTo > DateTime.UtcNow
+        && !GrantWithdrawn;
+
+    /// <summary>
+    /// A grant that exists and is no longer valid, or one that should exist and has been
+    /// deleted. A token with no <c>AuthorizationId</c> has no grant to withdraw and is unaffected.
+    /// </summary>
+    private bool GrantWithdrawn
+        => Record is { AuthorizationId.Length: > 0 } && Grant is not { Status: "valid" };
 
     public string? Subject => Claim("sub");
     public string? Scope => Claim("scope");
