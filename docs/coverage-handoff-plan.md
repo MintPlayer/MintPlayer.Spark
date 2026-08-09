@@ -1104,6 +1104,14 @@ Then the manual checks that tests can't cover:
 
 ## Follow-ups filed, not done here
 
+- **Multi-host end-to-end testing** — specced in [PRD-MultiHostE2E.md](./PRD-MultiHostE2E.md) and
+  [multi-host-e2e-plan.md](./multi-host-e2e-plan.md), shipped in this PR as documents only. Every test
+  in the repo runs one host, and where a second participant is needed the tests fabricate its half.
+  **F13, F14 and F15 all lived in exactly that blind spot** and were found by reasoning rather than by
+  testing. Two scenarios: a real consumer module deploying ETL scripts to a real owner (test-only), and
+  a user signing in to one app through another's IdentityProvider (**feature work first — the consumer
+  half of cross-app OIDC login does not exist**).
+
 - **Raven-side row filtering (pushdown)** — M5 filters after materialization, so a row-scoped type reads its whole collection per query. Pushing the predicate into the `IQueryable` (the plan's `GetRowFilter`) would fix that and let `Skip`/`Take` and `TotalResults` come from Raven. Deliberately out of scope: it is a performance change with its own correctness surface — a predicate that cannot compose into a projection must fall back rather than silently pass everything — and it wants its own PR and benchmarks. A startup warning naming row-scoped types would be a cheap first step.
 - **`BsShellTopbarDirective`** — needs an upstream ng-bootstrap contribution before the four demo copies can go.
 - **Report back to Coverage** that `spark-handoff.md` §2 contradicts their own `PLAN.md` on sequencing; that their docs use four different names for the token concept; and that their `PRD.md:145` describes the PAT handler as wired through `configureProviders`/`IdentityBuilder` when their own working code correctly registers it as a standalone scheme instead.
