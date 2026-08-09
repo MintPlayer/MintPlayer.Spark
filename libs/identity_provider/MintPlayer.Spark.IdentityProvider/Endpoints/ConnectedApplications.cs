@@ -7,6 +7,7 @@ using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
+using Raven.Client.Exceptions;
 using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -72,30 +73,64 @@ internal static class ConnectedApplications
         var applicationId = form["application_id"].FirstOrDefault();
 
         var store = context.RequestServices.GetRequiredService<IDocumentStore>();
-        using var session = store.OpenAsyncSession();
 
         // The form names an *application*; the grant id is derived from the session's user. So
         // there is no parameter a forged post could set to reach someone else's grant — the
         // property is structural rather than a check that has to be remembered. It also means
         // "not yours" and "no such grant" are the same missing document here, so the response
         // cannot distinguish them and cannot be used to probe which grants exist.
-        if (!string.IsNullOrEmpty(applicationId))
+        var withdrawn = string.IsNullOrEmpty(applicationId)
+            || await TryWithdrawAsync(store, OidcAuthorizationReference.DocumentId(userId, applicationId), ct);
+
+        // Reporting "Access removed" when the write lost a race would be the worst possible
+        // outcome here: the user believes they have taken access back and has no reason to look
+        // again. Saying so only when the write actually landed.
+        context.Response.Redirect(withdrawn
+            ? "/connect/applications?status=revoked"
+            : "/connect/applications?status=failed");
+    }
+
+    /// <summary>
+    /// Marks the grant revoked and tears down its tokens, or reports that it could not.
+    /// <para>
+    /// Under optimistic concurrency, and retried: this is a read-modify-write on a document that
+    /// gates a security decision, racing directly against a consent that would set it back to
+    /// valid. Last-write-wins here means a user is told access was removed while it is live.
+    /// </para>
+    /// <para>
+    /// A grant that is already revoked counts as success — the user asked for it gone and it is
+    /// gone. Withdrawing is idempotent, not a transaction that has to be the one that did it.
+    /// </para>
+    /// </summary>
+    private static async Task<bool> TryWithdrawAsync(IDocumentStore store, string grantId, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            var grant = await session.LoadAsync<OidcAuthorization>(
-                OidcAuthorizationReference.DocumentId(userId, applicationId), ct);
+            using var session = store.OpenAsyncSession();
+            session.Advanced.UseOptimisticConcurrency = true;
 
-            if (grant is { Status: "valid" })
+            var grant = await session.LoadAsync<OidcAuthorization>(grantId, ct);
+            if (grant is null || grant.Status != "valid")
+                return true;
+
+            grant.Status = "revoked";
+            grant.RevokedAt = DateTime.UtcNow;
+
+            await RevokeTokensAsync(session, grantId, ct);
+
+            try
             {
-                grant.Status = "revoked";
-                grant.RevokedAt = DateTime.UtcNow;
-
-                await RevokeTokensAsync(session, grant.Id!, ct);
                 await session.SaveChangesAsync(ct);
+                return true;
+            }
+            catch (ConcurrencyException)
+            {
+                // Someone else wrote the grant in between — most likely the user consenting again
+                // in another tab. Re-read and decide afresh rather than forcing a stale verdict.
             }
         }
 
-        // One outcome for every case, successful or not.
-        context.Response.Redirect("/connect/applications?status=revoked");
+        return false;
     }
 
     /// <summary>
@@ -142,6 +177,7 @@ internal static class ConnectedApplications
     private static string? Notice(string? status) => status switch
     {
         "revoked" => "Access removed.",
+        "failed" => "That did not go through — the application was being re-authorized at the same time. Please try again.",
         _ => null,
     };
 

@@ -45,15 +45,34 @@ public class OidcConsentWithdrawalTests : OidcTestHost
         return (browser, tokens);
     }
 
-    private static async Task<string> WithdrawAsync(Browser browser, string applicationId, bool includeAntiforgery = true)
+    /// <summary>
+    /// A token minted from the page while it still has a row to render.
+    /// <para>
+    /// The listing rides an eventually-consistent index, so the wait is not optional: without it
+    /// the page renders before the grant appears, there is no form, and the test fails claiming
+    /// there is no antiforgery field — a fixture race that reads exactly like a product defect.
+    /// </para>
+    /// </summary>
+    private async Task<string> AntiforgeryFromApplicationsPageAsync(Browser browser)
     {
+        WaitForIndexing(Store);
         var page = await browser.GetAsync("/connect/applications");
-        var html = await page.Content.ReadAsStringAsync();
+        return AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync());
+    }
 
+    private async Task<string> WithdrawAsync(Browser browser, string applicationId, bool includeAntiforgery = true)
+    {
         var form = new Dictionary<string, string> { ["application_id"] = applicationId };
         if (includeAntiforgery)
-            form["__RequestVerificationToken"] = AntiforgeryTokenFrom(html);
+            form["__RequestVerificationToken"] = await AntiforgeryFromApplicationsPageAsync(browser);
+        else
+            await browser.GetAsync("/connect/applications");
 
+        return await PostWithdrawalAsync(browser, form);
+    }
+
+    private static async Task<string> PostWithdrawalAsync(Browser browser, Dictionary<string, string> form)
+    {
         var response = await browser.PostFormAsync("/connect/applications/revoke", form);
         return response.StatusCode == HttpStatusCode.Redirect
             ? response.Headers.Location!.OriginalString
@@ -264,6 +283,55 @@ public class OidcConsentWithdrawalTests : OidcTestHost
 
         response.Headers.GetValues("Content-Security-Policy")
             .Should().ContainSingle().Which.Should().Contain("frame-ancestors 'none'");
+    }
+
+    /// <summary>
+    /// W-W1 — withdrawing twice is not an error. The user asked for it gone; it is gone. Reporting
+    /// failure the second time would send someone hunting for a problem that does not exist, and
+    /// the page cannot distinguish a double submit from a genuine one.
+    /// </summary>
+    [Fact]
+    public async Task Withdrawing_twice_reports_success_both_times()
+    {
+        var app = await SeedRefreshableAppAsync("w-idempotent");
+        await SeedUserAsync("idempotent@test.local");
+
+        var (browser, _) = await EstablishGrantAsync(app, "idempotent@test.local", ["openid", "offline_access"]);
+
+        // Taken once, while a row still exists to render the form — and reused, which is exactly
+        // what a double submit is.
+        var token = await AntiforgeryFromApplicationsPageAsync(browser);
+        var form = new Dictionary<string, string>
+        {
+            ["application_id"] = app.Id!,
+            ["__RequestVerificationToken"] = token,
+        };
+
+        (await PostWithdrawalAsync(browser, form)).Should().EndWith("status=revoked");
+        (await PostWithdrawalAsync(browser, form)).Should().EndWith("status=revoked");
+    }
+
+    /// <summary>
+    /// W-W2 — a post naming no application at all is harmless. Worth pinning because the derived
+    /// id is built from user + application, and an empty application id must not produce an id
+    /// that happens to resolve to something.
+    /// </summary>
+    [Fact]
+    public async Task A_post_with_no_application_changes_nothing()
+    {
+        var app = await SeedRefreshableAppAsync("w-empty");
+        await SeedUserAsync("empty@test.local");
+
+        var (browser, tokens) = await EstablishGrantAsync(app, "empty@test.local", ["openid", "offline_access"]);
+
+        await browser.PostFormAsync("/connect/applications/revoke", new Dictionary<string, string>
+        {
+            ["application_id"] = "",
+            ["__RequestVerificationToken"] = await AntiforgeryFromApplicationsPageAsync(browser),
+        });
+
+        var refreshed = await RefreshAsync(app, tokens.GetProperty("refresh_token").GetString()!);
+        refreshed.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     /// <summary>W-A1 — a signed-out visitor is sent to log in, not shown an empty list.</summary>

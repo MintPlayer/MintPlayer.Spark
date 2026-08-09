@@ -7,6 +7,7 @@ using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
+using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -224,6 +225,24 @@ internal static class Authorize
     /// teardown on the token endpoint — silently swept nothing.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// Written through its own session under optimistic concurrency, and retried, rather than on
+    /// the caller's session.
+    /// <para>
+    /// This is a read-modify-write on a document that gates a security decision — the shape this
+    /// package has been bitten by three times already (token redemption, grant records, recovery
+    /// codes). Two consents racing here silently lost one set of scopes. Worse, once withdrawal
+    /// existed: a consent that loaded the grant before a withdrawal committed would write back
+    /// <c>Status = "valid"</c> having decided it was not reinstating, and so would skip clearing
+    /// the scope history — reopening the escalation withdrawal exists to close, through a race
+    /// instead of through the implicit-consent branch.
+    /// </para>
+    /// <para>
+    /// Its own session because the caller's is also carrying the authorization request and the
+    /// code, and those must not fail because someone else touched an unrelated grant. Both callers
+    /// save their own work afterwards.
+    /// </para>
+    /// </remarks>
     internal static async Task<string> EnsureAuthorizationAsync(
         IAsyncDocumentSession session,
         OidcApplication app,
@@ -232,6 +251,33 @@ internal static class Authorize
         CancellationToken ct)
     {
         var authorizationId = OidcAuthorizationReference.DocumentId(userId, app.Id!);
+
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, ct);
+                return authorizationId;
+            }
+            catch (ConcurrencyException) when (attempt < 3)
+            {
+                // Someone else changed the grant between our read and write. Re-read and reapply:
+                // the merge is order-independent, so a retry converges rather than clobbering.
+            }
+        }
+    }
+
+    private static async Task WriteGrantAsync(
+        IDocumentStore store,
+        string authorizationId,
+        OidcApplication app,
+        string userId,
+        List<string> scopes,
+        CancellationToken ct)
+    {
+        using var session = store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
+
         var auth = await session.LoadAsync<OidcAuthorization>(authorizationId, ct);
 
         if (auth == null)
@@ -272,7 +318,6 @@ internal static class Authorize
         }
 
         await session.SaveChangesAsync(ct);
-        return authorizationId;
     }
 
     /// <summary>

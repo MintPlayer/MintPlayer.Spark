@@ -123,7 +123,16 @@ internal static class Consent
         sb.Append("<div class=\"buttons\">");
         sb.Append("<button type=\"submit\" name=\"decision\" value=\"allow\" class=\"btn btn-allow\">Allow</button>");
         sb.Append("<button type=\"submit\" name=\"decision\" value=\"deny\" class=\"btn btn-deny\">Deny</button>");
-        sb.Append("</div></form></body></html>");
+        sb.Append("</div></form>");
+
+        // The consent screen is the only place a user is reliably told this decision exists, so it
+        // is the only place they will think to look for undoing it. A withdrawal page nothing
+        // links to is a withdrawal page nobody finds.
+        sb.Append("<p style=\"margin-top:24px;font-size:13px\">")
+          .Append("<a href=\"/connect/applications\">Manage applications with access to your account</a>")
+          .Append("</p>");
+
+        sb.Append("</body></html>");
 
         await context.Response.WriteAsync(sb.ToString());
     }
