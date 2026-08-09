@@ -102,21 +102,13 @@ public class AnonymousPersistentObjectAccessTests
         var ex = await Assert.ThrowsAsync<SparkClientException>(
             () => client.CreatePersistentObjectAsync(company));
 
-        // N23 — this asserts 400, not 401, and that is the finding rather than the intent.
-        //
-        // CreatePersistentObject validates the payload (Create.cs:62) BEFORE the authorization
-        // check, which lives inside SavePersistentObjectAsync (:68). This payload omits attributes
-        // Company requires, so it is rejected as invalid and never reaches the permission check at
-        // all. The sibling Car case returns 401 only because CarFixture builds a *valid* payload.
-        //
-        // The refusal is not in question — an anonymous caller cannot create a Company either way.
-        // What leaks is which fields an entity type requires, for a type the caller has no right
-        // to create. Recorded rather than fixed here: separating "may I create this?" from "is
-        // this valid?" means DatabaseAccess exposing the authorization check independently of the
-        // save, which is the same chokepoint restructuring as M11.
-        ex.StatusCode.Should().Be(HttpStatusCode.BadRequest,
-            "validation currently precedes authorization on the create path (N23) — when that is "
-            + "reordered, this becomes 401 and this assertion should be updated to match");
+        // N23, fixed in M11.4. This payload deliberately omits attributes Company requires, so
+        // before the reorder it came back 400 with those validation errors — telling a caller who
+        // may not create a Company exactly which fields one needs. Authorization is now asked
+        // first, so the answer is the refusal and nothing else.
+        ex.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "an invalid payload must not reveal an entity type's validation rules to a caller with "
+            + "no right to create it — the refusal comes first");
     }
 
     private const string CompanyTypeName = "Company";

@@ -57,15 +57,20 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         // permission and any developer mental-model of "POST = creation".
         obj.Id = null;
 
-        // Validate the object
-        var validationResult = validationService.Validate(obj);
-        if (!validationResult.IsValid)
-        {
-            return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
-        }
-
         try
         {
+            // Authorize before validating (N23). The other order told a caller with no right to
+            // create this type which of its attributes were invalid — a refusal either way, but one
+            // that answers a question the caller was not entitled to ask. The decision itself still
+            // belongs to DatabaseAccess; this only asks it earlier.
+            await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+
+            var validationResult = validationService.Validate(obj);
+            if (!validationResult.IsValid)
+            {
+                return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
+            }
+
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return ClientResult.Envelope(clientAccessor, result, 201);
         }

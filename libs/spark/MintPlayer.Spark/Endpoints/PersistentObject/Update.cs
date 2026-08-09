@@ -61,6 +61,9 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;
 
+            // Authorize before validating — see the note in Create.cs (N23).
+            await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+
             var validationResult = validationService.Validate(obj);
             if (!validationResult.IsValid)
             {

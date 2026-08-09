@@ -57,7 +57,8 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `50069d4` | **Authentication guide** — schemes, `Everyone`, the failure case; two doc defects corrected |
 | `af6bcb9` | Anonymous-CRUD E2E gap closed; a vacuous row-level assertion fixed; **N23** raised (**65 E2E green**) |
 | `9617ab1` | Plan and PRD brought current through M9, M14 and N23 |
-| `(head)` | **M10 done** — module certificate, certificate forwarding, JWT resource server (**1286 tests green**) |
+| `09cf22c` | **M10 done** — module certificate, certificate forwarding, JWT resource server (**1286 tests green**) |
+| `(head)` | **M11 done** — sync writes routed through the chokepoint; **N23 fixed**; F11 corrected (**1289 + 65 E2E green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 2, 3 and 6 are untouched, **M10 and M11 remain**, and release mechanics (M7) are not done. Item 5 (row-level authz) is **done** — see M5. **M8, M9 and M14 are done**; M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
@@ -127,6 +128,9 @@ Preview package, so no compatibility was required, but each of these changes beh
 | New package dependencies | `MintPlayer.Spark.Replication` gains `Microsoft.AspNetCore.Authentication.Certificate`; `MintPlayer.Spark.Authorization` gains `.JwtBearer` | M10's handlers. Both are opt-in at the API level — an app that never calls the extension pays only the restore cost |
 | `AddJwtBearerCredential` throws without an `Audience` | An app cannot register the scheme unconfigured | Skipping audience validation accepts every token the issuer minted, for any resource, because the signature is genuine (**M10.3**) |
 | `AddModuleCertificateForwarding` throws without a `KnownProxies` entry | Forwarding cannot be enabled without naming the proxy | A forwarded certificate is a plain header; accepting it from anywhere lets any caller claim any module identity (**M10.2**, **D3**) |
+| **Cross-module sync is authorized** | A module must be granted rights in `security.json` (`Module:{Name}`) or `/spark/sync/apply` refuses it | The write path skipped the chokepoint, so an authenticated module could write anything anywhere (**F4/M11.1**). **The most disruptive change in this PR for existing replication users** — see the M11.3 migration note |
+| A sync action against an unregistered entity type is refused | Previously written via a CLR-reflection fallback | It has no name for `security.json` to grant rights on, so no authorization decision exists — unevaluable is not permitted (**M11.1**) |
+| Authorization precedes validation on create/update | An unauthorized caller gets 401/403 where a malformed payload previously returned 400 with validation errors | Those errors told a caller who may not create a type which of its attributes were required (**N23/M11.4**) |
 
 ## Resolved decisions (2026-08-08)
 
@@ -796,9 +800,24 @@ This is the phase that actually delivers "no duplication per credential type" �
 
 It lands here rather than as its own fix because the correct repair is the one M11 is already making: `DatabaseAccess` exposing "may I?" independently of "do it", so the check can move ahead of validation **without** adding a second copy of the decision in front of the chokepoint. Current behaviour is pinned by `AnonymousPersistentObjectAccessTests.Anonymous_cannot_create_a_Company_despite_being_able_to_read_them`, which asserts the 400 and says in its own comment that it becomes 401 when this is reordered.
 
-- **M11.1** — route `/spark/sync/apply` through the principal + `IPermissionService`. Today `SyncActionHandler` reflectively invokes `OnSaveAsync`/`OnDeleteAsync`, skipping the `DatabaseAccess` chokepoint entirely, so an authenticated module can write anything anywhere.
-- **M11.2** — route the webhook processor through the same. Its crypto is correct (`FixedTimeEquals`); it just never establishes an identity.
-- **M11.3** — migration note. Existing replication users will need `security.json` entries for their modules or cross-module sync starts failing. **See open question Q5.**
+- **M11.1 — done.** `SyncActionHandler` now calls `IDatabaseAccess.SavePersistentObjectAsync` / `DeletePersistentObjectAsync` instead of reflectively invoking the actions pipeline. It had skipped the chokepoint entirely, so the mTLS check proved *which* module was calling and nothing then consulted what that module was allowed to touch — an authenticated module could write any document in any collection (F4).
+
+  A sync action against a collection with **no registered entity type is now refused** (`SparkSyncNotAuthorizableException`). Such a type has no name for `security.json` to grant rights on, so no authorization decision exists to make about it — and the CLR-reflection fallback wrote it anyway. Unevaluable is not permitted.
+
+- **M11.2 — the finding does not survive contact with the code, and the correction matters more than the fix would have.** F11 grouped the GitHub webhook path with the mTLS one as "the same bypass pattern". It is not. `libs/webhooks/` contains **no reference to `IDatabaseAccess`, `SavePersistentObjectAsync`, or a Raven session** — the processor verifies the HMAC and broadcasts a message. It writes nothing, so there is no write path around the chokepoint to retire.
+
+  What is true is narrower: a recipient handling that message runs with **no principal**, so anything it does through `IDatabaseAccess` is authorized as anonymous. That is governed, just not attributed — an app cannot grant "the GitHub webhook" rights that a public caller does not also have. Fixing *that* means the message bus carrying an identity from producer to recipient, which is a messaging-package change and a genuinely different piece of work from retiring a bypass. **Recorded, not attempted here.**
+
+- **M11.3 — migration note (answers Q5).** Cross-module sync now requires the owner module to grant the calling module rights. Two things follow for an existing deployment:
+
+  1. **Register the certificate scheme.** Without `spark.AddModuleCertificateAuthentication()` (M10.1) the calling module arrives anonymous and holds only `Everyone`'s rights, so sync-apply is refused.
+  2. **Grant the module in `security.json`.** The scheme emits `group = "Module:{Name}"`, so a module is granted like any other group — declare a group named `Module:HR` and give it `New`/`Edit`/`Delete` on the collections it is allowed to write.
+
+  Both are deliberate: the point of M11 is that "an authenticated module" stops meaning "a fully trusted module". An operator who wants the old behaviour can grant the module broad rights explicitly, which is a decision recorded in configuration rather than an absence of one.
+
+  **No test exercises a successful sync-apply end to end** — `SyncActionSubscriptionWorkerE2ETests` posts to a stub handler and `ReplicationEndpointAuthTests` only asserts refusals — so this change is verified by unit tests on the routing, not by a working cross-module round trip. Worth knowing before upgrading.
+
+- **M11.4 — done, N23.** `IDatabaseAccess.EnsureSaveAuthorizedAsync` lets `Create` and `Update` authorize *before* validating. `SavePersistentObjectAsync` calls the same method, so there is one implementation of the decision and the chokepoint stays authoritative — the endpoint only asks it earlier. The E2E test that pinned the old 400 now asserts 401.
 
 ---
 

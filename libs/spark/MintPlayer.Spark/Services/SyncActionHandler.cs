@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Exceptions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using System.Collections.Concurrent;
@@ -23,6 +24,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
 
     // Cache: collection name → CLR entity type
@@ -35,21 +37,18 @@ internal partial class SyncActionHandler : ISyncActionHandler
 
         // Build a PersistentObject from the sync action data
         var po = BuildPersistentObject(entityType, documentId, data, properties);
+        EnsureAuthorizable(po, collection);
 
-        // Run through the actions pipeline (which now receives PO and does entity mapping inside)
-        using var session = documentStore.OpenAsyncSession();
-        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, po);
-
-        // Extract the generated/existing ID
-        var resultIdProperty = entityType.GetCachedProperty("Id");
-        var resultId = resultIdProperty is not null && resultIdProperty.CanRead
-            ? AccessorCache.GetGetter(resultIdProperty)(savedEntity)?.ToString()
-            : null;
+        // Through the same chokepoint as every other write (F4/M11). This path used to invoke the
+        // actions pipeline directly, so an authenticated module could insert, update or delete any
+        // document in any collection — the certificate proved *which* module was calling and
+        // nothing consulted what that module was allowed to touch.
+        var saved = await databaseAccess.SavePersistentObjectAsync(po);
 
         logger.LogInformation("Sync action: saved {Collection}/{DocumentId} ({PropertyMode})",
-            collection, resultId ?? documentId,
+            collection, saved.Id ?? documentId,
             properties != null ? $"partial: {string.Join(", ", properties)}" : "full");
-        return resultId;
+        return saved.Id;
     }
 
     public async Task HandleDeleteAsync(string collection, string documentId)
@@ -57,10 +56,32 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
 
-        using var session = documentStore.OpenAsyncSession();
-        await DeleteEntityViaActionsAsync(session, entityType, documentId);
+        var entityTypeDef = FindEntityTypeDefinition(entityType)
+            ?? throw new SparkSyncNotAuthorizableException(collection);
+
+        await databaseAccess.DeletePersistentObjectAsync(entityTypeDef.Id, documentId);
 
         logger.LogInformation("Sync action: deleted {Collection}/{DocumentId}", collection, documentId);
+    }
+
+    /// <summary>
+    /// Refuses a sync action against a type with no registered <see cref="EntityTypeDefinition"/>.
+    /// <para>
+    /// Such a type has no name for <c>security.json</c> to grant rights on, so no authorization
+    /// decision can be made about it — and this path previously wrote it anyway, through the CLR
+    /// reflection fallback. Writing what cannot be authorized is the failure this milestone exists
+    /// to remove, so it fails closed: <b>unevaluable is not permitted</b>.
+    /// </para>
+    /// <para>
+    /// The fix for an app that hits this is to register the entity (add it to the app's
+    /// <c>SparkContext</c> and run <c>--spark-synchronize-model</c>), which is also what makes it
+    /// governable.
+    /// </para>
+    /// </summary>
+    private static void EnsureAuthorizable(PersistentObject po, string collection)
+    {
+        if (po.ObjectTypeId == Guid.Empty)
+            throw new SparkSyncNotAuthorizableException(collection);
     }
 
     /// <summary>

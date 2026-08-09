@@ -142,10 +142,38 @@ authenticated in the ordinary sense of the word and anonymous to the authorizati
 
 | Path | Verifies | Sets `User`? | Therefore |
 |---|---|---|---|
-| Replication mTLS (`libs/replication/.../ModuleCertificateValidator.cs`) | Client cert thumbprint against the module's pin in `SparkModules` | No | The module is authenticated but has **no groups** — `/spark/sync/apply` bypasses `IPermissionService` entirely, so an authenticated module can write anything anywhere (**F4**, open, scheduled as M11). `Spark:ModuleCertificate` (M10.1) now establishes the identity this path needs; M11 is what makes the endpoints use it and retires this in-endpoint check |
-| GitHub webhooks (`libs/webhooks/`) | HMAC over the payload | No | Correct crypto, no identity established (**F11**, scheduled as M11) |
+| Replication mTLS (`libs/replication/.../ModuleCertificateValidator.cs`) | Client cert thumbprint against the module's pin in `SparkModules` | No | Gates whether the request proceeds. Since M11 the **write** it authorizes goes through the normal chokepoint, so a module must be granted rights in `security.json` — see below |
+| GitHub webhooks (`libs/webhooks/`) | HMAC over the payload | No | Correct crypto. It writes nothing itself; it broadcasts a message |
 
-Retiring both bypasses is M11. Until then, treat "authenticated module" as "fully trusted module".
+### Cross-module writes are authorized (M11)
+
+`/spark/sync/apply` used to reach the actions pipeline directly, skipping `DatabaseAccess` — so the
+certificate proved *which* module was calling and nothing then consulted what that module was
+allowed to touch (**F4**). It now routes through the same chokepoint as every other write.
+
+Two consequences for an existing deployment:
+
+- Register `spark.AddModuleCertificateAuthentication()`, or the calling module arrives anonymous and
+  holds only `Everyone`'s rights.
+- Grant it in `security.json` under the group name `Module:{Name}` — the scheme emits
+  `group = "Module:HR"`, so a module is granted exactly like any other group.
+
+A sync action against a collection with **no registered entity type is refused**: it has no name for
+`security.json` to grant rights on, so no authorization decision exists to make about it, and the
+previous CLR-reflection fallback wrote it regardless.
+
+### The webhook path is not the same bypass — a correction
+
+F11 grouped the webhook path with the mTLS one. Checking rather than assuming: `libs/webhooks/`
+contains **no reference to `IDatabaseAccess`, `SavePersistentObjectAsync`, or a Raven session**. The
+processor verifies the HMAC and hands a message to the bus; it writes nothing, so there is no write
+path around the chokepoint.
+
+What is true is narrower and still worth knowing: a recipient handling that message runs with **no
+principal**, so anything it does through `IDatabaseAccess` is authorized as anonymous. It is
+governed, just not attributed — an app cannot grant "the GitHub webhook" rights that a public caller
+does not also have. Carrying an identity from producer to recipient is a messaging-package change,
+and is not done.
 
 ---
 
@@ -281,10 +309,12 @@ not copy the pairing into an app that matters.
   — which is a strong argument but not a test. The equivalent guarantee *is* tested for the identity
   provider's own endpoints (21 tests, §L.4 of the [IdP matrix](./idp-e2e-test-matrix.md)), which is
   a different subsystem and should not be read as covering this one.
-- **The two non-scheme paths (replication sync-apply, webhooks) are known bypasses**, not gaps in
-  testing. See F4/F11 and M11 in the [handoff plan](./coverage-handoff-plan.md).
+- **No test exercises a *successful* cross-module sync end to end.** `SyncActionSubscriptionWorkerE2ETests`
+  posts to a stub handler and `ReplicationEndpointAuthTests` asserts only refusals, so M11's routing
+  change is verified by unit tests on the routing rather than by a working round trip. This is the
+  least-covered change in the PR and the one most likely to affect an existing deployment.
 
-### N23 — validation precedes authorization on the create path
+### ~~N23 — validation precedes authorization on the create path~~ — fixed in M11.4
 
 `CreatePersistentObject` validates the posted object (`Create.cs:62`) before the authorization check,
 which lives inside `SavePersistentObjectAsync` (`:68`). A caller with no right to create an entity
@@ -297,9 +327,10 @@ type the caller cannot create — a mild oracle, and inconsistent with the stand
 `AnonymousPersistentObjectAccessTests.Anonymous_cannot_create_a_Company_despite_being_able_to_read_them`
 so the reorder is a visible, deliberate change when it happens.
 
-Not fixed here: separating "may I create this?" from "is this valid?" means `DatabaseAccess` exposing
-the authorization check independently of the save, and adding a second check ahead of the chokepoint
-is the duplication M5 and M11 exist to remove. It belongs with M11.
+**Fixed in M11.4.** `IDatabaseAccess.EnsureSaveAuthorizedAsync` lets `Create` and `Update` authorize
+before validating. It is not a second copy of the rule: `SavePersistentObjectAsync` calls the same
+method, so there is one implementation of the decision and the chokepoint stays authoritative — the
+endpoint only asks it earlier. The E2E test that pinned the old 400 now asserts 401.
 
 ---
 

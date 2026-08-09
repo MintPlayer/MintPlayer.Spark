@@ -11,6 +11,13 @@ public interface IDatabaseAccess
     // PersistentObject-specific methods that handle entity mapping
     Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id);
     Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId);
+    /// <summary>
+    /// Authorizes a save without performing it, so a caller can be refused before the request is
+    /// validated. <see cref="SavePersistentObjectAsync"/> calls this itself — asking early does not
+    /// move the decision out of the chokepoint.
+    /// </summary>
+    Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject);
+
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject);
     Task DeletePersistentObjectAsync(Guid objectTypeId, string id);
 }

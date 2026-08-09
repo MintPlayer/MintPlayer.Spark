@@ -158,13 +158,37 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// and evaluate the filter against those — the Actions class is typed on the base
     /// entity, not the projection.
     /// </summary>
+    /// <summary>
+    /// Answers "may this caller save this object?" without saving it.
+    /// <para>
+    /// Exists so an endpoint can ask <b>before</b> spending work on the request — specifically
+    /// before validating it. Validation used to run first (N23), so a caller with no right to
+    /// create an entity type received a 400 listing that type's validation errors and only reached
+    /// 401/403 when the payload happened to be well-formed. The refusal was never in doubt; what
+    /// leaked was which attributes a type requires, to someone who cannot create one.
+    /// </para>
+    /// <para>
+    /// This is not a second copy of the rule. <see cref="SavePersistentObjectAsync"/> calls this
+    /// same method, so there is one implementation of the decision and the chokepoint remains
+    /// authoritative — the endpoint merely asks it earlier.
+    /// </para>
+    /// </summary>
+    public async Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject)
+    {
+        var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
+            ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
+
+        // Id decides the verb: absent means this is a creation, present means an edit.
+        var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
+        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
+    }
+
     public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
     {
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
-        await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
+        await EnsureSaveAuthorizedAsync(persistentObject);
 
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
