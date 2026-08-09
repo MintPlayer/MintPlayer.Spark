@@ -40,13 +40,32 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     /// <summary>
     /// A redirect URI is compared verbatim at authorize time, so anything that would not match
     /// exactly is a client that can never complete a flow.
+    /// <para>
+    /// <c>Uri.TryCreate(..., UriKind.Absolute, ...)</c> alone is <b>not</b> an absoluteness test,
+    /// and the difference is platform-dependent: on Unix a bare path like <c>/callback</c> parses
+    /// successfully as <c>file:///callback</c>, while on Windows it fails. So this validation
+    /// passed on a developer's machine and <b>failed open on Linux</b> — which is where CI runs
+    /// and where the app is deployed. Requiring the string to declare the scheme the parser
+    /// reports closes it on every platform, and keeps custom schemes
+    /// (<c>com.example.app:/cb</c>) working for native clients.
+    /// </para>
     /// </summary>
     private static void ValidateRedirectUris(List<string> uris, string field)
     {
         foreach (var uri in uris)
         {
-            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+                || !uri.StartsWith(parsed.Scheme + ":", StringComparison.OrdinalIgnoreCase))
+            {
                 throw new SparkValidationException($"'{uri}' is not an absolute URI.", field);
+            }
+
+            // Only reachable when the operator typed the scheme, since the check above now rejects
+            // the path that silently acquired it. A browser will not navigate to a local file from
+            // an HTTPS page anyway, so a client registered this way could never complete a flow.
+            if (parsed.IsFile)
+                throw new SparkValidationException(
+                    $"'{uri}' is a file URI. A redirect target has to be somewhere a browser can be sent.", field);
 
             if (!string.IsNullOrEmpty(parsed.Fragment))
                 throw new SparkValidationException(

@@ -55,6 +55,44 @@ public class OidcApplicationActionsTests
         (await SaveAsync(app))!.Message.Should().Contain("absolute");
     }
 
+    /// <summary>
+    /// The same rejection, pinned platform-independently.
+    /// <para>
+    /// <c>A_relative_redirect_uri_is_rejected</c> above passed on Windows and failed on Linux,
+    /// because <c>Uri.TryCreate(..., UriKind.Absolute, ...)</c> accepts a bare path on Unix and
+    /// silently gives it the <c>file</c> scheme. Windows developers therefore saw a green test for
+    /// validation that was failing open on the deployment platform. These two cases fail the same
+    /// way everywhere.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("/callback")]                 // relative — parses as file:/// on Unix only
+    [InlineData("callback")]
+    [InlineData("//evil.example.com/cb")]     // protocol-relative
+    [InlineData("file:///etc/passwd")]        // scheme declared, still not a redirect target
+    public async Task A_redirect_uri_without_a_usable_scheme_is_rejected(string value)
+    {
+        var app = Valid();
+        app.RedirectUris = [value];
+
+        var error = await SaveAsync(app);
+
+        error.Should().NotBeNull(
+            $"'{value}' can never be a redirect target, on any platform — and Uri.TryCreate alone "
+            + "does not say so, since on Unix a bare path parses as a file URI");
+    }
+
+    [Fact]
+    public async Task A_custom_scheme_is_still_accepted_for_native_clients()
+    {
+        var app = Valid();
+        app.RedirectUris = ["com.example.app:/oauth2redirect"];
+
+        (await SaveAsync(app)).Should().BeNull(
+            "native and mobile clients legitimately register a custom scheme; tightening the "
+            + "absoluteness check must not shut them out");
+    }
+
     [Fact]
     public async Task A_redirect_uri_with_a_fragment_is_rejected()
     {
