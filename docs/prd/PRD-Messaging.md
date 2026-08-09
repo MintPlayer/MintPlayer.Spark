@@ -423,16 +423,38 @@ public class SparkMessagingOptions
 {
     public int MaxAttempts { get; set; } = 5;
     public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
-    public TimeSpan[] BackoffDelays { get; set; } = new[]
-    {
+    public int RetentionDays { get; set; } = 7;
+
+    // Empty on purpose — see the note below. The real default lives in
+    // DefaultBackoffDelays and is applied by ResolvedBackoffDelays, which is
+    // what consumers read.
+    public TimeSpan[] BackoffDelays { get; set; } = [];
+
+    public static readonly TimeSpan[] DefaultBackoffDelays =
+    [
         TimeSpan.FromSeconds(5),
         TimeSpan.FromSeconds(30),
         TimeSpan.FromMinutes(2),
         TimeSpan.FromMinutes(10),
-        TimeSpan.FromHours(1)
-    };
+        TimeSpan.FromHours(1),
+    ];
+
+    public TimeSpan[] ResolvedBackoffDelays =>
+        BackoffDelays.Length > 0 ? BackoffDelays : DefaultBackoffDelays;
 }
 ```
+
+> **Why `BackoffDelays` is empty rather than initialised.** These options bind from the
+> `Spark:Messaging` configuration section, and .NET's binder **appends** to a collection that already
+> has elements instead of replacing it. An initialised default would survive binding and stay *first*,
+> so an app configuring a faster schedule would still wait the default five seconds on its first
+> retry — silently, with a config file saying otherwise. This exact bug shipped once in the
+> replication options (**F14**), where a configured module-registry URL landed behind a hardcoded
+> `localhost:8080` that `DocumentStore` then connected to. The empty-default +
+> `Default*`/`Resolved*` pattern above is the fix; apply it to any collection option.
+
+> An earlier revision of this document showed `BackoffDelays` with a non-empty initializer — i.e. the
+> shape that causes the bug. Corrected here so nobody copies it.
 
 #### Extension Methods
 

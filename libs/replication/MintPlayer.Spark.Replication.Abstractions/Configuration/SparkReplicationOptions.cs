@@ -1,8 +1,34 @@
 namespace MintPlayer.Spark.Replication.Abstractions.Configuration;
 
 /// <summary>
-/// Configuration options for Spark module replication.
+/// Configuration options for Spark module replication, bound from the <c>Spark:Replication</c>
+/// configuration section and then overridable in code.
 /// </summary>
+/// <remarks>
+/// <b>Never give a collection property a non-empty initializer here.</b> The rule is about
+/// <i>collections</i>, not initializers in general. Scalars are replaced by a configured value, so
+/// initialize them freely. Collections are <b>appended to</b>: the configured values land <i>after</i>
+/// whatever the initializer put there, so the hardcoded default ends up <b>first</b> — and first is
+/// the position that decides behaviour (<c>DocumentStore</c> connects to <c>Urls[0]</c>).
+/// <para>
+/// That ordering is what made F14 silent rather than loud: the configured URL <i>was</i> bound, just
+/// second, and nothing ever read it.
+/// </para>
+/// <para>
+/// This is where that shipped, as <b>F14</b>. <see cref="SparkModulesUrls"/> initialised to
+/// <c>["http://localhost:8080"]</c>; a configured URL landed <i>after</i> it; and
+/// <c>DocumentStore</c> connects to the first URL. Every deployment that configured where its module
+/// registry lived was still talking to localhost, with no error and a config file that said
+/// otherwise. Nothing caught it for days — it surfaced only when two processes could not see each
+/// other's data.
+/// </para>
+/// <para>
+/// The pattern to follow instead is <see cref="SparkModulesUrls"/> as it stands now: default the
+/// property to empty, put the real default in a separate <c>Default*</c> constant, and expose a
+/// <c>Resolved*</c> member that picks one. Consumers read the resolved member; nothing reads the raw
+/// property.
+/// </para>
+/// </remarks>
 public class SparkReplicationOptions
 {
     /// <summary>Name of this module (e.g. "Fleet", "HR").</summary>
