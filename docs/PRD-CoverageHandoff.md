@@ -360,6 +360,10 @@ The stream fix is cheap: filter `batchList` at `StreamingQueryExecutor.cs:87` be
 
 ## 6. Documentation fixes
 
+**Shipped beyond the fix list: [guide-authentication-schemes.md](./guide-authentication-schemes.md).** A reference for every authentication scheme in the repository, what an unauthenticated caller gets, what happens when authentication *fails*, the authorization rule (D15/D15a in the plan), and a test-coverage table that names its own gaps. Linked from the root README's guide table, the Authorization package README and the mTLS guide.
+
+Writing it was the cheapest defect-finding exercise in this PR — see §7's seventh and eighth conclusions. It also corrected two live documentation defects: the Authorization README described the fail-open behaviour R2-H1 had closed ("without the authorization package, all Spark endpoints are open to any caller" — the default is deny-all), and a missing `security.json` turns out to be an empty configuration rather than a locked door.
+
 All verified against source. Two extra issues found beyond the handoff's list.
 
 | Doc | Wrong | Correct |

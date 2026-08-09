@@ -1,6 +1,8 @@
 # Implementation plan — Spark hardening for the Coverage integration (M0)
 
-See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md), [findings-replication-mtls.md](./findings-replication-mtls.md) and [findings-identity-provider-audit.md](./findings-identity-provider-audit.md). Base: `master` @ `febea26`. Branch: `feat/spark-hardening-m0`. **Everything ships in a single PR** — the six handoff items *and* the credential/authentication unification (M8–M11).
+See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md), [findings-replication-mtls.md](./findings-replication-mtls.md) and [findings-identity-provider-audit.md](./findings-identity-provider-audit.md).
+
+> **New reference doc shipped by this PR:** [guide-authentication-schemes.md](./guide-authentication-schemes.md) — every authentication scheme in the repository, what an unauthenticated caller gets, what happens when authentication *fails*, the **authorization rule** (D15/D15a) and an honest test-coverage table with its gaps. It is the fastest way back into this area, and it is linked from the root README, the Authorization package README and the mTLS guide. Base: `master` @ `febea26`. Branch: `feat/spark-hardening-m0`. **Everything ships in a single PR** — the six handoff items *and* the credential/authentication unification (M8–M11).
 
 TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE.md, **test suites run once at the end**, not per milestone — intermediate milestones are verified by reading code and type-checking. Committing per milestone is fine.
 
@@ -135,6 +137,10 @@ Preview package, so no compatibility was required, but each of these changes beh
 | A sync action against an unregistered entity type is refused | Previously written via a CLR-reflection fallback | It has no name for `security.json` to grant rights on, so no authorization decision exists — unevaluable is not permitted (**M11.1**) |
 | **ETL deployment requires `Replicate/{Collection}`** | An owner must grant `Module:{Name}` the collections it will share, or `/spark/etl/deploy` refuses | Nothing checked which collections a module could ask for, so any authenticated module could have `SparkUsers` pushed into a database it controls, continuously (**F12**) |
 | Authorization precedes validation on create/update | An unauthorized caller gets 401/403 where a malformed payload previously returned 400 with validation errors | Those errors told a caller who may not create a type which of its attributes were required (**N23/M11.4**) |
+| **`IDatabaseAccess`'s untyped document family is renamed `…UncheckedAsync`** | `GetDocumentAsync`, `GetDocumentsAsync`, `GetDocumentsByObjectTypeIdAsync`, `SaveDocumentAsync`, `DeleteDocumentAsync` — every caller must rename | They perform **no** authorization while sitting beside `SavePersistentObjectAsync`, which invited the inference that anything on that interface is authorized. Only custom actions call them (gated at `Action/{Name}`), so the asymmetry is sound today — the name is what keeps it sound (**D15**) |
+| `IDatabaseAccess` gains `EnsureSaveAuthorizedAsync` | Any hand-written `IDatabaseAccess` implementation must add it | Lets an endpoint authorize before validating without moving the decision out of the chokepoint (**N23/M11.4**) |
+| `SparkTestDriver` applies Spark's id conventions | Downstream test projects deriving from it get `{Collection}/{Guid}` ids where they previously got RavenDB's sequential ids | The suite was testing a store whose conventions had been substituted; nothing exercised production's id generation (**M14.2**) |
+| Both demos gain `Module:{Name}` grants | `Demo/Fleet` grants `Module:HR`, `Demo/HR` grants `Module:Fleet` | Without them M11 silently breaks cross-module sync — which is what it would have done as shipped (**F13**) |
 
 ## Resolved decisions (2026-08-08)
 
