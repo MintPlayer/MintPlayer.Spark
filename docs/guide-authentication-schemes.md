@@ -71,10 +71,38 @@ that swap would fail the suite rather than pass quietly.
 | `Identity.TwoFactorRememberMe` | same | "Don't ask again on this device" cookie | — | No |
 | External providers (GitHub, Google, Microsoft, Apple) | `configureProviders` on `spark.AddAuthentication<TUser>()`; GitHub via `GitHubAuthenticationExtensions.cs` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No — challenge-only; never authenticates an incoming Spark request |
 
-**Exactly two schemes reach the composite today**, both wired by the single
-`spark.AddAuthentication<TUser>()` call. There is no certificate scheme and no JWT-bearer
-resource-server scheme anywhere in the repository yet — that is M10's scope. Everything else in this
-document authenticates through a mechanism of its own, outside the scheme system.
+Two further schemes exist as of M10, both **opt-in** — an app registers them only if it accepts that
+kind of caller:
+
+| Scheme | Enabled by | Credential | Ambient | In composite |
+|---|---|---|---|---|
+| `Spark:ModuleCertificate` | `spark.AddModuleCertificateAuthentication()` (Replication) | Client certificate, identity from `CN`, pinned per module | No | Yes |
+| `Spark:JwtBearer` | `spark.AddJwtBearerCredential(...)` (Authorization) | OAuth2/OIDC access token from a configured authority | No | Yes |
+
+### Why those two are non-ambient — and why that is not a general rule
+
+Neither can be replayed by a cross-site page: a browser will not construct an `Authorization` header
+on an attacker's behalf, and cannot be induced to complete a TLS handshake with a module's private
+key. So both are exempt from the antiforgery gate, which is what makes external POSTs work at all.
+
+But **"a certificate is never ambient" is false in general.** A browser configured with a client
+certificate for an origin attaches it automatically, exactly like a cookie, and a cross-site POST
+would carry it. `Spark:ModuleCertificate` is safe to treat as non-ambient because it authenticates
+*modules* against a registration pin — a browser holds no such certificate. A browser-facing
+client-certificate deployment would need to revisit that.
+
+### The two guards that refuse at startup
+
+Both unsafe configurations are silent at runtime, so both are refused when the app builds:
+
+- **`AddJwtBearerCredential` requires an `Audience`.** Without it, every token the issuer ever minted
+  validates — including one a client obtained for an entirely different resource. The signature is
+  genuine; the audience is the only field that says the bearer was meant to be talking to *you*.
+- **`AddModuleCertificateForwarding` requires a `KnownProxies` entry.** A forwarded certificate is an
+  ordinary request header, so accepting it from anywhere lets any caller that reaches the app
+  directly claim to be any module. That is worse than no mTLS, because it looks like mTLS. The
+  allowlist is enforced by stripping the header from untrusted peers *before* the forwarding
+  middleware reads it, and an unidentifiable peer is not trusted.
 
 **The two-factor schemes are deliberately absent from the composite.** A `TwoFactorUserId` cookie
 represents someone who proved a password and nothing else. It must never satisfy a Spark
@@ -114,7 +142,7 @@ authenticated in the ordinary sense of the word and anonymous to the authorizati
 
 | Path | Verifies | Sets `User`? | Therefore |
 |---|---|---|---|
-| Replication mTLS (`libs/replication/.../ModuleCertificateValidator.cs`) | Client cert thumbprint against the module's pin in `SparkModules` | No | The module is authenticated but has **no groups** — `/spark/sync/apply` bypasses `IPermissionService` entirely, so an authenticated module can write anything anywhere (**F4**, open, scheduled as M11) |
+| Replication mTLS (`libs/replication/.../ModuleCertificateValidator.cs`) | Client cert thumbprint against the module's pin in `SparkModules` | No | The module is authenticated but has **no groups** — `/spark/sync/apply` bypasses `IPermissionService` entirely, so an authenticated module can write anything anywhere (**F4**, open, scheduled as M11). `Spark:ModuleCertificate` (M10.1) now establishes the identity this path needs; M11 is what makes the endpoints use it and retires this in-endpoint check |
 | GitHub webhooks (`libs/webhooks/`) | HMAC over the payload | No | Correct crypto, no identity established (**F11**, scheduled as M11) |
 
 Retiring both bypasses is M11. Until then, treat "authenticated module" as "fully trusted module".
@@ -229,15 +257,18 @@ not copy the pairing into an app that matters.
 | `DenyAllAccessControl` denies an unconfigured app | **unit only** | `PermissionServiceDefaultsTests` |
 | Replication endpoints refuse an unauthenticated caller | **E2E** | `ReplicationEndpointAuthTests` (3 tests) |
 | Development-mode mTLS still verifies module registration | **unit** | `ModuleCertificateValidatorTests` |
+| A JWT credential with no audience is refused at startup | **unit** | `CredentialHandlerRegistrationTests` (7 tests) |
+| A forwarded certificate header is stripped from untrusted peers | **unit** | `CertificateForwardingTrustTests` (3 tests) |
 
 ### Gaps, stated rather than implied
 
 - **Only Fleet has an E2E host.** DemoApp, HR and WebhooksDemo are not exercised end to end at all,
   so "login works" is verified for one demo of four.
-- **No E2E test authenticates with a bearer token.** Nor with a certificate — no certificate or
-  JWT-bearer scheme exists anywhere yet (M10). `CredentialSchemeTests` proves the composite plumbing
-  works for *whatever* handler is eventually registered, using a stub; it is not evidence that a
-  real bearer credential authenticates.
+- **No E2E test authenticates with a bearer token or a certificate.** M10 built both schemes and
+  their guards are tested, but no demo registers either, so nothing exercises a real credential
+  end to end. `CredentialSchemeTests` proves the composite plumbing works for *whatever* handler is
+  registered, using a stub. Closing this needs a demo that opts in — worth doing when M11 makes the
+  replication endpoints rely on the certificate identity rather than their own check.
 - **A rejected credential's *authorization* outcome is untested.** `AuthenticationOutcomeTests`
   proves the principal is anonymous, and `CredentialSchemeTests` proves the antiforgery gate stays
   armed — but nothing asserts that a garbage bearer token yields exactly `Everyone` rights on a real

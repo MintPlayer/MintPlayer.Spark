@@ -55,7 +55,9 @@ Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree cl
 | `6b2b0b5` | **M14.2** — the suite stops substituting the store it tests (**1266 tests green**) |
 | `ccfcc9a` | **M9 done** — composite scheme + antiforgery exemption; XSRF package swap declined (**1273 + 61 E2E green**) |
 | `50069d4` | **Authentication guide** — schemes, `Everyone`, the failure case; two doc defects corrected |
-| `(head)` | Anonymous-CRUD E2E gap closed; a vacuous row-level assertion fixed; **N23** raised (**65 E2E green**) |
+| `af6bcb9` | Anonymous-CRUD E2E gap closed; a vacuous row-level assertion fixed; **N23** raised (**65 E2E green**) |
+| `9617ab1` | Plan and PRD brought current through M9, M14 and N23 |
+| `(head)` | **M10 done** — module certificate, certificate forwarding, JWT resource server (**1286 tests green**) |
 
 **Draft PR: [#231](https://github.com/MintPlayer/MintPlayer.Spark/pull/231)** — opened 2026-08-09. Still a draft: handoff items 2, 3 and 6 are untouched, **M10 and M11 remain**, and release mechanics (M7) are not done. Item 5 (row-level authz) is **done** — see M5. **M8, M9 and M14 are done**; M9 was the prerequisite that made M10 and M11 worth writing at all, since a credential scheme registered before a composite default scheme existed was dead code on every Spark endpoint.
 
@@ -122,6 +124,9 @@ Preview package, so no compatibility was required, but each of these changes beh
 | A non-ambient credential is exempt from antiforgery | Bearer/certificate callers can POST without an `XSRF-TOKEN` cookie | CSRF is an attack on ambient authority; demanding a token of a caller that cannot be made to send one protected nothing and made external POSTs impossible (**F8, D2**) |
 | A refused credential is logged and reported as a failure | Previously indistinguishable from presenting none | Both outcomes were anonymous-with-`Everyone`, silently — refusal should be legible (**F7**) |
 | `UseAuthentication()` runs whenever any credential scheme is registered | An app with credential schemes but no `IdentityUserType` now authenticates | It was gated on Identity alone, so a machine-only app never authenticated anyone (**M9**) |
+| New package dependencies | `MintPlayer.Spark.Replication` gains `Microsoft.AspNetCore.Authentication.Certificate`; `MintPlayer.Spark.Authorization` gains `.JwtBearer` | M10's handlers. Both are opt-in at the API level — an app that never calls the extension pays only the restore cost |
+| `AddJwtBearerCredential` throws without an `Audience` | An app cannot register the scheme unconfigured | Skipping audience validation accepts every token the issuer minted, for any resource, because the signature is genuine (**M10.3**) |
+| `AddModuleCertificateForwarding` throws without a `KnownProxies` entry | Forwarding cannot be enabled without naming the proxy | A forwarded certificate is a plain header; accepting it from anywhere lets any caller claim any module identity (**M10.2**, **D3**) |
 
 ## Resolved decisions (2026-08-08)
 
@@ -477,9 +482,13 @@ The exemption was verified to be load-bearing rather than assumed — disabling 
 
 Each handler's entire authorization integration is emitting `new Claim("group", "…")`.
 
-- **M10.1 — Client certificate.** `AddCertificate()` + `OnCertificateValidated`, lifting the pinning and mode ladder from `ModuleCertificateValidator.cs:45-110`. Derive identity from the cert's `CN` (the guide's own generation recipe sets `CN=$MODULE`) rather than the request body — same guarantee, no schema change, removes body-trust. Requires `AllowedCertificateTypes = CertificateTypes.All` and `ValidateCertificateUse = false` or chain validation rejects the self-signed CA the guide tells operators to create. Keep the lookup live (or short-TTL): a cert authenticates the *connection*, so under keep-alive a cached ticket would outlive a revoked pin.
-- **M10.2 — Certificate forwarding.** `AddCertificateForwarding` for proxy-terminated TLS, **with a trusted-proxy allowlist**. The demos currently `KnownProxies.Clear()`; inheriting that posture here would let anyone forge a cert header. Without this the cert scheme cannot work in this repo's own Traefik deployment. **See open question Q3 (which header formats).**
-- **M10.3 — ClientId/Secret consumer side.** Per D1 this is a **JWT-bearer resource-server scheme** validating against the IdP's JWKS, mapping token claims → group claims. The issuing side is M12. This half does not exist on the IdP branch and is a genuine build either way.
+- **M10.1 — Client certificate.** ✅ `spark.AddModuleCertificateAuthentication()` (`libs/replication/.../Authentication/ModuleCertificateAuthentication.cs`). Identity comes from the certificate's `CN`, not the request body — the pin check was always sound, but the module it measured against was whatever the caller wrote in `RequestingModule`, so the body chose its own yardstick. `AllowedCertificateTypes = All` + `ValidateCertificateUse = false` + `RevocationMode = NoCheck`, because the documented recipe issues from an operator-made CA that no machine trusts by default; trust is not delegated to the chain but to the thumbprint pin, which is strictly narrower. Emits `group = "Module:{Name}"`, so a module is governable by `security.json` without the authorization model learning what a module is.
+- **M10.2 — Certificate forwarding.** ✅ `spark.AddModuleCertificateForwarding(...)`, header name configurable per D3 (default `X-ARR-ClientCert`; Traefik's `X-Forwarded-Tls-Client-Cert` and nginx's `ssl-client-cert` documented). **Throws at startup if `KnownProxies` is empty** — the unsafe configuration is invisible at runtime, so the refusal has to be where it cannot be missed. The allowlist is enforced by stripping the header from any peer that is not a configured proxy, *before* the forwarding middleware reads it; ordering is the control, not a detail. An unidentifiable peer is not trusted.
+- **M10.3 — ClientId/Secret consumer side.** ✅ `spark.AddJwtBearerCredential(...)` in the Authorization package. Validates against the authority's JWKS (discovered and refreshed, so a provider key rotation needs no deployment). **Audience is required and throws when absent** — without it every token the issuer ever minted verifies, including ones a client obtained for a different resource, because the signature is genuine. `MapInboundClaims = false`, or the default renames `group` to a WS-Federation URI and `ClaimsGroupMembershipProvider` silently resolves zero groups — indistinguishable from an unauthenticated caller.
+
+**All three join the composite as non-ambient**, so they are exempt from the antiforgery gate (D2) — which is what makes external POSTs possible at all. Worth recording that "a certificate is never ambient" is **not** true in general: a browser configured with a client certificate for an origin attaches it automatically, exactly like a cookie. It is safe here because this scheme authenticates *modules* against a registration pin, and a browser holds no such certificate.
+
+**Not done in M10:** the existing in-endpoint `ModuleCertificateValidator` check stays. M10 establishes the identity; M11 is what makes the endpoints rely on it and removes the parallel path. Doing both at once would have replaced a working gate with an untested one in a single step.
 
 ## M12 — Port and audit `MintPlayer.Spark.IdentityProvider` (per D1)
 
