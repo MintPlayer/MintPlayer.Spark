@@ -264,3 +264,14 @@ See the Fleet demo app for a working example:
 - `MintPlayer.Spark/Services/CustomActionResolver.cs` -- action discovery
 - `MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs` -- list endpoint
 - `MintPlayer.Spark/Endpoints/Actions/ExecuteCustomAction.cs` -- execute endpoint
+
+## Row-level security: server-loaded `Parent` / `SelectedItems` (#236)
+
+`CustomActionArgs.Parent` and `CustomActionArgs.SelectedItems` are **server-loaded and row-checked**. The framework re-resolves the ids the client named through the same row-gated read path as every other load before invoking your action:
+
+- an id the caller may not see (or that does not exist) fails the whole request with **404** -- your action is never invoked, and denial is indistinguishable from not-found;
+- the entities your action receives are the **current server state**, not whatever the client typed;
+- the raw client payload remains available as `SubmittedParent` / `SubmittedSelectedItems` for actions that need the submitted (possibly edited, possibly unsaved) values -- treat those as untrusted input;
+- a parent submitted **without an id** (unsaved form state) is not resolved: `Parent` is `null` and the submitted values are in `SubmittedParent`.
+
+**Migration note (breaking):** actions that relied on client-supplied state arriving in `Parent`/`SelectedItems` (for example, reading edited-but-unsaved attribute values) must switch those reads to `SubmittedParent`/`SubmittedSelectedItems`. Actions that only used `Parent`/`SelectedItems` to obtain an id and re-load the entity can now skip the reload -- the entity they receive already passed the row gate.

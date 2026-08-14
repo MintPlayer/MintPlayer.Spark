@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
+// The sibling namespace MintPlayer.Spark.Endpoints.PersistentObject shadows the type name here.
+using Po = MintPlayer.Spark.Abstractions.PersistentObject;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
@@ -25,6 +28,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -65,14 +69,47 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
         }
 
-        var args = new CustomActionArgs
-        {
-            Parent = request?.Parent,
-            SelectedItems = request?.SelectedItems ?? [],
-        };
-
         try
         {
+            // Row-gated server-side resolution (#236 G3). The wire's Parent/SelectedItems are
+            // whatever the caller typed — a caller holding the type-level action right could name
+            // any id of any type and the action received it as fact. The action now gets entities
+            // re-loaded through the same row-gated path as every read; a denied or missing id is
+            // a 404, indistinguishable from not-found (M-3). The submitted POs stay available as
+            // exactly that — submitted values — for actions that edit.
+            Po? parent = null;
+            if (request?.Parent is { } submittedParent && !string.IsNullOrEmpty(submittedParent.Id))
+            {
+                parent = await databaseAccess.GetPersistentObjectAsync(submittedParent.ObjectTypeId, submittedParent.Id);
+                if (parent is null)
+                {
+                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                }
+            }
+
+            var selectedItems = new List<Po>();
+            foreach (var submitted in request?.SelectedItems ?? [])
+            {
+                // Selected items come from this type's list screen; an id-less one names no row
+                // and cannot be verified.
+                var loaded = string.IsNullOrEmpty(submitted.Id)
+                    ? null
+                    : await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id);
+                if (loaded is null)
+                {
+                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                }
+                selectedItems.Add(loaded);
+            }
+
+            var args = new CustomActionArgs
+            {
+                Parent = parent,
+                SelectedItems = [.. selectedItems],
+                SubmittedParent = request?.Parent,
+                SubmittedSelectedItems = request?.SelectedItems ?? [],
+            };
+
             await action.ExecuteAsync(args, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
         }
