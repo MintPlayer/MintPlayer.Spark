@@ -122,7 +122,8 @@ projected into plain field state the subscription query *can* match:
 
 - Fixing the same `@refresh`-is-inert gap for `SyncActionSubscriptionWorker` /
   `RetryNumerator` (replication). Same disease, different limb — deserves its own issue so
-  it isn't silently absorbed here. (Filed as a follow-up; see PR.)
+  it isn't silently absorbed here (follow-up issue to file when this PR opens — note the
+  broken clause is `now()`, so the replication fix likely wants the same sweeper pattern).
 - NACK-based redelivery (throwing from the batch handler): rejected — it blocks the whole
   queue behind one failing message and fights the per-handler isolation design.
 
