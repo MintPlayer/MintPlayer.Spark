@@ -1,6 +1,6 @@
 # Implementation plan — Issue #236 (complete built-in row-level security)
 
-See [issue_236_PRD.md](./issue_236_PRD.md) for the problem statement, evidence, and tracked decisions (D1–D5). **One PR per milestone, in dependency order.** Every milestone keeps row security in core, auth-package-agnostic (the packaging invariant), and keeps consumer code near-zero.
+See [issue_236_PRD.md](./issue_236_PRD.md) for the problem statement, evidence, and decisions (D1–D5, **all resolved 2026-08-14** — see the PRD table). **One branch (`feat/issue-236-row-level-security`), one commit per milestone, one PR at the end** covering M0–M5 (M6 stays a separate later perf PR). Tests are written per milestone but full suites run once after all milestones (per working convention); intermediate milestones are verified by build + code reading. Every milestone keeps row security in core, auth-package-agnostic (the packaging invariant), and keeps consumer code near-zero.
 
 ```
 M0 (bug) ──► M1 (pushdown) ──► M2 (WITH CHECK)
@@ -13,8 +13,8 @@ M4 (redaction) — independent
 
 **File:** `libs/spark/MintPlayer.Spark/Services/RowSecurity.cs` (per-row `LoadAsync` at `:125`).
 
-1. **Failing test first** (`tests/MintPlayer.Spark.Tests`): a row-scoped entity + projection index with **>30 seeded rows**; assert the filtered query succeeds (today it throws `MaxNumberOfRequestsPerSession` past ~29 rows) and returns exactly the allowed rows. Reuse the Fleet-shaped configuration (`Car`/`Cars_Overview`/`VCar`) or a test-local equivalent.
-2. Collect the ids for the projection page, then one `session.LoadAsync<object>(string[])` per page; iterate results against the row rule.
+1. **Regression test** (`tests/MintPlayer.Spark.Tests`): a row-scoped entity + projection index with **>30 seeded rows**; assert the filtered query succeeds (today it throws `MaxNumberOfRequestsPerSession` past ~29 rows) and returns exactly the allowed rows. Reuse the Fleet-shaped configuration (`Car`/`Cars_Overview`/`VCar`) or a test-local equivalent.
+2. Collect the projection rows' `Id` values (existing `idGetter` — the projection `Id` IS the base document id), then one untyped `session.LoadAsync<object>(ids)` per `FilterAsync` call (returns `Dictionary<string, object>`; Raven materializes CLR types from document metadata); per-row loop becomes a dictionary lookup, iterating original order.
 3. Preserve the fail-closed branches byte-for-byte in behavior: unreadable/absent `Id` property → empty result (`:100-107`); empty id → row dropped (`:120-121`); base doc missing from the batch result → row dropped (`:126-127`).
 4. Regression test for the fail-closed paths (a projection row whose base doc was deleted → dropped, not thrown).
 
@@ -24,7 +24,7 @@ M4 (redaction) — independent
 
 **Files:** `Actions/DefaultPersistentObjectActions.cs`, `Services/RowSecurity.cs`, `Services/QueryExecutor.cs`, `Services/StreamingQueryExecutor.cs`, `Services/DatabaseAccess.cs` (list path), Fleet demo.
 
-1. Resolve **D1** (action-string vocabulary) and **D2** (bless anonymous-read pattern) — record answers in the PRD decision table before coding.
+1. D1 resolved: keep the `action` parameter. D2 resolved: anonymous-read pattern blessed, gets a loud section in `docs/guide-row-security.md`.
 2. New optional virtual: `Expression<Func<T, bool>>? GetRowFilter(string action)` on `DefaultPersistentObjectActions<T>` (default `null`). Override detection via the `HasRowRule` reflection pattern (`RowSecurity.cs:71-82`), cached.
 3. Composition into `IRavenQueryable` via `Queryable.Where` + `MakeGenericMethod`, following the `ApplySorting` template (`QueryExecutor.cs:552-578`). Wire **all** row-filter sites: database query path (`QueryExecutor.cs:176-177`), custom-query path (`:291-296`), streaming (`StreamingQueryExecutor.cs:85-107`), PO list (`DatabaseAccess.cs:145`).
 4. **Derivation rule:** only `GetRowFilter` → single-row checks (get/edit/delete) use the compiled expression (cache the compile); only `IsAllowedAsync` → today's behavior; both → AND. Startup diagnostic logs each row-scoped type and its mode.
@@ -40,7 +40,7 @@ M4 (redaction) — independent
 
 **Files:** `Services/DatabaseAccess.cs` (`EnsureSaveAuthorizedAsync` `:177-186`, id-less skip `:206`, Edit check `:220`), `Services/SyncActionHandler.cs` (`:46,:62`).
 
-1. Resolve **D3** (system/module principal story) first — sync/replication writes go through the same chokepoint and must not be broken by user-scoped rules.
+1. D3 resolved: writes under an authenticated module/system principal are exempt from row rules (row security scopes user visibility; sync is mTLS-authenticated infrastructure). Validate the detection mechanics against `SyncActionHandler`'s auth while implementing.
 2. Create path: after the actions pipeline (`OnBeforeSaveAsync` etc.) has mutated the entity, evaluate the row rule (`IsAllowedAsync("New", entity)` or compiled `GetRowFilter("New")`) against the **resulting** state; deny → same error shape as the Edit gate (`SparkRowLevelAccessDeniedException`).
 3. Update path: keep the pre-update check (`:220`), add a post-mutation re-check of `"Edit"` so a row can't be edited *into* someone else's scope.
 4. Implement the D3 outcome (e.g. a system-context flag visible to row rules, or documented `Module:*` handling) and cover `SyncActionHandler` writes with tests: sync write to a row-scoped type must still succeed under the module principal.
@@ -63,7 +63,7 @@ M4 (redaction) — independent
 
 **Files:** `Actions/DefaultPersistentObjectActions.cs`, `Services/EntityMapper.cs` (`PopulateAttributeValues` `:185-258`, AsDetail recursion `:268-320`).
 
-1. Resolve **D4** (implement vs delete the dead property-level `security.json` rights) — if "delete", strip schema + docs in this PR; if "implement", the declarative half lands in the Authorization package behind the same core redaction funnel.
+1. D4 resolved: **delete** the dead property-level `security.json` promise from docs (and schema surface if any) in this milestone; declarative surface becomes a follow-up issue filed at PR time.
 2. New optional virtual: `Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)` (default null = nothing). Override-detected; zero cost when absent.
 3. Enforce in the `EntityMapper` funnel (single choke point, 5 call sites), including AsDetail children. Redaction = `Value = null` + `IsVisible = false` (redact, don't omit — `BreadcrumbResolver` precedent).
 4. Write path: a redacted attribute submitted back must not clobber the stored value (round-trip safety) — decide and test (skip-on-write for protected names).
@@ -76,7 +76,7 @@ M4 (redaction) — independent
 
 **Files:** `Services/DatabaseAccess.cs` / `EntityMapper`, `PersistentObject.cs`, ng-spark `po-detail` (+ later `query-list`/`sub-query`).
 
-1. Resolve **D5** (list-path opt-in vs automatic-when-cheap).
+1. D5 resolved: automatic-when-cheap, no knob — detail path always (when a row rule exists); list path only when a compiled `GetRowFilter` is available.
 2. Detail path first: after the row-gated get, evaluate `"Edit"`/`"Delete"` for the single row; attach optional `"can": { "edit": bool, "delete": bool }` to the PO payload. Absent block = clients fall back to type-level flags (backward compatible).
 3. ng-spark: `spark-po-detail` prefers the per-row block for Edit/Delete buttons; models updated (`PersistentObject` TS type).
 4. List path per D5 outcome; measure before enabling (per-row × 2 actions per page — cheap only with a compiled `GetRowFilter`).
@@ -92,9 +92,9 @@ Deliberately out of the main series (`docs/PRD-CoverageHandoff.md:423`): collide
 
 Per global working rules, full test suites run once at the end of each milestone PR, not per step: `dotnet test tests/MintPlayer.Spark.Tests` + affected demo E2E; ng-spark Vitest for M5. Coverage acceptance benchmark (PRD §Acceptance) re-checked against the shipped surface at the end of M5 — that's the point where Coverage can drop its hand-written controllers and DenyAll workaround.
 
-## Milestone → decision map
+## Milestone map (decisions all resolved — see PRD)
 
-| Milestone | Blocked by decisions | Blocked by milestones |
+| Milestone | Applies decisions | Blocked by milestones |
 |---|---|---|
 | M0 | — | — |
 | M1 | D1, D2 | M0 |
@@ -102,4 +102,4 @@ Per global working rules, full test suites run once at the end of each milestone
 | M3 | — | M0 |
 | M4 | D4 | — |
 | M5 | D5 | M1 |
-| M6 | — | M1 (scope later) |
+| M6 | — | M1 (separate later PR) |

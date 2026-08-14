@@ -30,7 +30,7 @@ Row-level security lives in **core** (`MintPlayer.Spark`), auth-package-agnostic
 
 `RowSecurity.FilterAsync` (`RowSecurity.cs:84-137`): when `resultType != entityType` (projection), it loads the base document **once per row** — `await session.LoadAsync<object>(id)` inside the `foreach` at `:125`. The request session has RavenDB's default `MaxNumberOfRequestsPerSession = 30`, so a projection-backed query on a row-scoped entity **throws past ~29 rows**. Fleet's `GetCars` (`Car` + `Cars_Overview`/`VCar` + `CarActions`) is exactly this configuration and survives E2E only because tests seed a handful of cars.
 
-**Fix:** batch with `session.LoadAsync<object>(string[])` — one request per page — as `docs/coverage-handoff-plan.md:598` already specified. Keep the fail-closed branches exactly as shipped: unreadable/absent `Id` property → `return []` (`:100-107`); empty id → row dropped (`:120-121`); unloadable base doc → row dropped (`:126-127`).
+**Fix:** batch with `session.LoadAsync<object>(IEnumerable<string>)` — one request per page — as `docs/coverage-handoff-plan.md:598` already specified. The mechanics fall out of what the code already has in hand: the projection's `Id` property holds the *base document's* id (the existing `idGetter` reads it per row today), so collect the ids up front, do one untyped batch load (RavenDB materializes the CLR type from `Raven-Clr-Type` metadata — no compile-time type needed, exactly like today's untyped `LoadAsync<object>(id)`), and the per-row loop becomes a dictionary lookup. Keep the fail-closed branches exactly as shipped, which map one-to-one onto the dictionary shape: unreadable/absent `Id` property → `return []` (`:100-107`); empty id → excluded from the batch, row dropped (`:120-121`); deleted base doc → null value in the result dictionary, row dropped (`:126-127`). The session dedupes ids, serves already-tracked docs from cache, and iterating the original `entities` order preserves row order — output byte-identical to today, minus N−1 round-trips.
 
 Independent of everything else; ships first.
 
@@ -110,15 +110,15 @@ Enforced in `EntityMapper.ToPersistentObject`/`PopulateAttributeValues` (the sin
 - Streaming principal never re-validated after connect (partially-open R2-M4).
 - `ProgramUnits/Get.cs:88-91` fails **open** when `BuildContextPropertyMap` throws; lookup-reference `Get`/`List` endpoints have no permission check at all.
 
-## Decisions (tracked — resolve before the milestone that needs them)
+## Decisions (RESOLVED 2026-08-14 — recorded before implementation)
 
-| # | Question | Needed by | Status / leaning |
+| # | Question | Needed by | Resolution |
 |---|---|---|---|
-| D1 | Action-string vocabulary for `GetRowFilter(action)` (`"Query"/"Read"/"Edit"/"Delete"/"New"`) — is per-action variance worth the parameter, or parameterless with `IsAllowedAsync` as the per-action refinement? | M1 | **Open.** Leaning: keep the `action` parameter — costs nothing to ignore, and G2 needs `"New"` routed through the same rule. |
-| D2 | Anonymous read: type-level `Query`/`Read` to `Everyone` + a row filter is already expressible. Confirm as the blessed pattern + loud doc section (the row filter becomes the only thing between the public internet and the collection). | M1 docs | **Open.** Leaning: yes, bless + document loudly. |
-| D3 | System/module principal: should row rules see an explicit "system context" flag (sync/replication writes under module mTLS principals) instead of each rule special-casing `Module:*` groups? | M2 | **Open.** Cross-ref `docs/findings-replication-mtls.md:189` (F9). |
-| D4 | Property-level `security.json` rights: implement (Authorization package, G4 option A) or delete from schema + docs? Docs currently promise something the code ignores — worse than either. | M4 | **Open.** |
-| D5 | G5 list-path cost (per-row × 2 actions per query page): opt-in flag per entity type, or automatic-when-cheap (compiled filter available)? | M5 | **Open.** Detail path ships regardless; list path gated on this. |
+| D1 | Action-string vocabulary for `GetRowFilter(action)` — per-action parameter or parameterless? | M1 | **Keep the `action` parameter** (`"Query"/"Read"/"Edit"/"Delete"/"New"`). Costs nothing to ignore in the common case, and G2 routes `"New"` through the same rule; `IsAllowedAsync` remains the per-action refinement point. |
+| D2 | Anonymous read: is type-level `Query`/`Read` to `Everyone` + a row filter the blessed pattern? | M1 docs | **Yes — blessed and documented loudly** in `docs/guide-row-security.md`: when granted to Everyone, the row filter is the only thing between the public internet and the collection. |
+| D3 | System/module principal vs row rules (sync/replication writes under module mTLS principals). | M2 | **Explicit system context, framework-decided:** writes arriving under an authenticated module/system principal (the sync/replication path) are exempt from row rules — row security scopes *user* visibility; module-to-module sync is infrastructure already authenticated via mTLS. No `Module:*` special-casing inside consumer rules. Exact detection mechanics validated against `SyncActionHandler`'s auth during M2. Cross-ref `docs/findings-replication-mtls.md:189` (F9). |
+| D4 | Property-level `security.json` rights: implement (Authorization package) or delete the dead schema/docs? | M4 | **Delete the dead promise** from docs (and schema surface if any) in M4 — minimal diff, honest docs. The core `GetProtectedAttributesAsync` hook covers the per-row case (Coverage's actual need); the static per-role case is one-line consumer code through the same hook. Declarative surface deferred to a follow-up issue filed at PR time (tracked, not forgotten). |
+| D5 | G5 list-path cost: opt-in flag or automatic-when-cheap? | M5 | **Automatic-when-cheap, no knob:** detail path always computes the `can` block when a row rule exists (1 row); list path computes it only when a compiled `GetRowFilter` is available (in-memory predicate over already-materialized entities — negligible). No per-type opt-in flag — pull complexity down, no configuration surface. |
 
 ## Docs deliverables (per milestone)
 
