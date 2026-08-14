@@ -2,7 +2,7 @@
 
 - **Branch:** `feat/issue-236-row-level-security` (same branch as #236 — this sweep was surfaced by that work)
 - **Origin:** After completing the #236 row-level-security milestones, a two-agent adversarial audit (2026-08-14) probed untrusted-input **write** paths. Both auditors converged on a single root cause and **empirically verified** the exploits against a real endpoint pipeline (`SparkEndpointFactory` + embedded RavenDB), not code reading alone.
-- **Status:** Proposed. Findings below carry `file:line` evidence and, where marked, a verified exploit transcript.
+- **Status:** **Implemented (all findings fixed in PR #237, CI green)** 2026-08-14. Findings below carry `file:line` evidence and, where marked, a verified exploit transcript; see the as-built table in [issue_236_security_sweep_plan.md](./issue_236_security_sweep_plan.md) for the commit + fix mapping.
 
 ## Root cause (one sentence)
 
