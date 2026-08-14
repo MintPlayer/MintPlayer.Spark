@@ -62,6 +62,8 @@ The row rule also guards writes, judged against the entity's **resulting** state
 
 Denial surfaces as **403** on create and **404** on update/delete (matching the read path: an authorized-but-forbidden instance is indistinguishable from not-found).
 
+> **⚠️ Service / machine accounts and the create check.** Because the rule now runs as a `WITH CHECK` on create, a per-user ownership filter (`car => car.CreatedBy == userId`) will **reject a create by a principal that has no user id** — a machine / client-credentials token with type-level `New` rights but no `sub` claim. Such a principal has the right to create but no identity to own the row by, so a filter that returns `car => false` for "no user" blocks it. Return `null` (unrestricted) for authenticated service principals — treat "no user id but authenticated" as a machine, and reserve the deny-everything branch for a *truly anonymous* caller. Fleet's `CarActions.GetRowFilter` shows the pattern.
+
 ## Per-viewer attribute redaction
 
 `GetProtectedAttributesAsync` names attributes of a specific row that this caller must not see. The framework nulls their values and marks them invisible at mapping time, on every read path:
