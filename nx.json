@@ -33,14 +33,14 @@
         "^production"
       ],
       "outputs": [
-        "{projectRoot}/bin",
-        "{projectRoot}/obj"
+        "{projectRoot}/bin/Debug",
+        "{projectRoot}/obj/Debug"
       ]
     },
     "build:release": {
       "outputs": [
-        "{projectRoot}/bin",
-        "{projectRoot}/obj"
+        "{projectRoot}/bin/Release",
+        "{projectRoot}/obj/Release"
       ]
     },
     "test": {
