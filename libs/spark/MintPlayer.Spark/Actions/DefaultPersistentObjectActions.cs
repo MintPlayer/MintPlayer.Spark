@@ -39,6 +39,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
             var existing = await session.LoadAsync<T>(obj.Id);
             if (existing is not null)
             {
+                await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
             }
@@ -146,6 +147,56 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
     [NoInterfaceMember]
     public virtual System.Linq.Expressions.Expression<Func<T, bool>>? GetRowFilter(string action) => null;
+
+    /// <summary>
+    /// Per-viewer attribute redaction. Names the attributes of this specific row that the current
+    /// caller must not see; the framework nulls their values and marks them invisible at mapping
+    /// time on every read path (detail, list, query, stream), and shields them from write-back on
+    /// updates. Null or empty means nothing is redacted — the default, costing nothing.
+    ///
+    /// A dotted name ("Jobs.Salary") redacts a column inside an AsDetail attribute's embedded
+    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. Write-back
+    /// shielding applies to top-level names; dotted names are read-side redaction only.
+    ///
+    /// The canonical case: a secret only managers of this row may view —
+    /// <c>CanManage(entity) ? null : ["BadgeToken"]</c>. Redaction is per row and per caller;
+    /// evaluated against the base entity even when the query returned index projections.
+    /// </summary>
+    /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
+    [NoInterfaceMember]
+    public virtual Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)
+        => Task.FromResult<IReadOnlyCollection<string>?>(null);
+
+    /// <summary>
+    /// Write-back safety for redaction: a client that received a redacted (nulled) attribute and
+    /// submits the form back would silently clobber the stored secret — and a malicious client
+    /// could overwrite it deliberately. Before the merge, protected attributes get the existing
+    /// entity's current value restored, so the merge writes the secret back to itself. Skipped
+    /// for the system context (sync replicates full values).
+    /// </summary>
+    private async Task ShieldProtectedAttributesAsync(PersistentObject obj, T existing)
+    {
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return;
+
+        var protectedNames = await GetProtectedAttributesAsync("Edit", existing);
+        if (protectedNames is not { Count: > 0 })
+            return;
+
+        foreach (var name in protectedNames)
+        {
+            if (name.Contains('.'))
+                continue; // AsDetail child columns: read-side redaction only (documented).
+
+            var attribute = obj.Attributes.FirstOrDefault(a => a.Name == name);
+            var property = typeof(T).GetProperty(name);
+            if (attribute is null || property is null || !property.CanRead)
+                continue;
+
+            attribute.Value = property.GetValue(existing);
+            attribute.IsValueChanged = false;
+        }
+    }
 
     /// <inheritdoc />
     public virtual Task OnBeforeSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;

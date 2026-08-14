@@ -185,9 +185,11 @@ internal partial class QueryExecutor : IQueryExecutor
         // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
-        return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
-            .DistinctBy(po => po.Id);
+        var mapped = entities
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
+        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
     }
 
     #endregion
@@ -310,9 +312,11 @@ internal partial class QueryExecutor : IQueryExecutor
         // Resolve breadcrumbs (recursive, batched) for the custom query's results.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
 
-        return entityList
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
-            .DistinctBy(po => po.Id);
+        var mapped = entityList
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
+        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
     }
 
     private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)

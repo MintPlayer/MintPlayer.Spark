@@ -100,10 +100,11 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             // Resolve breadcrumbs (recursive, batched) for this batch.
             var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, batchList, entityTypeDef, cancellationToken);
 
-            var persistentObjects = batchList
-                .Select(e => entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs))
-                .ToArray();
-            yield return persistentObjects;
+            var mapped = batchList
+                .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
+                .ToList();
+            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ElementType, "Query");
+            yield return mapped.Select(m => m.Po).ToArray();
         }
     }
 

@@ -192,7 +192,14 @@ Developers can define custom actions for specific operations:
 
 ### Property-Level Permissions
 
-For field-level security, append the property name:
+> **Status (2026-08, #236 D4): never implemented — do not use.** `MatchesResource` is exact
+> string equality, so a property-suffixed resource never matches any permission check; these
+> entries are silently dead. Per-attribute protection is provided by the core redaction hook
+> `GetProtectedAttributesAsync` instead (see `docs/guide-row-security.md`), which covers both the
+> per-role and the per-row case. A declarative `security.json` surface, if ever wanted, is
+> tracked as a follow-up to #236.
+
+The original (unimplemented) design was: for field-level security, append the property name:
 
 - `Edit/DemoApp.Person/Salary` - Permission to edit the Salary field
 - `Read/DemoApp.Person/SSN` - Permission to view the SSN field

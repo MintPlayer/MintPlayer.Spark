@@ -31,4 +31,11 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
 
     public object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action)
         => queryable;
+
+    public Task RedactAsync(
+        IAsyncDocumentSession session,
+        IReadOnlyList<(MintPlayer.Spark.Abstractions.PersistentObject Po, object Row)> items,
+        Type entityType,
+        Type resultType,
+        string action) => Task.CompletedTask;
 }

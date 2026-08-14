@@ -103,6 +103,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, [entity], entityTypeDefinition);
 
         var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
+        // Per-viewer attribute redaction (#236 G4) — the Actions class may hide specific
+        // attributes of this row from this caller (e.g. a secret only managers may view).
+        await rowSecurity.RedactAsync(session, [(persistentObject, entity)], entityType, entityType, "Read");
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
         persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
         return persistentObject;
@@ -149,7 +152,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // load is a cache hit; deeper levels cost one batched request each.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
-        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs));
+        var mapped = entities
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, queryType, "Query");
+        return mapped.Select(m => m.Po);
     }
 
     /// <summary>

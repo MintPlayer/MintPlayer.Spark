@@ -70,6 +70,25 @@ internal interface IRowSecurity
     /// an optimization, never the only gate.
     /// </summary>
     object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action);
+
+    /// <summary>
+    /// Per-viewer attribute redaction (#236 G4): asks the Actions class which attributes of each
+    /// row this caller must not see, and nulls them out of the mapped payload — value gone,
+    /// attribute invisible, embedded AsDetail rows included. Redacts rather than omits: dropping
+    /// the attribute would break name-indexed clients and leak the rule via schema mismatch.
+    /// <para>
+    /// Rows may be projections; the hook is typed on the entity, so base documents are batch
+    /// loaded (a session-cache hit on every path where <see cref="FilterAsync"/> already ran).
+    /// A projected row whose base document can't be found gets everything redacted — unverifiable
+    /// is not shown. Zero cost for types that don't override the hook.
+    /// </para>
+    /// </summary>
+    Task RedactAsync(
+        IAsyncDocumentSession session,
+        IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
+        Type entityType,
+        Type resultType,
+        string action);
 }
 
 [Register(typeof(IRowSecurity), ServiceLifetime.Scoped)]
@@ -219,6 +238,115 @@ internal partial class RowSecurity : IRowSecurity
         return whereMethod.Invoke(null, [queryable, filter])!;
     }
 
+    public async Task RedactAsync(
+        IAsyncDocumentSession session,
+        IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
+        Type entityType,
+        Type resultType,
+        string action)
+    {
+        if (items.Count == 0)
+            return;
+
+        var hook = ResolveProtectedHook(entityType);
+        if (!IsOverridden(hook))
+            return;
+
+        // Sync and background work must see (and replicate) full values.
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return;
+
+        var actions = actionsResolver.ResolveForType(entityType);
+        var projecting = resultType != entityType;
+
+        Func<object, object?>? idGetter = null;
+        Dictionary<string, object>? baseDocuments = null;
+        if (projecting)
+        {
+            var idProperty = resultType.GetCachedProperty("Id");
+            idGetter = idProperty is not null && idProperty.CanRead
+                ? AccessorCache.GetGetter(idProperty)
+                : null;
+
+            var ids = idGetter is null
+                ? []
+                : items
+                    .Select(i => idGetter(i.Row)?.ToString())
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Cast<string>()
+                    .ToList();
+
+            // One batch; on the query paths FilterAsync already pulled these into the session,
+            // so this is served from cache rather than costing a request.
+            baseDocuments = ids.Count > 0
+                ? await session.LoadAsync<object>(ids)
+                : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var (po, row) in items)
+        {
+            object? subject = row;
+            if (projecting)
+            {
+                var id = idGetter?.Invoke(row)?.ToString();
+                subject = !string.IsNullOrEmpty(id) && baseDocuments!.TryGetValue(id, out var loaded)
+                    ? loaded
+                    : null;
+
+                if (subject is null)
+                {
+                    // The rule can't be asked without the document. Unverifiable is not shown.
+                    foreach (var attribute in po.Attributes)
+                        RedactAttribute(po, attribute.Name);
+                    continue;
+                }
+            }
+
+            var task = (Task)hook!.Invoke(actions, [action, subject])!;
+            await task;
+            var names = (IReadOnlyCollection<string>?)task.GetType().GetProperty("Result")!.GetValue(task);
+            if (names is not { Count: > 0 })
+                continue;
+
+            foreach (var name in names)
+                RedactAttribute(po, name);
+        }
+    }
+
+    /// <summary>Redact = value gone, attribute invisible — not omitted. A dotted name reaches
+    /// into an AsDetail attribute's embedded rows ("Jobs.Salary").</summary>
+    private static void RedactAttribute(Abstractions.PersistentObject po, string name)
+    {
+        var dot = name.IndexOf('.');
+        if (dot < 0)
+        {
+            var attribute = po.Attributes.FirstOrDefault(a => a.Name == name);
+            if (attribute is null)
+                return;
+
+            attribute.Value = null;
+            attribute.Breadcrumb = null;
+            attribute.Breadcrumbs = null;
+            attribute.IsVisible = false;
+            if (attribute is Abstractions.PersistentObjectAttributeAsDetail detail)
+            {
+                detail.Object = null;
+                detail.Objects = detail.Objects is null ? null : [];
+            }
+            return;
+        }
+
+        var parent = po.Attributes.FirstOrDefault(a => a.Name == name[..dot]);
+        if (parent is not Abstractions.PersistentObjectAttributeAsDetail asDetail)
+            return;
+
+        var childName = name[(dot + 1)..];
+        if (asDetail.Object is not null)
+            RedactAttribute(asDetail.Object, childName);
+        foreach (var child in asDetail.Objects ?? [])
+            RedactAttribute(child, childName);
+    }
+
     /// <summary>
     /// The type's rule as one per-request predicate over the base entity, or null when nothing
     /// restricts this caller. Derivation, not interaction: a filter-only type gets its single-row
@@ -298,5 +426,13 @@ internal partial class RowSecurity : IRowSecurity
         return ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
             ("RowSecurity.GetRowFilter", actionsType, entityType),
             static k => k.Actions.GetMethod("GetRowFilter", [typeof(string)]));
+    }
+
+    private MethodInfo? ResolveProtectedHook(Type entityType)
+    {
+        var actionsType = actionsResolver.ResolveForType(entityType).GetType();
+        return ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("RowSecurity.GetProtectedAttributesAsync", actionsType, entityType),
+            static k => k.Actions.GetMethod("GetProtectedAttributesAsync", [typeof(string), k.Entity]));
     }
 }

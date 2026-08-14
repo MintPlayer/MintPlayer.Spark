@@ -67,7 +67,7 @@ M4 (redaction) — independent
 2. New optional virtual: `Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)` (default null = nothing). Override-detected; zero cost when absent.
 3. Enforce in the `EntityMapper` funnel (single choke point, 5 call sites), including AsDetail children. Redaction = `Value = null` + `IsVisible = false` (redact, don't omit — `BreadcrumbResolver` precedent).
 4. Write path: a redacted attribute submitted back must not clobber the stored value (round-trip safety) — decide and test (skip-on-write for protected names).
-5. Demo: WebhooksDemo or Fleet gets a protected attribute as the worked example (stand-in for Coverage's `BadgeToken`).
+5. ~~Demo: WebhooksDemo or Fleet gets a protected attribute~~ **As built:** no demo model change — adding a secret property would churn `App_Data/Model/*.json` + require a model sync for a purely illustrative field. The worked example lives in `RowLevelRedactionTests` and `docs/guide-row-security.md` instead.
 6. Tests: redacted for non-managers, present for managers; AsDetail child redaction; write-back safety; zero-cost when not overridden.
 
 **Depends on:** — (independent). **Decision gates:** D4.
