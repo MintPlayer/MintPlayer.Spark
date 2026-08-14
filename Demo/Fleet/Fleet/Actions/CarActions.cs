@@ -26,16 +26,18 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     private bool CurrentUserIsAdmin => CurrentUser?.IsInRole(AdminRole) == true;
 
     /// <summary>
-    /// Row-level auth (H-2): administrators see/edit/delete everything; other authenticated
-    /// users only act on cars they created. An unauthenticated caller (which would already be
-    /// blocked by entity-type authz in Fleet's security.json) falls through to deny.
+    /// Row-level auth (H-2), expression form (#236): administrators see/edit/delete everything
+    /// (null = no restriction); other authenticated users only act on cars they created. An
+    /// unauthenticated caller (already blocked by entity-type authz in Fleet's security.json)
+    /// gets a filter that matches nothing. The framework pushes this into the RavenDB query on
+    /// list paths and compiles it for single-row (detail/edit/delete) checks — one rule, every path.
     /// </summary>
-    public override Task<bool> IsAllowedAsync(string action, Car entity)
+    public override System.Linq.Expressions.Expression<Func<Car, bool>>? GetRowFilter(string action)
     {
-        if (CurrentUserIsAdmin) return Task.FromResult(true);
+        if (CurrentUserIsAdmin) return null;
         var userId = CurrentUserId;
-        if (string.IsNullOrEmpty(userId)) return Task.FromResult(false);
-        return Task.FromResult(string.Equals(entity.CreatedBy, userId, StringComparison.Ordinal));
+        if (string.IsNullOrEmpty(userId)) return car => false;
+        return car => car.CreatedBy == userId;
     }
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)

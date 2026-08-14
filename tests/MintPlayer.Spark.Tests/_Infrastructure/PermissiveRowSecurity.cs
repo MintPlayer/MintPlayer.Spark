@@ -28,4 +28,7 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
         Type entityType,
         Type resultType,
         string action) => Task.FromResult(entities);
+
+    public object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action)
+        => queryable;
 }

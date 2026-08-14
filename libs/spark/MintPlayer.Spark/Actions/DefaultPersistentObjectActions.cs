@@ -91,6 +91,32 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     [NoInterfaceMember]
     public virtual Task<bool> IsAllowedAsync(string action, T entity) => Task.FromResult(true);
 
+    /// <summary>
+    /// Row-level authorization as a composable filter. Where <see cref="IsAllowedAsync"/> judges
+    /// one materialized row, this expresses the same policy as a predicate the framework can push
+    /// into the RavenDB query itself — so a list over a row-scoped type reads only the caller's
+    /// rows instead of the whole collection.
+    ///
+    /// Evaluated per request: capture request-scoped data (the current user, an allow-list) as
+    /// locals so it lands in the expression as constants. Return <c>null</c> to mean "no
+    /// restriction for this caller" (e.g. an administrator).
+    ///
+    /// If only this member is overridden, single-row checks (detail, edit, delete) are derived by
+    /// compiling the expression — one source of truth, list and detail cannot diverge. If
+    /// <see cref="IsAllowedAsync"/> is also overridden, both must allow the row (the filter
+    /// narrows, the predicate refines). When the query runs against an index projection, the
+    /// filter cannot compose (it is typed on the entity, not the projection) and the framework
+    /// falls back to post-materialization filtering with a batched base-document reload — never
+    /// silently unfiltered.
+    ///
+    /// The predicate's properties must be queryable in RavenDB for the pushdown to apply: on a
+    /// plain collection query anything on the document works; on a static index the fields it
+    /// names must be indexed.
+    /// </summary>
+    /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
+    [NoInterfaceMember]
+    public virtual System.Linq.Expressions.Expression<Func<T, bool>>? GetRowFilter(string action) => null;
+
     /// <inheritdoc />
     public virtual Task OnBeforeSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;
 

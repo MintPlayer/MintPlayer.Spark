@@ -134,7 +134,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
+        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, referenceProperties)).ToList();
 
         // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
         // to rows the Actions class says the caller may see. For projection queries, the row
@@ -321,6 +321,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// </summary>
     private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
         IAsyncDocumentSession session,
+        Type baseEntityType,
         Type entityType,
         string? indexName,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
@@ -378,6 +379,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (query != null && referenceProperties.Count > 0)
         {
             query = referenceResolver.ApplyIncludes(query, referenceProperties);
+        }
+
+        // Push the row filter into the query where shapes allow (no projection in play);
+        // otherwise FilterAsync in the caller stays the gate.
+        if (query != null)
+        {
+            query = rowSecurity.ComposeRowFilter(query, baseEntityType, entityType, "Query");
         }
 
         // Call ToListAsync on the query
