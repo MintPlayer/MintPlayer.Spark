@@ -4,13 +4,13 @@ See [issue_236_PRD.md](./issue_236_PRD.md) for the problem statement, evidence, 
 
 ## As-built status (2026-08-14) — M0–M5 SHIPPED
 
-All six milestones implemented on `feat/issue-236-row-level-security`, one commit each; full suites green (`MintPlayer.Spark.Tests` **1253/1253**, `@mintplayer/ng-spark` Vitest **214/214**). M6 remains a deliberately separate later perf PR.
+All six milestones implemented on `feat/issue-236-row-level-security`, one commit each; **PR #237** open → master. Full suites green (`MintPlayer.Spark.Tests` **1345/1345**, `@mintplayer/ng-spark` Vitest **214/214**) and **CI green** on commit `26dbfc8` (unit + E2E, after the service-account create-check fix). M6 remains a deliberately separate later perf PR.
 
 | # | Commit | Notes / deviations |
 |---|---|---|
 | M0 | `d249a34` | Batched `LoadAsync<object>(ids)` + dictionary lookup; fail-closed branches preserved. |
 | M1 | `924f201` | `GetRowFilter` + composition at all list sites; derivation rule; projection fallback with one-time diagnostic; constant predicates evaluated in memory (not pushed to RQL). Fleet `CarActions` migrated as the worked example. |
-| M2 | `0c7886c` | Create/edit `WITH CHECK` in the actions base. New `SparkSystemContext` (Abstractions) marks module/system principals. **Hardened in M5** to positive-claim-only (see below). |
+| M2 | `0c7886c` (+ `26dbfc8`) | Create/edit `WITH CHECK` in the actions base. New `SparkSystemContext` (Abstractions) marks module/system principals. **Hardened in M5** to positive-claim-only (see below). **CI-caught follow-up (`26dbfc8`):** the create-side WITH CHECK denied a *service/machine* principal (type-level `New` right, no user id) whose per-user ownership filter degenerated to `car => false`. Fixed in Fleet's `CarActions.GetRowFilter` (authenticated-but-no-user-id ⇒ unrestricted; deny-all only for truly anonymous) and documented as a consumer gotcha in `guide-row-security.md`. |
 | M3 | `45976e8` | Server-loaded, row-gated `Parent`/`SelectedItems`; raw payload preserved on `Submitted*`. Breaking-change note in `docs/guide-custom-actions.md`. |
 | M4 | `46b7bbd` | `GetProtectedAttributesAsync` redaction in the mapper funnel + AsDetail children + write-back shielding. D4: dead property-level `security.json` rights marked dead in `docs/prd/PRD-Authorization.md`. **No demo model change** (illustrative only; example lives in tests + guide). |
 | M5 | `df18e19` | Per-row `Can{edit,delete}` block on detail path; `spark-po-detail` prefers it. **Also fixed a fail-open regression**: M2's system-context detection treated "no HTTP request" as system, silently disabling row security on every non-request path (the default in tests). Now positive-claim-only — fails closed. D3 record + `SparkSystemContext` updated accordingly. |

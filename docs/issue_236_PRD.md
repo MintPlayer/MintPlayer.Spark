@@ -68,6 +68,8 @@ public class RepositoryActions : DefaultPersistentObjectActions<Repository>
 
 Zero new consumer surface — same hook, two more action strings, framework-enforced. Requires Decision D3 (system principal): `SyncActionHandler` routes module-to-module writes through the same chokepoint (`SyncActionHandler.cs:46,62`) under an mTLS module principal, and a user-scoped rule must not break legitimate sync writes.
 
+**As-built caveat (service/machine accounts).** The create-side WITH CHECK means a per-user ownership filter now also gates create — so a principal with the type-level `New` right but *no user id* (a machine / client-credentials token, which is **not** a `SparkSystemContext` mTLS module) is denied if the filter degenerates to "deny all" for "no user". This surfaced as a CI failure on the Fleet machine-token test. The consumer fix (shown in Fleet's `CarActions.GetRowFilter`, documented in `guide-row-security.md`): return `null` (unrestricted) for an authenticated principal with no user id, and reserve the deny-everything branch for a *truly anonymous* caller.
+
 ## G3 — Custom actions: the one endpoint with no row enforcement at all
 
 `ExecuteCustomAction.cs`: type-level check at `:44`, then the action receives **client-supplied** `Parent` and `SelectedItems` (deserialized off the wire at `:60`, args built at `:68-72`, never re-loaded or row-checked; the class injects no `IRowSecurity` at all). A caller with the type-level action right can name any id of that type. `ListCustomActions.cs:42` filtering the *menu* makes the surface look narrower than it is.
