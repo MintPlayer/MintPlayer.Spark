@@ -133,6 +133,10 @@ public static class SparkModuleCertificateExtensions
                 // this claim, so a module becomes governable by security.json without the
                 // authorization model learning what a module is.
                 new Claim("group", SparkModuleCertificateDefaults.GroupPrefix + moduleName),
+
+                // A module is the system acting, not a viewer — row-level rules (which scope
+                // rows to a person) don't apply to it. See SparkSystemContext.
+                new Claim(SparkSystemContext.ClaimType, "module"),
             ],
             SparkModuleCertificateDefaults.Scheme));
 

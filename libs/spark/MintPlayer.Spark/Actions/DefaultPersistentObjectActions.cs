@@ -16,6 +16,10 @@ namespace MintPlayer.Spark.Actions;
 public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
 {
     [Inject] private readonly IEntityMapper entityMapper;
+    // Optional (nullable [Inject] fields get a `= null` ctor default) so existing manual
+    // constructions keep compiling. Used only to recognize the system context — module sync and
+    // background work — which row rules don't apply to.
+    [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
 
     /// <inheritdoc />
     public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
@@ -49,10 +53,36 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         }
 
         await OnBeforeSaveAsync(obj, entity);
+        await EnsureRowSaveAllowedAsync(obj, entity);
         await session.StoreAsync(entity);
         await session.SaveChangesAsync();
         await OnAfterSaveAsync(obj, entity);
         return entity;
+    }
+
+    /// <summary>
+    /// The write half of row-level security — SQL RLS's <c>WITH CHECK</c> to the read paths'
+    /// <c>USING</c>. Judged against the entity's <b>resulting</b> state, after mapping and
+    /// <see cref="OnBeforeSaveAsync"/> (so ownership stamping has happened): a create must produce
+    /// a row its caller could see, and an edit must not move a row <em>into</em> someone else's
+    /// scope. Without this, nothing stops an authenticated caller creating a document stamped with
+    /// another tenant's owner. Skipped for the system context (module sync, background work) —
+    /// row rules scope viewers, and infrastructure has none. Overriding <see cref="OnSaveAsync"/>
+    /// without calling the base implementation takes over this responsibility.
+    /// </summary>
+    private async Task EnsureRowSaveAllowedAsync(PersistentObject obj, T entity)
+    {
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return;
+
+        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
+
+        var filter = GetRowFilter(action);
+        if (filter is not null && !filter.Compile()(entity))
+            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
+
+        if (!await IsAllowedAsync(action, entity))
+            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
     }
 
     /// <inheritdoc />

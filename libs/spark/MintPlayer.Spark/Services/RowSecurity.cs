@@ -77,6 +77,7 @@ internal partial class RowSecurity : IRowSecurity
 {
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly ILogger<RowSecurity>? logger;
+    [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
 
     /// <summary>Types whose row-security mode has been announced, so the diagnostic logs once.</summary>
     private static readonly ConcurrentDictionary<(Type Type, string Note), bool> announced = new();
@@ -169,6 +170,10 @@ internal partial class RowSecurity : IRowSecurity
 
     public object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action)
     {
+        // Same exemption as ResolveEffectiveRule: the system is not a viewer to scope rows for.
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return queryable;
+
         var filter = InvokeGetRowFilter(entityType, action);
         if (filter is null)
             return queryable;
@@ -222,6 +227,12 @@ internal partial class RowSecurity : IRowSecurity
     /// </summary>
     private Func<object, Task<bool>>? ResolveEffectiveRule(Type entityType, string action)
     {
+        // The system acting — module sync under an mTLS principal, background work with no HTTP
+        // request — is not a viewer, and row rules scope viewers. Type-level authorization
+        // (security.json Module:* groups) still governs which types it may touch.
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return null;
+
         var hook = ResolveHook(entityType);
         var hookOverridden = IsOverridden(hook);
         var filter = InvokeGetRowFilter(entityType, action);
