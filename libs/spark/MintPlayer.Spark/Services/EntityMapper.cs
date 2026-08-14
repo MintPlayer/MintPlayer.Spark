@@ -110,6 +110,11 @@ internal partial class EntityMapper : IEntityMapper
     // (the source generator gives a nullable [Inject] field a `= null` default). Only used to read
     // the configured breadcrumb reference separator when rendering an embedded row's own breadcrumb.
     [Inject] private readonly Configuration.SparkOptions? options;
+    // Optional for the same test-construction reason; falls back to a stateless default so the
+    // reference collection guard (security sweep C2) runs regardless of how the mapper was built.
+    [Inject] private readonly ICollectionGuard? collectionGuard;
+
+    private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
 
     public T ToEntity<T>(PersistentObject persistentObject) where T : class
         => (T)ToEntity(persistentObject);
@@ -806,7 +811,7 @@ internal partial class EntityMapper : IEntityMapper
         return value.ToString();
     }
 
-    private static async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
+    private async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
         Type targetType, string refId, CancellationToken cancellationToken)
     {
         var generic = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
@@ -822,7 +827,19 @@ internal partial class EntityMapper : IEntityMapper
         var task = (Task)generic.Invoke(session, [refId, cancellationToken])!;
         await task.ConfigureAwait(false);
         var resultProp = task.GetType().GetCachedProperty("Result");
-        return resultProp is not null ? AccessorCache.GetGetter(resultProp)(task) : null;
+        var loaded = resultProp is not null ? AccessorCache.GetGetter(resultProp)(task) : null;
+        if (loaded is null)
+            return null;
+
+        // Id-to-type binding (security sweep C2): refId is client-supplied and RavenDB's LoadAsync
+        // deserializes a foreign-collection document into targetType all the same — which would
+        // copy any document (a SparkUser's PasswordHash) into the caller's own entity and back out
+        // on read. The declared reference target type (from [Reference(typeof(X))]) is trusted; a
+        // document whose real @collection isn't that type's is not a valid reference target.
+        if (!(collectionGuard ?? DefaultCollectionGuard).BelongsToAuthorizedCollection(session, loaded, targetType))
+            return null;
+
+        return loaded;
     }
 
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)

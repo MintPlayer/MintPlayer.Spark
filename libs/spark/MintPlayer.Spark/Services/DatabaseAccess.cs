@@ -24,6 +24,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly ICollectionGuard collectionGuard;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -91,6 +92,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
 
         if (entity == null) return null;
+
+        // Id-to-type binding (security sweep C1): the caller authorized `entityType`, but `id` is
+        // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
+        // the same. A document whose real @collection isn't this type's is not this type's — 404,
+        // indistinguishable from missing (M-3), so it's no oracle for cross-collection existence.
+        if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, entityType))
+            return null;
 
         // Row-level read gate. Entity-type "Read" passed; now let the Actions class decide
         // whether this specific instance is visible to the current caller. Returning null
@@ -227,6 +235,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
             if (existing is not null)
             {
+                // Id-to-type binding (security sweep C1/H1): the update targets an existing
+                // document by a client-supplied id. If that document isn't actually of the
+                // authorized type's collection, the caller is trying to overwrite a foreign
+                // document (a Customer edit rewriting a SparkUser). Treat as not-found — the
+                // update endpoint maps SparkRowLevelAccessDeniedException to 404. Covers the sync
+                // path too: SyncActionHandler routes module writes through here.
+                if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
+                    throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
+
                 // Concurrency check folds into the same side session — see R2-M7 / M-7.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
                 {
@@ -279,6 +296,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
         var existing = await LoadEntityAsync(session, entityType, id);
         if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+        // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
+        // document of another by naming its id. A foreign-collection document is "not found" here.
+        if (!collectionGuard.BelongsToAuthorizedCollection(session, existing, entityType))
+            return;
         if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
             throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
 

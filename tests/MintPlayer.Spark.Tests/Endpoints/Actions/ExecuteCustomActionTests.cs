@@ -165,6 +165,43 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
+    public async Task The_parent_is_loaded_under_the_route_type_not_the_client_supplied_type()
+    {
+        // Security sweep C3: the wire's Parent.ObjectTypeId is untrusted. Loading the parent under
+        // it would gate the action against a different (possibly rule-free) type and, combined with
+        // the id-to-type binding gap, smuggle a foreign document past every row rule. The load MUST
+        // use the route's entity type (CarType), exactly as SelectedItems does.
+        var action = Substitute.For<ICustomAction>();
+        var foreignType = Guid.NewGuid();
+        var parent = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = "cars/1", Name = "x", ObjectTypeId = foreignType, Attributes = [],
+        };
+        var serverParent = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = "cars/1", Name = "server", ObjectTypeId = CarType.Id, Attributes = [],
+        };
+        // Only the route-type load is stubbed; a load under the client-chosen type returns null.
+        _databaseAccess.GetPersistentObjectAsync(CarType.Id, "cars/1").Returns(serverParent);
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { Parent = parent });
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+        await _databaseAccess.Received(1).GetPersistentObjectAsync(CarType.Id, "cars/1");
+        await _databaseAccess.DidNotReceive().GetPersistentObjectAsync(foreignType, Arg.Any<string>());
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.Parent != null && a.Parent.Name == "server"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task A_selected_item_the_row_gate_refuses_is_a_404_not_an_invocation()
     {
         var action = Substitute.For<ICustomAction>();

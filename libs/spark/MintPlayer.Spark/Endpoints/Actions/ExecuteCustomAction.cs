@@ -77,10 +77,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // re-loaded through the same row-gated path as every read; a denied or missing id is
             // a 404, indistinguishable from not-found (M-3). The submitted POs stay available as
             // exactly that — submitted values — for actions that edit.
+            //
+            // Security sweep C3: the load MUST use the route's entityType.Id, NOT the wire's
+            // submittedParent.ObjectTypeId. The type gate above authorized THIS action on THIS
+            // type; loading the parent under a client-chosen type would gate it against the wrong
+            // rule (and, pre-CollectionGuard, smuggle a foreign-collection id past every row rule).
+            // SelectedItems already does this correctly below.
             Po? parent = null;
             if (request?.Parent is { } submittedParent && !string.IsNullOrEmpty(submittedParent.Id))
             {
-                parent = await databaseAccess.GetPersistentObjectAsync(submittedParent.ObjectTypeId, submittedParent.Id);
+                parent = await databaseAccess.GetPersistentObjectAsync(entityType.Id, submittedParent.Id);
                 if (parent is null)
                 {
                     return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
