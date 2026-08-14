@@ -22,7 +22,13 @@ public class EntityMapperInverseTests
 
     public EntityMapperInverseTests()
     {
-        _mapper = new EntityMapper(_modelLoader);
+        // Reference resolution is guarded by a collection check (security sweep C2) that reads the
+        // loaded document's @collection metadata — which a substitute session doesn't carry, so it
+        // would fail closed. These tests exercise the resolution plumbing, not the guard, so inject
+        // a permissive guard; CrossCollectionBindingTests covers the guard against a real store.
+        var guard = Substitute.For<ICollectionGuard>();
+        guard.BelongsToAuthorizedCollection(default!, default!, default!).ReturnsForAnyArgs(true);
+        _mapper = new EntityMapper(_modelLoader, collectionGuard: guard);
     }
 
     // --- basic population ------------------------------------------------

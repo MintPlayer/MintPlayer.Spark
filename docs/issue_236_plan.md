@@ -2,6 +2,22 @@
 
 See [issue_236_PRD.md](./issue_236_PRD.md) for the problem statement, evidence, and decisions (D1–D5, **all resolved 2026-08-14** — see the PRD table). **One branch (`feat/issue-236-row-level-security`), one commit per milestone, one PR at the end** covering M0–M5 (M6 stays a separate later perf PR). Tests are written per milestone but full suites run once after all milestones (per working convention); intermediate milestones are verified by build + code reading. Every milestone keeps row security in core, auth-package-agnostic (the packaging invariant), and keeps consumer code near-zero.
 
+## As-built status (2026-08-14) — M0–M5 SHIPPED
+
+All six milestones implemented on `feat/issue-236-row-level-security`, one commit each; full suites green (`MintPlayer.Spark.Tests` **1253/1253**, `@mintplayer/ng-spark` Vitest **214/214**). M6 remains a deliberately separate later perf PR.
+
+| # | Commit | Notes / deviations |
+|---|---|---|
+| M0 | `d249a34` | Batched `LoadAsync<object>(ids)` + dictionary lookup; fail-closed branches preserved. |
+| M1 | `924f201` | `GetRowFilter` + composition at all list sites; derivation rule; projection fallback with one-time diagnostic; constant predicates evaluated in memory (not pushed to RQL). Fleet `CarActions` migrated as the worked example. |
+| M2 | `0c7886c` | Create/edit `WITH CHECK` in the actions base. New `SparkSystemContext` (Abstractions) marks module/system principals. **Hardened in M5** to positive-claim-only (see below). |
+| M3 | `45976e8` | Server-loaded, row-gated `Parent`/`SelectedItems`; raw payload preserved on `Submitted*`. Breaking-change note in `docs/guide-custom-actions.md`. |
+| M4 | `46b7bbd` | `GetProtectedAttributesAsync` redaction in the mapper funnel + AsDetail children + write-back shielding. D4: dead property-level `security.json` rights marked dead in `docs/prd/PRD-Authorization.md`. **No demo model change** (illustrative only; example lives in tests + guide). |
+| M5 | `df18e19` | Per-row `Can{edit,delete}` block on detail path; `spark-po-detail` prefers it. **Also fixed a fail-open regression**: M2's system-context detection treated "no HTTP request" as system, silently disabling row security on every non-request path (the default in tests). Now positive-claim-only — fails closed. D3 record + `SparkSystemContext` updated accordingly. |
+| Docs | `9e34b0a` | `docs/guide-row-security.md` (incl. the loud anonymous-read section) + README hooks. |
+
+**Deferred to follow-up issues (filed at PR time):** M6 Raven `Skip/Take` pushdown; a declarative `security.json` attribute-protection surface (D4 option A); and the "Related findings" in the PRD (`parentId`/`parentType` ignored for `Database.*`, `*Unchecked` bypasses, streaming re-validation, `ProgramUnits` fail-open). A separate security sweep (see `docs/issue_236_security_sweep_*`) audits untrusted-write vulnerabilities surfaced by this work.
+
 ```
 M0 (bug) ──► M1 (pushdown) ──► M2 (WITH CHECK)
    │                     └───► M5 (per-row "can") ──► M6 (perf, later)

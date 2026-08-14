@@ -4,19 +4,17 @@ See [issue_236_security_sweep_PRD.md](./issue_236_security_sweep_PRD.md). Same b
 
 The Critical findings share one root cause, so **S1 is the load-bearing fix** — a single collection-binding guard applied at every load-by-untrusted-id chokepoint. The rest are narrower.
 
-## As-built status (2026-08-14)
+## As-built status (2026-08-14) — everything in this PR (breaking changes allowed, per the user)
 
-**Shipped this PR (Critical + High, all via the shared `ICollectionGuard`):** S1 (C1 + H1), S2 (C2), S3 (C3) — commit `d45117f`. `ICollectionGuard` is an injectable `[Register]` singleton (mockable) checking a loaded document's real `@collection` against the authorized type's collection at the `DatabaseAccess` chokepoint (covering the sync path for free), in reference resolution, and pinning custom-action `Parent` to the route type. The auditors' empirically-verified exploit transcripts are now regression tests (`CrossCollectionBindingTests`, `ExecuteCustomActionTests`).
+**S1–S3 (Critical + High), commit `d45117f`.** Shared injectable `[Register]` `ICollectionGuard` (mockable) checks a loaded document's real `@collection` against the authorized type's collection at the `DatabaseAccess` chokepoint (covering the sync path H1 for free), in reference resolution (C2), and pins custom-action `Parent` to the route type (C3). Exploit transcripts → `CrossCollectionBindingTests`, `ExecuteCustomActionTests`.
 
-**Deferred to follow-up issues (filed at PR time), each with its specific caution:**
-- **S4** (H2, natural-id create-overwrite) — no in-repo consumer implements `IHasNaturalId`, so this is a latent framework exposure, not a live one. Safe, small; deferred only for PR size.
-- **S5** (M1, AsDetail mass-assignment) — ⚠️ **needs investigation first**: failing closed on "child type has no schema" is only correct if declared AsDetail child types *are* independently registered (`GetEntityTypeByClrType(childType) != null`). If AsDetail types are embedded-only (no own `EntityTypeDefinition`), a naive fail-closed breaks *all* AsDetail editing. Must confirm registration semantics before implementing.
-- **S6** (M2/M3, custom-action `*Unchecked` writes + `customActions.json` enforcement) — S6a adds a *checked* write path (framework API design); S6b (config-gate execution) is contained but bundled with S6a.
-- **S7** (M4, lookup-reference read authz) — ⚠️ **behavior change**: makes currently-anonymous `GET /spark/lookupref/*` require a right. Consistent with Spark's DenyAll default, but could break apps relying on public lookup reads. Needs the operator's call on the resource name.
-- **S8/L1** (streaming re-validation) — involves stream-lifetime + periodic credential re-check; more design than a one-liner.
-- **S8/L2** (ProgramUnits fail-open) — ⚠️ inverts a *deliberately*-chosen fail-open (`"fail-open: all items shown"`); disclosure is menu-structure only (click-through stays checked). Defer to respect the original author's explicit tradeoff pending confirmation.
-
-Rationale: the Critical id↔type binding is the user's actual concern and is fully closed and tested. The remainder are Medium/Low and several carry behavior-change or break-everything risk that warrants isolated, reviewable follow-up PRs rather than piling onto this one (consistent with the "minimal PR diff" preference).
+**S4–S8 (High/Medium/Low)** — also in this PR:
+- **S4** (H2) — natural-id create runs the Edit right + row gate + concurrency check on collision.
+- **S5** (M1) — AsDetail recursion fails closed on an **undeclared** child type. Verified safe: every declared AsDetail child (`Address`, `CarreerJob`, `AddressDescription`, `ClientClaim`, `ClientSecret`) has its own model file, so only the attack case (undeclared type) is blocked.
+- **S6** (M2/M3) — `ExecuteCustomAction` gates execution on `customActions.json` (mirrors the list endpoint); demo actions moved off the client-id `*Unchecked` write pattern where practical.
+- **S7** (M4) — lookup-reference `Get`/`List` require a `Query`/`Read` right (breaking: previously anonymous).
+- **S8/L1** — streaming re-checks authorization + credential freshness periodically and caps lifetime.
+- **S8/L2** — `ProgramUnits/Get` fails closed (hide on error / exclude unresolvable) and logs the swallowed exception.
 
 ## S1 — Bind document id to the authorized collection (C1, H1, and the load half of C2)  ★ core fix
 

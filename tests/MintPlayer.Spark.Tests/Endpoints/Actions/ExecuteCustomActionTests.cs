@@ -19,6 +19,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Endpoints.Actions;
 using MintPlayer.Spark.Exceptions;
+using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 
@@ -30,12 +31,19 @@ public class ExecuteCustomActionTests
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
+    private readonly ICustomActionsConfigurationLoader _configLoader = Substitute.For<ICustomActionsConfigurationLoader>();
     private readonly ClientAccessor _sharedClientAccessor = new();
     private readonly RetryAccessor _retryAccessor;
 
     public ExecuteCustomActionTests()
     {
         _retryAccessor = new RetryAccessor(_sharedClientAccessor);
+        // Default: the action is declared in customActions.json (the M3 config gate). Tests that
+        // probe the gate itself override this.
+        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
+        {
+            ["Archive"] = new() { DisplayName = new TranslatedString { Translations = new() { ["en"] = "Archive" } } },
+        });
     }
 
     private static readonly EntityTypeDefinition CarType = new()
@@ -88,6 +96,25 @@ public class ExecuteCustomActionTests
         var result = await endpoint.HandleAsync(context);
 
         (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task An_action_absent_from_customActions_json_is_404_even_if_a_class_exists()
+    {
+        // Security sweep M3: an ICustomAction present in a loaded assembly but not declared in
+        // customActions.json must not be executable — execution agrees with the listing.
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration()); // empty config
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), "Archive", body: new CustomActionRequest());
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
     }
 
     [Fact]
@@ -402,7 +429,7 @@ public class ExecuteCustomActionTests
         => TEndpoint.Configure(builder);
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess);
+        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _configLoader);
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,

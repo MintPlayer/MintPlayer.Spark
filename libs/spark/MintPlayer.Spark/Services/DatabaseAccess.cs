@@ -215,10 +215,30 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        await EnsureSaveAuthorizedAsync(persistentObject);
-
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
+
+        // Natural-id create-collision (security sweep H2): for an IHasNaturalId type the document
+        // id is derived from the entity's own contents, so a "create" (Id == null) whose derived id
+        // already exists is really an overwrite — and the New branch skips the Edit right, the row
+        // Edit gate, the collection guard, and the concurrency check. Detect the collision and set
+        // the id, so the request flows through the Edit path below (and EnsureSaveAuthorizedAsync
+        // then checks "Edit", not "New"). A caller with only New rights can no longer rewrite an
+        // existing document by replaying its natural key.
+        if (string.IsNullOrEmpty(persistentObject.Id)
+            && typeof(IHasNaturalId).IsAssignableFrom(entityType))
+        {
+            var probe = entityMapper.ToEntity(persistentObject) as IHasNaturalId;
+            var derivedId = probe?.GetId();
+            if (!string.IsNullOrEmpty(derivedId))
+            {
+                using var probeSession = documentStore.OpenAsyncSession();
+                if (await probeSession.Advanced.ExistsAsync(derivedId))
+                    persistentObject.Id = derivedId;
+            }
+        }
+
+        await EnsureSaveAuthorizedAsync(persistentObject);
 
         // Row-level Edit gate (R2-H2): for an update against an existing entity, the
         // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller

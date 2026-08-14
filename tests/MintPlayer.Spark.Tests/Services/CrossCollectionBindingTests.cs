@@ -38,10 +38,13 @@ public class CrossCollectionBindingTests : SparkTestDriver
         public string ApiKey { get; set; } = string.Empty;
     }
 
+    private static readonly Guid CodedTypeId = Guid.Parse("c0dedc0d-0000-0000-0000-c0dedc0d0000");
+
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, new[] { GuardedDocModel.For(DocTypeId) });
+        _factory = new SparkEndpointFactory<GuardedContext>(Store,
+            new[] { GuardedDocModel.For(DocTypeId), GuardedCodedModel.For(CodedTypeId) });
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 
@@ -155,6 +158,36 @@ public class CrossCollectionBindingTests : SparkTestDriver
         container.Author.Should().BeNull(
             "a reference declared as Person must not resolve a Secrets document by id — that is the "
             + "exfiltration primitive");
+    }
+
+    // --- H2: natural-id create must not silently overwrite an existing document ---------------
+
+    [Fact]
+    public async Task A_natural_id_create_colliding_with_an_existing_document_runs_the_edit_gate()
+    {
+        // Seed a document under its natural id.
+        var create = new PersistentObject { Id = null, ObjectTypeId = CodedTypeId, Name = "GuardedCoded" };
+        create.AddAttribute(new PersistentObjectAttribute { Name = "Code", DataType = "string", Value = "ABC", IsValueChanged = true });
+        create.AddAttribute(new PersistentObjectAttribute { Name = "Payload", DataType = "string", Value = "original", IsValueChanged = true });
+        var saved = await _dbAccess.SavePersistentObjectAsync(create);
+        saved.Id.Should().Be(GuardedCoded.GetId("ABC"));
+
+        // A second "create" replaying the same Code derives the same id. Without the H2 fix this
+        // takes the New path (GuardedCodedActions permits New) and silently overwrites. With it,
+        // the collision is detected and re-routed through Edit — which the Actions class denies.
+        var recreate = new PersistentObject { Id = null, ObjectTypeId = CodedTypeId, Name = "GuardedCoded" };
+        recreate.AddAttribute(new PersistentObjectAttribute { Name = "Code", DataType = "string", Value = "ABC", IsValueChanged = true });
+        recreate.AddAttribute(new PersistentObjectAttribute { Name = "Payload", DataType = "string", Value = "hijacked", IsValueChanged = true });
+
+        var act = () => _dbAccess.SavePersistentObjectAsync(recreate);
+
+        await act.Should().ThrowAsync<SparkRowLevelAccessDeniedException>(
+            "replaying a natural key must not let New rights overwrite an existing document — the "
+            + "collision is an edit, and this caller may not edit");
+
+        using var session = Store.OpenAsyncSession();
+        var doc = await session.LoadAsync<GuardedCoded>(GuardedCoded.GetId("ABC"));
+        doc.Payload.Should().Be("original", "the existing document must be untouched");
     }
 
     [Fact]

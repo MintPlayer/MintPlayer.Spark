@@ -655,6 +655,8 @@ internal partial class EntityMapper : IEntityMapper
                 ?? throw new InvalidOperationException(
                     $"PopulateObjectValues: AsDetail array attribute '{attr.Name}' targets non-collection property '{property.Name}' of type '{propertyType.FullName}'.");
 
+            EnsureAsDetailTypeDeclared(elementType, attr.Name);
+
             var incoming = attr.Objects ?? [];
             var items = new List<object?>(incoming.Count);
             foreach (var childPo in incoming)
@@ -681,11 +683,32 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        EnsureAsDetailTypeDeclared(targetType, attr.Name);
         var child = Activator.CreateInstance(targetType)
             ?? throw new InvalidOperationException(
                 $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
         AccessorCache.GetSetter(property)(entity, child);
+    }
+
+    /// <summary>
+    /// Fails closed when an AsDetail child CLR type has no registered <see cref="EntityTypeDefinition"/>
+    /// (security sweep M1). The per-attribute write gate (<see cref="IsWritableBySchema"/>) treats a
+    /// missing schema map as allow-all — deliberate for top-level internal mapping, but a
+    /// mass-assignment hole when applied to a client-supplied AsDetail child of an undeclared type:
+    /// any writable CLR property becomes settable by name. Every legitimately-declared AsDetail
+    /// child has its own model file, so a null definition here means the type was never modelled —
+    /// which cannot be edited safely, so it is refused rather than blindly populated.
+    /// </summary>
+    private void EnsureAsDetailTypeDeclared(Type childType, string attributeName)
+    {
+        var clrTypeName = childType.FullName ?? childType.Name;
+        if (modelLoader.GetEntityTypeByClrType(clrTypeName) is null)
+            throw new InvalidOperationException(
+                $"AsDetail attribute '{attributeName}' targets type '{clrTypeName}', which has no "
+                + "registered model. An undeclared AsDetail child type cannot be written safely "
+                + "(no schema to gate its attributes). Register the type (add it to the model and "
+                + "run --spark-synchronize-model).");
     }
 
     /// <summary>

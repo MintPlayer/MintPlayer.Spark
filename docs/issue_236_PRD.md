@@ -4,7 +4,7 @@
 - **Branch:** `feat/issue-236-row-level-security`
 - **Origin:** The Coverage app (MintPlayer/CodeCoverage) wants generic row-level authorization. It currently runs Spark with **DenyAll and no `security.json`** and re-implements its entire read surface as hand-written `[ApiController]`s, purely because of the gaps below. Its requirements are the acceptance benchmark for this work.
 - **Lineage:** Finishes what the Coverage-handoff M5 started (`docs/coverage-handoff-plan.md` §M5). The declarative row-filter design there (`:584-598`) was specified, then explicitly superseded — the shipped M5 delivered only the single `IsAllowedAsync` hook. This PRD revives the deferred half with the "two hooks, four states" objection resolved (see G1).
-- **Status:** Proposed. All `file:line` claims below re-verified against `master` (c3be2ed) on 2026-08-14.
+- **Status:** **Implemented (M0–M5 shipped on the branch)** 2026-08-14; M6 deferred as a separate perf PR. See the as-built table in [issue_236_plan.md](./issue_236_plan.md). All `file:line` claims below re-verified against `master` (c3be2ed) on 2026-08-14.
 
 ## What already ships (baseline — do not rebuild)
 

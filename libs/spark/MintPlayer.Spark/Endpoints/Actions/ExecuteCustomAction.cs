@@ -29,6 +29,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
     [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -53,6 +54,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             return ClientResult.Envelope(clientAccessor,
                 new { error = isAuthed ? "Access denied" : "Authentication required" },
                 isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
+        }
+
+        // Security sweep M3: execution must agree with the listing. The action resolver scans every
+        // ICustomAction in the AppDomain, so an action shipped by a referenced library — or one
+        // retired by removing it from customActions.json (the documented way) — was still callable
+        // by name. Gate on the configuration, exactly as ListCustomActions does: absent → 404.
+        if (!configLoader.GetConfiguration().Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+        {
+            return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
 
         var action = actionResolver.Resolve(actionName);
