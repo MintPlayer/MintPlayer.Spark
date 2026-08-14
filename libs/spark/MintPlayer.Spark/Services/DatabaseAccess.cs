@@ -106,6 +106,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Per-viewer attribute redaction (#236 G4) — the Actions class may hide specific
         // attributes of this row from this caller (e.g. a secret only managers may view).
         await rowSecurity.RedactAsync(session, [(persistentObject, entity)], entityType, entityType, "Read");
+        // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
+        // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404. One
+        // row, negligible cost; absent for types with no row rule (clients fall back to type-level).
+        if (rowSecurity.HasRowRule(entityType))
+        {
+            persistentObject.Can = new PersistentObjectPermissions
+            {
+                Edit = await rowSecurity.IsAllowedAsync(entityType, "Edit", entity),
+                Delete = await rowSecurity.IsAllowedAsync(entityType, "Delete", entity),
+            };
+        }
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
         persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
         return persistentObject;

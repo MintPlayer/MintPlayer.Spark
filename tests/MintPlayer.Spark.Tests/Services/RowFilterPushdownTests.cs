@@ -68,6 +68,33 @@ public class RowFilterPushdownTests : SparkTestDriver
             => Task.FromResult(action != "Edit" || !entity.Title.Contains("locked"));
     }
 
+    [Fact]
+    public async Task The_per_row_can_block_differentiates_edit_from_delete()
+    {
+        // G5 (#236): read-everyone, edit/delete only your own — the detail page must gate its
+        // Edit and Delete buttons independently, which only per-row evaluation can express.
+        var rowSecurity = CreateRowSecurity(em => new GuardedNoteActions(em));
+        var lockedRow = new Note { Owner = "alice", Title = "Alice's locked" };
+
+        (await rowSecurity.IsAllowedAsync(typeof(Note), "Edit", lockedRow))
+            .Should().BeFalse("the predicate refuses Edit on a locked row");
+        (await rowSecurity.IsAllowedAsync(typeof(Note), "Delete", lockedRow))
+            .Should().BeTrue("but Delete is still allowed — the block must carry both, not one flag");
+    }
+
+    [Fact]
+    public void A_type_with_no_row_rule_reports_no_row_rule_so_the_can_block_is_skipped()
+    {
+        var modelLoader = Substitute.For<IModelLoader>();
+        var actionsResolver = Substitute.For<IActionsResolver>();
+        actionsResolver.ResolveForType(typeof(Note))
+            .Returns(new DefaultPersistentObjectActions<Note>(new EntityMapper(modelLoader)));
+
+        new RowSecurity(actionsResolver).HasRowRule(typeof(Note)).Should().BeFalse(
+            "GetPersistentObjectAsync only computes the can block when HasRowRule is true — "
+            + "unruled types leave it null and clients fall back to type-level permissions");
+    }
+
     private static RowSecurity CreateRowSecurity<TActions>(Func<IEntityMapper, TActions> factory)
         where TActions : DefaultPersistentObjectActions<Note>
     {

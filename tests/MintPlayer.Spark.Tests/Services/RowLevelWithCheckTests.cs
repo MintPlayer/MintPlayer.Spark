@@ -168,16 +168,19 @@ public class RowLevelWithCheckTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_background_context_with_no_http_request_is_exempt()
+    public async Task A_context_with_no_system_claim_is_not_exempt_even_without_an_http_request()
     {
+        // Fail closed: the absence of an HTTP request is the DEFAULT state of every non-request
+        // code path, so it must not switch row security off. Only a positive system claim exempts.
         var accessor = Substitute.For<IHttpContextAccessor>();
         accessor.HttpContext.Returns((HttpContext?)null);
         var actions = new ScopedNoteActions(new EntityMapper(CreateModelLoader()), accessor);
         using var session = Store.OpenAsyncSession();
 
-        var saved = await actions.OnSaveAsync(session, NotePo(null, "From a worker", "bob"));
+        var act = () => actions.OnSaveAsync(session, NotePo(null, "From an unproven caller", "bob"));
 
-        saved.Owner.Should().Be("bob", "background work has no viewer to scope rows to");
+        await act.Should().ThrowAsync<SparkRowLevelAccessDeniedException>(
+            "no system claim means the caller is treated as a viewer and the row rule applies");
     }
 
     [Fact]

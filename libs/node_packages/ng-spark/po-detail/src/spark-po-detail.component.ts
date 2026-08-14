@@ -101,8 +101,12 @@ export class SparkPoDetailComponent {
           this.sparkService.getPermissions(et.id),
           this.sparkService.getCustomActions(et.id)
         ]);
-        this.canEdit.set(permissions.canEdit);
-        this.canDelete.set(permissions.canDelete);
+        // Prefer the per-row affordances (#236 G5) when the server attached them — a row the
+        // caller may read but not mutate then hides its Edit/Delete buttons instead of rendering
+        // ones that 404. `can` is absent for types with no row rule, so fall back to type-level.
+        const can = item.can;
+        this.canEdit.set(can ? can.edit : permissions.canEdit);
+        this.canDelete.set(can ? can.delete : permissions.canDelete);
         this.customActions.set(actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both'));
       }
     } catch (e) {
