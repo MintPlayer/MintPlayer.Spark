@@ -38,6 +38,13 @@ namespace MintPlayer.Spark.Messaging;
 public class SparkMessagingOptions
 {
     public int MaxAttempts { get; set; } = 5;
+
+    /// <summary>
+    /// How often <c>MessageRetrySweeper</c> wakes up messages whose retry backoff or
+    /// broadcast delay has elapsed, by setting their <c>WakeUp</c> gate so the queue
+    /// subscriptions re-evaluate and redeliver them. This is the redelivery granularity:
+    /// a due message is picked up at most this long after <c>NextAttemptAtUtc</c>.
+    /// </summary>
     public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>

@@ -25,11 +25,17 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(20);
 
+    // MessageRetrySweeper queries the SparkMessages_ByQueue index (the redelivery tests
+    // depend on it); production deploys it via AddMessaging's middleware.
+    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
+        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
+
     public record SuccessMessage(string Id);
     public record FailMessage(string Id);
     public record FatalMessage(string Id);
     public record UnknownTypeMessage(string Id);
     public record MultiHandlerMessage(string Id);
+    public record RedeliveryMultiMessage(string Id);
 
     // --- Recipients -----------------------------------------------------------
 
@@ -52,6 +58,43 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         {
             Calls++;
             throw new InvalidOperationException("boom");
+        }
+    }
+
+    public sealed class EventuallySucceedsRecipient : IRecipient<FailMessage>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(FailMessage message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (Calls == 1)
+                throw new InvalidOperationException("transient boom");
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class MultiCountingSuccessRecipient : IRecipient<RedeliveryMultiMessage>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(RedeliveryMultiMessage message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class MultiEventuallySucceedsRecipient : IRecipient<RedeliveryMultiMessage>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(RedeliveryMultiMessage message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (Calls == 1)
+                throw new InvalidOperationException("transient boom");
+            return Task.CompletedTask;
         }
     }
 
@@ -120,6 +163,19 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             serviceProvider,
             Options.Create(options ?? new SparkMessagingOptions { MaxAttempts = 5 }),
             NullLoggerFactory.Instance);
+    }
+
+    /// <summary>
+    /// The wake-up mechanism for parked messages. Redelivery tests must run one alongside
+    /// the worker: the embedded test server has no document refresh enabled, so without the
+    /// sweeper a Failed/delayed message is never re-evaluated (the exact issue #233 bug).
+    /// </summary>
+    private MessageRetrySweeper NewSweeper(SparkMessagingOptions? options = null)
+    {
+        return new MessageRetrySweeper(
+            Store,
+            Options.Create(options ?? new SparkMessagingOptions { FallbackPollInterval = TimeSpan.FromSeconds(1) }),
+            NullLogger<MessageRetrySweeper>.Instance);
     }
 
     private static IServiceProvider ProviderFor<TMessage, TRecipient>(TRecipient instance)
@@ -349,6 +405,159 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         {
             await worker.StopAsync(CancellationToken.None);
         }
+    }
+
+    [Fact]
+    public async Task Failed_message_is_redelivered_after_backoff_and_completes()
+    {
+        // Issue #233: the retry state machine parks a message at Failed +
+        // NextAttemptAtUtc, but redelivery needs an active wake-up — the
+        // subscription only re-evaluates a document when it is written.
+        var recipient = new EventuallySucceedsRecipient();
+        var sp = ProviderFor<FailMessage, EventuallySucceedsRecipient>(recipient);
+
+        var id = await SeedAsync(new FailMessage("orders/transient"), maxAttempts: 5);
+
+        var options = new SparkMessagingOptions
+        {
+            MaxAttempts = 5,
+            BackoffDelays = [TimeSpan.FromSeconds(1)], // keep the test fast
+            FallbackPollInterval = TimeSpan.FromSeconds(1),
+        };
+        var worker = NewWorker(typeof(FailMessage).FullName!, sp, options);
+        var sweeper = NewSweeper(options);
+
+        await worker.StartAsync(CancellationToken.None);
+        await sweeper.StartAsync(CancellationToken.None);
+        try
+        {
+            var final = await WaitForMessageAsync(id, m => m.Status == EMessageStatus.Completed);
+
+            recipient.Calls.Should().Be(2);
+            final.Handlers.Should().ContainSingle();
+            final.Handlers[0].Status.Should().Be(EHandlerStatus.Completed);
+        }
+        finally
+        {
+            await sweeper.StopAsync(CancellationToken.None);
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task DelayBroadcast_message_is_picked_up_after_the_delay()
+    {
+        // Issue #233 corollary: a delayed message is evaluated once at creation
+        // (Pending, but NextAttemptAtUtc in the future -> no match) and needs a
+        // wake-up when the delay elapses.
+        var recipient = new SuccessRecipient();
+        var sp = ProviderFor<SuccessMessage, SuccessRecipient>(recipient);
+
+        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        await bus.DelayBroadcastAsync(new SuccessMessage("orders/delayed"), TimeSpan.FromSeconds(1));
+        WaitForIndexing(Store);
+        string id;
+        using (var session = Store.OpenAsyncSession())
+            id = (await session.Query<SparkMessage>().SingleAsync()).Id!;
+
+        var worker = NewWorker(typeof(SuccessMessage).FullName!, sp);
+        var sweeper = NewSweeper();
+
+        await worker.StartAsync(CancellationToken.None);
+        await sweeper.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForMessageAsync(id, m => m.Status == EMessageStatus.Completed);
+            recipient.Received.Should().Equal("orders/delayed");
+        }
+        finally
+        {
+            await sweeper.StopAsync(CancellationToken.None);
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Redelivery_skips_already_completed_handlers()
+    {
+        // Per-handler semantics across a real second delivery: the handler that completed
+        // on attempt 1 must not run again when the message is redelivered for the one that
+        // failed transiently.
+        var completing = new MultiCountingSuccessRecipient();
+        var eventually = new MultiEventuallySucceedsRecipient();
+        var sp = ProviderForMulti<RedeliveryMultiMessage>(completing, eventually);
+
+        var id = await SeedAsync(new RedeliveryMultiMessage("orders/multi-transient"));
+
+        var options = new SparkMessagingOptions
+        {
+            MaxAttempts = 5,
+            BackoffDelays = [TimeSpan.FromSeconds(1)],
+            FallbackPollInterval = TimeSpan.FromSeconds(1),
+        };
+        var worker = NewWorker(typeof(RedeliveryMultiMessage).FullName!, sp, options);
+        var sweeper = NewSweeper(options);
+
+        await worker.StartAsync(CancellationToken.None);
+        await sweeper.StartAsync(CancellationToken.None);
+        try
+        {
+            var final = await WaitForMessageAsync(id, m => m.Status == EMessageStatus.Completed);
+
+            completing.Calls.Should().Be(1, "a handler that completed on the first delivery must be skipped on redelivery");
+            eventually.Calls.Should().Be(2);
+            final.Handlers.Should().HaveCount(2);
+            final.Handlers.Should().OnlyContain(h => h.Status == EHandlerStatus.Completed);
+        }
+        finally
+        {
+            await sweeper.StopAsync(CancellationToken.None);
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Sweeper_touches_only_due_parked_messages()
+    {
+        var now = DateTime.UtcNow;
+        string dueFailedId, futureFailedId, completedId, duePendingId;
+        using (var session = Store.OpenAsyncSession())
+        {
+            SparkMessage NewMessage(EMessageStatus status, DateTime? nextAttempt) => new()
+            {
+                QueueName = "sweeper-queue",
+                MessageType = typeof(SuccessMessage).AssemblyQualifiedName!,
+                PayloadJson = "{}",
+                CreatedAtUtc = now,
+                Status = status,
+                NextAttemptAtUtc = nextAttempt,
+                MaxAttempts = 3,
+            };
+
+            var dueFailed = NewMessage(EMessageStatus.Failed, now.AddSeconds(-5));
+            var futureFailed = NewMessage(EMessageStatus.Failed, now.AddHours(1));
+            var completed = NewMessage(EMessageStatus.Completed, now.AddSeconds(-5));
+            var duePending = NewMessage(EMessageStatus.Pending, now.AddSeconds(-5));
+
+            await session.StoreAsync(dueFailed);
+            await session.StoreAsync(futureFailed);
+            await session.StoreAsync(completed);
+            await session.StoreAsync(duePending);
+            await session.SaveChangesAsync();
+
+            (dueFailedId, futureFailedId, completedId, duePendingId) =
+                (dueFailed.Id!, futureFailed.Id!, completed.Id!, duePending.Id!);
+        }
+        WaitForIndexing(Store);
+
+        var touched = await NewSweeper().SweepOnceAsync(CancellationToken.None);
+        touched.Should().Be(2);
+
+        using var verify = Store.OpenAsyncSession();
+        (await verify.LoadAsync<SparkMessage>(dueFailedId)).WakeUp.Should().BeTrue();
+        (await verify.LoadAsync<SparkMessage>(duePendingId)).WakeUp.Should().BeTrue();
+        (await verify.LoadAsync<SparkMessage>(futureFailedId)).WakeUp.Should().BeFalse();
+        (await verify.LoadAsync<SparkMessage>(completedId)).WakeUp.Should().BeFalse();
     }
 
     [Fact]

@@ -80,6 +80,22 @@ public class MessageBusTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task DelayBroadcastAsync_stores_the_message_unwoken()
+    {
+        // Issue #233: a delayed message must not match the subscription query until
+        // MessageRetrySweeper wakes it up after the delay elapses.
+        var bus = NewBus();
+
+        await bus.DelayBroadcastAsync(new OrderPlaced("orders/1", 10m), TimeSpan.FromMinutes(5));
+        WaitForIndexing(Store);
+
+        using var session = Store.OpenAsyncSession();
+        var message = await session.Query<SparkMessage>().SingleAsync();
+        message.Status.Should().Be(EMessageStatus.Pending);
+        message.WakeUp.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task MaxAttempts_from_options_is_written_onto_the_stored_message()
     {
         var bus = NewBus(new SparkMessagingOptions { MaxAttempts = 12 });
