@@ -51,9 +51,19 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
             throw new InvalidOperationException(
                 $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._+`-]+.");
 
+        // Both halves of the designed pickup condition (PRD-Messaging FR-6): new messages,
+        // AND messages whose retry backoff / broadcast delay has elapsed. Issue #233:
+        // subscriptions only re-evaluate a document when it is written, and nothing could
+        // ever match a parked message again. Note the WakeUp boolean where the PRD designed
+        // a time comparison: `NextAttemptAtUtc <= now()` in a subscription where-clause
+        // SILENTLY NEVER MATCHES (verified empirically — a due document is not delivered
+        // even at creation), so "the backoff has elapsed" must be materialized as plain
+        // field state by a component that can evaluate time: MessageRetrySweeper sets
+        // WakeUp = true when NextAttemptAtUtc passes, and that write is also what triggers
+        // the subscription to re-evaluate the document.
         return new SubscriptionCreationOptions
         {
-            Query = $@"from SparkMessages where QueueName = '{_queueName}' and Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())"
+            Query = $@"from SparkMessages where QueueName = '{_queueName}' and ((Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or WakeUp = true)) or (Status = '{nameof(EMessageStatus.Failed)}' and WakeUp = true))"
         };
     }
 
@@ -66,8 +76,12 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
 
             try
             {
-                // Mark as Processing and increment pickup count
+                // Mark as Processing and increment pickup count. WakeUp is consumed here:
+                // it must be false on every subsequent save, or a message parked for
+                // another backoff round would still match the subscription query and be
+                // redelivered immediately in a tight loop.
                 sparkMessage.Status = EMessageStatus.Processing;
+                sparkMessage.WakeUp = false;
                 sparkMessage.AttemptCount++;
 
                 // Deserialize the payload

@@ -27,6 +27,10 @@ internal static class SparkMessagingExtensions
         // R2-H6: type allow-list derived from the same scan
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
         services.AddHostedService<MessageSubscriptionManager>();
+        // Issue #233: periodic wake-up for messages parked at Failed (retry backoff) or
+        // Pending with a future NextAttemptAtUtc (delayed broadcast) — without it those
+        // documents are never re-evaluated by the subscriptions and never redelivered.
+        services.AddHostedService<MessageRetrySweeper>();
 
         return services;
     }

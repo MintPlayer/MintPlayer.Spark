@@ -215,6 +215,12 @@ After the maximum number of attempts (default 5), the handler is **dead-lettered
 
 When multiple handlers have different attempt counts, the retry delay is based on the highest `AttemptCount` among failing handlers.
 
+#### How redelivery works
+
+RavenDB subscriptions re-evaluate a document only when it is *written* — time passing does not re-run the subscription query, and the query itself cannot evaluate time (a `NextAttemptAtUtc <= now()` where-clause silently never matches). So a background sweeper does the time evaluation: every `FallbackPollInterval` (default 30s) it finds messages whose `NextAttemptAtUtc` has passed and patches `WakeUp = true` onto them. That write both makes the message match the subscription query again and triggers the re-evaluation that delivers it. The worker clears `WakeUp` on pickup, so a message parked for another backoff round waits for the sweeper again.
+
+`FallbackPollInterval` is therefore the redelivery granularity: a due message is picked up at most that long after its scheduled retry time (or delayed-broadcast due time).
+
 ### Non-Retryable Errors
 
 If a recipient throws `NonRetryableException`, that handler is dead-lettered immediately without any retries:
@@ -243,7 +249,7 @@ Messages in different queues cannot block each other. For example, a failing mes
 spark.AddMessaging(options =>
 {
     options.MaxAttempts = 5;                                  // Default: 5
-    options.FallbackPollInterval = TimeSpan.FromSeconds(30);  // Default: 30s
+    options.FallbackPollInterval = TimeSpan.FromSeconds(30);  // Redelivery sweep granularity. Default: 30s
     options.RetentionDays = 7;                                // Days before completed/dead-lettered messages expire
     options.BackoffDelays = new[]                              // Customizable retry delays
     {
@@ -273,6 +279,8 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `Status` | `EMessageStatus` | `Pending`, `Processing`, `Completed`, `Failed`, `DeadLettered` |
 | `CompletedAtUtc` | `DateTime?` | When the last handler completed |
 | `Handlers` | `HandlerExecution[]` | Per-handler execution state (see below) |
+| `WakeUp` | `bool` | Redelivery gate: set by the sweeper when the message is due, cleared by the worker on pickup |
+| `LastWakeUpUtc` | `DateTime?` | When the sweeper last woke this message (informational) |
 
 Each entry in the `Handlers` array tracks an individual recipient:
 
