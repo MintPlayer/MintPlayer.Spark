@@ -63,6 +63,22 @@ jobs:
     - name: Build .NET projects (Release)
       run: npx nx run-many --target=build:release
 
+    # Pack MUST run immediately after the Release build, before any other Nx
+    # invocation. Nx cache replay is destructive: it deletes a task's declared
+    # output directories before extracting the cached archive. The Debug
+    # `build` tasks that the `test` step replays used to declare the whole
+    # bin/ + obj/ as outputs, so a cache-hit test step wiped the bin/Release
+    # artifacts this pack consumes (preview.43 release failure, run
+    # 31778271642 — preview.42 only survived because some cached archives
+    # happened to contain Release artifacts). nx.json now scopes each
+    # configuration's outputs to its own directory, and pack runs here so no
+    # later step can starve it either way. Output goes to nupkgs/ (outside
+    # any project's bin/) so cache replays can't delete the packages; the
+    # push steps below stay after the tests, so publishing is still gated on
+    # a green test run.
+    - name: Pack
+      run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
+
     - name: Build Angular libraries
       run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
 
@@ -135,14 +151,11 @@ jobs:
         fail_ci_if_error: false
         verbose: true
 
-    - name: Pack
-      run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true
-
     - name: PushNuget
-      run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
+      run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
 
     - name: PushGithub
-      run: dotnet nuget push **/*.nupkg --no-symbols --skip-duplicate
+      run: dotnet nuget push 'nupkgs/*.nupkg' --no-symbols --skip-duplicate
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
 
