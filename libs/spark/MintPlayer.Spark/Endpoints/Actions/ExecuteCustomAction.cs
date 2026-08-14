@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
+// The sibling namespace MintPlayer.Spark.Endpoints.PersistentObject shadows the type name here.
+using Po = MintPlayer.Spark.Abstractions.PersistentObject;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
@@ -25,6 +28,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -51,6 +56,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
         }
 
+        // Security sweep M3: execution must agree with the listing. The action resolver scans every
+        // ICustomAction in the AppDomain, so an action shipped by a referenced library — or one
+        // retired by removing it from customActions.json (the documented way) — was still callable
+        // by name. Gate on the configuration, exactly as ListCustomActions does: absent → 404.
+        if (!configLoader.GetConfiguration().Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+        {
+            return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
+        }
+
         var action = actionResolver.Resolve(actionName);
         if (action is null)
         {
@@ -65,14 +79,53 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
         }
 
-        var args = new CustomActionArgs
-        {
-            Parent = request?.Parent,
-            SelectedItems = request?.SelectedItems ?? [],
-        };
-
         try
         {
+            // Row-gated server-side resolution (#236 G3). The wire's Parent/SelectedItems are
+            // whatever the caller typed — a caller holding the type-level action right could name
+            // any id of any type and the action received it as fact. The action now gets entities
+            // re-loaded through the same row-gated path as every read; a denied or missing id is
+            // a 404, indistinguishable from not-found (M-3). The submitted POs stay available as
+            // exactly that — submitted values — for actions that edit.
+            //
+            // Security sweep C3: the load MUST use the route's entityType.Id, NOT the wire's
+            // submittedParent.ObjectTypeId. The type gate above authorized THIS action on THIS
+            // type; loading the parent under a client-chosen type would gate it against the wrong
+            // rule (and, pre-CollectionGuard, smuggle a foreign-collection id past every row rule).
+            // SelectedItems already does this correctly below.
+            Po? parent = null;
+            if (request?.Parent is { } submittedParent && !string.IsNullOrEmpty(submittedParent.Id))
+            {
+                parent = await databaseAccess.GetPersistentObjectAsync(entityType.Id, submittedParent.Id);
+                if (parent is null)
+                {
+                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                }
+            }
+
+            var selectedItems = new List<Po>();
+            foreach (var submitted in request?.SelectedItems ?? [])
+            {
+                // Selected items come from this type's list screen; an id-less one names no row
+                // and cannot be verified.
+                var loaded = string.IsNullOrEmpty(submitted.Id)
+                    ? null
+                    : await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id);
+                if (loaded is null)
+                {
+                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                }
+                selectedItems.Add(loaded);
+            }
+
+            var args = new CustomActionArgs
+            {
+                Parent = parent,
+                SelectedItems = [.. selectedItems],
+                SubmittedParent = request?.Parent,
+                SubmittedSelectedItems = request?.SelectedItems ?? [],
+            };
+
             await action.ExecuteAsync(args, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
         }

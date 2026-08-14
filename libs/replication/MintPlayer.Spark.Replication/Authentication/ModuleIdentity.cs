@@ -35,6 +35,11 @@ internal static class ModuleIdentity
                 new Claim(ClaimTypes.NameIdentifier, moduleName),
                 new Claim(ClaimTypes.Name, moduleName),
                 new Claim("group", SparkModuleCertificateDefaults.GroupPrefix + moduleName),
+
+                // A module is the system acting, not a viewer — row-level rules (which scope
+                // rows to a person) don't apply to it. Type-level rights still do, via the
+                // group claim above. See SparkSystemContext.
+                new Claim(MintPlayer.Spark.Abstractions.Authentication.SparkSystemContext.ClaimType, "module"),
             ],
             SparkModuleCertificateDefaults.Scheme));
     }

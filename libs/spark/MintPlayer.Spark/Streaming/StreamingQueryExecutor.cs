@@ -21,6 +21,9 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly Services.Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly Services.IRowSecurity rowSecurity;
 
+    /// <summary>How often (in batches) a live stream re-checks its type-level authorization.</summary>
+    private const int ReauthorizeEveryNBatches = 10;
+
     public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -82,8 +85,23 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         if (result is null) yield break;
 
         // Iterate via IAsyncEnumerable reflection
+        var batchesSinceReauth = 0;
         await foreach (var batch in IterateAsyncEnumerable(result, methodInfo.ElementType, methodInfo.IsSingleItemStream, cancellationToken))
         {
+            // Security sweep L1: the type-level authorization ran once, before the loop. A stream
+            // outlives that snapshot — so re-run it every few batches, and close the stream if the
+            // right was revoked (e.g. the group's Query right removed from security.json). This
+            // bounds how long a stream keeps delivering after its authorization should have ended.
+            // (Residual: user-level revocation carried in the frozen handshake ClaimsPrincipal —
+            // e.g. the user removed from a group — needs a credential refresh that is
+            // auth-scheme-specific; tracked separately.)
+            if (++batchesSinceReauth >= ReauthorizeEveryNBatches)
+            {
+                batchesSinceReauth = 0;
+                if (!await permissionService.IsAllowedAsync("Query", entityTypeDef.Name))
+                    yield break;
+            }
+
             // Row-level authorization, per batch. A stream is a long-lived subscription that
             // keeps delivering rows, so skipping the check here would not merely disclose the
             // rows present when it opened — it would keep disclosing every new one for as long
@@ -100,10 +118,11 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             // Resolve breadcrumbs (recursive, batched) for this batch.
             var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, batchList, entityTypeDef, cancellationToken);
 
-            var persistentObjects = batchList
-                .Select(e => entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs))
-                .ToArray();
-            yield return persistentObjects;
+            var mapped = batchList
+                .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
+                .ToList();
+            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ElementType, "Query");
+            yield return mapped.Select(m => m.Po).ToArray();
         }
     }
 

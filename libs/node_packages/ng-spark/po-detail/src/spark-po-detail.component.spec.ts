@@ -120,6 +120,32 @@ describe('SparkPoDetailComponent', () => {
     expect(c.customActions()).toHaveLength(1);
   });
 
+  it('prefers the per-row can block over type-level permissions (#236 G5)', async () => {
+    // Type-level says edit+delete allowed, but this row's can block forbids both — a row the
+    // caller may read but not mutate must hide its Edit/Delete buttons instead of 404ing.
+    const { harness } = await setup({
+      get: vi.fn().mockResolvedValue({ ...existingItem, can: { edit: false, delete: false } }),
+    } as Partial<SparkService>);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.canEdit()).toBe(false);
+    expect(c.canDelete()).toBe(false);
+  });
+
+  it('falls back to type-level permissions when no can block is present', async () => {
+    // Unruled types omit the can block entirely; behaviour is exactly as before, backward-compatible.
+    const { harness } = await setup({
+      get: vi.fn().mockResolvedValue(existingItem),
+      getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: false }),
+    } as Partial<SparkService>);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.canEdit()).toBe(true);
+    expect(c.canDelete()).toBe(false);
+  });
+
   it('resolves entity type via id OR alias', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/po/t-person/people%2F1', SparkPoDetailComponent);

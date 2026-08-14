@@ -97,4 +97,20 @@ public class DatabaseAccessRowLevelAuthzTests : SparkTestDriver
 
         results.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task Get_attaches_the_per_row_can_block_for_a_row_scoped_type()
+    {
+        // G5 (#236): a type with a row rule reports per-row edit/delete affordances on the PO, so
+        // the generic UI can hide buttons that would 404. GuardedDoc allows every action on a
+        // visible row, so both are true — the point of this test is that the block is present and
+        // populated (a non-row-scoped type would leave it null; see the unit test below).
+        await SeedAsync(new GuardedDoc { Id = "docs/visible", Name = "public", IsVisible = true });
+
+        var result = await _dbAccess.GetPersistentObjectAsync(DocTypeId, "docs/visible");
+
+        result!.Can.Should().NotBeNull();
+        result.Can!.Edit.Should().BeTrue();
+        result.Can.Delete.Should().BeTrue();
+    }
 }

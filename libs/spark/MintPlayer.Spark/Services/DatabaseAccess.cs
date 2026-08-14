@@ -24,6 +24,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly ICollectionGuard collectionGuard;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -92,6 +93,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (entity == null) return null;
 
+        // Id-to-type binding (security sweep C1): the caller authorized `entityType`, but `id` is
+        // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
+        // the same. A document whose real @collection isn't this type's is not this type's — 404,
+        // indistinguishable from missing (M-3), so it's no oracle for cross-collection existence.
+        if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, entityType))
+            return null;
+
         // Row-level read gate. Entity-type "Read" passed; now let the Actions class decide
         // whether this specific instance is visible to the current caller. Returning null
         // here propagates as 404 through the endpoint — same shape as a genuinely missing
@@ -103,6 +111,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, [entity], entityTypeDefinition);
 
         var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
+        // Per-viewer attribute redaction (#236 G4) — the Actions class may hide specific
+        // attributes of this row from this caller (e.g. a secret only managers may view).
+        await rowSecurity.RedactAsync(session, [(persistentObject, entity)], entityType, entityType, "Read");
+        // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
+        // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404. One
+        // row, negligible cost; absent for types with no row rule (clients fall back to type-level).
+        if (rowSecurity.HasRowRule(entityType))
+        {
+            persistentObject.Can = new PersistentObjectPermissions
+            {
+                Edit = await rowSecurity.IsAllowedAsync(entityType, "Edit", entity),
+                Delete = await rowSecurity.IsAllowedAsync(entityType, "Delete", entity),
+            };
+        }
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
         persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
         return persistentObject;
@@ -134,7 +156,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, queryType, indexName, referenceProperties)).ToList();
+        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, referenceProperties)).ToList();
 
         // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
         // to rows the Actions class says the caller may see. For projection queries, the row
@@ -149,7 +171,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // load is a cache hit; deeper levels cost one batched request each.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
-        return entities.Select(e => entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs));
+        var mapped = entities
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, queryType, "Query");
+        return mapped.Select(m => m.Po);
     }
 
     /// <summary>
@@ -189,10 +215,30 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        await EnsureSaveAuthorizedAsync(persistentObject);
-
         var entityType = ResolveType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
+
+        // Natural-id create-collision (security sweep H2): for an IHasNaturalId type the document
+        // id is derived from the entity's own contents, so a "create" (Id == null) whose derived id
+        // already exists is really an overwrite — and the New branch skips the Edit right, the row
+        // Edit gate, the collection guard, and the concurrency check. Detect the collision and set
+        // the id, so the request flows through the Edit path below (and EnsureSaveAuthorizedAsync
+        // then checks "Edit", not "New"). A caller with only New rights can no longer rewrite an
+        // existing document by replaying its natural key.
+        if (string.IsNullOrEmpty(persistentObject.Id)
+            && typeof(IHasNaturalId).IsAssignableFrom(entityType))
+        {
+            var probe = entityMapper.ToEntity(persistentObject) as IHasNaturalId;
+            var derivedId = probe?.GetId();
+            if (!string.IsNullOrEmpty(derivedId))
+            {
+                using var probeSession = documentStore.OpenAsyncSession();
+                if (await probeSession.Advanced.ExistsAsync(derivedId))
+                    persistentObject.Id = derivedId;
+            }
+        }
+
+        await EnsureSaveAuthorizedAsync(persistentObject);
 
         // Row-level Edit gate (R2-H2): for an update against an existing entity, the
         // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller
@@ -209,6 +255,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
             if (existing is not null)
             {
+                // Id-to-type binding (security sweep C1/H1): the update targets an existing
+                // document by a client-supplied id. If that document isn't actually of the
+                // authorized type's collection, the caller is trying to overwrite a foreign
+                // document (a Customer edit rewriting a SparkUser). Treat as not-found — the
+                // update endpoint maps SparkRowLevelAccessDeniedException to 404. Covers the sync
+                // path too: SyncActionHandler routes module writes through here.
+                if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
+                    throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
+
                 // Concurrency check folds into the same side session — see R2-M7 / M-7.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
                 {
@@ -261,6 +316,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
         var existing = await LoadEntityAsync(session, entityType, id);
         if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+        // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
+        // document of another by naming its id. A foreign-collection document is "not found" here.
+        if (!collectionGuard.BelongsToAuthorizedCollection(session, existing, entityType))
+            return;
         if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
             throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
 
@@ -321,6 +380,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// </summary>
     private async Task<IEnumerable<object>> QueryEntitiesWithIncludesAsync(
         IAsyncDocumentSession session,
+        Type baseEntityType,
         Type entityType,
         string? indexName,
         List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
@@ -378,6 +438,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (query != null && referenceProperties.Count > 0)
         {
             query = referenceResolver.ApplyIncludes(query, referenceProperties);
+        }
+
+        // Push the row filter into the query where shapes allow (no projection in play);
+        // otherwise FilterAsync in the caller stays the gate.
+        if (query != null)
+        {
+            query = rowSecurity.ComposeRowFilter(query, baseEntityType, entityType, "Query");
         }
 
         // Call ToListAsync on the query

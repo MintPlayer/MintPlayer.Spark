@@ -16,6 +16,10 @@ namespace MintPlayer.Spark.Actions;
 public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
 {
     [Inject] private readonly IEntityMapper entityMapper;
+    // Optional (nullable [Inject] fields get a `= null` ctor default) so existing manual
+    // constructions keep compiling. Used only to recognize the system context — module sync and
+    // background work — which row rules don't apply to.
+    [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
 
     /// <inheritdoc />
     public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
@@ -35,6 +39,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
             var existing = await session.LoadAsync<T>(obj.Id);
             if (existing is not null)
             {
+                await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
             }
@@ -49,10 +54,36 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         }
 
         await OnBeforeSaveAsync(obj, entity);
+        await EnsureRowSaveAllowedAsync(obj, entity);
         await session.StoreAsync(entity);
         await session.SaveChangesAsync();
         await OnAfterSaveAsync(obj, entity);
         return entity;
+    }
+
+    /// <summary>
+    /// The write half of row-level security — SQL RLS's <c>WITH CHECK</c> to the read paths'
+    /// <c>USING</c>. Judged against the entity's <b>resulting</b> state, after mapping and
+    /// <see cref="OnBeforeSaveAsync"/> (so ownership stamping has happened): a create must produce
+    /// a row its caller could see, and an edit must not move a row <em>into</em> someone else's
+    /// scope. Without this, nothing stops an authenticated caller creating a document stamped with
+    /// another tenant's owner. Skipped for the system context (module sync, background work) —
+    /// row rules scope viewers, and infrastructure has none. Overriding <see cref="OnSaveAsync"/>
+    /// without calling the base implementation takes over this responsibility.
+    /// </summary>
+    private async Task EnsureRowSaveAllowedAsync(PersistentObject obj, T entity)
+    {
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return;
+
+        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
+
+        var filter = GetRowFilter(action);
+        if (filter is not null && !filter.Compile()(entity))
+            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
+
+        if (!await IsAllowedAsync(action, entity))
+            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
     }
 
     /// <inheritdoc />
@@ -90,6 +121,82 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <param name="entity">The specific row being evaluated.</param>
     [NoInterfaceMember]
     public virtual Task<bool> IsAllowedAsync(string action, T entity) => Task.FromResult(true);
+
+    /// <summary>
+    /// Row-level authorization as a composable filter. Where <see cref="IsAllowedAsync"/> judges
+    /// one materialized row, this expresses the same policy as a predicate the framework can push
+    /// into the RavenDB query itself — so a list over a row-scoped type reads only the caller's
+    /// rows instead of the whole collection.
+    ///
+    /// Evaluated per request: capture request-scoped data (the current user, an allow-list) as
+    /// locals so it lands in the expression as constants. Return <c>null</c> to mean "no
+    /// restriction for this caller" (e.g. an administrator).
+    ///
+    /// If only this member is overridden, single-row checks (detail, edit, delete) are derived by
+    /// compiling the expression — one source of truth, list and detail cannot diverge. If
+    /// <see cref="IsAllowedAsync"/> is also overridden, both must allow the row (the filter
+    /// narrows, the predicate refines). When the query runs against an index projection, the
+    /// filter cannot compose (it is typed on the entity, not the projection) and the framework
+    /// falls back to post-materialization filtering with a batched base-document reload — never
+    /// silently unfiltered.
+    ///
+    /// The predicate's properties must be queryable in RavenDB for the pushdown to apply: on a
+    /// plain collection query anything on the document works; on a static index the fields it
+    /// names must be indexed.
+    /// </summary>
+    /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
+    [NoInterfaceMember]
+    public virtual System.Linq.Expressions.Expression<Func<T, bool>>? GetRowFilter(string action) => null;
+
+    /// <summary>
+    /// Per-viewer attribute redaction. Names the attributes of this specific row that the current
+    /// caller must not see; the framework nulls their values and marks them invisible at mapping
+    /// time on every read path (detail, list, query, stream), and shields them from write-back on
+    /// updates. Null or empty means nothing is redacted — the default, costing nothing.
+    ///
+    /// A dotted name ("Jobs.Salary") redacts a column inside an AsDetail attribute's embedded
+    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. Write-back
+    /// shielding applies to top-level names; dotted names are read-side redaction only.
+    ///
+    /// The canonical case: a secret only managers of this row may view —
+    /// <c>CanManage(entity) ? null : ["BadgeToken"]</c>. Redaction is per row and per caller;
+    /// evaluated against the base entity even when the query returned index projections.
+    /// </summary>
+    /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
+    [NoInterfaceMember]
+    public virtual Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)
+        => Task.FromResult<IReadOnlyCollection<string>?>(null);
+
+    /// <summary>
+    /// Write-back safety for redaction: a client that received a redacted (nulled) attribute and
+    /// submits the form back would silently clobber the stored secret — and a malicious client
+    /// could overwrite it deliberately. Before the merge, protected attributes get the existing
+    /// entity's current value restored, so the merge writes the secret back to itself. Skipped
+    /// for the system context (sync replicates full values).
+    /// </summary>
+    private async Task ShieldProtectedAttributesAsync(PersistentObject obj, T existing)
+    {
+        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            return;
+
+        var protectedNames = await GetProtectedAttributesAsync("Edit", existing);
+        if (protectedNames is not { Count: > 0 })
+            return;
+
+        foreach (var name in protectedNames)
+        {
+            if (name.Contains('.'))
+                continue; // AsDetail child columns: read-side redaction only (documented).
+
+            var attribute = obj.Attributes.FirstOrDefault(a => a.Name == name);
+            var property = typeof(T).GetProperty(name);
+            if (attribute is null || property is null || !property.CanRead)
+                continue;
+
+            attribute.Value = property.GetValue(existing);
+            attribute.IsValueChanged = false;
+        }
+    }
 
     /// <inheritdoc />
     public virtual Task OnBeforeSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;

@@ -161,6 +161,11 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = referenceResolver.ApplyIncludes(queryable, referenceProperties);
         }
 
+        // Push the row filter into the Raven query where shapes allow (no projection in play);
+        // otherwise this no-ops and FilterAsync below stays the gate. Composing before
+        // materialization is what keeps a row-scoped type from reading its whole collection.
+        queryable = rowSecurity.ComposeRowFilter(queryable, entityType, resultType, "Query");
+
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
         {
@@ -180,9 +185,11 @@ internal partial class QueryExecutor : IQueryExecutor
         // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
 
-        return entities
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
-            .DistinctBy(po => po.Id);
+        var mapped = entities
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
+        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
     }
 
     #endregion
@@ -260,6 +267,13 @@ internal partial class QueryExecutor : IQueryExecutor
             result = ApplyProjection(result, methodInfo.ResultElementType);
         }
 
+        // Push the row filter into the custom query too — a custom query says where rows come
+        // from, not which of them this caller may see. No-op when the method yields projections.
+        if (methodInfo.IsQueryable)
+        {
+            result = rowSecurity.ComposeRowFilter(result, entityType, methodInfo.ResultElementType, "Query");
+        }
+
         // Apply sorting if the result is IQueryable
         if (methodInfo.IsQueryable && query.SortColumns.Length > 0)
         {
@@ -298,9 +312,11 @@ internal partial class QueryExecutor : IQueryExecutor
         // Resolve breadcrumbs (recursive, batched) for the custom query's results.
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
 
-        return entityList
-            .Select(e => entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs))
-            .DistinctBy(po => po.Id);
+        var mapped = entityList
+            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
+            .ToList();
+        await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
+        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
     }
 
     private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)

@@ -12,6 +12,15 @@ public sealed class PersistentObject
     public string? Breadcrumb { get; set; }
 
     /// <summary>
+    /// Per-row action affordances (#236 G5), computed only when the type has a row rule. Lets the
+    /// generic UI avoid rendering an Edit/Delete button for a row the caller may read but not
+    /// mutate (which would 404). Null means "no per-row information" — clients fall back to the
+    /// type-level permissions from <c>GET /spark/permissions/{type}</c>, so this is fully
+    /// backward-compatible.
+    /// </summary>
+    public PersistentObjectPermissions? Can { get; set; }
+
+    /// <summary>
     /// Optimistic-concurrency token. Populated by the server on read (RavenDB's change
     /// vector for the underlying entity). Clients should echo the value back on update —
     /// if the server's current change vector differs, the update is rejected with HTTP 409.
@@ -63,6 +72,14 @@ public sealed class PersistentObject
         attribute.Parent = this;
         _attributes.Add(attribute);
     }
+}
+
+/// <summary>Per-row action affordances attached to a <see cref="PersistentObject"/>. See
+/// <see cref="PersistentObject.Can"/>.</summary>
+public sealed class PersistentObjectPermissions
+{
+    public bool Edit { get; set; }
+    public bool Delete { get; set; }
 }
 
 [JsonConverter(typeof(PersistentObjectAttributeJsonConverter))]

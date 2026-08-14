@@ -163,11 +163,12 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Custom_query_unit_without_EntityType_falls_through_to_unrestricted_keep()
+    public async Task Custom_query_unit_without_EntityType_is_hidden_fail_closed()
     {
-        // Source starts with Custom., EntityType empty → ResolveClrType returns null →
-        // the endpoint keeps the unit (fail-open: any unit whose target can't be resolved
-        // is shown rather than hidden).
+        // Security sweep L2: a query unit names an entity type, so one whose target can't be
+        // resolved (Custom. source, no EntityType) must be HIDDEN — showing it leaks that a query
+        // menu item exists to a caller who can't be confirmed to have rights. (Previously this
+        // failed open and kept the unit.) A group left with no visible units is dropped entirely.
         var query = new SparkQuery
         {
             Id = CustomQueryId, Name = "CustomBare", Source = "Custom.Bare", EntityType = null,
@@ -180,8 +181,8 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
 
         var result = await GetConfigAsync(factory);
 
-        result.ProgramUnitGroups.Should().ContainSingle()
-            .Which.ProgramUnits.Should().ContainSingle();
+        result.ProgramUnitGroups.Should().BeEmpty(
+            "a typed query unit that can't be resolved is hidden, so its now-empty group drops out");
     }
 
     [Fact]
