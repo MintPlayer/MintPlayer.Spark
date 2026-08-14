@@ -109,6 +109,23 @@ internal partial class RowSecurity : IRowSecurity
             idGetter = AccessorCache.GetGetter(idProperty);
         }
 
+        // One batched load for the whole page, not one per row. The request session caps requests
+        // (MaxNumberOfRequestsPerSession, default 30) precisely to catch the per-row shape — a
+        // projection-backed query over a row-scoped type would throw past ~29 rows.
+        Dictionary<string, object>? baseDocuments = null;
+        if (projecting)
+        {
+            var ids = entities
+                .Select(e => idGetter!(e)?.ToString())
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Cast<string>()
+                .ToList();
+
+            baseDocuments = ids.Count > 0
+                ? await session.LoadAsync<object>(ids)
+                : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        }
+
         var visible = new List<object>(entities.Count);
         foreach (var entity in entities)
         {
@@ -122,8 +139,7 @@ internal partial class RowSecurity : IRowSecurity
 
                 // The index can name a document that has since been deleted. Unverifiable, and the
                 // row should not be on screen regardless.
-                var loaded = await session.LoadAsync<object>(id);
-                if (loaded is null)
+                if (!baseDocuments!.TryGetValue(id, out var loaded) || loaded is null)
                     continue;
 
                 subject = loaded;
