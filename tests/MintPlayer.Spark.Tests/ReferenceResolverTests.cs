@@ -6,9 +6,15 @@ namespace MintPlayer.Spark.Tests;
 
 public class ReferenceResolverTests
 {
-    // ReferenceResolver is now just the [Reference] property scan + .Include() chaining;
-    // breadcrumb loading moved to BreadcrumbResolver, so no dependencies to stub.
-    private readonly ReferenceResolver _resolver = new();
+    // ReferenceResolver does the [Reference] property scan + .Include() chaining +
+    // GetDefaultIncludes() resolution; the actions resolver backs the last of those.
+    private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
+    private readonly ReferenceResolver _resolver;
+
+    public ReferenceResolverTests()
+    {
+        _resolver = new ReferenceResolver(_actionsResolver, null);
+    }
 
     [Fact]
     public void GetReferenceProperties_FindsReferenceAttributes()

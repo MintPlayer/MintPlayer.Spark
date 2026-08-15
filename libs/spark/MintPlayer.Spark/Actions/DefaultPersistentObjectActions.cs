@@ -23,7 +23,37 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <inheritdoc />
     public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
-        => await session.LoadAsync<T>(id);
+    {
+        // #239: prime the consumer's declared includes so referenced documents arrive in the same
+        // round-trip instead of a breadcrumb load each. RavenDB requires the includes on the same
+        // fluent load call (there's no pre-register-on-session), so this is the seam. A consumer
+        // overriding OnLoadAsync takes over include responsibility (same caveat as the WITH CHECK).
+        var includes = GetDefaultIncludes();
+        if (includes is not { Count: > 0 })
+            return await session.LoadAsync<T>(id);
+
+        return await session.LoadAsync<T>(id, builder =>
+        {
+            foreach (var path in includes)
+                builder.IncludeDocuments(path);
+        });
+    }
+
+    /// <summary>
+    /// Reference paths the framework should always RavenDB-<c>.Include()</c> when loading or querying
+    /// this type — so referenced documents arrive in the same round-trip rather than a follow-up load
+    /// (each of which counts against the session's request budget). Null/empty = only the
+    /// <c>[Reference]</c>-decorated properties are auto-included.
+    /// <para>
+    /// Paths are dotted JSON paths <b>into the document</b>: <c>"Company"</c> for a top-level
+    /// reference id, <c>"Address.City"</c> for an id nested inside an <b>embedded</b> object. They do
+    /// <b>not</b> cross a document boundary — RavenDB has no recursive include, so a chain through a
+    /// referenced <em>document</em> (Car → Owner → Owner.Company) is not expressible; use an index or
+    /// let the breadcrumb resolver's batched load handle deeper levels.
+    /// </para>
+    /// </summary>
+    [NoInterfaceMember]
+    public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;
 
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)

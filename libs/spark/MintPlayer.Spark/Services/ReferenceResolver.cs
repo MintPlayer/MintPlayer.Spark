@@ -22,15 +22,32 @@ internal interface IReferenceResolver
     List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType, Type fallbackType);
 
     /// <summary>
-    /// Chains .Include(propertyName) on a RavenDB IRavenQueryable so that referenced documents
-    /// are loaded in the same round-trip. Returns the (possibly wrapped) queryable.
+    /// Chains RavenDB <c>.Include(path)</c> on a queryable of <paramref name="elementType"/> so the
+    /// named referenced documents are loaded in the same round-trip. Returns the (possibly wrapped)
+    /// queryable. Paths are dotted JSON paths into the document.
     /// </summary>
-    object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties);
+    object ApplyIncludes(object queryable, Type elementType, IReadOnlyCollection<string> paths);
+
+    /// <summary>The paths a type's Actions class declares via <c>GetDefaultIncludes()</c>, or null.</summary>
+    IReadOnlyCollection<string>? GetDefaultIncludes(Type entityType);
+
+    /// <summary>
+    /// The full include set for a query of <paramref name="entityType"/> read as
+    /// <paramref name="queryType"/>: the <c>[Reference]</c> property names merged with the Actions
+    /// class's <c>GetDefaultIncludes()</c> paths, deduped. Empty when nothing to include.
+    /// </summary>
+    IReadOnlyCollection<string> ResolveIncludePaths(Type queryType, Type entityType);
 }
 
 [Register(typeof(IReferenceResolver), ServiceLifetime.Scoped)]
 internal partial class ReferenceResolver : IReferenceResolver
 {
+    [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<ReferenceResolver>? logger;
+
+    /// <summary>One-shot diagnostic keys for GetDefaultIncludes paths whose first segment is unknown.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), bool> announced = new();
+
     public List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType)
     {
         // Return a copy of the cached array as a List so callers can mutate (the
@@ -68,28 +85,68 @@ internal partial class ReferenceResolver : IReferenceResolver
         return result;
     }
 
-    public object ApplyIncludes(object queryable, List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+    public object ApplyIncludes(object queryable, Type elementType, IReadOnlyCollection<string> paths)
     {
-        foreach (var (property, _) in referenceProperties)
+        if (paths.Count == 0)
+            return queryable;
+
+        // RavenDB's Include on a queryable is the STATIC extension
+        // LinqExtensions.Include<TResult>(IQueryable<TResult>, string) — there is NO instance
+        // Include on RavenQueryInspector<T> (the prior code reflected for one and silently no-oped,
+        // so Spark applied no includes at all). Invoke the static generic extension reflectively,
+        // the same shape RowSecurity.ComposeRowFilter uses for Queryable.Where. Cached per element
+        // type.
+        var includeMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+            ("ReferenceResolver.LinqInclude", elementType),
+            static k => typeof(Raven.Client.Documents.LinqExtensions).GetMethods()
+                .First(m => m.Name == "Include"
+                    && m.IsGenericMethodDefinition
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters() is { Length: 2 } ps
+                    && ps[0].ParameterType.IsGenericType
+                    && ps[0].ParameterType.GetGenericTypeDefinition() == typeof(System.Linq.IQueryable<>)
+                    && ps[1].ParameterType == typeof(string))
+                .MakeGenericMethod(k.Element));
+
+        foreach (var path in paths)
+            queryable = includeMethod.Invoke(null, [queryable, path])!;
+
+        return queryable;
+    }
+
+    public IReadOnlyCollection<string>? GetDefaultIncludes(Type entityType)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
+            ("ReferenceResolver.GetDefaultIncludes", actions.GetType()),
+            static k => k.Actions.GetMethod("GetDefaultIncludes", Type.EmptyTypes));
+
+        var paths = (IReadOnlyCollection<string>?)method?.Invoke(actions, []);
+        if (paths is not { Count: > 0 })
+            return null;
+
+        // Stringly-typed safety net: a path whose first segment isn't a property of the type will
+        // silently include nothing. Warn once per (type, unknown segment) so a typo is visible.
+        foreach (var path in paths)
         {
-            var queryType = queryable.GetType();
-
-            // Cached per (queryType, "Include(string)"): the .Include(string) MethodInfo
-            // doesn't change for a given queryable type and is otherwise a fresh
-            // GetMethods() scan per reference property.
-            var includeMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
-                ("ReferenceResolver.IncludeMethod", queryType),
-                static k => k.Type.GetMethods()
-                    .FirstOrDefault(m => m.Name == "Include"
-                        && m.GetParameters().Length == 1
-                        && m.GetParameters()[0].ParameterType == typeof(string)));
-
-            if (includeMethod != null)
+            var firstSegment = path.Split('.', 2)[0];
+            if (entityType.GetCachedProperty(firstSegment) is null
+                && announced.TryAdd((entityType, firstSegment), true))
             {
-                queryable = includeMethod.Invoke(queryable, [property.Name])!;
+                logger?.LogWarning(
+                    "GetDefaultIncludes for {EntityType} names '{Path}', whose first segment "
+                    + "'{Segment}' is not a property of the type — that include will do nothing.",
+                    entityType.Name, path, firstSegment);
             }
         }
 
-        return queryable;
+        return paths;
+    }
+
+    public IReadOnlyCollection<string> ResolveIncludePaths(Type queryType, Type entityType)
+    {
+        var referenceNames = GetReferenceProperties(queryType, entityType).Select(p => p.Property.Name);
+        var defaults = GetDefaultIncludes(entityType) ?? [];
+        return referenceNames.Concat(defaults).Distinct(StringComparer.Ordinal).ToArray();
     }
 }
