@@ -3,10 +3,10 @@ import { InjectionToken, Provider, Type } from '@angular/core';
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
   name: string;
-  /** Component for the PO detail page. Must implement SparkAttributeDetailRenderer. */
-  detailComponent: Type<any>;
-  /** Component for query-list column cells. Must implement SparkAttributeColumnRenderer. */
-  columnComponent: Type<any>;
+  /** Component for the PO detail page. Must implement SparkAttributeDetailRenderer. Omit for a column/edit-only renderer. */
+  detailComponent?: Type<any> | null;
+  /** Component for query-list column cells. Must implement SparkAttributeColumnRenderer. Omit for a detail/edit-only renderer. */
+  columnComponent?: Type<any> | null;
   /** Optional component for create/edit forms. Must implement SparkAttributeEditRenderer. When omitted, the default input is used. */
   editComponent?: Type<any>;
 }
