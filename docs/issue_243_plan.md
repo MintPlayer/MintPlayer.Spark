@@ -41,6 +41,10 @@ not per-milestone.
 - ng-spark comment-only updates (no logic): `po-detail/src/spark-po-detail.component.ts:104-106`
   and `models/src/persistent-object.ts` doc block — record that the server bounds `can` by
   type-level rights, so the override is safe.
+- Spec-mock naming drift (D5): rename `canUpdate` → `canEdit` in the three `getPermissions`
+  mocks (`query-list/src/spark-query-list.component.spec.ts:68,118`,
+  `po-form/src/spark-po-form.component.spec.ts:75`) so mocks match `EntityPermissions` and the
+  wire contract. Test-only rename; Vitest must stay green.
 - `libs/spark/MintPlayer.Spark/README.md` — only if it describes the can block; align wording.
 
 ## M3 — Verification sweep + PR
@@ -53,5 +57,4 @@ not per-milestone.
 
 ## Explicitly not doing
 
-Per PRD: no per-row `can` on lists, no client-side intersection, no dist/types hand-edit,
-no `canUpdate`→`canEdit` spec-mock sweep.
+Per PRD: no per-row `can` on lists, no client-side intersection, no dist/types hand-edit.
