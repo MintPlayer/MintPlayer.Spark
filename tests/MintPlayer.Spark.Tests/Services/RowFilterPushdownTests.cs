@@ -111,6 +111,28 @@ public class RowFilterPushdownTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task ResetRequestFilterCache_forces_the_next_resolution_to_re_invoke_the_hook()
+    {
+        // M3 (#239): the streaming re-auth tick calls ResetRequestFilterCache so a frozen row
+        // filter can't keep serving revoked rows for the socket's life. Proves the reset clears
+        // the memo — after it, a shrunk allow-list is re-read.
+        var modelLoader = Substitute.For<IModelLoader>();
+        var actionsResolver = Substitute.For<IActionsResolver>();
+        var actions = new CountingNoteActions(new EntityMapper(modelLoader));
+        actionsResolver.ResolveForType(typeof(Note)).Returns(actions);
+        var rowSecurity = new RowSecurity(actionsResolver);
+
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(1, "memoized within the request");
+
+        rowSecurity.ResetRequestFilterCache();
+
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(2, "the reset drops the memo, so the hook re-runs (allow-list re-read)");
+    }
+
+    [Fact]
     public async Task The_per_row_can_block_differentiates_edit_from_delete()
     {
         // G5 (#236): read-everyone, edit/delete only your own — the detail page must gate its

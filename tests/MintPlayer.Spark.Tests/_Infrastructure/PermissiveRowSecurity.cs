@@ -32,6 +32,8 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
     public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action)
         => Task.FromResult(queryable);
 
+    public void ResetRequestFilterCache() { }
+
     public Task RedactAsync(
         IAsyncDocumentSession session,
         IReadOnlyList<(MintPlayer.Spark.Abstractions.PersistentObject Po, object Row)> items,

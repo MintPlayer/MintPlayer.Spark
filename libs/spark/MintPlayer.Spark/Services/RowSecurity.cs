@@ -72,6 +72,15 @@ internal interface IRowSecurity
     Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action);
 
     /// <summary>
+    /// Drops the per-request filter memo (#239 M3). Called on a streaming connection's periodic
+    /// re-authorization tick: a scoped memo on a socket would otherwise freeze the row filter for
+    /// the whole connection, so a caller whose allow-list shrinks would keep seeing revoked rows
+    /// until they disconnect — a liveness bug that is also a security bug. Clearing on the same tick
+    /// the type-level re-check already runs bounds staleness to that interval. No-op off a stream.
+    /// </summary>
+    void ResetRequestFilterCache();
+
+    /// <summary>
     /// Per-viewer attribute redaction (#236 G4): asks the Actions class which attributes of each
     /// row this caller must not see, and nulls them out of the mapped payload — value gone,
     /// attribute invisible, embedded AsDetail rows included. Redacts rather than omits: dropping
@@ -118,6 +127,12 @@ internal partial class RowSecurity : IRowSecurity
 
     public bool HasRowRule(Type entityType)
         => IsOverridden(ResolveHook(entityType)) || IsOverridden(ResolveFilterHook(entityType));
+
+    public void ResetRequestFilterCache()
+    {
+        filterExpressionMemo.Clear();
+        compiledFilterMemo.Clear();
+    }
 
     public async Task<IReadOnlyList<object>> FilterAsync(
         IAsyncDocumentSession session,

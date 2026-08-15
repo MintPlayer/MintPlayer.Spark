@@ -100,6 +100,13 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 batchesSinceReauth = 0;
                 if (!await permissionService.IsAllowedAsync("Query", entityTypeDef.Name))
                     yield break;
+
+                // #239 M3: drop the per-request row-filter memo on the same tick. RowSecurity is
+                // scoped to this connection, so without this the row filter would be frozen at
+                // connect for the socket's whole life — a caller whose allow-list shrinks would keep
+                // receiving revoked rows. Clearing here bounds row-filter staleness to this interval,
+                // matching the type-level re-check above.
+                rowSecurity.ResetRequestFilterCache();
             }
 
             // Row-level authorization, per batch. A stream is a long-lived subscription that
