@@ -101,6 +101,15 @@ internal partial class RowSecurity : IRowSecurity
     /// <summary>Types whose row-security mode has been announced, so the diagnostic logs once.</summary>
     private static readonly ConcurrentDictionary<(Type Type, string Note), bool> announced = new();
 
+    // Per-request memo (#239 M2). RowSecurity is Scoped, so these live exactly one request — one
+    // connection for a stream, cleared on the re-auth tick (ResetRequestFilterCache, M3). They bound
+    // hook invocations to distinct (type, action) pairs per request, independent of row/page/batch
+    // count — the property that keeps an async, I/O-doing hook clear of RavenDB's 30-request cap
+    // (the breadcrumb loop alone would otherwise re-invoke it per referenced document). Plain
+    // Dictionary, not Concurrent: a request scope has no internal parallelism in the row paths.
+    private readonly Dictionary<(Type EntityType, string Action), Task<LambdaExpression?>> filterExpressionMemo = new();
+    private readonly Dictionary<(Type EntityType, string Action), Delegate?> compiledFilterMemo = new();
+
     public async Task<bool> IsAllowedAsync(Type entityType, string action, object entity)
     {
         var rule = await ResolveEffectiveRuleAsync(entityType, action);
@@ -368,9 +377,10 @@ internal partial class RowSecurity : IRowSecurity
         if (!hookOverridden && filter is null)
             return null;
 
-        // Compiled once per resolution (i.e. once per page or per single-row check), because the
-        // expression captures request-scoped state and cannot be cached across requests.
-        var compiledFilter = filter?.Compile();
+        // Compiled once per (type, action) per request (memoized), because the expression captures
+        // request-scoped state and cannot be cached across requests, but re-compiling it for every
+        // row / every can-block action within one request is pure waste.
+        var compiledFilter = GetCompiledFilter(entityType, action, filter);
         var actions = hookOverridden ? actionsResolver.ResolveForType(entityType) : null;
 
         return async subject =>
@@ -388,8 +398,21 @@ internal partial class RowSecurity : IRowSecurity
     }
 
     /// <summary>The request's filter expression, or null when the type declares none or the
-    /// override returns null for this caller. Construction is async — the hook may await.</summary>
-    private async Task<LambdaExpression?> InvokeGetRowFilterAsync(Type entityType, string action)
+    /// override returns null for this caller. Construction is async — the hook may await — and
+    /// memoized per (type, action) for the request (M2): the underlying hook runs at most once,
+    /// and concurrent awaiters share the one <see cref="Task"/>.</summary>
+    private Task<LambdaExpression?> InvokeGetRowFilterAsync(Type entityType, string action)
+    {
+        var key = (entityType, action);
+        if (!filterExpressionMemo.TryGetValue(key, out var task))
+        {
+            task = InvokeGetRowFilterUncachedAsync(entityType, action);
+            filterExpressionMemo[key] = task;
+        }
+        return task;
+    }
+
+    private async Task<LambdaExpression?> InvokeGetRowFilterUncachedAsync(Type entityType, string action)
     {
         var method = ResolveFilterHook(entityType);
         if (!IsOverridden(method))
@@ -399,6 +422,22 @@ internal partial class RowSecurity : IRowSecurity
         var task = (Task)method!.Invoke(actions, [action])!;
         await task;
         return (LambdaExpression?)task.GetCompletedTaskResult();
+    }
+
+    /// <summary>The compiled filter delegate for this (type, action), memoized for the request so a
+    /// detail read's Read/Edit/Delete checks and every row of a page reuse one compile.</summary>
+    private Delegate? GetCompiledFilter(Type entityType, string action, LambdaExpression? filter)
+    {
+        if (filter is null)
+            return null;
+
+        var key = (entityType, action);
+        if (!compiledFilterMemo.TryGetValue(key, out var compiled))
+        {
+            compiled = filter.Compile();
+            compiledFilterMemo[key] = compiled;
+        }
+        return compiled;
     }
 
     private static bool IsOverridden(MethodInfo? method)

@@ -69,6 +69,47 @@ public class RowFilterPushdownTests : SparkTestDriver
             => Task.FromResult(action != "Edit" || !entity.Title.Contains("locked"));
     }
 
+    /// <summary>Counts how many times the async hook actually runs, to pin the M2 memo.</summary>
+    public class CountingNoteActions : DefaultPersistentObjectActions<Note>
+    {
+        public int Invocations;
+        public CountingNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
+
+        public override Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+        {
+            Interlocked.Increment(ref Invocations);
+            return Task.FromResult<Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
+        }
+    }
+
+    [Fact]
+    public async Task The_hook_runs_once_per_type_action_per_request_independent_of_row_count()
+    {
+        // M2 (#239): an async hook that does I/O must run a bounded number of times — bounded by
+        // the model (distinct type×action), never by rows/pages/batches — or the breadcrumb loop
+        // alone blows RavenDB's 30-request session cap. RowSecurity is scoped, so one instance = one
+        // request; the memo must collapse repeated (type, action) resolutions to a single invocation.
+        var modelLoader = Substitute.For<IModelLoader>();
+        var actionsResolver = Substitute.For<IActionsResolver>();
+        var actions = new CountingNoteActions(new EntityMapper(modelLoader));
+        actionsResolver.ResolveForType(typeof(Note)).Returns(actions);
+        var rowSecurity = new RowSecurity(actionsResolver);
+
+        // Ten single-row checks + a 50-row list filter, all action "Read".
+        for (var i = 0; i < 10; i++)
+            await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        using var session = Store.OpenAsyncSession();
+        var rows = Enumerable.Range(0, 50).Select(_ => (object)new Note { Owner = "alice" }).ToList();
+        await rowSecurity.FilterAsync(session, rows, typeof(Note), typeof(Note), "Read");
+
+        actions.Invocations.Should().Be(1,
+            "the hook is memoized per (type, action) per request — invariant of row count");
+
+        // A different action is a distinct key → one more invocation, not zero and not per-row.
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Edit", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(2);
+    }
+
     [Fact]
     public async Task The_per_row_can_block_differentiates_edit_from_delete()
     {
