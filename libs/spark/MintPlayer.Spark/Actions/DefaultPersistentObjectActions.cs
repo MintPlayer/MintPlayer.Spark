@@ -78,7 +78,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
 
-        var filter = GetRowFilter(action);
+        var filter = await GetRowFilterAsync(action);
         if (filter is not null && !filter.Compile()(entity))
             throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
 
@@ -143,10 +143,25 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// The predicate's properties must be queryable in RavenDB for the pushdown to apply: on a
     /// plain collection query anything on the document works; on a static index the fields it
     /// names must be indexed.
+    ///
+    /// <para><b>Async construction, synchronous expression.</b> The hook may <c>await</c> while
+    /// building the filter (fetch an allow-list, query the store) — the returned
+    /// <see cref="System.Linq.Expressions.Expression{TDelegate}"/> stays synchronous and RavenDB-
+    /// translatable.</para>
+    ///
+    /// <para><b>Cost contract.</b> The framework invokes this hook <b>at most once per
+    /// (entity type, action) per request</b> and caches the result, so awaiting I/O here is safe —
+    /// the cost is bounded by the model, never by row count, page size, or streaming batch count.
+    /// On a stream the cache refreshes on the periodic re-authorization tick (~every 10 batches), so
+    /// a filter is at most that stale. Because the result is cached per request, the filter must be
+    /// a <b>pure function of request-scoped state</b> — do not depend on something you mutate later
+    /// in the same request. (By contrast <see cref="IsAllowedAsync"/> is genuinely per-row and is
+    /// NOT memoized; express I/O-backed rules here, not there.)</para>
     /// </summary>
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
     [NoInterfaceMember]
-    public virtual System.Linq.Expressions.Expression<Func<T, bool>>? GetRowFilter(string action) => null;
+    public virtual Task<System.Linq.Expressions.Expression<Func<T, bool>>?> GetRowFilterAsync(string action)
+        => Task.FromResult<System.Linq.Expressions.Expression<Func<T, bool>>?>(null);
 
     /// <summary>
     /// Per-viewer attribute redaction. Names the attributes of this specific row that the current

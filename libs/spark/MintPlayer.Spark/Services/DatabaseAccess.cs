@@ -444,7 +444,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // otherwise FilterAsync in the caller stays the gate.
         if (query != null)
         {
-            query = rowSecurity.ComposeRowFilter(query, baseEntityType, entityType, "Query");
+            query = await rowSecurity.ComposeRowFilterAsync(query, baseEntityType, entityType, "Query");
         }
 
         // Call ToListAsync on the query

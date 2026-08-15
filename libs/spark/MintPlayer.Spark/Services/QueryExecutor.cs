@@ -164,7 +164,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = rowSecurity.ComposeRowFilter(queryable, entityType, resultType, "Query");
+        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query");
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
@@ -271,7 +271,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // from, not which of them this caller may see. No-op when the method yields projections.
         if (methodInfo.IsQueryable)
         {
-            result = rowSecurity.ComposeRowFilter(result, entityType, methodInfo.ResultElementType, "Query");
+            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
         }
 
         // Apply sorting if the result is IQueryable

@@ -47,8 +47,9 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         public ScopedNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
 
-        public override Expression<Func<Note, bool>>? GetRowFilter(string action)
+        public override async Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
         {
+            await Task.Yield();   // prove the async path: genuinely suspends before returning
             if (IsAdmin) return null;
             var user = CurrentUser;
             if (string.IsNullOrEmpty(user)) return n => false;
@@ -61,8 +62,8 @@ public class RowFilterPushdownTests : SparkTestDriver
     {
         public GuardedNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
 
-        public override Expression<Func<Note, bool>>? GetRowFilter(string action)
-            => n => n.Owner == "alice";
+        public override Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+            => Task.FromResult<Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
 
         public override Task<bool> IsAllowedAsync(string action, Note entity)
             => Task.FromResult(action != "Edit" || !entity.Title.Contains("locked"));
@@ -124,7 +125,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         var rowSecurity = CreateRowSecurity(em => new ScopedNoteActions(em));
         using var session = Store.OpenAsyncSession();
 
-        var composed = rowSecurity.ComposeRowFilter(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
+        var composed = await rowSecurity.ComposeRowFilterAsync(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
 
         composed.ToString().Should().Contain("Owner",
             "the predicate must land in the RQL itself — that is what keeps a row-scoped type "
@@ -178,7 +179,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The constant predicate must not be pushed into RQL (the provider may not translate it) …
         var queryable = session.Query<Note>();
-        rowSecurity.ComposeRowFilter(queryable, typeof(Note), typeof(Note), "Query")
+        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(Note), "Query"))
             .Should().BeSameAs(queryable);
 
         // … and the in-memory evaluation still drops every row.
@@ -227,7 +228,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The filter cannot compose into a projection query …
         var queryable = filterSession.Query<Note>();
-        rowSecurity.ComposeRowFilter(queryable, typeof(Note), typeof(VNote), "Query")
+        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(VNote), "Query"))
             .Should().BeSameAs(queryable);
 
         // … so FilterAsync loads the base documents (one batch) and judges those.

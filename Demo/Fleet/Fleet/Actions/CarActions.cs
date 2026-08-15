@@ -36,16 +36,21 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     /// own a row by, so it must be treated as unrestricted rather than denied — otherwise it could
     /// not create the cars its type-level right grants. One rule, every path.
     /// </summary>
-    public override System.Linq.Expressions.Expression<Func<Car, bool>>? GetRowFilter(string action)
+    public override Task<System.Linq.Expressions.Expression<Func<Car, bool>>?> GetRowFilterAsync(string action)
     {
-        if (CurrentUserIsAdmin) return null;
-        var userId = CurrentUserId;
-        if (!string.IsNullOrEmpty(userId)) return car => car.CreatedBy == userId;
-        // Authenticated but no user id → a service/machine principal acting under type-level
-        // rights (e.g. Machine:FleetApi). Not a person to scope rows to, so unrestricted.
-        if (CurrentUser?.Identity?.IsAuthenticated == true) return null;
-        // Truly anonymous → nothing.
-        return car => false;
+        System.Linq.Expressions.Expression<Func<Car, bool>>? filter;
+        if (CurrentUserIsAdmin) filter = null;
+        else
+        {
+            var userId = CurrentUserId;
+            if (!string.IsNullOrEmpty(userId)) filter = car => car.CreatedBy == userId;
+            // Authenticated but no user id → a service/machine principal acting under type-level
+            // rights (e.g. Machine:FleetApi). Not a person to scope rows to, so unrestricted.
+            else if (CurrentUser?.Identity?.IsAuthenticated == true) filter = null;
+            // Truly anonymous → nothing.
+            else filter = car => false;
+        }
+        return Task.FromResult(filter);
     }
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
