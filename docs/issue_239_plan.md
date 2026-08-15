@@ -50,12 +50,28 @@ See [issue_239_PRD.md](./issue_239_PRD.md). Branch `feat/async-row-filter`. One 
 
 **Test:** a custom action with many selected items does not throw the cap exception.
 
-## M6 — Docs + version bump
+## M6 — Default includes: fix dead `ApplyIncludes` + add `GetDefaultIncludes()` (PRD §7)
+
+Independent of the async work (can land in parallel), bundled here because it attacks the same breadcrumb-driven cap pressure and touches the same query-build sites.
+
+1. **Fix the dead `ApplyIncludes`** (`Services/ReferenceResolver.cs:71-94`): it reflects for a non-existent *instance* `Include(string)` → always no-ops. Change signature to `object ApplyIncludes(object queryable, Type elementType, IReadOnlyCollection<string> paths)` and invoke the **static** `LinqExtensions.Include<TResult>(IQueryable<TResult>, string)` reflectively — `typeof(LinqExtensions).GetMethods()` → the `(IQueryable<TResult>, string)` overload → `MakeGenericMethod(elementType)` → `Invoke(null, [queryable, path])`, cached per element type. Precedent: `RowSecurity.ComposeRowFilter` (`RowSecurity.cs:229-238`). **This changes emitted RQL — a query-shape change, not a pure addition.**
+2. **New hook** `IReadOnlyCollection<string>? GetDefaultIncludes()` on `DefaultPersistentObjectActions<T>` (`:149`, `[NoInterfaceMember]`, default `null`). Resolve via `IReferenceResolver.GetDefaultIncludes(Type)` reflectively (mirror `RowSecurity.ResolveFilterHook`/`InvokeGetRowFilter`). Validate each path's first segment against `entityType`'s props; one-shot `announced`-style warn on an unknown segment.
+3. **Merge + apply** at each site (PRD §7.6): `[Reference]` property names ∪ default-include paths, deduped.
+   - Detail: default `OnLoadAsync` (`DefaultPersistentObjectActions.cs:25`) → `session.LoadAsync<T>(id, b => { foreach (var p in paths) b.IncludeDocuments(p); }, ct)`; **document the "override takes over includes" caveat** (reuse the `:71-72` wording).
+   - PO list `DatabaseAccess.cs:438-441` (element type `queryType`); DB query `QueryExecutor.cs:159-162` (element type `resultType`); custom query — new call after `~:268`, guarded on `methodInfo.IsRavenQueryable`, element type `methodInfo.ResultElementType`.
+   - Streaming: **cannot be framework-applied** — surface the resolved paths on `StreamingQueryArgs` so the consumer's `StreamItems` can apply them, or document the gap. Decide at implementation.
+4. **Scope note:** nested paths are **embedded-object only** (`"Repository.Owner"` where Repository is embedded with an Owner id); RavenDB 7.x has no cross-document recursive include (PRD §7.5). Don't promise arbitrary reference-chain depth.
+
+**Tests:** a test that **inspects the generated RQL / query and asserts it contains `include`** for a `[Reference]` type (nothing today would catch the dead code); a `GetDefaultIncludes()` test asserting the declared path is honoured on detail + list (referenced doc arrives in the same round-trip → assert session request count doesn't increase for the referenced access); the unknown-segment diagnostic.
+
+## M7 — Docs + version bump
 
 1. `docs/guide-row-security.md` (`:13,:20-46,:65,:94-97`) — signature → `GetRowFilterAsync`; add the async example (WebhooksDemo shape), the **at-most-once-per-(type,action)-per-request contract**, the stream-staleness note (~10 batches), the "pure per request" rule, and the "`IsAllowedAsync` is per-row / not memoized — use the filter for I/O rules" edge (PRD §5).
 2. `libs/spark/MintPlayer.Spark/README.md:254-259` — signature; **delete the stale `OnQueryAsync` bullet at `:247`** (hook no longer exists).
 3. `docs/issue_236_PRD.md` / `docs/issue_236_plan.md` — the M7 stub becomes a one-line "superseded by #239 — see `docs/issue_239_*`" pointer (don't rewrite history).
-4. Version bump: `.NET → 10.0.0-preview.45` in lockstep across all 21 csproj (ng-spark untouched — no client-visible change). Do **not** publish by hand; bump + merge, CI publishes.
+4. Document `GetDefaultIncludes()` (guide-row-security.md or a short new section): the string dotted-path signature, the `[Reference]`-props-are-auto-included note, the **embedded-only nested** limitation (no cross-document recursion), the detail-path override caveat, and the streaming gap.
+5. **PR body must state** that fixing `ApplyIncludes` is a real query-shape change (RQL now emits `include`) — includes never actually ran before this PR.
+6. Version bump: `.NET → 10.0.0-preview.45` in lockstep across all 21 csproj (ng-spark untouched — no client-visible change). Do **not** publish by hand; bump + merge, CI publishes.
 
 ## Test inventory (batched at the end)
 
@@ -76,4 +92,5 @@ Migrate the existing fixtures to the async signature and add the new cap/securit
 | M3 | memo invalidation on re-auth tick | M2 |
 | M4 | per-batch streaming session + uncap consumer session | — (independent bug; ships here) |
 | M5 | custom-action loop + diagnostic | — |
-| M6 | docs + version bump | M1–M5 |
+| M6 | includes: fix dead `ApplyIncludes` + `GetDefaultIncludes()` | — (independent; ships here) |
+| M7 | docs + version bump | M1–M6 |

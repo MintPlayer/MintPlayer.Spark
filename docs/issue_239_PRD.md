@@ -113,4 +113,52 @@ Count hook invocations per request in `RowSecurity`; warn above a threshold (~20
 5. Custom action with many selected items does not hit the cap.
 6. WebhooksDemo's org rule runs as an async expression filter (pushdown + WITH CHECK), closing `docs/issue_236_plan.md:604`.
 7. Invariants §4 pinned (system-context exemption test + constant-predicate-not-pushed test still pass unmodified in meaning).
-8. Docs updated; version bump `.NET → 10.0.0-preview.45` in lockstep (ng-spark untouched — no client-visible change).
+8. §7 default-includes: `[Reference]` includes actually emit `include` in the RQL (pinned by a test that inspects the query), and a `GetDefaultIncludes()` path is honoured on detail + list + query.
+9. Docs updated; version bump `.NET → 10.0.0-preview.45` in lockstep (ng-spark untouched — no client-visible change).
+
+## 7. Default includes — cap headroom (`GetDefaultIncludes()`)
+
+The memo (§3.2) bounds the *hook's* invocations; this section bounds the *framework's* per-referenced-document round-trips — the other half of the breadcrumb-driven cap pressure. Investigation (2026-08-15) turned up a prerequisite bug.
+
+### 7.1 ⚠️ Prerequisite: Spark applies **no** RavenDB includes today (dead code)
+
+`ReferenceResolver.ApplyIncludes` (`Services/ReferenceResolver.cs:71-94`) reflects for an **instance** method `Include(string)` on the queryable's runtime type. Against RavenDB.Client 7.2.1 (`MintPlayer.Spark.csproj:65`), the concrete `RavenQueryInspector<T>` has **zero** `Include` members — `.Include` exists only as a **static** extension `LinqExtensions.Include<TResult>(IQueryable<TResult>, string)`. So `includeMethod` is always null, the loop no-ops, and **`ApplyIncludes` returns the queryable untouched on every path.** No test covers it (`ReferenceResolverTests` only tests `GetReferenceProperties`). The "primed into the session cache by `.Include()`" comments (`QueryExecutor.cs:184-185`, `DatabaseAccess.cs:169-171`) are aspirational — **every breadcrumb level is a real round-trip today.**
+
+Consequence for this PRD: the §2 cap analysis was, if anything, *optimistic* about level-1 references. Fixing this is itself cap headroom and must land with the feature. **This is a real query-shape change, not a pure addition** — the PR body must say so, and a test must assert the generated RQL contains `include` (nothing today would catch its absence).
+
+### 7.2 Deliverable — two parts
+
+**(a) Fix `ApplyIncludes`** (required regardless): change the signature to receive the element type and invoke the *static* generic extension reflectively — the exact working precedent is `RowSecurity.ComposeRowFilter` (`RowSecurity.cs:229-238`: `typeof(Queryable).GetMethods()…MakeGenericMethod(…).Invoke(null, [queryable, arg])`). Here: `typeof(LinqExtensions)` → the `(IQueryable<TResult>, string)` overload → `MakeGenericMethod(elementType)` → `Invoke(null, [queryable, path])`, cached per element type.
+
+**(b) Add the consumer hook** on `DefaultPersistentObjectActions<T>`, `[NoInterfaceMember]` like its neighbours:
+
+```csharp
+[NoInterfaceMember]
+public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;   // dotted JSON paths into the document
+```
+
+Resolved reflectively (mirror `RowSecurity.InvokeGetRowFilter`/`ResolveFilterHook`) and **merged with the `[Reference]` property names**, deduped, then applied at each site.
+
+### 7.3 Signature — string paths, not expressions (decided)
+
+Two blockers kill an `Expression<Func<T,object>>` form: Spark's references are **`string` ids, not navigation properties** (`[Reference(typeof(Company))] public string? Company`), so a cross-document chain has no CLR expression to write; and an expression typed on `Car` can't apply to `IQueryable<VCar>` (the same projection wall `ComposeRowFilter` bails on at `RowSecurity.cs:206-219`). Strings are element-type-agnostic — one reflection shape covers every path and survives projection. Mitigate the stringly-typed cost by validating each path's first segment against `entityType`'s properties at resolve time, logged once per type via the `announced`-style one-shot diagnostic.
+
+### 7.4 Detail-path seam — the default `OnLoadAsync` consults the hook
+
+RavenDB 7.2.1 has no way to pre-register includes on a plain session for a later `LoadAsync<T>(id)` to honour — includes live only inside a fluent load chain — and `LoadEntityViaActionsAsync` (`DatabaseAccess.cs:484-491`) has no handle on the load call. So the default `OnLoadAsync` itself must apply them, via the typed overload `LoadAsync<T>(id, b => { foreach (var p in paths) b.IncludeDocuments(p); }, ct)` (no reflection — `T` is in scope here). **A consumer overriding `OnLoadAsync` takes over include responsibility** — documented, with the same wording precedent as the `OnSaveAsync`/WITH-CHECK caveat (`DefaultPersistentObjectActions.cs:71-72`).
+
+### 7.5 Nested paths — embedded-object only (scope honestly)
+
+`.Include("Repository.Owner")` is a JSON path **into the source document**: it works when `Repository` is an **embedded object** carrying an `Owner` id, and **does not cross a document boundary**. RavenDB 7.x has **no recursive include** — `Car → Owner → Owner.Company` is not expressible in one call in any overload. Genuine cross-document depth stays on either index-side denormalization (index the grandparent id, include that field) or a second batched load — which is exactly what `BreadcrumbResolver.cs:115` already does. **The PRD promises embedded-path includes, not arbitrary reference-chain depth.**
+
+### 7.6 Plug-in points
+
+| Path | Site | Note |
+|---|---|---|
+| Detail | `DefaultPersistentObjectActions.cs:25` (`OnLoadAsync`) | typed `LoadAsync<T>(id, b=>…, ct)`; override caveat |
+| PO list | `DatabaseAccess.cs:438-441` | merge default + `[Reference]`, dedupe, element type `queryType` |
+| DB query | `QueryExecutor.cs:159-162` | element type `resultType` |
+| Custom query | `QueryExecutor.cs`, new after `~:268` | guard on `methodInfo.IsRavenQueryable`, element type `methodInfo.ResultElementType` (custom queries apply **no** includes today either) |
+| Streaming | — | **cannot be framework-applied** (consumer builds its own query off `args.Session`). Surface the paths on `StreamingQueryArgs` for the consumer's `StreamItems` to apply, or accept the breadcrumb loads. Documented gap. |
+
+Includes and the row-filter `.Where` are order-independent (both build the expression tree before `ToListAsync`), so this applies at the same site as `ApplyIncludes` regardless of when the filter composes.
