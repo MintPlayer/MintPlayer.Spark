@@ -102,6 +102,10 @@ Enforced in `EntityMapper.ToPersistentObject`/`PopulateAttributeValues` (the sin
 
 ## G5 — Per-row permissions for the generic UI
 
+> **Superseded detail (#243):** as shipped, the `can` block evaluated only the row rule and could
+> claim more than the caller's type-level rights. Since #243 each value is the intersection of
+> the type-level right and the row rule.
+
 **Today:** `GET /spark/permissions/{entityTypeId}` returns exactly four type-level booleans (`GetPermissions.cs:26-31`), and neither `PersistentObject` (`PersistentObject.cs:5-66`) nor the query payload carries any per-row flag. `spark-po-detail`/`spark-query-list` gate Edit/Delete/New off type-level flags, so a row the caller may read but not edit renders an Edit button that fails at `DatabaseAccess.cs:220` as a 404.
 
 **Proposal (opt-in, computed only when a row rule exists):** after `FilterAsync`, evaluate `"Edit"`/`"Delete"` per surviving row — cheap when `GetRowFilter` exists (compiled predicate, in-memory, entities already materialized) — and attach an optional block to the PO payload (e.g. `"can": { "edit": false, "delete": false }`; absent = fall back to type-level flags, fully backward-compatible). ng-spark: `spark-po-detail` prefers the per-row block for its Edit/Delete buttons; `spark-query-list`/`spark-sub-query` may later use it for row affordances. Detail path first (1 row, negligible cost); list path measured before enabling. → Decision D5.
