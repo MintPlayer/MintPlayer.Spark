@@ -104,6 +104,9 @@ export class SparkPoDetailComponent {
         // Prefer the per-row affordances (#236 G5) when the server attached them — a row the
         // caller may read but not mutate then hides its Edit/Delete buttons instead of rendering
         // ones that 404. `can` is absent for types with no row rule, so fall back to type-level.
+        // The override (not an intersection) is safe because the server computes `can` as the
+        // intersection of type-level rights and the row rule (#243) — it never claims more than
+        // `permissions` does.
         const can = item.can;
         this.canEdit.set(can ? can.edit : permissions.canEdit);
         this.canDelete.set(can ? can.delete : permissions.canDelete);

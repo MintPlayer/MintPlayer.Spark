@@ -65,7 +65,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     getQueries: vi.fn().mockResolvedValue([allPeopleQuery]),
     getQuery: vi.fn().mockResolvedValue(allPeopleQuery),
-    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canUpdate: true, canDelete: true }),
+    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue([]),
     executeQuery: vi.fn().mockResolvedValue(samplePage),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
@@ -115,7 +115,7 @@ describe('SparkQueryListComponent', () => {
 
   it('hydrates canRead/canCreate from getPermissions', async () => {
     const { harness } = await setup({
-      getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: false, canUpdate: false, canDelete: false }),
+      getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: false, canEdit: false, canDelete: false }),
     });
     const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
     await harness.fixture.whenStable();

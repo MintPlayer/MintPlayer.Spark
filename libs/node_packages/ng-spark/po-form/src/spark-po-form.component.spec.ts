@@ -72,7 +72,7 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}, rendererR
   const service: any = {
     executeQueryByName: vi.fn().mockResolvedValue({ data: allCompanies, totalRecords: 1 }),
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
-    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canUpdate: true, canDelete: true }),
+    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getLookupReference: vi.fn().mockResolvedValue(rolesLookup),
     ...serviceOverrides,
   };
