@@ -149,8 +149,10 @@ single-slot registrations stop lying to the type system.
    field hosts; detail `formData` carries the same for AsDetail keys.
 2. A renderer declaring `item` receives the row (PO in grids, record in AsDetail cells); one
    declaring only `value` renders without `NgComponentOutlet` errors in every host.
-3. Existing renderers (declaring the full old contracts) behave byte-identically; the po-form
-   B3 tests pass unmodified.
+3. Existing renderers (declaring the full old contracts) behave byte-identically. The po-form
+   B3 spec needed one mechanical update for the new builder signature (component type as first
+   arg; its `DummyEditor` became a real component declaring `valueChange` so the filter keeps
+   it) — the pinned behavior (in-place row mutation on write-back) is unchanged.
 4. Projection-scaffold case: an AsDetail attribute whose projection lacks the property yields
    the scaffolded child PO, not undefined (documented).
 5. `docs/guide-custom-attribute-renderers.md` updated: contract blocks, input matrix (add
@@ -158,6 +160,12 @@ single-slot registrations stop lying to the type system.
    root-import examples fixed to `@mintplayer/ng-spark/renderers` (+ `/models`).
 6. Version bump: `@mintplayer/ng-spark` → **22.0.11** (client-only; .NET packages and
    ng-spark-auth untouched).
+
+## In-repo validation
+
+DemoApp registers an `address-card` **detail-only** renderer (nullable slots in practice) on
+the AsDetail `Person.Address` attribute — it receives the nested Address PO as `value` and the
+Person PO as `item` (`Demo/DemoApp/DemoApp/ClientApp/src/app/renderers/`).
 
 ## Downstream validation (Coverage, ready to consume)
 

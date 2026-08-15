@@ -7,19 +7,26 @@ full design. One commit per milestone.
 
 | # | Deliverable | Status |
 |---|---|---|
-| M1 | `renderers/src/renderer-inputs.ts` (`withDeclaredInputs` + `rendererValue`) + export from entry point + `renderer-inputs.spec.ts` (filters undeclared, keeps declared, caches per type; `rendererValue` prefers value → object → objects, undefined attr → undefined) — first spec in the `renderers/` entry point | ☐ |
-| M2 | Contracts all-optional + `item` (`spark-attribute-renderer.ts`); registration slots nullable (`spark-attribute-renderer-registry.ts`) | ☐ |
-| M3 | Sites 1–3: `rendererValue` fallback + po-detail formData-loop fix + `item` + `withDeclaredInputs` filter (builders take resolved component type as first arg; templates updated) | ☐ |
-| M4 | Sites 4–7: `item` (sites 4/6/7) + filter (all four, incl. po-form edit at site 5) — no value change | ☐ |
-| M5 | Component specs: query-list/sub-query — AsDetail-bound column renderer receives nested PO; renderer declaring `item` receives row PO; renderer declaring only `value` renders without throwing (pins the latent bug). po-detail — detail renderer gets nested PO as `value` AND in `formData`; AsDetail cell renderer gets flat row as `item`. po-form — existing B3 tests pass unmodified (in-place mutation pinned); minimal edit renderer without `valueChange` renders | ☐ |
-| M6 | `docs/guide-custom-attribute-renderers.md`: contract example blocks; input matrix (add `item`, note passed-only-when-declared); new "AsDetail values" + "Row context" sections; fix root-import examples → `@mintplayer/ng-spark/renderers` / `/models`; `valueChange`-optional note under Key points | ☐ |
-| M7 | Version bump: `@mintplayer/ng-spark` 22.0.10 → 22.0.11 (client-only; nothing else moves in lockstep — .NET packages and ng-spark-auth untouched) | ☐ |
+| M1 | `renderers/src/renderer-inputs.ts` (`withDeclaredInputs` + `rendererValue`) + export from entry point + `renderer-inputs.spec.ts` (filters undeclared, keeps declared, caches per type; `rendererValue` prefers value → object → objects, undefined attr → undefined) — first spec in the `renderers/` entry point | ✅ |
+| M2 | Contracts all-optional + `item` (`spark-attribute-renderer.ts`); registration slots nullable (`spark-attribute-renderer-registry.ts`) | ✅ |
+| M3 | Sites 1–3: `rendererValue` fallback + po-detail formData-loop fix + `item` + `withDeclaredInputs` filter (builders take resolved component type as first arg; templates updated) | ✅ |
+| M4 | Sites 4–7: `item` (sites 4/6/7) + filter (all four, incl. po-form edit at site 5) — no value change | ✅ |
+| M5 | Component specs: query-list/sub-query — AsDetail-bound column renderer receives nested PO; renderer declaring `item` receives row PO; renderer declaring only `value` renders without throwing (pins the latent bug). po-detail — detail renderer gets nested PO as `value` AND in `formData`; AsDetail cell renderer gets flat row as `item`. po-form — B3 test mechanically updated to the new builder signature (DummyEditor became a real component declaring `valueChange`), in-place mutation still pinned; minimal edit renderer without `valueChange` renders | ✅ |
+| M6 | `docs/guide-custom-attribute-renderers.md`: contract example blocks; input matrix (add `item`, note passed-only-when-declared); new "AsDetail values" + "Row context" sections; fix root-import examples → `@mintplayer/ng-spark/renderers` / `/models`; `valueChange`-optional note under Key points | ✅ |
+| M7 | Version bump: `@mintplayer/ng-spark` 22.0.10 → 22.0.11 (client-only; nothing else moves in lockstep — .NET packages and ng-spark-auth untouched) | ✅ |
 
 ## Verification
 
-- Type-check per milestone (read + `tsc`/build implicitly via test config); full
-  `nx run ng-spark:test` (vitest) once after M7 — tests are batched at the end per working
-  agreement.
+- Spike: `renderer-inputs.spec.ts` run in isolation after M1 — validated
+  `reflectComponentType` filtering under vitest (note: signal-input *aliases* aren't reflected
+  in the JIT test environment; the contracts use none, and filter + NgComponentOutlet always
+  read the same component definition so they stay consistent).
+- `tsc --noEmit -p tsconfig.spec.json` clean after M5.
+- Full ng-spark vitest suite after M7: **20 files / 232 tests, all passing**.
+- DemoApp: `address-card` detail-only renderer registered on the AsDetail `Person.Address`
+  attribute (nested-PO `value` + Person `item`, nullable registration slots in practice);
+  client type-checks clean (only TS6059 rootDir noise inherent to source-based lib consumption
+  under raw tsc).
 - No server change: `libs/spark/**` untouched.
 
 ## Site map (verified against master `32d03c3`)
