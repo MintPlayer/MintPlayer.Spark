@@ -125,7 +125,9 @@ Per global working rules, full test suites run once at the end of each milestone
 | M6 | — | M1 (separate later PR) |
 | M7 | — | M1 (async follow-up, below) |
 
-## M7 — async `GetRowFilterAsync` (follow-up, 2026-08-15)
+## M7 — async `GetRowFilterAsync` (follow-up) → **superseded by issue #239**
+
+> **Moved.** This follow-up grew its own PRD/plan after a cap investigation found that an async hook must be paired with per-request memoization and two streaming/custom-action session fixes to stay clear of RavenDB's 30-request cap. See **[issue_239_PRD.md](./issue_239_PRD.md)** and **[issue_239_plan.md](./issue_239_plan.md)**. The mechanical-conversion checklist below is retained as history; the authoritative plan is #239.
 
 **Branch:** `feat/async-row-filter`. **Motivation:** Coverage builds its filter from an async source (`await orgAccess.GetAllowedOwnersAsync()`), which the synchronous `GetRowFilter` can't express. **No backward compatibility** — the sync hook is removed, not overloaded (framework is in preview). Only *construction* becomes async; the returned `Expression<Func<T,bool>>` is unchanged and still RavenDB-translatable, so pushdown / derivation / projection-fallback / WITH CHECK are all behavior-preserving.
 
