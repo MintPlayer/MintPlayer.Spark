@@ -2,6 +2,24 @@
 
 **PRD:** `docs/issue_243_PRD.md` · **Branch:** `feat/issue-243-can-block-type-rights` · one commit per milestone.
 
+## M0 — Spike: red repro test (timeboxed, ~30 min)
+
+One spike, run before any production change: write the permissive-direction test against
+UNMODIFIED code and watch it fail with `can.edit == true`. It de-risks the only two real
+unknowns at once — (a) that the `SparkEndpointFactory` `configureServices` hook can swap
+`IAccessControl` for a Read/Query-only double while row rules stay active (the hook runs
+after `AddSpark`/`AllowAnonymousAccess`, `SparkEndpointFactory.cs:92-101`, so the override
+wins — expected to work, unproven for `IAccessControl` specifically), and (b) that the test
+faithfully reproduces the Coverage overclaim. The spike artifact IS M1's regression test —
+nothing is thrown away; flipping it green is the M1 fix.
+
+If the override does NOT win (e.g. something resolves `IAccessControl` before the
+replacement), fall back to `RemoveAll<IAccessControl>()` + re-register, per the
+`GetProgramUnitsEndpointTests.cs:53` precedent — decide inside the timebox.
+
+No other spikes: the production change is two in-memory calls on services already injected
+into `DatabaseAccess`, and the client change is comments + mock renames only.
+
 ## M1 — Server fix + regression tests
 
 **Code** — `libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs` (~:120-127), inside
@@ -16,12 +34,11 @@
 
 **Tests** — `tests/MintPlayer.Spark.Tests/Services/DatabaseAccessRowLevelAuthzTests.cs`:
 
-1. **Permissive direction (the #243 bug):** row-ruled type + an access-control double that
-   allows Read/Query and denies Edit/Delete ⇒ `Can` present with `edit:false, delete:false`.
-   Precedent for overriding authz in the endpoint factory: `configureServices` +
-   `services.RemoveAll<...>()` (see `GetProgramUnitsEndpointTests.cs:53`); replace
-   `IAccessControl` with an NSubstitute double rather than `IPermissionService` so the real
-   `PermissionService` action-string composition (`"Edit/{TypeName}"`) stays under test.
+1. **Permissive direction (the #243 bug):** the M0 spike test, flipped green — row-ruled type
+   + an `IAccessControl` double that allows Read/Query and denies Edit/Delete ⇒ `Can` present
+   with `edit:false, delete:false`. Replace `IAccessControl` rather than `IPermissionService`
+   so the real `PermissionService` action-string composition (`"Edit/{TypeName}"`) stays under
+   test.
 2. **Restrictive direction (no regression):** existing
    `Get_attaches_the_per_row_can_block_for_a_row_scoped_type` keeps passing unchanged
    (factory is allow-all ⇒ intersection is a no-op there).
