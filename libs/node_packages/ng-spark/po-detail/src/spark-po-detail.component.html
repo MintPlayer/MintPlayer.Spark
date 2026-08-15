@@ -86,7 +86,7 @@
               <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
               <dd [sm]="9">
               @if (getDetailRendererComponent(attr); as rendererType) {
-                <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(attr, currentItem)"></ng-container>
+                <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
                   <thead>
