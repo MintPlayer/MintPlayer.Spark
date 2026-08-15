@@ -72,8 +72,14 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 $"Expected a method returning IAsyncEnumerable<IReadOnlyList<T>> with parameters (StreamingQueryArgs, CancellationToken).");
         }
 
-        // Open a session and invoke the streaming method
+        // Open the connection session and invoke the streaming method. This session is the
+        // consumer's, handed to StreamItems via args.Session and held for the whole enumeration.
+        // #239 M4: a socket open for minutes is not "a request" — its request count would sail past
+        // RavenDB's 30-cap (a per-request N+1 alarm) purely from doing its job — so uncap it. The
+        // framework's own per-batch work runs on a fresh session inside the loop and STAYS at 30,
+        // so the N+1 alarm still guards the framework paths.
         using var session = documentStore.OpenAsyncSession();
+        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
         var args = new StreamingQueryArgs
         {
             Query = query,
@@ -100,14 +106,29 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 batchesSinceReauth = 0;
                 if (!await permissionService.IsAllowedAsync("Query", entityTypeDef.Name))
                     yield break;
+
+                // #239 M3: drop the per-request row-filter memo on the same tick. RowSecurity is
+                // scoped to this connection, so without this the row filter would be frozen at
+                // connect for the socket's whole life — a caller whose allow-list shrinks would keep
+                // receiving revoked rows. Clearing here bounds row-filter staleness to this interval,
+                // matching the type-level re-check above.
+                rowSecurity.ResetRequestFilterCache();
             }
+
+            // #239 M4: the framework's own per-batch reads (row-filter projection reload, breadcrumb
+            // BFS, redaction reload) run on a FRESH session per batch — not the connection session —
+            // so their request count starts from zero each batch and the identity map is bounded to
+            // one batch (fixing an unbounded-memory leak on long streams too). Reusing one session
+            // across all batches is the pre-existing bug that made a referenced-type stream die
+            // around batch ~8-15.
+            using var batchSession = documentStore.OpenAsyncSession();
 
             // Row-level authorization, per batch. A stream is a long-lived subscription that
             // keeps delivering rows, so skipping the check here would not merely disclose the
             // rows present when it opened — it would keep disclosing every new one for as long
             // as the client stays connected.
             var batchList = await rowSecurity.FilterAsync(
-                session,
+                batchSession,
                 batch as IReadOnlyList<object> ?? batch.ToList(),
                 entityType,
                 methodInfo.ElementType,
@@ -116,12 +137,12 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             if (batchList.Count == 0) continue;
 
             // Resolve breadcrumbs (recursive, batched) for this batch.
-            var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, batchList, entityTypeDef, cancellationToken);
+            var breadcrumbs = await breadcrumbResolver.ResolveAsync(batchSession, batchList, entityTypeDef, cancellationToken);
 
             var mapped = batchList
                 .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
                 .ToList();
-            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ElementType, "Query");
+            await rowSecurity.RedactAsync(batchSession, mapped, entityType, methodInfo.ElementType, "Query");
             yield return mapped.Select(m => m.Po).ToArray();
         }
     }

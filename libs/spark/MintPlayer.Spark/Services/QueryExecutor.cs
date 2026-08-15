@@ -154,17 +154,18 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplyProjection(queryable, resultType);
         }
 
-        // Resolve reference properties before executing so we can chain .Include()
-        var referenceProperties = referenceResolver.GetReferenceProperties(resultType, entityType);
-        if (referenceProperties.Count > 0)
+        // Chain .Include() before executing: [Reference] property names + the type's
+        // GetDefaultIncludes() paths (#239), so referenced docs arrive in the same round-trip.
+        var includePaths = referenceResolver.ResolveIncludePaths(resultType, entityType);
+        if (includePaths.Count > 0)
         {
-            queryable = referenceResolver.ApplyIncludes(queryable, referenceProperties);
+            queryable = referenceResolver.ApplyIncludes(queryable, resultType, includePaths);
         }
 
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = rowSecurity.ComposeRowFilter(queryable, entityType, resultType, "Query");
+        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query");
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
         if (query.SortColumns.Length > 0)
@@ -267,11 +268,22 @@ internal partial class QueryExecutor : IQueryExecutor
             result = ApplyProjection(result, methodInfo.ResultElementType);
         }
 
+        // Chain .Include() on the custom query too (#239) — custom queries applied no includes
+        // before. Only for RavenDB-backed queryables (an in-memory IQueryable has no .Include).
+        if (methodInfo.IsRavenQueryable)
+        {
+            var includePaths = referenceResolver.ResolveIncludePaths(methodInfo.ResultElementType, entityType);
+            if (includePaths.Count > 0)
+            {
+                result = referenceResolver.ApplyIncludes(result, methodInfo.ResultElementType, includePaths);
+            }
+        }
+
         // Push the row filter into the custom query too — a custom query says where rows come
         // from, not which of them this caller may see. No-op when the method yields projections.
         if (methodInfo.IsQueryable)
         {
-            result = rowSecurity.ComposeRowFilter(result, entityType, methodInfo.ResultElementType, "Query");
+            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
         }
 
         // Apply sorting if the result is IQueryable

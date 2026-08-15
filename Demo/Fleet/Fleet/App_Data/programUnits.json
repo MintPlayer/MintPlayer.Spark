@@ -41,6 +41,15 @@
           "queryId": "a20e8400-e29b-41d4-a716-446655440010",
           "alias": "stolen-cars",
           "order": 4
+        },
+        {
+          "id": "a10e8400-e29b-41d4-a716-446655440005",
+          "name": {"en": "Recent Cars", "fr": "Voitures récentes", "nl": "Recente auto's"},
+          "icon": "bi-calendar-check",
+          "type": "query",
+          "queryId": "a20e8400-e29b-41d4-a716-446655440011",
+          "alias": "recent-cars",
+          "order": 5
         }
       ]
     }

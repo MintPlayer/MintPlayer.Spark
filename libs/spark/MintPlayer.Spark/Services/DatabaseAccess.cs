@@ -152,11 +152,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
             indexName = registration.IndexName;
         }
 
-        // Get reference properties — fall back to base entity type when projection lacks [Reference]
-        var referenceProperties = referenceResolver.GetReferenceProperties(queryType, entityType);
+        // Include paths — [Reference] property names + GetDefaultIncludes() (#239), deduped.
+        var includePaths = referenceResolver.ResolveIncludePaths(queryType, entityType);
 
         // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, referenceProperties)).ToList();
+        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, includePaths)).ToList();
 
         // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
         // to rows the Actions class says the caller may see. For projection queries, the row
@@ -383,7 +383,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         Type baseEntityType,
         Type entityType,
         string? indexName,
-        List<(PropertyInfo Property, ReferenceAttribute Attribute)> referenceProperties)
+        IReadOnlyCollection<string> includePaths)
     {
         object? query;
 
@@ -434,17 +434,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
-        // Chain .Include(propertyName) so referenced documents are loaded in the same round-trip
-        if (query != null && referenceProperties.Count > 0)
+        // Chain .Include(path) so referenced documents are loaded in the same round-trip
+        if (query != null && includePaths.Count > 0)
         {
-            query = referenceResolver.ApplyIncludes(query, referenceProperties);
+            query = referenceResolver.ApplyIncludes(query, entityType, includePaths);
         }
 
         // Push the row filter into the query where shapes allow (no projection in play);
         // otherwise FilterAsync in the caller stays the gate.
         if (query != null)
         {
-            query = rowSecurity.ComposeRowFilter(query, baseEntityType, entityType, "Query");
+            query = await rowSecurity.ComposeRowFilterAsync(query, baseEntityType, entityType, "Query");
         }
 
         // Call ToListAsync on the query

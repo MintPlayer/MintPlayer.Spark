@@ -185,6 +185,34 @@ public class StreamingQueryExecutorUnitTests
         batches.Should().AllSatisfy(b => b.Should().HaveCount(1));
     }
 
+    [Fact]
+    public async Task Each_batch_runs_on_a_fresh_framework_session_and_the_connection_session_is_uncapped()
+    {
+        // #239 M4: the pre-existing streaming bug was one session reused across every batch, whose
+        // request count marches past RavenDB's 30-cap (a referenced-type stream died ~batch 8-15).
+        // Fix: the connection session (consumer's) is uncapped — a socket is not "a request" — and
+        // the framework's own per-batch work runs on a FRESH session per batch (starts at zero
+        // requests, bounded identity map). This pins both: one session per yielded batch, connection
+        // session uncapped.
+        SetupValidEntityAndActions(actions: new ActionsWithStreamingMethods());
+        StubMapperToEcho();
+
+        var opened = new List<Raven.Client.Documents.Session.IAsyncDocumentSession>();
+        _documentStore.OpenAsyncSession().Returns(_ =>
+        {
+            var s = Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>();
+            opened.Add(s);
+            return s;
+        });
+
+        var executor = CreateExecutor();
+        var batches = await Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.BatchStream"), CancellationToken.None));
+
+        batches.Should().HaveCount(2);
+        opened.Should().HaveCount(3, "one connection session + a fresh framework session per (non-empty) batch");
+        opened[0].Advanced.Received().MaxNumberOfRequestsPerSession = int.MaxValue;
+    }
+
     // --- helpers ----------------------------------------------------------
 
     private void SetupValidEntityAndActions(object actions)

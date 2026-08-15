@@ -278,6 +278,14 @@
       "source": "Custom.Stolen_Cars",
       "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
       "alias": "stolen-cars"
+    },
+    {
+      "id": "a20e8400-e29b-41d4-a716-446655440011",
+      "name": "Recent_Cars",
+      "description": { "en": "Recent Cars", "fr": "Voitures récentes", "nl": "Recente auto's" },
+      "source": "Custom.Recent_Cars",
+      "sortColumns": [{ "property": "Year", "direction": "desc" }],
+      "alias": "recent-cars"
     }
   ]
 }

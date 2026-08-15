@@ -40,8 +40,8 @@ public class RowLevelWithCheckTests : SparkTestDriver
         public ScopedNoteActions(IEntityMapper entityMapper, IHttpContextAccessor? accessor = null)
             : base(entityMapper, accessor) { }
 
-        public override System.Linq.Expressions.Expression<Func<Note, bool>>? GetRowFilter(string action)
-            => n => n.Owner == "alice";
+        public override Task<System.Linq.Expressions.Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+            => Task.FromResult<System.Linq.Expressions.Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
     }
 
     /// <summary>The Fleet pattern: the app stamps ownership in OnBeforeSaveAsync, and the
@@ -50,8 +50,8 @@ public class RowLevelWithCheckTests : SparkTestDriver
     {
         public StampingNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
 
-        public override System.Linq.Expressions.Expression<Func<Note, bool>>? GetRowFilter(string action)
-            => n => n.Owner == "alice";
+        public override Task<System.Linq.Expressions.Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+            => Task.FromResult<System.Linq.Expressions.Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
 
         public override Task OnBeforeSaveAsync(PersistentObject obj, Note entity)
         {

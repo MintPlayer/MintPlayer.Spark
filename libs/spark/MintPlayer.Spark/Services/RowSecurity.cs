@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Services;
 /// </para>
 /// <para>
 /// An Actions class states its policy through two optional members, and this class defines how
-/// they derive rather than interact. Only <c>GetRowFilter</c> overridden: the expression composes
+/// they derive rather than interact. Only <c>GetRowFilterAsync</c> overridden: the expression composes
 /// into the RavenDB query where shapes allow, and single-row checks compile the same expression —
 /// one source of truth, list and detail cannot diverge. Only <c>IsAllowedAsync</c> overridden:
 /// post-materialization filtering, exactly the original behavior. Both: AND semantics — the
@@ -37,7 +37,7 @@ internal interface IRowSecurity
 
     /// <summary>
     /// Whether this entity type has a row-level rule at all — i.e. its Actions class overrides
-    /// <c>IsAllowedAsync</c> or <c>GetRowFilter</c> rather than inheriting the permissive defaults.
+    /// <c>IsAllowedAsync</c> or <c>GetRowFilterAsync</c> rather than inheriting the permissive defaults.
     /// <para>
     /// Checked once per query so the strict handling below applies only where someone deliberately
     /// wrote a rule. Types with no rule keep their existing behaviour exactly, which is what makes
@@ -69,7 +69,16 @@ internal interface IRowSecurity
     /// <see cref="FilterAsync"/> remains the enforcement point (batched reload) — the pushdown is
     /// an optimization, never the only gate.
     /// </summary>
-    object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action);
+    Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action);
+
+    /// <summary>
+    /// Drops the per-request filter memo (#239 M3). Called on a streaming connection's periodic
+    /// re-authorization tick: a scoped memo on a socket would otherwise freeze the row filter for
+    /// the whole connection, so a caller whose allow-list shrinks would keep seeing revoked rows
+    /// until they disconnect — a liveness bug that is also a security bug. Clearing on the same tick
+    /// the type-level re-check already runs bounds staleness to that interval. No-op off a stream.
+    /// </summary>
+    void ResetRequestFilterCache();
 
     /// <summary>
     /// Per-viewer attribute redaction (#236 G4): asks the Actions class which attributes of each
@@ -101,14 +110,36 @@ internal partial class RowSecurity : IRowSecurity
     /// <summary>Types whose row-security mode has been announced, so the diagnostic logs once.</summary>
     private static readonly ConcurrentDictionary<(Type Type, string Note), bool> announced = new();
 
+    // Per-request memo (#239 M2). RowSecurity is Scoped, so these live exactly one request — one
+    // connection for a stream, cleared on the re-auth tick (ResetRequestFilterCache, M3). They bound
+    // hook invocations to distinct (type, action) pairs per request, independent of row/page/batch
+    // count — the property that keeps an async, I/O-doing hook clear of RavenDB's 30-request cap
+    // (the breadcrumb loop alone would otherwise re-invoke it per referenced document). Plain
+    // Dictionary, not Concurrent: a request scope has no internal parallelism in the row paths.
+    private readonly Dictionary<(Type EntityType, string Action), Task<LambdaExpression?>> filterExpressionMemo = new();
+    private readonly Dictionary<(Type EntityType, string Action), Delegate?> compiledFilterMemo = new();
+
+    // Diagnostic (#239 M5): real hook invocations this request (post-memo, so once per distinct
+    // (type, action)). The memo bounds today's call graph; this counter warns if a future change
+    // reintroduces an N+1-shaped loop that invokes the hook far more than the model should need.
+    private int hookInvocations;
+    private const int HookInvocationWarnThreshold = 20;
+
     public async Task<bool> IsAllowedAsync(Type entityType, string action, object entity)
     {
-        var rule = ResolveEffectiveRule(entityType, action);
+        var rule = await ResolveEffectiveRuleAsync(entityType, action);
         return rule is null || await rule(entity);
     }
 
     public bool HasRowRule(Type entityType)
         => IsOverridden(ResolveHook(entityType)) || IsOverridden(ResolveFilterHook(entityType));
+
+    public void ResetRequestFilterCache()
+    {
+        filterExpressionMemo.Clear();
+        compiledFilterMemo.Clear();
+        hookInvocations = 0;   // the diagnostic budget is per-tick on a stream, not per-connection
+    }
 
     public async Task<IReadOnlyList<object>> FilterAsync(
         IAsyncDocumentSession session,
@@ -120,9 +151,9 @@ internal partial class RowSecurity : IRowSecurity
         if (entities.Count == 0)
             return entities;
 
-        // Per-request: a GetRowFilter override returning null (an administrator, say) means no
+        // Per-request: a GetRowFilterAsync override returning null (an administrator, say) means no
         // restriction for this caller, even though the type declares a rule.
-        var rule = ResolveEffectiveRule(entityType, action);
+        var rule = await ResolveEffectiveRuleAsync(entityType, action);
         if (rule is null)
             return entities;
 
@@ -187,13 +218,13 @@ internal partial class RowSecurity : IRowSecurity
         return visible;
     }
 
-    public object ComposeRowFilter(object queryable, Type entityType, Type elementType, string action)
+    public async Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action)
     {
-        // Same exemption as ResolveEffectiveRule: the system is not a viewer to scope rows for.
+        // Same exemption as ResolveEffectiveRuleAsync: the system is not a viewer to scope rows for.
         if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
             return queryable;
 
-        var filter = InvokeGetRowFilter(entityType, action);
+        var filter = await InvokeGetRowFilterAsync(entityType, action);
         if (filter is null)
             return queryable;
 
@@ -304,7 +335,7 @@ internal partial class RowSecurity : IRowSecurity
 
             var task = (Task)hook!.Invoke(actions, [action, subject])!;
             await task;
-            var names = (IReadOnlyCollection<string>?)task.GetType().GetProperty("Result")!.GetValue(task);
+            var names = (IReadOnlyCollection<string>?)task.GetCompletedTaskResult();
             if (names is not { Count: > 0 })
                 continue;
 
@@ -353,7 +384,7 @@ internal partial class RowSecurity : IRowSecurity
     /// checks by compiling the expression; a predicate-only type behaves exactly as before; a type
     /// with both must pass both.
     /// </summary>
-    private Func<object, Task<bool>>? ResolveEffectiveRule(Type entityType, string action)
+    private async Task<Func<object, Task<bool>>?> ResolveEffectiveRuleAsync(Type entityType, string action)
     {
         // The system acting — module sync under an mTLS principal, background work with no HTTP
         // request — is not a viewer, and row rules scope viewers. Type-level authorization
@@ -363,14 +394,15 @@ internal partial class RowSecurity : IRowSecurity
 
         var hook = ResolveHook(entityType);
         var hookOverridden = IsOverridden(hook);
-        var filter = InvokeGetRowFilter(entityType, action);
+        var filter = await InvokeGetRowFilterAsync(entityType, action);
 
         if (!hookOverridden && filter is null)
             return null;
 
-        // Compiled once per resolution (i.e. once per page or per single-row check), because the
-        // expression captures request-scoped state and cannot be cached across requests.
-        var compiledFilter = filter?.Compile();
+        // Compiled once per (type, action) per request (memoized), because the expression captures
+        // request-scoped state and cannot be cached across requests, but re-compiling it for every
+        // row / every can-block action within one request is pure waste.
+        var compiledFilter = GetCompiledFilter(entityType, action, filter);
         var actions = hookOverridden ? actionsResolver.ResolveForType(entityType) : null;
 
         return async subject =>
@@ -383,20 +415,61 @@ internal partial class RowSecurity : IRowSecurity
 
             var task = (Task)hook!.Invoke(actions, [action, subject])!;
             await task;
-            return (bool)task.GetType().GetProperty("Result")!.GetValue(task)!;
+            return (bool)task.GetCompletedTaskResult()!;
         };
     }
 
     /// <summary>The request's filter expression, or null when the type declares none or the
-    /// override returns null for this caller.</summary>
-    private LambdaExpression? InvokeGetRowFilter(Type entityType, string action)
+    /// override returns null for this caller. Construction is async — the hook may await — and
+    /// memoized per (type, action) for the request (M2): the underlying hook runs at most once,
+    /// and concurrent awaiters share the one <see cref="Task"/>.</summary>
+    private Task<LambdaExpression?> InvokeGetRowFilterAsync(Type entityType, string action)
+    {
+        var key = (entityType, action);
+        if (!filterExpressionMemo.TryGetValue(key, out var task))
+        {
+            task = InvokeGetRowFilterUncachedAsync(entityType, action);
+            filterExpressionMemo[key] = task;
+        }
+        return task;
+    }
+
+    private async Task<LambdaExpression?> InvokeGetRowFilterUncachedAsync(Type entityType, string action)
     {
         var method = ResolveFilterHook(entityType);
         if (!IsOverridden(method))
             return null;
 
+        if (++hookInvocations == HookInvocationWarnThreshold)
+        {
+            logger?.LogWarning(
+                "Row-filter hook invoked {Count} times in one request/tick — more than the model "
+                + "should need. Suspect an N+1 (a per-row or per-document loop reaching the hook). "
+                + "Types touched: {Types}.",
+                HookInvocationWarnThreshold,
+                string.Join(", ", filterExpressionMemo.Keys.Select(k => k.EntityType.Name).Distinct()));
+        }
+
         var actions = actionsResolver.ResolveForType(entityType);
-        return (LambdaExpression?)method!.Invoke(actions, [action]);
+        var task = (Task)method!.Invoke(actions, [action])!;
+        await task;
+        return (LambdaExpression?)task.GetCompletedTaskResult();
+    }
+
+    /// <summary>The compiled filter delegate for this (type, action), memoized for the request so a
+    /// detail read's Read/Edit/Delete checks and every row of a page reuse one compile.</summary>
+    private Delegate? GetCompiledFilter(Type entityType, string action, LambdaExpression? filter)
+    {
+        if (filter is null)
+            return null;
+
+        var key = (entityType, action);
+        if (!compiledFilterMemo.TryGetValue(key, out var compiled))
+        {
+            compiled = filter.Compile();
+            compiledFilterMemo[key] = compiled;
+        }
+        return compiled;
     }
 
     private static bool IsOverridden(MethodInfo? method)
@@ -424,8 +497,8 @@ internal partial class RowSecurity : IRowSecurity
     {
         var actionsType = actionsResolver.ResolveForType(entityType).GetType();
         return ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
-            ("RowSecurity.GetRowFilter", actionsType, entityType),
-            static k => k.Actions.GetMethod("GetRowFilter", [typeof(string)]));
+            ("RowSecurity.GetRowFilterAsync", actionsType, entityType),
+            static k => k.Actions.GetMethod("GetRowFilterAsync", [typeof(string)]));
     }
 
     private MethodInfo? ResolveProtectedHook(Type entityType)

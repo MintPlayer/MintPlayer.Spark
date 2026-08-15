@@ -244,24 +244,30 @@ public class PersonActions : DefaultPersistentObjectActions<Person>
 ```
 
 Available hooks:
-- `OnQueryAsync` - Customize list queries (*where* to find entities of this type)
 - `OnLoadAsync` - Customize single entity loading
 - `OnSaveAsync` - Customize save operation
 - `OnDeleteAsync` - Customize delete operation
 - `OnBeforeSaveAsync` - Pre-save validation/logic
 - `OnAfterSaveAsync` - Post-save logic
 - `OnBeforeDeleteAsync` - Pre-delete logic
-- `GetRowFilter(string action)` - **Row-level security** (preferred): the row rule as an
-  `Expression<Func<T,bool>>?` the framework pushes into the RavenDB query, so a list over a
-  row-scoped type reads only the caller's rows. Return `null` for no restriction. Single-row
-  checks and the create/edit write checks are derived from the same expression.
+- `GetRowFilterAsync(string action)` - **Row-level security** (preferred): the row rule as a
+  `Task<Expression<Func<T,bool>>?>` the framework pushes into the RavenDB query, so a list over a
+  row-scoped type reads only the caller's rows. **Construction can `await`** (fetch an allow-list);
+  the returned expression stays synchronous and RavenDB-translatable. Return `null` for no
+  restriction. Single-row checks and the create/edit write checks are derived from the same
+  expression. The framework invokes it **at most once per (type, action) per request** and caches
+  the result — awaiting I/O inside it is safe.
 - `IsAllowedAsync(string action, T entity)` - the row rule as a per-row predicate: a refinement
-  of `GetRowFilter` (both must allow) or a standalone for rules an expression can't capture.
+  of `GetRowFilterAsync` (both must allow) or a standalone for rules an expression can't capture.
   Overriding either filters lists, queries and streams as well as single-entity reads, and a
-  denied read is a 404 rather than a 403 so existence is not leaked.
+  denied read is a 404 rather than a 403 so existence is not leaked. **Not memoized** — if it does
+  I/O it is an N+1; put I/O-backed rules in `GetRowFilterAsync`.
 - `GetProtectedAttributesAsync(string action, T entity)` - per-viewer, per-row **attribute
   redaction**: names attributes of a row to hide from this caller (value nulled, invisible, and
   shielded from write-back). A dotted name (`"Jobs.Salary"`) reaches into AsDetail children.
+- `GetDefaultIncludes()` - reference paths to always RavenDB-`.Include()` for this type (dotted
+  JSON paths into the document; `[Reference]` properties are auto-included). Referenced docs then
+  arrive in the same round-trip instead of a follow-up load. Nested paths are embedded-object only.
 
 The defaults permit everything and redact nothing; overriding any of these is the signal that the
 class takes responsibility for row-level policy. **See [docs/guide-row-security.md](../../../docs/guide-row-security.md)**

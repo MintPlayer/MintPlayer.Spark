@@ -47,8 +47,9 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         public ScopedNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
 
-        public override Expression<Func<Note, bool>>? GetRowFilter(string action)
+        public override async Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
         {
+            await Task.Yield();   // prove the async path: genuinely suspends before returning
             if (IsAdmin) return null;
             var user = CurrentUser;
             if (string.IsNullOrEmpty(user)) return n => false;
@@ -61,11 +62,74 @@ public class RowFilterPushdownTests : SparkTestDriver
     {
         public GuardedNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
 
-        public override Expression<Func<Note, bool>>? GetRowFilter(string action)
-            => n => n.Owner == "alice";
+        public override Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+            => Task.FromResult<Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
 
         public override Task<bool> IsAllowedAsync(string action, Note entity)
             => Task.FromResult(action != "Edit" || !entity.Title.Contains("locked"));
+    }
+
+    /// <summary>Counts how many times the async hook actually runs, to pin the M2 memo.</summary>
+    public class CountingNoteActions : DefaultPersistentObjectActions<Note>
+    {
+        public int Invocations;
+        public CountingNoteActions(IEntityMapper entityMapper) : base(entityMapper) { }
+
+        public override Task<Expression<Func<Note, bool>>?> GetRowFilterAsync(string action)
+        {
+            Interlocked.Increment(ref Invocations);
+            return Task.FromResult<Expression<Func<Note, bool>>?>(n => n.Owner == "alice");
+        }
+    }
+
+    [Fact]
+    public async Task The_hook_runs_once_per_type_action_per_request_independent_of_row_count()
+    {
+        // M2 (#239): an async hook that does I/O must run a bounded number of times — bounded by
+        // the model (distinct type×action), never by rows/pages/batches — or the breadcrumb loop
+        // alone blows RavenDB's 30-request session cap. RowSecurity is scoped, so one instance = one
+        // request; the memo must collapse repeated (type, action) resolutions to a single invocation.
+        var modelLoader = Substitute.For<IModelLoader>();
+        var actionsResolver = Substitute.For<IActionsResolver>();
+        var actions = new CountingNoteActions(new EntityMapper(modelLoader));
+        actionsResolver.ResolveForType(typeof(Note)).Returns(actions);
+        var rowSecurity = new RowSecurity(actionsResolver);
+
+        // Ten single-row checks + a 50-row list filter, all action "Read".
+        for (var i = 0; i < 10; i++)
+            await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        using var session = Store.OpenAsyncSession();
+        var rows = Enumerable.Range(0, 50).Select(_ => (object)new Note { Owner = "alice" }).ToList();
+        await rowSecurity.FilterAsync(session, rows, typeof(Note), typeof(Note), "Read");
+
+        actions.Invocations.Should().Be(1,
+            "the hook is memoized per (type, action) per request — invariant of row count");
+
+        // A different action is a distinct key → one more invocation, not zero and not per-row.
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Edit", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ResetRequestFilterCache_forces_the_next_resolution_to_re_invoke_the_hook()
+    {
+        // M3 (#239): the streaming re-auth tick calls ResetRequestFilterCache so a frozen row
+        // filter can't keep serving revoked rows for the socket's life. Proves the reset clears
+        // the memo — after it, a shrunk allow-list is re-read.
+        var modelLoader = Substitute.For<IModelLoader>();
+        var actionsResolver = Substitute.For<IActionsResolver>();
+        var actions = new CountingNoteActions(new EntityMapper(modelLoader));
+        actionsResolver.ResolveForType(typeof(Note)).Returns(actions);
+        var rowSecurity = new RowSecurity(actionsResolver);
+
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(1, "memoized within the request");
+
+        rowSecurity.ResetRequestFilterCache();
+
+        await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
+        actions.Invocations.Should().Be(2, "the reset drops the memo, so the hook re-runs (allow-list re-read)");
     }
 
     [Fact]
@@ -124,7 +188,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         var rowSecurity = CreateRowSecurity(em => new ScopedNoteActions(em));
         using var session = Store.OpenAsyncSession();
 
-        var composed = rowSecurity.ComposeRowFilter(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
+        var composed = await rowSecurity.ComposeRowFilterAsync(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
 
         composed.ToString().Should().Contain("Owner",
             "the predicate must land in the RQL itself — that is what keeps a row-scoped type "
@@ -178,7 +242,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The constant predicate must not be pushed into RQL (the provider may not translate it) …
         var queryable = session.Query<Note>();
-        rowSecurity.ComposeRowFilter(queryable, typeof(Note), typeof(Note), "Query")
+        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(Note), "Query"))
             .Should().BeSameAs(queryable);
 
         // … and the in-memory evaluation still drops every row.
@@ -227,7 +291,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The filter cannot compose into a projection query …
         var queryable = filterSession.Query<Note>();
-        rowSecurity.ComposeRowFilter(queryable, typeof(Note), typeof(VNote), "Query")
+        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(VNote), "Query"))
             .Should().BeSameAs(queryable);
 
         // … so FilterAsync loads the base documents (one batch) and judges those.

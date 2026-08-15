@@ -23,7 +23,37 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <inheritdoc />
     public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
-        => await session.LoadAsync<T>(id);
+    {
+        // #239: prime the consumer's declared includes so referenced documents arrive in the same
+        // round-trip instead of a breadcrumb load each. RavenDB requires the includes on the same
+        // fluent load call (there's no pre-register-on-session), so this is the seam. A consumer
+        // overriding OnLoadAsync takes over include responsibility (same caveat as the WITH CHECK).
+        var includes = GetDefaultIncludes();
+        if (includes is not { Count: > 0 })
+            return await session.LoadAsync<T>(id);
+
+        return await session.LoadAsync<T>(id, builder =>
+        {
+            foreach (var path in includes)
+                builder.IncludeDocuments(path);
+        });
+    }
+
+    /// <summary>
+    /// Reference paths the framework should always RavenDB-<c>.Include()</c> when loading or querying
+    /// this type — so referenced documents arrive in the same round-trip rather than a follow-up load
+    /// (each of which counts against the session's request budget). Null/empty = only the
+    /// <c>[Reference]</c>-decorated properties are auto-included.
+    /// <para>
+    /// Paths are dotted JSON paths <b>into the document</b>: <c>"Company"</c> for a top-level
+    /// reference id, <c>"Address.City"</c> for an id nested inside an <b>embedded</b> object. They do
+    /// <b>not</b> cross a document boundary — RavenDB has no recursive include, so a chain through a
+    /// referenced <em>document</em> (Car → Owner → Owner.Company) is not expressible; use an index or
+    /// let the breadcrumb resolver's batched load handle deeper levels.
+    /// </para>
+    /// </summary>
+    [NoInterfaceMember]
+    public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;
 
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
@@ -78,7 +108,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
 
-        var filter = GetRowFilter(action);
+        var filter = await GetRowFilterAsync(action);
         if (filter is not null && !filter.Compile()(entity))
             throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
 
@@ -128,6 +158,29 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// into the RavenDB query itself — so a list over a row-scoped type reads only the caller's
     /// rows instead of the whole collection.
     ///
+    /// <para><b>Why this hook rather than filtering the query yourself.</b> You might expect to
+    /// scope rows by customizing the list query (an "OnQuery"-style hook that returns a filtered
+    /// <c>IQueryable</c>). Two reasons that isn't what row security uses — and why there is
+    /// deliberately no such hook (the old <c>OnQueryAsync</c> was removed):
+    /// <list type="number">
+    ///   <item><b>One rule, every path.</b> A query filter guards only the <i>list</i>. Row security
+    ///   must also gate a <i>detail</i> read (a load by id — no query runs, so a query filter never
+    ///   sees it), an <i>edit</i>/<i>delete</i> of a specific row, and a <i>create</i>/<i>edit</i>
+    ///   that would stamp a row into someone else's scope (SQL's <c>WITH CHECK</c>), plus streaming
+    ///   and breadcrumb reference loads. The framework derives <b>all</b> of those from this single
+    ///   expression, so they cannot drift out of sync. A per-query filter would leave detail reads
+    ///   and writes wide open — filter the list to 8 cars and a caller could still open, edit, or
+    ///   delete car #9 by id. Spreading the rule across per-path hooks is exactly how a list screen
+    ///   ends up leaking rows the detail screen protects.</item>
+    ///   <item><b>An expression, not a pre-filtered query.</b> Because you return an
+    ///   <see cref="System.Linq.Expressions.Expression{TDelegate}"/> the framework can both push it
+    ///   into the RavenDB query <i>and</i> <c>Compile()</c> it to answer "may this one already-loaded
+    ///   row be edited?" — a filtered <c>IQueryable</c> is opaque and can't be reused for a
+    ///   single-row decision. It also lets the framework keep owning query construction (projection
+    ///   and index selection, <c>.Include()</c>s, sorting, paging, the collection guard): you
+    ///   contribute only the predicate and the rest still works.</item>
+    /// </list></para>
+    ///
     /// Evaluated per request: capture request-scoped data (the current user, an allow-list) as
     /// locals so it lands in the expression as constants. Return <c>null</c> to mean "no
     /// restriction for this caller" (e.g. an administrator).
@@ -143,10 +196,34 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// The predicate's properties must be queryable in RavenDB for the pushdown to apply: on a
     /// plain collection query anything on the document works; on a static index the fields it
     /// names must be indexed.
+    ///
+    /// <para><b>Async construction, synchronous expression.</b> The hook may <c>await</c> while
+    /// building the filter (fetch an allow-list, query the store) — the returned
+    /// <see cref="System.Linq.Expressions.Expression{TDelegate}"/> stays synchronous and RavenDB-
+    /// translatable.</para>
+    ///
+    /// <para><b>Cost contract.</b> The framework invokes this hook <b>at most once per
+    /// (entity type, action) per request</b> and caches the result, so awaiting I/O here is safe —
+    /// the cost is bounded by the model, never by row count, page size, or streaming batch count.
+    /// On a stream the cache refreshes on the periodic re-authorization tick (~every 10 batches), so
+    /// a filter is at most that stale. Because the result is cached per request, the filter must be
+    /// a <b>pure function of request-scoped state</b> — do not depend on something you mutate later
+    /// in the same request. (By contrast <see cref="IsAllowedAsync"/> is genuinely per-row and is
+    /// NOT memoized; express I/O-backed rules here, not there.)</para>
+    ///
+    /// <para><b>Pair with <see cref="GetDefaultIncludes"/> on reference-heavy types.</b> The filter
+    /// narrows <i>which</i> rows come back, but each surviving row's referenced documents (rendered
+    /// as breadcrumbs) are still fetched — and an async filter already spends request budget, so on
+    /// a reference-heavy row-scoped type a page can march toward RavenDB's per-session request cap.
+    /// Level-1 <c>[Reference]</c> properties are <c>.Include()</c>d automatically; override
+    /// <see cref="GetDefaultIncludes"/> to prime <i>additional</i> references (embedded dotted paths,
+    /// or reference ids not decorated <c>[Reference]</c>) so they arrive in the same round-trip
+    /// rather than one load apiece.</para>
     /// </summary>
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
     [NoInterfaceMember]
-    public virtual System.Linq.Expressions.Expression<Func<T, bool>>? GetRowFilter(string action) => null;
+    public virtual Task<System.Linq.Expressions.Expression<Func<T, bool>>?> GetRowFilterAsync(string action)
+        => Task.FromResult<System.Linq.Expressions.Expression<Func<T, bool>>?>(null);
 
     /// <summary>
     /// Per-viewer attribute redaction. Names the attributes of this specific row that the current

@@ -1,9 +1,7 @@
+using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 using WebhooksDemo.Entities;
 using WebhooksDemo.Services;
 
@@ -15,36 +13,32 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     [Inject] private readonly IOrganizationAccessService _orgAccess;
 
     /// <summary>
-    /// The org-membership rule, applied to every path: list, query, stream, detail and write.
+    /// The org-membership rule as an <b>async row filter</b> (#239) — the worked example of the
+    /// feature. Building the predicate needs I/O: the caller's allowed owner logins are fetched
+    /// live from GitHub (via their stored OAuth token, cached per request), which the old
+    /// synchronous <c>GetRowFilter</c> could not express — the class was stuck on
+    /// <c>IsAllowedAsync</c> post-materialization filtering, with no pushdown and no create-side
+    /// <c>WITH CHECK</c>.
     /// <para>
-    /// This used to live in <c>OnQueryAsync</c>, which read like the right place and was never called
-    /// by the framework — declared, overridable, and with no call sites at all. So this demo's
-    /// project list returned every project to any authenticated caller,
-    /// regardless of org membership, while three separate org checks in this file made it look
-    /// protected. <c>IsAllowedAsync</c> is the hook the read paths actually consult (M5).
+    /// Now the framework <c>await</c>s the allow-list once per request, pushes
+    /// <c>owner in (…)</c> into the RavenDB query on list/query paths, and derives the
+    /// detail/edit/delete single-row checks and the create/edit WITH CHECK from the same
+    /// expression. So the three hand-written org checks this class used to carry in
+    /// <c>OnLoadAsync</c> / <c>OnBeforeSaveAsync</c> / <c>OnBeforeDeleteAsync</c> are gone — the
+    /// one filter covers every path.
     /// </para>
     /// </summary>
-    public override async Task<bool> IsAllowedAsync(string action, GitHubProject entity)
-        => await _orgAccess.IsOwnerAllowedAsync(entity.OwnerLogin);
-
-    public override async Task<GitHubProject?> OnLoadAsync(IAsyncDocumentSession session, string id)
+    public override async Task<Expression<Func<GitHubProject, bool>>?> GetRowFilterAsync(string action)
     {
-        var project = await session.LoadAsync<GitHubProject>(id);
-        if (project is null) return null;
-
-        if (!await _orgAccess.IsOwnerAllowedAsync(project.OwnerLogin))
-            throw new SparkAccessDeniedException("Read/GitHubProject");
-
-        return project;
+        var owners = await _orgAccess.GetAllowedOwnersAsync();
+        return project => owners.Contains(project.OwnerLogin);
     }
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, GitHubProject entity)
     {
-        if (!await _orgAccess.IsOwnerAllowedAsync(entity.OwnerLogin))
-            throw new SparkAccessDeniedException("Edit/GitHubProject");
-
-        // When a project is saved with a NodeId but no columns yet,
-        // auto-fetch the Status field and column options from GitHub.
+        // Org membership is enforced by GetRowFilterAsync's WITH CHECK now; this hook keeps only
+        // its real job: when a project is saved with a NodeId but no columns yet, auto-fetch the
+        // Status field and column options from GitHub.
         if (entity.Columns.Length == 0 && !string.IsNullOrEmpty(entity.NodeId))
         {
             var (statusFieldId, columns) = await _projectService.GetProjectColumnsAsync(entity.InstallationId, entity.NodeId);
@@ -53,11 +47,5 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
         }
 
         await base.OnBeforeSaveAsync(obj, entity);
-    }
-
-    public override async Task OnBeforeDeleteAsync(GitHubProject entity)
-    {
-        if (!await _orgAccess.IsOwnerAllowedAsync(entity.OwnerLogin))
-            throw new SparkAccessDeniedException("Delete/GitHubProject");
     }
 }

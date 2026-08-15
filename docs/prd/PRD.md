@@ -642,7 +642,7 @@ public class Person
 - The default implementation provides standard RavenDB CRUD operations with no custom business logic
 
 **Lifecycle Hooks:**
-- `OnQueryAsync(session)` - Called when listing entities
+- ~~`OnQueryAsync(session)`~~ - **Removed** (issue #236): was never called by the framework. Row-level list filtering is now `GetRowFilterAsync(action)` (issue #239), which the framework applies across list, detail, and write paths — see `docs/guide-row-security.md`.
 - `OnLoadAsync(session, id)` - Called when loading a single entity
 - `OnSaveAsync(session, entity)` - Called when creating/updating (calls OnBeforeSaveAsync/OnAfterSaveAsync)
 - `OnDeleteAsync(session, id)` - Called when deleting (calls OnBeforeDeleteAsync)

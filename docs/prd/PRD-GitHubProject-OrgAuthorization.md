@@ -13,7 +13,9 @@ The row-level authorization shape described here (Actions overrides + `IOrganiza
 - **Planned (this PRD):** Extract org memberships at login via `GET /user/orgs` and store them as `urn:github:org` claims on the user principal. Section 6.2, 8.1, 8.2 describe this.
 - **Shipped:** The app uses the **same GitHub App** for webhooks and user login. `OrganizationAccessService` calls `GET /user/installations` at request time using the stored user access token, deriving owners from `installations[].account.login` plus the user's own login. No `read:org` scope, no `urn:github:org` claims, no `SparkGitHubClaimTypes.Organization` constant, no changes in `GitHubAuthenticationExtensions.cs`.
 
-The `/user/installations` source avoids the third-party OAuth App approval gotcha described at the end of Section 9. See `Demo/WebhooksDemo/WebhooksDemo/Services/OrganizationAccessService.cs` for the current implementation. Everything else in this PRD — Actions overrides, controller filtering, webhook-handler carve-out, security considerations — still matches what was shipped.
+The `/user/installations` source avoids the third-party OAuth App approval gotcha described at the end of Section 9. See `Demo/WebhooksDemo/WebhooksDemo/Services/OrganizationAccessService.cs` for the current implementation.
+
+> **⚠️ Hook mechanism outdated (updated 2026-08-15).** The row-level enforcement hook described throughout this PRD — `OnQueryAsync` — **no longer exists.** `OnQueryAsync` was dead code (never called by the framework) and was removed in issue #236; a list-only query hook could not gate detail reads or writes. The org rule shipped instead as `IsAllowedAsync` (#236 M5) and, since issue #239, as the async **`GetRowFilterAsync`** — one expression the framework applies across list, detail, edit, delete, create (WITH CHECK), and streaming. The current `GitHubProjectActions` overrides `GetRowFilterAsync` (awaiting the allowed-owners list); the `OnLoadAsync`/`OnBeforeDeleteAsync`/`OnQueryAsync` overrides in the sections below are the *original design*, not the shipped code — read them as history. See `docs/guide-row-security.md` for the current model.
 
 ---
 
