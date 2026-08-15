@@ -158,6 +158,29 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// into the RavenDB query itself — so a list over a row-scoped type reads only the caller's
     /// rows instead of the whole collection.
     ///
+    /// <para><b>Why this hook rather than filtering the query yourself.</b> You might expect to
+    /// scope rows by customizing the list query (an "OnQuery"-style hook that returns a filtered
+    /// <c>IQueryable</c>). Two reasons that isn't what row security uses — and why there is
+    /// deliberately no such hook (the old <c>OnQueryAsync</c> was removed):
+    /// <list type="number">
+    ///   <item><b>One rule, every path.</b> A query filter guards only the <i>list</i>. Row security
+    ///   must also gate a <i>detail</i> read (a load by id — no query runs, so a query filter never
+    ///   sees it), an <i>edit</i>/<i>delete</i> of a specific row, and a <i>create</i>/<i>edit</i>
+    ///   that would stamp a row into someone else's scope (SQL's <c>WITH CHECK</c>), plus streaming
+    ///   and breadcrumb reference loads. The framework derives <b>all</b> of those from this single
+    ///   expression, so they cannot drift out of sync. A per-query filter would leave detail reads
+    ///   and writes wide open — filter the list to 8 cars and a caller could still open, edit, or
+    ///   delete car #9 by id. Spreading the rule across per-path hooks is exactly how a list screen
+    ///   ends up leaking rows the detail screen protects.</item>
+    ///   <item><b>An expression, not a pre-filtered query.</b> Because you return an
+    ///   <see cref="System.Linq.Expressions.Expression{TDelegate}"/> the framework can both push it
+    ///   into the RavenDB query <i>and</i> <c>Compile()</c> it to answer "may this one already-loaded
+    ///   row be edited?" — a filtered <c>IQueryable</c> is opaque and can't be reused for a
+    ///   single-row decision. It also lets the framework keep owning query construction (projection
+    ///   and index selection, <c>.Include()</c>s, sorting, paging, the collection guard): you
+    ///   contribute only the predicate and the rest still works.</item>
+    /// </list></para>
+    ///
     /// Evaluated per request: capture request-scoped data (the current user, an allow-list) as
     /// locals so it lands in the expression as constants. Return <c>null</c> to mean "no
     /// restriction for this caller" (e.g. an administrator).
