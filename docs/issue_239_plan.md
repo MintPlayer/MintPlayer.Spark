@@ -73,6 +73,17 @@ Independent of the async work (can land in parallel), bundled here because it at
 5. **PR body must state** that fixing `ApplyIncludes` is a real query-shape change (RQL now emits `include`) — includes never actually ran before this PR.
 6. Version bump: `.NET → 10.0.0-preview.45` in lockstep across all 21 csproj (ng-spark untouched — no client-visible change). Do **not** publish by hand; bump + merge, CI publishes.
 
+## Dead-code / cleanup sweep (do NOT leave orphans)
+
+The investigations surfaced dead and misleading code; prune it in the same PR rather than leaving it around the new paths.
+
+1. **Delete the old synchronous `GetRowFilter`** — not kept as an overload (M1; the additive form has a fail-open trap).
+2. **Correct the false `.Include()`-priming comments.** `QueryExecutor.cs:184-185` and `DatabaseAccess.cs:169-171` claim referenced docs are "primed into the session cache by `.Include()`" — untrue today (`ApplyIncludes` is dead, PRD §7.1). Once M6 makes includes real the claim becomes true; review the wording and keep it honest (and only for level-1 embedded paths, not cross-document).
+3. **Remove WebhooksDemo's now-redundant manual checks** in `OnLoadAsync`/`OnBeforeSaveAsync`/`OnBeforeDeleteAsync` once the framework `GetRowFilterAsync` gates cover them (M1.6) — verified by test, not assumed.
+4. **Delete the stale `OnQueryAsync` README bullet** (`README.md:247`) — the hook was removed in #236 M5 (M7).
+5. **Drop the two uncached `GetType().GetProperty("Result")` reflections** in `RowSecurity` (the `IsAllowedAsync` closure + `RedactAsync`) in favour of the cached `GetCompletedTaskResult()` helper the new `InvokeGetRowFilterAsync` uses — removes the "two ways to do the same thing in one file" inconsistency while we're in there.
+6. **General sweep at the end:** grep for now-unreachable branches introduced by the async/memo/includes changes (e.g. any sync-hook fallback, any pre-async compose helper that no longer has a caller) and delete them. A dead branch a reviewer can't distinguish from a live one is worse than a compile break.
+
 ## Test inventory (batched at the end)
 
 Migrate the existing fixtures to the async signature and add the new cap/security tests:
