@@ -4,7 +4,7 @@
 - **Branch:** `feat/issue-236-row-level-security`
 - **Origin:** The Coverage app (MintPlayer/CodeCoverage) wants generic row-level authorization. It currently runs Spark with **DenyAll and no `security.json`** and re-implements its entire read surface as hand-written `[ApiController]`s, purely because of the gaps below. Its requirements are the acceptance benchmark for this work.
 - **Lineage:** Finishes what the Coverage-handoff M5 started (`docs/coverage-handoff-plan.md` §M5). The declarative row-filter design there (`:584-598`) was specified, then explicitly superseded — the shipped M5 delivered only the single `IsAllowedAsync` hook. This PRD revives the deferred half with the "two hooks, four states" objection resolved (see G1).
-- **Status:** **Implemented (M0–M5 shipped on the branch)** 2026-08-14; M6 deferred as a separate perf PR. See the as-built table in [issue_236_plan.md](./issue_236_plan.md). All `file:line` claims below re-verified against `master` (c3be2ed) on 2026-08-14.
+- **Status:** **Shipped** (M0–M5) in PR #237, released as `10.0.0-preview.44` / `@mintplayer/ng-spark@22.0.9` (2026-08-14). M6 (Raven `Skip/Take` pushdown) remains a separate perf PR. **Active follow-up (2026-08-15): `GetRowFilter` → async `GetRowFilterAsync`** — see the "Async follow-up" note under G1 and the checklist in [issue_236_plan.md](./issue_236_plan.md). All `file:line` claims below reflect the shipped design (`master` @ 5d5fce0) unless a line is marked superseded.
 
 ## What already ships (baseline — do not rebuild)
 
@@ -38,15 +38,16 @@ Independent of everything else; ships first.
 
 **Today:** the row filter runs after full materialization. `QueryExecutor.ExecuteQueryAsync` (`Services/QueryExecutor.cs:32-73`) reads the whole collection, maps every row, then filters and pages in memory (search filter `:47-59`, `ToList` + `TotalRecords` `:61-62`, `Skip/Take` `:64`) — permanently O(collection).
 
-**Proposal:** one optional member next to the existing hook:
+**Proposal:** one optional member next to the existing hook. **The hook is `async` — construction can `await`; the returned expression stays synchronous** so it still translates into a RavenDB `IQueryable` (see the async follow-up note below):
 
 ```csharp
 public class RepositoryActions : DefaultPersistentObjectActions<Repository>
 {
-    // NEW — composes into the Raven query; evaluated per request.
-    public override Expression<Func<Repository, bool>>? GetRowFilter(string action)
+    // NEW — composes into the Raven query; evaluated per request. Construction may await
+    // (fetch an allow-list); the returned Expression is synchronous and RavenDB-translatable.
+    public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
     {
-        var owners = orgAccess.AllowedOwners;   // request-scoped data captured as constants
+        var owners = await orgAccess.GetAllowedOwnersAsync();   // request-scoped data captured as constants
         return r => !r.IsPrivate || owners.Contains(r.OwnerLogin);
     }
 }
@@ -56,6 +57,12 @@ public class RepositoryActions : DefaultPersistentObjectActions<Repository>
 - **Derivation rule (resolves the "two hooks, four states" objection that killed this in M5):** define derivation, not interaction. Only `GetRowFilter` overridden → the framework derives the single-row check by compiling the expression (cached) — one source of truth, list and detail can't diverge. Only `IsAllowedAsync` overridden → exactly today's behavior (post-filter). Both → AND semantics (filter narrows, predicate refines). A startup diagnostic names each type and which mode it runs in.
 - **Projection fallback, never silent:** a predicate typed on `Car` can't compose into `IRavenQueryable<VCar>` (`Cars_Overview` auto-selected by `IndexRegistry`, `QueryExecutor.cs:132-140`). Fall back automatically to post-filter with the G0 batched reload, and emit a diagnostic — never silently unfiltered.
 - **Paging/totals stay correct for free:** compose the filter before `ToListAsync`; `totalRecords` and `Skip/Take` derive from the post-filter list today. Raven-side `Skip/Take` pushdown (with `Statistics`) is a **separate, later** perf PR (M6) — it collides with in-memory search and needs its own benchmarks (as `docs/PRD-CoverageHandoff.md:423` concluded).
+
+### Async follow-up (2026-08-15) — `GetRowFilterAsync`, no backward compatibility
+
+**Motivation:** the Coverage app needs to `await` while *building* the filter (its allow-list comes from an async service call — `await orgAccess.GetAllowedOwnersAsync()`), which the shipped synchronous `GetRowFilter` can't express. **Decision:** rename the hook to `GetRowFilterAsync` returning `Task<Expression<Func<T,bool>>?>`; **the old synchronous signature is removed, not kept as an overload** (no backward compatibility — the framework is still in preview).
+
+Only *construction* becomes async — the returned `Expression<Func<T,bool>>` is unchanged and still translates into the RavenDB `IQueryable`, so the pushdown, derivation rule, projection fallback, and WITH CHECK all keep working exactly as designed above. The change is mechanical: the hook + the framework's reflective invocation (`RowSecurity.InvokeGetRowFilter` → awaited via the cached `Task.GetCompletedTaskResult()` helper), plus `ComposeRowFilter` → `ComposeRowFilterAsync` and its three `await`ed call sites. `HasRowRule` stays synchronous (it only checks whether the method is overridden). Full edit checklist in the plan.
 
 ## G2 — Create-side `WITH CHECK`: writes that *produce* rows you couldn't see
 

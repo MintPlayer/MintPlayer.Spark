@@ -16,7 +16,11 @@ All six milestones implemented on `feat/issue-236-row-level-security`, one commi
 | M5 | `df18e19` | Per-row `Can{edit,delete}` block on detail path; `spark-po-detail` prefers it. **Also fixed a fail-open regression**: M2's system-context detection treated "no HTTP request" as system, silently disabling row security on every non-request path (the default in tests). Now positive-claim-only — fails closed. D3 record + `SparkSystemContext` updated accordingly. |
 | Docs | `9e34b0a` | `docs/guide-row-security.md` (incl. the loud anonymous-read section) + README hooks. |
 
-**Deferred to follow-up issues (filed at PR time):** M6 Raven `Skip/Take` pushdown; a declarative `security.json` attribute-protection surface (D4 option A); and the "Related findings" in the PRD (`parentId`/`parentType` ignored for `Database.*`, `*Unchecked` bypasses, streaming re-validation, `ProgramUnits` fail-open). A separate security sweep (see `docs/issue_236_security_sweep_*`) audits untrusted-write vulnerabilities surfaced by this work.
+**Security sweep (SHIPPED in the same PR):** the untrusted-write audit surfaced by this work — cross-collection id→type binding, custom-action Parent, natural-id overwrite, AsDetail mass-assignment, lookup-ref auth, streaming re-validation, `ProgramUnits` fail-open — was fully fixed. See `docs/issue_236_security_sweep_{PRD,plan}.md`.
+
+**Still genuinely deferred:** M6 (Raven `Skip/Take` pushdown, perf); a declarative `security.json` attribute-protection surface (D4 option A); and the `parentId`/`parentType`-ignored-for-`Database.*` finding (not part of the sweep).
+
+**Active follow-up (2026-08-15): M7 — async `GetRowFilterAsync`** (see the section at the end of this file).
 
 ```
 M0 (bug) ──► M1 (pushdown) ──► M2 (WITH CHECK)
@@ -41,7 +45,7 @@ M4 (redaction) — independent
 **Files:** `Actions/DefaultPersistentObjectActions.cs`, `Services/RowSecurity.cs`, `Services/QueryExecutor.cs`, `Services/StreamingQueryExecutor.cs`, `Services/DatabaseAccess.cs` (list path), Fleet demo.
 
 1. D1 resolved: keep the `action` parameter. D2 resolved: anonymous-read pattern blessed, gets a loud section in `docs/guide-row-security.md`.
-2. New optional virtual: `Expression<Func<T, bool>>? GetRowFilter(string action)` on `DefaultPersistentObjectActions<T>` (default `null`). Override detection via the `HasRowRule` reflection pattern (`RowSecurity.cs:71-82`), cached.
+2. New optional virtual: `Expression<Func<T, bool>>? GetRowFilter(string action)` on `DefaultPersistentObjectActions<T>` (default `null`). Override detection via the `HasRowRule` reflection pattern (`RowSecurity.cs:71-82`), cached. *(Superseded by M7: the hook is now `Task<Expression<Func<T,bool>>?> GetRowFilterAsync(string action)`.)*
 3. Composition into `IRavenQueryable` via `Queryable.Where` + `MakeGenericMethod`, following the `ApplySorting` template (`QueryExecutor.cs:552-578`). Wire **all** row-filter sites: database query path (`QueryExecutor.cs:176-177`), custom-query path (`:291-296`), streaming (`StreamingQueryExecutor.cs:85-107`), PO list (`DatabaseAccess.cs:145`).
 4. **Derivation rule:** only `GetRowFilter` → single-row checks (get/edit/delete) use the compiled expression (cache the compile); only `IsAllowedAsync` → today's behavior; both → AND. Startup diagnostic logs each row-scoped type and its mode.
 5. **Projection fallback:** when the query's element type ≠ the entity type (index projection, `QueryExecutor.cs:132-140`), fall back to post-filter using M0's batched reload + log a diagnostic. Never silently unfiltered.
@@ -119,3 +123,19 @@ Per global working rules, full test suites run once at the end of each milestone
 | M4 | D4 | — |
 | M5 | D5 | M1 |
 | M6 | — | M1 (separate later PR) |
+| M7 | — | M1 (async follow-up, below) |
+
+## M7 — async `GetRowFilterAsync` (follow-up, 2026-08-15)
+
+**Branch:** `feat/async-row-filter`. **Motivation:** Coverage builds its filter from an async source (`await orgAccess.GetAllowedOwnersAsync()`), which the synchronous `GetRowFilter` can't express. **No backward compatibility** — the sync hook is removed, not overloaded (framework is in preview). Only *construction* becomes async; the returned `Expression<Func<T,bool>>` is unchanged and still RavenDB-translatable, so pushdown / derivation / projection-fallback / WITH CHECK are all behavior-preserving.
+
+**Design confirmed by investigation (2026-08-15):** the reflective invocation awaits the returned `Task<T>` by casting to non-generic `Task` and reusing the cached `Task.GetCompletedTaskResult()` helper (`libs/spark/MintPlayer.Spark.Abstractions/Reflection/ReflectedTypeExtensions.cs`) — the same pattern already used for the `IsAllowedAsync` reflection call. `HasRowRule` / `ResolveFilterHook` stay synchronous (they only ask *whether* the method is overridden; `GetMethod` matches on name + params, never return type). The source generators don't react — `[NoInterfaceMember]` keeps the hook off the generated interface.
+
+**Ordered edit checklist:**
+1. `Actions/DefaultPersistentObjectActions.cs` — the virtual → `Task<Expression<Func<T,bool>>?> GetRowFilterAsync(string action) => Task.FromResult<…>(null)` (keep `[NoInterfaceMember]`; update the doc block); and the WITH CHECK caller in `EnsureRowSaveAllowedAsync` → `var filter = await GetRowFilterAsync(action);`.
+2. `Services/RowSecurity.cs` — `ResolveFilterHook`: look up `"GetRowFilterAsync"` (cache key + `GetMethod` name), method stays sync. `InvokeGetRowFilter` → `async Task<LambdaExpression?> InvokeGetRowFilterAsync(...)` (cast invoke result to `Task`, `await`, `(LambdaExpression?)task.GetCompletedTaskResult()`). `ResolveEffectiveRule` → `ResolveEffectiveRuleAsync` (awaits the above); `IsAllowedAsync` + `FilterAsync` insert `await`. `ComposeRowFilter` → `async Task<object> ComposeRowFilterAsync(...)`. `IRowSecurity` interface: the one signature change is `ComposeRowFilter` → `ComposeRowFilterAsync` returning `Task<object>`. Optionally migrate the two remaining uncached `GetProperty("Result")` spots (`IsAllowedAsync` closure + `RedactAsync`) to `GetCompletedTaskResult()` for consistency.
+3. `Services/QueryExecutor.cs` (database + custom-query paths) and `Services/DatabaseAccess.cs` (list path) — `await rowSecurity.ComposeRowFilterAsync(...)` (all three enclosing methods already `async`). `StreamingQueryExecutor` does NOT call it — no change.
+4. `Demo/Fleet/Fleet/Actions/CarActions.cs` — override → `GetRowFilterAsync` returning `Task<…>`; wrap the four returns in `Task.FromResult` (avoids CS1998); update its doc block.
+5. Tests — `_Infrastructure/PermissiveRowSecurity.cs` (`ComposeRowFilterAsync => Task.FromResult(queryable)`); `RowFilterPushdownTests` (2 overrides + 3 direct `ComposeRowFilterAsync` calls, now `await`ed) ; `RowLevelWithCheckTests` (2 overrides). NSubstitute `IRowSecurity` doubles regenerate the renamed member automatically.
+6. Docs that ship / are authored: `libs/spark/MintPlayer.Spark/README.md` and `docs/guide-row-security.md` — update the signature + examples to `GetRowFilterAsync`. (Historical `docs/coverage-handoff-plan.md`, `PRD-CoverageHandoff.md`, `findings-replication-mtls.md` left untouched.)
+7. Build; run the row-security test classes as one batch (`RowFilterPushdownTests`, `RowLevelWithCheckTests`, `RowLevelQueryAuthorizationTests`, `QueryExecutorIntegrationTests`, `BreadcrumbResolverTests`, `RowLevelWithCheckTests`, `CrossCollectionBindingTests`).
