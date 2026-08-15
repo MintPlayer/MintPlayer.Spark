@@ -26,10 +26,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.100
         # Authenticates packages to push to GPR
@@ -38,7 +38,7 @@ jobs:
         NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: 22
 
@@ -90,7 +90,7 @@ jobs:
         echo "version=${version}" >> "$GITHUB_OUTPUT"
 
     - name: Cache Playwright browsers
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
@@ -113,7 +113,7 @@ jobs:
     # skipped one or more projects. See codecov.yml `flag_management`.
     - name: Upload coverage (unit)
       if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
@@ -123,7 +123,7 @@ jobs:
 
     - name: Upload coverage (sourcegen)
       if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
@@ -133,7 +133,7 @@ jobs:
 
     - name: Upload coverage (client)
       if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
@@ -143,7 +143,7 @@ jobs:
 
     - name: Upload coverage (e2e)
       if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
