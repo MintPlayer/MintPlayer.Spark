@@ -2,6 +2,14 @@
 
 **PRD:** `docs/issue_243_PRD.md` · **Branch:** `feat/issue-243-can-block-type-rights` · one commit per milestone.
 
+> **Status: all milestones DONE** — PR [#244](https://github.com/MintPlayer/MintPlayer.Spark/pull/244).
+> M0 outcome: the red repro failed exactly as predicted (`can.edit == true` under a QueryRead-only
+> `IAccessControl` double) and the `configureServices` override won without needing the
+> `RemoveAll` fallback. Named suites 22/22, ng-spark Vitest 214/214.
+> **Live verification on Fleet (2026-08-15):** throwaway `Viewers`-role user + a car it owns —
+> API returned `can: {edit:false, delete:false}` (log: `Authorization DENIED for Edit/Car
+> (groups: [Viewers])`), and the detail UI rendered no Edit/Delete buttons; test data cleaned up.
+
 ## M0 — Spike: red repro test (timeboxed, ~30 min)
 
 One spike, run before any production change: write the permissive-direction test against
@@ -16,6 +24,7 @@ nothing is thrown away; flipping it green is the M1 fix.
 If the override does NOT win (e.g. something resolves `IAccessControl` before the
 replacement), fall back to `RemoveAll<IAccessControl>()` + re-register, per the
 `GetProgramUnitsEndpointTests.cs:53` precedent — decide inside the timebox.
+*(Outcome: not needed — the override won as-is.)*
 
 No other spikes: the production change is two in-memory calls on services already injected
 into `DatabaseAccess`, and the client change is comments + mock renames only.

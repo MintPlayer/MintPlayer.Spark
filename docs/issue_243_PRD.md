@@ -1,6 +1,6 @@
 # PRD — Issue #243: Per-row `can` block must respect type-level rights
 
-**Status:** Proposed
+**Status:** Implemented — PR [#244](https://github.com/MintPlayer/MintPlayer.Spark/pull/244) (all milestones done; verified live on Fleet, see plan)
 **Issue:** [#243](https://github.com/MintPlayer/MintPlayer.Spark/issues/243)
 **Branch:** `feat/issue-243-can-block-type-rights`
 **Depends on:** #236/#237 (row-level security, preview.44), #239/#240 (async row filter, preview.45)
