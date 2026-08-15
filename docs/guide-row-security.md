@@ -93,6 +93,8 @@ public override Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(s
 
 For a row-scoped type, `GET /spark/{type}/{id}` attaches a `can: { edit, delete }` block to the PO, computed per row. `spark-po-detail` prefers it over the type-level permissions, so a row the caller may read but not edit doesn't render an Edit button that would 404. The block is **absent** for types with no row rule — clients fall back to `GET /spark/permissions/{type}` — so this is fully backward-compatible.
 
+Each value is the **intersection** of the caller's type-level right and the row rule (#243): a `QueryRead`-only grant yields `can: { edit: false, delete: false }` no matter what the row rule says, so the block never claims more than `GET /spark/permissions/{type}` would. You do **not** need to special-case write actions in `GetRowFilterAsync` (e.g. return `x => false` for `"Edit"`/`"Delete"`) on a read-only surface — the type-level right already caps the block.
+
 ## ⚠️ Anonymous / public read — the row filter is the only gate
 
 A common pattern: grant a type's `Query`/`Read` right to **`Everyone`** in `security.json`, then use `GetRowFilterAsync` to expose only the public subset. Coverage does exactly this — anonymous viewers see public repositories; authenticated viewers additionally see private repos their identity can access:

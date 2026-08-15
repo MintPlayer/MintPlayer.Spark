@@ -17,6 +17,12 @@ public sealed class PersistentObject
     /// mutate (which would 404). Null means "no per-row information" — clients fall back to the
     /// type-level permissions from <c>GET /spark/permissions/{type}</c>, so this is fully
     /// backward-compatible.
+    /// <para>
+    /// Invariant (#243): each value is the intersection of the caller's type-level right and the
+    /// row rule — the block never claims more than <c>GET /spark/permissions/{type}</c> would.
+    /// A row rule can only narrow type-level rights, never widen them, which is what makes it
+    /// safe for clients to let a present block override the type-level answer.
+    /// </para>
     /// </summary>
     public PersistentObjectPermissions? Can { get; set; }
 
