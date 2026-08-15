@@ -1,3 +1,4 @@
+import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -282,5 +283,60 @@ describe('SparkPoDetailComponent', () => {
     await c.onCustomAction(customAction);
 
     expect(c.errorMessage()).toBe('Boom');
+  });
+
+  describe('renderer inputs (#241/#245)', () => {
+    @Component({ selector: 'spec-detail-full-renderer', standalone: true, template: '' })
+    class FullDetailRenderer {
+      value = input<any>();
+      attribute = input<any>();
+      options = input<Record<string, any>>();
+      formData = input<Record<string, any>>({});
+      item = input<any>();
+    }
+    @Component({ selector: 'spec-detail-value-only-renderer', standalone: true, template: '' })
+    class ValueOnlyRenderer {
+      value = input<any>();
+    }
+
+    const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
+    const asDetailAttr = { name: 'Coverage', dataType: 'AsDetail' } as any;
+
+    it('AsDetail attribute: detail renderer receives the nested PO as value AND in formData', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const item = {
+        id: 'people/1',
+        attributes: [
+          { name: 'FirstName', value: 'Alice' },
+          { name: 'Coverage', value: null, object: nested },
+        ],
+      } as PersistentObject;
+
+      const inputs = c.getDetailRendererInputs(FullDetailRenderer, asDetailAttr, item);
+      expect(inputs['value']).toBe(nested);
+      expect(inputs['formData']).toEqual({ FirstName: 'Alice', Coverage: nested });
+      expect(inputs['item']).toBe(item);
+    });
+
+    it('renderer declaring only value gets a filtered bag', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const item = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
+
+      const inputs = c.getDetailRendererInputs(ValueOnlyRenderer, personType.attributes[0], item);
+      expect(Object.keys(inputs)).toEqual(['value']);
+    });
+
+    it('AsDetail sub-table cell renderer receives the flat row as item', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const row = { Label: 'a', Code: 'X1' };
+      const col = { name: 'Code' } as any;
+
+      const inputs = c.getAsDetailCellRendererInputs(FullDetailRenderer, row, col);
+      expect(inputs['value']).toBe('X1');
+      expect(inputs['item']).toBe(row);
+    });
   });
 });

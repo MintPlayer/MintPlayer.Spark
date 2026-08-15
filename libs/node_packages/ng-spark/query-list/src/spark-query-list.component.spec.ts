@@ -1,3 +1,4 @@
+import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -234,5 +235,52 @@ describe('SparkQueryListComponent', () => {
     c.onSearchChange();
     expect(c.streamItems()).toHaveLength(1);
     expect(c.streamItems()[0].id).toBe('people/2');
+  });
+
+  describe('column renderer inputs (#241/#245)', () => {
+    @Component({ selector: 'spec-full-column-renderer', standalone: true, template: '' })
+    class FullColumnRenderer {
+      value = input<any>();
+      attribute = input<any>();
+      options = input<Record<string, any>>();
+      item = input<any>();
+    }
+    @Component({ selector: 'spec-value-only-renderer', standalone: true, template: '' })
+    class ValueOnlyRenderer {
+      value = input<any>();
+    }
+
+    const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
+    const asDetailAttr = { name: 'Coverage', dataType: 'AsDetail', rendererOptions: { bar: true } } as any;
+
+    it('AsDetail attribute: renderer receives the nested PO as value and the row as item', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
+      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: nested }] } as PersistentObject;
+
+      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
+      expect(inputs['value']).toBe(nested);
+      expect(inputs['item']).toBe(row);
+      expect(inputs['options']).toEqual({ bar: true });
+    });
+
+    it('AsDetail array attribute: renderer receives the nested PO array as value', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
+      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: null, objects: [nested] }] } as PersistentObject;
+
+      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
+      expect(inputs['value']).toEqual([nested]);
+    });
+
+    it('renderer declaring only value gets a filtered bag (pins the NgComponentOutlet undeclared-input throw)', async () => {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
+      const row = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
+
+      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, personType.attributes[0]);
+      expect(Object.keys(inputs)).toEqual(['value']);
+      expect(inputs['value']).toBe('Alice');
+    });
   });
 });

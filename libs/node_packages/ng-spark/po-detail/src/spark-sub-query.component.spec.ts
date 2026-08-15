@@ -1,3 +1,4 @@
+import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -182,5 +183,39 @@ describe('SparkSubQueryComponent', () => {
     await flush();
 
     expect(component.entityType()?.id).toBe('t-line');
+  });
+
+  describe('column renderer inputs (#241/#245)', () => {
+    @Component({ selector: 'spec-subq-full-renderer', standalone: true, template: '' })
+    class FullColumnRenderer {
+      value = input<any>();
+      attribute = input<any>();
+      options = input<Record<string, any>>();
+      item = input<any>();
+    }
+    @Component({ selector: 'spec-subq-value-only-renderer', standalone: true, template: '' })
+    class ValueOnlyRenderer {
+      value = input<any>();
+    }
+
+    it('AsDetail attribute: renderer receives the nested PO as value and the row as item', () => {
+      const { component } = createComponent();
+      const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
+      const row = { id: 'lines/1', attributes: [{ name: 'Coverage', value: null, object: nested }] } as PersistentObject;
+      const attr = { name: 'Coverage', dataType: 'AsDetail' } as any;
+
+      const inputs = component.getColumnRendererInputs(FullColumnRenderer, row, attr);
+      expect(inputs['value']).toBe(nested);
+      expect(inputs['item']).toBe(row);
+    });
+
+    it('renderer declaring only value gets a filtered bag', () => {
+      const { component } = createComponent();
+      const row = { id: 'lines/1', attributes: [{ name: 'Sku', value: 'SKU-1' }] } as PersistentObject;
+
+      const inputs = component.getColumnRendererInputs(ValueOnlyRenderer, row, lineType.attributes[0]);
+      expect(Object.keys(inputs)).toEqual(['value']);
+      expect(inputs['value']).toBe('SKU-1');
+    });
   });
 });

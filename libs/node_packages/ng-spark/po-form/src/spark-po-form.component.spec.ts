@@ -1,3 +1,4 @@
+import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
@@ -409,7 +410,11 @@ describe('SparkPoFormComponent', () => {
     });
 
     it('B3: getAsDetailCellEditRenderer returns the registered edit component for a renderer column', async () => {
-      class DummyEditor {}
+      @Component({ selector: 'spec-dummy-editor', standalone: true, template: '' })
+      class DummyEditor {
+        value = input<any>();
+        valueChange = input<(value: any) => void>();
+      }
       const registry = [{ name: 'my-editor', editComponent: DummyEditor, columnComponent: null }];
       const { fixture, component } = createComponent({}, registry);
       await setEntityType(fixture, personType);
@@ -418,9 +423,27 @@ describe('SparkPoFormComponent', () => {
       expect(component.getAsDetailCellEditRenderer(col)).toBe(DummyEditor);
       // Edit-renderer inputs write back into the row and flag a change.
       const row: Record<string, any> = { Custom: 'old' };
-      const inputs = component.getAsDetailCellEditRendererInputs(row, col);
+      const inputs = component.getAsDetailCellEditRendererInputs(DummyEditor, row, col);
       inputs['valueChange']('new');
       expect(row['Custom']).toBe('new');
+    });
+
+    it('edit renderer without valueChange gets a filtered bag (write-back silently disabled)', async () => {
+      @Component({ selector: 'spec-readonly-editor', standalone: true, template: '' })
+      class ReadonlyEditor {
+        value = input<any>();
+      }
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+
+      const col = attr({ name: 'Custom', renderer: 'my-editor' });
+      component.formData.set({ Custom: 'x' });
+      const inputs = component.getEditRendererInputs(ReadonlyEditor, col);
+      expect(Object.keys(inputs)).toEqual(['value']);
+      expect(inputs['value']).toBe('x');
+
+      const cellInputs = component.getAsDetailCellEditRendererInputs(ReadonlyEditor, { Custom: 'y' }, col);
+      expect(Object.keys(cellInputs)).toEqual(['value']);
     });
 
     it('B3: getAsDetailCellEditRenderer is null when the column has no renderer', async () => {
