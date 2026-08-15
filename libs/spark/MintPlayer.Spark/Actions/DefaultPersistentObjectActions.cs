@@ -210,6 +210,15 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// a <b>pure function of request-scoped state</b> — do not depend on something you mutate later
     /// in the same request. (By contrast <see cref="IsAllowedAsync"/> is genuinely per-row and is
     /// NOT memoized; express I/O-backed rules here, not there.)</para>
+    ///
+    /// <para><b>Pair with <see cref="GetDefaultIncludes"/> on reference-heavy types.</b> The filter
+    /// narrows <i>which</i> rows come back, but each surviving row's referenced documents (rendered
+    /// as breadcrumbs) are still fetched — and an async filter already spends request budget, so on
+    /// a reference-heavy row-scoped type a page can march toward RavenDB's per-session request cap.
+    /// Level-1 <c>[Reference]</c> properties are <c>.Include()</c>d automatically; override
+    /// <see cref="GetDefaultIncludes"/> to prime <i>additional</i> references (embedded dotted paths,
+    /// or reference ids not decorated <c>[Reference]</c>) so they arrive in the same round-trip
+    /// rather than one load apiece.</para>
     /// </summary>
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
     [NoInterfaceMember]
