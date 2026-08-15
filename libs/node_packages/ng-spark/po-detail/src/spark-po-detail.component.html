@@ -102,7 +102,7 @@
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
                             @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(row, col)"></ng-container>
+                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                             } @else if (col.dataType === 'Reference' && col.referenceType) {
                               @let route = (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes());
                               @if (route) {

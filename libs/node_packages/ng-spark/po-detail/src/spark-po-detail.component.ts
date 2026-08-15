@@ -182,12 +182,13 @@ export class SparkPoDetailComponent {
     return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
   }
 
-  getAsDetailCellRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
-    return {
+  getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, {
       value: row[col.name],
       attribute: col,
       options: col.rendererOptions,
-    };
+      item: row,
+    });
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {

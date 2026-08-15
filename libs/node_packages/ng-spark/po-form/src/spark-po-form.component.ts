@@ -48,7 +48,7 @@ import {
   resolveTranslation,
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 
@@ -316,8 +316,8 @@ export class SparkPoFormComponent {
     return reg?.editComponent ?? null;
   }
 
-  getEditRendererInputs(attr: EntityAttributeDefinition): Record<string, any> {
-    return {
+  getEditRendererInputs(component: Type<any>, attr: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, {
       value: this.formData()[attr.name],
       attribute: attr,
       options: attr.rendererOptions,
@@ -326,7 +326,7 @@ export class SparkPoFormComponent {
         data[attr.name] = newValue;
         this.formData.set(data);
       },
-    };
+    });
   }
 
   /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
@@ -335,12 +335,13 @@ export class SparkPoFormComponent {
     return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
   }
 
-  getAsDetailCellRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
-    return {
+  getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, {
       value: row[col.name],
       attribute: col,
       options: col.rendererOptions,
-    };
+      item: row,
+    });
   }
 
   /** Edit-renderer for an inline AsDetail cell (so inline editing honors `col.renderer`, not just display). */
@@ -349,16 +350,17 @@ export class SparkPoFormComponent {
     return this.rendererRegistry.find(r => r.name === col.renderer)?.editComponent ?? null;
   }
 
-  getAsDetailCellEditRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
-    return {
+  getAsDetailCellEditRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, {
       value: row[col.name],
       attribute: col,
       options: col.rendererOptions,
+      item: row,
       valueChange: (newValue: any) => {
         row[col.name] = newValue;
         this.onFieldChange();
       },
-    };
+    });
   }
 
   hasError(attrName: string): boolean {
