@@ -154,6 +154,7 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 7,
+        "renderer": "address-card",
         "asDetailType": "DemoApp.Library.Entities.Address",
         "isArray": false,
         "inQueryType": false,
