@@ -15,11 +15,7 @@ export function withDeclaredInputs(component: Type<any>, inputs: Record<string, 
     declared = new Set(reflectComponentType(component)?.inputs.map(i => i.templateName) ?? []);
     declaredInputs.set(component, declared);
   }
-  const filtered: Record<string, any> = {};
-  for (const key of Object.keys(inputs)) {
-    if (declared.has(key)) filtered[key] = inputs[key];
-  }
-  return filtered;
+  return Object.fromEntries(Object.entries(inputs).filter(([k]) => declared!.has(k)));
 }
 
 /**
