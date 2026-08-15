@@ -428,8 +428,11 @@ public class ExecuteCustomActionTests
         where TEndpoint : IEndpointBase
         => TEndpoint.Configure(builder);
 
+    private readonly Raven.Client.Documents.Session.IAsyncDocumentSession _session =
+        Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>();
+
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _configLoader);
+        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader);
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,

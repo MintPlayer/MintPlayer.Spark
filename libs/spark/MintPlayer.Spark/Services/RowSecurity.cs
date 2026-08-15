@@ -119,6 +119,12 @@ internal partial class RowSecurity : IRowSecurity
     private readonly Dictionary<(Type EntityType, string Action), Task<LambdaExpression?>> filterExpressionMemo = new();
     private readonly Dictionary<(Type EntityType, string Action), Delegate?> compiledFilterMemo = new();
 
+    // Diagnostic (#239 M5): real hook invocations this request (post-memo, so once per distinct
+    // (type, action)). The memo bounds today's call graph; this counter warns if a future change
+    // reintroduces an N+1-shaped loop that invokes the hook far more than the model should need.
+    private int hookInvocations;
+    private const int HookInvocationWarnThreshold = 20;
+
     public async Task<bool> IsAllowedAsync(Type entityType, string action, object entity)
     {
         var rule = await ResolveEffectiveRuleAsync(entityType, action);
@@ -132,6 +138,7 @@ internal partial class RowSecurity : IRowSecurity
     {
         filterExpressionMemo.Clear();
         compiledFilterMemo.Clear();
+        hookInvocations = 0;   // the diagnostic budget is per-tick on a stream, not per-connection
     }
 
     public async Task<IReadOnlyList<object>> FilterAsync(
@@ -432,6 +439,16 @@ internal partial class RowSecurity : IRowSecurity
         var method = ResolveFilterHook(entityType);
         if (!IsOverridden(method))
             return null;
+
+        if (++hookInvocations == HookInvocationWarnThreshold)
+        {
+            logger?.LogWarning(
+                "Row-filter hook invoked {Count} times in one request/tick — more than the model "
+                + "should need. Suspect an N+1 (a per-row or per-document loop reaching the hook). "
+                + "Types touched: {Types}.",
+                HookInvocationWarnThreshold,
+                string.Join(", ", filterExpressionMemo.Keys.Select(k => k.EntityType.Name).Distinct()));
+        }
 
         var actions = actionsResolver.ResolveForType(entityType);
         var task = (Task)method!.Invoke(actions, [action])!;

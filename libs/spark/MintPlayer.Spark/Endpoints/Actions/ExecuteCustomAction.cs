@@ -29,6 +29,9 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<ExecuteCustomAction> logger;
     [Inject] private readonly IDatabaseAccess databaseAccess;
+    // The request-scoped session — the same instance IDatabaseAccess uses, so an IgnoreMaxRequests
+    // scope opened here covers the row-gated loads below.
+    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -81,6 +84,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
         try
         {
+            // #239 M5: resolving each selected item is a full row-gated load (load + breadcrumbs)
+            // on the shared request session, so a multi-select action is a per-item N+1 that hit
+            // RavenDB's 30-cap around ~5 items. A user-invoked bulk action legitimately needs the
+            // round-trips, so lift the ceiling for this whole handler — sized to the item count and
+            // logged if the action overruns, so it stays a deliberate, visible budget rather than a
+            // silent one.
+            var estimatedRequests = 30 + (1 + (request?.SelectedItems?.Length ?? 0)) * 6;
+            using var _ = session.IgnoreMaxRequests(estimatedRequests, logger);
+
             // Row-gated server-side resolution (#236 G3). The wire's Parent/SelectedItems are
             // whatever the caller typed — a caller holding the type-level action right could name
             // any id of any type and the action received it as fact. The action now gets entities
