@@ -15,7 +15,8 @@
       "executor": "@nx/angular:package",
       "outputs": ["{projectRoot}/dist"],
       "options": {
-        "project": "libs/node_packages/ng-spark-auth/ng-package.json"
+        "project": "libs/node_packages/ng-spark-auth/ng-package.json",
+        "tsConfig": "libs/node_packages/ng-spark-auth/tsconfig.lib.json"
       }
     },
     "watch": {

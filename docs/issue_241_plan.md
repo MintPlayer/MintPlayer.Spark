@@ -29,6 +29,17 @@ full design. One commit per milestone.
   under raw tsc).
 - No server change: `libs/spark/**` untouched.
 
+## Build-config hardening (post-CI-failure follow-up)
+
+The first CI run failed on `Object.fromEntries`: the `build` targets passed no `tsConfig` to
+`@nx/angular:package`, so ng-packagr compiled with its own default tsconfig (lib < ES2019) and
+both `tsconfig.lib.json` files were dormant. Fixed twofold:
+- `renderer-inputs.ts` uses a plain loop (no lib dependency, faster on the per-CD hot path).
+- Both ng-spark and ng-spark-auth `build` targets now pass their `tsconfig.lib.json`
+  (ES2022 lib + strict flags active), with `"compilationMode": "partial"` added — wiring a
+  custom tsconfig drops ng-packagr's default, and published Angular libraries must ship
+  partial-Ivy output. Verified: both packages build in partial mode locally.
+
 ## Site map (verified against master `32d03c3`)
 
 1. `query-list/src/spark-query-list.component.ts` `getColumnRendererInputs` (~:317) + template :147-148
