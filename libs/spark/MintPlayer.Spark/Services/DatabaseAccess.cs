@@ -117,12 +117,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
         // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404. One
         // row, negligible cost; absent for types with no row rule (clients fall back to type-level).
+        // Invariant (#243): the block never claims more than GET /spark/permissions/{type} — the
+        // row rule can only narrow the type-level right, never widen it. Type-level first: it's a
+        // cheap in-memory check, and when it already denies, the consumer's row hook isn't invoked.
         if (rowSecurity.HasRowRule(entityType))
         {
             persistentObject.Can = new PersistentObjectPermissions
             {
-                Edit = await rowSecurity.IsAllowedAsync(entityType, "Edit", entity),
-                Delete = await rowSecurity.IsAllowedAsync(entityType, "Delete", entity),
+                Edit = await permissionService.IsAllowedAsync("Edit", entityTypeDefinition.Name)
+                    && await rowSecurity.IsAllowedAsync(entityType, "Edit", entity),
+                Delete = await permissionService.IsAllowedAsync("Delete", entityTypeDefinition.Name)
+                    && await rowSecurity.IsAllowedAsync(entityType, "Delete", entity),
             };
         }
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
