@@ -133,6 +133,16 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     }
 
     /// <summary>
+    /// Default includes (#239): always RavenDB-<c>.Include()</c> the <c>Manager</c> reference when
+    /// loading or listing cars, so its breadcrumb resolves in the same round-trip instead of a
+    /// follow-up load. <c>Manager</c> is a <c>[Reference]</c>, so it is auto-included already — this
+    /// shows the hook, and it is also where you would add references the attribute doesn't cover
+    /// (e.g. a deeper embedded path, or a read-only reference you don't want as an editable field).
+    /// </summary>
+    public override IReadOnlyCollection<string>? GetDefaultIncludes()
+        => [nameof(Car.Manager)];
+
+    /// <summary>
     /// Custom query: returns cars reported as stolen.
     /// Source: "Custom.Stolen_Cars"
     /// </summary>
@@ -140,5 +150,20 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     {
         return session.Query<VCar, Cars_Overview>()
             .Where(c => c.Status == CarStatus.Stolen);
+    }
+
+    /// <summary>
+    /// Custom query: cars from 2020 onward. The point of this demo query is that <b>row security
+    /// composes onto it for free</b> — a non-admin sees only their own recent cars with no code
+    /// here, because the framework applies <c>GetRowFilterAsync</c> to every query surface. Since
+    /// <c>VCar</c> (the <c>Cars_Overview</c> projection) doesn't carry <c>CreatedBy</c>, the filter
+    /// can't push down here, so it's applied via the post-materialization fallback — still correct,
+    /// just not pushed into RQL.
+    /// Source: "Custom.Recent_Cars"
+    /// </summary>
+    public IRavenQueryable<VCar> Recent_Cars()
+    {
+        return session.Query<VCar, Cars_Overview>()
+            .Where(c => c.Year >= 2020);
     }
 }

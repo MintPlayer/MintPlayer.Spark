@@ -35,6 +35,8 @@ public class RepositoryActions : DefaultPersistentObjectActions<Repository>
 }
 ```
 
+Worked example in the repo: `WebhooksDemo`'s `GitHubProjectActions.GetRowFilterAsync` awaits the caller's GitHub-org allow-list (live, per-request-cached) and returns `p => owners.Contains(p.OwnerLogin)` — pushed down as `owner in (…)`.
+
 > **Cost contract (why awaiting I/O here is safe).** The framework invokes the hook **at most once per (entity type, action) per request** and caches the result — bounded by the model, never by row count, page size, or streaming batch count. On a stream the cache refreshes on the periodic re-authorization tick (~every 10 batches), so a filter is at most that stale. Because the result is cached per request, the filter must be a **pure function of request-scoped state**. `IsAllowedAsync`, by contrast, is genuinely per-row and is **not** memoized — express I/O-backed rules as a `GetRowFilterAsync` expression, not in `IsAllowedAsync`.
 
 - **Return `null`** to mean *no restriction for this caller* — an administrator, say. The type still has a rule; this caller just isn't scoped by it.

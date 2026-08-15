@@ -18,7 +18,7 @@ See [issue_239_PRD.md](./issue_239_PRD.md). Branch `feat/async-row-filter`. One 
    - `HasRowRule` (`:110`) stays synchronous (pure reflection).
 4. `Services/QueryExecutor.cs:167,274` and `Services/DatabaseAccess.cs:447` — `await rowSecurity.ComposeRowFilterAsync(...)` (all enclosing methods already `async`).
 5. `Demo/Fleet/Fleet/Actions/CarActions.cs:39` — override → `GetRowFilterAsync` returning `Task<…>`; wrap the four returns in `Task.FromResult` (avoids CS1998); keep the service-account doc block.
-6. `Demo/WebhooksDemo/.../GitHubProjectActions.cs:27` — **the payoff**: migrate `IsAllowedAsync => _orgAccess.IsOwnerAllowedAsync(...)` to `GetRowFilterAsync` (await the org list, return `p => allowed.Contains(p.OwnerLogin)`); gains pushdown + WITH CHECK; closes `docs/issue_236_plan.md:604`. Delete the redundant `OnLoadAsync`/`OnBeforeSaveAsync`/`OnBeforeDeleteAsync` manual checks **only if tests confirm the framework gates cover them**.
+6. `Demo/WebhooksDemo/.../GitHubProjectActions.cs` — **DONE (the worked async example):** migrated `IsAllowedAsync => _orgAccess.IsOwnerAllowedAsync(...)` to `GetRowFilterAsync` that `await`s `GetAllowedOwnersAsync()` and returns `p => owners.Contains(p.OwnerLogin)` — gains pushdown + WITH CHECK. The redundant `OnLoadAsync` and `OnBeforeDeleteAsync` org checks were deleted (framework read/delete gates derive from the same filter); `OnBeforeSaveAsync` keeps only its GitHub column-fetch. No tests referenced the removed members.
 
 ## M2 — Per-request memo (mandatory — PRD §3.2)
 
@@ -63,6 +63,13 @@ Independent of the async work (can land in parallel), bundled here because it at
 4. **Scope note:** nested paths are **embedded-object only** (`"Repository.Owner"` where Repository is embedded with an Owner id); RavenDB 7.x has no cross-document recursive include (PRD §7.5). Don't promise arbitrary reference-chain depth.
 
 **Tests:** a test that **inspects the generated RQL / query and asserts it contains `include`** for a `[Reference]` type (nothing today would catch the dead code); a `GetDefaultIncludes()` test asserting the declared path is honoured on detail + list (referenced doc arrives in the same round-trip → assert session request count doesn't increase for the referenced access); the unknown-segment diagnostic.
+
+## Demo examples (worked demonstrations of both features)
+
+Demos have no functional meaning (per the maintainer) — these exist to show the features end to end:
+- **Async row filter — `Demo/WebhooksDemo/.../GitHubProjectActions.cs`:** `GetRowFilterAsync` awaits the caller's GitHub-org allow-list, then returns a pushed-down `owner in (…)` predicate. The exact I/O-in-construction case the sync hook couldn't express; replaces three hand-written org checks with one filter across all paths (M1.6 above).
+- **`GetDefaultIncludes()` — `Demo/Fleet/Fleet/Actions/CarActions.cs`:** declares `[nameof(Car.Manager)]` so the manager reference is primed in the same round-trip.
+- **New row-scoped query — `Demo/Fleet/.../CarActions.cs` + `App_Data/Model/Car.json`:** a `Custom.Recent_Cars` spark-query (cars ≥ 2020) added alongside the existing `Stolen_Cars`, to show row security composes onto any new query surface for free (via the projection fallback, since `VCar` lacks `CreatedBy`).
 
 ## M7 — Docs + version bump
 
