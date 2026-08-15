@@ -17,13 +17,17 @@ Each attribute in a model JSON file can declare a `renderer` and optional `rende
 
 The Angular app registers components for that renderer name. Spark then uses those components automatically in the appropriate views.
 
-A renderer registration has **three slots**:
+A renderer registration has **three slots**, all optional (register only the slots you need):
 
-| Slot | Required | Used in | Purpose |
-|---|---|---|---|
-| `detailComponent` | Yes | PO detail page | Read-only display of the attribute value |
-| `columnComponent` | Yes | Query list | Compact cell display in data tables |
-| `editComponent` | No | Create / Edit forms | Custom input control. When omitted, the default `<input>` for the attribute's `dataType` is used |
+| Slot | Used in | Purpose |
+|---|---|---|
+| `detailComponent` | PO detail page | Read-only display of the attribute value. When omitted, built-in rendering is used |
+| `columnComponent` | Query list / sub-query / AsDetail sub-table cells | Compact cell display in data tables. When omitted, built-in rendering is used |
+| `editComponent` | Create / Edit forms | Custom input control. When omitted, the default `<input>` for the attribute's `dataType` is used |
+
+Renderer components declare only the inputs they need: Spark filters the input bag down to
+what each component actually declares before handing it to `NgComponentOutlet`, so every
+contract member is optional.
 
 ## Step 1: Configure the Model JSON
 
@@ -61,7 +65,8 @@ Implement `SparkAttributeDetailRenderer`. This component is shown on the PO deta
 
 ```typescript
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-video-detail-renderer',
@@ -84,13 +89,18 @@ export class VideoDetailRendererComponent implements SparkAttributeDetailRendere
 }
 ```
 
+Every input is optional — declare only what you use. A detail renderer may also declare
+`item = input<PersistentObject>()` to receive the full PersistentObject (ids and breadcrumbs
+that the flattened `formData` drops).
+
 ### Column Renderer (required)
 
 Implement `SparkAttributeColumnRenderer`. This component is shown in query list table cells. Keep it compact.
 
 ```typescript
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition, SparkAttributeColumnRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-video-column-renderer',
@@ -109,6 +119,9 @@ export class VideoColumnRendererComponent implements SparkAttributeColumnRendere
 }
 ```
 
+A column renderer may also declare `item` to receive the row it belongs to (see
+[Row context](#row-context-the-item-input) below).
+
 ### Edit Renderer (optional)
 
 Implement `SparkAttributeEditRenderer`. This component replaces the default `<input>` on create/edit forms.
@@ -118,7 +131,8 @@ Since Spark uses `NgComponentOutlet` to render these components, **outputs are n
 ```typescript
 import { ChangeDetectionStrategy, Component, effect, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { EntityAttributeDefinition, SparkAttributeEditRenderer } from '@mintplayer/ng-spark';
+import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkAttributeEditRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
   selector: 'app-color-edit-renderer',
@@ -159,13 +173,15 @@ Key points:
 - Call `this.valueChange()?.(newValue)` whenever the user changes the value
 - Use an `effect()` to sync the initial value from the `value()` input into local state
 - The parent form handles persistence — your component only needs to report changes
+- Not declaring `valueChange` silently disables write-back (a read-only edit renderer) — it
+  never throws
 
 ## Step 3: Register Renderers
 
 In your `app.config.ts`, call `provideSparkAttributeRenderers()` with your registrations:
 
 ```typescript
-import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark';
+import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { VideoDetailRendererComponent } from './renderers/video-detail-renderer.component';
 import { VideoColumnRendererComponent } from './renderers/video-column-renderer.component';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
@@ -197,13 +213,67 @@ The `name` must match the `renderer` value in your model JSON exactly.
 
 ## Inputs Provided to Renderers
 
+Every input is **passed only when the component declares it** — declare exactly the subset
+you need.
+
 | Input | Type | Detail | Column | Edit | Description |
 |---|---|---|---|---|---|
-| `value` | `any` | Yes | Yes | Yes | The current attribute value |
+| `value` | `any` | Yes | Yes | Yes | The current attribute value (see [AsDetail values](#asdetail-values) for AsDetail attributes) |
 | `attribute` | `EntityAttributeDefinition` | Yes | Yes | Yes | Full attribute metadata (name, dataType, label, rules, etc.) |
 | `options` | `Record<string, any>` | Yes | Yes | Yes | The `rendererOptions` object from the model JSON |
-| `formData` | `Record<string, any>` | Yes | - | - | All attribute values (detail page only, for cross-field logic) |
-| `valueChange` | `(value: any) => void` | - | - | Yes | Callback to report value changes to the parent form |
+| `formData` | `Record<string, any>` | Yes | - | - | All attribute values (detail page only, for cross-field logic); AsDetail keys carry the nested PO(s) |
+| `item` | `PersistentObject \| Record<string, any>` | Yes | Yes | AsDetail cells only | The row/object this attribute belongs to (see [Row context](#row-context-the-item-input)) |
+| `valueChange` | `(value: any) => void` | - | - | Yes | Callback to report value changes to the parent form. Omitting it disables write-back |
+
+## AsDetail Values
+
+For an **AsDetail** attribute the server intentionally sends no flat value — the data lives in
+the nested PersistentObject(s). Renderers receive those instead:
+
+- In **query-list**, **sub-query**, and **po-detail field** hosts, `value` is the nested
+  `PersistentObject` (single) or `PersistentObject[]` (when `isArray`), i.e.
+  `{ attributes: [{ name, value }, ...] }`.
+- In **AsDetail sub-table cells** and **po-form** hosts, values are already flattened to plain
+  dicts, so `value` is the flat cell/attribute value as before.
+
+A renderer serving both kinds of host normalizes the shape, e.g.:
+
+```typescript
+import { PersistentObject } from '@mintplayer/ng-spark/models';
+
+/** name→value dict from either a nested PO or an already-flat record. */
+function toDict(v: PersistentObject | Record<string, any> | null | undefined): Record<string, any> {
+  if (!v) return {};
+  return Array.isArray((v as PersistentObject).attributes)
+    ? Object.fromEntries((v as PersistentObject).attributes.map(a => [a.name, a.value]))
+    : (v as Record<string, any>);
+}
+```
+
+Note: when a query projection lacks the AsDetail property, the renderer sees a *scaffolded*
+child (a structured PO with null values / empty arrays), never `undefined` — include the
+property in the index/projection to get real data (see the index requirement below).
+
+## Row Context: the `item` Input
+
+A renderer that needs **other fields of the same row** (a name cell with an inline badge, a
+`runId.attempt` composite, a sha that links using the repo's full name) declares `item`:
+
+```typescript
+export class RepoNameColumnRendererComponent implements SparkAttributeColumnRenderer {
+  value = input<any>();
+  item = input<PersistentObject | Record<string, any>>();
+
+  isPrivate = computed(() => toDict(this.item())['IsPrivate'] === true);
+}
+```
+
+What `item` is depends on the host:
+
+- **query-list / sub-query grids**: the row `PersistentObject`
+- **po-detail field**: the full `PersistentObject` being displayed
+- **AsDetail sub-table cells** (detail and form): the flat row record (which may include the
+  reserved `__sparkBreadcrumbs` key — ignore it)
 
 ## Using `rendererOptions`
 

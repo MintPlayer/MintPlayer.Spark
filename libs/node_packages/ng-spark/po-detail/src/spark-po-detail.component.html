@@ -86,7 +86,7 @@
               <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
               <dd [sm]="9">
               @if (getDetailRendererComponent(attr); as rendererType) {
-                <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(attr, currentItem)"></ng-container>
+                <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
                   <thead>
@@ -102,7 +102,7 @@
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
                             @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(row, col)"></ng-container>
+                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                             } @else if (col.dataType === 'Reference' && col.referenceType) {
                               @let route = (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes());
                               @if (route) {

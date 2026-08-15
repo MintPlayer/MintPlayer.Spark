@@ -2,8 +2,10 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessC
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 
 import { routes } from './app.routes';
+import { AddressCardDetailRendererComponent } from './renderers/address-card-detail-renderer.component';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -11,6 +13,10 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' })),
     provideAnimations(),
-    provideZonelessChangeDetection()
+    provideZonelessChangeDetection(),
+    // Detail-only registration: columnComponent/editComponent deliberately omitted (#241/#245).
+    provideSparkAttributeRenderers([
+      { name: 'address-card', detailComponent: AddressCardDetailRendererComponent },
+    ]),
   ]
 };

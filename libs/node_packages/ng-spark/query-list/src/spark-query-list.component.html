@@ -145,7 +145,7 @@
 
 <ng-template #cellContent let-item let-attr="attr">
   @if (getColumnRendererComponent(attr); as rendererType) {
-    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(item, attr)"></ng-container>
+    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
   } @else if (attr.dataType === 'boolean') {
     <input type="checkbox"
       [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"

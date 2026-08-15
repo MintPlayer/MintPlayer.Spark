@@ -26,7 +26,7 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkSubQueryComponent } from './spark-sub-query.component';
-import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   CustomActionDefinition,
   EntityType,
@@ -161,18 +161,19 @@ export class SparkPoDetailComponent {
     return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
   }
 
-  getDetailRendererInputs(attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {
+  getDetailRendererInputs(component: Type<any>, attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
     const formData: Record<string, any> = {};
     for (const a of item.attributes) {
-      formData[a.name] = a.value;
+      formData[a.name] = rendererValue(a);
     }
-    return {
-      value: itemAttr?.value,
+    return withDeclaredInputs(component, {
+      value: rendererValue(itemAttr),
       attribute: attr,
       options: attr.rendererOptions,
       formData,
-    };
+      item,
+    });
   }
 
   /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
@@ -181,12 +182,13 @@ export class SparkPoDetailComponent {
     return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
   }
 
-  getAsDetailCellRendererInputs(row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
-    return {
+  getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, {
       value: row[col.name],
       attribute: col,
       options: col.rendererOptions,
-    };
+      item: row,
+    });
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {

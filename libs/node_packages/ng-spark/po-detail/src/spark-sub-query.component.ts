@@ -8,7 +8,7 @@ import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
-import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   EntityType,
   EntityAttributeDefinition,
@@ -152,12 +152,13 @@ export class SparkSubQueryComponent {
     return this.rendererRegistry.find(r => r.name === attr.renderer)?.columnComponent ?? null;
   }
 
-  getColumnRendererInputs(item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
+  getColumnRendererInputs(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
-    return {
-      value: itemAttr?.value,
+    return withDeclaredInputs(component, {
+      value: rendererValue(itemAttr),
       attribute: attr,
       options: attr.rendererOptions,
-    };
+      item,
+    });
   }
 }

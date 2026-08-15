@@ -108,7 +108,7 @@
                 @if (col.isReadOnly) {
                   <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
                 } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
-                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(row, col)"></ng-container>
+                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col)"></ng-container>
                 } @else if (col.dataType === 'AsDetail') {
                   <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
                        where the recursive spark-po-form renders the nested structure. -->
@@ -278,7 +278,7 @@
                     @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                       <td>
                         @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                          <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(row, col)"></ng-container>
+                          <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                         } @else {
                           {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}
                         }
@@ -326,7 +326,7 @@
               </button>
             </bs-input-group>
           } @else if (getEditRendererComponent(attr); as editComp) {
-            <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(attr)"></ng-container>
+            <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(editComp, attr)"></ng-container>
           } @else if (attr.dataType === 'MultiLineString') {
             <textarea
               [id]="attr.name"
