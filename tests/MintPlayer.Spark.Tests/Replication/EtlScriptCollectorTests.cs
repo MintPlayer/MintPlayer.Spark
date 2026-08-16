@@ -92,6 +92,11 @@ public class ReplicatedCarFromFleet
     // The Properties assertions elsewhere in these tests double as proof of that.
     [IgnoreProperty]
     public string InternalToken { get; set; } = "";
+
+    // #253 — get-only, so it appears in the model as a read-only attribute but must never reach
+    // the write-authorization list. Every `Properties.Should().Equal("Plate")` assertion in these
+    // tests doubles as proof of that.
+    public string Display => $"{Plate} (car)";
 }
 
 [Replicated(SourceModule = "Fleet", SourceCollection = "VehicleDrivers", EtlScript = "loadToDrivers({ Name: this.Name });")]

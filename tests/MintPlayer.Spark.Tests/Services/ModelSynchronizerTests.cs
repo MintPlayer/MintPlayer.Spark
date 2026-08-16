@@ -545,6 +545,48 @@ public sealed class ModelSynchronizerTests : IDisposable
         names.Should().Contain("Nickname", "a property that merely vanished is a different case");
     }
 
+    // --- get-only computed properties (#253) ---
+
+    [Fact]
+    public void Get_only_property_becomes_a_read_only_attribute()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ComputedContext());
+
+        var attrs = Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes;
+
+        var computed = attrs.Should().ContainSingle(a => a.Name == "Total").Subject;
+        computed.IsReadOnly.Should().BeTrue("nothing can write a property with no setter");
+        computed.IsRequired.Should().BeFalse(
+            "a required attribute nothing can populate would block every save");
+
+        attrs.Should().ContainSingle(a => a.Name == "Quantity")
+            .Which.IsReadOnly.Should().BeFalse("a settable property is unaffected");
+    }
+
+    [Fact]
+    public void Hand_set_IsReadOnly_survives_re_synchronize()
+    {
+        // IsReadOnly is only assigned when the attribute is created; the update branch leaves it
+        // alone. Someone marking a settable property read-only in the JSON must keep that.
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_ComputedOrder"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_ComputedOrder","clrType":"MintPlayer.Spark.Tests.Services.MS_ComputedOrder",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"Quantity",
+               "dataType":"Int32","isReadOnly":true}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ComputedContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes
+            .Should().ContainSingle(a => a.Name == "Quantity")
+            .Which.IsReadOnly.Should().BeTrue("a hand-set value is not stomped by re-synchronize");
+    }
+
     [Fact]
     public void Ignored_complex_property_does_not_produce_an_embedded_model_file()
     {
@@ -765,6 +807,23 @@ public class MS_IgnoredBreadcrumb
 public class IgnoredContext : SparkContext
 {
     public IRavenQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
+}
+
+// --- get-only computed property fixtures (#253) ---
+
+public class MS_ComputedOrder
+{
+    public string? Id { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>Get-only: the case that was invisible to the model before #253.</summary>
+    public decimal Total => Quantity * UnitPrice;
+}
+
+public class ComputedContext : SparkContext
+{
+    public IRavenQueryable<MS_ComputedOrder> Orders => Session.Query<MS_ComputedOrder>();
 }
 
 public class IgnoredEmbeddedContext : SparkContext

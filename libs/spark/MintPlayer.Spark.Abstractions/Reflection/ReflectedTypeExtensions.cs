@@ -74,16 +74,47 @@ public static class ReflectedTypeExtensions
 
     /// <summary>
     /// Whether <paramref name="property"/> takes part in the Spark model: it is not the
-    /// document id, it is fully readable and writable, and it is not marked
-    /// <see cref="IgnorePropertyAttribute"/>.
+    /// document id, it is readable, and it is not marked <see cref="IgnorePropertyAttribute"/>.
+    /// <para>
+    /// Readable is enough — a get-only computed property is a legitimate model attribute, surfaced
+    /// read-only. Ask <see cref="IsSparkWritableProperty"/> instead when the question is whether a
+    /// value may be written back; the two are deliberately different questions.
+    /// </para>
     /// </summary>
     public static bool IsSparkModelProperty(this PropertyInfo property)
     {
         ArgumentNullException.ThrowIfNull(property);
         return property.Name != "Id"
             && property.CanRead
-            && property.CanWrite
             && !property.IsIgnoredForSparkModel();
+    }
+
+    /// <summary>
+    /// Returns the properties of <paramref name="type"/> that Spark may <b>write</b> to, i.e.
+    /// <see cref="GetCachedProperties"/> filtered by <see cref="IsSparkWritableProperty"/>.
+    /// </summary>
+    public static IEnumerable<PropertyInfo> GetSparkWritableProperties(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return type.GetCachedProperties().Where(IsSparkWritableProperty);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> may be written by Spark: a model property that also has
+    /// a setter.
+    /// <para>
+    /// Separate from <see cref="IsSparkModelProperty"/> on purpose. "Appears in the model" and "may
+    /// be written" used to be the same predicate, and widening that one predicate to admit get-only
+    /// computed properties would have silently extended replication's write-authorization list
+    /// (<c>SyncActionInterceptor.GetPropertyNames</c>) to properties that cannot be written at all.
+    /// Callers deciding what to <i>display</i> want the model question; callers deciding what to
+    /// <i>accept</i> want this one.
+    /// </para>
+    /// </summary>
+    public static bool IsSparkWritableProperty(this PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return property.IsSparkModelProperty() && property.CanWrite;
     }
 
     /// <summary>

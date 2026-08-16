@@ -457,9 +457,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Name = propertyName,
                     Label = TranslatedString.Create(AddSpacesToCamelCase(propertyName)),
                     DataType = dataType,
-                    IsRequired = !IsNullable(property.PropertyType) && property.PropertyType != typeof(string),
+                    // A get-only property cannot be required: nothing can supply a value for it.
+                    IsRequired = property.CanWrite
+                        && !IsNullable(property.PropertyType)
+                        && property.PropertyType != typeof(string),
                     IsVisible = true,
-                    IsReadOnly = false,
+                    // Computed properties surface read-only rather than not at all. Only set on
+                    // creation — the update branch never reassigns IsReadOnly, so a hand-set value
+                    // survives re-synchronize.
+                    IsReadOnly = !property.CanWrite,
                     Order = order,
                     Query = resolvedQuery,
                     ReferenceType = referenceType,

@@ -59,9 +59,23 @@ Surveyed ~14 DeCronosGroep repos:
 - **Vidyano ships no prune equivalent**, and does not need one: it builds the model from live
   reflection on every request, so there is no persisted artifact that can drift.
 
-The lesson is the pattern, not the absence: where this codebase family has a "value without an obvious
-backing" concept, it marks it positively and enforces the marker mechanically. It never infers intent
-from absence.
+**Verified against the persisted models, not just the code:** the Insurance attribute does not appear
+in `App_Data/Model/CronosInsurance/InsurancePolicy.json` at all — it is injected into the in-memory PO
+per request and never written down. A broadened sweep (16 repos grepped, 8 read in depth) found the
+`AddAttribute` pattern in only 3 repos, and everywhere except Insurance it targets the framework's
+inherently dynamic `UserSettings` PO, which has no CLR class by design. No marker field
+(`IsCalculated`/`IsVirtual`/`Persisted`/…) exists in any Vidyano attribute JSON either; the only
+`IsSystem` hit marks builtin actions in the top-level `model.json`.
+
+**So Vidyano is not a precedent in either direction, and this PRD does not claim it as one.** It has no
+statically-declared property-less attribute *and* no marker *and* no prune. That is architecture, not
+endorsement: virtual data there either never touches a persisted model (transient PO mutation, which
+Vidyano can afford because it re-reflects every request) or rides on a real CLR property marked
+`[Calculated]` — which Spark's reflection would already preserve, since the property exists.
+
+The transferable lesson is narrow but real: where this codebase family expresses "a value without an
+obvious backing", it uses a **positive, mechanically-enforced marker** and never infers intent from
+absence.
 
 ## F4 — the motivating use case does not work today
 
@@ -132,8 +146,16 @@ read/write `this[...]` would pass the filter and surface as an attribute named `
   attribute authored *before* the marker existed would lack it and be pruned on first run, reproducing
   the bug for the whole existing population.
 
-  Vidyano, the precedent cited, has no such tool (F3). Where it faces the analogous problem it uses a
-  positive, analyzer-enforced marker and never infers intent from absence.
+  **The obvious counter-argument, addressed:** the survey found no persisted property-less attribute
+  anywhere in Vidyano, so one could conclude prune would break nothing in practice. That inference does
+  not transfer, because the absence is architectural. Vidyano re-reflects the model every request, so
+  it has a *transient* place to put virtual values and never needs to persist one. Spark's model JSON
+  **is** the persisted artifact, and the whole point of R1 is that hand-authored attributes live in it
+  — including exactly the virtual attributes this project intends to start writing. Prune would be safe
+  only for as long as nobody uses the feature this PR is delivering.
+
+  Nor does Vidyano supply a design to copy: it has no marker field in its attribute JSON either (F3).
+  Spark would have to invent one from scratch, which returns us to the grandfathering problem above.
 
   **The safe subset of prune is a report, and R2 already delivers it**: every orphan is logged with its
   name and type, so an operator can identify and hand-remove obsolete entries. That is most of the
