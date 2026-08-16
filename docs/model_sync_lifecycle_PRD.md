@@ -344,10 +344,28 @@ projection absent at sync time is absent at runtime too.
 name resolved to the same path. Running after all writes, it deleted a file the same run had produced
 and reported success. It now skips anything written during the run.
 
-**A duplicate queryable root never converged.** Two context properties of one entity type map to one
-file; queries came from a snapshot taken before any write, so the second write dropped the first's
-query and the file oscillated forever. Properties are now grouped by entity type, one write per file,
-one query per property.
+**A duplicate queryable root silently lost a query.** Two context properties of one entity type map
+to one file; queries came from a snapshot taken before any write, so the second write dropped the
+first's. Measured: the file was stable from run 1 with an unchanging hash, permanently carrying only
+the last property's query — a wrong answer that never changes, and therefore invisible to every gate
+that works by comparing runs. Properties are now grouped by entity type, one write per file, one
+query per property.
+
+**Two residuals, deliberately not changed.**
+
+*A projection-only attribute keeps its flags when the projection is deleted.* It becomes an orphan
+with no CLR property, so #253 carries it over verbatim, retaining `inCollectionType: false` and
+`showedOn: Query`. Left alone on purpose: `inCollectionType: false` is *accurate* — the attribute
+genuinely has no CLR property — and an index-computed virtual attribute is legitimately query-only,
+so clearing these would destroy valid configuration for the exact scenario #253 exists to support.
+Synchronize already warns that the attribute was kept.
+
+*A `[FromIndex]` projection declared in a referenced library is invisible to the registry*, because
+`PopulateIndexRegistry` scans only `Assembly.GetEntryAssembly()`. Its `queryType` is therefore cleared
+on every sync. Not a functional regression — the running app resolves projections from that same
+registry and equally cannot see it, so the field had no reader — but it is silent JSON churn for such
+an app, which is why the clear is logged. Relevant because libraries *can* contribute persistent
+objects.
 
 ---
 

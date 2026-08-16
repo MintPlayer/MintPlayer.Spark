@@ -282,13 +282,20 @@ file the same run had just produced and reported success. Now it skips any path 
 run. Full-type-name matching is not an option (the path carries only the simple name), and comparing
 `clrType` would break the existing stale-file test, whose fixture deliberately uses a different one.
 
-**A duplicate queryable root could never converge.** Two context properties of the same entity type
+**A duplicate queryable root silently lost a query.** Two context properties of the same entity type
 (`Cars` and `ArchivedCars`, both `IRavenQueryable<Car>`) map to one file. Queries were collected from
 a directory snapshot taken once before any write, so the second property's write dropped the query
-the first had just added — and the file oscillated between the two forever, meaning no verify gate
-could ever be satisfied. Properties are now grouped by entity type and each file written once, with
-one query per property. Downstream is already duplicate-tolerant: `QueryLoader` keys by id,
-`QueryExecutor` resolves each query through its own `Source`.
+the first had just added.
+
+Measured, and worse than it sounds: the file was **stable from run 1**, byte-identical every run with
+an unchanging model hash, permanently carrying only the *last* property's query. The earlier query was
+minted fresh in memory each run, logged as created, and overwritten before reaching disk. A wrong
+answer that never changes is invisible to every gate here — the idempotency guard, a
+regenerate-and-diff gate and the verify gate all compare runs against each other.
+
+Properties are now grouped by entity type and each file written once, with one query per property.
+Downstream is already duplicate-tolerant: `QueryLoader` keys by id, `QueryExecutor` resolves each
+query through its own `Source`.
 
 No committed model file changes: no demo has a stale projection, a name collision, or a duplicate
 root. Each fix is pinned by a test verified to fail without it.

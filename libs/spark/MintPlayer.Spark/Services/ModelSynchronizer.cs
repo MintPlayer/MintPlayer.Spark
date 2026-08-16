@@ -72,9 +72,16 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // Grouped by entity type, because a context may expose the same type more than once
         // (e.g. Cars and ArchivedCars, both IRavenQueryable<Car>). Both map to the same
         // {TypeName}.json, and writing per property meant the second write dropped the query the
-        // first had just added — from a snapshot of the directory taken once, before any write. The
-        // file then oscillated between the two queries on every run and never converged, so no
-        // verify gate could ever be satisfied. One file, one write, one query per property.
+        // first had just added — from a snapshot of the directory taken once, before any write.
+        //
+        // The result was stable rather than noisy, which is what made it dangerous: the file
+        // converged from run 1 onward on the LAST property's query alone, byte-identical every run,
+        // with the same model hash. The earlier property's query was minted fresh in memory each
+        // time, logged as created, and overwritten before it ever reached disk. Nothing that
+        // compares runs — the idempotency guard, a regenerate-and-diff gate, the verify gate — can
+        // see a wrong answer that never changes.
+        //
+        // One file, one write, one query per property.
         var rootsByEntityType = queryableProperties
             .Select(property => new { Property = property, EntityType = GetQueryableEntityType(property.PropertyType) })
             .Where(x => x.EntityType is not null)
