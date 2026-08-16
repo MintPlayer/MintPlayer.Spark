@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Linq;
@@ -647,36 +648,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return queryableType.GetGenericArguments().FirstOrDefault();
     }
 
-    private string GetDataType(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type) ?? type;
-
-        // Collections are classified by their ELEMENT type, never by the collection
-        // wrapper. A collection of a complex element is AsDetail; a collection of a
-        // simple element (e.g. List<string>, string[]) takes the element's scalar type.
-        // Classifying by the wrapper would be wrong: a List<> is itself a class with
-        // public properties, so the IsComplexType fallback below would mis-tag
-        // List<string> as AsDetail and the mapper would drop its values.
-        var elementType = GetCollectionElementType(underlying);
-        if (elementType != null)
-        {
-            return IsComplexType(elementType) ? "AsDetail" : GetDataType(elementType);
-        }
-
-        return underlying switch
-        {
-            _ when underlying == typeof(string) => "string",
-            _ when underlying == typeof(int) || underlying == typeof(long) => "number",
-            _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "decimal",
-            _ when underlying == typeof(bool) => "boolean",
-            _ when underlying == typeof(DateTime) || underlying == typeof(DateTimeOffset) => "datetime",
-            _ when underlying == typeof(DateOnly) => "date",
-            _ when underlying == typeof(Guid) => "guid",
-            _ when underlying == typeof(System.Drawing.Color) => "color",
-            _ when IsComplexType(underlying) => "AsDetail",
-            _ => "string"
-        };
-    }
+    // Delegates to the shared shape definition so the generator and the startup hash check can
+    // never disagree about what a property's data type is.
+    private string GetDataType(Type type) => SparkModelShape.GetDataType(type);
 
     private bool IsCollectionOfComplexType(Type type)
     {
@@ -684,69 +658,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return elementType != null && IsComplexType(elementType);
     }
 
-    /// <summary>
-    /// Returns the element type if the given type is an array or generic collection (List&lt;T&gt;, IEnumerable&lt;T&gt;, etc.).
-    /// Returns null if the type is not a collection.
-    /// </summary>
-    private static Type? GetCollectionElementType(Type type)
-        => ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
-            ("ModelSynchronizer.CollectionElement", type),
-            static k => ResolveCollectionElementType(k.Type));
+    private static Type? GetCollectionElementType(Type type) => SparkModelShape.GetCollectionElementType(type);
 
-    private static Type? ResolveCollectionElementType(Type type)
-    {
-        // Handle arrays: T[]
-        if (type.IsArray)
-        {
-            return type.GetElementType();
-        }
+    private bool IsComplexType(Type type) => SparkModelShape.IsComplexType(type);
 
-        // Handle generic collections: List<T>, IEnumerable<T>, ICollection<T>, etc.
-        if (type.IsGenericType)
-        {
-            var genericDef = type.GetGenericTypeDefinition();
-            if (genericDef == typeof(List<>) ||
-                genericDef == typeof(IList<>) ||
-                genericDef == typeof(ICollection<>) ||
-                genericDef == typeof(IEnumerable<>) ||
-                genericDef == typeof(IReadOnlyList<>) ||
-                genericDef == typeof(IReadOnlyCollection<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-        }
-
-        // Check implemented interfaces for IEnumerable<T>
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                var elementType = iface.GetGenericArguments()[0];
-                // Avoid matching string (which implements IEnumerable<char>)
-                if (elementType != typeof(char))
-                {
-                    return elementType;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private bool IsComplexType(Type type)
-    {
-        // A complex type is a class (not string) that has its own properties
-        if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
-            return false;
-
-        // Check if it's a class with public properties
-        return type.GetCachedProperties().Length > 0;
-    }
-
-    private bool IsNullable(Type type)
-    {
-        return Nullable.GetUnderlyingType(type) != null || !type.IsValueType;
-    }
+    private bool IsNullable(Type type) => SparkModelShape.IsNullable(type);
 
     private string AddSpacesToCamelCase(string text)
     {
