@@ -403,6 +403,15 @@ The builder controls ordering internally, preventing mistakes. The `UseSpark()` 
 ### 4. `SynchronizeSparkModelsIfRequested` needs generic `TContext` and `args`
 This cannot be fully automated since it needs the context type and command-line args. It stays as an explicit call on the app builder.
 
+> **Superseded** — see [model_sync_lifecycle_PRD.md](../model_sync_lifecycle_PRD.md).
+> Both halves of the premise turned out to be false. The context type is recoverable from the
+> registration `UseContext<T>()` already makes, so the generic parameter is gone; and `args` are read
+> from `string[]` directly (routing them through `IConfiguration` is not an option — a bare
+> `--spark-synchronize-model` is silently dropped by the command-line provider).
+>
+> Synchronization also moved out of the middleware pipeline entirely: it is a build step that runs
+> before `builder.Build()`, so it needs no database and can run in CI.
+
 ### 5. `AddSpark(IConfiguration)` overload
 Keep the `IConfiguration` parameter for binding the `Spark` config section. The builder lambda is optional:
 ```csharp

@@ -54,7 +54,7 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseSparkFull(args);                                   // Middleware + model sync
+app.UseSparkFull();                                       // Middleware
 
 app.UseEndpoints(endpoints =>
 {
@@ -87,7 +87,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 var app = builder.Build();
 
 app.UseRouting();
-app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
+app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {
@@ -317,17 +317,17 @@ All mutation endpoints (POST, PUT, DELETE) require an `X-XSRF-TOKEN` header. The
 | Method | Description |
 |--------|-------------|
 | `AddSparkFull(IConfiguration)` | **AllFeatures**: Registers all Spark services, actions, auth, messaging in one call |
-| `UseSparkFull(args)` | **AllFeatures**: Adds middleware + synchronizes models if `--spark-synchronize-model` is passed |
+| `UseSparkFull()` | **AllFeatures**: Adds the Spark middleware pipeline |
 | `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
 | `AddSpark(IConfiguration, Action<ISparkBuilder>)` | Register Spark services, bound to the `Spark` configuration section |
 | `AddSpark(Action<ISparkBuilder>)` | Register Spark services without configuration binding |
 | `spark.AddActions()` | Register all entity-specific Actions classes (source-generated) |
 | `AddSparkActions<TActions, TEntity>()` | Register a specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
-| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with options (e.g. `SynchronizeModelsIfRequested`) |
+| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with per-app options |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
-| `SynchronizeSparkModelsIfRequested<T>(args)` | Sync if `--spark-synchronize-model` flag present |
+| `builder.SynchronizeSparkModelsIfRequested(args)` | Build step: sync or verify the model, then return from `Main` |
 
 RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
 

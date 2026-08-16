@@ -10,16 +10,19 @@ shippable; M4–M6 build the hash gate; M7–M8 close CI and docs.
 Per the repo convention, test suites run **once at the end** (M8), not per milestone. Intermediate
 milestones are verified by reading and type-checking.
 
+**All milestones complete.**
+
 | | Milestone | Commit |
 |---|---|---|
-| M1 | Extract `PopulateIndexRegistry` | pending |
-| M2 | Builder-phase synchronization, offline, no `Environment.Exit` | pending |
-| M3 | Development-only `IModelSynchronizer` registration | pending |
-| M4 | `SparkModelShape` hasher + discovery adapter | pending |
-| M5 | Write `model-hashes.json` | pending |
-| M6 | Startup check + override | pending |
-| M7 | `--spark-verify-model` + CI gate | pending |
-| M8 | Docs, version bump, full suite | pending |
+| M1 | Extract `PopulateIndexRegistry` | `757f42b` |
+| M2 | Builder-phase synchronization, offline, no `Environment.Exit` | `d415954` |
+| M3 | Development-only `IModelSynchronizer` registration | `19bdf9e` |
+| M4 | `SparkModelShape` hasher | `b47ec5a` |
+| M5 | Write `model-hashes.json` | `f15b5e3` |
+| M5b | Structural per-file hashing (not raw bytes) | `f27d1ee` |
+| M6 | Startup check + override | `2a44844` |
+| M7 | `--spark-verify-model` + CI gate | `62ecbd3` |
+| M8 | Docs, version bump, full suite | this commit |
 
 ---
 

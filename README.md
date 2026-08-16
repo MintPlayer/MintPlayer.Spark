@@ -28,8 +28,13 @@ The fastest way to get started is with `MintPlayer.Spark.AllFeatures`. Reference
 ```csharp
 builder.Services.AddSparkFull(builder.Configuration);
 
+// Build step: regenerates App_Data/Model when --spark-synchronize-model is passed.
+// Needs no database, so it also runs in CI.
+if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
 app.UseRouting();
-app.UseSparkFull(args);
+app.UseSparkFull();
 app.MapSparkFull();
 ```
 
@@ -64,7 +69,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 app.UseRouting();
-app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
+app.UseSpark();
 app.MapSpark();
 ```
 
