@@ -188,8 +188,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
     private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
     {
-        var properties = entityType.GetCachedProperties()
-            .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite);
+        // Shares the model-property filter with CreateOrUpdateEntityTypeDefinition on purpose:
+        // discovery and attribute generation must agree, or an ignored complex property would
+        // still get its type written out as an embedded model file that nothing references.
+        var properties = entityType.GetSparkModelProperties();
 
         foreach (var property in properties)
         {
@@ -280,20 +282,28 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
 
         // Get properties from collection type
-        var collectionProperties = entityType.GetCachedProperties()
-            .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
+        var collectionProperties = entityType.GetSparkModelProperties()
             .ToDictionary(p => p.Name, p => p);
 
         // Get properties from projection type (if any)
-        var projectionProperties = projectionType?.GetCachedProperties()
-            .Where(p => p.Name != "Id" && p.CanRead && p.CanWrite)
+        var projectionProperties = projectionType?.GetSparkModelProperties()
             .ToDictionary(p => p.Name, p => p)
             ?? new Dictionary<string, PropertyInfo>();
+
+        // [IgnoreProperty] on either side vetoes the property outright. The two name sets are
+        // unioned below, so filtering each side independently is not enough: ignoring a property
+        // on the entity would otherwise let it back in through a projection that still declares it.
+        var ignoredPropertyNames = entityType.GetCachedProperties()
+            .Concat(projectionType?.GetCachedProperties() ?? [])
+            .Where(p => p.IsIgnoredForSparkModel())
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
 
         // Merge property names from both types
         var allPropertyNames = collectionProperties.Keys
             .Union(projectionProperties.Keys)
             .Distinct()
+            .Where(name => !ignoredPropertyNames.Contains(name))
             .ToList();
 
         // Build new attributes list, preserving existing IDs and custom settings
@@ -479,7 +489,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         else if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
             entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(newAttributes);
 
-        ValidateBreadcrumb(entityTypeDef);
+        ValidateBreadcrumb(entityTypeDef, entityType, projectionType);
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
 
         return entityTypeDef;
@@ -494,7 +504,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     }
 
     /// <summary>Fails fast on malformed templates (bad braces, unknown placeholder attribute).</summary>
-    private static void ValidateBreadcrumb(EntityTypeDefinition def)
+    private static void ValidateBreadcrumb(EntityTypeDefinition def, Type? entityType = null, Type? projectionType = null)
     {
         if (string.IsNullOrEmpty(def.Breadcrumb)) return;
 
@@ -513,12 +523,26 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         foreach (var field in tokens.OfType<FieldToken>())
         {
             if (field.AttributeName == "Id") continue;
-            if (!attrNames.Contains(field.AttributeName))
+            if (attrNames.Contains(field.AttributeName)) continue;
+
+            // Distinguish "no such property" from "you excluded it" — otherwise adding
+            // [IgnoreProperty] to a breadcrumb field fails with a misleading "unknown attribute".
+            if (IsIgnoredProperty(field.AttributeName, entityType, projectionType))
                 throw new InvalidOperationException(
-                    $"Breadcrumb template on entity '{def.Name}' references unknown attribute " +
-                    $"'{{{field.AttributeName}}}'. Known attributes: {string.Join(", ", attrNames)}.");
+                    $"Breadcrumb template on entity '{def.Name}' references attribute " +
+                    $"'{{{field.AttributeName}}}', which is marked [IgnoreProperty] and is " +
+                    $"therefore not part of the model. Remove it from the breadcrumb template " +
+                    $"or drop the [IgnoreProperty] attribute.");
+
+            throw new InvalidOperationException(
+                $"Breadcrumb template on entity '{def.Name}' references unknown attribute " +
+                $"'{{{field.AttributeName}}}'. Known attributes: {string.Join(", ", attrNames)}.");
         }
     }
+
+    private static bool IsIgnoredProperty(string name, Type? entityType, Type? projectionType)
+        => (entityType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false)
+            || (projectionType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false);
 
     /// <summary>
     /// null = renderable from the projection (or no projection); false = a placeholder field
@@ -529,7 +553,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         if (projectionType is null || string.IsNullOrEmpty(def.Breadcrumb))
             return null;
 
+        // Only the ignore check applies here — a get-only projection property can still satisfy
+        // a breadcrumb field even though it is not a model attribute.
         var projectionProps = projectionType.GetCachedProperties()
+            .Where(p => !p.IsIgnoredForSparkModel())
             .Select(p => p.Name)
             .ToHashSet(StringComparer.Ordinal);
 
