@@ -137,15 +137,26 @@ public static class SparkModelShape
         => Sha256Hex(string.Join("\n", rootEntityNames.Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal)));
 
     /// <summary>
-    /// Roll-up over the per-entity hashes and the context roots, so the common case is a single
-    /// comparison.
+    /// Roll-up over the per-entity hashes, the context roots and the on-disk model files, so the
+    /// common case is a single comparison.
+    /// <para>
+    /// The file hash is folded in deliberately: the entity hashes only describe what the CLR classes
+    /// say the model should contain, so on their own they would not notice a file planted in the
+    /// model directory — and the loader reads whatever is in that directory. Including it means an
+    /// added, removed or altered model file invalidates the roll-up and the application refuses to
+    /// start.
+    /// </para>
     /// </summary>
-    public static string ComputeModelHash(IReadOnlyDictionary<string, string> perEntityHashes, string contextRootsHash)
+    public static string ComputeModelHash(
+        IReadOnlyDictionary<string, string> perEntityHashes,
+        string contextRootsHash,
+        string modelFilesHash)
     {
         var builder = new StringBuilder();
         foreach (var entry in perEntityHashes.OrderBy(e => e.Key, StringComparer.Ordinal))
             builder.Append(entry.Key).Append(':').Append(entry.Value).Append('\n');
         builder.Append("roots:").Append(contextRootsHash).Append('\n');
+        builder.Append("files:").Append(modelFilesHash).Append('\n');
         return Sha256Hex(builder.ToString());
     }
 

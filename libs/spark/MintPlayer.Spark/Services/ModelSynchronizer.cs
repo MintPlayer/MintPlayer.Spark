@@ -101,6 +101,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     Id = Guid.NewGuid(),
                     Name = queryName,
+                    // Set eagerly, though LoadExistingEntityTypeFiles would derive the same value on
+                    // the next read. Leaving it null made synchronization non-idempotent: the first
+                    // run omitted the field, the second read it back, populated it and wrote it out,
+                    // so two consecutive runs produced different bytes.
+                    EntityType = entityType.Name,
                     Source = $"Database.{property.Name}",
                     SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
@@ -189,6 +194,43 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 }
             }
         }
+
+        WriteModelHashes(contextType);
+    }
+
+    /// <summary>
+    /// Records the fingerprint of the entity classes these model files were generated from, so a
+    /// deployed application can tell that its model no longer describes its classes.
+    /// </summary>
+    private void WriteModelHashes(Type contextType)
+    {
+        // Computed after every model file has been written, so the file hash covers the output of
+        // this same run.
+        var hashFile = BuildModelHashes(contextType, indexRegistry, hostEnvironment.ContentRootPath);
+        hashFile.Write(hostEnvironment.ContentRootPath);
+
+        Console.WriteLine($"Model hash: {hashFile.ModelHash} -> {ModelHashFile.PathFor(hostEnvironment.ContentRootPath)}");
+    }
+
+    /// <summary>
+    /// Computes the hash file for a context type. Shared with the startup check so the value written
+    /// and the value verified can never be produced by two different pieces of code.
+    /// </summary>
+    internal static ModelHashFile BuildModelHashes(Type contextType, IIndexRegistry indexRegistry, string contentRootPath)
+    {
+        var shapes = ModelShapeDiscovery.Discover(contextType, indexRegistry);
+        var perEntity = SparkModelShape.ComputePerEntityHashes(shapes);
+        var contextRoots = SparkModelShape.ComputeContextRootsHash(
+            ModelShapeDiscovery.RootEntityNames(contextType, indexRegistry));
+        var modelFiles = ModelHashFile.ComputeModelFilesHash(contentRootPath);
+
+        return new ModelHashFile
+        {
+            ModelHash = SparkModelShape.ComputeModelHash(perEntity, contextRoots, modelFiles),
+            ContextRoots = contextRoots,
+            ModelFiles = modelFiles,
+            Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
+        };
     }
 
     private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)

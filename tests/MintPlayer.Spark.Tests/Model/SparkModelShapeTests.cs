@@ -169,9 +169,9 @@ public class SparkModelShapeTests
     {
         var roots = SparkModelShape.ComputeContextRootsHash(["ShapeProbe"]);
         var baseline = SparkModelShape.ComputeModelHash(
-            SparkModelShape.ComputePerEntityHashes([Shape<ShapeProbe>()]), roots);
+            SparkModelShape.ComputePerEntityHashes([Shape<ShapeProbe>()]), roots, "files");
         var changed = SparkModelShape.ComputeModelHash(
-            SparkModelShape.ComputePerEntityHashes([Shape<ShapeProbeWithExtraProperty>()]), roots);
+            SparkModelShape.ComputePerEntityHashes([Shape<ShapeProbeWithExtraProperty>()]), roots, "files");
 
         changed.Should().NotBe(baseline);
     }
