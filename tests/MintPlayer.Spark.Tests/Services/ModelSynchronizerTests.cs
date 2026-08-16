@@ -588,6 +588,19 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void An_indexer_does_not_become_an_attribute_named_Item()
+    {
+        // Reflection reports `this[int]` as a property named "Item". It needs an argument to
+        // produce a value, so there is nothing an attribute could read.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IndexerContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_IndexerEntity")).PersistentObject.Attributes
+            .Select(a => a.Name)
+            .Should().BeEquivalentTo(["Name"], "the indexer is not part of the model");
+    }
+
+    [Fact]
     public void Ignored_complex_property_does_not_produce_an_embedded_model_file()
     {
         // Discovery and attribute generation share the filter: an ignored property must not drag
@@ -824,6 +837,26 @@ public class MS_ComputedOrder
 public class ComputedContext : SparkContext
 {
     public IRavenQueryable<MS_ComputedOrder> Orders => Session.Query<MS_ComputedOrder>();
+}
+
+public class MS_IndexerEntity
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+
+    private readonly Dictionary<string, string> _bag = [];
+
+    /// <summary>Reflection reports this as a property named "Item" (#253).</summary>
+    public string this[string key]
+    {
+        get => _bag.TryGetValue(key, out var v) ? v : string.Empty;
+        set => _bag[key] = value;
+    }
+}
+
+public class IndexerContext : SparkContext
+{
+    public IRavenQueryable<MS_IndexerEntity> Entities => Session.Query<MS_IndexerEntity>();
 }
 
 public class IgnoredEmbeddedContext : SparkContext

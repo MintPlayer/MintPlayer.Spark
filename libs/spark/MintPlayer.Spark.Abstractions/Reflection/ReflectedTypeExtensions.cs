@@ -61,9 +61,11 @@ public static class ReflectedTypeExtensions
     /// model, i.e. <see cref="GetCachedProperties"/> filtered by
     /// <see cref="IsSparkModelProperty"/>.
     /// <para>
-    /// This is the single definition of "is this property part of the model". Use it
-    /// anywhere the answer matters — model synchronization, include resolution,
-    /// replication payloads — so the rule cannot drift between call sites.
+    /// This is the single definition of "is this property part of the model" — use it anywhere
+    /// that answer matters (model synchronization, include resolution) so the rule cannot drift
+    /// between call sites. It is <b>not</b> the definition of "may Spark write this": that is
+    /// <see cref="GetSparkWritableProperties"/>, and the distinction is load-bearing for
+    /// replication's write authorization.
     /// </para>
     /// </summary>
     public static IEnumerable<PropertyInfo> GetSparkModelProperties(this Type type)
@@ -86,6 +88,10 @@ public static class ReflectedTypeExtensions
         ArgumentNullException.ThrowIfNull(property);
         return property.Name != "Id"
             && property.CanRead
+            // An indexer is not a field of the entity — it needs arguments to produce a value, so
+            // there is nothing for an attribute to read. Reflection reports it as a property named
+            // "Item", which would otherwise surface as an attribute of that name.
+            && property.GetIndexParameters().Length == 0
             && !property.IsIgnoredForSparkModel();
     }
 
