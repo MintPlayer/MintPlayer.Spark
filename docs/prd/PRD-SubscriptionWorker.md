@@ -180,7 +180,7 @@ For the **Messaging library's internal workers**, a simpler model is used:
 - **One subscription per queue** with `MaxDocsPerBatch = 1`
 - Each batch contains exactly one message
 - On success: acknowledge (batch handler returns normally), message status → `Completed`
-- On failure: throw from the batch handler. RavenDB does not acknowledge, so the same message is redelivered after the retry delay. Message status → `Failed` with `NextAttemptAtUtc` set.
+- On failure *(as designed; see §8.2 — not what shipped)*: throw from the batch handler. RavenDB does not acknowledge, so the same message is redelivered after the retry delay. Message status → `Failed` with `NextAttemptAtUtc` set. **In practice `ProcessBatchAsync` catches everything and always acknowledges**; redelivery comes from a sweeper-set gate field instead (#233, #258).
 - **FIFO guaranteed**: only one message at a time per queue; a failed message blocks its queue until resolved or dead-lettered
 - **Queue isolation**: each queue has its own independent subscription, so one queue's failure does not affect other queues
 
@@ -460,10 +460,21 @@ The Messaging library requires **per-queue FIFO ordering**: messages within a qu
 
 The Messaging library creates **one subscription worker per queue** internally:
 
-- **One subscription per queue**: `from SparkMessages where QueueName = '{queueName}' and Status = 'Pending' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())`
+> **Superseded — this section describes the original design, not the shipped behaviour.** The
+> `now()` clause below **does not work**: a subscription is change-vector-driven, so its query runs only
+> when a document is written, and a time comparison is therefore evaluated at the one moment it cannot
+> be true. RavenDB ≤ 7.2.1 answered it with a silent `false`; 7.2.2+ rejects the query outright. The
+> throw-to-NACK mechanism was also not implemented — `ProcessBatchAsync` catches everything and always
+> acknowledges. Both halves of the designed wake-up were therefore missing.
+>
+> Shipped behaviour uses a sweeper-set boolean gate — `MessageRetrySweeper` + `SparkMessage.WakeUp`
+> (#233), and `SyncActionRetrySweeper` + `SparkSyncAction.WakeUp` for replication (#258). See
+> `docs/issue_258_PRD.md` for why the time comparison cannot work. **Do not copy the query below.**
+
+- **One subscription per queue** *(as designed; see the note above for what shipped)*: `from SparkMessages where QueueName = '{queueName}' and Status = 'Pending' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())`
 - **`MaxDocsPerBatch = 1`**: Each batch contains exactly one message
 - **On success**: Message status → `Completed`, batch acknowledged
-- **On failure**: Message status → `Failed` with `NextAttemptAtUtc` set per backoff schedule. Throw from handler so batch is NACK'd and message is redelivered after delay.
+- **On failure** *(as designed; not implemented this way)*: Message status → `Failed` with `NextAttemptAtUtc` set per backoff schedule. Throw from handler so batch is NACK'd and message is redelivered after delay.
 - **FIFO guaranteed**: One message at a time per queue; a failed message blocks its queue until resolved or dead-lettered
 - **Queue isolation**: Each queue has its own independent subscription, so failure in one queue does not affect others
 

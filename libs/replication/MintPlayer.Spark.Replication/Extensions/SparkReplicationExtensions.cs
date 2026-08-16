@@ -46,6 +46,10 @@ internal static class SparkReplicationExtensions
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
         services.AddHostedService<SyncActionSubscriptionWorker>();
 
+        // Without this, a retry is scheduled and then never delivered: the subscription only
+        // re-evaluates a document that gets written, and a backoff elapsing writes nothing. See #258.
+        services.AddHostedService<SyncActionRetrySweeper>();
+
         return services;
     }
 

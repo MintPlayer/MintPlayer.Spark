@@ -236,7 +236,26 @@ Sync actions use the `SyncActionSubscriptionWorker` with built-in retry logic:
 
 - **Retryable errors** (5xx, connection refused): the document stays as `Pending` and is retried with exponential backoff
 - **Non-retryable errors** (400, 404): the document is marked `Failed` immediately
-- **Module not registered**: throws a retryable `HttpRequestException` so the message bus retries until the owner module registers
+- **Module not registered**: throws a retryable `HttpRequestException` so delivery is retried until the owner module registers
+
+### How a retry is actually redelivered
+
+Worth understanding, because the obvious mental model is wrong and it caused a real bug ([#258](https://github.com/MintPlayer/MintPlayer.Spark/issues/258)).
+
+A RavenDB subscription is **change-vector-driven**: a document is tested against the subscription query only when it is *written*. Time passing is not a write. So a backoff elapsing cannot, by itself, make a parked action visible again — and the query cannot ask whether the backoff has elapsed either, because `now()` is not evaluable in a subscription expression (RavenDB 7.2.1 silently answered `false`; 7.2.2+ rejects the query outright).
+
+Redelivery therefore needs a component that *can* evaluate time:
+
+1. On a retryable failure the worker parks the action: `Status = Pending`, `NextAttemptAtUtc` set to the next attempt, `WakeUp = false`. The subscription query does not match it.
+2. `SyncActionRetrySweeper` wakes every `FallbackPollInterval` (default **30 seconds**), finds Pending actions whose `NextAttemptAtUtc` has passed, and patches `WakeUp = true`. That patch is also the write that makes RavenDB re-evaluate the document.
+3. The subscription now matches, the action is redelivered, and the worker clears `WakeUp` on pickup.
+
+Two consequences for operators:
+
+- **Retry granularity is `FallbackPollInterval`.** A backoff expiring just after a sweep waits up to one more interval. Tune it via `Spark:Replication:FallbackPollInterval`.
+- **First delivery is unaffected** — a new action is delivered immediately by the subscription and never waits for a sweep.
+
+If you are writing your own subscription worker with a time-based pickup condition, use this pattern rather than a time comparison in the query.
 
 ## Complete Example
 

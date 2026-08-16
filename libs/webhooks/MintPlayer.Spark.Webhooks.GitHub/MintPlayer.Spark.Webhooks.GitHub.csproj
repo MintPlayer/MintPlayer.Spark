@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Webhooks.GitHub</PackageId>
-		<Version>10.0.0-preview.48</Version>
+		<Version>10.0.0-preview.49</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>GitHub webhook integration for MintPlayer.Spark — broadcasts typed webhook events to the Spark message bus with support for production-to-dev WebSocket forwarding.</Description>
@@ -31,15 +31,15 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.19.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.19.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Octokit" Version="14.0.0" />
 		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
-		<PackageReference Include="Octokit.Webhooks.AspNetCore" Version="3.2.1" />
+		<PackageReference Include="Octokit.Webhooks.AspNetCore" Version="4.1.2" />
 	</ItemGroup>
 
 </Project>

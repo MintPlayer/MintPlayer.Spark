@@ -65,6 +65,13 @@ public class SparkReplicationOptions
     /// <summary>Name of the shared SparkModules database where all modules register.</summary>
     public string SparkModulesDatabase { get; set; } = "SparkModules";
 
+    /// <summary>
+    /// How often <c>SyncActionRetrySweeper</c> wakes sync actions whose retry backoff has elapsed.
+    /// This is the granularity of retry redelivery, not of first delivery — a new action is
+    /// delivered immediately by the subscription and never waits for a sweep.
+    /// </summary>
+    public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Assemblies to scan for [Replicated] attributes. If empty, scans the entry assembly.</summary>
     public System.Reflection.Assembly[] AssembliesToScan { get; set; } = [];
 

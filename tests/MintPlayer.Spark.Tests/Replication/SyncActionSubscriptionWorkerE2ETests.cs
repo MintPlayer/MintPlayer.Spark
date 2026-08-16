@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Replication.Workers;
@@ -307,6 +308,70 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             handler.CallCount.Should().Be(0);
 
             (await GetRetryCounterAsync(id)).Should().Be(1);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task A_parked_retry_is_actually_redelivered_once_the_sweeper_declares_it_due()
+    {
+        // The assertion this suite never made (#258). Every other retry test here pins the state
+        // *after* a failure — AttemptCount, NextAttemptAtUtc, @refresh — and then stops. The
+        // gating test even asserts the action is not redelivered early, which stayed true for the
+        // wrong reason: it was never redelivered at all. Redelivery is the half that matters, and
+        // it needs the sweeper to exist.
+        await DeployIndexesAsync(typeof(SparkSyncActions_ByStatus).Assembly);
+
+        var handler = new StubHttpMessageHandler
+        {
+            Respond = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("boom"),
+            },
+        };
+
+        var id = await SeedSyncActionAsync();
+        var worker = NewWorker(handler);
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var parked = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
+            parked.NextAttemptAtUtc.Should().NotBeNull();
+            parked.WakeUp.Should().BeFalse("a parked action must not be visible to the subscription yet");
+
+            handler.Respond = _ => new HttpResponseMessage(HttpStatusCode.OK);
+
+            // Bring the backoff forward instead of waiting it out. The delay itself is already
+            // pinned by ServerError_500_schedules_retry_...; what is under test here is that an
+            // elapsed backoff leads to redelivery, and sleeping through a real one would only make
+            // this test slow, not stronger.
+            using (var session = Store.OpenAsyncSession())
+            {
+                session.Advanced.Patch<SparkSyncAction, DateTime?>(
+                    id, a => a.NextAttemptAtUtc, DateTime.UtcNow.AddMinutes(-1));
+                await session.SaveChangesAsync();
+            }
+
+            await WaitForIndexesAsync();
+
+            var sweeper = new SyncActionRetrySweeper(
+                Store,
+                Options.Create(DefaultOptions()),
+                NullLogger<SyncActionRetrySweeper>.Instance);
+
+            (await sweeper.SweepOnceAsync(CancellationToken.None)).Should().Be(1,
+                "the backoff has elapsed, so the sweeper should wake exactly this action");
+
+            var completed = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Completed);
+
+            completed.WakeUp.Should().BeFalse("the worker consumes the wake-up when it picks the action up");
+            handler.CallCount.Should().Be(2, "the failed attempt, then the redelivery the sweeper triggered");
+            (await GetRetryCounterAsync(id)).Should().BeNull(
+                "a successful delivery clears the retry counter, so a later failure starts its backoff from scratch");
         }
         finally
         {
