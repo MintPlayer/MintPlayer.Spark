@@ -75,11 +75,16 @@ internal sealed partial class SyncActionRetrySweeper : BackgroundService
         // subscription already receives on the write that created them. Only Pending is swept —
         // Failed is terminal for replication (retries exhausted, or a 400/404 rejection), and
         // reviving it here would silently change the retry contract.
+        // `!= true` rather than `== false`, and the difference is not cosmetic: actions parked by a
+        // pre-#258 build have no WakeUp property in their JSON at all, and a missing field does not
+        // match `== false`. With that spelling the upgrade would fix only future failures and leave
+        // the entire existing backlog stranded permanently. Pinned by
+        // SyncActionRetrySweeperTests.Wakes_an_action_parked_before_WakeUp_existed.
         var dueIds = await session.Query<SparkSyncAction, SparkSyncActions_ByStatus>()
             .Where(a => a.Status == ESyncActionStatus.Pending
                         && a.NextAttemptAtUtc != null
                         && a.NextAttemptAtUtc <= now
-                        && a.WakeUp == false)
+                        && a.WakeUp != true)
             .Select(a => a.Id)
             .Take(MaxActionsPerSweep)
             .ToListAsync(cancellationToken);

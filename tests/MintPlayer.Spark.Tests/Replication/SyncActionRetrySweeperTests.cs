@@ -7,6 +7,9 @@ using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Testing;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Operations;
 
 namespace MintPlayer.Spark.Tests.Replication;
 
@@ -88,6 +91,45 @@ public class SyncActionRetrySweeperTests : SparkTestDriver
         (await verify.LoadAsync<SparkSyncAction>(terminallyFailed.Id!)).WakeUp.Should().BeFalse(
             "Failed is terminal for replication — reviving it here would change the retry contract");
         (await verify.LoadAsync<SparkSyncAction>(completed.Id!)).WakeUp.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Wakes_an_action_parked_before_WakeUp_existed()
+    {
+        // The upgrade case. Any deployment running the broken query has actions already parked with
+        // a NextAttemptAtUtc and no WakeUp property in their JSON at all — the field did not exist
+        // when they were written. If a missing field does not satisfy the sweeper's filter, those
+        // actions stay stranded forever and the fix rescues nothing that is already broken.
+        var legacy = Action(ESyncActionStatus.Pending, DateTime.UtcNow.AddMinutes(-5));
+        await SeedAsync(session => session.StoreAsync(legacy));
+
+        // Remove the property to reproduce a pre-#258 document exactly, rather than relying on a
+        // default-valued field being equivalent to an absent one — which is the whole question.
+        var patch = await Store.Operations.SendAsync(new PatchByQueryOperation(
+            $"from SparkSyncActions where id() = '{legacy.Id}' update {{ delete this.WakeUp; }}"));
+        await patch.WaitForCompletionAsync();
+        await WaitForIndexesAsync();
+
+        using (var check = Store.OpenAsyncSession())
+        {
+            // A projection always includes the key it was asked for, so absence shows up as a null
+            // value rather than a missing entry. That still distinguishes the two cases: a stored
+            // `false` projects as false, not null.
+            var raw = await check.Advanced.AsyncRawQuery<Dictionary<string, object>>(
+                $"from SparkSyncActions where id() = '{legacy.Id}' select WakeUp").ToListAsync();
+            raw.Should().ContainSingle().Which["WakeUp"].Should().BeNull(
+                "the probe is only meaningful if the property really is absent — a stored false "
+                + "would come back as false");
+        }
+
+        var woken = await NewSweeper().SweepOnceAsync(CancellationToken.None);
+
+        woken.Should().Be(1,
+            "an action parked by the previous version must still be found, or upgrading fixes only "
+            + "future failures and leaves the existing backlog dead");
+
+        using var verify = Store.OpenAsyncSession();
+        (await verify.LoadAsync<SparkSyncAction>(legacy.Id!)).WakeUp.Should().BeTrue();
     }
 
     [Fact]
