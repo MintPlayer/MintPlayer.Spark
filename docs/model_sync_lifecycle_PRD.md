@@ -531,7 +531,7 @@ passes forever and looks like it works.
 
 ---
 
-## Breaking changes (pre-1.0 preview, `10.0.0-preview.50`)
+## Breaking changes (pre-1.0 preview, `10.0.0-preview.51`)
 
 | Removed / changed | Replacement |
 |---|---|
@@ -543,3 +543,16 @@ passes forever and looks like it works.
 
 `UseSparkOptions` and the `UseSpark(Action<UseSparkOptions>)` overload are **kept** — a legitimate
 extension point; only the one method is removed.
+
+## New API (additive)
+
+| Added | For |
+|---|---|
+| `SparkModuleRegistry.AddIndexAssembly(Assembly)` / `ResolveIndexAssemblies()` | declaring where indexes and projections live |
+| `spark.AddIndexesFrom(...)` / `AddIndexesFromAssemblyContaining<T>()` | the module- and app-facing sugar |
+| `WriteSparkModelHashes(Type, string, IServiceCollection?)` overload | test hosts, so declared assemblies reach the written hash |
+| `SPARK_MODEL_HASH_OVERRIDE` | the emergency startup override |
+| `--spark-verify-model` | the CI drift gate |
+
+Nothing here changes behaviour for an application that does not use it: with no assembly declared,
+discovery resolves to exactly the entry assembly it scanned before.

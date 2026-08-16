@@ -29,7 +29,7 @@ milestones are verified by reading and type-checking.
 | M12 | Rename to `modelHashes.json` | `615b367` |
 | M13 | Stale projection refs, name-collision deletion, duplicate roots | `077f406` |
 | M14 | Hash/model guard alignment; corrected warning | `1549536` |
-| M15 | Index + projection discovery beyond the entry assembly | this commit |
+| M15 | Index + projection discovery beyond the entry assembly | `5eecb58` |
 
 ---
 
