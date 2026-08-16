@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
+using MintPlayer.Spark.SourceGenerators.Models;
 using System.Collections.Immutable;
 
 namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
@@ -54,12 +55,16 @@ public sealed partial class ProjectionPropertyAnalyzer : DiagnosticAnalyzer
             "MintPlayer.Spark.Abstractions.ReferenceAttribute");
 
         // 5. Compare properties by name
+        // [IgnoreProperty] on either side takes the property out of the model, so there is
+        // nothing left to hold the entity and projection to agree on.
         var entityProperties = entityType.GetMembers().OfType<IPropertySymbol>()
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic)
+            .Where(p => !p.IsIgnoredForSparkModel())
             .ToDictionary(p => p.Name);
 
         var projectionProperties = projectionType.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic);
+            .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic)
+            .Where(p => !p.IsIgnoredForSparkModel());
 
         foreach (var projProp in projectionProperties)
         {

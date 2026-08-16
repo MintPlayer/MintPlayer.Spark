@@ -57,6 +57,51 @@ public static class ReflectedTypeExtensions
     }
 
     /// <summary>
+    /// Returns the properties of <paramref name="type"/> that take part in the Spark
+    /// model, i.e. <see cref="GetCachedProperties"/> filtered by
+    /// <see cref="IsSparkModelProperty"/>.
+    /// <para>
+    /// This is the single definition of "is this property part of the model". Use it
+    /// anywhere the answer matters — model synchronization, include resolution,
+    /// replication payloads — so the rule cannot drift between call sites.
+    /// </para>
+    /// </summary>
+    public static IEnumerable<PropertyInfo> GetSparkModelProperties(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return type.GetCachedProperties().Where(IsSparkModelProperty);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> takes part in the Spark model: it is not the
+    /// document id, it is fully readable and writable, and it is not marked
+    /// <see cref="IgnorePropertyAttribute"/>.
+    /// </summary>
+    public static bool IsSparkModelProperty(this PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return property.Name != "Id"
+            && property.CanRead
+            && property.CanWrite
+            && !property.IsIgnoredForSparkModel();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> carries <see cref="IgnorePropertyAttribute"/>.
+    /// <para>
+    /// Prefer <see cref="IsSparkModelProperty"/>. This narrower check exists for callers
+    /// that must answer "was this deliberately excluded?" on its own — notably the
+    /// entity/projection union in model synchronization, where an exclusion on either
+    /// side has to veto a property the other side still declares.
+    /// </para>
+    /// </summary>
+    public static bool IsIgnoredForSparkModel(this PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return property.GetCachedCustomAttribute<IgnorePropertyAttribute>() is not null;
+    }
+
+    /// <summary>
     /// Reads <c>Task&lt;T&gt;.Result</c> reflectively using a cached
     /// <see cref="PropertyInfo"/> + compiled getter. Use this when a non-generic
     /// <see cref="Task"/> reference was produced via reflection (e.g.

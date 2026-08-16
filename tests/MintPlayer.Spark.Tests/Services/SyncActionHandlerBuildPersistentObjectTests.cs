@@ -73,6 +73,118 @@ public class SyncActionHandlerBuildPersistentObjectTests
     }
 
     [Fact]
+    public void BuildPersistentObject_Schema_DiscardsInboundDataForAnIgnoredProperty()
+    {
+        // #254 — inbound protection is transitive: [IgnoreProperty] keeps the attribute out of
+        // the synchronized model, and the overlay iterates the MODEL's attributes rather than the
+        // incoming dictionary's keys. A remote module cannot introduce an attribute that the
+        // owner's model does not declare.
+        var def = new EntityTypeDefinition
+        {
+            Id = CarTypeId,
+            Name = "Car",
+            ClrType = typeof(TestCar).FullName!,
+            Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LicensePlate", DataType = "string" }],
+        };
+        _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
+        {
+            Name = "Car",
+            ObjectTypeId = CarTypeId,
+            Attributes = [new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string" }],
+        });
+
+        var data = new Dictionary<string, object?>
+        {
+            ["LicensePlate"] = "ABC-123",
+            ["RegistrySyncEtag"] = "injected",   // ignored on the owner, so absent from its model
+        };
+
+        var po = CreateHandler().BuildPersistentObject(
+            typeof(TestCar), "cars/1", data, properties: ["LicensePlate", "RegistrySyncEtag"]);
+
+        po["LicensePlate"].Value.Should().Be("ABC-123");
+        po.Attributes.Select(a => a.Name).Should().NotContain("RegistrySyncEtag");
+    }
+
+    [Fact]
+    public void BuildPersistentObject_Schema_PartialUpdate_OmitsAttributesNotNamedInProperties()
+    {
+        // Regression: the PO used to carry EVERY model attribute, with null for the ones the
+        // sender never mentioned. The write path writes every attribute it is handed and never
+        // consults IsValueChanged, so a partial sync blanked stored data — contradicting
+        // SyncAction.Properties ("only these properties are merged").
+        var def = new EntityTypeDefinition
+        {
+            Id = CarTypeId,
+            Name = "Car",
+            ClrType = typeof(TestCar).FullName!,
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LicensePlate", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Year", DataType = "number" },
+            ],
+        };
+        _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
+        {
+            Name = "Car",
+            ObjectTypeId = CarTypeId,
+            Attributes =
+            [
+                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string" },
+                new PersistentObjectAttribute { Name = "Year", DataType = "number" },
+            ],
+        });
+
+        var data = new Dictionary<string, object?> { ["LicensePlate"] = "ABC-123" };
+
+        var po = CreateHandler().BuildPersistentObject(
+            typeof(TestCar), "cars/1", data, properties: ["LicensePlate"]);
+
+        po.Attributes.Select(a => a.Name).Should().BeEquivalentTo(["LicensePlate"]);
+        po["LicensePlate"].Value.Should().Be("ABC-123");
+        po.Attributes.Select(a => a.Name).Should().NotContain("Year",
+            "Year keeps its stored value because the sync never mentioned it");
+    }
+
+    [Fact]
+    public void BuildPersistentObject_Schema_NullProperties_StillCarriesEveryAttribute()
+    {
+        // The non-partial case must not regress: a null Properties list means "apply everything
+        // from the data", so the full attribute set stays.
+        var def = new EntityTypeDefinition
+        {
+            Id = CarTypeId,
+            Name = "Car",
+            ClrType = typeof(TestCar).FullName!,
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LicensePlate", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Year", DataType = "number" },
+            ],
+        };
+        _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
+        {
+            Name = "Car",
+            ObjectTypeId = CarTypeId,
+            Attributes =
+            [
+                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string" },
+                new PersistentObjectAttribute { Name = "Year", DataType = "number" },
+            ],
+        });
+
+        var data = new Dictionary<string, object?> { ["LicensePlate"] = "ABC-123" };
+
+        var po = CreateHandler().BuildPersistentObject(typeof(TestCar), "cars/1", data, properties: null);
+
+        po.Attributes.Select(a => a.Name).Should().BeEquivalentTo(["LicensePlate", "Year"]);
+        po["Year"].IsValueChanged.Should().BeFalse("the data dictionary carried no value for it");
+    }
+
+    [Fact]
     public void BuildPersistentObject_Schema_IsValueChanged_FromPropertySet()
     {
         var def = new EntityTypeDefinition
@@ -98,13 +210,17 @@ public class SyncActionHandlerBuildPersistentObjectTests
             ],
         });
 
+        // Note the data DOES carry a Year value; properties[] is what decides, not the payload.
         var data = new Dictionary<string, object?> { ["LicensePlate"] = "ABC-123", ["Year"] = 2024 };
         var properties = new[] { "LicensePlate" };
 
         var po = CreateHandler().BuildPersistentObject(typeof(TestCar), "cars/1", data, properties);
 
         po["LicensePlate"].IsValueChanged.Should().BeTrue("explicitly listed in properties[]");
-        po["Year"].IsValueChanged.Should().BeFalse("not listed in properties[] — partial update");
+        po.Attributes.Select(a => a.Name).Should().NotContain("Year",
+            "not listed in properties[] — a partial update must not carry it at all. This assertion "
+            + "used to be IsValueChanged == false, which expressed the same intent through a flag "
+            + "the write path never reads, so the value was applied regardless.");
     }
 
     [Fact]

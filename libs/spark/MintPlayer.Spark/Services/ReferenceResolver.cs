@@ -56,6 +56,10 @@ internal partial class ReferenceResolver : IReferenceResolver
         var cached = ReflectionCache.GetOrAdd<Type, (PropertyInfo Property, ReferenceAttribute Attribute)[]>(
             entityType,
             static t => t.GetCachedProperties()
+                // An ignored [Reference] must not be .Include()d: besides the pointless load, it
+                // would pull the referenced document into the session for a field the client is
+                // never allowed to see.
+                .Where(p => !p.IsIgnoredForSparkModel())
                 .Select(p => (Property: p, Attribute: p.GetCachedCustomAttribute<ReferenceAttribute>()))
                 .Where(x => x.Attribute is not null)
                 .Select(x => (x.Property, x.Attribute!))
@@ -75,8 +79,10 @@ internal partial class ReferenceResolver : IReferenceResolver
         var fallbackProps = GetReferenceProperties(fallbackType);
         foreach (var (fallbackProp, refAttr) in fallbackProps)
         {
+            // The fallback list is already filtered, but the primary type may ignore a property
+            // the base type does not.
             var matchingProp = entityType.GetCachedProperty(fallbackProp.Name);
-            if (matchingProp != null)
+            if (matchingProp != null && !matchingProp.IsIgnoredForSparkModel())
             {
                 result.Add((matchingProp, refAttr));
             }

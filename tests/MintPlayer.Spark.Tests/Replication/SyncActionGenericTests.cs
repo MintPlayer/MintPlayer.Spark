@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 
 namespace MintPlayer.Spark.Tests.Replication;
@@ -16,6 +17,34 @@ public class SyncActionGenericTests
         public string? Id { get; set; }
         public string? LicensePlate { get; set; }
         public int Year { get; set; }
+    }
+
+    private sealed class CarWithSecret
+    {
+        public string? Id { get; set; }
+        public string? LicensePlate { get; set; }
+
+        [IgnoreProperty]
+        public string? InternalToken { get; set; }
+    }
+
+    [Fact]
+    public void ToTransport_omits_ignored_properties_from_the_payload()
+    {
+        // #254 — [IgnoreProperty] excludes a property from the model, so it must not cross a
+        // module boundary either.
+        var src = new SyncAction<CarWithSecret>
+        {
+            ActionType = SyncActionType.Update,
+            Collection = "Cars",
+            DocumentId = "cars/42",
+            Data = new CarWithSecret { Id = "cars/42", LicensePlate = "ABC-123", InternalToken = "s3cret" },
+        };
+
+        var transport = src.ToTransport();
+
+        transport.Data.Should().ContainKey("LicensePlate");
+        transport.Data.Should().NotContainKey("InternalToken");
     }
 
     [Fact]

@@ -411,6 +411,105 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         File.Exists(ModelFile("MS_TestVehicle")).Should().BeFalse();
     }
+
+    // --- [IgnoreProperty] (#254) ---
+
+    [Fact]
+    public void Ignored_property_is_excluded_from_generated_attributes()
+    {
+        var ctx = new IgnoredContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson"));
+        file.PersistentObject.Attributes.Select(a => a.Name)
+            .Should().BeEquivalentTo(["FirstName"], "[IgnoreProperty] excludes a property from the model");
+    }
+
+    [Fact]
+    public void Re_synchronize_removes_an_attribute_that_has_become_ignored()
+    {
+        // The property was part of the model before it was ignored, so its attribute block is
+        // sitting in a committed model file. Synchronize must delete it, not leave an orphan
+        // that the mapper can never populate (a required orphan would deadlock every save).
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_IgnoredPerson"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_IgnoredPerson","clrType":"MintPlayer.Spark.Tests.Services.MS_IgnoredPerson",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"FirstName","dataType":"String"},
+              {"id":"33333333-3333-3333-3333-333333333333","name":"InternalToken","dataType":"String"}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredContext());
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson"));
+        file.PersistentObject.Attributes.Select(a => a.Name).Should().NotContain("InternalToken");
+        file.PersistentObject.Attributes.Select(a => a.Name).Should().Contain("FirstName");
+    }
+
+    [Fact]
+    public void Ignored_complex_property_does_not_produce_an_embedded_model_file()
+    {
+        // Discovery and attribute generation share the filter: an ignored property must not drag
+        // its type into the model as an embedded type nothing references.
+        var ctx = new IgnoredEmbeddedContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        File.Exists(ModelFile("MS_IgnoredAudit")).Should().BeFalse();
+        Read<EntityTypeFile>(ModelFile("MS_IgnoredHolder")).PersistentObject.Attributes
+            .Select(a => a.Name).Should().BeEquivalentTo(["Title"]);
+    }
+
+    [Fact]
+    public void Ignored_property_on_an_embedded_type_is_excluded_from_that_types_model()
+    {
+        var ctx = new EmbeddedChildContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(ModelFile("MS_IgnoredChild")).PersistentObject.Attributes
+            .Select(a => a.Name).Should().BeEquivalentTo(["Label"], "the rule applies at every level, not just entity roots");
+    }
+
+    [Fact]
+    public void Ignoring_a_property_on_the_entity_vetoes_the_same_name_on_the_projection()
+    {
+        // The two name sets are unioned, so an entity-side ignore has to veto a projection that
+        // still declares the property — otherwise the exclusion silently does nothing.
+        var registration = new IndexRegistration
+        {
+            IndexName = "IgnoredPeople_Index",
+            IndexType = typeof(MS_IgnoredPerson),
+            CollectionType = typeof(MS_IgnoredPerson),
+            ProjectionType = typeof(MS_IgnoredPersonProjection),
+        };
+        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_IgnoredPerson)).Returns(registration);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes
+            .Select(a => a.Name).Should().NotContain("InternalToken");
+    }
+
+    [Fact]
+    public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
+    {
+        var sync = CreateSynchronizer();
+
+        var act = () => sync.SynchronizeModels(new IgnoredBreadcrumbContext());
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*IgnoreProperty*",
+                "the failure must name the cause, not just report an unknown attribute");
+    }
 }
 
 // --- Test fixtures (top-level so reflection finds them) ---
@@ -507,6 +606,86 @@ public class MS_UnbalancedBreadcrumb
 {
     public string? Id { get; set; }
     public string FirstName { get; set; } = string.Empty;
+}
+
+// --- [IgnoreProperty] fixtures (#254) ---
+
+public class MS_IgnoredPerson
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+
+    [IgnoreProperty]
+    public string InternalToken { get; set; } = string.Empty;
+}
+
+// Projection that still declares InternalToken — the entity-side ignore must veto it.
+public class MS_IgnoredPersonProjection
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string InternalToken { get; set; } = string.Empty;
+}
+
+public class MS_IgnoredAudit
+{
+    public string? Id { get; set; }
+    public string ChangedBy { get; set; } = string.Empty;
+}
+
+public class MS_IgnoredHolder
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+
+    [IgnoreProperty]
+    public MS_IgnoredAudit? Audit { get; set; }
+}
+
+// Embedded child carrying its own ignored property.
+public class MS_IgnoredChild
+{
+    public string? Id { get; set; }
+    public string Label { get; set; } = string.Empty;
+
+    [IgnoreProperty]
+    public string Scratch { get; set; } = string.Empty;
+}
+
+public class MS_EmbeddedChildParent
+{
+    public string? Id { get; set; }
+    public MS_IgnoredChild? Child { get; set; }
+}
+
+[Breadcrumb("{InternalToken}")]
+public class MS_IgnoredBreadcrumb
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+
+    [IgnoreProperty]
+    public string InternalToken { get; set; } = string.Empty;
+}
+
+public class IgnoredContext : SparkContext
+{
+    public IRavenQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
+}
+
+public class IgnoredEmbeddedContext : SparkContext
+{
+    public IRavenQueryable<MS_IgnoredHolder> Holders => Session.Query<MS_IgnoredHolder>();
+}
+
+public class EmbeddedChildContext : SparkContext
+{
+    public IRavenQueryable<MS_EmbeddedChildParent> Parents => Session.Query<MS_EmbeddedChildParent>();
+}
+
+public class IgnoredBreadcrumbContext : SparkContext
+{
+    public IRavenQueryable<MS_IgnoredBreadcrumb> Items => Session.Query<MS_IgnoredBreadcrumb>();
 }
 
 public class EmptyContext : SparkContext { }

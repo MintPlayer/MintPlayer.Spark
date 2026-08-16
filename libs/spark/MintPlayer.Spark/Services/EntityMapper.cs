@@ -6,6 +6,7 @@ using Raven.Client.Documents.Session;
 using System.Drawing;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace MintPlayer.Spark.Services;
 
@@ -865,6 +866,38 @@ internal partial class EntityMapper : IEntityMapper
         return loaded;
     }
 
+    /// <summary>
+    /// Options for deserializing a raw client-supplied JSON object/array straight onto a complex
+    /// CLR property. That path has no per-child schema gate — the model only describes the
+    /// attribute being written, not the members of the type behind it — so <c>[IgnoreProperty]</c>
+    /// is enforced by dropping those members from the contract itself.
+    /// <para>
+    /// Built once: <see cref="JsonSerializerOptions"/> caches type metadata internally, so a
+    /// fresh instance per call would re-resolve the contract for every write.
+    /// </para>
+    /// </summary>
+    private static readonly JsonSerializerOptions ComplexValueOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver
+        {
+            Modifiers =
+            {
+                static typeInfo =>
+                {
+                    for (var i = typeInfo.Properties.Count - 1; i >= 0; i--)
+                    {
+                        if (typeInfo.Properties[i].AttributeProvider is PropertyInfo p
+                            && p.IsIgnoredForSparkModel())
+                        {
+                            typeInfo.Properties.RemoveAt(i);
+                        }
+                    }
+                },
+            },
+        },
+    };
+
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -878,7 +911,7 @@ internal partial class EntityMapper : IEntityMapper
                 // Deserialize array/collection of complex objects (e.g., CarreerJob[], List<CarreerJob>)
                 try
                 {
-                    var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    var deserializedValue = je.Deserialize(targetType, ComplexValueOptions);
                     setter(entity, deserializedValue);
                 }
                 catch
@@ -892,7 +925,7 @@ internal partial class EntityMapper : IEntityMapper
                 // Deserialize complex objects (like Address) directly from JsonElement
                 try
                 {
-                    var deserializedValue = je.Deserialize(targetType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    var deserializedValue = je.Deserialize(targetType, ComplexValueOptions);
                     setter(entity, deserializedValue);
                 }
                 catch

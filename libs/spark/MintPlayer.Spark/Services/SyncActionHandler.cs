@@ -85,8 +85,15 @@ internal partial class SyncActionHandler : ISyncActionHandler
     }
 
     /// <summary>
-    /// Builds a PersistentObject from the incoming sync action data dictionary,
-    /// marking attributes as <c>IsValueChanged</c> based on the <paramref name="properties"/> list.
+    /// Builds a PersistentObject from the incoming sync action data dictionary.
+    /// <para>
+    /// When <paramref name="properties"/> is supplied the result carries <strong>only</strong>
+    /// those attributes — a partial update, per the contract on <c>SyncAction.Properties</c>.
+    /// This is load-bearing rather than an optimization: the write path writes every attribute it
+    /// is handed and never consults <c>IsValueChanged</c>, so an unnamed attribute left on the PO
+    /// would overwrite stored data with null. When it is null, every attribute is included and
+    /// <c>IsValueChanged</c> reflects whether the data dictionary carried a value.
+    /// </para>
     /// When an <see cref="EntityTypeDefinition"/> is registered for the entity type the
     /// schema path runs through <see cref="IEntityMapper.GetPersistentObject(Guid)"/>, so
     /// every attribute gets the canonical 14-field metadata; otherwise the CLR-reflection
@@ -105,6 +112,14 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // Schema path — full metadata scaffolded by IEntityMapper, values overlaid from data dict.
         var po = entityMapper.GetPersistentObject(entityTypeDef.Id);
         po.Id = documentId;
+
+        // A partial update must carry ONLY the attributes it updates. The scaffold starts with
+        // every attribute in the model, and the write path (EntityMapper.PopulateObjectValues*)
+        // writes every attribute it is given — it does not consult IsValueChanged — so leaving
+        // the unnamed ones in place with a null value would blank out stored data the sender
+        // never mentioned. See SyncAction.Properties: "only these properties are merged".
+        if (propertySet is not null)
+            po.RetainAttributes(a => propertySet.Contains(a.Name));
 
         foreach (var attribute in po.Attributes)
         {
@@ -132,10 +147,14 @@ internal partial class SyncActionHandler : ISyncActionHandler
             Name = entityType.Name,
         };
 
-        foreach (var prop in entityType.GetCachedProperties())
+        // This is the "no registered EntityTypeDefinition" fallback, so it cannot inherit the
+        // synchronizer's exclusion — it has to consult the attribute itself.
+        foreach (var prop in entityType.GetSparkModelProperties())
         {
-            if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
-            if (!prop.CanRead || !prop.CanWrite) continue;
+            // Same partial-update rule as the schema path: an attribute the sender did not name
+            // must not appear at all, or the write path blanks the stored value.
+            if (propertySet is not null && !propertySet.Contains(prop.Name))
+                continue;
 
             var hasValue = TryGetValue(data, prop.Name, out var value);
             var isChanged = propertySet != null
