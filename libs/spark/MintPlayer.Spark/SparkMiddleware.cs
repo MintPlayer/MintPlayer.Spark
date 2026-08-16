@@ -378,6 +378,51 @@ public static class SparkExtensions
         store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
     }
 
+    /// <summary>
+    /// Populates <paramref name="indexRegistry"/> from the index and projection types declared in
+    /// <paramref name="targetAssembly"/>. Pure reflection — no database, no host, no DI.
+    /// <para>
+    /// Separated from <see cref="CreateSparkIndexes"/> so the offline paths (model synchronization
+    /// and the startup model-hash check) can populate the registry without a live
+    /// <c>IDocumentStore</c>. Both consult the registry for projection types and index names, and an
+    /// unpopulated registry does not fail — it silently emits projection types as their own model
+    /// files and skips the query-type merge. Wrong output, no error, which is why this must run.
+    /// </para>
+    /// <para>
+    /// Deliberately does not swallow exceptions: a registry that failed to populate has to fail the
+    /// run. Only the database call in <see cref="CreateSparkIndexes"/> is best-effort.
+    /// </para>
+    /// </summary>
+    internal static void PopulateIndexRegistry(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    {
+        // Find and register all index types — Assembly.GetTypes() walks the assembly's
+        // entire metadata tables; cache the filtered result so repeat AddSpark calls
+        // (or hot-reload scenarios) don't re-scan.
+        var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.IndexTypes", targetAssembly),
+            static k => k.Asm.GetTypes()
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToArray());
+
+        foreach (var indexType in indexTypes)
+        {
+            indexRegistry.RegisterIndex(indexType);
+        }
+
+        // Find and register all projection types with FromIndexAttribute
+        var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.ProjectionTypes", targetAssembly),
+            static k => k.Asm.GetTypes()
+                .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
+                .ToArray());
+
+        foreach (var projectionType in projectionTypes)
+        {
+            var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
+            indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+        }
+    }
+
     private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
@@ -390,35 +435,12 @@ public static class SparkExtensions
             return;
         }
 
+        // Registry population is a correctness precondition for everything downstream, so it is
+        // outside the try — see PopulateIndexRegistry.
+        PopulateIndexRegistry(indexRegistry, targetAssembly);
+
         try
         {
-            // Find and register all index types — Assembly.GetTypes() walks the assembly's
-            // entire metadata tables; cache the filtered result so repeat AddSpark calls
-            // (or hot-reload scenarios) don't re-scan.
-            var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-                ("SparkMiddleware.IndexTypes", targetAssembly),
-                static k => k.Asm.GetTypes()
-                    .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                    .ToArray());
-
-            foreach (var indexType in indexTypes)
-            {
-                indexRegistry.RegisterIndex(indexType);
-            }
-
-            // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-                ("SparkMiddleware.ProjectionTypes", targetAssembly),
-                static k => k.Asm.GetTypes()
-                    .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
-                    .ToArray());
-
-            foreach (var projectionType in projectionTypes)
-            {
-                var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
-                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
-            }
-
             // Create indexes in RavenDB
             IndexCreation.CreateIndexes(targetAssembly, documentStore);
             Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
