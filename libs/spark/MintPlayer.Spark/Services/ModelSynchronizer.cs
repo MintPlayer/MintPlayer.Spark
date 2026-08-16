@@ -478,6 +478,49 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             order++;
         }
 
+        // The rebuild above is omission-based: it walks the current property set, so an attribute
+        // with no matching CLR property is dropped simply by never being re-added. Carry those over.
+        // Synchronize adds and modifies; it does not delete.
+        //
+        // Two kinds of attribute land here, and both must survive. A *virtual* attribute is authored
+        // by hand and never had a property — its value is supplied at runtime. An *orphaned* one had
+        // a property that was renamed or removed. Nothing in the model distinguishes them, which is
+        // also why there is no --prune-orphaned-attributes flag: see docs/issue_253_PRD.md (D1).
+        //
+        // [IgnoreProperty] is the deliberate exception. Marking a property ignored is an explicit
+        // instruction to drop its attribute, unlike a property that merely disappeared, so vetoed
+        // names stay dropped.
+        var rebuiltNames = newAttributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var carriedOver in entityTypeDef.Attributes)
+        {
+            if (rebuiltNames.Contains(carriedOver.Name) || ignoredPropertyNames.Contains(carriedOver.Name))
+                continue;
+
+            // Added as-is, by reference: Id, Label, Rules, Renderer, RendererOptions, Group and
+            // EditMode all ride along untouched. The Id matters most — clients key on it, so
+            // regenerating one silently rewrites identity.
+            newAttributes.Add(carriedOver);
+
+            Console.WriteLine(
+                $"Kept attribute '{carriedOver.Name}' on '{entityTypeDef.Name}': no matching CLR property. "
+                + "Remove it from the model JSON if it is obsolete.");
+
+            // ValidationService (:41) walks the MODEL's attributes and rejects a save when a
+            // required one is empty, so a required attribute the mapper cannot populate blocks
+            // every save of this type. Not necessarily broken — a value submitted by the client
+            // satisfies it, which is plausible for a virtual attribute — so this warns rather than
+            // silently clearing IsRequired. Rewriting hand-authored model state is the failure mode
+            // this whole change exists to remove.
+            if (carriedOver.IsRequired)
+            {
+                Console.WriteLine(
+                    $"  WARNING: '{carriedOver.Name}' is required but has no CLR property to populate it. "
+                    + "Saves will fail unless a value is supplied by the client. "
+                    + "Set \"isRequired\": false in the model JSON, or remove the attribute.");
+            }
+        }
+
         entityTypeDef.Attributes = newAttributes.ToArray();
 
         // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
