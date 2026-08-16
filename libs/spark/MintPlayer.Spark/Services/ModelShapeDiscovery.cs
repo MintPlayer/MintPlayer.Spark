@@ -39,13 +39,21 @@ public static class ModelShapeDiscovery
                 continue;
 
             var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
+
+            // The index name is taken only when a projection exists, mirroring what the generator
+            // writes. A registration is created for any index keyed by collection type, so an index
+            // WITHOUT a projection yields a registration carrying an IndexName that the model file
+            // deliberately omits. Hashing it anyway would make the hash describe something the model
+            // does not record: deleting such an index would move the hash with no accompanying model
+            // diff, so verification would fail while `git diff` showed nothing to explain it.
+            var projectionType = registration?.ProjectionType;
             discovered[entityType] = new SparkModelType(
                 entityType,
-                registration?.ProjectionType?.FullName,
-                registration?.IndexName);
+                projectionType?.FullName,
+                projectionType != null ? registration?.IndexName : null);
 
             CollectEmbedded(entityType, embedded);
-            if (registration?.ProjectionType is { } projectionType)
+            if (projectionType is not null)
                 CollectEmbedded(projectionType, embedded);
         }
 

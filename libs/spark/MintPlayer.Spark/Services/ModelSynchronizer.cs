@@ -398,9 +398,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var resolvedQueryType = projectionType?.FullName ?? projectionType?.Name;
         if (projectionType is null && entityTypeDef.QueryType is not null)
         {
+            // Deliberately does not tell the operator to add [FromIndex]: the likeliest cause is that
+            // the attribute IS present and correct, on a projection that lives outside the entry
+            // assembly. Index and projection discovery scan only the entry assembly, so a
+            // library-shipped projection is invisible here and at runtime alike.
             Console.WriteLine(
                 $"Cleared queryType '{entityTypeDef.QueryType}' on '{entityTypeDef.Name}': no projection is registered for it. " +
-                "Add [FromIndex] to the projection type if this was unintended.");
+                "Either the projection type was removed, or it lives outside the entry assembly — " +
+                "index and projection discovery only scan the entry assembly, so such a projection is " +
+                "invisible to both synchronization and the running application.");
         }
 
         entityTypeDef.QueryType = resolvedQueryType;
