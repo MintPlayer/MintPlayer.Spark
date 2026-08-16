@@ -13,7 +13,13 @@ public class SparkSyncActions_ByStatus : AbstractIndexCreationTask<SparkSyncActi
                 action.Status,
                 action.OwnerModuleName,
                 action.Collection,
-                action.CreatedAtUtc
+                action.CreatedAtUtc,
+                // Both fields exist for SyncActionRetrySweeper, which needs to find actions whose
+                // backoff has elapsed. Deliberately indexed rather than left to an auto-index: the
+                // sweeper runs on a timer against a collection that can be large, and this is the
+                // only query it makes.
+                action.NextAttemptAtUtc,
+                action.WakeUp
             };
     }
 }

@@ -21,9 +21,19 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
+        // Two ways in: a brand-new action (no retry scheduled yet), or one whose backoff the
+        // sweeper has since declared elapsed.
+        //
+        // Note WakeUp where the obvious spelling would be `NextAttemptAtUtc <= now()`. That
+        // comparison cannot work here and never did (#258): subscriptions are change-vector-driven,
+        // so the query runs only when the document is written, which is precisely when a future
+        // NextAttemptAtUtc is still in the future. RavenDB 7.2.1 evaluated it to a silent false;
+        // 7.2.5 refuses the query outright. SyncActionRetrySweeper evaluates the clock instead and
+        // writes the verdict to WakeUp, and that write is what brings the document back for
+        // re-evaluation.
         return new SubscriptionCreationOptions
         {
-            Query = "from SparkSyncActions where Status = 'Pending' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())",
+            Query = "from SparkSyncActions where Status = 'Pending' and (NextAttemptAtUtc = null or WakeUp = true)",
         };
     }
 
@@ -39,6 +49,12 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
             try
             {
                 syncAction.Status = ESyncActionStatus.Processing;
+
+                // Consume the wake-up — this delivery is what it was asking for. Every exit path
+                // below saves, so clearing it here covers success, rejection and retry alike. Left
+                // set, an action parked for another attempt would match the subscription again the
+                // moment anything wrote to it.
+                syncAction.WakeUp = false;
 
                 var ownerUrl = await ResolveModuleUrlAsync(syncAction.OwnerModuleName, cancellationToken);
                 var url = $"{ownerUrl.TrimEnd('/')}/spark/sync/apply";
