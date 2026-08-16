@@ -197,6 +197,10 @@ public static class SparkModelShape
             _ when underlying == typeof(DateOnly) => "date",
             _ when underlying == typeof(Guid) => "guid",
             _ when underlying == typeof(System.Drawing.Color) => "color",
+            // Must precede the IsComplexType fallback. TranslatedString is a class with properties,
+            // so it would otherwise be classified as AsDetail and emitted as a nested detail object —
+            // leaving the attribute's Value null on the wire and breaking the per-language merge.
+            _ when underlying == typeof(TranslatedString) => "TranslatedString",
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
@@ -244,10 +248,22 @@ public static class SparkModelShape
         return null;
     }
 
-    /// <summary>A class (other than string) that has properties of its own.</summary>
+    /// <summary>
+    /// A class (other than string) that has properties of its own, and therefore becomes a nested
+    /// model of its own.
+    /// <para>
+    /// <see cref="TranslatedString"/> is excluded despite being such a class: it is a value carried
+    /// as a single attribute with its own serializer, not a nested entity. Treating it as complex
+    /// classified it as AsDetail, emitted it as a nested detail object with a null value on the wire,
+    /// and generated a spurious <c>TranslatedString.json</c> model file.
+    /// </para>
+    /// </summary>
     public static bool IsComplexType(Type type)
     {
         if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
+            return false;
+
+        if (type == typeof(TranslatedString))
             return false;
 
         return type.GetCachedProperties().Length > 0;

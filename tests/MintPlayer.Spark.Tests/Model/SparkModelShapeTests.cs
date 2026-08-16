@@ -96,6 +96,17 @@ public class SparkModelShapeTests
     }
 
     [Fact]
+    public void TranslatedString_is_its_own_data_type_not_AsDetail()
+    {
+        // It is a class with properties, so the complex-type fallback would classify it as AsDetail —
+        // which emits it as a nested detail object with a null value on the wire, breaking the
+        // per-language merge, and generates a spurious TranslatedString.json model file.
+        SparkModelShape.GetDataType(typeof(TranslatedString)).Should().Be("TranslatedString");
+        SparkModelShape.IsComplexType(typeof(TranslatedString)).Should().BeFalse(
+            "it is a value carried in one attribute, not a nested entity");
+    }
+
+    [Fact]
     public void Canonical_text_uses_newline_and_no_BOM()
     {
         // Windows writes the hash file, Linux verifies it. Environment.NewLine or a BOM here would

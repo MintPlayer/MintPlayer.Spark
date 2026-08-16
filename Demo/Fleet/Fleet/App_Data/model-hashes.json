@@ -1,19 +1,17 @@
 {
   "version": 1,
-  "modelHash": "a2ec78f059421c93374518770f869ab29e927a4a0a33dcb90e4bce1488bf6f74",
+  "modelHash": "79f3a49a1d6132e8e347dfff6e133d75b7b3819f9286c7689007e9d166b4d462",
   "contextRoots": "413ca4da55c2ba97081d85e13fd185f321b34ef2c0e2a098116947221739e1ff",
-  "modelFiles": "37e0419ad7f9ba5395fdcaabfc99e2c92c6eafda2de2c52d3834b4920fdd6525",
+  "modelFiles": "1d0e88cf238f21a43016507fc86de49e9a4e8252442c765ed219368a45bca651",
   "files": {
-    "Car.json": "bf5690ab72b28869e9c9b0cbeb2dce3587fb673c2a710b4bc70765ff764aeb24",
+    "Car.json": "95f91ad28d1ec947b4e74ecd8c075aa7104188467f7142d9d474ffb45b6d4fa2",
     "Company.json": "ba9d361ebc8ad0237681963fa36aac486b496d7abc6d3327146965fc15ae1346",
     "ConfirmDeleteCar.json": "fe863a8a7713a62883ba014debea9ebc6dd8c550d340b931e079bc50ef834fc6",
-    "Person.json": "f199e8f52ead23656040b4aa5a3b264f9e1e0c683023f9aeb9c9ee8eda4798bc",
-    "TranslatedString.json": "c4aa6756ef400b146e6174992e6d6de0653addcda548ef9c68a0a2e6ee787678"
+    "Person.json": "f199e8f52ead23656040b4aa5a3b264f9e1e0c683023f9aeb9c9ee8eda4798bc"
   },
   "entities": {
-    "Car": "383085d2ac06d9681a7fd0a9f6ceb005353d056a6343d532e5521407961b5d26",
+    "Car": "6dbdb562506b30e27ee75d3628d0323962f77562541277f2f1926d4f667fd1ea",
     "Company": "68f249d29fdef62f762a405d7abb8bd582d1e6663a21f817dfc4dff523c3acf4",
-    "Person": "51995840cd8a350e60c009a6b3ef90477b366b3ebcbbc27e2c848837cad2a174",
-    "TranslatedString": "e60f2f57a4c01059d9c480ae49309fa46b469e93dd223a4b9233b152b3315102"
+    "Person": "51995840cd8a350e60c009a6b3ef90477b366b3ebcbbc27e2c848837cad2a174"
   }
 }

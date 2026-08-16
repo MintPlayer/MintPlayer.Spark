@@ -512,26 +512,21 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 }
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
-                if (referenceAttr != null)
-                {
-                    existingAttr.ReferenceType = referenceType;
-                    existingAttr.Query = resolvedQuery;
-                }
+                // Assigned unconditionally, including back to null. These are all derived from the
+                // CLR shape, so leaving a stale value behind when the attribute or type changes
+                // persists a reference to something that no longer exists — and because they are
+                // part of the structural hash, verification would then confirm the dead reference
+                // rather than catch it.
+                existingAttr.ReferenceType = referenceAttr != null ? referenceType : null;
+                existingAttr.Query = referenceAttr != null ? resolvedQuery : null;
 
                 // IsArray is derived purely from the CLR property shape, so always
                 // refresh it (covers Reference/scalar arrays, not just AsDetail).
                 existingAttr.IsArray = isArray;
                 existingAttr.IsSortable = isSortable;
 
-                if (dataType == "AsDetail")
-                {
-                    existingAttr.AsDetailType = asDetailType;
-                }
-
-                if (lookupRefAttr != null)
-                {
-                    existingAttr.LookupReferenceType = lookupReferenceType;
-                }
+                existingAttr.AsDetailType = dataType == "AsDetail" ? asDetailType : null;
+                existingAttr.LookupReferenceType = lookupRefAttr != null ? lookupReferenceType : null;
 
                 // Set InCollectionType/InQueryType flags only when projection type exists
                 if (projectionType != null)

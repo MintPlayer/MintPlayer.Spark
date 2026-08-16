@@ -231,12 +231,11 @@
           "fr": "Description",
           "nl": "Omschrijving"
         },
-        "dataType": "AsDetail",
+        "dataType": "TranslatedString",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 10,
-        "asDetailType": "MintPlayer.Spark.Abstractions.TranslatedString",
         "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",

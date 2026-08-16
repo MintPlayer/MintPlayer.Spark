@@ -43,8 +43,6 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 2,
-        "query": "GetProjectColumns",
-        "referenceType": "WebhooksDemo.Entities.ProjectColumn",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
