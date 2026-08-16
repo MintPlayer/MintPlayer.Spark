@@ -99,15 +99,29 @@
           }
         ]
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "a20e8400-e29b-41d4-a716-446655440002",
       "name": "GetPeople",
-      "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+      "description": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }]
+      "sortColumns": [
+        {
+          "property": "LastName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Person",
+      "isStreamingQuery": false
     }
   ]
 }

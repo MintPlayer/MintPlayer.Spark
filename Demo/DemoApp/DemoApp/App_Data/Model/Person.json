@@ -11,6 +11,7 @@
     "queryType": "DemoApp.Data.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FirstName} {LastName}",
+    "breadcrumbProjectionSatisfiable": false,
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -137,8 +138,7 @@
         "query": "GetCompanies",
         "referenceType": "DemoApp.Library.Entities.Company",
         "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
@@ -154,12 +154,12 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 7,
-        "renderer": "address-card",
         "asDetailType": "DemoApp.Library.Entities.Address",
         "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "renderer": "address-card"
       },
       {
         "id": "65cf3b91-01bd-4b10-a5e9-a81b549bc69e",
@@ -196,23 +196,50 @@
         "showedOn": "Query",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "880e8400-e29b-41d4-a716-446655440000",
       "name": "GetPeople",
-      "description": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+      "description": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      },
       "source": "Database.People",
-      "sortColumns": [{ "property": "LastName", "direction": "asc" }]
+      "sortColumns": [
+        {
+          "property": "LastName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Person",
+      "isStreamingQuery": false
     },
     {
       "id": "d40f9500-f39c-52e5-b827-557766551002",
       "name": "Company_People",
-      "description": { "en": "People in Company", "fr": "Personnes dans l'entreprise", "nl": "Personen in bedrijf" },
+      "description": {
+        "en": "People in Company",
+        "fr": "Personnes dans l'entreprise",
+        "nl": "Personen in bedrijf"
+      },
       "source": "Custom.Company_People",
-      "sortColumns": [{ "property": "FullName", "direction": "asc" }],
-      "alias": "company-people"
+      "alias": "company-people",
+      "sortColumns": [
+        {
+          "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Person",
+      "isStreamingQuery": false
     }
   ]
 }

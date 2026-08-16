@@ -90,6 +90,21 @@ jobs:
     - name: Build affected projects (Nx)
       run: npx nx affected --target=build
 
+    # Catches a change that touched the entity classes without regenerating the model. Without this
+    # the mismatch is only noticed at deployment, where it stops the application from starting.
+    #
+    # --spark-verify-model writes nothing and needs no database: model synchronization reflects over
+    # property types and never opens a session, which is why no RavenDB service container appears
+    # here. --no-build reuses the output built above, so the model verified is the one the binary was
+    # compiled against. Exit 3 means drift; the run fails before the slow test suite.
+    - name: Verify Spark models are in sync
+      run: |
+        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+          echo "::group::$project"
+          dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
+          echo "::endgroup::"
+        done
+
     - name: Run affected tests (.NET + Angular via Nx)
       run: npx nx affected --target=test
       env:

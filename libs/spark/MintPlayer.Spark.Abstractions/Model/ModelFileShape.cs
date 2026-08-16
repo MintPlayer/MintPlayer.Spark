@@ -125,8 +125,13 @@ public static class ModelFileShape
 
         // Validation is structural: dropping a rule from a deployed model weakens what the server
         // accepts, which is exactly the kind of edit this is meant to notice.
+        //
+        // Canonicalised rather than taken as raw text. GetRawText() returns the original bytes,
+        // including indentation and line endings — so a CRLF-to-LF rewrite between the machine that
+        // writes the file and the container that verifies it would change the hash and stop the
+        // application from starting. Found exactly that way.
         var rendered = rules.EnumerateArray()
-            .Select(r => r.GetRawText())
+            .Select(Canonicalize)
             .OrderBy(r => r, StringComparer.Ordinal);
 
         builder.Append("\trules=[").Append(string.Join(",", rendered)).Append(']');
@@ -142,6 +147,36 @@ public static class ModelFileShape
     {
         if (parent.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
             builder.Append('\t').Append(name).Append('=').Append(Render(value));
+    }
+
+    /// <summary>
+    /// Whitespace-free rendering with object keys ordinally sorted, so only a change of meaning
+    /// changes the text. Formatting, key order and line endings are all invisible here.
+    /// </summary>
+    private static string Canonicalize(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var members = element.EnumerateObject()
+                    .OrderBy(p => p.Name, StringComparer.Ordinal)
+                    .Select(p => $"\"{p.Name}\":{Canonicalize(p.Value)}");
+                return "{" + string.Join(",", members) + "}";
+
+            case JsonValueKind.Array:
+                // Array order is meaningful, so it is preserved.
+                return "[" + string.Join(",", element.EnumerateArray().Select(Canonicalize)) + "]";
+
+            case JsonValueKind.String:
+                return JsonSerializer.Serialize(element.GetString());
+
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                return "null";
+
+            default:
+                return element.GetRawText();
+        }
     }
 
     private static string Render(JsonElement value) => value.ValueKind switch

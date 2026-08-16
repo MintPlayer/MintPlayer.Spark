@@ -181,6 +181,32 @@ public class ModelHashWriteTests : IDisposable
         Recompute().ModelHash.Should().Be(original);
     }
 
+    [Fact]
+    public void Reformatting_a_file_with_validation_rules_does_not_invalidate_the_hash()
+    {
+        // Regression: validation rules were hashed via GetRawText(), which returns the original
+        // bytes including indentation and line endings. Git rewriting CRLF to LF between the Windows
+        // machine that writes the file and the Linux container that verifies it would then have
+        // stopped every containerised deployment from starting. Found end-to-end on a demo app.
+        const string noRules = "\"rules\": []";
+        const string withRules = "\"rules\": [ { \"type\": \"minLength\", \"value\": 2 } ]";
+
+        Synchronize();
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(noRules, withRules));
+        var original = Recompute().ModelHash;
+
+        // Convert to LF, then re-indent — neither changes what the rule means.
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace("\r\n", "\n"));
+        Recompute().ModelHash.Should().Be(original, "line endings must not affect the hash");
+
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(
+            withRules.Replace("\r\n", "\n"),
+            "\"rules\": [\n        {\n          \"value\": 2,\n          \"type\": \"minLength\"\n        }\n      ]"));
+
+        Recompute().ModelHash.Should().Be(original,
+            "reindenting and reordering keys within a rule must not affect the hash either");
+    }
+
     private void Rewrite(string fileName, Func<string, string> edit)
     {
         var path = Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), fileName);

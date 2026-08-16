@@ -158,7 +158,6 @@
         "isReadOnly": false,
         "order": 8,
         "isArray": false,
-        "inQueryType": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "renderer": "video-player",
@@ -205,24 +204,6 @@
         "rules": []
       },
       {
-        "id": "3f29e4b0-7c1a-4d86-9e0b-5b7c8d93f402",
-        "name": "Description",
-        "label": {
-          "en": "Description",
-          "fr": "Description",
-          "nl": "Omschrijving"
-        },
-        "dataType": "TranslatedString",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 10,
-        "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
-        "rules": []
-      },
-      {
         "id": "9f4d17a2-3c81-4b6a-8e52-2a7b1d0c4e93",
         "name": "Manager",
         "label": {
@@ -235,9 +216,28 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 9,
-        "isArray": false,
         "query": "GetPeople",
         "referenceType": "Fleet.Replicated.Person",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3f29e4b0-7c1a-4d86-9e0b-5b7c8d93f402",
+        "name": "Description",
+        "label": {
+          "en": "Description",
+          "fr": "Description",
+          "nl": "Omschrijving"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "asDetailType": "MintPlayer.Spark.Abstractions.TranslatedString",
+        "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -260,32 +260,71 @@
         "showedOn": "PersistentObject",
         "rules": []
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "a20e8400-e29b-41d4-a716-446655440001",
       "name": "GetCars",
-      "description": { "en": "Cars", "fr": "Voitures", "nl": "Auto's" },
+      "description": {
+        "en": "Cars",
+        "fr": "Voitures",
+        "nl": "Auto's"
+      },
       "source": "Database.Cars",
-      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
-      "renderMode": "VirtualScrolling"
+      "sortColumns": [
+        {
+          "property": "LicensePlate",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "VirtualScrolling",
+      "useProjection": false,
+      "entityType": "Car",
+      "isStreamingQuery": false
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440010",
       "name": "Stolen_Cars",
-      "description": { "en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's" },
+      "description": {
+        "en": "Stolen Cars",
+        "fr": "Voitures volées",
+        "nl": "Gestolen auto's"
+      },
       "source": "Custom.Stolen_Cars",
-      "sortColumns": [{ "property": "LicensePlate", "direction": "asc" }],
-      "alias": "stolen-cars"
+      "alias": "stolen-cars",
+      "sortColumns": [
+        {
+          "property": "LicensePlate",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Car",
+      "isStreamingQuery": false
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440011",
       "name": "Recent_Cars",
-      "description": { "en": "Recent Cars", "fr": "Voitures récentes", "nl": "Recente auto's" },
+      "description": {
+        "en": "Recent Cars",
+        "fr": "Voitures récentes",
+        "nl": "Recente auto's"
+      },
       "source": "Custom.Recent_Cars",
-      "sortColumns": [{ "property": "Year", "direction": "desc" }],
-      "alias": "recent-cars"
+      "alias": "recent-cars",
+      "sortColumns": [
+        {
+          "property": "Year",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Car",
+      "isStreamingQuery": false
     }
   ]
 }

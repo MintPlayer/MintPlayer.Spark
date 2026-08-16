@@ -38,7 +38,7 @@
           "fr": "Colonne cible",
           "nl": "Doelkolom"
         },
-        "dataType": "Reference",
+        "dataType": "string",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,

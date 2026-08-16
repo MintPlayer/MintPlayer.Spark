@@ -22,8 +22,8 @@
         "order": 1,
         "query": "GetProfessions",
         "referenceType": "HR.Entities.Profession",
-        "referenceDisplayType": "Modal",
         "isArray": false,
+        "referenceDisplayType": "Modal",
         "showedOn": "Query, PersistentObject",
         "rules": []
       },

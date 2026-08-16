@@ -87,23 +87,48 @@
           }
         ]
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": [
     {
       "id": "a20e8400-e29b-41d4-a716-446655440003",
       "name": "GetCompanies",
-      "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+      "description": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      },
       "source": "Database.Companies",
-      "sortColumns": [{ "property": "Name", "direction": "asc" }]
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Company",
+      "isStreamingQuery": false
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440004",
       "name": "StreamCompanies",
-      "description": { "en": "Companies (Live)", "fr": "Entreprises (En direct)", "nl": "Bedrijven (Live)" },
+      "description": {
+        "en": "Companies (Live)",
+        "fr": "Entreprises (En direct)",
+        "nl": "Bedrijven (Live)"
+      },
       "source": "Custom.StreamItems",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
       "entityType": "Company",
-      "sortColumns": [{ "property": "Name", "direction": "asc" }],
       "isStreamingQuery": true
     }
   ]

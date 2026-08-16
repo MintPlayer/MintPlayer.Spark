@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
 using System.Reflection;
 
@@ -20,12 +21,23 @@ public static class SparkDevelopmentExtensions
     /// <summary>Exit code for a Spark misconfiguration that prevented the command from running.</summary>
     private const int ExitMisconfigured = 2;
 
+    /// <summary>Exit code for a model that is out of sync, reported by <c>--spark-verify-model</c>.</summary>
+    private const int ExitDrift = 3;
+
     /// <summary>
-    /// Runs model synchronization if <c>--spark-synchronize-model</c> is present in
-    /// <paramref name="args"/>, and reports whether the host should stop instead of starting.
+    /// Handles the build-time model commands and reports whether the host should stop instead of
+    /// starting.
+    /// <list type="bullet">
+    /// <item><c>--spark-synchronize-model</c> regenerates <c>App_Data/Model</c> and the hash file.</item>
+    /// <item><c>--spark-verify-model</c> writes nothing and exits 3 if the model has drifted — the
+    /// merge-queue gate.</item>
+    /// </list>
     /// <para>
     /// The entity context type is taken from the registration made by
     /// <c>spark.UseContext&lt;TContext&gt;()</c>, so no type argument is needed here.
+    /// </para>
+    /// <para>
+    /// Neither command opens a database connection, so both run in CI.
     /// </para>
     /// </summary>
     /// <returns>
@@ -45,13 +57,18 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (!args.Contains(SynchronizeFlag))
+        var verifyOnly = args.Contains(VerifyFlag);
+        if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
 
         if (!TryCreateRegisteredContext(builder.Services, out var sparkContext))
             return true;
 
-        Synchronize(builder, sparkContext);
+        if (verifyOnly)
+            Verify(builder, sparkContext);
+        else
+            Synchronize(builder, sparkContext);
+
         return true;
     }
 
@@ -66,10 +83,15 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (!args.Contains(SynchronizeFlag))
+        var verifyOnly = args.Contains(VerifyFlag);
+        if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
 
-        Synchronize(builder, new TContext());
+        if (verifyOnly)
+            Verify(builder, new TContext());
+        else
+            Synchronize(builder, new TContext());
+
         return true;
     }
 
@@ -99,26 +121,85 @@ public static class SparkDevelopmentExtensions
             .Write(contentRootPath);
     }
 
+    /// <summary>
+    /// Reports whether the committed model still matches the entity classes, writing nothing.
+    /// <para>
+    /// This is the merge-queue gate: it answers "did this change touch the entities without
+    /// regenerating the model?" without mutating the workspace, so later steps still see the tree as
+    /// the pull request left it. Regenerating and diffing would work too, but it dirties the
+    /// checkout, needs a git index, and reports drift for any unrelated dirt.
+    /// </para>
+    /// </summary>
+    private static void Verify(WebApplicationBuilder builder, SparkContext sparkContext)
+    {
+        if (!TryBuildIndexRegistry(out var indexRegistry))
+            return;
+
+        var contentRoot = builder.Environment.ContentRootPath;
+        var expected = ModelHashFile.Read(contentRoot);
+        var actual = ModelSynchronizer.BuildModelHashes(sparkContext.GetType(), indexRegistry, contentRoot);
+
+        if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
+        {
+            Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
+            return;
+        }
+
+        if (expected is null)
+        {
+            Console.Error.WriteLine($"Spark model is unverifiable: {ModelHashFile.PathFor(contentRoot)} is missing or unreadable.");
+        }
+        else
+        {
+            Console.Error.WriteLine("Spark model is out of sync.");
+            Console.Error.WriteLine($"  expected {expected.ModelHash}");
+            Console.Error.WriteLine($"  actual   {actual.ModelHash}");
+            Console.Error.WriteLine();
+
+            // Name what moved. A merge queue that only prints two hashes leaves the author guessing;
+            // this is the difference between a one-line fix and a bisect.
+            foreach (var line in ModelHashVerifier.DescribeDrift(expected, actual))
+                Console.Error.WriteLine("  " + line);
+        }
+
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     private static void Synchronize(WebApplicationBuilder builder, SparkContext sparkContext)
     {
         // Session stays null on purpose. The synchronizer reflects over the context's property
         // TYPES and never invokes a getter, so no RavenDB connection is opened — which is what
         // makes this runnable in CI. Opening one here would reintroduce that dependency.
-        var indexRegistry = new IndexRegistry();
-        var entryAssembly = Assembly.GetEntryAssembly();
-        if (entryAssembly is null)
-        {
-            Console.Error.WriteLine("Spark: could not determine the entry assembly, so index and projection types cannot be discovered.");
-            Environment.ExitCode = ExitMisconfigured;
+        if (!TryBuildIndexRegistry(out var indexRegistry))
             return;
-        }
-
-        SparkExtensions.PopulateIndexRegistry(indexRegistry, entryAssembly);
 
         var synchronizer = new ModelSynchronizer(builder.Environment, indexRegistry);
         synchronizer.SynchronizeModels(sparkContext);
 
         Console.WriteLine("Model synchronization completed.");
+    }
+
+    /// <summary>
+    /// Builds an index registry from the entry assembly. Shared by both commands so a synchronize and
+    /// the verify that checks it can never see a different set of projections.
+    /// </summary>
+    private static bool TryBuildIndexRegistry(out IIndexRegistry indexRegistry)
+    {
+        indexRegistry = new IndexRegistry();
+
+        if (Assembly.GetEntryAssembly() is not { } entryAssembly)
+        {
+            Console.Error.WriteLine(
+                "Spark: could not determine the entry assembly, so index and projection types cannot be discovered.");
+            Environment.ExitCode = ExitMisconfigured;
+            return false;
+        }
+
+        SparkExtensions.PopulateIndexRegistry(indexRegistry, entryAssembly);
+        return true;
     }
 
     /// <summary>

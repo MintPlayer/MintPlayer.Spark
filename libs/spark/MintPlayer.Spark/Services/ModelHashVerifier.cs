@@ -129,7 +129,7 @@ public static class ModelHashVerifier
     /// stale <c>App_Data</c> — a distinction a single roll-up hash could not offer, and the first
     /// thing an operator needs at 3am.
     /// </summary>
-    private static IEnumerable<string> DescribeDrift(ModelHashFile expected, ModelHashFile actual)
+    internal static IEnumerable<string> DescribeDrift(ModelHashFile expected, ModelHashFile actual)
     {
         var reported = 0;
 

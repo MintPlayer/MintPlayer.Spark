@@ -11,7 +11,6 @@
     "queryType": "DemoApp.Data.VCompany",
     "indexName": "Companies_Overview",
     "breadcrumb": "{Name}",
-    "queries": ["company-people"],
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -90,15 +89,31 @@
           }
         ]
       }
+    ],
+    "queries": [
+      "company-people"
     ]
   },
   "queries": [
     {
       "id": "880e8400-e29b-41d4-a716-446655440001",
       "name": "GetCompanies",
-      "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+      "description": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      },
       "source": "Database.Companies",
-      "sortColumns": [{ "property": "Name", "direction": "asc" }]
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Company",
+      "isStreamingQuery": false
     }
   ]
 }
