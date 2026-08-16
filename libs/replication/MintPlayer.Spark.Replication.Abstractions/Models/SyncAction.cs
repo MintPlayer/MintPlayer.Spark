@@ -98,7 +98,8 @@ public class SyncAction<T> where T : class
         var dict = new Dictionary<string, object?>();
         foreach (var prop in typeof(T).GetCachedProperties())
         {
-            if (prop.CanRead)
+            // Excluded from the model, so excluded from the transport payload too.
+            if (prop.CanRead && !prop.IsIgnoredForSparkModel())
                 dict[prop.Name] = AccessorCache.GetGetter(prop)(entity!);
         }
         return dict;

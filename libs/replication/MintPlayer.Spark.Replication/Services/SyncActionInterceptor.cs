@@ -36,9 +36,17 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         var collection = attr.SourceCollection ?? InferCollectionName(attr.OriginalType ?? entityType);
         var actionType = obj.Id == null ? SyncActionType.Insert : SyncActionType.Update;
 
+        // These attributes come from the client, so an [IgnoreProperty] name could be posted
+        // even though it is not part of the model. Drop it here rather than trusting the input:
+        // it would otherwise be transmitted AND listed as writable on the owner module.
+        var ignoredNames = entityType.GetCachedProperties()
+            .Where(p => p.IsIgnoredForSparkModel())
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
         // Use IsValueChanged from PO attributes to determine which properties changed
         var changedProperties = obj.Attributes
-            .Where(a => a.IsValueChanged)
+            .Where(a => a.IsValueChanged && !ignoredNames.Contains(a.Name))
             .Select(a => a.Name)
             .ToArray();
 
@@ -52,6 +60,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         var data = new Dictionary<string, object?>();
         foreach (var attribute in obj.Attributes)
         {
+            if (ignoredNames.Contains(attribute.Name)) continue;
             data[attribute.Name] = NormalizeValue(attribute.Value);
         }
         if (obj.Id != null)
@@ -90,7 +99,9 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         var data = new Dictionary<string, object?>();
         foreach (var prop in entityType.GetCachedProperties())
         {
-            if (prop.CanRead)
+            // Ignored properties are not part of the model, so they are not transmitted
+            // cross-module either.
+            if (prop.CanRead && !prop.IsIgnoredForSparkModel())
                 data[prop.Name] = NormalizeValue(AccessorCache.GetGetter(prop)(entity));
         }
 
@@ -177,16 +188,17 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         => type.GetCachedCustomAttribute<ReplicatedAttribute>();
 
     /// <summary>
-    /// Gets the property names from the replicated entity type, excluding "Id".
-    /// These are the only properties that should be synced back to the owner,
-    /// since the replicated type only contains the subset of fields from the ETL script.
+    /// Gets the property names from the replicated entity type, excluding "Id" and anything
+    /// marked <c>[IgnoreProperty]</c>. These are the only properties that should be synced back
+    /// to the owner, since the replicated type only contains the subset of fields from the ETL
+    /// script. This list is the owner module's write authorization, so an excluded property must
+    /// not appear in it.
     /// </summary>
     private static string[] GetPropertyNames(Type entityType)
     {
         return ReflectionCache.GetOrAdd<(string Op, Type Type), string[]>(
             ("SyncActionInterceptor.ReplicatedPropNames", entityType),
-            static k => k.Type.GetCachedProperties()
-                .Where(p => p.CanRead && p.CanWrite && !string.Equals(p.Name, "Id", StringComparison.Ordinal))
+            static k => k.Type.GetSparkModelProperties()
                 .Select(p => p.Name)
                 .ToArray());
     }

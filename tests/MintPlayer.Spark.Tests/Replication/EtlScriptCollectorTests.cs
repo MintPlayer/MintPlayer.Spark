@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Services;
 
@@ -86,6 +87,11 @@ public class ReplicatedCarFromFleet
 {
     public string? Id { get; set; }
     public string Plate { get; set; } = "";
+
+    // #254 — must not cross the module boundary, in the data or the writable-property list.
+    // The Properties assertions elsewhere in these tests double as proof of that.
+    [IgnoreProperty]
+    public string InternalToken { get; set; } = "";
 }
 
 [Replicated(SourceModule = "Fleet", SourceCollection = "VehicleDrivers", EtlScript = "loadToDrivers({ Name: this.Name });")]

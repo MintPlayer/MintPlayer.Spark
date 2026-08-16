@@ -182,6 +182,34 @@ public class SyncActionInterceptorTests : SparkTestDriver
         stored.Status.Should().Be(ESyncActionStatus.Pending);
     }
 
+    [Fact]
+    public async Task HandleSaveAsync_omits_ignored_properties_from_Data_and_the_writable_list()
+    {
+        // #254 — Properties is the owner module's write authorization, so an ignored property
+        // must appear in neither it nor the transmitted data.
+        var interceptor = NewInterceptor(moduleName: "Fleet");
+        var po = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = null,
+            Name = "new",
+            ObjectTypeId = Guid.NewGuid(),
+            Attributes =
+            [
+                new() { Name = "Plate", Value = "ABC-123", IsValueChanged = true },
+                new() { Name = "InternalToken", Value = "s3cret", IsValueChanged = true },
+            ],
+        };
+
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        WaitForIndexing(Store);
+
+        using var session = Store.OpenAsyncSession();
+        var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];
+
+        action.Properties.Should().Equal("Plate");
+        action.Data!.Should().NotContainKey("InternalToken");
+    }
+
     private class NonReplicated
     {
         public string? Id { get; set; }
