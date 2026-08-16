@@ -25,7 +25,7 @@
     <ItemGroup>
         <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
         <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
-        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.19.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.20.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>
