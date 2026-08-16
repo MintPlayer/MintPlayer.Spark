@@ -6,6 +6,10 @@
 Part 1 of #253 (`[IgnoreProperty]`) shipped separately as #254 / PR #255. This covers everything else
 the issue proposed.
 
+> Line references below are **as of the code before this change** — they locate the findings, and the
+> edits have since shifted them (e.g. the wholesale assignment at `:481` now sits at `:530`). Search by
+> symbol rather than by line.
+
 ## Background
 
 `ModelSynchronizer` regenerates `App_Data/Model/<Type>.json` from CLR reflection. It does not delete
@@ -195,3 +199,24 @@ read/write `this[...]` would pass the filter and surface as an attribute named `
   This is the largest behavioural surface in the PR and the reason it is a separate milestone.
 - **Breadcrumb validation** (`:522-540`) throws when a template references an unknown attribute.
   Preserving orphans can only *reduce* those failures, never introduce them.
+
+## Results
+
+Delivered in PR [#263](https://github.com/MintPlayer/MintPlayer.Spark/pull/263) — 5 commits, CI green,
+**1487 tests** (1389 + 60 + 38). Shipping as `10.0.0-preview.50`.
+
+Every requirement met (R1–R8). Two risks turned out smaller than expected:
+
+- **R5's blast radius is currently zero.** No entity in `Demo/` or `libs/` declares a get-only
+  property, so nothing regenerates differently today. The change matters going forward, not on upgrade.
+- **A required preserved attribute blocks saves**, which the plan did not anticipate. `ValidationService`
+  validates against the *model*, so a required attribute nothing can populate fails every save. It
+  warns rather than clearing `IsRequired` — silently rewriting hand-authored model state is the failure
+  mode this whole PRD exists to remove — and a client-submitted value can legitimately satisfy it.
+
+One documentation gap surfaced late and was closed here: **`[IgnoreProperty]` vs `[JsonIgnore]` had
+never actually been documented** in `MintPlayer.Spark/README.md`, despite being in #253's Files table
+and in #254's plan. It now has its own section.
+
+D1 (no prune) stands. If it is ever revisited, the prerequisite is unchanged: a positive marker **and**
+a grandfathering story for attributes authored before it existed.

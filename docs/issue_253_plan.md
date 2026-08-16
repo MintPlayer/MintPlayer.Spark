@@ -6,12 +6,14 @@
 Milestones are ordered so the riskiest change (M2) lands on top of a green, independently shippable
 fix (M1). One commit each.
 
-| | Milestone | Status |
+**All milestones complete.** PR [#263](https://github.com/MintPlayer/MintPlayer.Spark/pull/263), CI green.
+
+| | Milestone | Commit |
 |---|---|---|
-| M1 | Preserve attributes with no CLR property + log | pending |
-| M2 | Split the property filter; emit get-only as `IsReadOnly = true` | pending |
-| M3 | Exclude indexers | pending |
-| M4 | Docs, follow-up issues, lockstep version bump | pending |
+| M1 | Preserve attributes with no CLR property + log | `194532b` |
+| M2 | Split the property filter; emit get-only as `IsReadOnly = true` | `cef2e72` |
+| M3 | Exclude indexers | `ee64a9c` |
+| M4 | Docs, follow-up issues, lockstep version bump | `7e4033e` |
 
 ---
 
@@ -96,12 +98,18 @@ no `"Item"` attribute. Latent bug — no production impact expected, closing it 
 - Record in the PRD that `--prune-orphaned-attributes` was considered and rejected (D1), so the next
   person does not re-litigate it from scratch.
 
-## Verification
+## Verification — results
 
-Full sweep at the end, not per milestone: `MintPlayer.Spark.Tests`,
-`MintPlayer.Spark.SourceGenerators.Tests`, `MintPlayer.Spark.Client.Tests`. Re-run any failure in
-isolation before treating it as real — this suite has a load-sensitivity history.
+**1487 tests pass** (1389 + 60 + 38). CI green on the first run.
 
-Additionally, run `--spark-synchronize-model` against the demo apps and **inspect the JSON diff**. M2
-changes generated output for every entity with a get-only property; a green test suite does not tell
-us whether that output is *right*.
+Every new test was confirmed to **fail without its fix**, not merely to pass with it:
+
+- M1's three tests fail when `ModelSynchronizer.cs` is reverted.
+- M3's indexer test fails when the `GetIndexParameters()` guard is removed.
+- Pointing replication's write-authorization list back at the model filter — the exact mistake M2
+  exists to prevent — fails **3 tests**, two of which predate this branch.
+
+The planned demo-app diff **found nothing to inspect**: no entity in `Demo/` or `libs/` declares a
+get-only property, so M2 changes no generated output there. The generated JSON for a computed property
+was inspected directly instead, and its shape (`dataType`, `isReadOnly`, `isRequired`, `isVisible`) is
+now pinned by assertions rather than by having been eyeballed once.

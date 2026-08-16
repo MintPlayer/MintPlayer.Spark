@@ -390,7 +390,7 @@ There is deliberately **no `--prune-orphaned-attributes` flag**: nothing in the 
 
 > A kept attribute that is `isRequired` will block saves, because validation runs against the model and nothing can populate it. Synchronization warns about this rather than editing your JSON. Set `"isRequired": false`, or remove the attribute.
 
-The one exception to "never deletes" is [`[IgnoreProperty]`](#ignoreproperty): marking a property ignored is an explicit instruction to drop its attribute.
+The one exception to "never deletes" is [`[IgnoreProperty]`](#ignoreproperty-vs-jsonignore): marking a property ignored is an explicit instruction to drop its attribute.
 
 ### Computed (get-only) properties
 
@@ -403,6 +403,36 @@ public decimal Total => Quantity * UnitPrice;   // isReadOnly: true, isRequired:
 ```
 
 It is displayed like any other attribute and never written back. Use `[IgnoreProperty]` to leave one out of the model entirely.
+
+### `[IgnoreProperty]` vs `[JsonIgnore]`
+
+They solve different problems and compose cleanly:
+
+| | Effect |
+|---|---|
+| `[IgnoreProperty]` | Keeps the property **out of the model**. Still stored in the RavenDB document. |
+| `[JsonIgnore]` | Keeps the property **out of the document**. Still appears in the model. |
+| Both | Neither persisted nor modelled. |
+
+```csharp
+public class Customer
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = "";
+
+    [IgnoreProperty]                        // stored, but not part of the model
+    public string SyncEtag { get; set; } = "";
+
+    [JsonIgnore]                            // modelled, but not stored
+    public string ScratchNote { get; set; } = "";
+}
+```
+
+`[IgnoreProperty]` is read by the model synchronizer and the entity mapper: the property gets no attribute, is never populated onto or read back from a `PersistentObject`, is not `.Include()`d, is not transmitted or declared writable by replication, and gets no `AttributeNames` constant.
+
+`[JsonIgnore]` is a serialization attribute. Spark configures RavenDB with Newtonsoft's contract resolver, which honours it — but neither the synchronizer nor the mapper reads serialization attributes, so it has no effect on the model.
+
+> **Ignoring an existing property is destructive.** The next synchronize removes its attribute block, discarding its id, translated label, rules, renderer and group; re-adding the property later regenerates it with a **new id**. This is the one case where synchronization deletes anything — an attribute whose property was merely renamed or removed is kept.
 
 ## JSON Model Structure
 

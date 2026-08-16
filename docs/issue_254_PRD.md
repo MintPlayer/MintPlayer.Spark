@@ -20,6 +20,11 @@ No custom attribute is inspected anywhere, so the only exclusions available toda
 property `Id`, make it non-public, or drop its getter/setter. `[JsonIgnore]` does **nothing** — a
 real trap for anyone arriving from EF or `System.Text.Json`.
 
+> **Superseded in part by #253 (preview.50):** dropping the *setter* no longer excludes a property.
+> Get-only computed properties are now part of the model, surfaced as read-only attributes, so an
+> entity relying on that to stay out of the model will gain one. Use `[IgnoreProperty]` — which is
+> what this PRD went on to add.
+
 The existing near-misses all fail for a *stored* property that needs a public setter:
 `"isVisible": false` and `"isReadOnly": true` block write-back but **still serialize the value to
 the client** (`PopulateAttributeValues` has no visibility check); `GetProtectedAttributesAsync` is
