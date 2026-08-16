@@ -143,6 +143,7 @@ MintPlayer.Spark/
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
+| [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
@@ -255,7 +256,40 @@ cd Demo/DemoApp
 dotnet run --spark-synchronize-model
 ```
 
-This updates files in `App_Data/Model/` based on your SparkContext properties.
+This updates files in `App_Data/Model/` based on your SparkContext properties, and writes
+`App_Data/modelHashes.json` — a fingerprint of the entity classes those files were generated from.
+
+> **A deployed application refuses to start when that fingerprint does not match.** Change an entity
+> and forget to re-run synchronization, and the app fails at startup rather than serving a model that
+> no longer describes its classes — which otherwise surfaces as missing columns and values silently
+> dropped on save. In Development it warns instead, since drift there is normal while you are editing.
+>
+> Commit `App_Data/modelHashes.json` along with `App_Data/Model/`. See **[docs/model-hash.md](docs/model-hash.md)**
+> for what the hash covers, how to verify it in CI with `--spark-verify-model`, how to resolve a merge
+> conflict on it, and the emergency `SPARK_MODEL_HASH_OVERRIDE` escape hatch.
+
+#### Upgrading an existing application
+
+`modelHashes.json` did not exist before `10.0.0-preview.51`, and the startup check fails closed on a
+missing one — so an application upgrading from an earlier preview will **not start in production**
+until it has been generated. The API changes below are compile errors and cannot be deployed by
+accident; this one is not, so do it first.
+
+1. `dotnet run --spark-synchronize-model`
+2. Commit the new `App_Data/modelHashes.json` **and** the regenerated `App_Data/Model/*.json` — model
+   attributes are now written in name order, which reorders existing files once.
+3. Move model synchronization from the middleware to the builder phase, before `builder.Build()`:
+
+   ```csharp
+   // before
+   app.UseSpark(o => o.SynchronizeModelsIfRequested<MyContext>(args));
+
+   // after — needs no database, so it also runs in CI
+   if (builder.SynchronizeSparkModelsIfRequested(args))
+       return;
+   ```
+
+4. `app.UseSparkFull(args)` becomes `app.UseSparkFull()`.
 
 #### Excluding a property with `[IgnoreProperty]`
 

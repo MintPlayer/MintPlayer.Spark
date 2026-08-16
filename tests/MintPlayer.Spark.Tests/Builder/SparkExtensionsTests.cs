@@ -225,6 +225,30 @@ public class SparkExtensionsTests
         Environment.ExitCode.Should().Be(3);
     }
 
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void A_production_start_without_the_flag_never_writes_a_model(string environmentName)
+    {
+        // The question this answers: can a deployed application rewrite its own model? Only the
+        // explicit CLI flag reaches the synchronizer, so an ordinary start does nothing at all.
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = environmentName,
+        });
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+
+        // The arguments a deployed app actually starts with.
+        var handled = builder.SynchronizeSparkModelsIfRequested(["--urls", "http://0.0.0.0:8080"]);
+
+        handled.Should().BeFalse("no Spark command was requested, so the host must start normally");
+        Directory.Exists(Path.Combine(scratch.Path, "App_Data", "Model")).Should().BeFalse(
+            "an ordinary production start must not write model files");
+        Environment.ExitCode.Should().Be(0);
+    }
+
     // --- IModelSynchronizer is a development-only service ----------------
 
     [Theory]
