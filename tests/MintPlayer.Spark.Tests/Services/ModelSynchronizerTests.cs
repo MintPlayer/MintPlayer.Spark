@@ -557,6 +557,9 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         var computed = attrs.Should().ContainSingle(a => a.Name == "Total").Subject;
         computed.IsReadOnly.Should().BeTrue("nothing can write a property with no setter");
+        computed.DataType.Should().Be("decimal",
+            "a computed property is typed from its return type like any other");
+        computed.IsVisible.Should().BeTrue("read-only is not hidden");
         computed.IsRequired.Should().BeFalse(
             "a required attribute nothing can populate would block every save");
 

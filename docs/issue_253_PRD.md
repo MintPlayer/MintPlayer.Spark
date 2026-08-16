@@ -178,12 +178,12 @@ read/write `this[...]` would pass the filter and surface as an attribute named `
 - **A post-load actions hook** (F4) — e.g. `OnAfterLoadAsync(PersistentObject po, T entity)` on both
   the Get and List paths — is the missing half of the virtual-attribute story. Genuinely useful, but a
   new public extension point on the read path deserves its own issue and its own review, not a
-  passenger seat in a synchronizer fix. **Filed as a follow-up.**
+  passenger seat in a synchronizer fix. **Filed as [#261](https://github.com/MintPlayer/MintPlayer.Spark/issues/261).**
 - **Get/List projection asymmetry.** Index-projected fields populate on the list path (the query runs
   against the projection type, and `PopulateAttributeValues` reflects over `entity.GetType()`,
   `EntityMapper.cs:193`) but not on single-Get, which always loads the base entity via `OnLoadAsync`
-  (`DefaultPersistentObjectActions.cs:25-40`). Pre-existing, unrelated to this change, worth its own
-  issue.
+  (`DefaultPersistentObjectActions.cs:25-40`). Pre-existing, unrelated to this change. Filed as
+  [#262](https://github.com/MintPlayer/MintPlayer.Spark/issues/262).
 - **A `[Calculated]`-style marker + analyzer.** Only worth building if D1 is ever revisited.
 
 ## Risks

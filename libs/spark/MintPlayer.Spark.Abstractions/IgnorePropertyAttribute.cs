@@ -15,12 +15,17 @@ namespace MintPlayer.Spark.Abstractions;
 /// <para>
 /// Use this for stored properties that need a public setter but are not part of the
 /// application model — infrastructure fields, denormalized caches, persistence helpers.
-/// A computed get-only property is already excluded and needs no attribute.
+/// It is also how you exclude a computed get-only property: those are part of the model
+/// by default, surfaced as read-only attributes.
 /// </para>
 /// <para><strong>Ignoring an existing property is destructive to its model settings.</strong>
 /// The next <c>--spark-synchronize-model</c> run removes the attribute block from the
 /// committed model file, discarding its id, translated label, rules, renderer and group.
-/// Re-adding the property later regenerates it with a new id.</para>
+/// Re-adding the property later regenerates it with a new id.
+/// <br/>
+/// This is the one case where synchronization deletes anything. An attribute whose property
+/// was merely renamed or removed is <em>kept</em> — marking a property ignored is an explicit
+/// instruction, a property quietly disappearing is not.</para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class IgnorePropertyAttribute : Attribute;

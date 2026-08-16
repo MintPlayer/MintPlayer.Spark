@@ -370,7 +370,39 @@ After synchronization, you can manually edit the JSON files to:
 - Set the display attribute (`displayAttribute`)
 - Add tabs and groups for organizing attributes on detail pages
 
-These manual edits are preserved when you re-run model synchronization. The synchronizer only adds new attributes and updates data types -- it does not overwrite labels, rules, or ordering.
+These manual edits are preserved when you re-run model synchronization. **The synchronizer only adds and updates -- it never deletes.** It does not overwrite labels, rules, or ordering.
+
+### Attributes without a CLR property
+
+An attribute is kept even when no property matches it, so you can:
+
+- **Add a virtual attribute by hand** -- one whose value is supplied at runtime rather than read from a property.
+- **Rename or remove a property** without losing that attribute's id, translated label, renderer, group, `editMode` or rules. Previously a rename was a silent delete-and-recreate-with-defaults.
+
+Each kept attribute is logged, so obsolete entries stay visible and you can remove them by hand:
+
+```
+Kept attribute 'Nickname' on 'Customer': no matching CLR property.
+Remove it from the model JSON if it is obsolete.
+```
+
+There is deliberately **no `--prune-orphaned-attributes` flag**: nothing in the model distinguishes an attribute you authored on purpose from one left behind by a rename, so an automatic prune could only guess, and guessing wrong deletes hand-authored work silently.
+
+> A kept attribute that is `isRequired` will block saves, because validation runs against the model and nothing can populate it. Synchronization warns about this rather than editing your JSON. Set `"isRequired": false`, or remove the attribute.
+
+The one exception to "never deletes" is [`[IgnoreProperty]`](#ignoreproperty): marking a property ignored is an explicit instruction to drop its attribute.
+
+### Computed (get-only) properties
+
+A property with a getter and no setter becomes a **read-only attribute**:
+
+```csharp
+public decimal Quantity { get; set; }
+public decimal UnitPrice { get; set; }
+public decimal Total => Quantity * UnitPrice;   // isReadOnly: true, isRequired: false
+```
+
+It is displayed like any other attribute and never written back. Use `[IgnoreProperty]` to leave one out of the model entirely.
 
 ## JSON Model Structure
 
