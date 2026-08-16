@@ -15,6 +15,7 @@ namespace MintPlayer.Spark;
 public static class SparkDevelopmentExtensions
 {
     internal const string SynchronizeFlag = "--spark-synchronize-model";
+    internal const string VerifyFlag = "--spark-verify-model";
 
     /// <summary>Exit code for a Spark misconfiguration that prevented the command from running.</summary>
     private const int ExitMisconfigured = 2;
@@ -70,6 +71,32 @@ public static class SparkDevelopmentExtensions
 
         Synchronize(builder, new TContext());
         return true;
+    }
+
+    /// <summary>
+    /// Writes <c>App_Data/model-hashes.json</c> for an already-populated model directory, without
+    /// regenerating the model files.
+    /// <para>
+    /// For hosts that author model files directly rather than through synchronization — chiefly test
+    /// hosts, which stand up an application from fixture models. Without a matching hash file such a
+    /// host would fail the startup check, which fails closed by design.
+    /// </para>
+    /// <para>
+    /// Uses the same index registry source as the startup check, so the value written and the value
+    /// verified cannot diverge.
+    /// </para>
+    /// </summary>
+    public static void WriteSparkModelHashes(Type contextType, string contentRootPath)
+    {
+        ArgumentNullException.ThrowIfNull(contextType);
+        ArgumentNullException.ThrowIfNull(contentRootPath);
+
+        var indexRegistry = new IndexRegistry();
+        if (Assembly.GetEntryAssembly() is { } entryAssembly)
+            SparkExtensions.PopulateIndexRegistry(indexRegistry, entryAssembly);
+
+        ModelSynchronizer.BuildModelHashes(contextType, indexRegistry, contentRootPath)
+            .Write(contentRootPath);
     }
 
     private static void Synchronize(WebApplicationBuilder builder, SparkContext sparkContext)

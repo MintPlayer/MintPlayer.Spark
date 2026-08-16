@@ -66,6 +66,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             File.WriteAllText(path, JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true }));
         }
 
+        // The startup model check fails closed on a missing hash file, so a host built from fixture
+        // models needs one that matches them. This is the same thing a deployment gets from having
+        // run synchronization — the fixtures just take the place of generated files.
+        MintPlayer.Spark.SparkDevelopmentExtensions.WriteSparkModelHashes(typeof(TContext), _contentRoot);
+
         _host = new HostBuilder()
             .ConfigureWebHost(webHost =>
             {

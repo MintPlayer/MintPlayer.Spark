@@ -287,6 +287,12 @@ public static class SparkExtensions
         // Create RavenDB indexes
         CreateSparkIndexes(app);
 
+        // After CreateSparkIndexes, because the projection type and index name feed the model hash
+        // and the index registry is populated there. Before any request is served: a drifted model
+        // shows up as missing columns and values silently dropped on save, which reads as data loss
+        // rather than a configuration mistake.
+        VerifySparkModelHash(app);
+
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app);
 
@@ -395,6 +401,28 @@ public static class SparkExtensions
             var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
             indexRegistry.RegisterProjection(projectionType, attr.IndexType);
         }
+    }
+
+    private static void VerifySparkModelHash(IApplicationBuilder app)
+    {
+        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+
+        using var scope = app.ApplicationServices.CreateScope();
+        var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
+        if (sparkContext is null)
+        {
+            // No context registered means no model to verify — an app that never called
+            // UseContext<T>(). Nothing to check rather than a failure.
+            return;
+        }
+
+        ModelHashVerifier.Verify(
+            sparkContext.GetType(),
+            indexRegistry,
+            hostEnvironment.ContentRootPath,
+            hostEnvironment.IsDevelopment(),
+            Console.WriteLine);
     }
 
     private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
