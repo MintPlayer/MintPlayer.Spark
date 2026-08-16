@@ -87,6 +87,15 @@ public class SparkModelShapeTests
     }
 
     [Fact]
+    public void A_breadcrumb_template_with_CRLF_hashes_the_same_as_one_with_LF()
+    {
+        // The only route by which a newline reaches this hash is author-supplied text. Verified
+        // cross-platform with a self-contained spike run on Windows and on Linux under WSL.
+        // Compared on the body, since the two fixtures legitimately differ in type name.
+        ShapeBody<CrLfBreadcrumbProbe>().Should().Be(ShapeBody<LfBreadcrumbProbe>());
+    }
+
+    [Fact]
     public void Canonical_text_uses_newline_and_no_BOM()
     {
         // Windows writes the hash file, Linux verifies it. Environment.NewLine or a BOM here would
@@ -325,3 +334,17 @@ public sealed class ShapeProbeWithOtherReference
     [Reference(typeof(ShapeProbeOtherCompany))] public string? CompanyId { get; set; }
 }
 
+
+/// <summary>Same shape, breadcrumb newline written as CRLF.</summary>
+[Breadcrumb("{Id}\r\nsecond")]
+public sealed class CrLfBreadcrumbProbe
+{
+    public string? Id { get; set; }
+}
+
+/// <summary>Same shape, breadcrumb newline written as LF.</summary>
+[Breadcrumb("{Id}\nsecond")]
+public sealed class LfBreadcrumbProbe
+{
+    public string? Id { get; set; }
+}

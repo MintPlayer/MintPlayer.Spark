@@ -207,6 +207,27 @@ public class ModelHashWriteTests : IDisposable
             "reindenting and reordering keys within a rule must not affect the hash either");
     }
 
+    [Fact]
+    public void A_newline_inside_a_string_value_is_normalised_before_hashing()
+    {
+        // Parsing the JSON already removes the file's own line endings from the hash, so this covers
+        // the remaining case: a newline carried inside a string value. Verified cross-platform by
+        // publishing a self-contained spike and running it on Windows and on Linux under WSL — both
+        // produced the same hashes, including for LF-converted copies of CRLF files.
+        const string noRules = "\"rules\": []";
+
+        Synchronize();
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(
+            noRules, "\"rules\": [ { \"type\": \"pattern\", \"message\": \"line1\\r\\nline2\" } ]"));
+        var withCrLf = Recompute().ModelHash;
+
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(
+            "\"message\": \"line1\\r\\nline2\"", "\"message\": \"line1\\nline2\""));
+
+        Recompute().ModelHash.Should().Be(withCrLf,
+            "an escaped CRLF inside a value must hash the same as an escaped LF");
+    }
+
     private void Rewrite(string fileName, Func<string, string> edit)
     {
         var path = Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), fileName);

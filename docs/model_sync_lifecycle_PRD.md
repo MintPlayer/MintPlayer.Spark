@@ -158,8 +158,27 @@ Stable across separate processes, `tr-TR`, invariant globalization, and Debug vs
 sort is the only thing preventing random production failures on rebuild, in a codebase where
 `partial` classes and source generators are everywhere.
 
-**Not yet measured, and a release gate:** cross-OS and cross-machine. The deployment topology is
-Windows dev writes, Linux container verifies. CI must print and compare before this ships.
+**Cross-OS: MEASURED, and it matches.** A self-contained spike referencing the real
+`MintPlayer.Spark.Abstractions` was published for `win-x64` and `linux-x64` and run on Windows and on
+Linux under WSL, over the same HR model directory. Every per-file hash, the roll-up, and the CLR
+shape hash were identical:
+
+```
+Windows  os=Win32NT newline=CRLF   combined=987acb6429717acaccb885089dfa477a12ab3bf3b3423aaab521e50ccffed88c
+Linux    os=Unix    newline=LF     combined=987acb6429717acaccb885089dfa477a12ab3bf3b3423aaab521e50ccffed88c
+```
+
+The git-autocrlf case was measured too: LF-converted copies of the same files, hashed on Linux,
+produced that same roll-up. So a hash written on a developer's Windows machine verifies inside a
+Linux container.
+
+Newlines are additionally collapsed (`\r\n` and lone `\r` → `\n`) in every string that reaches either
+hash. Parsing the JSON already removes the file's own line endings, so this only covers newlines
+carried *inside* a value — but the cost of missing one is a deployment that will not start, and
+normalising is free. Removing it fails a test.
+
+The pinned golden hash in `SparkModelShapeTests` remains the standing guard: CI runs on Linux, so it
+re-checks platform stability on every run.
 
 ### R7 — `App_Data/model-hashes.json`, per-entity plus roll-up
 

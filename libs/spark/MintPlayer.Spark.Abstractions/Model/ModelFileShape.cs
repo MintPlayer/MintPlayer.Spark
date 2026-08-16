@@ -168,7 +168,7 @@ public static class ModelFileShape
                 return "[" + string.Join(",", element.EnumerateArray().Select(Canonicalize)) + "]";
 
             case JsonValueKind.String:
-                return JsonSerializer.Serialize(element.GetString());
+                return JsonSerializer.Serialize(NormalizeNewlines(element.GetString()));
 
             case JsonValueKind.Null:
             case JsonValueKind.Undefined:
@@ -181,11 +181,23 @@ public static class ModelFileShape
 
     private static string Render(JsonElement value) => value.ValueKind switch
     {
-        JsonValueKind.String => value.GetString() ?? string.Empty,
+        JsonValueKind.String => NormalizeNewlines(value.GetString()) ?? string.Empty,
         JsonValueKind.True => "true",
         JsonValueKind.False => "false",
         _ => value.GetRawText(),
     };
+
+    /// <summary>
+    /// Collapses CRLF and lone CR to LF in every string that reaches the hash.
+    /// <para>
+    /// Belt and braces. Parsing the JSON already removes the file's own line endings from the
+    /// picture, so this only matters for newlines carried <em>inside</em> a string value. But the
+    /// consequence of getting it wrong is an application that refuses to start on Linux after the
+    /// hash was written on Windows, and normalising costs nothing.
+    /// </para>
+    /// </summary>
+    private static string? NormalizeNewlines(string? value)
+        => value?.Replace("\r\n", "\n").Replace("\r", "\n");
 
     private static string Sha256Hex(string text)
         => Convert.ToHexStringLower(
