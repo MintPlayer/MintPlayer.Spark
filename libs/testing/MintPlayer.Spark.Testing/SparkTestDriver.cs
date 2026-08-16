@@ -78,6 +78,13 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// </summary>
     protected virtual IEnumerable<Assembly> IndexAssemblies { get; } = Array.Empty<Assembly>();
 
+    /// <summary>
+    /// Names of the indexes this fixture deployed, so <see cref="WaitForIndexesAsync"/> can insist
+    /// they exist rather than accepting the vacuous "no index is stale" that an empty database
+    /// always satisfies.
+    /// </summary>
+    private readonly List<string> _deployedIndexNames = [];
+
     public virtual async Task InitializeAsync()
     {
         LicenseHelper.EnsureAvailable();
@@ -85,8 +92,25 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)
-            await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+            await DeployIndexesAsync(assemblies);
     }
+
+    /// <summary>
+    /// Waits until every index this fixture deployed is registered <b>and</b> every index in the
+    /// database is up to date.
+    /// <para>
+    /// Prefer this over calling <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/> on the
+    /// store directly: it carries the fixture's declared index names, so a wait cannot pass
+    /// because an index it was supposed to be waiting for was never deployed. Note that neither
+    /// form can vouch for auto-indexes, which do not exist until a query creates them — RavenDB
+    /// blocks on that first creation itself.
+    /// </para>
+    /// </summary>
+    protected Task WaitForIndexesAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => Store.WaitForIndexingAsync(
+            timeout: timeout,
+            expectedIndexes: _deployedIndexNames,
+            cancellationToken: cancellationToken);
 
     public virtual Task DisposeAsync()
     {
@@ -158,9 +182,16 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         return JsonFixtureImporter.ImportAsync(Store, resolved);
     }
 
-    /// <summary>Deploys additional indexes at runtime (e.g., per-test). Also waits for them to settle.</summary>
-    protected Task DeployIndexesAsync(params Assembly[] assemblies)
-        => RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+    /// <summary>
+    /// Deploys additional indexes at runtime (e.g. per-test), waits for them to be registered and
+    /// settled, and remembers them so later <see cref="WaitForIndexesAsync"/> calls keep checking
+    /// they are there.
+    /// </summary>
+    protected async Task DeployIndexesAsync(params Assembly[] assemblies)
+    {
+        await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+        _deployedIndexNames.AddRange(RavenIndexHelper.DeclaredIndexNames(assemblies));
+    }
 }
 
 internal static class LicenseHelper

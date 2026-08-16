@@ -24,16 +24,14 @@ public static class RavenIndexHelper
     /// what "settled" meant and what a failure told you.
     /// </para>
     /// </summary>
-    /// <exception cref="TimeoutException">
-    /// The indexes were still stale after <paramref name="timeout"/>, or an index faulted; the
-    /// message names them and carries their errors.
-    /// </exception>
+    /// <exception cref="RavenIndexDeploymentException">An index faulted; the message carries its errors.</exception>
+    /// <exception cref="TimeoutException">The indexes were healthy but still stale after <paramref name="timeout"/>.</exception>
     public static Task WaitForNonStaleAsync(
         IDocumentStore store,
         string? database = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
-        => store.WaitForIndexingAsync(database, timeout, cancellationToken);
+        => store.WaitForIndexingAsync(database, timeout, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Registers every <see cref="AbstractIndexCreationTask"/> found in the supplied assemblies
@@ -47,9 +45,10 @@ public static class RavenIndexHelper
     /// confirm the expected definitions are present first, then wait for them to settle.
     /// </para>
     /// </summary>
-    /// <exception cref="TimeoutException">
-    /// A declared index never appeared on the server, or the indexes never settled.
+    /// <exception cref="RavenIndexDeploymentException">
+    /// A declared index never appeared on the server, or faulted while building.
     /// </exception>
+    /// <exception cref="TimeoutException">The indexes deployed but never settled.</exception>
     public static async Task DeployIndexesAsync(
         IDocumentStore store,
         params Assembly[] assemblies)
@@ -62,23 +61,12 @@ public static class RavenIndexHelper
             await IndexCreation.CreateIndexesAsync(assembly, store);
         }
 
-        var expected = assemblies.SelectMany(DeclaredIndexNames).ToArray();
-        if (expected.Length > 0)
-        {
-            var admin = store.Maintenance.ForDatabase(store.Database);
-
-            await AsyncWait.UntilAsync(
-                () =>
-                {
-                    var live = admin.Send(new GetStatisticsOperation()).Indexes.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                    return expected.All(live.Contains);
-                },
-                $"the declared indexes to be registered on '{store.Database}' ({string.Join(", ", expected)})",
-                RavenIndexingExtensions.DefaultTimeout,
-                TimeSpan.FromMilliseconds(50));
-        }
-
-        await WaitForNonStaleAsync(store);
+        // One wait covering both halves: the declared definitions are registered AND everything is
+        // up to date. Waiting only for non-stale would be vacuous here — this always runs against
+        // a fresh database, where "no index is stale" is trivially true because there are no
+        // indexes yet, so the wait could return before the definitions existed at all.
+        await store.WaitForIndexingAsync(
+            expectedIndexes: DeclaredIndexNames(assemblies));
     }
 
     /// <summary>
@@ -86,7 +74,10 @@ public static class RavenIndexHelper
     /// <see cref="IndexCreation"/> discovers them: concrete
     /// <see cref="AbstractIndexCreationTask"/> types with a parameterless constructor.
     /// </summary>
-    private static IEnumerable<string> DeclaredIndexNames(Assembly assembly)
+    public static IReadOnlyCollection<string> DeclaredIndexNames(params Assembly[] assemblies)
+        => assemblies.SelectMany(DeclaredIndexNamesCore).ToArray();
+
+    private static IEnumerable<string> DeclaredIndexNamesCore(Assembly assembly)
         => assembly.GetTypes()
             .Where(t => typeof(AbstractIndexCreationTask).IsAssignableFrom(t)
                 && t is { IsAbstract: false, IsGenericTypeDefinition: false }

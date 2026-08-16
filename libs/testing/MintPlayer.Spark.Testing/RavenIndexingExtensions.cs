@@ -49,17 +49,34 @@ public static class RavenIndexingExtensions
     public static TimeSpan DefaultTimeout { get; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Waits until every enabled index is non-stale and no side-by-side replacement is pending.
+    /// Waits until the expected indexes are <b>deployed</b> and every enabled index is
+    /// <b>up to date</b> — no stale index, no pending side-by-side replacement.
+    /// <para>
+    /// Both halves are needed, and the second alone is a trap. "Every index is non-stale" is
+    /// universally quantified, so on a database with no indexes yet — the starting point of every
+    /// fixture, since each test gets its own — it is vacuously true and the wait returns
+    /// immediately, having promised nothing. Pass <paramref name="expectedIndexes"/> so the wait
+    /// also insists those definitions actually exist; otherwise a test can sail past a wait for an
+    /// index that was never deployed and only discover it as a query returning no rows.
+    /// </para>
     /// </summary>
+    /// <param name="expectedIndexes">
+    /// Index names that must be registered before the wait can succeed. Omit only when the index
+    /// set is not knowable up front (auto-indexes created on demand by a query).
+    /// </param>
+    /// <exception cref="RavenIndexDeploymentException">
+    /// An expected index never appeared, or an index faulted — neither is fixed by waiting longer.
+    /// The message carries the index errors, because "a query returned the wrong number of rows"
+    /// is not a diagnosis and this is where the answer actually is.
+    /// </exception>
     /// <exception cref="TimeoutException">
-    /// The indexes were still stale after <paramref name="timeout"/>, or an index faulted. The
-    /// message names the indexes still stale and carries their errors, because "a query returned
-    /// the wrong number of rows" is not a diagnosis and this is where the answer actually is.
+    /// The indexes exist and are healthy but were still stale after <paramref name="timeout"/>.
     /// </exception>
     public static async Task WaitForIndexingAsync(
         this IDocumentStore store,
         string? database = null,
         TimeSpan? timeout = null,
+        IReadOnlyCollection<string>? expectedIndexes = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -78,7 +95,7 @@ public static class RavenIndexingExtensions
             cancellationToken.ThrowIfCancellationRequested();
             statistics = await admin.SendAsync(new GetStatisticsOperation(), cancellationToken);
 
-            if (IsSettled(statistics))
+            if (IsSettled(statistics, expectedIndexes))
                 return;
 
             // A faulted index will never become non-stale, so waiting out the full timeout only
@@ -89,29 +106,67 @@ public static class RavenIndexingExtensions
             await Task.Delay(100, cancellationToken);
         }
 
-        throw new TimeoutException(await DescribeFailureAsync(admin, db, statistics, sp.Elapsed, effectiveTimeout, cancellationToken));
+        // Deployment failures are not timeouts. An index that faulted, or one that never appeared,
+        // will not be fixed by waiting longer — and a caller (or a reader of the failure) needs to
+        // tell "indexing was slow" apart from "this index is broken". Only genuine staleness gets
+        // TimeoutException.
+        var faulted = statistics?.Indexes.Where(x => x.State == IndexState.Error).Select(x => x.Name).ToArray() ?? [];
+        var missing = MissingIndexes(statistics, expectedIndexes);
+        var description = await DescribeFailureAsync(admin, db, statistics, expectedIndexes, sp.Elapsed, effectiveTimeout, cancellationToken);
+
+        throw (faulted.Length > 0 || missing.Length > 0)
+            ? new RavenIndexDeploymentException(description, faulted, missing)
+            : new TimeoutException(description);
     }
 
     /// <summary>
-    /// Settled means: every index that could still catch up has, and no replacement swap is
-    /// pending. Disabled indexes are excluded because they never catch up — waiting on one
-    /// guarantees a timeout.
+    /// Settled means: every expected index is deployed, every index that could still catch up has,
+    /// and no replacement swap is pending. Disabled indexes are excluded from the staleness half
+    /// because they never catch up — waiting on one guarantees a timeout.
     /// </summary>
-    private static bool IsSettled(DatabaseStatistics statistics)
-        => statistics.Indexes
-            .Where(x => x.State != IndexState.Disabled)
-            .All(x => !x.IsStale
-                && !x.Name.StartsWith(SideBySideIndexNamePrefix, StringComparison.Ordinal));
+    private static bool IsSettled(DatabaseStatistics statistics, IReadOnlyCollection<string>? expectedIndexes)
+        => MissingIndexes(statistics, expectedIndexes).Length == 0
+            && statistics.Indexes
+                .Where(x => x.State != IndexState.Disabled)
+                .All(x => !x.IsStale
+                    && !x.Name.StartsWith(SideBySideIndexNamePrefix, StringComparison.Ordinal));
+
+    private static string[] MissingIndexes(DatabaseStatistics? statistics, IReadOnlyCollection<string>? expectedIndexes)
+    {
+        if (expectedIndexes is not { Count: > 0 })
+            return [];
+
+        var live = (statistics?.Indexes ?? [])
+            .Select(i => i.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return expectedIndexes.Where(name => !live.Contains(name)).ToArray();
+    }
 
     private static async Task<string> DescribeFailureAsync(
         MaintenanceOperationExecutor admin,
         string database,
         DatabaseStatistics? statistics,
+        IReadOnlyCollection<string>? expectedIndexes,
         TimeSpan elapsed,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var faulted = statistics?.Indexes.Where(x => x.State == IndexState.Error).Select(x => x.Name).ToArray() ?? [];
+
+        // "Never deployed" and "deployed but stale" have completely different causes — a missing
+        // index registration versus indexing that could not keep up — so never blur them.
+        var missing = MissingIndexes(statistics, expectedIndexes);
+        if (missing.Length > 0 && faulted.Length == 0)
+        {
+            var registered = statistics?.Indexes is { Length: > 0 } live
+                ? string.Join(", ", live.Select(i => i.Name))
+                : "(none)";
+
+            return $"Indexes were never deployed to database '{database}' within {timeout} "
+                + $"(waited {elapsed}): {string.Join(", ", missing)}. Registered: {registered}."
+                + await DescribeErrorsAsync(admin, cancellationToken);
+        }
 
         // Name what we were actually still waiting on. Without this the message is just
         // "the indexes stayed stale", which tells the reader nothing they can act on.
