@@ -191,15 +191,17 @@ public class OrderProcessingWorker : SparkSubscriptionWorker<Order>
 
 ### Global Options
 
-`AddSparkSubscriptions()` accepts an optional configuration callback:
+`AddSparkSubscriptions()` accepts an optional configuration callback, but
+`SparkSubscriptionOptions` currently carries no options:
 
 ```csharp
-builder.Services.AddSparkSubscriptions(options =>
-{
-    options.WaitForNonStaleIndexes = true;                  // default: true
-    options.NonStaleIndexTimeout = TimeSpan.FromMinutes(2);  // default: 2 minutes
-});
+builder.Services.AddSparkSubscriptions();
 ```
+
+> Earlier versions documented `WaitForNonStaleIndexes` and `NonStaleIndexTimeout` here. Nothing ever
+> read them — the workers never waited on indexes — so they were removed rather than left looking
+> like a configured guarantee. If a worker depends on an index being current, wait for the specific
+> query it needs rather than gating startup on every index in the database.
 
 ### Lifecycle Hooks
 

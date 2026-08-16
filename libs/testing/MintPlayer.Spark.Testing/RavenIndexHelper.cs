@@ -14,51 +14,26 @@ namespace MintPlayer.Spark.Testing;
 public static class RavenIndexHelper
 {
     /// <summary>
-    /// Polls <see cref="GetStatisticsOperation"/> until the target database reports no stale
-    /// indexes, or throws <see cref="TimeoutException"/> if <paramref name="timeout"/> elapses.
-    /// Errors out immediately if any index has moved to <see cref="IndexState.Error"/> — a
-    /// silent hang on a failed index is the worst possible test-infra failure mode.
+    /// Waits until the target database reports no stale indexes.
+    /// <para>
+    /// Forwards to <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/>, which is the single
+    /// implementation. This entry point used to have its own loop with a different done-condition
+    /// (the server's <c>StaleIndexes</c> list rather than per-index state), no filtering of
+    /// disabled indexes, no handling of side-by-side swaps, a different exception type, and its own
+    /// separately-declared one-minute default — so which of the two a test happened to call changed
+    /// what "settled" meant and what a failure told you.
+    /// </para>
     /// </summary>
-    public static async Task WaitForNonStaleAsync(
+    /// <exception cref="TimeoutException">
+    /// The indexes were still stale after <paramref name="timeout"/>, or an index faulted; the
+    /// message names them and carries their errors.
+    /// </exception>
+    public static Task WaitForNonStaleAsync(
         IDocumentStore store,
         string? database = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(store);
-
-        var db = database ?? store.Database
-            ?? throw new ArgumentException("No database specified and store.Database is null.", nameof(database));
-        var effectiveTimeout = timeout ?? TimeSpan.FromMinutes(1);
-        var deadline = DateTime.UtcNow + effectiveTimeout;
-        var maintenance = store.Maintenance.ForDatabase(db);
-
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var stats = await maintenance.SendAsync(new GetStatisticsOperation(), cancellationToken);
-
-            var erroredIndex = stats.Indexes.FirstOrDefault(i => i.State == IndexState.Error);
-            if (erroredIndex is not null)
-            {
-                throw new InvalidOperationException(
-                    $"Index '{erroredIndex.Name}' on database '{db}' is in error state. " +
-                    "Check the Raven Studio indexes page for the underlying exception.");
-            }
-
-            if (stats.StaleIndexes.Length == 0)
-                return;
-
-            if (DateTime.UtcNow >= deadline)
-            {
-                throw new TimeoutException(
-                    $"Indexes on database '{db}' did not settle within {effectiveTimeout}. " +
-                    $"Still stale: {string.Join(", ", stats.StaleIndexes)}");
-            }
-
-            await Task.Delay(100, cancellationToken);
-        }
-    }
+        => store.WaitForIndexingAsync(database, timeout, cancellationToken);
 
     /// <summary>
     /// Registers every <see cref="AbstractIndexCreationTask"/> found in the supplied assemblies
