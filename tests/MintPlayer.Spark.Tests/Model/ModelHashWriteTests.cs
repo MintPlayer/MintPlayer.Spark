@@ -111,15 +111,31 @@ public class ModelHashWriteTests : IDisposable
     }
 
     [Fact]
-    public void Altering_an_existing_model_file_invalidates_the_hash()
+    public void Altering_a_structural_field_invalidates_the_hash()
     {
         Synchronize();
         var original = ModelHashFile.Read(_contentRoot)!.ModelHash;
 
-        var probeFile = Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), $"{nameof(HashProbe)}.json");
-        File.WriteAllText(probeFile, File.ReadAllText(probeFile).Replace("\"isVisible\": true", "\"isVisible\": false"));
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace("\"dataType\": \"string\"", "\"dataType\": \"number\""));
 
         Recompute().ModelHash.Should().NotBe(original);
+    }
+
+    [Fact]
+    public void Removing_a_validation_rule_invalidates_the_hash()
+    {
+        // Validation is structural, not styling: silently dropping a rule from a deployed model
+        // weakens what the server accepts, which is exactly the edit worth noticing.
+        const string noRules = "\"rules\": []";
+        const string withRequiredRule = "\"rules\": [ { \"type\": \"required\" } ]";
+
+        Synchronize();
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(noRules, withRequiredRule));
+        var withRule = Recompute().ModelHash;
+
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(withRequiredRule, noRules));
+
+        Recompute().ModelHash.Should().NotBe(withRule);
     }
 
     [Fact]
@@ -134,11 +150,28 @@ public class ModelHashWriteTests : IDisposable
     }
 
     [Fact]
-    public void Line_ending_differences_do_not_invalidate_the_hash()
+    public void Editing_a_label_does_not_invalidate_the_hash()
     {
-        // The file is written on Windows and verified in a Linux container, with git rewriting line
-        // endings in between. If this were sensitive, every containerised deployment would refuse to
-        // start.
+        // Model JSON is hand-editable by design and synchronization preserves those edits. If a
+        // translated label moved the hash, translating a caption would stop the application from
+        // starting.
+        Synchronize();
+        var original = ModelHashFile.Read(_contentRoot)!.ModelHash;
+
+        // Add a translated label and a renderer to the Name attribute — the sort of edit the model
+        // is designed to carry. The attribute's own "name" is untouched: that IS structural.
+        Rewrite($"{nameof(HashProbe)}.json", json => json.Replace(
+            "\"name\": \"Name\",",
+            "\"name\": \"Name\",\n      \"label\": { \"en\": \"Full name\", \"nl\": \"Volledige naam\" },\n      \"renderer\": \"bold\","));
+
+        Recompute().ModelHash.Should().Be(original);
+    }
+
+    [Fact]
+    public void Reordering_attributes_and_line_endings_do_not_invalidate_the_hash()
+    {
+        // Attribute order in the file is presentation. Line endings matter because the file is
+        // written on Windows and verified in a Linux container, with git rewriting them in between.
         Synchronize();
         var original = ModelHashFile.Read(_contentRoot)!.ModelHash;
 
@@ -146,6 +179,12 @@ public class ModelHashWriteTests : IDisposable
             File.WriteAllText(file, File.ReadAllText(file).Replace("\r\n", "\n").Replace("\n", "\r\n"));
 
         Recompute().ModelHash.Should().Be(original);
+    }
+
+    private void Rewrite(string fileName, Func<string, string> edit)
+    {
+        var path = Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), fileName);
+        File.WriteAllText(path, edit(File.ReadAllText(path)));
     }
 
     private ModelHashFile Recompute()

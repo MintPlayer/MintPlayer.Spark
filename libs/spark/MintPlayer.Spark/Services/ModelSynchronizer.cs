@@ -222,13 +222,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var perEntity = SparkModelShape.ComputePerEntityHashes(shapes);
         var contextRoots = SparkModelShape.ComputeContextRootsHash(
             ModelShapeDiscovery.RootEntityNames(contextType, indexRegistry));
-        var modelFiles = ModelHashFile.ComputeModelFilesHash(contentRootPath);
+        var fileHashes = ModelHashFile.ComputeFileHashes(contentRootPath);
+        var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
 
         return new ModelHashFile
         {
             ModelHash = SparkModelShape.ComputeModelHash(perEntity, contextRoots, modelFiles),
             ContextRoots = contextRoots,
             ModelFiles = modelFiles,
+            Files = fileHashes,
             Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
         };
     }

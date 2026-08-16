@@ -43,15 +43,23 @@ public sealed class ModelHashFile
     public string ContextRoots { get; set; } = string.Empty;
 
     /// <summary>
-    /// Hash over every file in <c>App_Data/Model</c> — names and contents.
-    /// <para>
-    /// The shape hashes describe what the entity classes say the model should be; this describes
-    /// what is actually on disk. Without it a file planted in the model directory would be invisible
-    /// to verification and still be loaded, because the loader globs the whole directory. Any added,
-    /// removed or altered model file changes this value and the application refuses to start.
-    /// </para>
+    /// Roll-up over <see cref="Files"/>.
     /// </summary>
     public string ModelFiles { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Structural hash of each file in <c>App_Data/Model</c>, keyed by file name.
+    /// <para>
+    /// The entity hashes describe what the CLR classes require; these describe what is actually on
+    /// disk. Without them a file planted in the model directory would be invisible to verification
+    /// and still be loaded, because the loader globs the whole directory.
+    /// </para>
+    /// <para>
+    /// Only structural fields contribute — labels, renderers, groups and ordering are excluded, so
+    /// the hand-editing workflow the model supports does not trip the check.
+    /// </para>
+    /// </summary>
+    public SortedDictionary<string, string> Files { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Per-entity hashes, keyed by entity name. Sharded so a drift message can name the entity that
@@ -68,35 +76,19 @@ public sealed class ModelHashFile
         => Path.Combine(contentRootPath, "App_Data", "Model");
 
     /// <summary>
-    /// Fingerprints the model directory: every file's name paired with a hash of its contents,
-    /// ordinally sorted.
-    /// <para>
-    /// Line endings are normalised before hashing. The file is written on a developer's machine and
-    /// verified inside a Linux container, and git's autocrlf handling rewrites them in between —
-    /// without this, every containerised deployment would fail verification.
-    /// </para>
-    /// <para>
-    /// The hash file itself is excluded, since it cannot contain its own hash.
-    /// </para>
+    /// Structural fingerprint of every file in the model directory, keyed by file name.
+    /// See <see cref="ModelFileShape"/> for what counts as structural — presentational fields such
+    /// as labels are excluded so hand-editing them does not stop an application from starting.
     /// </summary>
-    public static string ComputeModelFilesHash(string contentRootPath)
+    public static SortedDictionary<string, string> ComputeFileHashes(string contentRootPath)
+        => ModelFileShape.ComputeFileHashes(ModelDirectoryFor(contentRootPath));
+
+    /// <summary>Roll-up over the per-file structural hashes.</summary>
+    public static string CombineFileHashes(IReadOnlyDictionary<string, string> fileHashes)
     {
-        var modelDirectory = ModelDirectoryFor(contentRootPath);
-        if (!Directory.Exists(modelDirectory))
-            return Sha256Hex(string.Empty);
-
         var builder = new StringBuilder();
-
-        var files = Directory.GetFiles(modelDirectory, "*.json")
-            .Where(f => !string.Equals(Path.GetFileName(f), FileName, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal);
-
-        foreach (var file in files)
-        {
-            var normalized = File.ReadAllText(file).Replace("\r\n", "\n").Replace("\r", "\n");
-            builder.Append(Path.GetFileName(file)).Append(':').Append(Sha256Hex(normalized)).Append('\n');
-        }
-
+        foreach (var entry in fileHashes.OrderBy(e => e.Key, StringComparer.Ordinal))
+            builder.Append(entry.Key).Append(':').Append(entry.Value).Append('\n');
         return Sha256Hex(builder.ToString());
     }
 
