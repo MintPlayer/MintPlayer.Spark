@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
-using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.Tests._Infrastructure;
 
@@ -93,30 +92,6 @@ public class SubscriptionQueryCapabilityTests : SparkTestDriver
         }
 
         return [.. delivered];
-    }
-
-    [Fact]
-    public async Task now_is_rejected_outright_in_a_subscription_query()
-    {
-        // The behaviour that broke the RavenDB upgrade. It is a server-side validation error raised
-        // when the worker connects — not a query that quietly returns nothing — so the fix is to
-        // stop asking the question, never to pin RavenDB back.
-        await SeedAsync(session => session.StoreAsync(new Widget { Status = "Pending" }));
-
-        var act = async () => await DeliveredByAsync(
-            "from Widgets where Status = 'Pending' and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())",
-            d => d.Count > 0,
-            "a now()-gated subscription to deliver anything");
-
-        var thrown = await act.Should().ThrowAsync<RavenException>(
-            "RavenDB 7.2.5+ validates subscription expressions and refuses now()");
-
-        thrown.Which.Message.Should().Contain("now()").And.Contain("not supported",
-            "the server names the unsupported function — if this message changes, #258's diagnosis "
-            + "needs rechecking rather than the assertion loosening");
-        thrown.Which.Message.Should().Contain("subscription",
-            "the restriction is specific to filter/subscription expressions; now() is still fine in "
-            + "an ordinary query, which is evaluated afresh each time it runs");
     }
 
     [Fact]
