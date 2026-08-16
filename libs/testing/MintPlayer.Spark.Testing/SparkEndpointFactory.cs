@@ -66,11 +66,6 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             File.WriteAllText(path, JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-        // The startup model check fails closed on a missing hash file, so a host built from fixture
-        // models needs one that matches them. This is the same thing a deployment gets from having
-        // run synchronization — the fixtures just take the place of generated files.
-        MintPlayer.Spark.SparkDevelopmentExtensions.WriteSparkModelHashes(typeof(TContext), _contentRoot);
-
         _host = new HostBuilder()
             .ConfigureWebHost(webHost =>
             {
@@ -98,6 +93,15 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
 
                             configureSpark?.Invoke(spark);
                         });
+
+                        // Written here rather than in the constructor. The startup check fails closed
+                        // on a missing hash file, so a host built from fixture models needs one that
+                        // matches them — but it has to be computed AFTER AddSpark returns, or a
+                        // module (or configureSpark) that declares an index assembly would be
+                        // invisible to the value written while being visible to the check verifying
+                        // it, and every test host would fail the gate with no obvious cause.
+                        MintPlayer.Spark.SparkDevelopmentExtensions.WriteSparkModelHashes(
+                            typeof(TContext), _contentRoot, services);
 
                         var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));
                         services.Remove(existing);

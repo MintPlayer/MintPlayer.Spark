@@ -27,7 +27,9 @@ milestones are verified by reading and type-checking.
 | M10 | Fix unbounded query duplication; idempotency guard | `3ac32e0` |
 | M11 | TranslatedString classification; clear stale derived fields | `07e3cda` |
 | M12 | Rename to `modelHashes.json` | `615b367` |
-| M13 | Stale projection refs, name-collision deletion, duplicate roots | this commit |
+| M13 | Stale projection refs, name-collision deletion, duplicate roots | `077f406` |
+| M14 | Hash/model guard alignment; corrected warning | `1549536` |
+| M15 | Index + projection discovery beyond the entry assembly | this commit |
 
 ---
 
@@ -299,3 +301,54 @@ query through its own `Source`.
 
 No committed model file changes: no demo has a stale projection, a name collision, or a duplicate
 root. Each fix is pinned by a test verified to fail without it.
+
+
+## M15 — Discovery beyond the entry assembly (PRD R14)
+
+**Files:** `Abstractions/Builder/SparkModuleRegistry.cs`, new
+`Abstractions/Builder/SparkIndexAssemblyExtensions.cs`, `SparkMiddleware.cs`,
+`Extensions/SparkDevelopmentExtensions.cs`, `libs/testing/.../SparkEndpointFactory.cs`
+
+**Declare.** `SparkModuleRegistry.AddIndexAssembly(Assembly)` — idempotent, Raven-free (Abstractions
+has no package references, and must not gain one), per-builder rather than static so parallel tests
+cannot cross-contaminate. `ResolveIndexAssemblies()` is the single accessor both paths read, returning
+the entry assembly first and declarations appended.
+
+Module-facing sugar in Abstractions so a module needs no reference to Spark core:
+`AddIndexesFrom(assembly)`, `AddIndexesFrom(params Assembly[])`,
+`AddIndexesFromAssemblyContaining<TMarker>()`.
+
+**Materialize.** `PopulateIndexRegistry` splits into `PopulateIndexTypes` / `PopulateProjectionTypes`
+(the combined method stays as a wrapper). Callers run all assemblies' indexes first, then all
+assemblies' projections, making cross-assembly projections order-independent. `GetTypes()` becomes
+`GetTypesSafe` — catching `ReflectionTypeLoadException` **inside** the `ReflectionCache` factory,
+because a throwing factory is cached and re-thrown for the process lifetime.
+
+**Apply.** `CreateSparkIndexes` takes the registry, materializes every assembly *before* the first
+database call (so the model-hash check sees a complete registry even when RavenDB is unreachable),
+then deploys per assembly with the catch-all moved inside the loop.
+
+**Build-time path.** `TryBuildIndexRegistry` reads the module registry off the singleton descriptor —
+the same trick already used for `IHostEnvironment` and the `SparkContext` type — falling back to the
+entry assembly when no host called `AddSpark`.
+
+**The test-host trap.** `SparkEndpointFactory` wrote the hash in its constructor, before `AddSpark`,
+so it could never see its own declaration. The write moves to just after `AddSpark` returns, and
+`WriteSparkModelHashes` gains an assemblies parameter. Today both sides come out empty so they agree;
+the first library projection would have failed every test host's fail-closed gate with no clue why.
+
+**Not migrating the module `.Execute(store)` calls.** IdentityProvider, Messaging and Replication
+deploy their own indexes today and ship **no** projections, so they are already correct. Declaring
+their assemblies would make `CreateSparkIndexes` deploy the same indexes a second time and rest on
+RavenDB's put-index idempotency, which nothing in this repo asserts. Additive capability now;
+migration is a separate, testable change.
+
+**Blast radius: none.** With nothing declared the resolved list is exactly today's `[entryAssembly]`.
+No demo declares anything, and no library ships a `[FromIndex]` projection, so no model file and no
+`modelHashes.json` entry moves.
+
+**Two pre-existing sharp edges this makes reachable** — flagged, not fixed: `IndexRegistry` keys on
+`indexType.Name` rather than `FullName`, so same-named index classes in different assemblies collide
+silently (`Cars_Overview` exists in both DemoApp and Fleet, harmless only because they are separate
+apps); and two different indexes over one collection type leave the last registered winning the
+collection lookup.

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
 using System.Reflection;
@@ -109,13 +110,31 @@ public static class SparkDevelopmentExtensions
     /// </para>
     /// </summary>
     public static void WriteSparkModelHashes(Type contextType, string contentRootPath)
+        => WriteSparkModelHashes(contextType, contentRootPath, services: null);
+
+    /// <summary>
+    /// As <see cref="WriteSparkModelHashes(Type, string)"/>, but resolving index assemblies from
+    /// <paramref name="services"/> so any declared by a module are included.
+    /// <para>
+    /// Call this only once <c>AddSpark</c> has returned. Called earlier, the declarations have not
+    /// happened yet and the value written would disagree with the value the startup check computes.
+    /// </para>
+    /// </summary>
+    public static void WriteSparkModelHashes(Type contextType, string contentRootPath, IServiceCollection? services)
     {
         ArgumentNullException.ThrowIfNull(contextType);
         ArgumentNullException.ThrowIfNull(contentRootPath);
 
         var indexRegistry = new IndexRegistry();
-        if (Assembly.GetEntryAssembly() is { } entryAssembly)
-            SparkExtensions.PopulateIndexRegistry(indexRegistry, entryAssembly);
+
+        var assemblies = (services is null ? null : GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies())
+            ?? (Assembly.GetEntryAssembly() is { } entryAssembly ? [entryAssembly] : (IReadOnlyList<Assembly>)[]);
+
+        foreach (var assembly in assemblies)
+            SparkExtensions.PopulateIndexTypes(indexRegistry, assembly);
+
+        foreach (var assembly in assemblies)
+            SparkExtensions.PopulateProjectionTypes(indexRegistry, assembly);
 
         ModelSynchronizer.BuildModelHashes(contextType, indexRegistry, contentRootPath)
             .Write(contentRootPath);
@@ -132,7 +151,7 @@ public static class SparkDevelopmentExtensions
     /// </summary>
     private static void Verify(WebApplicationBuilder builder, SparkContext sparkContext)
     {
-        if (!TryBuildIndexRegistry(out var indexRegistry))
+        if (!TryBuildIndexRegistry(builder.Services, out var indexRegistry))
             return;
 
         var contentRoot = builder.Environment.ContentRootPath;
@@ -173,7 +192,7 @@ public static class SparkDevelopmentExtensions
         // Session stays null on purpose. The synchronizer reflects over the context's property
         // TYPES and never invokes a getter, so no RavenDB connection is opened — which is what
         // makes this runnable in CI. Opening one here would reintroduce that dependency.
-        if (!TryBuildIndexRegistry(out var indexRegistry))
+        if (!TryBuildIndexRegistry(builder.Services, out var indexRegistry))
             return;
 
         var synchronizer = new ModelSynchronizer(builder.Environment, indexRegistry);
@@ -183,14 +202,23 @@ public static class SparkDevelopmentExtensions
     }
 
     /// <summary>
-    /// Builds an index registry from the entry assembly. Shared by both commands so a synchronize and
-    /// the verify that checks it can never see a different set of projections.
+    /// Builds an index registry from the declared assemblies. Shared by both commands so a
+    /// synchronize and the verify that checks it can never see a different set of projections.
+    /// <para>
+    /// Reads the declarations off the module registry's singleton descriptor — the same
+    /// registration-time trick used for the host environment and the context type — so the build-time
+    /// commands and the running application resolve the same assemblies. Falls back to the entry
+    /// assembly when no host called <c>AddSpark</c>.
+    /// </para>
     /// </summary>
-    private static bool TryBuildIndexRegistry(out IIndexRegistry indexRegistry)
+    private static bool TryBuildIndexRegistry(IServiceCollection services, out IIndexRegistry indexRegistry)
     {
         indexRegistry = new IndexRegistry();
 
-        if (Assembly.GetEntryAssembly() is not { } entryAssembly)
+        var assemblies = GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies()
+            ?? (Assembly.GetEntryAssembly() is { } entryAssembly ? [entryAssembly] : (IReadOnlyList<Assembly>)[]);
+
+        if (assemblies.Count == 0)
         {
             Console.Error.WriteLine(
                 "Spark: could not determine the entry assembly, so index and projection types cannot be discovered.");
@@ -198,9 +226,24 @@ public static class SparkDevelopmentExtensions
             return false;
         }
 
-        SparkExtensions.PopulateIndexRegistry(indexRegistry, entryAssembly);
+        // Indexes across every assembly before any projection: a projection resolves its index by
+        // name, so cross-assembly projections must not depend on scan order.
+        foreach (var assembly in assemblies)
+            SparkExtensions.PopulateIndexTypes(indexRegistry, assembly);
+
+        foreach (var assembly in assemblies)
+            SparkExtensions.PopulateProjectionTypes(indexRegistry, assembly);
+
         return true;
     }
+
+    /// <summary>
+    /// Reads the module registry at <em>registration</em> time. It is registered as a singleton
+    /// instance, so it can be read straight off the descriptor with no container.
+    /// </summary>
+    private static SparkModuleRegistry? GetRegistrationTimeModuleRegistry(IServiceCollection services)
+        => services.LastOrDefault(d => d.ServiceType == typeof(SparkModuleRegistry))?.ImplementationInstance
+            as SparkModuleRegistry;
 
     /// <summary>
     /// Recovers the concrete <see cref="SparkContext"/> type from the registration made by

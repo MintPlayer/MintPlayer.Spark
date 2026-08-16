@@ -285,7 +285,7 @@ public static class SparkExtensions
         app.UseMiddleware<SparkMiddleware>();
 
         // Create RavenDB indexes
-        CreateSparkIndexes(app);
+        CreateSparkIndexes(app, registry.ResolveIndexAssemblies());
 
         // After CreateSparkIndexes, because the projection type and index name feed the model hash
         // and the index registry is populated there. Before any request is served: a drifted model
@@ -375,12 +375,24 @@ public static class SparkExtensions
     /// </summary>
     internal static void PopulateIndexRegistry(IIndexRegistry indexRegistry, Assembly targetAssembly)
     {
-        // Find and register all index types — Assembly.GetTypes() walks the assembly's
-        // entire metadata tables; cache the filtered result so repeat AddSpark calls
-        // (or hot-reload scenarios) don't re-scan.
+        PopulateIndexTypes(indexRegistry, targetAssembly);
+        PopulateProjectionTypes(indexRegistry, targetAssembly);
+    }
+
+    /// <summary>
+    /// Registers the index types declared in <paramref name="targetAssembly"/>.
+    /// <para>
+    /// Separate from projection registration so callers spanning several assemblies can register
+    /// every index before any projection. A projection resolves its index by name, so with a single
+    /// combined pass a projection in one assembly over an index in a later-scanned assembly would
+    /// fail to resolve — and the failure is only a console warning.
+    /// </para>
+    /// </summary>
+    internal static void PopulateIndexTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    {
         var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
             ("SparkMiddleware.IndexTypes", targetAssembly),
-            static k => k.Asm.GetTypes()
+            static k => GetLoadableTypes(k.Asm)
                 .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
                 .ToArray());
 
@@ -388,11 +400,14 @@ public static class SparkExtensions
         {
             indexRegistry.RegisterIndex(indexType);
         }
+    }
 
-        // Find and register all projection types with FromIndexAttribute
+    /// <summary>Registers the <c>[FromIndex]</c> projection types declared in <paramref name="targetAssembly"/>.</summary>
+    internal static void PopulateProjectionTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    {
         var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
             ("SparkMiddleware.ProjectionTypes", targetAssembly),
-            static k => k.Asm.GetTypes()
+            static k => GetLoadableTypes(k.Asm)
                 .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
                 .ToArray());
 
@@ -400,6 +415,37 @@ public static class SparkExtensions
         {
             var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
             indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+        }
+    }
+
+    /// <summary>
+    /// The types of an assembly, keeping what loaded when some types cannot.
+    /// <para>
+    /// <c>Assembly.GetTypes()</c> walks the entire metadata tables and throws if any type fails to
+    /// load — typically an optional peer dependency that is simply absent. That is a deployment fact
+    /// rather than a Spark defect, and now that several assemblies are scanned, one such assembly
+    /// must not stop an application from starting. A genuinely malformed index type still throws out
+    /// of registration, so a real failure is not masked.
+    /// </para>
+    /// <para>
+    /// Callers cache this through <c>ReflectionCache</c>, which stores a throwing factory and
+    /// re-throws it for the lifetime of the process — so the catch has to live here, inside the
+    /// factory, not around the cache lookup.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            var loaded = ex.Types.Where(t => t is not null).Select(t => t!).ToArray();
+            Console.WriteLine(
+                $"Warning: {assembly.GetName().Name} has {ex.Types.Length - loaded.Length} type(s) that could not be " +
+                $"loaded; scanning the {loaded.Length} that did. First loader error: {ex.LoaderExceptions.FirstOrDefault()?.Message}");
+            return loaded;
         }
     }
 
@@ -425,31 +471,43 @@ public static class SparkExtensions
             Console.WriteLine);
     }
 
-    private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
+    private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
-        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
 
-        if (targetAssembly == null)
+        if (assemblies.Count == 0)
         {
-            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
+            Console.WriteLine("Warning: Could not determine any assembly to scan for index creation.");
             return;
         }
 
-        // Registry population is a correctness precondition for everything downstream, so it is
-        // outside the try — see PopulateIndexRegistry.
-        PopulateIndexRegistry(indexRegistry, targetAssembly);
+        // Materialize every assembly before the first database call. Registry population is a
+        // correctness precondition — the model-hash check runs straight after this and must see a
+        // complete registry even when RavenDB is unreachable and the deployment below fails.
+        //
+        // Indexes across all assemblies first, then projections across all of them: a projection
+        // resolves its index by name, so a projection in one assembly over an index in another must
+        // not depend on which assembly was scanned first.
+        foreach (var assembly in assemblies)
+            PopulateIndexTypes(indexRegistry, assembly);
 
-        try
+        foreach (var assembly in assemblies)
+            PopulateProjectionTypes(indexRegistry, assembly);
+
+        // Deployment is best-effort, but per assembly: one unreachable or broken module must not
+        // cost every other module its indexes, which is what a single surrounding catch did.
+        foreach (var assembly in assemblies)
         {
-            // Create indexes in RavenDB
-            IndexCreation.CreateIndexes(targetAssembly, documentStore);
-            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
+            try
+            {
+                IndexCreation.CreateIndexes(assembly, documentStore);
+                Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
+            }
         }
     }
 

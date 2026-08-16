@@ -93,7 +93,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var emptyAssembly = typeof(string).Assembly; // mscorlib has no AbstractIndexCreationTask types
 
         var method = PrivateMethod("CreateSparkIndexes");
-        var act = () => method.Invoke(null, [app, emptyAssembly]);
+        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[emptyAssembly]]);
 
         act.Should().NotThrow();
         // Zero index/projection types found → registry untouched.
@@ -108,7 +108,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var app = BuildAppBuilder(Store, indexRegistry);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
-        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, thisAssembly]);
+        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
         // The fixture-local SimpleProbeIndex and MultiMapProbeIndex must have been registered.
         indexRegistry.Received().RegisterIndex(typeof(SimpleProbeIndex));
@@ -122,7 +122,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var app = BuildAppBuilder(Store, indexRegistry);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
-        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, thisAssembly]);
+        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
         indexRegistry.Received().RegisterProjection(typeof(ProbeProjection), typeof(SimpleProbeIndex));
     }
@@ -141,7 +141,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
         var method = PrivateMethod("CreateSparkIndexes");
-        var act = () => method.Invoke(null, [app, thisAssembly]);
+        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
         // The catch block swallows; reflection wraps any *unswallowed* exception in
         // TargetInvocationException. Either way the call must not propagate.

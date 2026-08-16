@@ -367,6 +367,69 @@ registry and equally cannot see it, so the field had no reader — but it is sil
 an app, which is why the clear is logged. Relevant because libraries *can* contribute persistent
 objects.
 
+### R14 — Index and projection discovery must reach beyond the entry assembly
+
+Spark discovered RavenDB indexes and `[FromIndex]` projections by scanning
+`Assembly.GetEntryAssembly()` only. A module shipped as a class library therefore got **none** of it:
+
+- its index was never created — `IndexCreation.CreateIndexes` is entry-assembly scoped too, inside a
+  catch-all that logs and continues;
+- its projection was never registered, so all three `ProjectInto` sites were skipped
+  (`DatabaseAccess.cs:153`/`:421`, `QueryExecutor.cs:132`, `QueryExecutor.cs:266`);
+- so index-**computed** fields came back null, with the right row count and no error — the symptom
+  RavenDB gives when you query an index without projecting, which reads as a broken index.
+
+Index-side filtering was lost too (more rows than intended), sorting on a projection-only column
+silently no-opped, and **no consistency check could catch any of it**: synchronization and the runtime
+read the same empty registry, so both agreed and the hashes matched. The framework's own guide shows
+the entity in a library but the index and projection in the entry assembly — teaching the workaround
+without ever saying it is one.
+
+This is an inconsistency rather than a deliberate limit: seven other runtime resolvers
+(`ActionsResolver`, `CustomActionResolver`, `LookupReferenceDiscoveryService`, `FindClrType`,
+`ResolveType`) already scan `AppDomain.CurrentDomain` and find library types fine. Only the index and
+projection registry was narrower.
+
+**Design: declare → materialize → apply.**
+
+| Phase | Does | Store? | Runs where |
+|---|---|---|---|
+| **Declare** | records that an assembly contributes indexes/projections | no | modules, inside their `AddXxx` |
+| **Materialize** | resolves index and projection types into the registry | no | **both** paths |
+| **Apply** | deploys indexes to RavenDB | yes | runtime only |
+
+The split is the load-bearing part. A design that resolves assemblies into instantiated index objects
+*at declaration time* needs a document store there, which would lock the build-time sync command out
+entirely — it has no store and no container.
+
+**Ordering comes free from the existing lifecycle.** Modules accumulate during `configure(builder)`
+(`SparkMiddleware.cs:126`); the registry is snapshotted into DI at `:129`; both consumers — the
+build-time command and `UseSpark` — run strictly afterwards. ASP.NET's phase boundary enforces this,
+rather than the author's line ordering.
+
+Three ways a declaration can still arrive too late, all avoided by construction:
+1. declared inside an `AddMiddleware` callback — those run at `ApplyMiddleware` (`:297`), after
+   `CreateSparkIndexes` (`:288`), so **both** consumers miss it;
+2. declared through `UseSpark(Action<UseSparkOptions>)`, which runs `UseSpark()` before the callback;
+3. `SparkEndpointFactory` wrote the model hash in its **constructor**, before `AddSpark` — so a test
+   host could never see its own declaration. Fixed in the same change.
+
+**Defaults are unchanged.** With nothing declared, the resolved list is exactly `[entryAssembly]` —
+what Spark scanned before. Declarations **append** to the entry assembly rather than replacing it;
+substituting (as the replication `AssembliesToScan` precedent does) would silently drop an app's own
+indexes the moment it added a module.
+
+**Materialize runs in two passes** — every assembly's indexes, then every assembly's projections — so
+a projection in one assembly over an index in another registers regardless of declaration order.
+Otherwise it lands on a `Console` warning nobody reads.
+
+**Failure policy per phase.** Declare cannot fail. Materialize does not swallow (registry population
+is a correctness precondition) with one narrowing: `ReflectionTypeLoadException` keeps the loadable
+types and warns, because a partially-loadable assembly is a deployment fact, not a Spark defect — and
+the catch must sit *inside* the `ReflectionCache` factory, or the failure is cached and re-thrown for
+the process lifetime. Apply stays best-effort but per assembly, so one unreachable module no longer
+costs every other module its indexes.
+
 ---
 
 ## Decisions

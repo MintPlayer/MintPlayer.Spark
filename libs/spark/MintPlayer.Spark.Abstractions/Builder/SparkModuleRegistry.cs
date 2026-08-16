@@ -8,6 +8,57 @@ public class SparkModuleRegistry
     private readonly List<Action<IEndpointRouteBuilder>> endpointActions = [];
     private readonly List<SparkCredentialScheme> credentialSchemes = [];
 
+    private readonly List<System.Reflection.Assembly> indexAssemblies = [];
+
+    /// <summary>
+    /// Declares that <paramref name="assembly"/> contains RavenDB indexes and/or
+    /// <c>[FromIndex]</c> projection types that Spark must discover.
+    /// <para>
+    /// Index and projection discovery would otherwise see only the entry assembly, so a module
+    /// shipped as a class library got neither its indexes created nor its projections registered —
+    /// and an unregistered projection means queries silently return index-computed fields as null.
+    /// </para>
+    /// <para>
+    /// Declare from inside the module's own <c>AddXxx(...)</c> body, so consumers write no code.
+    /// It must NOT be declared from inside an <see cref="AddMiddleware"/> callback: those run after
+    /// index creation, and long after the build-time model commands have read this list, so the
+    /// declaration would be silently missed by both.
+    /// </para>
+    /// <para>Idempotent — declaring the same assembly twice costs nothing.</para>
+    /// </summary>
+    public void AddIndexAssembly(System.Reflection.Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        if (!indexAssemblies.Contains(assembly))
+            indexAssemblies.Add(assembly);
+    }
+
+    /// <summary>
+    /// The assemblies to scan for indexes and projections: the entry assembly first, then anything
+    /// declared. The single accessor both the runtime path and the build-time model commands read,
+    /// so the two cannot disagree about what the model contains.
+    /// <para>
+    /// Declarations <em>append</em> rather than replace. Substituting would silently drop the
+    /// application's own indexes the moment it added a module that declares one.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<System.Reflection.Assembly> ResolveIndexAssemblies()
+    {
+        var resolved = new List<System.Reflection.Assembly>();
+
+        if (System.Reflection.Assembly.GetEntryAssembly() is { } entryAssembly)
+            resolved.Add(entryAssembly);
+
+        foreach (var assembly in indexAssemblies)
+        {
+            if (!resolved.Contains(assembly))
+                resolved.Add(assembly);
+        }
+
+        return resolved;
+    }
+
     public void AddMiddleware(Action<IApplicationBuilder> action) => middlewareActions.Add(action);
     public void AddEndpoints(Action<IEndpointRouteBuilder> action) => endpointActions.Add(action);
 
