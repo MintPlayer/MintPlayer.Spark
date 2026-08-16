@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Testing;
 using System.Net;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -135,7 +136,7 @@ public class OidcTokenSecurityTests : OidcTestHost
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var issued = await session.Query<OidcToken>().Where(t => t.Type != "authorization_code").ToListAsync();
         issued.Should().NotBeEmpty();

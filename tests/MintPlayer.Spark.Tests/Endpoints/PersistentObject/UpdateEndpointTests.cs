@@ -73,7 +73,7 @@ public class UpdateEndpointTests : SparkTestDriver
         var saved = await _client.UpdatePersistentObjectAsync(NewPerson("people/1", "Alicia", "Smith-Jones"));
         saved.Should().NotBeNull();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var verify = Store.OpenAsyncSession();
         var stored = await verify.LoadAsync<Person>("people/1");
         stored.FirstName.Should().Be("Alicia");

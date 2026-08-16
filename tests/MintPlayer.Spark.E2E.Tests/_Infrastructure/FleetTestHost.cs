@@ -142,7 +142,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         // per-query form has to be remembered on every query anyone adds later, and is silent when
         // forgotten. This also throws with the actual index errors if they never settle, instead
         // of leaving a mystery failure further down.
-        appStore.WaitForIndexing(TestDatabase);
+        await appStore.WaitForIndexingAsync(TestDatabase);
 
         using var session = appStore.OpenAsyncSession();
 
@@ -273,7 +273,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         });
 
         await session.SaveChangesAsync();
-        appStore.WaitForIndexing(TestDatabase);
+        await appStore.WaitForIndexingAsync(TestDatabase);
 
         return secret;
     }

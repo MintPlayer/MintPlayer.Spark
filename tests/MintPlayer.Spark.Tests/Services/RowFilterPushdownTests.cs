@@ -168,15 +168,13 @@ public class RowFilterPushdownTests : SparkTestDriver
         return new RowSecurity(actionsResolver);
     }
 
-    private async Task SeedNotesAsync()
-    {
-        using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new Note { Title = "Alice's first", Owner = "alice" });
-        await session.StoreAsync(new Note { Title = "Alice's locked", Owner = "alice" });
-        await session.StoreAsync(new Note { Title = "Bob's secret", Owner = "bob" });
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+    private Task SeedNotesAsync()
+        => SeedAsync(async session =>
+        {
+            await session.StoreAsync(new Note { Title = "Alice's first", Owner = "alice" });
+            await session.StoreAsync(new Note { Title = "Alice's locked", Owner = "alice" });
+            await session.StoreAsync(new Note { Title = "Bob's secret", Owner = "bob" });
+        });
 
     [Fact]
     public async Task The_filter_composes_into_the_raven_query_and_narrows_it_server_side()

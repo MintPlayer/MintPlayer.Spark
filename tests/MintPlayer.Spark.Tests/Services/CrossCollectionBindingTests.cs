@@ -193,15 +193,9 @@ public class CrossCollectionBindingTests : SparkTestDriver
     [Fact]
     public async Task Same_collection_operations_still_succeed()
     {
-        string docId;
-        using (var session = Store.OpenAsyncSession())
-        {
-            var doc = new GuardedDoc { Name = "legit", IsVisible = true };
-            await session.StoreAsync(doc);
-            await session.SaveChangesAsync();
-            docId = doc.Id!;
-            await RavenIndexHelper.WaitForNonStaleAsync(Store);
-        }
+        var doc = new GuardedDoc { Name = "legit", IsVisible = true };
+        await SeedAsync(session => session.StoreAsync(doc));
+        var docId = doc.Id!;
 
         var result = await _dbAccess.GetPersistentObjectAsync(DocTypeId, docId);
 

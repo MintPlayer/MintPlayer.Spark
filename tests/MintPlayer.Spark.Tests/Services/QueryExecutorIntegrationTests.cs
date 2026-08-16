@@ -93,16 +93,14 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         ]
     };
 
-    private async Task SeedPeopleAsync(params (string id, string first, string last)[] people)
-    {
-        using var session = Store.OpenAsyncSession();
-        foreach (var (id, first, last) in people)
+    private Task SeedPeopleAsync(params (string id, string first, string last)[] people)
+        => SeedAsync(async session =>
         {
-            await session.StoreAsync(new Person { FirstName = first, LastName = last }, id);
-        }
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+            foreach (var (id, first, last) in people)
+            {
+                await session.StoreAsync(new Person { FirstName = first, LastName = last }, id);
+            }
+        });
 
     private static SparkQuery DatabasePeopleQuery() => new()
     {

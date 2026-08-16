@@ -38,9 +38,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
 
     private async Task<string> SeedAsync(GuardedDoc doc)
     {
-        using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(doc);
-        await session.SaveChangesAsync();
+        await base.SeedAsync(session => session.StoreAsync(doc));
         return doc.Id!;
     }
 
@@ -173,7 +171,6 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     {
         await SeedAsync(new GuardedDoc { Name = "a", IsVisible = true });
         await SeedAsync(new GuardedDoc { Name = "b", IsVisible = true });
-        WaitForIndexing(Store);
 
         var docs = (await _dbAccess.GetDocumentsUncheckedAsync<GuardedDoc>()).ToList();
 
@@ -265,7 +262,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         await SeedAsync(new GuardedDoc { Id = "docs/i3", Name = "Charlie", IsVisible = true });
 
         await new GuardedDocs_ByName().ExecuteAsync(Store);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var indexRegistry = _factory.GetService<IIndexRegistry>();
         indexRegistry.RegisterIndex(typeof(GuardedDocs_ByName));

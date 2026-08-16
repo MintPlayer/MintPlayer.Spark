@@ -44,17 +44,15 @@ public class ReferenceIncludeTests : SparkTestDriver
     [Fact]
     public async Task ApplyIncludes_emits_include_in_the_query_and_the_referenced_doc_is_a_cache_hit()
     {
-        string bookId;
-        using (var seed = Store.OpenAsyncSession())
+        var book = new Book { Title = "Notes" };
+        await SeedAsync(async seed =>
         {
             var seedAuthor = new Author { Name = "Ada" };
             await seed.StoreAsync(seedAuthor);
-            var book = new Book { Title = "Notes", AuthorId = seedAuthor.Id };
+            book.AuthorId = seedAuthor.Id;
             await seed.StoreAsync(book);
-            await seed.SaveChangesAsync();
-            bookId = book.Id!;
-            WaitForIndexing(Store);
-        }
+        });
+        var bookId = book.Id!;
 
         var resolver = CreateResolver();
         using var session = Store.OpenAsyncSession();

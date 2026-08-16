@@ -42,14 +42,12 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private async Task SeedAsync(params (string id, string first, string last)[] people)
-    {
-        using var session = Store.OpenAsyncSession();
-        foreach (var (id, first, last) in people)
-            await session.StoreAsync(new Person { FirstName = first, LastName = last }, id);
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+    private Task SeedAsync(params (string id, string first, string last)[] people)
+        => base.SeedAsync(async session =>
+        {
+            foreach (var (id, first, last) in people)
+                await session.StoreAsync(new Person { FirstName = first, LastName = last }, id);
+        });
 
     [Fact]
     public async Task Execute_throws_404_when_query_unknown()

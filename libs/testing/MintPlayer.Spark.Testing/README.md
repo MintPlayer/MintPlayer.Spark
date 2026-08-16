@@ -71,6 +71,56 @@ Copy fixtures to the output directory so the relative path resolves:
 </ItemGroup>
 ```
 
+### Seeding that is queryable — `SeedAsync`
+
+**This is the default way to write documents a test will then query.** It saves with
+`WaitForIndexesAfterSaveChanges(throwOnTimeout: true)`, so the *server* holds the write until the
+indexes covering it are current — no explicit index wait needed afterwards:
+
+```csharp
+var car = new Car { Plate = "ABC-123" };
+await SeedAsync(session => session.StoreAsync(car));
+
+// query immediately; no WaitForIndexing
+using var session = Store.OpenAsyncSession();
+var hits = await session.Query<Car, Cars_ByPlate>().Where(c => c.Plate == "ABC-123").ToListAsync();
+```
+
+Why this beats saving and then polling every index:
+
+- **Targeted** — only the indexes this write touched, not the whole database.
+- **No sampling window** — a global poll can catch a momentarily-clean snapshot and return while
+  another writer's document is still unindexed. The write here does not complete until its indexes
+  are current, so there is no gap to lose.
+- **Impossible to forget** — the guarantee is attached to the write, not to a call someone has to
+  remember to add next to each new query.
+
+Declare the entity outside the lambda if you need its generated id afterwards. Reach for
+`WaitForIndexing` instead when no single session owns the write — Smuggler/JSON imports, or
+documents written by a background worker or by the code under test.
+
+### Waiting for anything else — `AsyncWait`
+
+For asynchronous work with no completion signal (a worker attaching, a file-watcher invalidating a
+cache, a cron job firing). Everything here **throws** on expiry, naming what was awaited and for how
+long — a wait that quietly gives up turns into a confusing assertion failure somewhere downstream.
+
+```csharp
+await AsyncWait.UntilAsync(
+    () => recorder.Count(nameof(EverySecondJob)) > 0,
+    "the every-second job to fire at least once",
+    TimeSpan.FromSeconds(8));
+
+var message = await AsyncWait.ForAsync(
+    () => session.LoadAsync<SparkMessage>(id),
+    m => m.Status == EMessageStatus.Processed,
+    $"message '{id}' to be processed",
+    describeLast: m => $"Status={m?.Status}");
+```
+
+Prefer a real signal where one exists: `SeedAsync` for writes, `WaitForIndexingAsync` for indexing.
+Never substitute a fixed `Task.Delay` — it makes a test that passes prove only "not yet".
+
 ### Endpoint/integration tests — `SparkEndpointFactory<TContext>`
 
 Boots a real Spark middleware pipeline over `TestServer`, against a store you supply (typically `Store` from a `SparkTestDriver`). It writes the supplied model definitions into a per-test temp content root, so `ModelLoader` sees exactly the entity types your fixture declares.

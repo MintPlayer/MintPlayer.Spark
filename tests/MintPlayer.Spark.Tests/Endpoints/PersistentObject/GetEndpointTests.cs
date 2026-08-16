@@ -56,12 +56,7 @@ public class GetEndpointTests : SparkTestDriver
     [Fact]
     public async Task Get_returns_persistent_object_for_existing_document()
     {
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
-            await session.SaveChangesAsync();
-        }
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        await SeedAsync(session => session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1"));
 
         var po = await _client.GetPersistentObjectAsync(PersonTypeId, "people/1");
 

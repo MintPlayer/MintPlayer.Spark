@@ -24,7 +24,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus();
 
         await bus.BroadcastAsync(new OrderPlaced("orders/1", 99.95m));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var messages = await session.Query<SparkMessage>().ToListAsync();
@@ -45,7 +45,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus();
 
         await bus.BroadcastAsync(new OrderShipped("orders/1"));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
@@ -58,7 +58,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus();
 
         await bus.BroadcastAsync(new OrderShipped("orders/1"), queueName: "priority-queue");
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
@@ -71,7 +71,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus();
 
         await bus.DelayBroadcastAsync(new OrderPlaced("orders/1", 10m), TimeSpan.FromMinutes(5));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
@@ -87,7 +87,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus();
 
         await bus.DelayBroadcastAsync(new OrderPlaced("orders/1", 10m), TimeSpan.FromMinutes(5));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
@@ -101,7 +101,7 @@ public class MessageBusTests : SparkTestDriver
         var bus = NewBus(new SparkMessagingOptions { MaxAttempts = 12 });
 
         await bus.BroadcastAsync(new OrderPlaced("orders/1", 10m));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();

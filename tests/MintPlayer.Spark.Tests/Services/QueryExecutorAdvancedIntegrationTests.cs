@@ -96,18 +96,22 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
     private async Task<(string companyId, string[] employeeIds)> SeedAsync()
     {
-        using var session = Store.OpenAsyncSession();
         var company = new Company { Name = "Acme" };
-        await session.StoreAsync(company);
-        var employees = new[]
+        Employee[] employees = null!;
+
+        await base.SeedAsync(async session =>
         {
-            new Employee { FirstName = "Ada", LastName = "Lovelace", Company = company.Id },
-            new Employee { FirstName = "Grace", LastName = "Hopper", Company = company.Id },
-            new Employee { FirstName = "Linus", LastName = "Torvalds", Company = company.Id },
-        };
-        foreach (var e in employees) await session.StoreAsync(e);
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
+            // Stored first so the generated company id is available to reference below.
+            await session.StoreAsync(company);
+            employees =
+            [
+                new Employee { FirstName = "Ada", LastName = "Lovelace", Company = company.Id },
+                new Employee { FirstName = "Grace", LastName = "Hopper", Company = company.Id },
+                new Employee { FirstName = "Linus", LastName = "Torvalds", Company = company.Id },
+            ];
+            foreach (var e in employees) await session.StoreAsync(e);
+        });
+
         return (company.Id!, employees.Select(e => e.Id!).ToArray());
     }
 
@@ -197,14 +201,12 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
     public async Task Database_query_supports_multi_column_sort()
     {
         // Multi-column sort drives the i==0/ThenBy branch in ApplySorting.
-        using (var session = Store.OpenAsyncSession())
+        await base.SeedAsync(async session =>
         {
             await session.StoreAsync(new Employee { FirstName = "B", LastName = "Z" });
             await session.StoreAsync(new Employee { FirstName = "A", LastName = "Z" });
             await session.StoreAsync(new Employee { FirstName = "B", LastName = "A" });
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        });
 
         var query = new SparkQuery
         {
@@ -400,7 +402,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         // Deploy the index to RavenDB and register it with the framework's IndexRegistry.
         await new Employees_ByLastName().ExecuteAsync(Store);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var indexRegistry = _factory.GetService<IIndexRegistry>();
         indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
@@ -424,7 +426,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
         await SeedAsync();
 
         await new Employees_ByLastName().ExecuteAsync(Store);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var indexRegistry = _factory.GetService<IIndexRegistry>();
         indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
@@ -458,7 +460,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
         await SeedAsync();
 
         await new Employees_ByLastName().ExecuteAsync(Store);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var query = new SparkQuery
         {

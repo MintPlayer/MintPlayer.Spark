@@ -138,12 +138,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             }],
         };
 
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(doc);
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        await SeedAsync(session => session.StoreAsync(doc));
         return doc.Id!;
     }
 

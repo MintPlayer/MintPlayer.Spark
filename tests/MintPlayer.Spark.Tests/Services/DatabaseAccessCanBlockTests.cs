@@ -56,15 +56,11 @@ public class DatabaseAccessCanBlockTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private async Task SeedAsync(params object[] docs)
-    {
-        using (var session = Store.OpenAsyncSession())
+    private Task SeedAsync(params object[] docs)
+        => base.SeedAsync(async session =>
         {
             foreach (var d in docs) await session.StoreAsync(d);
-            await session.SaveChangesAsync();
-        }
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
-    }
+        });
 
     [Fact]
     public async Task Can_block_never_claims_more_than_type_level_rights()

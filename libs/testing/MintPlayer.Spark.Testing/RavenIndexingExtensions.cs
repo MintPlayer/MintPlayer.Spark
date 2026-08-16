@@ -93,17 +93,6 @@ public static class RavenIndexingExtensions
     }
 
     /// <summary>
-    /// Blocking wrapper over <see cref="WaitForIndexingAsync"/>, for the many synchronous call
-    /// sites. Prefer the async form inside an <c>async</c> test — this one parks a thread-pool
-    /// thread for the duration, and test parallelism is capped.
-    /// </summary>
-    public static void WaitForIndexing(
-        this IDocumentStore store,
-        string? database = null,
-        TimeSpan? timeout = null)
-        => store.WaitForIndexingAsync(database, timeout).GetAwaiter().GetResult();
-
-    /// <summary>
     /// Settled means: every index that could still catch up has, and no replacement swap is
     /// pending. Disabled indexes are excluded because they never catch up — waiting on one
     /// guarantees a timeout.

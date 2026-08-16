@@ -68,7 +68,6 @@ public class RavenIndexHelperSmokeTests : SparkTestDriver
 
         await RavenIndexHelper.WaitForNonStaleAsync(Store);
         await Store.WaitForIndexingAsync();
-        Store.WaitForIndexing();
 
         using var readSession = Store.OpenAsyncSession();
         var hits = await readSession.Query<Widget, Widgets_ByName>()
