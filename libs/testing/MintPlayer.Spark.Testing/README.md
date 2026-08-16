@@ -98,7 +98,7 @@ Why this beats saving and then polling every index:
   remember to add next to each new query.
 
 Declare the entity outside the lambda if you need its generated id afterwards. Reach for
-`WaitForIndexing` instead when no single session owns the write — Smuggler/JSON imports, or
+`WaitForIndexesAsync` instead when no single session owns the write — Smuggler/JSON imports, or
 documents written by a background worker or by the code under test.
 
 ### Waiting for anything else — `AsyncWait`
