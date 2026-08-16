@@ -266,3 +266,146 @@ public sealed class IdemContext : SparkContext
 {
     public IRavenQueryable<IdemProbe> IdemProbes => Session.Query<IdemProbe>();
 }
+
+/// <summary>
+/// Three defects where synchronization produced a model that misdescribed the code: a reference to a
+/// projection that no longer existed, a file deleted by a name collision, and a query that could
+/// never come into existence.
+/// </summary>
+public class SynchronizeCorrectnessTests : IDisposable
+{
+    private readonly string _contentRoot = Path.Combine(
+        Path.GetTempPath(), "spark-correct-" + Guid.NewGuid().ToString("N"));
+
+    private readonly IHostEnvironment _hostEnv = Substitute.For<IHostEnvironment>();
+
+    public SynchronizeCorrectnessTests()
+    {
+        Directory.CreateDirectory(_contentRoot);
+        _hostEnv.ContentRootPath.Returns(_contentRoot);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_contentRoot, recursive: true); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    private string ModelDir => Path.Combine(_contentRoot, "App_Data", "Model");
+
+    private void Synchronize(IIndexRegistry registry, SparkContext context) =>
+        new ModelSynchronizer(_hostEnv, registry).SynchronizeModels(context);
+
+    private JsonElement PersistentObject(string fileName)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(ModelDir, fileName)));
+        return document.RootElement.GetProperty("persistentObject").Clone();
+    }
+
+    [Fact]
+    public void A_projection_that_is_no_longer_registered_is_cleared_from_the_model()
+    {
+        // Both fields feed the structural hash, so a stale value does not merely linger — the
+        // verifier confirms a reference to a type that no longer exists.
+        var withProjection = Substitute.For<IIndexRegistry>();
+        withProjection.GetRegistrationForCollectionType(typeof(IdemProbe)).Returns(new IndexRegistration
+        {
+            IndexName = "Probes/Overview",
+            IndexType = typeof(IdemProbe),
+            CollectionType = typeof(IdemProbe),
+            ProjectionType = typeof(IdemProbeProjection),
+        });
+
+        Synchronize(withProjection, new IdemContext());
+        PersistentObject("IdemProbe.json").TryGetProperty("queryType", out _).Should().BeTrue();
+
+        // The projection is deleted from the codebase: the registry no longer knows it.
+        Synchronize(Substitute.For<IIndexRegistry>(), new IdemContext());
+
+        var po = PersistentObject("IdemProbe.json");
+        po.TryGetProperty("queryType", out _).Should().BeFalse("a dead projection reference must not survive");
+        po.TryGetProperty("indexName", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_entity_sharing_a_projections_simple_name_keeps_its_model_file()
+    {
+        // Model files are keyed by simple type name, so an entity named the same as some other
+        // index's projection resolves to the same path. The stale-projection cleanup runs after all
+        // writes, so it used to delete a file this very run had produced — and report success.
+        var registry = Substitute.For<IIndexRegistry>();
+        registry.GetAllRegistrations().Returns([new IndexRegistration
+        {
+            IndexName = "Other/Overview",
+            IndexType = typeof(IdemProbe),
+            CollectionType = typeof(IdemProbe),
+            // Different namespace, same simple name as the entity being written.
+            ProjectionType = typeof(MintPlayer.Spark.Tests.Collides.IdemProbe),
+        }]);
+
+        Synchronize(registry, new IdemContext());
+
+        File.Exists(Path.Combine(ModelDir, "IdemProbe.json")).Should()
+            .BeTrue("the cleanup must not delete a file written during the same run");
+    }
+
+    [Fact]
+    public void A_genuinely_stale_projection_file_is_still_removed()
+    {
+        // The cleanup exists to migrate directories written before projections were merged into
+        // their collection type's file. Narrowing it must not disable it.
+        Directory.CreateDirectory(ModelDir);
+        var stale = Path.Combine(ModelDir, $"{nameof(IdemProbeProjection)}.json");
+        File.WriteAllText(stale, "{ \"persistentObject\": { \"name\": \"IdemProbeProjection\", \"clrType\": \"X\" }, \"queries\": [] }");
+
+        var registry = Substitute.For<IIndexRegistry>();
+        registry.GetAllRegistrations().Returns([new IndexRegistration
+        {
+            IndexName = "Probes/Overview",
+            IndexType = typeof(IdemProbe),
+            CollectionType = typeof(IdemProbe),
+            ProjectionType = typeof(IdemProbeProjection),
+        }]);
+
+        Synchronize(registry, new IdemContext());
+
+        File.Exists(stale).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Two_context_properties_of_the_same_entity_type_each_get_a_query()
+    {
+        // Both properties map to one IdemProbe.json. Writing per property meant the second write
+        // dropped the query the first had added, and the file oscillated between the two forever.
+        var registry = Substitute.For<IIndexRegistry>();
+
+        Synchronize(registry, new TwoRootsContext());
+
+        var queries = QueryNames();
+        queries.Should().BeEquivalentTo(["GetProbes", "GetArchivedProbes"]);
+
+        Synchronize(registry, new TwoRootsContext());
+        Synchronize(registry, new TwoRootsContext());
+
+        QueryNames().Should().BeEquivalentTo(queries, "and it must converge, not oscillate");
+    }
+
+    private string[] QueryNames()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(ModelDir, "IdemProbe.json")));
+        return [.. document.RootElement.GetProperty("queries").EnumerateArray()
+            .Select(q => q.GetProperty("name").GetString()!)];
+    }
+}
+
+public sealed class IdemProbeProjection
+{
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+}
+
+public sealed class TwoRootsContext : SparkContext
+{
+    public IRavenQueryable<IdemProbe> Probes => Session.Query<IdemProbe>();
+    public IRavenQueryable<IdemProbe> ArchivedProbes => Session.Query<IdemProbe>();
+}

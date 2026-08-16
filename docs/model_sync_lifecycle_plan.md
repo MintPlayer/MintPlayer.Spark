@@ -24,7 +24,10 @@ milestones are verified by reading and type-checking.
 | M7 | `--spark-verify-model` + CI gate | `62ecbd3` |
 | M8 | Docs, version bump, full suite | `5fefc83` |
 | M9 | Newline normalisation + cross-OS verification on WSL | `703758b` |
-| M10 | Fix unbounded query duplication; idempotency guard | this commit |
+| M10 | Fix unbounded query duplication; idempotency guard | `3ac32e0` |
+| M11 | TranslatedString classification; clear stale derived fields | `07e3cda` |
+| M12 | Rename to `modelHashes.json` | `615b367` |
+| M13 | Stale projection refs, name-collision deletion, duplicate roots | this commit |
 
 ---
 
@@ -252,15 +255,40 @@ killed the command with nothing actionable in the message.
 hand-authored seed carrying #253 preserved fields, and both orphan-file shapes. Verified to fail
 without the fix.
 
-**Deliberately out of scope, filed as follow-ups.** Both are byte-stable, so neither is an
-idempotency defect, and both predate this branch:
+**Now fixed in M13** — the three defects previously listed here as follow-ups.
 
-- Stale `queryType`/`indexName`/`referenceType`/`asDetailType`/`lookupReferenceType` are never
-  cleared when the corresponding attribute or projection is removed. These *are* structurally hashed,
-  so the verifier will confirm a dead reference.
-- An entity whose simple type name collides with a registered projection type's name has its model
-  file written and then deleted on every run (the stale-projection cleanup matches on
-  `ProjectionType.Name`). Byte-stable precisely because the file is absent every time, so a verify
-  gate cannot see it.
-- A second `IRavenQueryable<T>` of the same entity type on one context silently loses its query, and
-  same-simple-name types in different namespaces collide on one `{Name}.json`.
+## M13 — Model must not misdescribe the code (PRD R13)
+
+**Files:** `Services/ModelSynchronizer.cs`, `tests/.../Model/SynchronizeIdempotencyTests.cs`
+
+Three defects, all byte-stable, so none was visible to the idempotency guard or the verify gate.
+
+**Stale projection references.** `QueryType`/`IndexName` were set only when a projection was
+registered and never cleared, so deleting a `[FromIndex]` projection left the model pointing at a
+type that no longer existed. Both feed the structural hash, so verification *confirmed* the dead
+reference. Now assigned unconditionally, including back to null, and the clear is logged.
+
+Safe because nothing reads them: a full-tree sweep found the only reader is `ModelFileShape` (the
+hash itself). Every runtime consumer — `QueryExecutor`, `DatabaseAccess`, `ModelShapeDiscovery` —
+resolves projections through `IIndexRegistry`, and the TypeScript model does not even declare the
+fields. Consistent rather than destructive, because synchronization and the running app populate that
+registry from the same entry assembly, so a projection missing at sync time is missing at runtime.
+
+**A name collision deleted a live model file.** The stale-projection cleanup is a one-shot migration
+from the change that merged projections into their collection type's file. It deletes
+`{ProjectionType.Name}.json`, and model files are keyed by *simple* name — so an entity sharing a
+projection's simple name resolved to the same path. The loop runs after all writes, so it deleted a
+file the same run had just produced and reported success. Now it skips any path written during this
+run. Full-type-name matching is not an option (the path carries only the simple name), and comparing
+`clrType` would break the existing stale-file test, whose fixture deliberately uses a different one.
+
+**A duplicate queryable root could never converge.** Two context properties of the same entity type
+(`Cars` and `ArchivedCars`, both `IRavenQueryable<Car>`) map to one file. Queries were collected from
+a directory snapshot taken once before any write, so the second property's write dropped the query
+the first had just added — and the file oscillated between the two forever, meaning no verify gate
+could ever be satisfied. Properties are now grouped by entity type and each file written once, with
+one query per property. Downstream is already duplicate-tolerant: `QueryLoader` keys by id,
+`QueryExecutor` resolves each query through its own `Source`.
+
+No committed model file changes: no demo has a stale projection, a name collision, or a duplicate
+root. Each fix is pinned by a test verified to fail without it.

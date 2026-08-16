@@ -322,6 +322,33 @@ bug — `??=` fires on an explicit `null` just as it does on an absent field —
 37% to every model file while burying hand-authored lines under nulls, against the stated intent that
 model JSON is an editing surface.
 
+### R13 — The model must not misdescribe the code
+
+Three defects let synchronization produce a model that described something other than the code. All
+were byte-stable, so neither the idempotency guard nor the verify gate could see them — a gate that
+compares a value against itself confirms whatever is there.
+
+**Stale projection references.** `QueryType`/`IndexName` were only ever set, never cleared, so
+deleting a `[FromIndex]` projection left a reference to a type that no longer existed — and since
+both feed the structural hash, verification confirmed it. Now assigned unconditionally, including
+back to null, with the clear logged.
+
+Safe because **nothing reads them**: a full-tree sweep found the sole reader is `ModelFileShape`, the
+hash itself. Every runtime consumer resolves projections through `IIndexRegistry`, and the TypeScript
+model does not declare the fields at all. Clearing is consistent rather than destructive, because
+synchronization and the running app populate that registry from the same entry assembly — so a
+projection absent at sync time is absent at runtime too.
+
+**A name collision deleted a live model file.** The stale-projection cleanup deletes
+`{ProjectionType.Name}.json`; model files are keyed by *simple* type name, so an entity sharing that
+name resolved to the same path. Running after all writes, it deleted a file the same run had produced
+and reported success. It now skips anything written during the run.
+
+**A duplicate queryable root never converged.** Two context properties of one entity type map to one
+file; queries came from a snapshot taken before any write, so the second write dropped the first's
+query and the file oscillated forever. Properties are now grouped by entity type, one write per file,
+one query per property.
+
 ---
 
 ## Decisions

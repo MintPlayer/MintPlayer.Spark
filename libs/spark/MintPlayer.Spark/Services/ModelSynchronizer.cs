@@ -64,20 +64,32 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         // Track types to process (including embedded types)
         var processedTypes = new HashSet<string>();
+        // Paths written during this run. The stale-projection cleanup below keys off it so it can
+        // never delete a file this same run produced.
+        var writtenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var typesToProcess = new Queue<Type>();
 
-        foreach (var property in queryableProperties)
-        {
-            var entityType = GetQueryableEntityType(property.PropertyType);
-            if (entityType == null) continue;
-
-            // Skip projection types - they are merged into their collection type's JSON file
-            if (indexRegistry.IsProjectionType(entityType))
+        // Grouped by entity type, because a context may expose the same type more than once
+        // (e.g. Cars and ArchivedCars, both IRavenQueryable<Car>). Both map to the same
+        // {TypeName}.json, and writing per property meant the second write dropped the query the
+        // first had just added — from a snapshot of the directory taken once, before any write. The
+        // file then oscillated between the two queries on every run and never converged, so no
+        // verify gate could ever be satisfied. One file, one write, one query per property.
+        var rootsByEntityType = queryableProperties
+            .Select(property => new { Property = property, EntityType = GetQueryableEntityType(property.PropertyType) })
+            .Where(x => x.EntityType is not null)
+            .Where(x =>
             {
-                Console.WriteLine($"Skipping projection type: {entityType.Name} (merged into collection type)");
-                continue;
-            }
+                // Projection types are merged into their collection type's JSON file
+                if (!indexRegistry.IsProjectionType(x.EntityType!)) return true;
+                Console.WriteLine($"Skipping projection type: {x.EntityType!.Name} (merged into collection type)");
+                return false;
+            })
+            .GroupBy(x => x.EntityType!);
 
+        foreach (var group in rootsByEntityType)
+        {
+            var entityType = group.Key;
             var clrType = entityType.FullName ?? entityType.Name;
 
             // Get projection type from IndexRegistry (populated from FromIndexAttribute on projections)
@@ -92,10 +104,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // Collect existing inline queries for this entity type, plus create default if missing
             var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
 
-            var queryName = $"Get{property.Name}";
-            if (!queriesForType.Any(q => q.Name == queryName))
+            // One default query per context property exposing this type.
+            foreach (var property in group.Select(x => x.Property))
             {
-                var query = new SparkQuery
+                var queryName = $"Get{property.Name}";
+                if (queriesForType.Any(q => q.Name == queryName))
+                    continue;
+
+                queriesForType.Add(new SparkQuery
                 {
                     Id = Guid.NewGuid(),
                     Name = queryName,
@@ -108,8 +124,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
                         : []
-                };
-                queriesForType.Add(query);
+                });
                 Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");
             }
 
@@ -122,6 +137,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
+            writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
             // Also mark projection type as processed (no separate JSON file)
@@ -169,6 +185,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
+            writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
             Console.WriteLine($"Synchronized model (embedded): {embeddedType.Name} -> {fileName}");
@@ -177,18 +194,26 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
         }
 
-        // Clean up stale projection type files
+        // Clean up model files left behind by an older version that gave projection types their own
+        // file. Projection types are merged into their collection type's file now, so nothing here
+        // can create one.
+        //
+        // Skipping anything written during this run is what makes it safe. Model files are keyed by
+        // SIMPLE type name, so a real entity sharing a projection's simple name resolves to the same
+        // path — and this loop runs after every write, so it used to delete a file the same run had
+        // just produced and report success. Matching on the full type name is not an option: the
+        // path carries only the simple name.
         foreach (var registration in indexRegistry.GetAllRegistrations())
         {
-            if (registration.ProjectionType != null)
-            {
-                var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
-                if (File.Exists(staleModelFile))
-                {
-                    File.Delete(staleModelFile);
-                    Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
-                }
-            }
+            if (registration.ProjectionType == null)
+                continue;
+
+            var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
+            if (writtenFiles.Contains(staleModelFile) || !File.Exists(staleModelFile))
+                continue;
+
+            File.Delete(staleModelFile);
+            Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
         }
 
         WriteModelHashes(contextType);
@@ -357,12 +382,22 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.Tabs = existing?.Tabs ?? [];
         entityTypeDef.Groups = existing?.Groups ?? [];
 
-        // Set QueryType and IndexName if projection type is provided
-        if (projectionType != null)
+        // Assigned unconditionally, including back to null when no projection is registered.
+        // Only setting them left a model pointing at a projection type that had since been deleted,
+        // and because both feed the structural hash, verification would confirm the dead reference
+        // instead of catching it. Clearing is consistent with the runtime rather than destructive:
+        // synchronization and the running app populate the index registry from the same entry
+        // assembly, so a projection missing here is missing there too.
+        var resolvedQueryType = projectionType?.FullName ?? projectionType?.Name;
+        if (projectionType is null && entityTypeDef.QueryType is not null)
         {
-            entityTypeDef.QueryType = projectionType.FullName ?? projectionType.Name;
-            entityTypeDef.IndexName = indexName;
+            Console.WriteLine(
+                $"Cleared queryType '{entityTypeDef.QueryType}' on '{entityTypeDef.Name}': no projection is registered for it. " +
+                "Add [FromIndex] to the projection type if this was unintended.");
         }
+
+        entityTypeDef.QueryType = resolvedQueryType;
+        entityTypeDef.IndexName = projectionType != null ? indexName : null;
 
         // Get existing attributes as a dictionary for quick lookup
         // Reported rather than left to ToDictionary, which throws "An item with the same key has
