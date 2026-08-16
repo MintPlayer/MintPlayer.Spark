@@ -286,8 +286,11 @@ internal partial class LookupReferenceService : ILookupReferenceService
         var itemType = transientItem.GetType();
         var baseProps = new HashSet<string> { "Key", "Description", "Values", "DisplayType" };
 
+        // No schema gates this path — it reflects straight onto the wire — so an ignored
+        // property would otherwise ship verbatim in the Extra dictionary.
         foreach (var prop in itemType.GetCachedProperties())
         {
+            if (prop.IsIgnoredForSparkModel()) continue;
             if (!baseProps.Contains(prop.Name))
             {
                 var value = prop.CanRead ? AccessorCache.GetGetter(prop)(transientItem) : null;

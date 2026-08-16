@@ -132,10 +132,10 @@ internal partial class SyncActionHandler : ISyncActionHandler
             Name = entityType.Name,
         };
 
-        foreach (var prop in entityType.GetCachedProperties())
+        // This is the "no registered EntityTypeDefinition" fallback, so it cannot inherit the
+        // synchronizer's exclusion — it has to consult the attribute itself.
+        foreach (var prop in entityType.GetSparkModelProperties())
         {
-            if (string.Equals(prop.Name, "Id", StringComparison.Ordinal)) continue;
-            if (!prop.CanRead || !prop.CanWrite) continue;
 
             var hasValue = TryGetValue(data, prop.Name, out var value);
             var isChanged = propertySet != null
