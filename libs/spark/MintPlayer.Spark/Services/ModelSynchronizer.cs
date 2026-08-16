@@ -90,9 +90,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
 
             // Collect existing inline queries for this entity type, plus create default if missing
-            var queriesForType = existingQueries
-                .Where(q => string.Equals(q.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
 
             var queryName = $"Get{property.Name}";
             if (!queriesForType.Any(q => q.Name == queryName))
@@ -161,9 +159,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
 
             // Preserve any existing inline queries for this embedded type
-            var embeddedQueries = existingQueries
-                .Where(q => string.Equals(q.EntityType, embeddedType.Name, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType.Name).ToArray();
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var entityTypeFile = new EntityTypeFile
@@ -262,6 +258,47 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
     }
 
+    /// <summary>
+    /// Inline queries belonging to <paramref name="entityTypeName"/>, de-duplicated by id.
+    ///
+    /// <para>
+    /// The de-duplication is load-bearing, not defensive. <c>existingQueries</c> is the flat
+    /// concatenation of the inline queries of <em>every</em> model file, and a query is written into
+    /// the file of the entity it names. Normally that is self-correcting: a query sitting in the
+    /// wrong file is copied to the right one, and the wrong file is rewritten without it.
+    /// </para>
+    ///
+    /// <para>
+    /// It stops being self-correcting when a model file is never rewritten — an orphan whose type is
+    /// no longer a context root nor a reachable embedded type, which is what you get by removing or
+    /// renaming an entity without deleting its JSON. Its copy is re-read every run and appended
+    /// again, so the live entity's file grows by one query per synchronize, without bound. Measured
+    /// at +1 query and +379 bytes per run before this guard.
+    /// </para>
+    ///
+    /// <para>
+    /// Two entries with the same id are the same query, so keeping the first is always correct.
+    /// Entries that merely share a <c>Name</c> are left alone: that is an ambiguous model worth
+    /// surfacing rather than silently resolving.
+    /// </para>
+    /// </summary>
+    private static List<SparkQuery> CollectQueriesFor(List<SparkQuery> existingQueries, string entityTypeName)
+    {
+        var seenIds = new HashSet<Guid>();
+        var result = new List<SparkQuery>();
+
+        foreach (var query in existingQueries)
+        {
+            if (!string.Equals(query.EntityType, entityTypeName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (seenIds.Add(query.Id))
+                result.Add(query);
+        }
+
+        return result;
+    }
+
     private (Dictionary<Guid, EntityTypeDefinition> EntityTypes, List<SparkQuery> Queries) LoadExistingEntityTypeFiles(string modelPath)
     {
         var entityTypes = new Dictionary<Guid, EntityTypeDefinition>();
@@ -328,6 +365,21 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
 
         // Get existing attributes as a dictionary for quick lookup
+        // Reported rather than left to ToDictionary, which throws "An item with the same key has
+        // already been added" and names neither the entity nor the file — a duplicate attribute in a
+        // hand-edited model would kill the command with nothing to act on.
+        var duplicateAttributeName = entityTypeDef.Attributes
+            .GroupBy(a => a.Name, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1)?.Key;
+
+        if (duplicateAttributeName is not null)
+        {
+            throw new InvalidOperationException(
+                $"Model for '{entityTypeDef.Name}' declares the attribute '{duplicateAttributeName}' more than once. " +
+                $"Attribute names must be unique within a persistent object — remove the duplicate from " +
+                $"App_Data/Model/{entityTypeDef.Name}.json.");
+        }
+
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
 
         // Get properties from collection type

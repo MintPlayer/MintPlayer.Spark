@@ -22,7 +22,9 @@ milestones are verified by reading and type-checking.
 | M5b | Structural per-file hashing (not raw bytes) | `f27d1ee` |
 | M6 | Startup check + override | `2a44844` |
 | M7 | `--spark-verify-model` + CI gate | `62ecbd3` |
-| M8 | Docs, version bump, full suite | this commit |
+| M8 | Docs, version bump, full suite | `5fefc83` |
+| M9 | Newline normalisation + cross-OS verification on WSL | `703758b` |
+| M10 | Fix unbounded query duplication; idempotency guard | this commit |
 
 ---
 
@@ -229,3 +231,36 @@ RavenDB service container is needed, and none exists in any workflow today.
 - Lockstep `<Version>` bump across all 21 packable libs.
 - **Full test suite, once.** Plus the release gate the PRD calls out: print the model hash on Linux CI
   and compare against a Windows dev machine (R6 cross-OS/cross-machine is still unmeasured).
+
+## M10 — Fixed-point guarantee (PRD R12)
+
+**Files:** `Services/ModelSynchronizer.cs`, new `tests/.../Model/SynchronizeIdempotencyTests.cs`
+
+Two fixes and a guard.
+
+`CollectQueriesFor` replaces the two inline `Where(q => q.EntityType == …)` filters and de-duplicates
+by query id. This kills the unbounded growth an orphaned model file caused (+1 query per run,
+measured). De-duplication by id is always safe — same id, same query. Name collisions are left alone
+deliberately: an ambiguous model should surface, not be silently resolved.
+
+A duplicate attribute name is now reported with the entity and file named, instead of escaping as
+`ArgumentException: An item with the same key has already been added` out of `ToDictionary`, which
+killed the command with nothing actionable in the message.
+
+`SynchronizeIdempotencyTests` pins run 2 == run 3 across an empty directory, a **minimal** seed
+(every optional field absent — the shape that exposes omitted-on-write/derived-on-read bugs), a
+hand-authored seed carrying #253 preserved fields, and both orphan-file shapes. Verified to fail
+without the fix.
+
+**Deliberately out of scope, filed as follow-ups.** Both are byte-stable, so neither is an
+idempotency defect, and both predate this branch:
+
+- Stale `queryType`/`indexName`/`referenceType`/`asDetailType`/`lookupReferenceType` are never
+  cleared when the corresponding attribute or projection is removed. These *are* structurally hashed,
+  so the verifier will confirm a dead reference.
+- An entity whose simple type name collides with a registered projection type's name has its model
+  file written and then deleted on every run (the stale-projection cleanup matches on
+  `ProjectionType.Name`). Byte-stable precisely because the file is absent every time, so a verify
+  gate cannot see it.
+- A second `IRavenQueryable<T>` of the same entity type on one context silently loses its query, and
+  same-simple-name types in different namespaces collide on one `{Name}.json`.

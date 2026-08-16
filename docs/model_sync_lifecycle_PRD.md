@@ -260,6 +260,68 @@ as `AdditionalFiles` (`HR.csproj:34`).
 **greedy**: in one run `--urls=http://localhost:5099` was swallowed as the flag's value and never
 applied. `WebApplication` does not expose args at all; they are not even reflectable.
 
+### R12 — Synchronization must be a fixed point
+Synchronization is a read-modify-write over its own output, so the invariant is
+`Serialize(Load(Serialize(x))) == Serialize(x)`. Run 1 legitimately differs from its input — it mints
+ids, synthesizes a breadcrumb and materialises defaults — but run 2 and run 3 must be byte-identical.
+
+Two mechanisms break it, and **either alone is sufficient**:
+
+1. **Write-side omission.** `DefaultIgnoreCondition = WhenWritingNull` makes "null" and "absent" the
+   same bytes.
+2. **Read-side derivation.** The load path invents a value the write path never produced.
+
+The design rule that follows, and the one worth remembering: *deriving a value on load is correct for
+a pure reader and poison for a read-modify-write tool.* `ModelLoader` and `QueryLoader` derive
+`Alias` and `EntityType` on load and never write, so they are fine permanently. The synchronizer's own
+load path must not.
+
+**Two defects were found and fixed.**
+
+*`SparkQuery.EntityType` was omitted on create and derived on load.* A newly created query left the
+field null, so it was omitted; the next run read the file, filled it in via `??=`, and wrote it back.
+Measured `run1 == run2: False`, `run2 == run3: True`. Fixed by setting it at creation.
+
+*Inline queries duplicated without bound.* `existingQueries` is the flat concatenation of every model
+file's inline queries, re-partitioned by `EntityType` with no de-duplication. Normally
+self-correcting, because the file a query was wrongly in is rewritten without it. It stops being
+self-correcting when a file is **never rewritten** — an orphan whose type is no longer a context root
+nor a reachable embedded type, which is what removing or renaming an entity without deleting its JSON
+produces. Measured:
+
+```
+run1: 2 queries, 1449 bytes    run3: 4 queries, 2207 bytes
+run2: 3 queries, 1828 bytes    run4: 5 queries, 2586 bytes     +1 query, +379 bytes per run
+```
+
+Also reachable via a case-only difference in `entityType` (the match is `OrdinalIgnoreCase`) and by
+renaming a model file. Fixed by de-duplicating on query id — two entries with the same id are the
+same query, so keeping the first is always correct. Entries sharing only a `Name` are deliberately
+left alone: that is an ambiguous model worth surfacing, not silently resolving.
+
+**Everything else converges.** Measured across every scalar type, nullable variants, get-only
+properties, `[IgnoreProperty]`, references with and without explicit queries, lookups, sortable
+arrays, embedded and nested-embedded types, projections through a real `IndexRegistry`, breadcrumbs
+present and synthesized, and hand-authored renderer/rules/tabs/groups: `run1 == run2 == run3`
+throughout. `order` normalisation and minimal seeds are one-shot canonicalisations. Running the real
+command against all four demos gives `committed → run1: no diff` and `run1 → run2: no diff`, so the
+repository itself sits at the fixed point.
+
+**Guard.** `SynchronizeIdempotencyTests` asserts the fixed point over three fixture shapes, including
+a **minimal** seed with every optional field absent — a fully-populated fixture cannot catch this
+class, because the mechanism is a field missing on write and derived on read. Verified to fail
+(`found 4` instead of `2`) when the de-duplication is removed.
+
+Chosen over the alternatives: an in-synchronize round-trip assertion would run against real consumer
+models but only fires *after* a regression has shipped, whereas the test gates Spark's own CI; and an
+analyzer for "a field derived on the read path must also be set on the write path" is interprocedural
+and cross-assembly — a whole analyzer project, high false-positive rate, for one rule.
+
+Not adopted: making every field always-persist (dropping `WhenWritingNull`). It does not even fix the
+bug — `??=` fires on an explicit `null` just as it does on an absent field — and it would add roughly
+37% to every model file while burying hand-authored lines under nulls, against the stated intent that
+model JSON is an editing surface.
+
 ---
 
 ## Decisions
@@ -357,7 +419,7 @@ passes forever and looks like it works.
 | Override becomes a permanent deployment default | R9: value-based and self-expiring; no boolean off-switch |
 | `App_Data` not deployed → check throws on a healthy app | Verified: `App_Data/Model/` is copied to build output; the Web SDK includes it as Content with `CopyToPublishDirectory=PreserveNewest` (documented at `MintPlayer.Spark.csproj:50-56`) |
 | Orphan chain: removing a property never cleans the model | Documented, not fixed. Synchronize preserves the orphan and warns (`:511-513`, `:521-527`); recovery is "re-run synchronize **and read what it printed**" |
-| Synchronize not byte-stable across runs | Unmeasured. Test it before wiring any `git diff`-based gate |
+| Synchronize not byte-stable across runs | **Measured and fixed** — see R12 |
 
 ---
 
