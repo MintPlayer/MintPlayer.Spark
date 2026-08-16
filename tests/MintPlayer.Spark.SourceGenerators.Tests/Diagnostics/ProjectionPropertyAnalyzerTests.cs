@@ -47,6 +47,42 @@ public class ProjectionPropertyAnalyzerTests
     }
 
     [Fact]
+    public async Task Ignored_property_raises_no_diagnostic_even_when_the_types_mismatch()
+    {
+        // [IgnoreProperty] (#254) takes the property out of the model, so there is nothing left
+        // to hold the entity and projection to agree on.
+        var source = """
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            public class Car
+            {
+                public string Plate { get; set; } = "";
+                [IgnoreProperty]
+                public string Scratch { get; set; } = "";
+            }
+
+            public class Cars_Overview : AbstractIndexCreationTask<Car>
+            {
+                public Cars_Overview() { Map = cars => from c in cars select new { c.Plate }; }
+            }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCar
+            {
+                public string Plate { get; set; } = "";
+                public int Scratch { get; set; } // type mismatch, but the property is ignored
+            }
+            """;
+
+        var diagnostics = await GeneratorHarness.RunAnalyzerAsync(AnalyzerName, [source], DefaultRefs);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Projection_with_mismatched_property_type_raises_SPARK001()
     {
         var source = """

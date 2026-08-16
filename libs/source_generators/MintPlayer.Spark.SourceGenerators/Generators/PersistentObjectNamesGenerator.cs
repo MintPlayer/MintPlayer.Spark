@@ -58,6 +58,10 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                                         continue;
                                     if (property.Name == "Id")
                                         continue;
+                                    // Excluded from the model, so there is no attribute for a
+                                    // constant to name.
+                                    if (property.IsIgnoredForSparkModel())
+                                        continue;
                                     if (!seen.Add(property.Name))
                                         continue;
 
