@@ -50,6 +50,31 @@ public class EntityMapperIgnorePropertyTests
         holder.Addresses[0].AuditNote.Should().BeNull();
     }
 
+    [Fact]
+    public void An_attribute_absent_from_the_model_is_refused_even_if_the_CLR_property_exists()
+    {
+        // The second line of defence behind model synchronization, and what protects the inbound
+        // replication path: once [IgnoreProperty] drops the attribute from the model, a posted
+        // value for it is refused because the schema does not declare it — regardless of the
+        // property still being perfectly writable on the CLR type.
+        var def = new EntityTypeDefinition
+        {
+            Id = Guid.Parse("dddddddd-4444-4444-4444-444444444444"),
+            Name = "Holder",
+            ClrType = typeof(IP_Holder).FullName!,
+            Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
+        };
+        _modelLoader.GetEntityTypeByClrType(typeof(IP_Holder).FullName!).Returns(def);
+
+        var holder = new IP_Holder();
+        var po = PoWith(("Name", "visible", "string"), ("Secret", "injected", "string"));
+
+        _mapper.PopulateObjectValues(po, holder);
+
+        holder.Name.Should().Be("visible");
+        holder.Secret.Should().BeNull("the model does not declare it, so the schema gate refuses the write");
+    }
+
     private static JsonElement Json(string raw)
     {
         using var doc = JsonDocument.Parse(raw);
@@ -72,8 +97,12 @@ public class EntityMapperIgnorePropertyTests
     private sealed class IP_Holder
     {
         public string? Id { get; set; }
+        public string? Name { get; set; }
         public IP_Address? Address { get; set; }
         public List<IP_Address>? Addresses { get; set; }
+
+        [IgnoreProperty]
+        public string? Secret { get; set; }
     }
 
     private sealed class IP_Address

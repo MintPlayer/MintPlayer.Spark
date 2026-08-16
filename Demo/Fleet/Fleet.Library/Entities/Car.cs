@@ -43,4 +43,18 @@ public class Car
     /// a metadata field), but keeping it on the entity is the simplest illustration.
     /// </summary>
     public string? CreatedBy { get; set; }
+
+    /// <summary>
+    /// ETag returned by the external vehicle-registry sync, stored so a later run can skip a
+    /// record that hasn't changed upstream.
+    /// <para>
+    /// Demo field for <see cref="IgnorePropertyAttribute"/>: it is persisted by RavenDB like any
+    /// other property, but it is pure infrastructure — no place on a form or in a grid, and a
+    /// client must never be able to write it. A get-only property would not work here, because
+    /// the sync job has to assign it; that is exactly the gap <c>[IgnoreProperty]</c> fills.
+    /// Note that no attribute for it appears in <c>App_Data/Model/Car.json</c>.
+    /// </para>
+    /// </summary>
+    [IgnoreProperty]
+    public string? RegistrySyncEtag { get; set; }
 }

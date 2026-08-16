@@ -210,6 +210,31 @@ public class SyncActionInterceptorTests : SparkTestDriver
         action.Data!.Should().NotContainKey("InternalToken");
     }
 
+    [Fact]
+    public async Task HandleSaveAsync_entity_overload_omits_ignored_properties()
+    {
+        // The CLR-reflection overload had no coverage at all. It builds Data and the
+        // writable-property list straight from the entity's properties, so it needs its own
+        // exclusion independent of the PersistentObject overload above.
+        var interceptor = NewInterceptor(moduleName: "Fleet");
+        var car = new ReplicatedCarFromFleet
+        {
+            Id = "cars/7",
+            Plate = "XYZ-789",
+            InternalToken = "s3cret",
+        };
+
+        await interceptor.HandleSaveAsync(car, "cars/7");
+        WaitForIndexing(Store);
+
+        using var session = Store.OpenAsyncSession();
+        var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];
+
+        action.Properties.Should().Equal("Plate");
+        action.Data!.Should().ContainKey("Plate");
+        action.Data.Should().NotContainKey("InternalToken");
+    }
+
     private class NonReplicated
     {
         public string? Id { get; set; }

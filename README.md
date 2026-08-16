@@ -285,8 +285,20 @@ Two things to know:
   behind.** Only projection files are cleaned up automatically; delete an orphaned
   `App_Data/Model/{Type}.json` by hand.
 
+- **The exclusion is only as fresh as the synchronized model.** Inbound writes (including
+  cross-module replication) are refused because the attribute is absent from
+  `App_Data/Model/`, not by a runtime attribute check. If you add `[IgnoreProperty]` to a
+  property that was already in the model and don't re-run synchronize, the old attribute is
+  still there and still writable. Re-synchronize and commit the result.
+- **It does not filter your ETL script.** `[Replicated(EtlScript = "…")]` is developer-authored
+  JavaScript that Spark copies verbatim to RavenDB — nothing derives it from your properties. If
+  a field must not leave the source module, leave it out of the script yourself.
+
 Note that `[JsonIgnore]` does **not** do this — model synchronization does not read serialization
 attributes.
+
+A build-time analyzer (**SPARK003**) reports a `[Breadcrumb]` template that names an ignored
+property, so the contradiction surfaces when you compile rather than when you next synchronize.
 
 ### Contribution Workflow
 

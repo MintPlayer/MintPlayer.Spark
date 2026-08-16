@@ -73,6 +73,41 @@ public class SyncActionHandlerBuildPersistentObjectTests
     }
 
     [Fact]
+    public void BuildPersistentObject_Schema_DiscardsInboundDataForAnIgnoredProperty()
+    {
+        // #254 — inbound protection is transitive: [IgnoreProperty] keeps the attribute out of
+        // the synchronized model, and the overlay iterates the MODEL's attributes rather than the
+        // incoming dictionary's keys. A remote module cannot introduce an attribute that the
+        // owner's model does not declare.
+        var def = new EntityTypeDefinition
+        {
+            Id = CarTypeId,
+            Name = "Car",
+            ClrType = typeof(TestCar).FullName!,
+            Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LicensePlate", DataType = "string" }],
+        };
+        _modelLoader.GetEntityTypeByClrType(typeof(TestCar).FullName!).Returns(def);
+        _entityMapper.GetPersistentObject(CarTypeId).Returns(new PersistentObject
+        {
+            Name = "Car",
+            ObjectTypeId = CarTypeId,
+            Attributes = [new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string" }],
+        });
+
+        var data = new Dictionary<string, object?>
+        {
+            ["LicensePlate"] = "ABC-123",
+            ["RegistrySyncEtag"] = "injected",   // ignored on the owner, so absent from its model
+        };
+
+        var po = CreateHandler().BuildPersistentObject(
+            typeof(TestCar), "cars/1", data, properties: ["LicensePlate", "RegistrySyncEtag"]);
+
+        po["LicensePlate"].Value.Should().Be("ABC-123");
+        po.Attributes.Select(a => a.Name).Should().NotContain("RegistrySyncEtag");
+    }
+
+    [Fact]
     public void BuildPersistentObject_Schema_IsValueChanged_FromPropertySet()
     {
         var def = new EntityTypeDefinition

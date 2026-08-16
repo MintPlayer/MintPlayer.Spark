@@ -149,6 +149,38 @@ the new attribute list, so ignoring `Name` shifts defaults.
 9. Ignoring a property named in a breadcrumb template fails synchronize with a message that names
    the attribute and explains the cause (F6).
 
+## Follow-up review findings (2026-08-16)
+
+### F7 — The ETL script is a genuine non-gap
+
+`[Replicated].EtlScript` is a `required string` (`ReplicatedAttribute.cs:34`) copied verbatim into
+an `EtlScriptItem` (`EtlScriptCollector.cs:47-51`) and handed to RavenDB as a `Transformation`
+(`EtlTaskManager.cs:65-70`). The collector reflects over **types**, never properties. No code path
+anywhere derives a script or a field list from CLR properties, so there is nothing for
+`[IgnoreProperty]` to filter. Documented in the README rather than "fixed".
+
+### F8 — Inbound replication is protected transitively, not directly
+
+An incoming `SyncAction` cannot write an ignored property on the owner, but nothing on that path
+reads the attribute. The protection is: `[IgnoreProperty]` → absent from `EntityTypeDefinition.Attributes`
+→ dropped by the PO scaffold overlay (`SyncActionHandler.cs:106-118`, which iterates the *model's*
+attributes rather than the incoming dictionary's keys) → refused by `IsWritableBySchema`
+(`EntityMapper.cs:551-560`).
+
+**Caveat worth documenting: there is a stale-model window.** If the property was in the model before
+the attribute was added and `--spark-synchronize-model` has not been re-run, the definition is still
+there and the write still goes through. Both lines of defence are now pinned by tests.
+
+### F9 — Unrelated bug found while tracing the inbound path (NOT fixed here)
+
+`SyncActionHandler.cs:113-115` maps the inbound `Properties` list onto `attribute.IsValueChanged`,
+but **nothing downstream reads `IsValueChanged`** — `PopulateObjectValuesAsync`
+(`EntityMapper.cs:480-493`) writes every attribute that passes the schema gate. Meanwhile
+`SyncActionHandler.cs:111-112` sets `attribute.Value = null` for every model attribute absent from
+`Data`. So a partial sync nulls out fields it never mentioned, contradicting the documented contract
+on `SyncAction.Properties` (`SyncAction.cs:76-81`, "only these properties are merged"). Independent
+of #254; needs its own issue.
+
 ## Out of scope
 
 - Class-level exclusion — types are opted **in** via the `SparkContext`, so this is already covered.
