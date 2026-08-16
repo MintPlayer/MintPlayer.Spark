@@ -1,6 +1,6 @@
 # PRD — Issue #254: `[IgnoreProperty]` — exclude a property from the model
 
-**Status:** In progress
+**Status:** Implemented — all 7 milestones done (see [plan](issue_254_plan.md))
 **Issue:** [#254](https://github.com/MintPlayer/MintPlayer.Spark/issues/254)
 **Branch:** `feat/issue-254-ignore-property-attribute`
 

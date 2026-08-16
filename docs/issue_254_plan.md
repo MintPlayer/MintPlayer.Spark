@@ -124,10 +124,11 @@ embedded type (AC #4, the security-meaningful half).
 ## M7 — Docs, demo, full sweep
 
 - README: document `[IgnoreProperty]` alongside the other attributes, including the sync-removes-
-  settings caveat (F2) and the orphan-embedded-file note (D8).
-- Optionally decorate one demo entity property to exercise the path end-to-end. **If done, run
-  `--spark-synchronize-model` and commit the resulting model-JSON diff** (PRD F3) — 23 demo model
-  files are tracked.
+  settings caveat (F2) and the orphan-embedded-file note (D8). **Done** — under "Model
+  Synchronization", also calling out that `[JsonIgnore]` does not do this.
+- Demo decoration: **skipped deliberately.** It would churn tracked model JSON (PRD F3) for no
+  coverage the tests don't already give — the synchronizer, mapper, resolver, replication and
+  generator paths are each pinned directly. Left out to keep the diff reviewable.
 - Run the full suite: `dotnet test tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj` plus
   the source-generator project. Re-run any failure in isolation before treating it as a regression
   (the suite is known to be flaky under parallel load).

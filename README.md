@@ -252,6 +252,42 @@ dotnet run --spark-synchronize-model
 
 This updates files in `App_Data/Model/` based on your SparkContext properties.
 
+#### Excluding a property with `[IgnoreProperty]`
+
+Every public read/write property becomes a model attribute. To keep one out of the model, mark it
+`[IgnoreProperty]`:
+
+```csharp
+public class Person
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+
+    [IgnoreProperty]                       // stored by RavenDB, invisible to Spark
+    public string InternalToken { get; set; } = string.Empty;
+}
+```
+
+The property stays an ordinary CLR property and is still persisted. Spark excludes it from the
+generated model JSON, from the `PersistentObject` in both directions, from `[Reference]` includes,
+from replication (both the payload and the list of fields the owner module may write), and from the
+generated `AttributeNames` constants. It applies on embedded/value-object types too.
+
+A computed get-only property is already excluded and needs no attribute — as is a property named
+`Id`, which is the document id.
+
+Two things to know:
+
+- **Ignoring an existing property discards its model settings.** The next synchronize removes the
+  attribute block from the committed model file, along with its id, translated label, rules,
+  renderer and group. Re-adding the property later regenerates it with a new id.
+- **Ignoring the last property that referenced an embedded type leaves that type's model file
+  behind.** Only projection files are cleaned up automatically; delete an orphaned
+  `App_Data/Model/{Type}.json` by hand.
+
+Note that `[JsonIgnore]` does **not** do this — model synchronization does not read serialization
+attributes.
+
 ### Contribution Workflow
 
 1. **Fork** the repository
