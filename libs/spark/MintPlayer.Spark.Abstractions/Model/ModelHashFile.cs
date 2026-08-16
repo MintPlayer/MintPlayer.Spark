@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace MintPlayer.Spark.Abstractions.Model;
 
 /// <summary>
-/// Contents of <c>App_Data/model-hashes.json</c> — the fingerprint of the entity classes the model
+/// Contents of <c>App_Data/modelHashes.json</c> — the fingerprint of the entity classes the model
 /// files were generated from.
 ///
 /// <para>
@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Abstractions.Model;
 public sealed class ModelHashFile
 {
     /// <summary>File name, relative to the content root's <c>App_Data</c> directory.</summary>
-    public const string FileName = "model-hashes.json";
+    public const string FileName = "modelHashes.json";
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {

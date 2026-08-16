@@ -76,7 +76,7 @@ public class ModelHashVerifierTests : IDisposable
         Action act = () => Verify();
 
         act.Should().Throw<SparkModelOutOfSyncException>()
-            .WithMessage("*no readable model-hashes.json*");
+            .WithMessage("*no readable modelHashes.json*");
     }
 
     [Fact]

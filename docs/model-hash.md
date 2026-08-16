@@ -1,6 +1,6 @@
 # The model hash
 
-Spark records a fingerprint of your model in `App_Data/model-hashes.json`, and a deployed
+Spark records a fingerprint of your model in `App_Data/modelHashes.json`, and a deployed
 application **refuses to start** if it no longer matches. This page covers what the hash does and
 does not cover, how to regenerate it, and what to do when it fires.
 
@@ -53,7 +53,7 @@ Two CLR changes are also invisible, on purpose, because they generate a byte-ide
 dotnet run --spark-synchronize-model
 ```
 
-Rewrites `App_Data/Model/*.json` and `App_Data/model-hashes.json`. It needs **no database** — it
+Rewrites `App_Data/Model/*.json` and `App_Data/modelHashes.json`. It needs **no database** — it
 reflects over property types and never opens a session — so it runs anywhere, including CI.
 
 ## Verifying in CI
@@ -79,7 +79,7 @@ as `AdditionalFiles`.
 
 ## Merge conflicts
 
-Two pull requests that both change the model will both change `model-hashes.json`. Per-entity and
+Two pull requests that both change the model will both change `modelHashes.json`. Per-entity and
 per-file hashes keep unrelated changes on separate lines, so most merges resolve themselves; the
 roll-up lines conflict more often.
 
@@ -87,9 +87,9 @@ The resolution is always the same, and it is never "pick a side":
 
 ```bash
 # empty the file, regenerate it, stage it
-> App_Data/model-hashes.json
+> App_Data/modelHashes.json
 dotnet run --spark-synchronize-model
-git add App_Data/model-hashes.json
+git add App_Data/modelHashes.json
 ```
 
 Synchronization never *reads* the hash file — it recomputes and overwrites — so emptying it cannot

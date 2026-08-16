@@ -81,7 +81,7 @@ public class SparkModelShapeTests
         // a container that refuses to start after a redeploy.
         //
         // If this fails after a deliberate change to the canonical format, that is expected —
-        // re-pin it, and treat every deployed model-hashes.json as needing regeneration.
+        // re-pin it, and treat every deployed modelHashes.json as needing regeneration.
         SparkModelShape.ComputeEntityHash(Shape<ShapeProbe>())
             .Should().Be(PinnedShapeProbeHash);
     }

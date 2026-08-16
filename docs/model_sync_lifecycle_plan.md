@@ -18,7 +18,7 @@ milestones are verified by reading and type-checking.
 | M2 | Builder-phase synchronization, offline, no `Environment.Exit` | `d415954` |
 | M3 | Development-only `IModelSynchronizer` registration | `19bdf9e` |
 | M4 | `SparkModelShape` hasher | `b47ec5a` |
-| M5 | Write `model-hashes.json` | `f15b5e3` |
+| M5 | Write `modelHashes.json` | `f15b5e3` |
 | M5b | Structural per-file hashing (not raw bytes) | `f27d1ee` |
 | M6 | Startup check + override | `2a44844` |
 | M7 | `--spark-verify-model` + CI gate | `62ecbd3` |
@@ -171,12 +171,12 @@ transitive closure of embedded types. Extract `IsRavenQueryable`/`GetQueryableEn
   change**; `int`→`long` and `List<string>`→`string[]` → **unchanged**.
 - Same hash from two separate processes.
 
-## M5 — Write `model-hashes.json` (PRD R7)
+## M5 — Write `modelHashes.json` (PRD R7)
 
 **File:** `Services/ModelSynchronizer.cs`
 
 After the write loop, compute per-entity hashes + `contextRoots` + the roll-up and write
-`{ContentRootPath}/App_Data/model-hashes.json` — **one level above** `App_Data/Model/`, or
+`{ContentRootPath}/App_Data/modelHashes.json` — **one level above** `App_Data/Model/`, or
 `ModelLoader.cs:49` will try to deserialize it as an `EntityTypeFile` on every startup.
 
 No new dependencies: SHA-256 is in-box and the shape data is already computed by M4.
@@ -194,7 +194,7 @@ has already cost us once on this task. Three-line test: sync, capture bytes, syn
 
 **Files:** new `Exceptions/SparkModelOutOfSyncException.cs`, `SparkMiddleware.cs`
 
-Recompute the shape hash via M4, compare to `App_Data/model-hashes.json`. Development → warn and
+Recompute the shape hash via M4, compare to `App_Data/modelHashes.json`. Development → warn and
 continue; otherwise → throw. Fail **closed** on a missing hash file or missing model directory.
 
 Placement: after `PopulateIndexRegistry` has run (`QueryType`/`IndexName` feed the hash) and before

@@ -96,7 +96,7 @@ public static class SparkDevelopmentExtensions
     }
 
     /// <summary>
-    /// Writes <c>App_Data/model-hashes.json</c> for an already-populated model directory, without
+    /// Writes <c>App_Data/modelHashes.json</c> for an already-populated model directory, without
     /// regenerating the model files.
     /// <para>
     /// For hosts that author model files directly rather than through synchronization — chiefly test

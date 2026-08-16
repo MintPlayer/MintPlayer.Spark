@@ -216,7 +216,7 @@ public class SparkExtensionsTests
         var builder = scratch.CreateBuilder();
         builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
         builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
-        File.Delete(Path.Combine(scratch.Path, "App_Data", "model-hashes.json"));
+        File.Delete(Path.Combine(scratch.Path, "App_Data", "modelHashes.json"));
 
         var verifyBuilder = scratch.CreateBuilder();
         verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();

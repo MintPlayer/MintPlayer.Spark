@@ -180,7 +180,7 @@ normalising is free. Removing it fails a test.
 The pinned golden hash in `SparkModelShapeTests` remains the standing guard: CI runs on Linux, so it
 re-checks platform stability on every run.
 
-### R7 — `App_Data/model-hashes.json`, per-entity plus roll-up
+### R7 — `App_Data/modelHashes.json`, per-entity plus roll-up
 
 ```json
 {
@@ -373,7 +373,7 @@ no CLR property. Hand-authoring model JSON is a supported, first-class workflow.
 refuse to start production after a French label translation.
 
 Deployment skew — the strongest argument for a JSON hash — is covered anyway: stale `App_Data` carries
-a stale `model-hashes.json`, the new binaries hash differently, mismatch caught.
+a stale `modelHashes.json`, the new binaries hash differently, mismatch caught.
 
 **No second JSON hash either.** Two hashes with different meanings and different remedies is an
 incident-response liability at 3am, and doubles the false-positive surface of a mechanism that halts
