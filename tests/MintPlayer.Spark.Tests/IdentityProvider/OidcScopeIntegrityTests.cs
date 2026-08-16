@@ -46,23 +46,19 @@ public class OidcScopeIntegrityTests : OidcTestHost
             : [.. scope.GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries)];
     }
 
-    private async Task DisableScopeAsync(string name)
-    {
-        using var session = Store.OpenAsyncSession();
-        var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
-        scope.Enabled = false;
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+    private Task DisableScopeAsync(string name)
+        => SeedAsync(async session =>
+        {
+            var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
+            scope.Enabled = false;
+        });
 
-    private async Task EnableScopeAsync(string name, bool enabled)
-    {
-        using var session = Store.OpenAsyncSession();
-        var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
-        scope.Enabled = enabled;
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+    private Task EnableScopeAsync(string name, bool enabled)
+        => SeedAsync(async session =>
+        {
+            var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
+            scope.Enabled = enabled;
+        });
 
     private const string Password2 = Password;
 

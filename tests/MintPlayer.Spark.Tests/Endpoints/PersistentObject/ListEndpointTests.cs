@@ -47,14 +47,12 @@ public class ListEndpointTests : SparkTestDriver
     [Fact]
     public async Task List_returns_all_seeded_documents()
     {
-        using (var session = Store.OpenAsyncSession())
+        await SeedAsync(async session =>
         {
             await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
             await session.StoreAsync(new Person { FirstName = "Bob", LastName = "Jones" }, "people/2");
             await session.StoreAsync(new Person { FirstName = "Carol", LastName = "Davis" }, "people/3");
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        });
 
         var result = await _client.ListPersistentObjectsAsync(PersonTypeId);
 
@@ -65,12 +63,7 @@ public class ListEndpointTests : SparkTestDriver
     [Fact]
     public async Task List_resolves_entity_type_by_alias()
     {
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        await SeedAsync(session => session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1"));
 
         var result = await _client.ListPersistentObjectsAsync("person");
 

@@ -62,14 +62,21 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
             .OfType<MessageSubscriptionManager>()
             .Single();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        await hosted.StartAsync(cts.Token);
+        await hosted.StartAsync(CancellationToken.None);
 
-        // Give the worker a beat to attach, then stop. With cts already firing, the
-        // wait-for-cancellation in ExecuteAsync exits, then StopAsync drains the worker.
-        await Task.Delay(200);
+        // Wait for the observable signal that the worker actually attached — its Raven
+        // subscription existing on the server — rather than sleeping and hoping. A fixed delay
+        // here made the test pass whether or not anything was ever created.
+        await AsyncWait.UntilAsync(
+            () => Store.Subscriptions.GetSubscriptions(0, 128)
+                .Any(s => s.SubscriptionName?.Contains(QueueName, StringComparison.Ordinal) == true),
+            $"the manager to create a Raven subscription for the '{QueueName}' queue",
+            TimeSpan.FromSeconds(10));
+
         await hosted.StopAsync(CancellationToken.None);
     }
+
+    private const string QueueName = "MessageSubscriptionManagerLifecycleTests-Ping";
 
     [MintPlayer.Spark.Messaging.Abstractions.MessageQueueAttribute("MessageSubscriptionManagerLifecycleTests-Ping")]
     public sealed class TestPing

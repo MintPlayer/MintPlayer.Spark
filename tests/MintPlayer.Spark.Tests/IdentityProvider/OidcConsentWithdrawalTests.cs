@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Testing;
 using System.Net;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -55,7 +56,7 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     /// </summary>
     private async Task<string> AntiforgeryFromApplicationsPageAsync(Browser browser)
     {
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         var page = await browser.GetAsync("/connect/applications");
         return AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync());
     }
@@ -239,7 +240,7 @@ public class OidcConsentWithdrawalTests : OidcTestHost
         // The attacker holds a grant of their own, which is what gets them a page carrying a
         // valid antiforgery token — then they post the *victim's* application id with it.
         var (attacker, _) = await EstablishGrantAsync(attackerApp, "attacker@test.local", ["openid", "offline_access"]);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         await WithdrawAsync(attacker, victimApp.Id!);
 
         var app = victimApp;
@@ -263,7 +264,7 @@ public class OidcConsentWithdrawalTests : OidcTestHost
         await EstablishGrantAsync(mine, "mine@test.local", ["openid", "offline_access"]);
         await EstablishGrantAsync(theirs, "theirs@test.local", ["openid", "offline_access"]);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var browser = await SignInAsync("mine@test.local");
         var html = await (await browser.GetAsync("/connect/applications")).Content.ReadAsStringAsync();

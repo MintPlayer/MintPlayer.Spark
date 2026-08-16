@@ -213,7 +213,7 @@ public class RoleStoreTests : SparkTestDriver
         await creating.CreateAsync(new SparkRole { Name = "B" }, CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var roles = await reading.Roles.ToListAsync();

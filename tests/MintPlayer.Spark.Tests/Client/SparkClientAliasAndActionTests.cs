@@ -39,12 +39,7 @@ public class SparkClientAliasAndActionTests : SparkTestDriver
     [Fact]
     public async Task Alias_overload_returns_same_result_as_guid_overload()
     {
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
-            await session.SaveChangesAsync();
-        }
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        await SeedAsync(session => session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1"));
 
         var byGuid = await _client.GetPersistentObjectAsync(PersonTypeId, "people/1");
         var byAlias = await _client.GetPersistentObjectAsync("person", "people/1");

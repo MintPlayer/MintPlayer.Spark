@@ -138,29 +138,22 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             }],
         };
 
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(doc);
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        await SeedAsync(session => session.StoreAsync(doc));
         return doc.Id!;
     }
 
-    private async Task<SparkSyncAction> WaitForAsync(string id, Func<SparkSyncAction, bool> predicate, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? PollTimeout);
-        SparkSyncAction? last = null;
-        while (DateTime.UtcNow < end)
-        {
-            using var session = Store.OpenAsyncSession();
-            last = await session.LoadAsync<SparkSyncAction>(id);
-            if (last != null && predicate(last))
-                return last;
-            await Task.Delay(100);
-        }
-        throw new TimeoutException($"Predicate for SparkSyncAction '{id}' not met within {timeout ?? PollTimeout}. Last: Status={last?.Status}, LastError={last?.LastError}");
-    }
+    private Task<SparkSyncAction> WaitForAsync(string id, Func<SparkSyncAction, bool> predicate, TimeSpan? timeout = null)
+        => AsyncWait.ForAsync(
+            async () =>
+            {
+                using var session = Store.OpenAsyncSession();
+                return await session.LoadAsync<SparkSyncAction>(id);
+            },
+            predicate,
+            $"SparkSyncAction '{id}' to satisfy the predicate",
+            last => $"Status={last?.Status}, LastError={last?.LastError}",
+            timeout ?? PollTimeout,
+            TimeSpan.FromMilliseconds(100));
 
     private async Task<long?> GetRetryCounterAsync(string id)
     {
@@ -273,10 +266,16 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             final.NextAttemptAtUtc.Should().NotBeNull("the subscription query gates re-delivery on this field");
             final.NextAttemptAtUtc!.Value.Should().BeAfter(DateTime.UtcNow, "backoff schedules the next attempt into the future");
 
-            // Give the subscription a moment to redeliver; NextAttemptAtUtc should keep the
-            // document out of the query, so the handler stays at a single call.
-            await Task.Delay(500);
-            handler.CallCount.Should().Be(1, "NextAttemptAtUtc prevents change-vector-driven immediate re-delivery");
+            // This assertion is a negative — "the first action was NOT redelivered" — and no amount
+            // of sleeping can establish that soundly: a passing test only ever proves redelivery
+            // did not happen *yet*. So instead of waiting on the clock, give the worker something
+            // it must demonstrably pick up. Once a second action has been delivered, the worker has
+            // provably had its chance at the first, and the counters below mean something.
+            var secondId = await SeedSyncActionAsync();
+            await WaitForAsync(secondId, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
+
+            handler.CallCount.Should().Be(2,
+                "one delivery per action — NextAttemptAtUtc prevents change-vector-driven immediate re-delivery of the first");
             (await GetRetryCounterAsync(id)).Should().Be(1);
 
             using var session = Store.OpenAsyncSession();

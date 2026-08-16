@@ -49,15 +49,11 @@ public class ExecuteQueryParentGateTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private async Task SeedAsync(params GuardedDoc[] docs)
-    {
-        using (var session = Store.OpenAsyncSession())
+    private Task SeedAsync(params GuardedDoc[] docs)
+        => base.SeedAsync(async session =>
         {
             foreach (var d in docs) await session.StoreAsync(d);
-            await session.SaveChangesAsync();
-        }
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
-    }
+        });
 
     [Fact]
     public async Task Execute_returns_404_when_parent_is_row_level_denied()

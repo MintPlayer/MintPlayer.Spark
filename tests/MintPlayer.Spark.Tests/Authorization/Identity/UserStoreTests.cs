@@ -177,7 +177,7 @@ public class UserStoreTests : SparkTestDriver
         await creating.CreateAsync(user, CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var found = await reading.FindByNameAsync("ALICE", CancellationToken.None);
@@ -314,7 +314,7 @@ public class UserStoreTests : SparkTestDriver
         await creating.CreateAsync(bob, CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var users = await reading.GetUsersInRoleAsync("Admins", CancellationToken.None);
@@ -362,7 +362,7 @@ public class UserStoreTests : SparkTestDriver
         await creating.CreateAsync(bob, CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var users = await reading.GetUsersForClaimAsync(new Claim("scope", "admin"), CancellationToken.None);
@@ -469,7 +469,7 @@ public class UserStoreTests : SparkTestDriver
         await creating.CreateAsync(bob, CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var found = await reading.FindByLoginAsync("github", "12345", CancellationToken.None);
@@ -529,7 +529,7 @@ public class UserStoreTests : SparkTestDriver
         await creating.CreateAsync(NewUser("bob"), CancellationToken.None);
         creating.Dispose();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var reading = CreateStore();
         var users = await reading.Users.ToListAsync();

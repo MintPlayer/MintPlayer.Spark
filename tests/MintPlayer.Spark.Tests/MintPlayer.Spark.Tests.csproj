@@ -31,6 +31,8 @@
 
   <ItemGroup>
     <Content Include="Reflection\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- xUnit only reads this from the output directory, not the project root. -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

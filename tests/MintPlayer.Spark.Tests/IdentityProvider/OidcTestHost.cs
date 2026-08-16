@@ -106,42 +106,41 @@ public abstract class OidcTestHost : SparkTestDriver
         if (secret != null)
             app.Secrets.Add(new ClientSecret { Hash = ClientSecretHasher.Hash(secret) });
 
-        using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(app);
-
-        // Define every scope the client is allowed to ask for. A real deployment does this; a
-        // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
-        // issuance resolves scopes from OidcScope documents rather than from the client's list.
-        // Addressed by a derived id, not found through an index: two applications sharing a
-        // scope seed concurrently, and an index query is eventually consistent, so the second
-        // would not see the first and would create a duplicate. That made the suite fail only
-        // under full-run load — the same staleness trap this package's own lookups kept falling
-        // into.
-        foreach (var name in app.AllowedScopes)
-        {
-            var id = "OidcScopes/" + name.ToLowerInvariant();
-            if (await session.LoadAsync<OidcScope>(id) != null)
-                continue;
-
-            await session.StoreAsync(new OidcScope
-            {
-                Id = id,
-                Name = name,
-                DisplayName = name,
-                Enabled = true,
-                Required = name == "openid",
-            });
-        }
-
-        await session.SaveChangesAsync();
-
         // Client lookup rides OidcApplications_ByClientId, which is eventually consistent, so a
-        // just-seeded application is not immediately findable. Without this the suite failed a
-        // different pair of tests on each run, under full-suite load only.
+        // just-seeded application is not immediately findable — SeedAsync holds the write until
+        // the indexes covering it have caught up. Without that the suite failed a different pair
+        // of tests on each run, under full-suite load only.
         //
         // Worth carrying into M12.7: whatever registers an application cannot assume it is
         // usable the instant it returns.
-        WaitForIndexing(Store);
+        await SeedAsync(async session =>
+        {
+            await session.StoreAsync(app);
+
+            // Define every scope the client is allowed to ask for. A real deployment does this; a
+            // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
+            // issuance resolves scopes from OidcScope documents rather than from the client's list.
+            // Addressed by a derived id, not found through an index: two applications sharing a
+            // scope seed concurrently, and an index query is eventually consistent, so the second
+            // would not see the first and would create a duplicate. That made the suite fail only
+            // under full-run load — the same staleness trap this package's own lookups kept falling
+            // into.
+            foreach (var name in app.AllowedScopes)
+            {
+                var id = "OidcScopes/" + name.ToLowerInvariant();
+                if (await session.LoadAsync<OidcScope>(id) != null)
+                    continue;
+
+                await session.StoreAsync(new OidcScope
+                {
+                    Id = id,
+                    Name = name,
+                    DisplayName = name,
+                    Enabled = true,
+                    Required = name == "openid",
+                });
+            }
+        });
 
         return app;
     }

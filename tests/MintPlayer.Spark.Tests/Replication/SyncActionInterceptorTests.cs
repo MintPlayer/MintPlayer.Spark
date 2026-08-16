@@ -43,7 +43,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -69,7 +69,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -86,7 +86,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var interceptor = NewInterceptor();
 
         await interceptor.HandleDeleteAsync(typeof(ReplicatedCarFromFleet), "cars/42");
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -113,7 +113,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -140,7 +140,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -173,7 +173,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var interceptor = NewInterceptor(moduleName: "CurrentModule");
 
         await interceptor.HandleDeleteAsync(typeof(ReplicatedCarFromFleet), "cars/1");
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
@@ -201,7 +201,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];
@@ -225,7 +225,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(car, "cars/7");
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];

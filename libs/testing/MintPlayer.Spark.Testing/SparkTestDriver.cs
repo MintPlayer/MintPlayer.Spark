@@ -2,6 +2,7 @@ using System.Reflection;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -9,8 +10,16 @@ namespace MintPlayer.Spark.Testing;
 
 /// <summary>
 /// xUnit-friendly base class for Spark tests that need an in-memory RavenDB instance.
-/// Implements <see cref="IAsyncLifetime"/> so setup and disposal run per test class
-/// (one instance per test method, by xUnit's default).
+/// Implements <see cref="IAsyncLifetime"/>, so setup and disposal run <strong>per test
+/// case</strong> — xUnit constructs a fresh instance for every <c>[Fact]</c> and every
+/// <c>[Theory]</c> row.
+/// <para>
+/// That granularity is not free: <see cref="InitializeAsync"/> creates a brand-new RavenDB
+/// database per test case (<see cref="RavenTestDriver.GetDocumentStore"/> names them
+/// <c>InitializeAsync_{N}</c> off a process-wide counter), all on one shared embedded server.
+/// Across this suite that is several hundred create/delete cycles per run, so test parallelism
+/// is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// </para>
 ///
 /// RavenDB 7.x requires a license even for the embedded TestDriver. We load it from:
 ///   1. <c>RAVENDB_LICENSE</c> env var (CI-friendly, JSON content)
@@ -62,30 +71,19 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     }
 
     /// <summary>
-    /// Waits for every enabled index to catch up. Shadows <see cref="RavenTestDriver"/>'s method
-    /// of the same name so all ~50 existing call sites route to <see cref="RavenIndexingExtensions"/>
-    /// without being touched — one implementation, one behaviour, whether a test derives from this
-    /// driver or (like the E2E host) drives a real server and calls
-    /// <c>store.WaitForIndexing()</c> directly.
-    /// <para>
-    /// Two implementations of "wait for the indexes" is how they drift, and this one is the ported
-    /// version that reports the actual index errors when they never settle rather than leaving a
-    /// mystery failure downstream.
-    /// </para>
-    /// </summary>
-    protected new void WaitForIndexing(
-        IDocumentStore store,
-        string? database = null,
-        TimeSpan? timeout = null)
-        => store.WaitForIndexing(database, timeout);
-
-    /// <summary>
     /// Assemblies whose <c>AbstractIndexCreationTask</c> types should be deployed automatically
     /// at <see cref="InitializeAsync"/> and waited on for completion. Default: empty. Override
     /// in a subclass to guarantee that every test in the fixture sees its indexes live before
     /// the first <c>[Fact]</c> runs.
     /// </summary>
     protected virtual IEnumerable<Assembly> IndexAssemblies { get; } = Array.Empty<Assembly>();
+
+    /// <summary>
+    /// Names of the indexes this fixture deployed, so <see cref="WaitForIndexesAsync"/> can insist
+    /// they exist rather than accepting the vacuous "no index is stale" that an empty database
+    /// always satisfies.
+    /// </summary>
+    private readonly List<string> _deployedIndexNames = [];
 
     public virtual async Task InitializeAsync()
     {
@@ -94,13 +92,80 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)
-            await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+            await DeployIndexesAsync(assemblies);
     }
+
+    /// <summary>
+    /// Waits until every index this fixture deployed is registered <b>and</b> every index in the
+    /// database is up to date.
+    /// <para>
+    /// Prefer this over calling <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/> on the
+    /// store directly: it carries the fixture's declared index names, so a wait cannot pass
+    /// because an index it was supposed to be waiting for was never deployed. Note that neither
+    /// form can vouch for auto-indexes, which do not exist until a query creates them — RavenDB
+    /// blocks on that first creation itself.
+    /// </para>
+    /// </summary>
+    protected Task WaitForIndexesAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => Store.WaitForIndexingAsync(
+            timeout: timeout,
+            expectedIndexes: _deployedIndexNames,
+            cancellationToken: cancellationToken);
 
     public virtual Task DisposeAsync()
     {
-        Store.Dispose();
+        // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
+        // or GetDocumentStore timing out when the shared embedded server is under load. Without
+        // the guard this throws a NullReferenceException that REPLACES the real failure in the
+        // test output, which is what made those CI timeouts so hard to read.
+        Store?.Dispose();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to
+    /// set up a test that then queries.
+    /// <para>
+    /// This asks the <em>server</em> to hold the write until the indexes covering this transaction
+    /// have caught up (<c>WaitForIndexesAfterSaveChanges</c>), which beats the alternative of
+    /// saving and then polling every index in the database:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>Targeted</b> — only the indexes this write actually touched.</description></item>
+    /// <item><description><b>No sampling window</b> — a global poll can observe a momentarily-clean
+    /// snapshot and return while a concurrent writer's document is still unindexed. There is no
+    /// such gap here: the write itself does not complete until its indexes are current.</description></item>
+    /// <item><description><b>Nothing to forget</b> — the guarantee rides on the write, so it cannot
+    /// be omitted by the next query someone adds.</description></item>
+    /// </list>
+    /// <para>
+    /// <c>throwOnTimeout</c> is deliberately on. The default is to swallow the timeout and hand
+    /// back a write that may not be queryable yet — precisely the silent staleness this exists to
+    /// remove.
+    /// </para>
+    /// <para>
+    /// Use <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/> instead when no single
+    /// session owns the write: Smuggler imports, and documents written by a background worker or
+    /// by the code under test.
+    /// </para>
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// await SeedAsync(session => session.StoreAsync(new Car { Plate = "ABC-123" }));
+    /// // query immediately — no WaitForIndexing needed
+    /// </code>
+    /// </example>
+    protected async Task SeedAsync(Func<IAsyncDocumentSession, Task> seed, TimeSpan? timeout = null)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+
+        using var session = Store.OpenAsyncSession();
+        session.Advanced.WaitForIndexesAfterSaveChanges(
+            timeout ?? RavenIndexingExtensions.DefaultTimeout,
+            throwOnTimeout: true);
+
+        await seed(session);
+        await session.SaveChangesAsync();
     }
 
     /// <summary>
@@ -117,9 +182,16 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         return JsonFixtureImporter.ImportAsync(Store, resolved);
     }
 
-    /// <summary>Deploys additional indexes at runtime (e.g., per-test). Also waits for them to settle.</summary>
-    protected Task DeployIndexesAsync(params Assembly[] assemblies)
-        => RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+    /// <summary>
+    /// Deploys additional indexes at runtime (e.g. per-test), waits for them to be registered and
+    /// settled, and remembers them so later <see cref="WaitForIndexesAsync"/> calls keep checking
+    /// they are there.
+    /// </summary>
+    protected async Task DeployIndexesAsync(params Assembly[] assemblies)
+    {
+        await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
+        _deployedIndexNames.AddRange(RavenIndexHelper.DeclaredIndexNames(assemblies));
+    }
 }
 
 internal static class LicenseHelper

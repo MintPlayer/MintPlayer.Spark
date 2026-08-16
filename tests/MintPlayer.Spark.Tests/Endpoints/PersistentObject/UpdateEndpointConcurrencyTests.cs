@@ -41,12 +41,7 @@ public class UpdateEndpointConcurrencyTests : SparkTestDriver
 
     private async Task<PO> SeedAndLoadAsync(string id, string firstName, string lastName)
     {
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.StoreAsync(new Person { FirstName = firstName, LastName = lastName }, id);
-            await session.SaveChangesAsync();
-        }
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        await SeedAsync(session => session.StoreAsync(new Person { FirstName = firstName, LastName = lastName }, id));
 
         return await _client.GetPersistentObjectAsync(PersonTypeId, id)
             ?? throw new InvalidOperationException($"Seeded document '{id}' was not visible over HTTP.");

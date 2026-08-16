@@ -195,7 +195,7 @@ public class OidcAdminRouteTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<OidcApplication>()
             .Where(a => a.ClientId == "route-webapp", exact: true)
@@ -223,7 +223,7 @@ public class OidcAdminRouteTests : SparkTestDriver
 
         // Client lookup rides an eventually-consistent index, so a just-registered application is
         // not usable the instant the screen returns — the same trap the fixture hit when seeding.
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var token = await _client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -250,7 +250,7 @@ public class OidcAdminRouteTests : SparkTestDriver
             ("Secrets", new object[] { new { Hash = "plaintext-from-the-form" } }))))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var app = (await session.Query<OidcApplication>()
             .Where(a => a.ClientId == "route-hashing", exact: true)
@@ -288,7 +288,7 @@ public class OidcAdminRouteTests : SparkTestDriver
         (await PostAsync("OidcApplication", Application("route-twin")))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
 
         var second = await PostAsync("OidcApplication", Application("route-twin"));
 
@@ -315,7 +315,7 @@ public class OidcAdminRouteTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         (await session.Query<OidcApplication>().Where(a => a.ClientId == "route-csrf", exact: true).ToListAsync())
             .Should().BeEmpty("a rejected request must not have written anything");

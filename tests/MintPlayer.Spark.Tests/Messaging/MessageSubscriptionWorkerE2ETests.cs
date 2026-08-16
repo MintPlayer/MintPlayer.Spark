@@ -131,26 +131,24 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         else
             await bus.BroadcastAsync(payload, queueNameOverride);
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<SparkMessage>().SingleAsync();
         return stored.Id!;
     }
 
-    private async Task<SparkMessage> WaitForMessageAsync(string id, Func<SparkMessage, bool> predicate, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? PollTimeout);
-        SparkMessage? last = null;
-        while (DateTime.UtcNow < end)
-        {
-            using var session = Store.OpenAsyncSession();
-            last = await session.LoadAsync<SparkMessage>(id);
-            if (last != null && predicate(last))
-                return last;
-            await Task.Delay(100);
-        }
-        throw new TimeoutException($"Predicate for SparkMessage '{id}' not met within {timeout ?? PollTimeout}. Last: Status={last?.Status}, Handlers=[{string.Join(",", last?.Handlers.Select(h => $"{h.Status}:{h.AttemptCount}") ?? [])}]");
-    }
+    private Task<SparkMessage> WaitForMessageAsync(string id, Func<SparkMessage, bool> predicate, TimeSpan? timeout = null)
+        => AsyncWait.ForAsync(
+            async () =>
+            {
+                using var session = Store.OpenAsyncSession();
+                return await session.LoadAsync<SparkMessage>(id);
+            },
+            predicate,
+            $"SparkMessage '{id}' to satisfy the predicate",
+            last => $"Status={last?.Status}, Handlers=[{string.Join(",", last?.Handlers.Select(h => $"{h.Status}:{h.AttemptCount}") ?? [])}]",
+            timeout ?? PollTimeout,
+            TimeSpan.FromMilliseconds(100));
 
     private MessageSubscriptionWorker NewWorker(
         string queueName,
@@ -376,23 +374,17 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
         // Manually insert a SparkMessage whose MessageType cannot be resolved by Type.GetType
         var queueName = "ghost-queue";
-        string id;
-        using (var session = Store.OpenAsyncSession())
+        var msg = new SparkMessage
         {
-            var msg = new SparkMessage
-            {
-                QueueName = queueName,
-                MessageType = "Nope.Does.Not.Exist, GhostAssembly",
-                PayloadJson = "{}",
-                CreatedAtUtc = DateTime.UtcNow,
-                Status = EMessageStatus.Pending,
-                MaxAttempts = 3,
-            };
-            await session.StoreAsync(msg);
-            await session.SaveChangesAsync();
-            id = msg.Id!;
-        }
-        WaitForIndexing(Store);
+            QueueName = queueName,
+            MessageType = "Nope.Does.Not.Exist, GhostAssembly",
+            PayloadJson = "{}",
+            CreatedAtUtc = DateTime.UtcNow,
+            Status = EMessageStatus.Pending,
+            MaxAttempts = 3,
+        };
+        await base.SeedAsync(session => session.StoreAsync(msg));
+        var id = msg.Id!;
 
         var worker = NewWorker(queueName, sp);
         await worker.StartAsync(CancellationToken.None);
@@ -455,7 +447,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
         var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
         await bus.DelayBroadcastAsync(new SuccessMessage("orders/delayed"), TimeSpan.FromSeconds(1));
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         string id;
         using (var session = Store.OpenAsyncSession())
             id = (await session.Query<SparkMessage>().SingleAsync()).Id!;
@@ -520,35 +512,33 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     public async Task Sweeper_touches_only_due_parked_messages()
     {
         var now = DateTime.UtcNow;
-        string dueFailedId, futureFailedId, completedId, duePendingId;
-        using (var session = Store.OpenAsyncSession())
+
+        SparkMessage NewMessage(EMessageStatus status, DateTime? nextAttempt) => new()
         {
-            SparkMessage NewMessage(EMessageStatus status, DateTime? nextAttempt) => new()
-            {
-                QueueName = "sweeper-queue",
-                MessageType = typeof(SuccessMessage).AssemblyQualifiedName!,
-                PayloadJson = "{}",
-                CreatedAtUtc = now,
-                Status = status,
-                NextAttemptAtUtc = nextAttempt,
-                MaxAttempts = 3,
-            };
+            QueueName = "sweeper-queue",
+            MessageType = typeof(SuccessMessage).AssemblyQualifiedName!,
+            PayloadJson = "{}",
+            CreatedAtUtc = now,
+            Status = status,
+            NextAttemptAtUtc = nextAttempt,
+            MaxAttempts = 3,
+        };
 
-            var dueFailed = NewMessage(EMessageStatus.Failed, now.AddSeconds(-5));
-            var futureFailed = NewMessage(EMessageStatus.Failed, now.AddHours(1));
-            var completed = NewMessage(EMessageStatus.Completed, now.AddSeconds(-5));
-            var duePending = NewMessage(EMessageStatus.Pending, now.AddSeconds(-5));
+        var dueFailed = NewMessage(EMessageStatus.Failed, now.AddSeconds(-5));
+        var futureFailed = NewMessage(EMessageStatus.Failed, now.AddHours(1));
+        var completed = NewMessage(EMessageStatus.Completed, now.AddSeconds(-5));
+        var duePending = NewMessage(EMessageStatus.Pending, now.AddSeconds(-5));
 
+        await base.SeedAsync(async session =>
+        {
             await session.StoreAsync(dueFailed);
             await session.StoreAsync(futureFailed);
             await session.StoreAsync(completed);
             await session.StoreAsync(duePending);
-            await session.SaveChangesAsync();
+        });
 
-            (dueFailedId, futureFailedId, completedId, duePendingId) =
-                (dueFailed.Id!, futureFailed.Id!, completed.Id!, duePending.Id!);
-        }
-        WaitForIndexing(Store);
+        var (dueFailedId, futureFailedId, completedId, duePendingId) =
+            (dueFailed.Id!, futureFailed.Id!, completed.Id!, duePending.Id!);
 
         var touched = await NewSweeper().SweepOnceAsync(CancellationToken.None);
         touched.Should().Be(2);

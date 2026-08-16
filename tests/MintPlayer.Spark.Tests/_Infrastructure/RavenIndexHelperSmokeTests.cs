@@ -53,4 +53,55 @@ public class RavenIndexHelperSmokeTests : SparkTestDriver
         hits.Should().HaveCount(1);
         hits[0].Weight.Should().Be(1);
     }
+
+    [Fact]
+    public async Task Both_entry_points_settle_the_same_database()
+    {
+        // #256 — these were two separate loops with different done-conditions, different exception
+        // types and their own timeouts, so which one a fixture happened to call changed what
+        // "settled" meant. They are now one implementation; this pins that they agree.
+        using (var session = Store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new Widget { Name = "consolidated", Weight = 7 });
+            await session.SaveChangesAsync();
+        }
+
+        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        await Store.WaitForIndexingAsync();
+
+        using var readSession = Store.OpenAsyncSession();
+        var hits = await readSession.Query<Widget, Widgets_ByName>()
+            .Where(w => w.Name == "consolidated")
+            .ToListAsync();
+
+        hits.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Timeout_message_names_the_database_and_the_elapsed_wait()
+    {
+        // A wait that fails must say what it was waiting on. The old sync path reported only
+        // "the indexes stayed stale", which tells the reader nothing actionable.
+        // Stop indexing FIRST, then write — otherwise the document is indexed before the freeze
+        // and there is nothing stale to wait on. (Maintenance operations are database-scoped, and
+        // SparkTestDriver gives every test its own database, so this cannot affect another test.)
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
+        try
+        {
+            using (var session = Store.OpenAsyncSession())
+            {
+                await session.StoreAsync(new Widget { Name = "slow", Weight = 3 });
+                await session.SaveChangesAsync();
+            }
+
+            var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(200));
+
+            (await act.Should().ThrowAsync<TimeoutException>())
+                .Which.Message.Should().Contain(Store.Database).And.Contain("stale");
+        }
+        finally
+        {
+            await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+        }
+    }
 }

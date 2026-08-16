@@ -64,7 +64,7 @@ public class CreateEndpointTests : SparkTestDriver
         var created = await _client.CreatePersistentObjectAsync(NewPerson(PersonTypeId, "Alice", "Smith"));
         created.Id.Should().NotBeNullOrEmpty();
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var stored = await session.Query<Person>().ToListAsync();
         stored.Should().ContainSingle().Which.FirstName.Should().Be("Alice");

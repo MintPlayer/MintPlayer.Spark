@@ -120,15 +120,13 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
             new RowSecurity(_actionsResolver));
     }
 
-    private async Task SeedNotesAsync()
-    {
-        using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new Note { Title = "Alice's first", Owner = "alice" });
-        await session.StoreAsync(new Note { Title = "Alice's second", Owner = "alice" });
-        await session.StoreAsync(new Note { Title = "Bob's secret", Owner = "bob" });
-        await session.SaveChangesAsync();
-        WaitForIndexing(Store);
-    }
+    private Task SeedNotesAsync()
+        => SeedAsync(async session =>
+        {
+            await session.StoreAsync(new Note { Title = "Alice's first", Owner = "alice" });
+            await session.StoreAsync(new Note { Title = "Alice's second", Owner = "alice" });
+            await session.StoreAsync(new Note { Title = "Bob's secret", Owner = "bob" });
+        });
 
     private static SparkQuery Query(string source, string entityType) => new()
     {
@@ -179,13 +177,11 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
     [Fact]
     public async Task An_entity_with_no_row_rule_is_unaffected()
     {
-        using (var session = Store.OpenAsyncSession())
+        await SeedAsync(async session =>
         {
             await session.StoreAsync(new Memo { Title = "Public one" });
             await session.StoreAsync(new Memo { Title = "Public two" });
-            await session.SaveChangesAsync();
-        }
-        WaitForIndexing(Store);
+        });
 
         var results = (await CreateExecutor().ExecuteQueryAsync(Query("Memos", "Memo"))).Data.ToList();
 

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Testing;
 using System.Net;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
@@ -185,7 +186,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
 
         // Asserting absence through an index: without the wait a stale read is indistinguishable
         // from the property holding, and the test passes either way.
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var requests = await session.Query<OidcAuthorizationRequest>().ToListAsync();
 

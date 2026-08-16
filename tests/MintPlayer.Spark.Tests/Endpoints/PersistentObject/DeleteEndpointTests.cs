@@ -56,7 +56,7 @@ public class DeleteEndpointTests : SparkTestDriver
 
         await _client.DeletePersistentObjectAsync(PersonTypeId, "people/1");
 
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
         using var verify = Store.OpenAsyncSession();
         var stored = await verify.LoadAsync<Person>("people/1");
         stored.Should().BeNull();
