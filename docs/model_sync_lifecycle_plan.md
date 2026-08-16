@@ -30,7 +30,8 @@ milestones are verified by reading and type-checking.
 | M13 | Stale projection refs, name-collision deletion, duplicate roots | `077f406` |
 | M14 | Hash/model guard alignment; corrected warning | `1549536` |
 | M15 | Index + projection discovery beyond the entry assembly | `5eecb58` |
-| M16 | Write attributes and queries in name order | this commit |
+| M16 | Write attributes and queries in name order | `f3e4dd3` |
+| M17 | Upgrade note + production-safety barriers recorded | this commit |
 
 ---
 
@@ -373,3 +374,24 @@ attributes by name before hashing. No deployed application sees drift.
 
 Tabs and groups are left alone: synchronize preserves them verbatim rather than rebuilding them, so
 they cannot churn from reflection order and there is no instability to fix.
+
+## M17 — Upgrade documentation
+
+**Files:** `README.md`, `docs/model_sync_lifecycle_PRD.md`, `tests/.../Builder/SparkExtensionsTests.cs`
+
+`modelHashes.json` did not exist before preview.51 and the startup check fails closed on a missing
+one, so an application upgrading from an earlier preview **will not start in production** until it has
+been generated. Every other change in this PR is a compile error and cannot be deployed by accident;
+this one can, so the README note leads with it and `docs/model-hash.md` is linked from both the
+developer-guides table and the model-synchronization section.
+
+Two questions that will be asked again are now answered in the PRD rather than only in conversation:
+
+- **Why does every app still need `if (builder.SynchronizeSparkModelsIfRequested(args)) return;`?**
+  Recorded in D2. A `CreateBuilder`-style factory cannot encapsulate it: at that point `UseContext<T>()`
+  has not run so there is no context to synchronize, and a factory cannot make `Main` return without
+  `Environment.Exit` — which is the defect this PR removed.
+- **Can a deployed application rewrite its own model?** Recorded under R4 as three independent
+  barriers (no flag → no work; the service is absent from the container; the class is `internal`),
+  with the deliberate exception that an explicit flag works in any environment so CI can use it.
+  The outermost barrier is now pinned by a test using realistic production arguments.

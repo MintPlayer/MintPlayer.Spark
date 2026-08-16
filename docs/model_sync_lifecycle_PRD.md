@@ -116,6 +116,19 @@ environment from the `IHostEnvironment` service descriptor's `ImplementationInst
 ⚠️ Registering it in `SparkApplication.CreateBuilder` instead would be a **silent no-op**: measured,
 `AddSparkServices()` runs later and its unconditional registration wins `GetRequiredService`.
 
+**Can a deployed application rewrite its own model? Three independent barriers:**
+
+1. **No flag, nothing runs.** `SynchronizeSparkModelsIfRequested` returns `false` immediately.
+   Pinned by a test that starts Production and Staging hosts with realistic arguments
+   (`--urls http://0.0.0.0:8080`) and asserts no model directory is even created.
+2. **`IModelSynchronizer` is not in the container** outside Development, so nothing can resolve it.
+   Pinned in both directions.
+3. **`ModelSynchronizer` is `internal`**, so consumer code cannot construct it either.
+
+The one deliberate exception: an operator who explicitly passes `--spark-synchronize-model` to a
+deployed application *does* get a synchronize — that is what lets CI run it, where the environment is
+Production (see R3). It writes files and returns before `Build()`, so it never serves traffic.
+
 ### R5 — Model hash: hash the CLR shape, not the JSON
 `SparkModelShape` (new, in `MintPlayer.Spark.Abstractions`) produces a canonical text rendering of the
 model derived **from the CLR types**, and SHA-256s it. Inputs:
@@ -501,6 +514,24 @@ that `ASPNETCORE_ENVIRONMENT=Development` on a prod box re-arms. And it introduc
 footgun — a consumer who keeps plain `WebApplication.CreateBuilder` still compiles, still runs, and
 silently has no synchronizer, with no compile-time signal. R4's `AddSparkCore` gate achieves the same
 guarantee for *all* apps without a new entry point.
+
+**It could not have encapsulated the call anyway** — this is the part worth remembering, because the
+obvious follow-up is "then why does every app still need
+`if (builder.SynchronizeSparkModelsIfRequested(args)) return;`?":
+
+1. **At `CreateBuilder` time there is nothing to synchronize yet.** `UseContext<T>()` runs inside
+   `AddSpark`'s configure callback, which happens *after* the factory returns, so the factory cannot
+   know the context type.
+2. **A factory cannot make `Main` return.** The only ways to stop the host from inside a wrapper are
+   `Environment.Exit` — which is exactly defect P1, the exit-0 restart loop — or throwing. Returning
+   `bool` and letting the host `return` is what removed that.
+
+So the visible line survives any wrapper. It is also the thing that cannot be silently lost: a factory
+someone forgets to call fails silently, a line someone deletes does not.
+
+If the type argument is ever worth saving, the AllFeatures generator already knows the context type at
+compile time and could emit `builder.SynchronizeSparkFullModelsIfRequested(args)` — but that removes
+the type argument only, never the `if (...) return;`.
 
 ### D3 — Hash the CLR shape, not the model JSON
 A JSON-content hash is not merely weaker here — it is **incompatible with #253**, which just shipped
