@@ -30,6 +30,7 @@ milestones are verified by reading and type-checking.
 | M13 | Stale projection refs, name-collision deletion, duplicate roots | `077f406` |
 | M14 | Hash/model guard alignment; corrected warning | `1549536` |
 | M15 | Index + projection discovery beyond the entry assembly | `5eecb58` |
+| M16 | Write attributes and queries in name order | this commit |
 
 ---
 
@@ -352,3 +353,23 @@ No demo declares anything, and no library ships a `[FromIndex]` projection, so n
 silently (`Cars_Overview` exists in both DemoApp and Fleet, harmless only because they are separate
 apps); and two different indexes over one collection type leave the last registered winning the
 collection lookup.
+
+## M16 — Name-ordered model arrays (PRD R15)
+
+**File:** `Services/ModelSynchronizer.cs`
+
+Attributes and inline queries are sorted by name before writing —
+`OrderBy(OrdinalIgnoreCase).ThenBy(Ordinal)`. Deliberately not by `Order`: that field exists so array
+position means nothing, and every consumer sorts by it, which is what makes the array free to be
+ordered for merges instead.
+
+The `Ordinal` tiebreaker matters. `OrdinalIgnoreCase` is not a total order, so names differing only in
+case compare equal and a stable sort falls back to input — i.e. reflection order — reintroducing the
+instability. Pinned by a test seeding `value` and `Value`.
+
+Verified: 20 demo model files reorder (1016 insertions, 1016 deletions — pure movement) and
+`modelHashes.json` does **not** change on any of them, because `ModelFileShape` already sorted
+attributes by name before hashing. No deployed application sees drift.
+
+Tabs and groups are left alone: synchronize preserves them verbatim rather than rebuilding them, so
+they cannot churn from reflection order and there is no instability to fix.

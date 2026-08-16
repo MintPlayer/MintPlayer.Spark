@@ -54,6 +54,71 @@ public class SynchronizeIdempotencyTests : IDisposable
         Directory.GetFiles(ModelDir, "*.json")
             .ToDictionary(Path.GetFileName, File.ReadAllText, StringComparer.Ordinal)!;
 
+    [Fact]
+    public void Attributes_are_written_in_name_order()
+    {
+        // Sorted by name, not by Order — Order exists so that position in the array carries no
+        // meaning (every consumer sorts by it), which frees the array to be written in whatever
+        // shape merges best. Two branches adding different attributes then touch different lines.
+        Synchronize();
+
+        var names = AttributeNames("IdemProbe.json");
+
+        names.Should().BeInAscendingOrder(StringComparer.OrdinalIgnoreCase);
+        names.Should().Contain("Name");
+    }
+
+    [Fact]
+    public void Attribute_order_does_not_follow_declaration_order()
+    {
+        // The property declared second sorts first. Reflection member order is not stable across
+        // builds, so leaving the array in it means files churn with no source change.
+        Synchronize();
+
+        var names = AttributeNames("IdemSortProbe.json");
+
+        names.Should().Equal(["Alpha", "Zulu"],
+            "Zulu is declared first on the class but sorts second");
+    }
+
+    [Fact]
+    public void Sorting_is_stable_for_names_differing_only_in_case()
+    {
+        // OrdinalIgnoreCase alone is not a total order: such names compare equal, and a stable sort
+        // then falls back to input order — which is reflection order, the instability being removed.
+        // The Ordinal tiebreaker is what makes this deterministic.
+        Seed("IdemProbe.json", """
+        {
+          "persistentObject": {
+            "id": "12345678-1234-1234-1234-123456789abc",
+            "name": "IdemProbe",
+            "clrType": "MintPlayer.Spark.Tests.Model.IdemProbe",
+            "attributes": [
+              { "id": "aaaaaaaa-0000-0000-0000-000000000001", "name": "value" },
+              { "id": "aaaaaaaa-0000-0000-0000-000000000002", "name": "Value" }
+            ]
+          },
+          "queries": []
+        }
+        """);
+
+        Synchronize();
+        var first = AttributeNames("IdemProbe.json");
+
+        Synchronize();
+
+        AttributeNames("IdemProbe.json").Should().Equal(first);
+        first.Where(n => string.Equals(n, "value", StringComparison.OrdinalIgnoreCase))
+            .Should().Equal(["Value", "value"], "the case-sensitive tiebreaker fixes the order");
+    }
+
+    private string[] AttributeNames(string fileName)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(ModelDir, fileName)));
+        return [.. document.RootElement.GetProperty("persistentObject").GetProperty("attributes")
+            .EnumerateArray().Select(a => a.GetProperty("name").GetString()!)];
+    }
+
     private void Seed(string fileName, string json)
     {
         Directory.CreateDirectory(ModelDir);
@@ -265,6 +330,7 @@ public sealed class IdemProbe
 public sealed class IdemContext : SparkContext
 {
     public IRavenQueryable<IdemProbe> IdemProbes => Session.Query<IdemProbe>();
+    public IRavenQueryable<IdemSortProbe> IdemSortProbes => Session.Query<IdemSortProbe>();
 }
 
 /// <summary>
@@ -408,4 +474,11 @@ public sealed class TwoRootsContext : SparkContext
 {
     public IRavenQueryable<IdemProbe> Probes => Session.Query<IdemProbe>();
     public IRavenQueryable<IdemProbe> ArchivedProbes => Session.Query<IdemProbe>();
+}
+
+public sealed class IdemSortProbe
+{
+    public string? Id { get; set; }
+    public string? Zulu { get; set; }
+    public string? Alpha { get; set; }
 }

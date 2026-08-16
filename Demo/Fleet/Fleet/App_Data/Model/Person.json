@@ -13,6 +13,31 @@
     "groups": [],
     "attributes": [
       {
+        "id": "ad032070-86e7-4ed1-8b71-166010bc0ee8",
+        "name": "Email",
+        "label": {
+          "en": "Email",
+          "fr": "E-mail",
+          "nl": "E-mail"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "email"
+          },
+          {
+            "type": "maxLength",
+            "value": 255
+          }
+        ]
+      },
+      {
         "id": "bb4cd209-a07a-4464-886a-a511606a18bd",
         "name": "FirstName",
         "label": {
@@ -71,31 +96,6 @@
           {
             "type": "maxLength",
             "value": 50
-          }
-        ]
-      },
-      {
-        "id": "ad032070-86e7-4ed1-8b71-166010bc0ee8",
-        "name": "Email",
-        "label": {
-          "en": "Email",
-          "fr": "E-mail",
-          "nl": "E-mail"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "email"
-          },
-          {
-            "type": "maxLength",
-            "value": 255
           }
         ]
       }

@@ -13,23 +13,6 @@
     "groups": [],
     "attributes": [
       {
-        "id": "321ad915-7e10-4e72-b565-4c99a3cea470",
-        "name": "OptionId",
-        "label": {
-          "en": "Option Id",
-          "fr": "ID d'option",
-          "nl": "Optie-ID"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 1,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
         "id": "6fee34b8-1271-40a8-92aa-18d1ca9229a3",
         "name": "Name",
         "label": {
@@ -42,6 +25,23 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "321ad915-7e10-4e72-b565-4c99a3cea470",
+        "name": "OptionId",
+        "label": {
+          "en": "Option Id",
+          "fr": "ID d'option",
+          "nl": "Optie-ID"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []

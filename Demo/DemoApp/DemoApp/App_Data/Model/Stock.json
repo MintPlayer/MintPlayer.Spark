@@ -13,18 +13,35 @@
     "groups": [],
     "attributes": [
       {
-        "id": "770e8400-e29b-41d4-a716-446655440001",
-        "name": "Symbol",
+        "id": "770e8400-e29b-41d4-a716-446655440004",
+        "name": "Change",
         "label": {
-          "en": "Symbol",
-          "fr": "Symbole",
-          "nl": "Symbool"
+          "en": "Change",
+          "fr": "Variation",
+          "nl": "Wijziging"
         },
-        "dataType": "string",
-        "isRequired": true,
+        "dataType": "decimal",
+        "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 1,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "770e8400-e29b-41d4-a716-446655440005",
+        "name": "ChangePercent",
+        "label": {
+          "en": "Change %",
+          "fr": "Variation %",
+          "nl": "Wijziging %"
+        },
+        "dataType": "decimal",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
         "isArray": false,
         "showedOn": "Query",
         "rules": []
@@ -64,35 +81,18 @@
         "rules": []
       },
       {
-        "id": "770e8400-e29b-41d4-a716-446655440004",
-        "name": "Change",
+        "id": "770e8400-e29b-41d4-a716-446655440001",
+        "name": "Symbol",
         "label": {
-          "en": "Change",
-          "fr": "Variation",
-          "nl": "Wijziging"
+          "en": "Symbol",
+          "fr": "Symbole",
+          "nl": "Symbool"
         },
-        "dataType": "decimal",
-        "isRequired": false,
+        "dataType": "string",
+        "isRequired": true,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 4,
-        "isArray": false,
-        "showedOn": "Query",
-        "rules": []
-      },
-      {
-        "id": "770e8400-e29b-41d4-a716-446655440005",
-        "name": "ChangePercent",
-        "label": {
-          "en": "Change %",
-          "fr": "Variation %",
-          "nl": "Wijziging %"
-        },
-        "dataType": "decimal",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": true,
-        "order": 5,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query",
         "rules": []
@@ -101,6 +101,21 @@
     "queries": []
   },
   "queries": [
+    {
+      "id": "1a4b36c5-1fc4-417d-9c24-b78b63cdf305",
+      "name": "GetStocks",
+      "source": "Database.Stocks",
+      "sortColumns": [
+        {
+          "property": "Symbol",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Stock",
+      "isStreamingQuery": false
+    },
     {
       "id": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",
       "name": "StreamStocks",
@@ -121,21 +136,6 @@
       "useProjection": false,
       "entityType": "Stock",
       "isStreamingQuery": true
-    },
-    {
-      "id": "1a4b36c5-1fc4-417d-9c24-b78b63cdf305",
-      "name": "GetStocks",
-      "source": "Database.Stocks",
-      "sortColumns": [
-        {
-          "property": "Symbol",
-          "direction": "asc"
-        }
-      ],
-      "renderMode": "Pagination",
-      "useProjection": false,
-      "entityType": "Stock",
-      "isStreamingQuery": false
     }
   ]
 }

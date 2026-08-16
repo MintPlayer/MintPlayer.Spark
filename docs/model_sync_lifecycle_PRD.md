@@ -430,6 +430,35 @@ the catch must sit *inside* the `ReflectionCache` factory, or the failure is cac
 the process lifetime. Apply stays best-effort but per assembly, so one unreachable module no longer
 costs every other module its indexes.
 
+### R15 — Model arrays are written in name order
+
+Attributes and inline queries are written sorted by name — `OrdinalIgnoreCase` first so names group
+the way a reader expects, then `Ordinal` as a tiebreaker.
+
+**Not sorted by `Order`.** `Order` exists precisely so that position in the array carries no meaning:
+every consumer sorts by it (`spark-po-form`, `spark-po-create`, `spark-po-detail`,
+`as-detail-columns.pipe`, and the tab/group rendering). That frees the array itself to be written in
+whatever shape merges best.
+
+Two payoffs:
+
+- **Determinism.** The array was written in CLR reflection order, and reflection member order is not
+  stable — swapping the files of a `partial` class reorders `GetProperties()`. So the files could
+  churn between builds with no source change. This closes the last place reflection order leaked into
+  committed output; the hash already sorted.
+- **Merges.** Two branches adding different attributes now touch different lines instead of colliding
+  at whatever position reflection happened to pick. Same reasoning as giving the model hashes their
+  own file: when a conflict does happen it is mechanical to resolve — clear the file and re-run
+  synchronize.
+
+The `Ordinal` tiebreaker is load-bearing rather than pedantic: `OrdinalIgnoreCase` alone is not a
+total order, so two names differing only in case compare equal and a stable sort falls back to input
+order — which is reflection order, quietly restoring the instability this removes.
+
+One-time churn of 20 demo model files, purely reordering. **`modelHashes.json` does not move**,
+because the structural hash already sorted attributes by name — so no deployed application sees drift
+from this.
+
 ---
 
 ## Decisions

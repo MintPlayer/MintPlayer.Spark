@@ -140,7 +140,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
-                Queries = queriesForType.ToArray()
+                // Name-sorted for the same reason as the attributes: stable across runs and
+                // merge-friendly. Nothing depends on the order of this array.
+                Queries = [.. queriesForType
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
@@ -188,7 +192,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
-                Queries = embeddedQueries
+                Queries = [.. embeddedQueries
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
@@ -671,7 +677,23 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
         }
 
-        entityTypeDef.Attributes = newAttributes.ToArray();
+        // Sorted by name, deliberately not by Order. Order exists precisely so that position in this
+        // array carries no meaning — every consumer sorts by it — which frees the array itself to be
+        // written in the shape that merges best.
+        //
+        // Case-insensitive first so names group the way a reader expects, then case-sensitive as a
+        // tiebreaker: OrdinalIgnoreCase alone is not a total order, so two names differing only in
+        // case would compare equal and a stable sort would fall back to reflection order — quietly
+        // restoring the instability this exists to remove.
+        //
+        // Two payoffs. Reflection member order is not stable (swapping the files of a partial class
+        // reorders GetProperties), so an unsorted array churns between builds with no source change.
+        // And a stable name order means two branches adding different attributes touch different
+        // lines, so they merge instead of conflicting — the same reasoning behind keeping the model
+        // hashes in their own file.
+        entityTypeDef.Attributes = [.. newAttributes
+            .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.Name, StringComparer.Ordinal)];
 
         // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
         // an existing JSON value; otherwise synthesize a sensible default. Then validate the

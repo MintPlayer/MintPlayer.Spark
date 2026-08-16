@@ -13,6 +13,29 @@
     "groups": [],
     "attributes": [
       {
+        "id": "fe523875-8393-4e7e-aaaf-fe0c8e089eba",
+        "name": "EmployeeCount",
+        "label": {
+          "en": "Employee Count",
+          "fr": "Nombre d'employés",
+          "nl": "Aantal werknemers"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "range",
+            "min": 1,
+            "max": 1000000
+          }
+        ]
+      },
+      {
         "id": "1a5c89ab-f7ee-4193-8e52-d64e25645be6",
         "name": "Name",
         "label": {
@@ -61,29 +84,6 @@
         "rules": [
           {
             "type": "url"
-          }
-        ]
-      },
-      {
-        "id": "fe523875-8393-4e7e-aaaf-fe0c8e089eba",
-        "name": "EmployeeCount",
-        "label": {
-          "en": "Employee Count",
-          "fr": "Nombre d'employés",
-          "nl": "Aantal werknemers"
-        },
-        "dataType": "number",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "range",
-            "min": 1,
-            "max": 1000000
           }
         ]
       }

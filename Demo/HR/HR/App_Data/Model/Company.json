@@ -13,6 +13,63 @@
     "groups": [],
     "attributes": [
       {
+        "id": "c8f35b2d-ae49-4e67-9d23-4f6b8cae2f15",
+        "name": "AccentColor",
+        "label": {
+          "en": "Accent Color",
+          "fr": "Couleur d'accent",
+          "nl": "Accentkleur"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b7e24a1c-9f38-4d56-8c12-3e5a7b9d1f04",
+        "name": "BrandColor",
+        "label": {
+          "en": "Brand Color",
+          "fr": "Couleur de marque",
+          "nl": "Merkkleur"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
+        "name": "EmployeeCount",
+        "label": {
+          "en": "Employee Count",
+          "fr": "Nombre d'employés",
+          "nl": "Aantal werknemers"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "range",
+            "min": 1,
+            "max": 1000000
+          }
+        ]
+      },
+      {
         "id": "a1784ded-7fec-468d-b181-2aa24b5d34b0",
         "name": "Name",
         "label": {
@@ -44,6 +101,23 @@
         ]
       },
       {
+        "id": "09086eed-8001-45f3-8a4a-7cdf59300cad",
+        "name": "Sector",
+        "label": {
+          "en": "Sector"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "query": "GetProfessions",
+        "referenceType": "HR.Entities.Profession",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "fbe3da33-f8db-4eb2-9307-eaf38f59ef71",
         "name": "Website",
         "label": {
@@ -63,80 +137,6 @@
             "type": "url"
           }
         ]
-      },
-      {
-        "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
-        "name": "EmployeeCount",
-        "label": {
-          "en": "Employee Count",
-          "fr": "Nombre d'employés",
-          "nl": "Aantal werknemers"
-        },
-        "dataType": "number",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "range",
-            "min": 1,
-            "max": 1000000
-          }
-        ]
-      },
-      {
-        "id": "b7e24a1c-9f38-4d56-8c12-3e5a7b9d1f04",
-        "name": "BrandColor",
-        "label": {
-          "en": "Brand Color",
-          "fr": "Couleur de marque",
-          "nl": "Merkkleur"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "c8f35b2d-ae49-4e67-9d23-4f6b8cae2f15",
-        "name": "AccentColor",
-        "label": {
-          "en": "Accent Color",
-          "fr": "Couleur d'accent",
-          "nl": "Accentkleur"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 5,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "09086eed-8001-45f3-8a4a-7cdf59300cad",
-        "name": "Sector",
-        "label": {
-          "en": "Sector"
-        },
-        "dataType": "Reference",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 6,
-        "query": "GetProfessions",
-        "referenceType": "HR.Entities.Profession",
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
       }
     ],
     "queries": [
