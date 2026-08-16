@@ -15,6 +15,7 @@
 | M5 | Fixed sleeps removed | `5afd607` |
 | M6 | Deploy-time index verification | `5afd607` |
 | M7 | Async all the way; sync API deleted | `9d86cc3` |
+| M8 | Deployed-AND-up-to-date; typed deployment failure | `139e5b2` |
 
 ---
 
@@ -150,6 +151,21 @@ Not in the original plan; added once M1 made an async implementation available.
   to tests.
 - The `SeedAsync` conversion (M3) removed 24 waits outright before this pass, so the mechanical
   edit was smaller than the original 63-site count suggested.
+
+## M8 — Deployed as well as up to date (added during implementation)
+
+Prompted by the question "with no indexes yet, how can it wait for the replacement swap?" — which
+exposed that it cannot wait for anything at all: the staleness condition is vacuous over an empty
+index set, so on a fresh database the wait returned in 3 ms having promised nothing (PRD F10).
+
+- `WaitForIndexingAsync` gained `expectedIndexes`; settled now means deployed **and** up to date.
+- `SparkTestDriver` tracks the indexes it deploys and exposes `WaitForIndexesAsync`, which passes
+  them automatically — the safe call is the default one.
+- `DeployIndexesAsync` folds M6's separate registration poll into that single wait.
+- Deployment failures throw `RavenIndexDeploymentException` (with `FaultedIndexes` /
+  `MissingIndexes`) instead of `TimeoutException` (PRD F11/D10).
+- `IndexWaitSemanticsTests` pins all of it, including that auto-indexes count toward staleness but
+  cannot count toward deployment.
 
 ## Benchmark
 

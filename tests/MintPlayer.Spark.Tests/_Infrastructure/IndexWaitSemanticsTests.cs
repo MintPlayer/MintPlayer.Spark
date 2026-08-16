@@ -68,10 +68,14 @@ public class IndexWaitSemanticsTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_stale_but_healthy_index_still_reports_a_timeout()
+    public async Task A_stale_but_healthy_index_still_reports_a_timeout_and_auto_indexes_count()
     {
-        // The other side of the same distinction: nothing is broken here, indexing is simply
-        // stopped — so this must stay a TimeoutException.
+        // Two things at once. (a) Nothing is broken here — indexing is simply stopped — so this
+        // must stay a TimeoutException rather than a deployment failure. (b) The only index in
+        // play is an Auto/ one, so its appearance in the failure proves auto-indexes are NOT
+        // excluded from the staleness half of the wait. They cannot be: a stale auto-index is
+        // exactly what makes a query return the wrong rows. They are only irrelevant to the
+        // expectedIndexes half, because their names are not knowable up front.
         await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
         try
         {
@@ -89,9 +93,13 @@ public class IndexWaitSemanticsTests : SparkTestDriver
 
             var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(300));
 
-            await act.Should().ThrowAsync<TimeoutException>()
+            var thrown = await act.Should().ThrowAsync<TimeoutException>()
                 .Where(e => !(e is RavenIndexDeploymentException),
                     "a healthy-but-stale index is a timeout, not a deployment failure");
+
+            thrown.Which.Message.Should().Contain("Auto/Things",
+                "auto-indexes are held to the same staleness bar as declared ones — a stale "
+                + "auto-index is precisely what makes a query return the wrong rows");
         }
         finally
         {

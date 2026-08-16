@@ -137,6 +137,32 @@ The constraint that makes it awkward in CronosCore does not apply to us.
 `WaitForIndexingAsync` is only `Task.Run(...)` over the same blocking code — it moves the block, it
 does not remove it. With `maxParallelThreads: "0.5x"` those threads are now scarcer by design.
 
+### F10 — "Wait until no index is stale" is vacuous on an empty database
+
+Found by probing rather than reading, after the question "if there are no indexes yet, how can it
+wait for the replacement swap?". Measured on a fresh per-test database:
+
+| Probe | Result |
+|---|---|
+| Indexes present | **0** |
+| `WaitForIndexingAsync()` after a write | returns in **3 ms** |
+| Indexes after the wait | still **0** |
+| Then query | 1 hit, and it *creates* `Auto/Things/ByName` |
+
+The staleness condition is universally quantified over the index set, so an empty set satisfies it
+instantly. On a fresh database — the starting point of **every** fixture, since each test gets its
+own — the wait promised nothing.
+
+What actually made the ubiquitous seed-then-query pattern correct was **RavenDB**, which blocks on
+the first creation of an auto-index. Not our wait. The same vacuity applies to `SeedAsync`: with no
+index yet covering the write, the server-side wait also has nothing to wait on.
+
+### F11 — Deployment failure and slowness were the same exception
+
+A missing or faulted index surfaced as `TimeoutException`, identical to "indexing could not keep
+up". The two have nothing in common: one is fixed by retrying or raising a limit, the other never
+is. The message had to carry a distinction the type should have been making.
+
 ## Decisions
 
 - **D1 — One implementation, async-first.** Collapse both into a single async implementation with a
@@ -175,6 +201,23 @@ does not remove it. With `maxParallelThreads: "0.5x"` those threads are now scar
   is coupled to Fleet's configured window. Fixing it properly means making that window configurable
   for tests, which is a production-config change. Flagged, not done.
 
+- **D9 — "Settled" means deployed AND up to date (F10).** `WaitForIndexingAsync` takes
+  `expectedIndexes`; a wait cannot succeed until those definitions exist. `SparkTestDriver` tracks
+  what it deployed and passes the names automatically via `WaitForIndexesAsync`, so the safe thing
+  is also the default thing. `DeployIndexesAsync` folds its separate registration poll into this
+  one wait — one condition, one mechanism.
+
+  **Auto-indexes sit on one side of this and not the other.** They are held to the same *staleness*
+  bar as declared indexes (a stale auto-index is exactly what returns the wrong rows), but they
+  cannot participate in the *deployment* check, because they do not exist until a query creates
+  them and their names are not knowable up front. Nothing can close that gap from our side; RavenDB
+  blocking on first creation is what covers it.
+
+- **D10 — Deployment failures throw `RavenIndexDeploymentException`, not `TimeoutException` (F11).**
+  Timeout keeps its ordinary meaning: healthy indexes that did not catch up in time. The new type
+  exposes `FaultedIndexes` and `MissingIndexes` so a test can assert on the cause rather than
+  string-matching a message.
+
 ## Acceptance criteria
 
 1. One index-wait implementation; both entry points route to it and agree on semantics.
@@ -188,7 +231,12 @@ does not remove it. With `maxParallelThreads: "0.5x"` those threads are now scar
    silently swallows a timeout.
 7. `SyncActionSubscriptionWorkerE2ETests.cs:278` and
    `MessageSubscriptionManagerLifecycleTests.cs:70` no longer depend on a fixed sleep.
-8. Full suite green, with no increase in wall-clock time.
+8. A wait cannot succeed while an index it was told to expect is absent; a missing or faulted
+   index throws `RavenIndexDeploymentException`, while healthy-but-stale still throws
+   `TimeoutException`.
+9. The vacuity of an unqualified wait on an empty database, and RavenDB's auto-index blocking that
+   compensates for it, are both pinned by tests rather than left as folklore.
+10. Full suite green, with the wall-clock cost measured and stated rather than assumed.
 
 ## Results
 
@@ -213,6 +261,8 @@ Two things worth stating plainly:
 
 Sample size is three runs per side — enough to establish the direction and to catch the flake, not
 enough to put a confidence interval on the 8%.
+
+Final suite: **1376 tests** (four added for the wait semantics above).
 
 Secondary effects, not separately timed: 24 explicit index waits removed (writes now settle
 server-side as part of the transaction), and every remaining wait is awaited rather than blocking a

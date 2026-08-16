@@ -12,7 +12,9 @@ Test-utilities library for writing automated tests against Spark apps. It provid
 | `SparkEndpointFactory<TContext>` | Boots a minimal in-memory Spark HTTP host (ASP.NET Core `TestServer`) wired to a supplied store, for endpoint/integration tests. |
 | `SparkTestClient` | `HttpClient` wrapper that attaches the antiforgery cookie + `X-XSRF-TOKEN` header to every mutating request. |
 | `JsonFixtureImporter` | Seeds a store from RavenDB query-result-format JSON fixture files. |
-| `RavenIndexHelper` | Deploys indexes and waits for them to become non-stale (usable from any store-holding fixture). |
+| `RavenIndexHelper` | Deploys indexes and waits for them to be registered and non-stale (usable from any store-holding fixture). |
+| `AsyncWait` | Bounded polling for work with no completion signal; always throws on expiry. |
+| `RavenIndexDeploymentException` | An index faulted or was never deployed — distinct from a timeout. |
 | `VerifyDefaults` | Centralizes [Verify](https://github.com/VerifyTests/Verify) snapshot path configuration (auto-initialized via a module initializer). |
 
 ## Setup
@@ -118,8 +120,40 @@ var message = await AsyncWait.ForAsync(
     describeLast: m => $"Status={m?.Status}");
 ```
 
-Prefer a real signal where one exists: `SeedAsync` for writes, `WaitForIndexingAsync` for indexing.
+Prefer a real signal where one exists: `SeedAsync` for writes, `WaitForIndexesAsync` for indexing.
 Never substitute a fixed `Task.Delay` — it makes a test that passes prove only "not yet".
+
+### Waiting for indexes — `WaitForIndexesAsync`
+
+"Settled" means **deployed and up to date**, not just up to date:
+
+```csharp
+await WaitForIndexesAsync();   // on SparkTestDriver — carries this fixture's declared index names
+```
+
+The second half alone is a trap. *"Every index is non-stale"* is universally quantified, so on a
+database with no indexes — where every fixture starts, since each test gets its own — it is
+vacuously true and returns instantly, having guaranteed nothing. `SparkTestDriver` remembers the
+indexes it deployed (from `IndexAssemblies` or `DeployIndexesAsync`) and passes them along, so a
+wait cannot pass because the index it was waiting for was never registered.
+
+On a plain store, name them yourself:
+
+```csharp
+await store.WaitForIndexingAsync(expectedIndexes: RavenIndexHelper.DeclaredIndexNames(myAssembly));
+```
+
+**Auto-indexes are the exception, and it is inherent.** They are held to the same *staleness* bar as
+declared indexes — a stale auto-index is exactly what returns the wrong rows — but they cannot take
+part in the *deployment* check, because they do not exist until a query creates them. RavenDB blocks
+on that first creation itself, which is what makes plain seed-then-query safe.
+
+Failures are typed, because the causes are unrelated:
+
+| Exception | Meaning | What to do |
+|---|---|---|
+| `RavenIndexDeploymentException` | An index faulted, or was never registered. Carries `FaultedIndexes` / `MissingIndexes` and the index errors. | Fix the index — waiting will never help. |
+| `TimeoutException` | Indexes are healthy but did not catch up in time. | Retry, raise the limit, or look at load. |
 
 ### Endpoint/integration tests — `SparkEndpointFactory<TContext>`
 
