@@ -36,6 +36,11 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
+// Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
+// entity classes and needs no database, so it runs here and the process returns before Build().
+if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();
@@ -46,7 +51,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSpark(o => o.SynchronizeModelsIfRequested<DemoSparkContext>(args));
+app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {

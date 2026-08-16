@@ -273,11 +273,6 @@ public static class SparkExtensions
     /// Configures Spark middleware with additional options.
     /// Call after UseRouting(). Do NOT call UseAuthentication/UseAuthorization/UseAntiforgery separately.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// app.UseSpark(o => o.SynchronizeModelsIfRequested&lt;MyContext&gt;(args));
-    /// </code>
-    /// </example>
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app, Action<UseSparkOptions> configure)
     {
         app.UseSpark();
@@ -285,51 +280,6 @@ public static class SparkExtensions
         var options = new UseSparkOptions { App = app };
         configure(options);
 
-        return app;
-    }
-
-    /// <summary>
-    /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.
-    /// Call this during development to generate or update model files based on your SparkContext properties.
-    /// </summary>
-    public static IApplicationBuilder SynchronizeSparkModels<TContext>(this IApplicationBuilder app)
-        where TContext : SparkContext, new()
-    {
-        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
-
-        if (!hostEnvironment.IsDevelopment())
-        {
-            Console.WriteLine("Model synchronization is only available in Development mode.");
-            return app;
-        }
-
-        var synchronizer = app.ApplicationServices.GetRequiredService<IModelSynchronizer>();
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-
-        // Create a temporary context with a session to resolve queryable properties
-        using var session = documentStore.OpenAsyncSession();
-        var sparkContext = new TContext();
-        sparkContext.Session = session;
-
-        synchronizer.SynchronizeModels(sparkContext);
-
-        Console.WriteLine("Model synchronization completed.");
-
-        return app;
-    }
-
-    /// <summary>
-    /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
-    /// Exits the application after synchronization completes.
-    /// </summary>
-    public static IApplicationBuilder SynchronizeSparkModelsIfRequested<TContext>(this IApplicationBuilder app, string[] args)
-        where TContext : SparkContext, new()
-    {
-        if (args.Contains("--spark-synchronize-model"))
-        {
-            app.SynchronizeSparkModels<TContext>();
-            Environment.Exit(0);
-        }
         return app;
     }
 

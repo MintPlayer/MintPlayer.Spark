@@ -53,7 +53,7 @@ public class SparkFullProducer : Producer
             {
                 WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations);
                 writer.WriteLine();
-                WriteUseSparkFull(writer, contextType);
+                WriteUseSparkFull(writer);
                 writer.WriteLine();
                 WriteMapSparkFull(writer);
             }
@@ -131,18 +131,18 @@ public class SparkFullProducer : Producer
         }
     }
 
-    private void WriteUseSparkFull(IndentedTextWriter writer, string contextType)
+    private void WriteUseSparkFull(IndentedTextWriter writer)
     {
         writer.WriteLine("/// <summary>");
-        writer.WriteLine("/// Configures Spark middleware and synchronizes models if --spark-synchronize-model is passed.");
+        writer.WriteLine("/// Configures Spark middleware.");
         writer.WriteLine("/// </summary>");
-        using (writer.OpenBlock("public static global::Microsoft.AspNetCore.Builder.IApplicationBuilder UseSparkFull(this global::Microsoft.AspNetCore.Builder.IApplicationBuilder app, string[] args)"))
+        writer.WriteLine("/// <remarks>");
+        writer.WriteLine("/// Model synchronization is no longer mounted here — it is a build step, not middleware.");
+        writer.WriteLine("/// Call <c>builder.SynchronizeSparkModelsIfRequested(args)</c> before <c>builder.Build()</c>.");
+        writer.WriteLine("/// </remarks>");
+        using (writer.OpenBlock("public static global::Microsoft.AspNetCore.Builder.IApplicationBuilder UseSparkFull(this global::Microsoft.AspNetCore.Builder.IApplicationBuilder app)"))
         {
-            using (writer.OpenBlock("global::MintPlayer.Spark.SparkExtensions.UseSpark(app, spark =>"))
-            {
-                writer.WriteLine($"spark.SynchronizeModelsIfRequested<{contextType}>(args);");
-            }
-            writer.WriteLine(");");
+            writer.WriteLine("global::MintPlayer.Spark.SparkExtensions.UseSpark(app);");
             writer.WriteLine("return app;");
         }
     }

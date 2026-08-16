@@ -12,10 +12,11 @@ namespace MintPlayer.Spark.Tests.Builder;
 
 /// <summary>
 /// Pins the <see cref="SparkExtensions.UseSpark(IApplicationBuilder, Action{UseSparkOptions})"/>
-/// overload — it composes <c>UseSpark()</c> with a per-app options callback that's the
-/// host's only seam for opting into <c>SynchronizeModelsIfRequested</c>. The overload itself
-/// is 4 lines; we still want a regression test because <c>UseSparkOptions.App</c> not being
-/// set would silently break the synchronize hook for every Demo app.
+/// overload — it composes <c>UseSpark()</c> with a per-app options callback. Model
+/// synchronization used to be the only thing that rode on this seam; it has since moved to the
+/// builder phase, so the overload now exists purely as a per-app middleware extension point.
+/// Kept under test because <c>UseSparkOptions.App</c> not being set would silently break any
+/// future option that depends on it.
 /// </summary>
 public class UseSparkOptionsTests : SparkTestDriver
 {
