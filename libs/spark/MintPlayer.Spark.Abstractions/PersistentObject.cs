@@ -78,6 +78,22 @@ public sealed class PersistentObject
         attribute.Parent = this;
         _attributes.Add(attribute);
     }
+
+    /// <summary>
+    /// Drops every attribute <paramref name="keep"/> rejects. The counterpart to
+    /// <see cref="AddAttribute"/>, for framework code that scaffolds a PO from schema and then
+    /// needs to narrow it — notably the replication sync path, where a partial update must carry
+    /// only the attributes it actually updates, so that everything else keeps its stored value.
+    /// </summary>
+    internal void RetainAttributes(Func<PersistentObjectAttribute, bool> keep)
+    {
+        ArgumentNullException.ThrowIfNull(keep);
+        for (var i = _attributes.Count - 1; i >= 0; i--)
+        {
+            if (!keep(_attributes[i]))
+                _attributes.RemoveAt(i);
+        }
+    }
 }
 
 /// <summary>Per-row action affordances attached to a <see cref="PersistentObject"/>. See

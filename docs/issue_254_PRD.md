@@ -171,15 +171,28 @@ attributes rather than the incoming dictionary's keys) → refused by `IsWritabl
 the attribute was added and `--spark-synchronize-model` has not been re-run, the definition is still
 there and the write still goes through. Both lines of defence are now pinned by tests.
 
-### F9 — Unrelated bug found while tracing the inbound path (NOT fixed here)
+### F9 — Partial-sync blanking bug (FIXED in this PR at the user's request)
 
 `SyncActionHandler.cs:113-115` maps the inbound `Properties` list onto `attribute.IsValueChanged`,
 but **nothing downstream reads `IsValueChanged`** — `PopulateObjectValuesAsync`
 (`EntityMapper.cs:480-493`) writes every attribute that passes the schema gate. Meanwhile
 `SyncActionHandler.cs:111-112` sets `attribute.Value = null` for every model attribute absent from
 `Data`. So a partial sync nulls out fields it never mentioned, contradicting the documented contract
-on `SyncAction.Properties` (`SyncAction.cs:76-81`, "only these properties are merged"). Independent
-of #254; needs its own issue.
+on `SyncAction.Properties` (`SyncAction.cs:76-81`, "only these properties are merged").
+
+**Fix:** `BuildPersistentObject` now emits **only** the named attributes when `properties` is
+supplied, in both the schema path and the CLR fallback. Chosen over making the write path honour
+`IsValueChanged`, which would have changed behaviour for every ordinary save — the flag is not
+reliably set by other callers, so saves could have silently stopped persisting. Scoping the fix to
+the sync path puts it exactly where the partial-update contract lives.
+
+Needed a removal counterpart to `PersistentObject.AddAttribute`, since `Attributes` is `init`-only:
+`RetainAttributes(predicate)`, internal, same single-mutation-point discipline.
+
+One existing test changed: `BuildPersistentObject_Schema_IsValueChanged_FromPropertySet` asserted
+`po["Year"].IsValueChanged == false`. That expressed the right intent through a flag nothing reads —
+the value was applied regardless. It now asserts the attribute is absent, with the history recorded
+in the assertion message.
 
 ## Out of scope
 

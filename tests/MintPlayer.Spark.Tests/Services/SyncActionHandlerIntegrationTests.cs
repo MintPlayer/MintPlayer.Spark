@@ -69,6 +69,28 @@ public class SyncActionHandlerIntegrationTests : SparkTestDriver
     // --- HandleSaveAsync: update path ----------------------------------------
 
     [Fact]
+    public async Task HandleSaveAsync_partial_update_leaves_unnamed_fields_at_their_stored_values()
+    {
+        // The regression this pins, end to end: a partial sync used to blank every model attribute
+        // it did not mention, because the PO carried them all with a null value and the write path
+        // does not consult IsValueChanged. Here IsVisible must survive a sync that only sends Name
+        // — and it is load-bearing on this fixture, since IsVisible false would also lock the row
+        // out of its own IsAllowedAsync gate on any later sync.
+        var id = await SeedAsync(new GuardedDoc { Name = "before-sync", IsVisible = true });
+
+        await _handler.HandleSaveAsync(
+            "GuardedDocs", id,
+            new Dictionary<string, object?> { ["Name"] = "after-sync" },
+            properties: ["Name"]);
+
+        using var session = Store.OpenAsyncSession();
+        var doc = await session.LoadAsync<GuardedDoc>(id);
+
+        doc.Name.Should().Be("after-sync");
+        doc.IsVisible.Should().BeTrue("a partial sync must not overwrite a field it never sent");
+    }
+
+    [Fact]
     public async Task HandleSaveAsync_with_existing_documentId_updates_the_document()
     {
         var id = await SeedAsync(new GuardedDoc { Name = "before-sync", IsVisible = true });
