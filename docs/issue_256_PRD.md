@@ -1,6 +1,6 @@
 # PRD — Issue #256: deterministic test waiting
 
-**Status:** In progress — parallelism cap shipped; index-wait consolidation in this PR
+**Status:** Implemented — see [Results](#results)
 **Issue:** [#256](https://github.com/MintPlayer/MintPlayer.Spark/issues/256)
 **PR:** [#257](https://github.com/MintPlayer/MintPlayer.Spark/pull/257)
 **Branch:** `fix/issue-256-test-parallelism`
@@ -189,6 +189,34 @@ does not remove it. With `maxParallelThreads: "0.5x"` those threads are now scar
 7. `SyncActionSubscriptionWorkerE2ETests.cs:278` and
    `MessageSubscriptionManagerLifecycleTests.cs:70` no longer depend on a fixed sleep.
 8. Full suite green, with no increase in wall-clock time.
+
+## Results
+
+Controlled benchmark, same 8-core machine, build excluded from timing (`--no-build`), runs
+back-to-back:
+
+| | Run 1 | Run 2 | Run 3 | Outcome |
+|---|---|---|---|---|
+| **master** (unconstrained → 8-way here) | 132 s ❌ **1 failed** | 126 s | 120 s | **2 / 3 green** |
+| **branch** (`0.5x` → 4-way here) | 146 s | 141 s | 122 s | **3 / 3 green** |
+
+Two things worth stating plainly:
+
+1. **The flake reproduced locally on master** — run 1 failed, on a machine with no CI load at all.
+   That is the strongest evidence we have that this is a real resource/concurrency problem and not
+   a CI-environment quirk.
+2. **It is not free.** Mean wall-clock goes from ~126 s to ~136 s, roughly **8% slower**. An earlier
+   note in this PR claimed the cost was nil; that was based on uncontrolled runs taken between
+   builds, and the controlled comparison does not support it. ~10 s on a two-minute suite is a fair
+   price for removing a class of failure that costs a full CI re-run (~4 min) whenever it hits, but
+   it is a real trade, not a free win.
+
+Sample size is three runs per side — enough to establish the direction and to catch the flake, not
+enough to put a confidence interval on the 8%.
+
+Secondary effects, not separately timed: 24 explicit index waits removed (writes now settle
+server-side as part of the transaction), and every remaining wait is awaited rather than blocking a
+thread-pool thread — which matters more on CI's 4 cores than on the 8 measured here.
 
 ## Out of scope
 

@@ -3,8 +3,18 @@
 **PRD:** [issue_256_PRD.md](issue_256_PRD.md) · **PR:** [#257](https://github.com/MintPlayer/MintPlayer.Spark/pull/257)
 **Branch:** `fix/issue-256-test-parallelism`
 
-M0 is already committed (`0c1873b`). M1–M5 are this round. Per repo convention the full suite runs
-once at the end, not per milestone.
+**All milestones complete.** M7 was added during implementation and was not in the original plan.
+
+| | Milestone | Commit |
+|---|---|---|
+| M0 | Parallelism cap + init-failure masking | `0c1873b` |
+| M1 | One index-wait implementation | `c278ee3` |
+| M2 | Single timeout, dead options deleted | `c278ee3` |
+| M3 | `SeedAsync` (`WaitForIndexesAfterSaveChanges`) | `5afd607` |
+| M4 | One polling helper (`AsyncWait`) | `5afd607` |
+| M5 | Fixed sleeps removed | `5afd607` |
+| M6 | Deploy-time index verification | `5afd607` |
+| M7 | Async all the way; sync API deleted | `9d86cc3` |
 
 ---
 
@@ -126,6 +136,26 @@ test-configurable, which is a production-config change.
   versus the global wait, and the one-implementation guarantee.
 
 ---
+
+## M7 — Async all the way (added during implementation)
+
+Not in the original plan; added once M1 made an async implementation available.
+
+- Deleted the synchronous `WaitForIndexing` extension **and** the `protected new WaitForIndexing`
+  shadow on `SparkTestDriver`. No deprecation — no back-compat is required here, and leaving it
+  would have left the trap in place: declared `new` rather than `override`, so calling it through a
+  `RavenTestDriver`-typed reference silently got Raven's own implementation instead.
+- Converted all 46 surviving call sites to `await …WaitForIndexingAsync()`. Blocking a thread-pool
+  thread from an `async` test was always wasteful; it is worse now that M0 halves the pool available
+  to tests.
+- The `SeedAsync` conversion (M3) removed 24 waits outright before this pass, so the mechanical
+  edit was smaller than the original 63-site count suggested.
+
+## Benchmark
+
+See the PRD's Results table. Headline: the flake **reproduced on master locally** (1 of 3 runs),
+the branch was 3 for 3, and the cost is ~8% wall-clock — not the "no cost" claimed earlier in the
+PR from uncontrolled measurements.
 
 ## Risks
 
