@@ -39,7 +39,17 @@ public static class RavenIndexHelper
     /// Registers every <see cref="AbstractIndexCreationTask"/> found in the supplied assemblies
     /// and then waits for the server to finish building them — a test's first query is free
     /// to assume its indexes are live once this returns.
+    /// <para>
+    /// Waiting for non-stale alone is not enough on a fresh database, which is the only kind this
+    /// runs against. With no documents yet, "nothing is stale" is satisfied trivially — and worse,
+    /// there is a window right after registration where the new definition has not reached
+    /// <c>DatabaseStatistics</c> at all, so the wait can return before the index even exists. So
+    /// confirm the expected definitions are present first, then wait for them to settle.
+    /// </para>
     /// </summary>
+    /// <exception cref="TimeoutException">
+    /// A declared index never appeared on the server, or the indexes never settled.
+    /// </exception>
     public static async Task DeployIndexesAsync(
         IDocumentStore store,
         params Assembly[] assemblies)
@@ -52,6 +62,35 @@ public static class RavenIndexHelper
             await IndexCreation.CreateIndexesAsync(assembly, store);
         }
 
+        var expected = assemblies.SelectMany(DeclaredIndexNames).ToArray();
+        if (expected.Length > 0)
+        {
+            var admin = store.Maintenance.ForDatabase(store.Database);
+
+            await AsyncWait.UntilAsync(
+                () =>
+                {
+                    var live = admin.Send(new GetStatisticsOperation()).Indexes.Select(i => i.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    return expected.All(live.Contains);
+                },
+                $"the declared indexes to be registered on '{store.Database}' ({string.Join(", ", expected)})",
+                RavenIndexingExtensions.DefaultTimeout,
+                TimeSpan.FromMilliseconds(50));
+        }
+
         await WaitForNonStaleAsync(store);
     }
+
+    /// <summary>
+    /// The index names an assembly declares, resolved the same way
+    /// <see cref="IndexCreation"/> discovers them: concrete
+    /// <see cref="AbstractIndexCreationTask"/> types with a parameterless constructor.
+    /// </summary>
+    private static IEnumerable<string> DeclaredIndexNames(Assembly assembly)
+        => assembly.GetTypes()
+            .Where(t => typeof(AbstractIndexCreationTask).IsAssignableFrom(t)
+                && t is { IsAbstract: false, IsGenericTypeDefinition: false }
+                && t.GetConstructor(Type.EmptyTypes) is not null)
+            .Select(t => (AbstractIndexCreationTask)Activator.CreateInstance(t)!)
+            .Select(t => t.IndexName);
 }

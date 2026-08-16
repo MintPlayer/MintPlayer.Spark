@@ -137,20 +137,18 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         return stored.Id!;
     }
 
-    private async Task<SparkMessage> WaitForMessageAsync(string id, Func<SparkMessage, bool> predicate, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? PollTimeout);
-        SparkMessage? last = null;
-        while (DateTime.UtcNow < end)
-        {
-            using var session = Store.OpenAsyncSession();
-            last = await session.LoadAsync<SparkMessage>(id);
-            if (last != null && predicate(last))
-                return last;
-            await Task.Delay(100);
-        }
-        throw new TimeoutException($"Predicate for SparkMessage '{id}' not met within {timeout ?? PollTimeout}. Last: Status={last?.Status}, Handlers=[{string.Join(",", last?.Handlers.Select(h => $"{h.Status}:{h.AttemptCount}") ?? [])}]");
-    }
+    private Task<SparkMessage> WaitForMessageAsync(string id, Func<SparkMessage, bool> predicate, TimeSpan? timeout = null)
+        => AsyncWait.ForAsync(
+            async () =>
+            {
+                using var session = Store.OpenAsyncSession();
+                return await session.LoadAsync<SparkMessage>(id);
+            },
+            predicate,
+            $"SparkMessage '{id}' to satisfy the predicate",
+            last => $"Status={last?.Status}, Handlers=[{string.Join(",", last?.Handlers.Select(h => $"{h.Status}:{h.AttemptCount}") ?? [])}]",
+            timeout ?? PollTimeout,
+            TimeSpan.FromMilliseconds(100));
 
     private MessageSubscriptionWorker NewWorker(
         string queueName,

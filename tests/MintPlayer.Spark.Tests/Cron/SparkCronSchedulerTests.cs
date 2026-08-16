@@ -131,17 +131,6 @@ public class SparkCronSchedulerTests : SparkTestDriver
         return provider.GetServices<IHostedService>().OfType<SparkCronScheduler>().Single();
     }
 
-    private static async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
-    {
-        var sw = Stopwatch.StartNew();
-        while (sw.Elapsed < timeout)
-        {
-            if (condition()) return true;
-            await Task.Delay(50);
-        }
-        return condition();
-    }
-
     [Fact]
     public async Task Runs_a_scheduled_job_resolved_from_a_DI_scope()
     {
@@ -149,10 +138,17 @@ public class SparkCronSchedulerTests : SparkTestDriver
         var scheduler = BuildScheduler(recorder, cron => cron.AddJob<EverySecondJob>());
 
         await scheduler.StartAsync(CancellationToken.None);
-        var ran = await WaitUntilAsync(() => recorder.Count(nameof(EverySecondJob)) > 0, TimeSpan.FromSeconds(8));
-        await scheduler.StopAsync(CancellationToken.None);
-
-        ran.Should().BeTrue("the every-second job should fire at least once");
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => recorder.Count(nameof(EverySecondJob)) > 0,
+                "the every-second job to fire at least once",
+                TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -174,10 +170,17 @@ public class SparkCronSchedulerTests : SparkTestDriver
         await scheduler.StartAsync(CancellationToken.None);
         // It should attempt the run (recorded) and the scheduler should survive the exception,
         // running it again on the next occurrence.
-        var ranTwice = await WaitUntilAsync(() => recorder.Count(nameof(ThrowingJob)) >= 2, TimeSpan.FromSeconds(8));
-        await scheduler.StopAsync(CancellationToken.None);
-
-        ranTwice.Should().BeTrue("a thrown exception must be caught so the schedule keeps firing");
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => recorder.Count(nameof(ThrowingJob)) >= 2,
+                "the throwing job to run twice — a thrown exception must be caught so the schedule keeps firing",
+                TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -189,10 +192,18 @@ public class SparkCronSchedulerTests : SparkTestDriver
             .AddJob<SiblingJob>());      // every second — keeps running
 
         await scheduler.StartAsync(CancellationToken.None);
-        var siblingRan = await WaitUntilAsync(() => recorder.Count(nameof(SiblingJob)) > 0, TimeSpan.FromSeconds(8));
-        await scheduler.StopAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => recorder.Count(nameof(SiblingJob)) > 0,
+                "the valid sibling job to keep running alongside the never-occurring one",
+                TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
 
-        siblingRan.Should().BeTrue("the valid sibling job must keep running");
         recorder.Count(nameof(NeverOccursJob)).Should().Be(0, "a never-occurring schedule must never fire");
     }
 
@@ -211,12 +222,19 @@ public class SparkCronSchedulerTests : SparkTestDriver
         await scheduler.StartAsync(CancellationToken.None);
         // Every-second occurrences each start a run that blocks; in-flight count climbs to the cap
         // and then plateaus (further occurrences are shed) rather than growing unbounded.
-        var reachedCap = await WaitUntilAsync(
-            () => tracker.Max >= SparkCronScheduler.MaxConcurrentRunsPerJob, TimeSpan.FromSeconds(30));
-        tracker.Gate.TrySetResult(); // release blocked runs so shutdown is quick
-        await scheduler.StopAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => tracker.Max >= SparkCronScheduler.MaxConcurrentRunsPerJob,
+                "concurrent occurrences to accumulate up to the cap",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            tracker.Gate.TrySetResult(); // release blocked runs so shutdown is quick
+            await scheduler.StopAsync(CancellationToken.None);
+        }
 
-        reachedCap.Should().BeTrue("concurrent occurrences should accumulate up to the cap");
         tracker.Max.Should().Be(SparkCronScheduler.MaxConcurrentRunsPerJob,
             "in-flight concurrent runs must never exceed the cap");
     }
@@ -260,10 +278,17 @@ public class SparkCronSchedulerTests : SparkTestDriver
         var scheduler = BuildScheduler(recorder, cron => cron.AddJob<ConcurrentJob>());
 
         await scheduler.StartAsync(CancellationToken.None);
-        var ran = await WaitUntilAsync(() => recorder.Count(nameof(ConcurrentJob)) > 0, TimeSpan.FromSeconds(8));
-        await scheduler.StopAsync(CancellationToken.None);
-
-        ran.Should().BeTrue();
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => recorder.Count(nameof(ConcurrentJob)) > 0,
+                "the concurrent job to fire at least once",
+                TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]

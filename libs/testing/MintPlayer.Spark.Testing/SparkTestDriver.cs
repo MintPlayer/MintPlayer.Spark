@@ -2,6 +2,7 @@ using System.Reflection;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -113,6 +114,52 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         // test output, which is what made those CI timeouts so hard to read.
         Store?.Dispose();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to
+    /// set up a test that then queries.
+    /// <para>
+    /// This asks the <em>server</em> to hold the write until the indexes covering this transaction
+    /// have caught up (<c>WaitForIndexesAfterSaveChanges</c>), which beats the alternative of
+    /// saving and then polling every index in the database:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>Targeted</b> — only the indexes this write actually touched.</description></item>
+    /// <item><description><b>No sampling window</b> — a global poll can observe a momentarily-clean
+    /// snapshot and return while a concurrent writer's document is still unindexed. There is no
+    /// such gap here: the write itself does not complete until its indexes are current.</description></item>
+    /// <item><description><b>Nothing to forget</b> — the guarantee rides on the write, so it cannot
+    /// be omitted by the next query someone adds.</description></item>
+    /// </list>
+    /// <para>
+    /// <c>throwOnTimeout</c> is deliberately on. The default is to swallow the timeout and hand
+    /// back a write that may not be queryable yet — precisely the silent staleness this exists to
+    /// remove.
+    /// </para>
+    /// <para>
+    /// Use <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/> instead when no single
+    /// session owns the write: Smuggler imports, and documents written by a background worker or
+    /// by the code under test.
+    /// </para>
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// await SeedAsync(session => session.StoreAsync(new Car { Plate = "ABC-123" }));
+    /// // query immediately — no WaitForIndexing needed
+    /// </code>
+    /// </example>
+    protected async Task SeedAsync(Func<IAsyncDocumentSession, Task> seed, TimeSpan? timeout = null)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+
+        using var session = Store.OpenAsyncSession();
+        session.Advanced.WaitForIndexesAfterSaveChanges(
+            timeout ?? RavenIndexingExtensions.DefaultTimeout,
+            throwOnTimeout: true);
+
+        await seed(session);
+        await session.SaveChangesAsync();
     }
 
     /// <summary>

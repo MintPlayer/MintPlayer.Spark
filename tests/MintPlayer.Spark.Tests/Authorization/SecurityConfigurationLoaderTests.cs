@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Testing;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Authorization;
@@ -218,13 +219,10 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
             """{ "groups": {}, "rights": [] }""");
 
         // Watcher debounces by 100ms; wait generously for the invalidation task to run.
-        await WaitForCondition(() =>
-        {
-            var current = loader.GetConfiguration();
-            return current.Rights.Count == 0;
-        }, TimeSpan.FromSeconds(3));
-
-        loader.GetConfiguration().Rights.Should().BeEmpty();
+        await AsyncWait.UntilAsync(
+            () => loader.GetConfiguration().Rights.Count == 0,
+            "the file watcher to invalidate the cached security configuration",
+            TimeSpan.FromSeconds(3));
     }
 
     [Fact]
@@ -240,13 +238,4 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         act.Should().NotThrow();
     }
 
-    private static async Task WaitForCondition(Func<bool> predicate, TimeSpan timeout)
-    {
-        var end = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < end)
-        {
-            if (predicate()) return;
-            await Task.Delay(50);
-        }
-    }
 }
