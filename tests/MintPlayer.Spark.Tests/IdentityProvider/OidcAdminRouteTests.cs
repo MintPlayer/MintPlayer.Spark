@@ -85,7 +85,8 @@ public class OidcAdminRouteTests : SparkTestDriver
     private async Task<EntityTypeFile[]> GenerateModelsAsync()
     {
         await using var scratch = new SparkEndpointFactory<AdminContext>(Store, models: []);
-        scratch.GetService<IModelSynchronizer>().SynchronizeModels(new AdminContext());
+        new ModelSynchronizer(scratch.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexRegistry>())
+            .SynchronizeModels(new AdminContext());
 
         var dir = Path.Combine(
             scratch.GetService<IHostEnvironment>().ContentRootPath, "App_Data", "Model");

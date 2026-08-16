@@ -168,6 +168,47 @@ public class SparkExtensionsTests
         File.Exists(Path.Combine(scratch.Path, "App_Data", "Model", "SyncProbe.json")).Should().BeTrue();
     }
 
+    // --- IModelSynchronizer is a development-only service ----------------
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    [InlineData("Testing")]
+    public void AddSpark_does_not_register_the_model_synchronizer_outside_Development(string environmentName)
+    {
+        // The security property, made structural: outside Development there is nothing in the
+        // container to resolve, so app code cannot drive a model rewrite by reaching past the
+        // build-time command. Previously [Register] put it in every app in every environment.
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = environmentName,
+        });
+
+        builder.Services.AddSpark(spark => spark.UseContext<EmptyTestSparkContext>());
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<IModelSynchronizer>().Should().BeNull(
+            $"the synchronizer is a build-time tool and must not be resolvable in {environmentName}");
+    }
+
+    [Fact]
+    public void AddSpark_registers_the_model_synchronizer_in_Development()
+    {
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = Environments.Development,
+        });
+
+        builder.Services.AddSpark(spark => spark.UseContext<EmptyTestSparkContext>());
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<IModelSynchronizer>().Should().NotBeNull();
+    }
+
     // --- helpers --------------------------------------------------------
 
     /// <summary>

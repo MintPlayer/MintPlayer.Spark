@@ -54,6 +54,16 @@ public static class SparkExtensions
         // Register the Spark services
         services.AddSparkServices();
 
+        // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
+        // build-time tool, so outside Development it is not in the container at all — there is
+        // nothing to resolve rather than a guard to get past.
+        //
+        // This must happen here and not in a CreateBuilder-style factory: AddSparkServices() above
+        // runs later than any such factory would, and its registration would win GetRequiredService,
+        // silently reducing the gate to a no-op.
+        if (GetRegistrationTimeEnvironment(services)?.IsDevelopment() == true)
+            services.AddSingleton<IModelSynchronizer, ModelSynchronizer>();
+
         // Default IAccessControl is fail-closed (deny everything). Apps opt into a
         // real authorization model via spark.AddAuthorization() (from the Spark
         // Authorization package) or into "no authorization" mode via
@@ -120,6 +130,20 @@ public static class SparkExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Reads the host environment at <em>registration</em> time, without building a provider.
+    /// <para>
+    /// The web host registers its environment as a singleton instance, so it can be read straight
+    /// off the descriptor. Resolving it from a factory lambda instead — the way the document store
+    /// does — would be too late to decide what gets registered. Returns <see langword="null"/> for a
+    /// bare <see cref="ServiceCollection"/>, which has no such descriptor.
+    /// </para>
+    /// </summary>
+    private static IHostEnvironment? GetRegistrationTimeEnvironment(IServiceCollection services)
+        => (services.LastOrDefault(d => d.ServiceType == typeof(IHostEnvironment))?.ImplementationInstance
+            ?? services.LastOrDefault(d => d.ServiceType == typeof(IWebHostEnvironment))?.ImplementationInstance)
+            as IHostEnvironment;
 
     /// <summary>
     /// Registers the SparkContext implementation for this application.

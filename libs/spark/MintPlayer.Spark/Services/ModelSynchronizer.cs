@@ -15,7 +15,11 @@ public interface IModelSynchronizer
     void SynchronizeModels(SparkContext sparkContext);
 }
 
-[Register(typeof(IModelSynchronizer), ServiceLifetime.Singleton)]
+// Deliberately NOT [Register]-ed. That attribute is harvested unconditionally into the generated
+// AddSparkServices(), which put IModelSynchronizer in the container of every app in every
+// environment — so production code could resolve it and drive a model rewrite, bypassing the
+// environment guard that lived one layer up in the extension method. AddSparkCore now registers it
+// only in Development; the build-time command constructs it directly and needs no registration.
 internal partial class ModelSynchronizer : IModelSynchronizer
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
