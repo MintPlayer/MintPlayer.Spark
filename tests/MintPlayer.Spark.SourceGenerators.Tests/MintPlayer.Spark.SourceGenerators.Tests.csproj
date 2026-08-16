@@ -19,6 +19,19 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <PackageReference Include="xunit" Version="2.9.3" />
+
+    <!--
+    Referenced only to locate its DLL for CopyGeneratorRuntimeAssets below, so
+    GeneratePathProperty gives us $(PkgMintPlayer_SourceGenerators_Tools) and the copy path follows
+    this version instead of being spelled out separately. A hardcoded version there kept working on
+    any machine that still had the old package cached and failed only on CI.
+
+    ExcludeAssets="all", not PrivateAssets="all": we want the path, not the assembly. Letting its
+    compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
+    ambiguous with the one in System.Runtime (CS0433).
+    -->
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.20.0"
+                      ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -67,7 +80,7 @@
     <ItemGroup>
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
-      <_GeneratorRuntimeAssets Include="$(NuGetPackageRoot)mintplayer.sourcegenerators.tools\10.19.0\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
+      <_GeneratorRuntimeAssets Include="$(PkgMintPlayer_SourceGenerators_Tools)\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
 
       <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
                                Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
