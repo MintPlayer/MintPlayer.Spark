@@ -8,7 +8,7 @@ Test-utilities library for writing automated tests against Spark apps. It provid
 
 | Type | Purpose |
 |------|---------|
-| `SparkTestDriver` | xUnit base class that spins up an in-memory RavenDB instance per test class and exposes a ready `IDocumentStore Store`. |
+| `SparkTestDriver` | xUnit base class that creates a fresh in-memory RavenDB database per test case and exposes a ready `IDocumentStore Store`. |
 | `SparkEndpointFactory<TContext>` | Boots a minimal in-memory Spark HTTP host (ASP.NET Core `TestServer`) wired to a supplied store, for endpoint/integration tests. |
 | `SparkTestClient` | `HttpClient` wrapper that attaches the antiforgery cookie + `X-XSRF-TOKEN` header to every mutating request. |
 | `JsonFixtureImporter` | Seeds a store from RavenDB query-result-format JSON fixture files. |
@@ -38,7 +38,9 @@ If neither is present, tests fail at initialization with a clear message. See [r
 
 ### Data-layer tests — `SparkTestDriver`
 
-Derive from `SparkTestDriver` to get a per-class embedded store. Override `IndexAssemblies` to auto-deploy and wait on indexes before the first test runs.
+Derive from `SparkTestDriver` to get an embedded store. Override `IndexAssemblies` to auto-deploy and wait on indexes before the test body runs.
+
+> **Each test case gets its own database.** xUnit constructs a new instance of the test class for every `[Fact]` and every `[Theory]` row, so `InitializeAsync` — and the `CreateDatabaseOperation` behind it — runs per test, not per class. All of those databases live on one shared embedded server, so a large suite should cap test parallelism in `xunit.runner.json`; running unconstrained can make the server unresponsive under CI load.
 
 ```csharp
 public class PersonQueryTests : SparkTestDriver

@@ -9,8 +9,16 @@ namespace MintPlayer.Spark.Testing;
 
 /// <summary>
 /// xUnit-friendly base class for Spark tests that need an in-memory RavenDB instance.
-/// Implements <see cref="IAsyncLifetime"/> so setup and disposal run per test class
-/// (one instance per test method, by xUnit's default).
+/// Implements <see cref="IAsyncLifetime"/>, so setup and disposal run <strong>per test
+/// case</strong> — xUnit constructs a fresh instance for every <c>[Fact]</c> and every
+/// <c>[Theory]</c> row.
+/// <para>
+/// That granularity is not free: <see cref="InitializeAsync"/> creates a brand-new RavenDB
+/// database per test case (<see cref="RavenTestDriver.GetDocumentStore"/> names them
+/// <c>InitializeAsync_{N}</c> off a process-wide counter), all on one shared embedded server.
+/// Across this suite that is several hundred create/delete cycles per run, so test parallelism
+/// is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// </para>
 ///
 /// RavenDB 7.x requires a license even for the embedded TestDriver. We load it from:
 ///   1. <c>RAVENDB_LICENSE</c> env var (CI-friendly, JSON content)
@@ -99,7 +107,11 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 
     public virtual Task DisposeAsync()
     {
-        Store.Dispose();
+        // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
+        // or GetDocumentStore timing out when the shared embedded server is under load. Without
+        // the guard this throws a NullReferenceException that REPLACES the real failure in the
+        // test output, which is what made those CI timeouts so hard to read.
+        Store?.Dispose();
         return Task.CompletedTask;
     }
 
