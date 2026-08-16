@@ -54,7 +54,7 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseSparkFull(args);                                   // Middleware + model sync
+app.UseSparkFull();                                       // Middleware
 
 app.UseEndpoints(endpoints =>
 {
@@ -87,7 +87,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 var app = builder.Build();
 
 app.UseRouting();
-app.UseSpark(o => o.SynchronizeModelsIfRequested<MySparkContext>(args));
+app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {
@@ -317,17 +317,17 @@ All mutation endpoints (POST, PUT, DELETE) require an `X-XSRF-TOKEN` header. The
 | Method | Description |
 |--------|-------------|
 | `AddSparkFull(IConfiguration)` | **AllFeatures**: Registers all Spark services, actions, auth, messaging in one call |
-| `UseSparkFull(args)` | **AllFeatures**: Adds middleware + synchronizes models if `--spark-synchronize-model` is passed |
+| `UseSparkFull()` | **AllFeatures**: Adds the Spark middleware pipeline |
 | `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
 | `AddSpark(IConfiguration, Action<ISparkBuilder>)` | Register Spark services, bound to the `Spark` configuration section |
 | `AddSpark(Action<ISparkBuilder>)` | Register Spark services without configuration binding |
 | `spark.AddActions()` | Register all entity-specific Actions classes (source-generated) |
 | `AddSparkActions<TActions, TEntity>()` | Register a specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
-| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with options (e.g. `SynchronizeModelsIfRequested`) |
+| `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with per-app options |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
-| `SynchronizeSparkModelsIfRequested<T>(args)` | Sync if `--spark-synchronize-model` flag present |
+| `builder.SynchronizeSparkModelsIfRequested(args)` | Build step: sync or verify the model, then return from `Main` |
 
 RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
 
@@ -370,7 +370,69 @@ After synchronization, you can manually edit the JSON files to:
 - Set the display attribute (`displayAttribute`)
 - Add tabs and groups for organizing attributes on detail pages
 
-These manual edits are preserved when you re-run model synchronization. The synchronizer only adds new attributes and updates data types -- it does not overwrite labels, rules, or ordering.
+These manual edits are preserved when you re-run model synchronization. **The synchronizer only adds and updates -- it never deletes.** It does not overwrite labels, rules, or ordering.
+
+### Attributes without a CLR property
+
+An attribute is kept even when no property matches it, so you can:
+
+- **Add a virtual attribute by hand** -- one whose value is supplied at runtime rather than read from a property.
+- **Rename or remove a property** without losing that attribute's id, translated label, renderer, group, `editMode` or rules. Previously a rename was a silent delete-and-recreate-with-defaults.
+
+Each kept attribute is logged, so obsolete entries stay visible and you can remove them by hand:
+
+```
+Kept attribute 'Nickname' on 'Customer': no matching CLR property.
+Remove it from the model JSON if it is obsolete.
+```
+
+There is deliberately **no `--prune-orphaned-attributes` flag**: nothing in the model distinguishes an attribute you authored on purpose from one left behind by a rename, so an automatic prune could only guess, and guessing wrong deletes hand-authored work silently.
+
+> A kept attribute that is `isRequired` will block saves, because validation runs against the model and nothing can populate it. Synchronization warns about this rather than editing your JSON. Set `"isRequired": false`, or remove the attribute.
+
+The one exception to "never deletes" is [`[IgnoreProperty]`](#ignoreproperty-vs-jsonignore): marking a property ignored is an explicit instruction to drop its attribute.
+
+### Computed (get-only) properties
+
+A property with a getter and no setter becomes a **read-only attribute**:
+
+```csharp
+public decimal Quantity { get; set; }
+public decimal UnitPrice { get; set; }
+public decimal Total => Quantity * UnitPrice;   // isReadOnly: true, isRequired: false
+```
+
+It is displayed like any other attribute and never written back. Use `[IgnoreProperty]` to leave one out of the model entirely.
+
+### `[IgnoreProperty]` vs `[JsonIgnore]`
+
+They solve different problems and compose cleanly:
+
+| | Effect |
+|---|---|
+| `[IgnoreProperty]` | Keeps the property **out of the model**. Still stored in the RavenDB document. |
+| `[JsonIgnore]` | Keeps the property **out of the document**. Still appears in the model. |
+| Both | Neither persisted nor modelled. |
+
+```csharp
+public class Customer
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = "";
+
+    [IgnoreProperty]                        // stored, but not part of the model
+    public string SyncEtag { get; set; } = "";
+
+    [JsonIgnore]                            // modelled, but not stored
+    public string ScratchNote { get; set; } = "";
+}
+```
+
+`[IgnoreProperty]` is read by the model synchronizer and the entity mapper: the property gets no attribute, is never populated onto or read back from a `PersistentObject`, is not `.Include()`d, is not transmitted or declared writable by replication, and gets no `AttributeNames` constant.
+
+`[JsonIgnore]` is a serialization attribute. Spark configures RavenDB with Newtonsoft's contract resolver, which honours it — but neither the synchronizer nor the mapper reads serialization attributes, so it has no effect on the model.
+
+> **Ignoring an existing property is destructive.** The next synchronize removes its attribute block, discarding its id, translated label, rules, renderer and group; re-adding the property later regenerates it with a **new id**. This is the one case where synchronization deletes anything — an attribute whose property was merely renamed or removed is kept.
 
 ## JSON Model Structure
 

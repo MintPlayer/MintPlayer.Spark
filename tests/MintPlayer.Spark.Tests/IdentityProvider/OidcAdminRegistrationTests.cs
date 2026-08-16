@@ -28,7 +28,11 @@ public class OidcAdminRegistrationTests : OidcTestHost
 
     private JsonElement Synchronize(string entityName)
     {
-        Factory.GetService<IModelSynchronizer>().SynchronizeModels(new AdminContext());
+        // Constructed directly rather than resolved: the synchronizer is a build-time tool and is
+        // no longer in the container outside Development. This is test infrastructure asserting what
+        // the synchronizer writes, not a consumer of a production service.
+        new ModelSynchronizer(Factory.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexRegistry>())
+            .SynchronizeModels(new AdminContext());
 
         var contentRoot = Factory.GetService<IHostEnvironment>().ContentRootPath;
         var path = Path.Combine(contentRoot, "App_Data", "Model", entityName + ".json");

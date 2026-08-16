@@ -451,6 +451,158 @@ public sealed class ModelSynchronizerTests : IDisposable
         file.PersistentObject.Attributes.Select(a => a.Name).Should().Contain("FirstName");
     }
 
+    // --- attributes without a CLR property survive synchronize (#253 part 2) ---
+
+    [Fact]
+    public void Hand_authored_attribute_with_no_CLR_property_survives_with_every_field_intact()
+    {
+        // The motivating case: an attribute authored by hand and populated at runtime, never backed
+        // by a property. Synchronize must not touch it. The id assertion carries the most weight —
+        // clients key on it, so regenerating one silently rewrites identity.
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_IgnoredPerson"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_IgnoredPerson","clrType":"MintPlayer.Spark.Tests.Services.MS_IgnoredPerson",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"FirstName","dataType":"String"},
+              {"id":"44444444-4444-4444-4444-444444444444","name":"TotalPurchaseBudget",
+               "dataType":"Decimal","isReadOnly":true,"order":7,"columnSpan":2,
+               "renderer":"currency","rendererOptions":{"symbol":"EUR"},
+               "editMode":"never","label":{"en":"Total purchase budget"},
+               "rules":[{"type":"range","value":"0,1000"}]}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredContext());
+
+        var attrs = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes;
+        var virtualAttr = attrs.Should().ContainSingle(a => a.Name == "TotalPurchaseBudget").Subject;
+
+        virtualAttr.Id.Should().Be(Guid.Parse("44444444-4444-4444-4444-444444444444"),
+            "a regenerated id silently breaks every client that stored the old one");
+        virtualAttr.DataType.Should().Be("Decimal");
+        virtualAttr.IsReadOnly.Should().BeTrue();
+        virtualAttr.Order.Should().Be(7);
+        virtualAttr.ColumnSpan.Should().Be(2);
+        virtualAttr.Renderer.Should().Be("currency");
+        virtualAttr.RendererOptions.Should().ContainKey("symbol");
+        virtualAttr.EditMode.Should().Be("never");
+        virtualAttr.Rules.Should().ContainSingle();
+
+        attrs.Select(a => a.Name).Should().Contain("FirstName", "the real property is unaffected");
+    }
+
+    [Fact]
+    public void Attribute_whose_property_was_removed_is_kept_rather_than_dropped()
+    {
+        // The rename/delete case. Previously this vanished along with its renderer, label,
+        // translations and rules — a rename became delete-and-recreate-with-defaults, unlogged.
+        // MS_IgnoredPerson has no 'Nickname' property, standing in for one that was removed.
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_IgnoredPerson"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_IgnoredPerson","clrType":"MintPlayer.Spark.Tests.Services.MS_IgnoredPerson",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"FirstName","dataType":"String"},
+              {"id":"55555555-5555-5555-5555-555555555555","name":"Nickname","dataType":"String",
+               "renderer":"badge"}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredContext());
+
+        var attrs = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes;
+        attrs.Should().ContainSingle(a => a.Name == "Nickname")
+            .Which.Renderer.Should().Be("badge", "hand-set fields ride along with the attribute");
+    }
+
+    [Fact]
+    public void Ignored_property_still_removes_its_attribute_even_though_orphans_are_now_kept()
+    {
+        // The distinction the whole change hinges on. [IgnoreProperty] is an explicit instruction to
+        // drop the attribute; a property that merely disappeared is not. Keeping both behaviours
+        // separate is what stops this fix from silently resurrecting deliberately-ignored fields.
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_IgnoredPerson"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_IgnoredPerson","clrType":"MintPlayer.Spark.Tests.Services.MS_IgnoredPerson",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"FirstName","dataType":"String"},
+              {"id":"33333333-3333-3333-3333-333333333333","name":"InternalToken","dataType":"String"},
+              {"id":"55555555-5555-5555-5555-555555555555","name":"Nickname","dataType":"String"}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredContext());
+
+        var names = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes
+            .Select(a => a.Name).ToArray();
+
+        names.Should().NotContain("InternalToken", "[IgnoreProperty] removal stays destructive");
+        names.Should().Contain("Nickname", "a property that merely vanished is a different case");
+    }
+
+    // --- get-only computed properties (#253) ---
+
+    [Fact]
+    public void Get_only_property_becomes_a_read_only_attribute()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ComputedContext());
+
+        var attrs = Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes;
+
+        var computed = attrs.Should().ContainSingle(a => a.Name == "Total").Subject;
+        computed.IsReadOnly.Should().BeTrue("nothing can write a property with no setter");
+        computed.DataType.Should().Be("decimal",
+            "a computed property is typed from its return type like any other");
+        computed.IsVisible.Should().BeTrue("read-only is not hidden");
+        computed.IsRequired.Should().BeFalse(
+            "a required attribute nothing can populate would block every save");
+
+        attrs.Should().ContainSingle(a => a.Name == "Quantity")
+            .Which.IsReadOnly.Should().BeFalse("a settable property is unaffected");
+    }
+
+    [Fact]
+    public void Hand_set_IsReadOnly_survives_re_synchronize()
+    {
+        // IsReadOnly is only assigned when the attribute is created; the update branch leaves it
+        // alone. Someone marking a settable property read-only in the JSON must keep that.
+        Directory.CreateDirectory(_modelPath);
+        File.WriteAllText(ModelFile("MS_ComputedOrder"), """
+            {"persistentObject":{"id":"11111111-1111-1111-1111-111111111111",
+            "name":"MS_ComputedOrder","clrType":"MintPlayer.Spark.Tests.Services.MS_ComputedOrder",
+            "attributes":[
+              {"id":"22222222-2222-2222-2222-222222222222","name":"Quantity",
+               "dataType":"Int32","isReadOnly":true}
+            ]}}
+            """);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ComputedContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes
+            .Should().ContainSingle(a => a.Name == "Quantity")
+            .Which.IsReadOnly.Should().BeTrue("a hand-set value is not stomped by re-synchronize");
+    }
+
+    [Fact]
+    public void An_indexer_does_not_become_an_attribute_named_Item()
+    {
+        // Reflection reports `this[int]` as a property named "Item". It needs an argument to
+        // produce a value, so there is nothing an attribute could read.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IndexerContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_IndexerEntity")).PersistentObject.Attributes
+            .Select(a => a.Name)
+            .Should().BeEquivalentTo(["Name"], "the indexer is not part of the model");
+    }
+
     [Fact]
     public void Ignored_complex_property_does_not_produce_an_embedded_model_file()
     {
@@ -671,6 +823,43 @@ public class MS_IgnoredBreadcrumb
 public class IgnoredContext : SparkContext
 {
     public IRavenQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
+}
+
+// --- get-only computed property fixtures (#253) ---
+
+public class MS_ComputedOrder
+{
+    public string? Id { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>Get-only: the case that was invisible to the model before #253.</summary>
+    public decimal Total => Quantity * UnitPrice;
+}
+
+public class ComputedContext : SparkContext
+{
+    public IRavenQueryable<MS_ComputedOrder> Orders => Session.Query<MS_ComputedOrder>();
+}
+
+public class MS_IndexerEntity
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+
+    private readonly Dictionary<string, string> _bag = [];
+
+    /// <summary>Reflection reports this as a property named "Item" (#253).</summary>
+    public string this[string key]
+    {
+        get => _bag.TryGetValue(key, out var v) ? v : string.Empty;
+        set => _bag[key] = value;
+    }
+}
+
+public class IndexerContext : SparkContext
+{
+    public IRavenQueryable<MS_IndexerEntity> Entities => Session.Query<MS_IndexerEntity>();
 }
 
 public class IgnoredEmbeddedContext : SparkContext

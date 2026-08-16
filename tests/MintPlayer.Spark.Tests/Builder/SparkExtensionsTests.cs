@@ -97,85 +97,223 @@ public class SparkExtensionsTests
         returned.Should().BeSameAs(services);
     }
 
-    // --- SynchronizeSparkModels / SynchronizeSparkModelsIfRequested -----
+    // --- SynchronizeSparkModelsIfRequested (builder phase) --------------
 
     [Fact]
-    public void SynchronizeSparkModelsIfRequested_returns_app_unchanged_when_flag_is_absent()
+    public void SynchronizeSparkModelsIfRequested_returns_false_when_the_flag_is_absent()
     {
-        // The flag-PRESENT branch ends in Environment.Exit(0) — not testable in-process.
-        // The flag-ABSENT path is the load-bearing one for normal startup (every Demo app
-        // calls this on every boot to opt-in to schema sync).
-        var app = SubstituteForApplicationBuilder();
+        // False means "no command was handled, carry on and start the app" — the path every
+        // boot takes. It must not touch the model directory.
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, EmptyTestSparkContext>();
 
-        var returned = app.SynchronizeSparkModelsIfRequested<EmptyTestSparkContext>(
-            ["--unrelated", "--verbose"]);
+        var handled = builder.SynchronizeSparkModelsIfRequested(["--unrelated", "--verbose"]);
 
-        returned.Should().BeSameAs(app);
+        handled.Should().BeFalse();
+        Directory.Exists(Path.Combine(scratch.Path, "App_Data", "Model")).Should().BeFalse(
+            "no command was requested, so nothing should have been written");
     }
 
     [Fact]
-    public void SynchronizeSparkModelsIfRequested_with_empty_args_returns_app_unchanged()
+    public void SynchronizeSparkModelsIfRequested_with_empty_args_returns_false()
     {
-        var app = SubstituteForApplicationBuilder();
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
 
-        var returned = app.SynchronizeSparkModelsIfRequested<EmptyTestSparkContext>([]);
-
-        returned.Should().BeSameAs(app);
+        builder.SynchronizeSparkModelsIfRequested([]).Should().BeFalse();
     }
 
     [Fact]
-    public void SynchronizeSparkModels_in_Production_environment_returns_early_without_calling_the_synchronizer()
+    public void SynchronizeSparkModelsIfRequested_writes_the_model_without_any_database()
     {
-        var synchronizer = Substitute.For<IModelSynchronizer>();
-        var documentStore = Substitute.For<IDocumentStore>();
-        var hostEnvironment = Substitute.For<IHostEnvironment>();
-        hostEnvironment.EnvironmentName.Returns(Environments.Production);
+        // The point of the builder-phase move: no IDocumentStore is ever resolved, so this runs
+        // in CI where no RavenDB exists. If a connection creeps back in, this test hangs or throws
+        // rather than passing quietly.
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
 
-        var app = SubstituteForApplicationBuilder(hostEnvironment, synchronizer, documentStore);
+        var handled = builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
 
-        var returned = app.SynchronizeSparkModels<EmptyTestSparkContext>();
-
-        returned.Should().BeSameAs(app);
-        synchronizer.DidNotReceiveWithAnyArgs().SynchronizeModels(default!);
+        handled.Should().BeTrue("the command was handled, so the host must return instead of starting");
+        Environment.ExitCode.Should().Be(0);
+        File.Exists(Path.Combine(scratch.Path, "App_Data", "Model", "SyncProbe.json")).Should().BeTrue();
     }
 
     [Fact]
-    public void SynchronizeSparkModels_in_Development_environment_invokes_the_synchronizer_with_a_TContext_instance()
+    public void SynchronizeSparkModelsIfRequested_reports_a_missing_context_registration_and_fails_the_run()
     {
-        var synchronizer = Substitute.For<IModelSynchronizer>();
-        var documentStore = Substitute.For<IDocumentStore>();
-        documentStore.OpenAsyncSession().Returns(Substitute.For<IAsyncDocumentSession>());
-        var hostEnvironment = Substitute.For<IHostEnvironment>();
-        hostEnvironment.EnvironmentName.Returns(Environments.Development);
+        // A merge queue must not see exit 0 from a run that did nothing — that is a green gate
+        // that never ran, which is the failure mode this whole change exists to remove.
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
 
-        var app = SubstituteForApplicationBuilder(hostEnvironment, synchronizer, documentStore);
+        var handled = builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
 
-        app.SynchronizeSparkModels<EmptyTestSparkContext>();
+        handled.Should().BeTrue();
+        Environment.ExitCode.Should().Be(2);
+    }
 
-        synchronizer.Received(1).SynchronizeModels(Arg.Is<EmptyTestSparkContext>(c => c.Session != null));
+    [Fact]
+    public void SynchronizeSparkModelsIfRequested_generic_overload_does_not_need_a_registration()
+    {
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+
+        var handled = builder.SynchronizeSparkModelsIfRequested<OneEntityTestSparkContext>(
+            ["--spark-synchronize-model"]);
+
+        handled.Should().BeTrue();
+        File.Exists(Path.Combine(scratch.Path, "App_Data", "Model", "SyncProbe.json")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Verify_mode_reports_a_synchronized_model_as_in_sync_and_writes_nothing()
+    {
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
+
+        var modelDir = Path.Combine(scratch.Path, "App_Data", "Model");
+        var before = Directory.GetFiles(modelDir).Select(f => (f, File.GetLastWriteTimeUtc(f))).ToArray();
+
+        var verifyBuilder = scratch.CreateBuilder();
+        verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        var handled = verifyBuilder.SynchronizeSparkModelsIfRequested(["--spark-verify-model"]);
+
+        handled.Should().BeTrue();
+        Environment.ExitCode.Should().Be(0);
+        Directory.GetFiles(modelDir).Select(f => (f, File.GetLastWriteTimeUtc(f))).Should().BeEquivalentTo(before,
+            "verify must leave the workspace exactly as the pull request left it");
+    }
+
+    [Fact]
+    public void Verify_mode_exits_3_when_the_model_has_drifted()
+    {
+        // The merge-queue gate: entities changed, model not regenerated.
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
+
+        File.WriteAllText(
+            Path.Combine(scratch.Path, "App_Data", "Model", "Planted.json"),
+            "{ \"persistentObject\": { \"name\": \"Planted\", \"clrType\": \"X.Planted\" }, \"queries\": [] }");
+
+        var verifyBuilder = scratch.CreateBuilder();
+        verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        verifyBuilder.SynchronizeSparkModelsIfRequested(["--spark-verify-model"]);
+
+        Environment.ExitCode.Should().Be(3);
+    }
+
+    [Fact]
+    public void Verify_mode_exits_3_when_the_hash_file_is_missing()
+    {
+        using var scratch = new ScratchContentRoot();
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
+        File.Delete(Path.Combine(scratch.Path, "App_Data", "modelHashes.json"));
+
+        var verifyBuilder = scratch.CreateBuilder();
+        verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        verifyBuilder.SynchronizeSparkModelsIfRequested(["--spark-verify-model"]);
+
+        Environment.ExitCode.Should().Be(3);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void A_production_start_without_the_flag_never_writes_a_model(string environmentName)
+    {
+        // The question this answers: can a deployed application rewrite its own model? Only the
+        // explicit CLI flag reaches the synchronizer, so an ordinary start does nothing at all.
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = environmentName,
+        });
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+
+        // The arguments a deployed app actually starts with.
+        var handled = builder.SynchronizeSparkModelsIfRequested(["--urls", "http://0.0.0.0:8080"]);
+
+        handled.Should().BeFalse("no Spark command was requested, so the host must start normally");
+        Directory.Exists(Path.Combine(scratch.Path, "App_Data", "Model")).Should().BeFalse(
+            "an ordinary production start must not write model files");
+        Environment.ExitCode.Should().Be(0);
+    }
+
+    // --- IModelSynchronizer is a development-only service ----------------
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    [InlineData("Testing")]
+    public void AddSpark_does_not_register_the_model_synchronizer_outside_Development(string environmentName)
+    {
+        // The security property, made structural: outside Development there is nothing in the
+        // container to resolve, so app code cannot drive a model rewrite by reaching past the
+        // build-time command. Previously [Register] put it in every app in every environment.
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = environmentName,
+        });
+
+        builder.Services.AddSpark(spark => spark.UseContext<EmptyTestSparkContext>());
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<IModelSynchronizer>().Should().BeNull(
+            $"the synchronizer is a build-time tool and must not be resolvable in {environmentName}");
+    }
+
+    [Fact]
+    public void AddSpark_registers_the_model_synchronizer_in_Development()
+    {
+        using var scratch = new ScratchContentRoot();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = scratch.Path,
+            EnvironmentName = Environments.Development,
+        });
+
+        builder.Services.AddSpark(spark => spark.UseContext<EmptyTestSparkContext>());
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<IModelSynchronizer>().Should().NotBeNull();
     }
 
     // --- helpers --------------------------------------------------------
 
-    private static IApplicationBuilder SubstituteForApplicationBuilder(
-        IHostEnvironment? hostEnvironment = null,
-        IModelSynchronizer? modelSynchronizer = null,
-        IDocumentStore? documentStore = null)
+    /// <summary>
+    /// A throwaway content root plus a <see cref="WebApplicationBuilder"/> rooted at it, so
+    /// synchronization writes into the temp directory rather than the test host's own folder.
+    /// Also restores <see cref="Environment.ExitCode"/>, which these tests deliberately set.
+    /// </summary>
+    private sealed class ScratchContentRoot : IDisposable
     {
-        var services = new ServiceCollection();
-        services.AddSingleton(hostEnvironment ?? Substitute.For<IHostEnvironment>());
-        services.AddSingleton(modelSynchronizer ?? Substitute.For<IModelSynchronizer>());
-        services.AddSingleton(documentStore ?? Substitute.For<IDocumentStore>());
-        // SparkModuleRegistry is required by the inner UseSpark (used by the options overload);
-        // not invoked by the helpers tested here, but we keep the shape consistent.
-        services.AddSingleton(new MintPlayer.Spark.Abstractions.Builder.SparkModuleRegistry());
-        var sp = services.BuildServiceProvider();
+        private readonly int _previousExitCode = Environment.ExitCode;
 
-        var app = Substitute.For<IApplicationBuilder>();
-        app.ApplicationServices.Returns(sp);
-        // Use(...) returns the same builder for chaining; pin that to avoid NREs on chained calls.
-        app.Use(Arg.Any<Func<RequestDelegate, RequestDelegate>>()).Returns(app);
-        return app;
+        public string Path { get; } = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "spark-sync-tests-" + Guid.NewGuid().ToString("N"));
+
+        public ScratchContentRoot() => Directory.CreateDirectory(Path);
+
+        public WebApplicationBuilder CreateBuilder() =>
+            WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = Path });
+
+        public void Dispose()
+        {
+            Environment.ExitCode = _previousExitCode;
+            try { Directory.Delete(Path, recursive: true); } catch (IOException) { }
+        }
     }
 
     public sealed class Person
@@ -190,4 +328,19 @@ public class SparkExtensionsTests
     }
 
     public sealed class EmptyTestSparkContext : SparkContext { }
+
+    public sealed class SyncProbe
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+    }
+
+    /// <summary>
+    /// Declares one queryable root so synchronization has something to write. The getter is never
+    /// invoked — only its property type is read — which is why a null <c>Session</c> is safe here.
+    /// </summary>
+    public sealed class OneEntityTestSparkContext : SparkContext
+    {
+        public Raven.Client.Documents.Linq.IRavenQueryable<SyncProbe> SyncProbes => Session.Query<SyncProbe>();
+    }
 }

@@ -54,6 +54,16 @@ public static class SparkExtensions
         // Register the Spark services
         services.AddSparkServices();
 
+        // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
+        // build-time tool, so outside Development it is not in the container at all — there is
+        // nothing to resolve rather than a guard to get past.
+        //
+        // This must happen here and not in a CreateBuilder-style factory: AddSparkServices() above
+        // runs later than any such factory would, and its registration would win GetRequiredService,
+        // silently reducing the gate to a no-op.
+        if (GetRegistrationTimeEnvironment(services)?.IsDevelopment() == true)
+            services.AddSingleton<IModelSynchronizer, ModelSynchronizer>();
+
         // Default IAccessControl is fail-closed (deny everything). Apps opt into a
         // real authorization model via spark.AddAuthorization() (from the Spark
         // Authorization package) or into "no authorization" mode via
@@ -120,6 +130,20 @@ public static class SparkExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Reads the host environment at <em>registration</em> time, without building a provider.
+    /// <para>
+    /// The web host registers its environment as a singleton instance, so it can be read straight
+    /// off the descriptor. Resolving it from a factory lambda instead — the way the document store
+    /// does — would be too late to decide what gets registered. Returns <see langword="null"/> for a
+    /// bare <see cref="ServiceCollection"/>, which has no such descriptor.
+    /// </para>
+    /// </summary>
+    private static IHostEnvironment? GetRegistrationTimeEnvironment(IServiceCollection services)
+        => (services.LastOrDefault(d => d.ServiceType == typeof(IHostEnvironment))?.ImplementationInstance
+            ?? services.LastOrDefault(d => d.ServiceType == typeof(IWebHostEnvironment))?.ImplementationInstance)
+            as IHostEnvironment;
 
     /// <summary>
     /// Registers the SparkContext implementation for this application.
@@ -261,7 +285,13 @@ public static class SparkExtensions
         app.UseMiddleware<SparkMiddleware>();
 
         // Create RavenDB indexes
-        CreateSparkIndexes(app);
+        CreateSparkIndexes(app, registry.ResolveIndexAssemblies());
+
+        // After CreateSparkIndexes, because the projection type and index name feed the model hash
+        // and the index registry is populated there. Before any request is served: a drifted model
+        // shows up as missing columns and values silently dropped on save, which reads as data loss
+        // rather than a configuration mistake.
+        VerifySparkModelHash(app);
 
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app);
@@ -273,11 +303,6 @@ public static class SparkExtensions
     /// Configures Spark middleware with additional options.
     /// Call after UseRouting(). Do NOT call UseAuthentication/UseAuthorization/UseAntiforgery separately.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// app.UseSpark(o => o.SynchronizeModelsIfRequested&lt;MyContext&gt;(args));
-    /// </code>
-    /// </example>
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app, Action<UseSparkOptions> configure)
     {
         app.UseSpark();
@@ -285,51 +310,6 @@ public static class SparkExtensions
         var options = new UseSparkOptions { App = app };
         configure(options);
 
-        return app;
-    }
-
-    /// <summary>
-    /// Synchronizes entity definitions between SparkContext and App_Data/Model/*.json files.
-    /// Call this during development to generate or update model files based on your SparkContext properties.
-    /// </summary>
-    public static IApplicationBuilder SynchronizeSparkModels<TContext>(this IApplicationBuilder app)
-        where TContext : SparkContext, new()
-    {
-        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
-
-        if (!hostEnvironment.IsDevelopment())
-        {
-            Console.WriteLine("Model synchronization is only available in Development mode.");
-            return app;
-        }
-
-        var synchronizer = app.ApplicationServices.GetRequiredService<IModelSynchronizer>();
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-
-        // Create a temporary context with a session to resolve queryable properties
-        using var session = documentStore.OpenAsyncSession();
-        var sparkContext = new TContext();
-        sparkContext.Session = session;
-
-        synchronizer.SynchronizeModels(sparkContext);
-
-        Console.WriteLine("Model synchronization completed.");
-
-        return app;
-    }
-
-    /// <summary>
-    /// Checks command-line arguments for --spark-synchronize-model and runs synchronization if present.
-    /// Exits the application after synchronization completes.
-    /// </summary>
-    public static IApplicationBuilder SynchronizeSparkModelsIfRequested<TContext>(this IApplicationBuilder app, string[] args)
-        where TContext : SparkContext, new()
-    {
-        if (args.Contains("--spark-synchronize-model"))
-        {
-            app.SynchronizeSparkModels<TContext>();
-            Environment.Exit(0);
-        }
         return app;
     }
 
@@ -378,54 +358,156 @@ public static class SparkExtensions
         store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
     }
 
-    private static void CreateSparkIndexes(IApplicationBuilder app, Assembly? assembly = null)
+    /// <summary>
+    /// Populates <paramref name="indexRegistry"/> from the index and projection types declared in
+    /// <paramref name="targetAssembly"/>. Pure reflection — no database, no host, no DI.
+    /// <para>
+    /// Separated from <see cref="CreateSparkIndexes"/> so the offline paths (model synchronization
+    /// and the startup model-hash check) can populate the registry without a live
+    /// <c>IDocumentStore</c>. Both consult the registry for projection types and index names, and an
+    /// unpopulated registry does not fail — it silently emits projection types as their own model
+    /// files and skips the query-type merge. Wrong output, no error, which is why this must run.
+    /// </para>
+    /// <para>
+    /// Deliberately does not swallow exceptions: a registry that failed to populate has to fail the
+    /// run. Only the database call in <see cref="CreateSparkIndexes"/> is best-effort.
+    /// </para>
+    /// </summary>
+    internal static void PopulateIndexRegistry(IIndexRegistry indexRegistry, Assembly targetAssembly)
     {
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
-        var targetAssembly = assembly ?? Assembly.GetEntryAssembly();
+        PopulateIndexTypes(indexRegistry, targetAssembly);
+        PopulateProjectionTypes(indexRegistry, targetAssembly);
+    }
 
-        if (targetAssembly == null)
+    /// <summary>
+    /// Registers the index types declared in <paramref name="targetAssembly"/>.
+    /// <para>
+    /// Separate from projection registration so callers spanning several assemblies can register
+    /// every index before any projection. A projection resolves its index by name, so with a single
+    /// combined pass a projection in one assembly over an index in a later-scanned assembly would
+    /// fail to resolve — and the failure is only a console warning.
+    /// </para>
+    /// </summary>
+    internal static void PopulateIndexTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    {
+        var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.IndexTypes", targetAssembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToArray());
+
+        foreach (var indexType in indexTypes)
         {
-            Console.WriteLine("Warning: Could not determine entry assembly for index creation.");
+            indexRegistry.RegisterIndex(indexType);
+        }
+    }
+
+    /// <summary>Registers the <c>[FromIndex]</c> projection types declared in <paramref name="targetAssembly"/>.</summary>
+    internal static void PopulateProjectionTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    {
+        var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.ProjectionTypes", targetAssembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
+                .ToArray());
+
+        foreach (var projectionType in projectionTypes)
+        {
+            var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
+            indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+        }
+    }
+
+    /// <summary>
+    /// The types of an assembly, keeping what loaded when some types cannot.
+    /// <para>
+    /// <c>Assembly.GetTypes()</c> walks the entire metadata tables and throws if any type fails to
+    /// load — typically an optional peer dependency that is simply absent. That is a deployment fact
+    /// rather than a Spark defect, and now that several assemblies are scanned, one such assembly
+    /// must not stop an application from starting. A genuinely malformed index type still throws out
+    /// of registration, so a real failure is not masked.
+    /// </para>
+    /// <para>
+    /// Callers cache this through <c>ReflectionCache</c>, which stores a throwing factory and
+    /// re-throws it for the lifetime of the process — so the catch has to live here, inside the
+    /// factory, not around the cache lookup.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            var loaded = ex.Types.Where(t => t is not null).Select(t => t!).ToArray();
+            Console.WriteLine(
+                $"Warning: {assembly.GetName().Name} has {ex.Types.Length - loaded.Length} type(s) that could not be " +
+                $"loaded; scanning the {loaded.Length} that did. First loader error: {ex.LoaderExceptions.FirstOrDefault()?.Message}");
+            return loaded;
+        }
+    }
+
+    private static void VerifySparkModelHash(IApplicationBuilder app)
+    {
+        var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+
+        using var scope = app.ApplicationServices.CreateScope();
+        var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
+        if (sparkContext is null)
+        {
+            // No context registered means no model to verify — an app that never called
+            // UseContext<T>(). Nothing to check rather than a failure.
             return;
         }
 
-        try
+        ModelHashVerifier.Verify(
+            sparkContext.GetType(),
+            indexRegistry,
+            hostEnvironment.ContentRootPath,
+            hostEnvironment.IsDevelopment(),
+            Console.WriteLine);
+    }
+
+    private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
+    {
+        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
+        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+
+        if (assemblies.Count == 0)
         {
-            // Find and register all index types — Assembly.GetTypes() walks the assembly's
-            // entire metadata tables; cache the filtered result so repeat AddSpark calls
-            // (or hot-reload scenarios) don't re-scan.
-            var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-                ("SparkMiddleware.IndexTypes", targetAssembly),
-                static k => k.Asm.GetTypes()
-                    .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                    .ToArray());
-
-            foreach (var indexType in indexTypes)
-            {
-                indexRegistry.RegisterIndex(indexType);
-            }
-
-            // Find and register all projection types with FromIndexAttribute
-            var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-                ("SparkMiddleware.ProjectionTypes", targetAssembly),
-                static k => k.Asm.GetTypes()
-                    .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
-                    .ToArray());
-
-            foreach (var projectionType in projectionTypes)
-            {
-                var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
-                indexRegistry.RegisterProjection(projectionType, attr.IndexType);
-            }
-
-            // Create indexes in RavenDB
-            IndexCreation.CreateIndexes(targetAssembly, documentStore);
-            Console.WriteLine($"RavenDB indexes created/updated from assembly: {targetAssembly.GetName().Name}");
+            Console.WriteLine("Warning: Could not determine any assembly to scan for index creation.");
+            return;
         }
-        catch (Exception ex)
+
+        // Materialize every assembly before the first database call. Registry population is a
+        // correctness precondition — the model-hash check runs straight after this and must see a
+        // complete registry even when RavenDB is unreachable and the deployment below fails.
+        //
+        // Indexes across all assemblies first, then projections across all of them: a projection
+        // resolves its index by name, so a projection in one assembly over an index in another must
+        // not depend on which assembly was scanned first.
+        foreach (var assembly in assemblies)
+            PopulateIndexTypes(indexRegistry, assembly);
+
+        foreach (var assembly in assemblies)
+            PopulateProjectionTypes(indexRegistry, assembly);
+
+        // Deployment is best-effort, but per assembly: one unreachable or broken module must not
+        // cost every other module its indexes, which is what a single surrounding catch did.
+        foreach (var assembly in assemblies)
         {
-            Console.WriteLine($"Error creating RavenDB indexes: {ex.Message}");
+            try
+            {
+                IndexCreation.CreateIndexes(assembly, documentStore);
+                Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
+            }
         }
     }
 

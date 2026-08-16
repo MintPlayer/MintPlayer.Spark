@@ -198,7 +198,10 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     {
         return ReflectionCache.GetOrAdd<(string Op, Type Type), string[]>(
             ("SyncActionInterceptor.ReplicatedPropNames", entityType),
-            static k => k.Type.GetSparkModelProperties()
+            // Writable, not merely "in the model": this list is a write authorization, so a
+            // get-only computed property must never reach it. Those appear in the model as
+            // read-only attributes and are not writable by anyone, least of all a peer module.
+            static k => k.Type.GetSparkWritableProperties()
                 .Select(p => p.Name)
                 .ToArray());
     }

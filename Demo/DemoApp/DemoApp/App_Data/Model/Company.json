@@ -11,10 +11,32 @@
     "queryType": "DemoApp.Data.VCompany",
     "indexName": "Companies_Overview",
     "breadcrumb": "{Name}",
-    "queries": ["company-people"],
     "tabs": [],
     "groups": [],
     "attributes": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440003",
+        "name": "EmployeeCount",
+        "label": {
+          "en": "Number of Employees",
+          "fr": "Nombre d'employés",
+          "nl": "Aantal werknemers"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "range",
+            "min": 1,
+            "max": 1000000
+          }
+        ]
+      },
       {
         "id": "660e8400-e29b-41d4-a716-446655440001",
         "name": "Name",
@@ -66,39 +88,32 @@
             "type": "url"
           }
         ]
-      },
-      {
-        "id": "660e8400-e29b-41d4-a716-446655440003",
-        "name": "EmployeeCount",
-        "label": {
-          "en": "Number of Employees",
-          "fr": "Nombre d'employés",
-          "nl": "Aantal werknemers"
-        },
-        "dataType": "number",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "range",
-            "min": 1,
-            "max": 1000000
-          }
-        ]
       }
+    ],
+    "queries": [
+      "company-people"
     ]
   },
   "queries": [
     {
       "id": "880e8400-e29b-41d4-a716-446655440001",
       "name": "GetCompanies",
-      "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+      "description": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      },
       "source": "Database.Companies",
-      "sortColumns": [{ "property": "Name", "direction": "asc" }]
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Company",
+      "isStreamingQuery": false
     }
   ]
 }

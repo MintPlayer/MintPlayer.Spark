@@ -122,6 +122,36 @@ public class SyncActionInterceptorTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task A_get_only_property_never_reaches_the_write_authorization_list()
+    {
+        // #253. Get-only computed properties became part of the model so they can be displayed,
+        // and "in the model" used to be the same predicate as "may be written". Had the single
+        // shared filter simply been widened, ReplicatedCarFromFleet.Display would have landed in
+        // the list the owner module treats as write authorization — a property with no setter,
+        // authorized for writing by a peer module. The predicates are deliberately separate.
+        var interceptor = NewInterceptor();
+        var po = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = "cars/1",
+            Name = "computed",
+            ObjectTypeId = Guid.NewGuid(),
+            Attributes = [
+                new() { Name = "Plate", Value = "ABC", IsValueChanged = false },
+                new() { Name = "Display", Value = "ABC (car)", IsValueChanged = false },
+            ],
+        };
+
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+
+        stored.Actions[0].Properties.Should().BeEquivalentTo(["Plate"],
+            "Display is get-only and InternalToken is [IgnoreProperty]; neither may be written");
+    }
+
+    [Fact]
     public async Task HandleSaveAsync_normalizes_JsonElement_values_to_plain_DotNet_types()
     {
         var interceptor = NewInterceptor();

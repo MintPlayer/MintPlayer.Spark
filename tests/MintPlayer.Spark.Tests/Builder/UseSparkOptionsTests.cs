@@ -12,10 +12,11 @@ namespace MintPlayer.Spark.Tests.Builder;
 
 /// <summary>
 /// Pins the <see cref="SparkExtensions.UseSpark(IApplicationBuilder, Action{UseSparkOptions})"/>
-/// overload — it composes <c>UseSpark()</c> with a per-app options callback that's the
-/// host's only seam for opting into <c>SynchronizeModelsIfRequested</c>. The overload itself
-/// is 4 lines; we still want a regression test because <c>UseSparkOptions.App</c> not being
-/// set would silently break the synchronize hook for every Demo app.
+/// overload — it composes <c>UseSpark()</c> with a per-app options callback. Model
+/// synchronization used to be the only thing that rode on this seam; it has since moved to the
+/// builder phase, so the overload now exists purely as a per-app middleware extension point.
+/// Kept under test because <c>UseSparkOptions.App</c> not being set would silently break any
+/// future option that depends on it.
 /// </summary>
 public class UseSparkOptionsTests : SparkTestDriver
 {
@@ -24,9 +25,16 @@ public class UseSparkOptionsTests : SparkTestDriver
     {
         UseSparkOptions? captured = null;
 
+        // UseSpark verifies the model hash and fails closed on a missing one, so this host needs the
+        // same artefact a deployment has. Generated rather than hand-written, so it stays correct.
+        var contentRoot = Path.Combine(Path.GetTempPath(), "spark-usesparkoptions-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(contentRoot);
+        SparkDevelopmentExtensions.WriteSparkModelHashes(typeof(TestSparkContext), contentRoot);
+
         using var host = await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
+                .UseContentRoot(contentRoot)
                 .ConfigureServices(services =>
                 {
                     services.AddRouting();
@@ -46,10 +54,12 @@ public class UseSparkOptionsTests : SparkTestDriver
             .StartAsync();
 
         captured.Should().NotBeNull();
-        // The internal App pointer is what UseSparkOptions.SynchronizeModelsIfRequested chains
-        // through, so it must reference the same IApplicationBuilder we used.
+        // The internal App pointer is what any option added to this seam chains through, so it must
+        // reference the same IApplicationBuilder we used.
         var appProp = typeof(UseSparkOptions).GetProperty("App",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         appProp.GetValue(captured).Should().NotBeNull();
+
+        try { Directory.Delete(contentRoot, recursive: true); } catch (IOException) { }
     }
 }

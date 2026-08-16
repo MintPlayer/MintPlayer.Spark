@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "modelHash": "abd8df458c47fd981466048f9d44677b2e511d5c815099e32db5bb88dcbaaf48",
+  "contextRoots": "8b47d93052b823f0c7ad41b80d50b6c40adbe6970ca2f21af2b953cf5017979d",
+  "modelFiles": "744d2bc10290fb39e178ff0d9e78d29946768a1769c382538b219f5eaee04708",
+  "files": {
+    "EventColumnMapping.json": "a7785110d08dedf855140ae730476d2c55800a01503dc034edd6cbf8460271f1",
+    "GitHubProject.json": "462f082de11645832485984a66e9f570907e27e47e1c353243cc8300f3dc69d5",
+    "ProjectColumn.json": "da5428332b0a1c31bd981d7c4015db4b301e1e82019baf52d8196f4fe63bb6e8"
+  },
+  "entities": {
+    "EventColumnMapping": "2eb23d2df2d74302f4046fe421bf057652c04313bf5fd7979d629aede0ba6244",
+    "GitHubProject": "7e8bfc8db5ab8ae59ce5c2ca368974c4bd3ab513b136350b8afc4944e8ec902c",
+    "ProjectColumn": "3ec0401196381de0ca368e07514871510f842a9a8265fbfb414575a0fb9ac08b"
+  }
+}

@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Linq;
@@ -15,7 +16,11 @@ public interface IModelSynchronizer
     void SynchronizeModels(SparkContext sparkContext);
 }
 
-[Register(typeof(IModelSynchronizer), ServiceLifetime.Singleton)]
+// Deliberately NOT [Register]-ed. That attribute is harvested unconditionally into the generated
+// AddSparkServices(), which put IModelSynchronizer in the container of every app in every
+// environment — so production code could resolve it and drive a model rewrite, bypassing the
+// environment guard that lived one layer up in the extension method. AddSparkCore now registers it
+// only in Development; the build-time command constructs it directly and needs no registration.
 internal partial class ModelSynchronizer : IModelSynchronizer
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
@@ -59,20 +64,39 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         // Track types to process (including embedded types)
         var processedTypes = new HashSet<string>();
+        // Paths written during this run. The stale-projection cleanup below keys off it so it can
+        // never delete a file this same run produced.
+        var writtenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var typesToProcess = new Queue<Type>();
 
-        foreach (var property in queryableProperties)
-        {
-            var entityType = GetQueryableEntityType(property.PropertyType);
-            if (entityType == null) continue;
-
-            // Skip projection types - they are merged into their collection type's JSON file
-            if (indexRegistry.IsProjectionType(entityType))
+        // Grouped by entity type, because a context may expose the same type more than once
+        // (e.g. Cars and ArchivedCars, both IRavenQueryable<Car>). Both map to the same
+        // {TypeName}.json, and writing per property meant the second write dropped the query the
+        // first had just added — from a snapshot of the directory taken once, before any write.
+        //
+        // The result was stable rather than noisy, which is what made it dangerous: the file
+        // converged from run 1 onward on the LAST property's query alone, byte-identical every run,
+        // with the same model hash. The earlier property's query was minted fresh in memory each
+        // time, logged as created, and overwritten before it ever reached disk. Nothing that
+        // compares runs — the idempotency guard, a regenerate-and-diff gate, the verify gate — can
+        // see a wrong answer that never changes.
+        //
+        // One file, one write, one query per property.
+        var rootsByEntityType = queryableProperties
+            .Select(property => new { Property = property, EntityType = GetQueryableEntityType(property.PropertyType) })
+            .Where(x => x.EntityType is not null)
+            .Where(x =>
             {
-                Console.WriteLine($"Skipping projection type: {entityType.Name} (merged into collection type)");
-                continue;
-            }
+                // Projection types are merged into their collection type's JSON file
+                if (!indexRegistry.IsProjectionType(x.EntityType!)) return true;
+                Console.WriteLine($"Skipping projection type: {x.EntityType!.Name} (merged into collection type)");
+                return false;
+            })
+            .GroupBy(x => x.EntityType!);
 
+        foreach (var group in rootsByEntityType)
+        {
+            var entityType = group.Key;
             var clrType = entityType.FullName ?? entityType.Name;
 
             // Get projection type from IndexRegistry (populated from FromIndexAttribute on projections)
@@ -85,23 +109,29 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
 
             // Collect existing inline queries for this entity type, plus create default if missing
-            var queriesForType = existingQueries
-                .Where(q => string.Equals(q.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
 
-            var queryName = $"Get{property.Name}";
-            if (!queriesForType.Any(q => q.Name == queryName))
+            // One default query per context property exposing this type.
+            foreach (var property in group.Select(x => x.Property))
             {
-                var query = new SparkQuery
+                var queryName = $"Get{property.Name}";
+                if (queriesForType.Any(q => q.Name == queryName))
+                    continue;
+
+                queriesForType.Add(new SparkQuery
                 {
                     Id = Guid.NewGuid(),
                     Name = queryName,
+                    // Set eagerly, though LoadExistingEntityTypeFiles would derive the same value on
+                    // the next read. Leaving it null made synchronization non-idempotent: the first
+                    // run omitted the field, the second read it back, populated it and wrote it out,
+                    // so two consecutive runs produced different bytes.
+                    EntityType = entityType.Name,
                     Source = $"Database.{property.Name}",
                     SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
                         : []
-                };
-                queriesForType.Add(query);
+                });
                 Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");
             }
 
@@ -110,10 +140,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
-                Queries = queriesForType.ToArray()
+                // Name-sorted for the same reason as the attributes: stable across runs and
+                // merge-friendly. Nothing depends on the order of this array.
+                Queries = [.. queriesForType
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
+            writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
             // Also mark projection type as processed (no separate JSON file)
@@ -151,18 +186,19 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
 
             // Preserve any existing inline queries for this embedded type
-            var embeddedQueries = existingQueries
-                .Where(q => string.Equals(q.EntityType, embeddedType.Name, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType.Name).ToArray();
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
-                Queries = embeddedQueries
+                Queries = [.. embeddedQueries
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
             File.WriteAllText(fileName, json);
+            writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
             Console.WriteLine($"Synchronized model (embedded): {embeddedType.Name} -> {fileName}");
@@ -171,19 +207,66 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
         }
 
-        // Clean up stale projection type files
+        // Clean up model files left behind by an older version that gave projection types their own
+        // file. Projection types are merged into their collection type's file now, so nothing here
+        // can create one.
+        //
+        // Skipping anything written during this run is what makes it safe. Model files are keyed by
+        // SIMPLE type name, so a real entity sharing a projection's simple name resolves to the same
+        // path — and this loop runs after every write, so it used to delete a file the same run had
+        // just produced and report success. Matching on the full type name is not an option: the
+        // path carries only the simple name.
         foreach (var registration in indexRegistry.GetAllRegistrations())
         {
-            if (registration.ProjectionType != null)
-            {
-                var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
-                if (File.Exists(staleModelFile))
-                {
-                    File.Delete(staleModelFile);
-                    Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
-                }
-            }
+            if (registration.ProjectionType == null)
+                continue;
+
+            var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
+            if (writtenFiles.Contains(staleModelFile) || !File.Exists(staleModelFile))
+                continue;
+
+            File.Delete(staleModelFile);
+            Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
         }
+
+        WriteModelHashes(contextType);
+    }
+
+    /// <summary>
+    /// Records the fingerprint of the entity classes these model files were generated from, so a
+    /// deployed application can tell that its model no longer describes its classes.
+    /// </summary>
+    private void WriteModelHashes(Type contextType)
+    {
+        // Computed after every model file has been written, so the file hash covers the output of
+        // this same run.
+        var hashFile = BuildModelHashes(contextType, indexRegistry, hostEnvironment.ContentRootPath);
+        hashFile.Write(hostEnvironment.ContentRootPath);
+
+        Console.WriteLine($"Model hash: {hashFile.ModelHash} -> {ModelHashFile.PathFor(hostEnvironment.ContentRootPath)}");
+    }
+
+    /// <summary>
+    /// Computes the hash file for a context type. Shared with the startup check so the value written
+    /// and the value verified can never be produced by two different pieces of code.
+    /// </summary>
+    internal static ModelHashFile BuildModelHashes(Type contextType, IIndexRegistry indexRegistry, string contentRootPath)
+    {
+        var shapes = ModelShapeDiscovery.Discover(contextType, indexRegistry);
+        var perEntity = SparkModelShape.ComputePerEntityHashes(shapes);
+        var contextRoots = SparkModelShape.ComputeContextRootsHash(
+            ModelShapeDiscovery.RootEntityNames(contextType, indexRegistry));
+        var fileHashes = ModelHashFile.ComputeFileHashes(contentRootPath);
+        var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
+
+        return new ModelHashFile
+        {
+            ModelHash = SparkModelShape.ComputeModelHash(perEntity, contextRoots, modelFiles),
+            ContextRoots = contextRoots,
+            ModelFiles = modelFiles,
+            Files = fileHashes,
+            Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
+        };
     }
 
     private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
@@ -211,6 +294,47 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 typesToProcess.Enqueue(propType);
             }
         }
+    }
+
+    /// <summary>
+    /// Inline queries belonging to <paramref name="entityTypeName"/>, de-duplicated by id.
+    ///
+    /// <para>
+    /// The de-duplication is load-bearing, not defensive. <c>existingQueries</c> is the flat
+    /// concatenation of the inline queries of <em>every</em> model file, and a query is written into
+    /// the file of the entity it names. Normally that is self-correcting: a query sitting in the
+    /// wrong file is copied to the right one, and the wrong file is rewritten without it.
+    /// </para>
+    ///
+    /// <para>
+    /// It stops being self-correcting when a model file is never rewritten — an orphan whose type is
+    /// no longer a context root nor a reachable embedded type, which is what you get by removing or
+    /// renaming an entity without deleting its JSON. Its copy is re-read every run and appended
+    /// again, so the live entity's file grows by one query per synchronize, without bound. Measured
+    /// at +1 query and +379 bytes per run before this guard.
+    /// </para>
+    ///
+    /// <para>
+    /// Two entries with the same id are the same query, so keeping the first is always correct.
+    /// Entries that merely share a <c>Name</c> are left alone: that is an ambiguous model worth
+    /// surfacing rather than silently resolving.
+    /// </para>
+    /// </summary>
+    private static List<SparkQuery> CollectQueriesFor(List<SparkQuery> existingQueries, string entityTypeName)
+    {
+        var seenIds = new HashSet<Guid>();
+        var result = new List<SparkQuery>();
+
+        foreach (var query in existingQueries)
+        {
+            if (!string.Equals(query.EntityType, entityTypeName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (seenIds.Add(query.Id))
+                result.Add(query);
+        }
+
+        return result;
     }
 
     private (Dictionary<Guid, EntityTypeDefinition> EntityTypes, List<SparkQuery> Queries) LoadExistingEntityTypeFiles(string modelPath)
@@ -271,14 +395,45 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.Tabs = existing?.Tabs ?? [];
         entityTypeDef.Groups = existing?.Groups ?? [];
 
-        // Set QueryType and IndexName if projection type is provided
-        if (projectionType != null)
+        // Assigned unconditionally, including back to null when no projection is registered.
+        // Only setting them left a model pointing at a projection type that had since been deleted,
+        // and because both feed the structural hash, verification would confirm the dead reference
+        // instead of catching it. Clearing is consistent with the runtime rather than destructive:
+        // synchronization and the running app populate the index registry from the same entry
+        // assembly, so a projection missing here is missing there too.
+        var resolvedQueryType = projectionType?.FullName ?? projectionType?.Name;
+        if (projectionType is null && entityTypeDef.QueryType is not null)
         {
-            entityTypeDef.QueryType = projectionType.FullName ?? projectionType.Name;
-            entityTypeDef.IndexName = indexName;
+            // Deliberately does not tell the operator to add [FromIndex]: the likeliest cause is that
+            // the attribute IS present and correct, on a projection that lives outside the entry
+            // assembly. Index and projection discovery scan only the entry assembly, so a
+            // library-shipped projection is invisible here and at runtime alike.
+            Console.WriteLine(
+                $"Cleared queryType '{entityTypeDef.QueryType}' on '{entityTypeDef.Name}': no projection is registered for it. " +
+                "Either the projection type was removed, or it lives outside the entry assembly — " +
+                "index and projection discovery only scan the entry assembly, so such a projection is " +
+                "invisible to both synchronization and the running application.");
         }
 
+        entityTypeDef.QueryType = resolvedQueryType;
+        entityTypeDef.IndexName = projectionType != null ? indexName : null;
+
         // Get existing attributes as a dictionary for quick lookup
+        // Reported rather than left to ToDictionary, which throws "An item with the same key has
+        // already been added" and names neither the entity nor the file — a duplicate attribute in a
+        // hand-edited model would kill the command with nothing to act on.
+        var duplicateAttributeName = entityTypeDef.Attributes
+            .GroupBy(a => a.Name, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1)?.Key;
+
+        if (duplicateAttributeName is not null)
+        {
+            throw new InvalidOperationException(
+                $"Model for '{entityTypeDef.Name}' declares the attribute '{duplicateAttributeName}' more than once. " +
+                $"Attribute names must be unique within a persistent object — remove the duplicate from " +
+                $"App_Data/Model/{entityTypeDef.Name}.json.");
+        }
+
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
 
         // Get properties from collection type
@@ -411,26 +566,21 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 }
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
-                if (referenceAttr != null)
-                {
-                    existingAttr.ReferenceType = referenceType;
-                    existingAttr.Query = resolvedQuery;
-                }
+                // Assigned unconditionally, including back to null. These are all derived from the
+                // CLR shape, so leaving a stale value behind when the attribute or type changes
+                // persists a reference to something that no longer exists — and because they are
+                // part of the structural hash, verification would then confirm the dead reference
+                // rather than catch it.
+                existingAttr.ReferenceType = referenceAttr != null ? referenceType : null;
+                existingAttr.Query = referenceAttr != null ? resolvedQuery : null;
 
                 // IsArray is derived purely from the CLR property shape, so always
                 // refresh it (covers Reference/scalar arrays, not just AsDetail).
                 existingAttr.IsArray = isArray;
                 existingAttr.IsSortable = isSortable;
 
-                if (dataType == "AsDetail")
-                {
-                    existingAttr.AsDetailType = asDetailType;
-                }
-
-                if (lookupRefAttr != null)
-                {
-                    existingAttr.LookupReferenceType = lookupReferenceType;
-                }
+                existingAttr.AsDetailType = dataType == "AsDetail" ? asDetailType : null;
+                existingAttr.LookupReferenceType = lookupRefAttr != null ? lookupReferenceType : null;
 
                 // Set InCollectionType/InQueryType flags only when projection type exists
                 if (projectionType != null)
@@ -457,9 +607,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Name = propertyName,
                     Label = TranslatedString.Create(AddSpacesToCamelCase(propertyName)),
                     DataType = dataType,
-                    IsRequired = !IsNullable(property.PropertyType) && property.PropertyType != typeof(string),
+                    // A get-only property cannot be required: nothing can supply a value for it.
+                    IsRequired = property.CanWrite
+                        && !IsNullable(property.PropertyType)
+                        && property.PropertyType != typeof(string),
                     IsVisible = true,
-                    IsReadOnly = false,
+                    // Computed properties surface read-only rather than not at all. Only set on
+                    // creation — the update branch never reassigns IsReadOnly, so a hand-set value
+                    // survives re-synchronize.
+                    IsReadOnly = !property.CanWrite,
                     Order = order,
                     Query = resolvedQuery,
                     ReferenceType = referenceType,
@@ -478,7 +634,66 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             order++;
         }
 
-        entityTypeDef.Attributes = newAttributes.ToArray();
+        // The rebuild above is omission-based: it walks the current property set, so an attribute
+        // with no matching CLR property is dropped simply by never being re-added. Carry those over.
+        // Synchronize adds and modifies; it does not delete.
+        //
+        // Two kinds of attribute land here, and both must survive. A *virtual* attribute is authored
+        // by hand and never had a property — its value is supplied at runtime. An *orphaned* one had
+        // a property that was renamed or removed. Nothing in the model distinguishes them, which is
+        // also why there is no --prune-orphaned-attributes flag: see docs/issue_253_PRD.md (D1).
+        //
+        // [IgnoreProperty] is the deliberate exception. Marking a property ignored is an explicit
+        // instruction to drop its attribute, unlike a property that merely disappeared, so vetoed
+        // names stay dropped.
+        var rebuiltNames = newAttributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var carriedOver in entityTypeDef.Attributes)
+        {
+            if (rebuiltNames.Contains(carriedOver.Name) || ignoredPropertyNames.Contains(carriedOver.Name))
+                continue;
+
+            // Added as-is, by reference: Id, Label, Rules, Renderer, RendererOptions, Group and
+            // EditMode all ride along untouched. The Id matters most — clients key on it, so
+            // regenerating one silently rewrites identity.
+            newAttributes.Add(carriedOver);
+
+            Console.WriteLine(
+                $"Kept attribute '{carriedOver.Name}' on '{entityTypeDef.Name}': no matching CLR property. "
+                + "Remove it from the model JSON if it is obsolete.");
+
+            // ValidationService (:41) walks the MODEL's attributes and rejects a save when a
+            // required one is empty, so a required attribute the mapper cannot populate blocks
+            // every save of this type. Not necessarily broken — a value submitted by the client
+            // satisfies it, which is plausible for a virtual attribute — so this warns rather than
+            // silently clearing IsRequired. Rewriting hand-authored model state is the failure mode
+            // this whole change exists to remove.
+            if (carriedOver.IsRequired)
+            {
+                Console.WriteLine(
+                    $"  WARNING: '{carriedOver.Name}' is required but has no CLR property to populate it. "
+                    + "Saves will fail unless a value is supplied by the client. "
+                    + "Set \"isRequired\": false in the model JSON, or remove the attribute.");
+            }
+        }
+
+        // Sorted by name, deliberately not by Order. Order exists precisely so that position in this
+        // array carries no meaning — every consumer sorts by it — which frees the array itself to be
+        // written in the shape that merges best.
+        //
+        // Case-insensitive first so names group the way a reader expects, then case-sensitive as a
+        // tiebreaker: OrdinalIgnoreCase alone is not a total order, so two names differing only in
+        // case would compare equal and a stable sort would fall back to reflection order — quietly
+        // restoring the instability this exists to remove.
+        //
+        // Two payoffs. Reflection member order is not stable (swapping the files of a partial class
+        // reorders GetProperties), so an unsorted array churns between builds with no source change.
+        // And a stable name order means two branches adding different attributes touch different
+        // lines, so they merge instead of conflicting — the same reasoning behind keeping the model
+        // hashes in their own file.
+        entityTypeDef.Attributes = [.. newAttributes
+            .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.Name, StringComparer.Ordinal)];
 
         // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
         // an existing JSON value; otherwise synthesize a sensible default. Then validate the
@@ -594,36 +809,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return queryableType.GetGenericArguments().FirstOrDefault();
     }
 
-    private string GetDataType(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type) ?? type;
-
-        // Collections are classified by their ELEMENT type, never by the collection
-        // wrapper. A collection of a complex element is AsDetail; a collection of a
-        // simple element (e.g. List<string>, string[]) takes the element's scalar type.
-        // Classifying by the wrapper would be wrong: a List<> is itself a class with
-        // public properties, so the IsComplexType fallback below would mis-tag
-        // List<string> as AsDetail and the mapper would drop its values.
-        var elementType = GetCollectionElementType(underlying);
-        if (elementType != null)
-        {
-            return IsComplexType(elementType) ? "AsDetail" : GetDataType(elementType);
-        }
-
-        return underlying switch
-        {
-            _ when underlying == typeof(string) => "string",
-            _ when underlying == typeof(int) || underlying == typeof(long) => "number",
-            _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "decimal",
-            _ when underlying == typeof(bool) => "boolean",
-            _ when underlying == typeof(DateTime) || underlying == typeof(DateTimeOffset) => "datetime",
-            _ when underlying == typeof(DateOnly) => "date",
-            _ when underlying == typeof(Guid) => "guid",
-            _ when underlying == typeof(System.Drawing.Color) => "color",
-            _ when IsComplexType(underlying) => "AsDetail",
-            _ => "string"
-        };
-    }
+    // Delegates to the shared shape definition so the generator and the startup hash check can
+    // never disagree about what a property's data type is.
+    private string GetDataType(Type type) => SparkModelShape.GetDataType(type);
 
     private bool IsCollectionOfComplexType(Type type)
     {
@@ -631,69 +819,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return elementType != null && IsComplexType(elementType);
     }
 
-    /// <summary>
-    /// Returns the element type if the given type is an array or generic collection (List&lt;T&gt;, IEnumerable&lt;T&gt;, etc.).
-    /// Returns null if the type is not a collection.
-    /// </summary>
-    private static Type? GetCollectionElementType(Type type)
-        => ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
-            ("ModelSynchronizer.CollectionElement", type),
-            static k => ResolveCollectionElementType(k.Type));
+    private static Type? GetCollectionElementType(Type type) => SparkModelShape.GetCollectionElementType(type);
 
-    private static Type? ResolveCollectionElementType(Type type)
-    {
-        // Handle arrays: T[]
-        if (type.IsArray)
-        {
-            return type.GetElementType();
-        }
+    private bool IsComplexType(Type type) => SparkModelShape.IsComplexType(type);
 
-        // Handle generic collections: List<T>, IEnumerable<T>, ICollection<T>, etc.
-        if (type.IsGenericType)
-        {
-            var genericDef = type.GetGenericTypeDefinition();
-            if (genericDef == typeof(List<>) ||
-                genericDef == typeof(IList<>) ||
-                genericDef == typeof(ICollection<>) ||
-                genericDef == typeof(IEnumerable<>) ||
-                genericDef == typeof(IReadOnlyList<>) ||
-                genericDef == typeof(IReadOnlyCollection<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-        }
-
-        // Check implemented interfaces for IEnumerable<T>
-        foreach (var iface in type.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                var elementType = iface.GetGenericArguments()[0];
-                // Avoid matching string (which implements IEnumerable<char>)
-                if (elementType != typeof(char))
-                {
-                    return elementType;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private bool IsComplexType(Type type)
-    {
-        // A complex type is a class (not string) that has its own properties
-        if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
-            return false;
-
-        // Check if it's a class with public properties
-        return type.GetCachedProperties().Length > 0;
-    }
-
-    private bool IsNullable(Type type)
-    {
-        return Nullable.GetUnderlyingType(type) != null || !type.IsValueType;
-    }
+    private bool IsNullable(Type type) => SparkModelShape.IsNullable(type);
 
     private string AddSpacesToCamelCase(string text)
     {

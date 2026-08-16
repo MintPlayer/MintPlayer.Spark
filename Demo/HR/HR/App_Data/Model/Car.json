@@ -13,6 +13,28 @@
     "groups": [],
     "attributes": [
       {
+        "id": "2eafd132-af25-4d18-9f48-370eb748f16e",
+        "name": "Color",
+        "label": {
+          "en": "Color",
+          "fr": "Couleur",
+          "nl": "Kleur"
+        },
+        "dataType": "color",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "maxLength",
+            "value": 30
+          }
+        ]
+      },
+      {
         "id": "3ee949c5-cc99-4fb0-98ca-e3a4599bdae5",
         "name": "LicensePlate",
         "label": {
@@ -103,28 +125,6 @@
             "type": "range",
             "min": 1900,
             "max": 2026
-          }
-        ]
-      },
-      {
-        "id": "2eafd132-af25-4d18-9f48-370eb748f16e",
-        "name": "Color",
-        "label": {
-          "en": "Color",
-          "fr": "Couleur",
-          "nl": "Kleur"
-        },
-        "dataType": "color",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "maxLength",
-            "value": 30
           }
         ]
       }

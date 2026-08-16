@@ -319,6 +319,45 @@ Demo/DemoApp/
     Entities/Person.cs           <-- entity with FirstName, LastName, etc.
 ```
 
+The entity lives in a class library here while the index and projection sit in the application. That
+is not incidental — see below.
+
+## Indexes and projections in a class library
+
+Spark discovers indexes and `[FromIndex]` projections by scanning the **entry assembly**. An index or
+projection shipped in a class library is invisible to that scan, so declare its assembly:
+
+```csharp
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.UseContext<MyContext>();
+    spark.AddIndexesFrom(typeof(People_Overview).Assembly);
+    // or: spark.AddIndexesFromAssemblyContaining<People_Overview>();
+});
+```
+
+A **module** declares its own assembly from inside its `AddXxx(...)`, so applications using it write
+nothing. Declarations are additive — the entry assembly is always scanned, and declaring the same
+assembly twice costs nothing.
+
+> **Declare during `AddSpark`, not from middleware.** A declaration made inside a
+> `Registry.AddMiddleware(...)` callback runs after index creation *and* after the build-time model
+> commands have read the list, so it is silently missed by both.
+
+### Why it matters more than it looks
+
+Without a registration Spark queries the **collection** rather than the index, and skips
+`ProjectInto`. RavenDB then materialises results from the source documents, so:
+
+- fields the index **computes** (`LoadDocument` joins, concatenations, projections) come back **null**
+  — with the correct row count, which reads like a broken index rather than a missing registration;
+- index-side filtering is lost, so a filtering index returns **more** rows than intended;
+- sorting on a projection-only column silently does nothing.
+
+None of that raises an error, and the model-hash check cannot catch it either: synchronization and the
+running application read the same registry, so both agree. If computed columns are empty and nothing
+is logged, check that the declaring assembly is registered.
+
 See also:
 - `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with cross-document `LoadDocument`
 - `Demo/DemoApp/DemoApp/Data/VCar.cs` -- projection with `[LookupReference]`

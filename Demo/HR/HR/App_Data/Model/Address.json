@@ -13,68 +13,6 @@
     "groups": [],
     "attributes": [
       {
-        "id": "d4e5f6a7-b8c9-4d0e-a1f2-3b4c5d6e7f80",
-        "name": "Street",
-        "label": {
-          "en": "Street",
-          "fr": "Rue",
-          "nl": "Straat"
-        },
-        "dataType": "string",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 1,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "minLength",
-            "value": 2,
-            "message": {
-              "en": "Street must be at least 2 characters.",
-              "fr": "La rue doit contenir au moins 2 caractères.",
-              "nl": "Straat moet minstens 2 tekens bevatten."
-            }
-          },
-          {
-            "type": "maxLength",
-            "value": 200
-          }
-        ]
-      },
-      {
-        "id": "e5f6a7b8-c9d0-4e1f-b2a3-4c5d6e7f8091",
-        "name": "PostalCode",
-        "label": {
-          "en": "Postal Code",
-          "fr": "Code postal",
-          "nl": "Postcode"
-        },
-        "dataType": "string",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 2,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "minLength",
-            "value": 2,
-            "message": {
-              "en": "Postal Code must be at least 2 characters.",
-              "fr": "Le code postal doit contenir au moins 2 caractères.",
-              "nl": "Postcode moet minstens 2 tekens bevatten."
-            }
-          },
-          {
-            "type": "maxLength",
-            "value": 20
-          }
-        ]
-      },
-      {
         "id": "f6a7b8c9-d0e1-4f2a-b3c4-5d6e7f8091a2",
         "name": "City",
         "label": {
@@ -122,6 +60,68 @@
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "e5f6a7b8-c9d0-4e1f-b2a3-4c5d6e7f8091",
+        "name": "PostalCode",
+        "label": {
+          "en": "Postal Code",
+          "fr": "Code postal",
+          "nl": "Postcode"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "minLength",
+            "value": 2,
+            "message": {
+              "en": "Postal Code must be at least 2 characters.",
+              "fr": "Le code postal doit contenir au moins 2 caractères.",
+              "nl": "Postcode moet minstens 2 tekens bevatten."
+            }
+          },
+          {
+            "type": "maxLength",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "id": "d4e5f6a7-b8c9-4d0e-a1f2-3b4c5d6e7f80",
+        "name": "Street",
+        "label": {
+          "en": "Street",
+          "fr": "Rue",
+          "nl": "Straat"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "minLength",
+            "value": 2,
+            "message": {
+              "en": "Street must be at least 2 characters.",
+              "fr": "La rue doit contenir au moins 2 caractères.",
+              "nl": "Straat moet minstens 2 tekens bevatten."
+            }
+          },
+          {
+            "type": "maxLength",
+            "value": 200
+          }
+        ]
       }
     ],
     "queries": []

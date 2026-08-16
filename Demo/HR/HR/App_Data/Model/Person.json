@@ -71,6 +71,91 @@
     ],
     "attributes": [
       {
+        "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
+        "name": "Address",
+        "label": {
+          "en": "Address",
+          "fr": "Adresse",
+          "nl": "Adres"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "asDetailType": "HR.Entities.Address",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000002"
+      },
+      {
+        "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
+        "name": "Company",
+        "label": {
+          "en": "Company",
+          "fr": "Entreprise",
+          "nl": "Bedrijf"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "query": "GetCompanies",
+        "referenceType": "HR.Entities.Company",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000003"
+      },
+      {
+        "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
+        "name": "DateOfBirth",
+        "label": {
+          "en": "Date Of Birth",
+          "fr": "Date de naissance",
+          "nl": "Geboortedatum"
+        },
+        "dataType": "date",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000001"
+      },
+      {
+        "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
+        "name": "Email",
+        "label": {
+          "en": "Email",
+          "fr": "E-mail",
+          "nl": "E-mail"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "email"
+          },
+          {
+            "type": "maxLength",
+            "value": 255
+          }
+        ],
+        "group": "b1b2c3d4-0002-0002-0002-000000000002"
+      },
+      {
         "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
         "name": "FirstName",
         "label": {
@@ -102,6 +187,44 @@
           }
         ],
         "group": "b1b2c3d4-0002-0002-0002-000000000001"
+      },
+      {
+        "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
+        "name": "FullName",
+        "label": {
+          "en": "Full Name",
+          "fr": "Nom complet",
+          "nl": "Volledige naam"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
+        "name": "Jobs",
+        "label": {
+          "en": "Jobs"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "asDetailType": "HR.Entities.CarreerJob",
+        "isArray": true,
+        "editMode": "inline",
+        "isSortable": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b1b2c3d4-0002-0002-0002-000000000003"
       },
       {
         "id": "60b66867-ddf4-4e75-922a-ba6cd19ef072",
@@ -137,71 +260,6 @@
         "group": "b1b2c3d4-0002-0002-0002-000000000001"
       },
       {
-        "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
-        "name": "Email",
-        "label": {
-          "en": "Email",
-          "fr": "E-mail",
-          "nl": "E-mail"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "email"
-          },
-          {
-            "type": "maxLength",
-            "value": 255
-          }
-        ],
-        "group": "b1b2c3d4-0002-0002-0002-000000000002"
-      },
-      {
-        "id": "fb16cf85-2a7d-4a1c-8ad6-8163207bc4ba",
-        "name": "DateOfBirth",
-        "label": {
-          "en": "Date Of Birth",
-          "fr": "Date de naissance",
-          "nl": "Geboortedatum"
-        },
-        "dataType": "date",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 5,
-        "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
-        "rules": [],
-        "group": "b1b2c3d4-0002-0002-0002-000000000001"
-      },
-      {
-        "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
-        "name": "Company",
-        "label": {
-          "en": "Company",
-          "fr": "Entreprise",
-          "nl": "Bedrijf"
-        },
-        "dataType": "Reference",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 6,
-        "query": "GetCompanies",
-        "referenceType": "HR.Entities.Company",
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [],
-        "group": "b1b2c3d4-0002-0002-0002-000000000003"
-      },
-      {
         "id": "7c1f0a92-3b8e-4d51-9f0a-2d6e4c8b1a37",
         "name": "Professions",
         "label": {
@@ -221,89 +279,11 @@
         "showedOn": "PersistentObject",
         "rules": [],
         "group": "b1b2c3d4-0002-0002-0002-000000000003"
-      },
-      {
-        "id": "f2d4c15b-5fa2-449d-a806-0ee29dd52cd8",
-        "name": "Address",
-        "label": {
-          "en": "Address",
-          "fr": "Adresse",
-          "nl": "Adres"
-        },
-        "dataType": "AsDetail",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 7,
-        "asDetailType": "HR.Entities.Address",
-        "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
-        "rules": [],
-        "group": "b1b2c3d4-0002-0002-0002-000000000002"
-      },
-      {
-        "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
-        "name": "Jobs",
-        "label": {
-          "en": "Jobs"
-        },
-        "dataType": "AsDetail",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 8,
-        "asDetailType": "HR.Entities.CarreerJob",
-        "isArray": true,
-        "editMode": "inline",
-        "isSortable": true,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
-        "rules": [],
-        "group": "b1b2c3d4-0002-0002-0002-000000000003"
-      },
-      {
-        "id": "5ab26f34-c9bf-46c8-b046-11c45ae05f71",
-        "name": "FullName",
-        "label": {
-          "en": "Full Name",
-          "fr": "Nom complet",
-          "nl": "Volledige naam"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "inCollectionType": false,
-        "showedOn": "Query",
-        "rules": []
       }
     ],
     "queries": []
   },
   "queries": [
-    {
-      "id": "b20e8400-e29b-41d4-a716-446655440001",
-      "name": "GetPeople",
-      "description": {
-        "en": "People",
-        "fr": "Personnes",
-        "nl": "Personen"
-      },
-      "source": "Database.People",
-      "sortColumns": [
-        {
-          "property": "LastName",
-          "direction": "asc"
-        }
-      ],
-      "renderMode": "Pagination",
-      "useProjection": false,
-      "entityType": "Person",
-      "isStreamingQuery": false
-    },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440010",
       "name": "Company_People",
@@ -317,6 +297,26 @@
       "sortColumns": [
         {
           "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "useProjection": false,
+      "entityType": "Person",
+      "isStreamingQuery": false
+    },
+    {
+      "id": "b20e8400-e29b-41d4-a716-446655440001",
+      "name": "GetPeople",
+      "description": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      },
+      "source": "Database.People",
+      "sortColumns": [
+        {
+          "property": "LastName",
           "direction": "asc"
         }
       ],

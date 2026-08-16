@@ -149,7 +149,9 @@ internal partial class SyncActionHandler : ISyncActionHandler
 
         // This is the "no registered EntityTypeDefinition" fallback, so it cannot inherit the
         // synchronizer's exclusion — it has to consult the attribute itself.
-        foreach (var prop in entityType.GetSparkModelProperties())
+        // Writable, not merely "in the model": this builds the object an incoming sync action is
+        // applied to, so an attribute for a property with no setter could never be written anyway.
+        foreach (var prop in entityType.GetSparkWritableProperties())
         {
             // Same partial-update rule as the schema path: an attribute the sender did not name
             // must not appear at all, or the write path blanks the stored value.

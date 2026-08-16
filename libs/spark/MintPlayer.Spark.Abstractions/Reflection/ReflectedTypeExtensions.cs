@@ -61,9 +61,11 @@ public static class ReflectedTypeExtensions
     /// model, i.e. <see cref="GetCachedProperties"/> filtered by
     /// <see cref="IsSparkModelProperty"/>.
     /// <para>
-    /// This is the single definition of "is this property part of the model". Use it
-    /// anywhere the answer matters — model synchronization, include resolution,
-    /// replication payloads — so the rule cannot drift between call sites.
+    /// This is the single definition of "is this property part of the model" — use it anywhere
+    /// that answer matters (model synchronization, include resolution) so the rule cannot drift
+    /// between call sites. It is <b>not</b> the definition of "may Spark write this": that is
+    /// <see cref="GetSparkWritableProperties"/>, and the distinction is load-bearing for
+    /// replication's write authorization.
     /// </para>
     /// </summary>
     public static IEnumerable<PropertyInfo> GetSparkModelProperties(this Type type)
@@ -74,16 +76,51 @@ public static class ReflectedTypeExtensions
 
     /// <summary>
     /// Whether <paramref name="property"/> takes part in the Spark model: it is not the
-    /// document id, it is fully readable and writable, and it is not marked
-    /// <see cref="IgnorePropertyAttribute"/>.
+    /// document id, it is readable, and it is not marked <see cref="IgnorePropertyAttribute"/>.
+    /// <para>
+    /// Readable is enough — a get-only computed property is a legitimate model attribute, surfaced
+    /// read-only. Ask <see cref="IsSparkWritableProperty"/> instead when the question is whether a
+    /// value may be written back; the two are deliberately different questions.
+    /// </para>
     /// </summary>
     public static bool IsSparkModelProperty(this PropertyInfo property)
     {
         ArgumentNullException.ThrowIfNull(property);
         return property.Name != "Id"
             && property.CanRead
-            && property.CanWrite
+            // An indexer is not a field of the entity — it needs arguments to produce a value, so
+            // there is nothing for an attribute to read. Reflection reports it as a property named
+            // "Item", which would otherwise surface as an attribute of that name.
+            && property.GetIndexParameters().Length == 0
             && !property.IsIgnoredForSparkModel();
+    }
+
+    /// <summary>
+    /// Returns the properties of <paramref name="type"/> that Spark may <b>write</b> to, i.e.
+    /// <see cref="GetCachedProperties"/> filtered by <see cref="IsSparkWritableProperty"/>.
+    /// </summary>
+    public static IEnumerable<PropertyInfo> GetSparkWritableProperties(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return type.GetCachedProperties().Where(IsSparkWritableProperty);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> may be written by Spark: a model property that also has
+    /// a setter.
+    /// <para>
+    /// Separate from <see cref="IsSparkModelProperty"/> on purpose. "Appears in the model" and "may
+    /// be written" used to be the same predicate, and widening that one predicate to admit get-only
+    /// computed properties would have silently extended replication's write-authorization list
+    /// (<c>SyncActionInterceptor.GetPropertyNames</c>) to properties that cannot be written at all.
+    /// Callers deciding what to <i>display</i> want the model question; callers deciding what to
+    /// <i>accept</i> want this one.
+    /// </para>
+    /// </summary>
+    public static bool IsSparkWritableProperty(this PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return property.IsSparkModelProperty() && property.CanWrite;
     }
 
     /// <summary>

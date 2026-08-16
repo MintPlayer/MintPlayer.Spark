@@ -8,77 +8,31 @@
     "groups": [],
     "attributes": [
       {
-        "id": "c35df2ae-4c28-466d-a136-e15ae2ba902e",
-        "name": "ClientId",
+        "id": "d9e21f9a-2d96-44b6-840c-ee9149bf4723",
+        "name": "AccessTokenLifetimeMinutes",
         "label": {
-          "en": "Client Id"
+          "en": "Access Token Lifetime Minutes"
         },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 1,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "019602fd-ab8e-47ec-9ccf-d49dcf8bb8d4",
-        "name": "DisplayName",
-        "label": {
-          "en": "Display Name"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 2,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "8b1e7823-9e63-4449-a09a-372c9a254715",
-        "name": "ClientType",
-        "label": {
-          "en": "Client Type"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "f830f6a9-5efa-4d46-aead-01b1dbe2a350",
-        "name": "Enabled",
-        "label": {
-          "en": "Enabled"
-        },
-        "dataType": "boolean",
+        "dataType": "number",
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 4,
+        "order": 17,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
-        "id": "d7863784-1e65-40dd-ad52-44f051d957ee",
-        "name": "Secrets",
+        "id": "165fe668-ef08-4ec3-98a5-d7aa64486a5c",
+        "name": "AllowedCorsOrigins",
         "label": {
-          "en": "Secrets"
+          "en": "Allowed Cors Origins"
         },
-        "dataType": "AsDetail",
+        "dataType": "string",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 5,
-        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.ClientSecret",
+        "order": 10,
         "isArray": true,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -99,66 +53,6 @@
         "rules": []
       },
       {
-        "id": "4c19b176-29f2-41f3-b13b-496dc453e3ca",
-        "name": "MayIntrospectAnyAudience",
-        "label": {
-          "en": "May Introspect Any Audience"
-        },
-        "dataType": "boolean",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 7,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "51d8d38d-348d-4f9d-b4a4-8839206f77ec",
-        "name": "RedirectUris",
-        "label": {
-          "en": "Redirect Uris"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 8,
-        "isArray": true,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "92cd9161-7fd2-48c1-ae33-ea83b9f1df6b",
-        "name": "PostLogoutRedirectUris",
-        "label": {
-          "en": "Post Logout Redirect Uris"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 9,
-        "isArray": true,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "165fe668-ef08-4ec3-98a5-d7aa64486a5c",
-        "name": "AllowedCorsOrigins",
-        "label": {
-          "en": "Allowed Cors Origins"
-        },
-        "dataType": "string",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 10,
-        "isArray": true,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
         "id": "6c4f20d4-ff28-4f60-8ece-22a784e85262",
         "name": "AllowedScopes",
         "label": {
@@ -170,6 +64,21 @@
         "isReadOnly": false,
         "order": 11,
         "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8cabb897-f250-48a6-a7b5-07bdae8552fc",
+        "name": "AllowRememberConsent",
+        "label": {
+          "en": "Allow Remember Consent"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
@@ -190,31 +99,31 @@
         "rules": []
       },
       {
-        "id": "f1a2360b-19af-41c3-b813-6e2a0aee0d57",
-        "name": "ConsentType",
+        "id": "c35df2ae-4c28-466d-a136-e15ae2ba902e",
+        "name": "ClientId",
         "label": {
-          "en": "Consent Type"
+          "en": "Client Id"
         },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 13,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
-        "id": "8cabb897-f250-48a6-a7b5-07bdae8552fc",
-        "name": "AllowRememberConsent",
+        "id": "8b1e7823-9e63-4449-a09a-372c9a254715",
+        "name": "ClientType",
         "label": {
-          "en": "Allow Remember Consent"
+          "en": "Client Type"
         },
-        "dataType": "boolean",
-        "isRequired": true,
+        "dataType": "string",
+        "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 14,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -235,32 +144,92 @@
         "rules": []
       },
       {
-        "id": "4e834356-9086-4ce4-b758-6f5d351b58be",
-        "name": "RequirePkce",
+        "id": "f1a2360b-19af-41c3-b813-6e2a0aee0d57",
+        "name": "ConsentType",
         "label": {
-          "en": "Require Pkce"
+          "en": "Consent Type"
         },
-        "dataType": "boolean",
-        "isRequired": true,
+        "dataType": "string",
+        "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 16,
+        "order": 13,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
-        "id": "d9e21f9a-2d96-44b6-840c-ee9149bf4723",
-        "name": "AccessTokenLifetimeMinutes",
+        "id": "019602fd-ab8e-47ec-9ccf-d49dcf8bb8d4",
+        "name": "DisplayName",
         "label": {
-          "en": "Access Token Lifetime Minutes"
+          "en": "Display Name"
         },
-        "dataType": "number",
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f830f6a9-5efa-4d46-aead-01b1dbe2a350",
+        "name": "Enabled",
+        "label": {
+          "en": "Enabled"
+        },
+        "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 17,
+        "order": 4,
         "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4c19b176-29f2-41f3-b13b-496dc453e3ca",
+        "name": "MayIntrospectAnyAudience",
+        "label": {
+          "en": "May Introspect Any Audience"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "92cd9161-7fd2-48c1-ae33-ea83b9f1df6b",
+        "name": "PostLogoutRedirectUris",
+        "label": {
+          "en": "Post Logout Redirect Uris"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "51d8d38d-348d-4f9d-b4a4-8839206f77ec",
+        "name": "RedirectUris",
+        "label": {
+          "en": "Redirect Uris"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": true,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
@@ -276,6 +245,37 @@
         "isReadOnly": false,
         "order": 18,
         "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4e834356-9086-4ce4-b758-6f5d351b58be",
+        "name": "RequirePkce",
+        "label": {
+          "en": "Require Pkce"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d7863784-1e65-40dd-ad52-44f051d957ee",
+        "name": "Secrets",
+        "label": {
+          "en": "Secrets"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.ClientSecret",
+        "isArray": true,
         "showedOn": "Query, PersistentObject",
         "rules": []
       }
@@ -295,6 +295,7 @@
       ],
       "renderMode": "Pagination",
       "useProjection": false,
+      "entityType": "OidcApplication",
       "isStreamingQuery": false
     }
   ]

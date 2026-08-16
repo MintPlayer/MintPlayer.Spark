@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Fleet;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using MintPlayer.Spark;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.IdentityProvider.Extensions;
@@ -108,6 +109,11 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
+// Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
+// entity classes and needs no database, so it runs here and the process returns before Build().
+if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();
@@ -121,7 +127,7 @@ app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
 app.UseRouting();
-app.UseSparkFull(args);
+app.UseSparkFull();
 
 app.UseEndpoints(endpoints =>
 {

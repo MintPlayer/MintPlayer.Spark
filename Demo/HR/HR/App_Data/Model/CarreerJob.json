@@ -8,21 +8,18 @@
     "groups": [],
     "attributes": [
       {
-        "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",
-        "name": "ProfessionId",
+        "id": "9299aff7-47c4-4fd9-9ea1-7ceabca0f1e9",
+        "name": "ContractEnd",
         "label": {
-          "en": "Profession",
-          "fr": "Profession",
-          "nl": "Beroep"
+          "en": "Contract End",
+          "fr": "Fin du contrat",
+          "nl": "Contracteinde"
         },
-        "dataType": "Reference",
+        "dataType": "date",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 1,
-        "query": "GetProfessions",
-        "referenceType": "HR.Entities.Profession",
-        "referenceDisplayType": "Modal",
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -45,19 +42,22 @@
         "rules": []
       },
       {
-        "id": "9299aff7-47c4-4fd9-9ea1-7ceabca0f1e9",
-        "name": "ContractEnd",
+        "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",
+        "name": "ProfessionId",
         "label": {
-          "en": "Contract End",
-          "fr": "Fin du contrat",
-          "nl": "Contracteinde"
+          "en": "Profession",
+          "fr": "Profession",
+          "nl": "Beroep"
         },
-        "dataType": "date",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 3,
+        "order": 1,
+        "query": "GetProfessions",
+        "referenceType": "HR.Entities.Profession",
         "isArray": false,
+        "referenceDisplayType": "Modal",
         "showedOn": "Query, PersistentObject",
         "rules": []
       }

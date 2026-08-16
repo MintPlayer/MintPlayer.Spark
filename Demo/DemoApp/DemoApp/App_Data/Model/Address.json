@@ -13,37 +13,6 @@
     "groups": [],
     "attributes": [
       {
-        "id": "6e4891d9-78ce-40b3-a99d-866886563181",
-        "name": "Street",
-        "label": {
-          "en": "Street",
-          "fr": "Rue",
-          "nl": "Straat"
-        },
-        "dataType": "string",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 1,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": [
-          {
-            "type": "minLength",
-            "value": 3,
-            "message": {
-              "en": "Street must be at least 3 characters.",
-              "fr": "La rue doit contenir au moins 3 caractères.",
-              "nl": "Straat moet minstens 3 tekens bevatten."
-            }
-          },
-          {
-            "type": "maxLength",
-            "value": 200
-          }
-        ]
-      },
-      {
         "id": "3ed09bf2-617f-4847-8b7a-ae2465821d8c",
         "name": "City",
         "label": {
@@ -104,8 +73,40 @@
             "value": 50
           }
         ]
+      },
+      {
+        "id": "6e4891d9-78ce-40b3-a99d-866886563181",
+        "name": "Street",
+        "label": {
+          "en": "Street",
+          "fr": "Rue",
+          "nl": "Straat"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [
+          {
+            "type": "minLength",
+            "value": 3,
+            "message": {
+              "en": "Street must be at least 3 characters.",
+              "fr": "La rue doit contenir au moins 3 caractères.",
+              "nl": "Straat moet minstens 3 tekens bevatten."
+            }
+          },
+          {
+            "type": "maxLength",
+            "value": 200
+          }
+        ]
       }
-    ]
+    ],
+    "queries": []
   },
   "queries": []
 }
