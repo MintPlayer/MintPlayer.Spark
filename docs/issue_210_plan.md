@@ -134,8 +134,13 @@ free design space for Spark, which is why it gets a spike rather than a port.
 fully-qualified-string matchers for the three new attributes and an `IsIndexableProperty` predicate that
 is the Roslyn twin of `ReflectedTypeExtensions.IsSparkModelProperty` plus `[IgnoreForIndex]` (R14).
 
-Tests: symbol-level facts for each matcher, including the `[IgnoreProperty] + [Search]` combination
-(R8a) and inherited properties (R13).
+**No direct tests for the symbol helpers.** `SparkModelSymbols` is `internal` to a generator assembly
+that consumers reference with `ReferenceOutputAssembly="false"`, and the test project loads that assembly
+by name at runtime — so its internals are not reachable from a test, and `InternalsVisibleTo` cannot
+change that. Coverage is therefore behavioural, through the generator in W2: the
+`[IgnoreProperty] + [Search]` combination (R8a) and inherited properties (R13) each get a test asserting
+what does and does not appear in the emitted source. This matches how every existing generator in the
+repo is tested.
 
 ## W2 — Generator skeleton
 
