@@ -26,6 +26,12 @@ public partial class HandWrittenIndexEntityInfo
     public string ClassName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Namespace and containing-type chain, so a <em>nested</em> index entity is reopened inside its parents
+    /// rather than emitted as a top-level class in the namespace — which would not compile.
+    /// </summary>
+    public PathSpec? PathSpec { get; set; }
+
+    /// <summary>
     /// Whether the class is declared <c>partial</c>. When false nothing can be contributed to it and
     /// <c>SPARK_INDEX_001</c> is reported instead.
     /// </summary>

@@ -470,8 +470,23 @@ Mitigations, both cheap:
   `Description`. SPARK001 would be an error, and although it does not analyze generated code per F4,
   the model merge in `ModelSynchronizer` validates `dataType` compatibility on both sides.
 - **R12** `[Reference(typeof(T))]` and `[LookupReference(typeof(T))]` on an entity property are copied
-  onto the corresponding view property. `[Reference]` id properties are marked `[IgnoreProperty]` on
-  the view, matching the hand-written convention.
+  onto the corresponding index-entity property, **verbatim and without adding `[IgnoreProperty]`**.
+
+  An earlier draft of this requirement said `[Reference]` id properties should be marked
+  `[IgnoreProperty]` on the index entity "matching the hand-written convention". That was wrong — it is the
+  *reference implementation's* convention, where an id field is index-only and hidden from its model.
+  Spark's hand-written views do the opposite: `Demo/DemoApp/DemoApp/Data/VPerson.cs` carries
+  `[Reference(typeof(Company))]` with no `[IgnoreProperty]`, and **SPARK002 is an error precisely when the
+  index-entity property lacks a `[Reference]` its entity has**. Adding `[IgnoreProperty]` would strip the
+  reference from the model and break breadcrumbs and `.Include()` resolution.
+- **R12a** Attribute carry-over uses a **deny-list, not a whitelist**: every attribute on the entity
+  property is copied except the generator's own directives (`[Search]`, `[IgnoreForIndex]`,
+  `[GenerateIndex]`). The reference implementation whitelists, so anything a developer puts on a property
+  outside that list is dropped with no indication. An attribute whose arguments cannot be rendered
+  faithfully is skipped **and reported** (`SPARK_INDEX_007`), never dropped silently.
+- **R12b** A sort companion inherits the base property's copied attributes **except** `[Reference]` and
+  `[LookupReference]`. A companion is a plain sort key, not a second reference to the same target; copying
+  the reference would declare a reference the model then has to resolve.
 - **R13** Property discovery walks the type hierarchy (Spark's `GetAllProperties` helper), rather than
   silently dropping inherited members.
 - **R14** The property filter is exactly the Roslyn twin of

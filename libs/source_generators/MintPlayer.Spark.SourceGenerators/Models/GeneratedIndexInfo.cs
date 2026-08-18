@@ -56,6 +56,13 @@ public partial class GeneratedIndexInfo
     /// </summary>
     public List<InvalidSearchInfo> IgnoredSearchProperties { get; set; } = new();
 
+    /// <summary>
+    /// Attributes that could not be rendered faithfully onto the index entity. Reported rather than dropped
+    /// silently, which is what a whitelist-based carry-over does to anything it does not know.
+    /// <para>Reuses <see cref="InvalidSearchInfo"/>: <c>TypeDisplay</c> carries the attribute name.</para>
+    /// </summary>
+    public List<InvalidSearchInfo> UnrenderableAttributes { get; set; } = new();
+
     /// <summary>Where to anchor diagnostics about this entity.</summary>
     public LocationKey? Location { get; set; }
 }

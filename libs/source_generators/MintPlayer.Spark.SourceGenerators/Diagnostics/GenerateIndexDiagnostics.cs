@@ -66,6 +66,20 @@ internal static class GenerateIndexDiagnostics
         isEnabledByDefault: true);
 
     /// <summary>
+    /// Attribute carry-over is a deny-list, so anything not a generator directive is copied. When an
+    /// attribute's arguments cannot be rendered as source it is skipped -- and said out loud, because the
+    /// alternative is the reference implementation's behaviour of silently dropping whatever its whitelist
+    /// does not cover.
+    /// </summary>
+    public static readonly DiagnosticDescriptor AttributeNotCopied = new(
+        id: "SPARK_INDEX_007",
+        title: "Attribute could not be copied to the index entity",
+        messageFormat: "Attribute '{0}' on property '{1}' could not be rendered onto the generated index entity and was skipped. Declare it by hand on a partial half of the index entity if it is needed there.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
     /// One index per collection type is a hard ceiling: <c>IIndexRegistry</c> keys registrations by
     /// collection type and silently skips duplicates, so a second index for an entity would be created in
     /// RavenDB and then never used for queries.

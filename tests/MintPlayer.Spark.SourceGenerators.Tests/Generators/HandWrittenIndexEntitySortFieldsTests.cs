@@ -52,7 +52,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         file.HintName.Should().Be("SparkIndexEntitySortFields.g.cs");
         file.Source.Should().Contain("namespace TestApp.Data");
         file.Source.Should().Contain("public partial class VCar");
-        file.Source.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnoreProperty]");
+        file.Source.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnorePropertyAttribute]");
         file.Source.Should().Contain("public string? ModelSort { get; set; }");
     }
 
@@ -176,6 +176,32 @@ public class HandWrittenIndexEntitySortFieldsTests
         generated.Should().Contain("public partial class VCar");
         generated.Should().Contain("public partial class VTruck");
         CountOccurrences(generated, "namespace TestApp.Data").Should().Be(1);
+    }
+
+    /// <summary>
+    /// A nested index entity must be reopened inside its containing types. Emitting it as a top-level class
+    /// in the namespace would not compile.
+    /// </summary>
+    [Fact]
+    public void A_nested_index_entity_is_reopened_inside_its_parents()
+    {
+        var generated = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            public partial class Views
+            {
+                [FromIndex(typeof(Cars_Overview))]
+                public partial class VCar
+                {
+                    [Search] public string? Model { get; set; }
+                }
+            }
+            """) + IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain("namespace TestApp.Data");
+        generated.Should().Contain("partial class Views");
+        generated.Should().Contain("public partial class VCar");
+        generated.Should().Contain("ModelSort");
     }
 
     private static int CountOccurrences(string haystack, string needle)

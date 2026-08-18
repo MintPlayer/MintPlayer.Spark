@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
 using System.CodeDom.Compiler;
@@ -16,7 +18,7 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 /// C# referencing lambda variable names the author has to guess.
 /// </para>
 /// </summary>
-public class GenerateIndexProducer : Producer
+public class GenerateIndexProducer : Producer, IDiagnosticReporter
 {
     private const string RavenIndexes = "global::Raven.Client.Documents.Indexes";
     private const string SparkAbstractions = "global::MintPlayer.Spark.Abstractions";
@@ -31,9 +33,81 @@ public class GenerateIndexProducer : Producer
         this.knowsSpark = knowsSpark;
     }
 
+    /// <summary>
+    /// Diagnostics for the same entity set this producer emits from.
+    /// <para>Owned here rather than in the generator so the emitted source and the reported problems are
+    /// projected from one model. The reference design derived its outputs in two independent traversals,
+    /// which is where "the index and the context disagree" bugs come from.</para>
+    /// </summary>
+    public IEnumerable<Diagnostic> GetDiagnostics(Compilation compilation)
+    {
+        if (!knowsSpark) yield break;
+
+        var byIndexName = new Dictionary<string, GeneratedIndexInfo>(System.StringComparer.Ordinal);
+
+        foreach (var entity in Ordered())
+        {
+            foreach (var invalid in entity.InvalidSearchProperties)
+            {
+                yield return GenerateIndexDiagnostics.SearchOnUnsupportedType.Create(
+                    invalid.Location.ToLocation(compilation), invalid.PropertyName, invalid.TypeDisplay);
+            }
+
+            foreach (var ignored in entity.IgnoredSearchProperties)
+            {
+                yield return GenerateIndexDiagnostics.SearchOnIgnoredProperty.Create(
+                    ignored.Location.ToLocation(compilation), ignored.PropertyName);
+            }
+
+            foreach (var dropped in entity.UnrenderableAttributes)
+            {
+                yield return GenerateIndexDiagnostics.AttributeNotCopied.Create(
+                    dropped.Location.ToLocation(compilation), dropped.TypeDisplay, dropped.PropertyName);
+            }
+
+            if (entity.Properties.Count == 0)
+            {
+                yield return GenerateIndexDiagnostics.NoIndexableProperties.Create(
+                    entity.Location.ToLocation(compilation), entity.EntityFullName);
+                continue;
+            }
+
+            if (byIndexName.TryGetValue(entity.IndexName, out var winner))
+            {
+                yield return GenerateIndexDiagnostics.DuplicateIndexName.Create(
+                    entity.Location.ToLocation(compilation),
+                    winner.EntityFullName, entity.EntityFullName, entity.IndexName);
+                continue;
+            }
+
+            byIndexName.Add(entity.IndexName, entity);
+        }
+    }
+
+    /// <summary>
+    /// Entities actually emitted: those with something to index, one per index name. The first declaration
+    /// wins so the output stays deterministic; the loser is reported by <see cref="GetDiagnostics"/>.
+    /// </summary>
+    private List<GeneratedIndexInfo> Emitted()
+    {
+        var seenIndexNames = new HashSet<string>(System.StringComparer.Ordinal);
+        var result = new List<GeneratedIndexInfo>();
+        foreach (var entity in Ordered())
+        {
+            if (entity.Properties.Count == 0) continue;
+            if (!seenIndexNames.Add(entity.IndexName)) continue;
+            result.Add(entity);
+        }
+
+        return result;
+    }
+
+    private IEnumerable<GeneratedIndexInfo> Ordered()
+        => entities.OrderBy(e => e.EntityFullName, System.StringComparer.Ordinal);
+
     protected override void ProduceSource(IndentedTextWriter writer, CancellationToken cancellationToken)
     {
-        var list = entities.ToList();
+        var list = Emitted();
 
         if (!knowsSpark || list.Count == 0)
             return;
@@ -67,7 +141,7 @@ public class GenerateIndexProducer : Producer
 
     private void WriteIndexEntity(IndentedTextWriter writer, GeneratedIndexInfo info)
     {
-        writer.WriteLine($"[{SparkAbstractions}.FromIndex(typeof({info.IndexName}))]");
+        writer.WriteLine($"[{SparkAbstractions}.FromIndexAttribute(typeof({info.IndexName}))]");
         using (writer.OpenBlock($"public partial class {info.IndexEntityName}"))
         {
             // Declared but never assigned in the map: RavenDB supplies the document id for an entity index.
@@ -137,7 +211,7 @@ public class GenerateIndexProducer : Producer
     private static IEnumerable<string> Attributes(IndexPropertyInfo property)
     {
         if (property.IsSortCompanion)
-            yield return $"[{SparkAbstractions}.IgnoreProperty]";
+            yield return $"[{SparkAbstractions}.IgnorePropertyAttribute]";
 
         foreach (var attribute in property.Attributes)
             yield return attribute;

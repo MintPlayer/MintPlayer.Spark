@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
 using System.CodeDom.Compiler;
@@ -17,7 +19,7 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 /// covered by an analyzer rather than left to documentation.
 /// </para>
 /// </summary>
-public class HandWrittenSortFieldsProducer : Producer
+public class HandWrittenSortFieldsProducer : Producer, IDiagnosticReporter
 {
     private const string SparkAbstractions = "global::MintPlayer.Spark.Abstractions";
 
@@ -34,9 +36,19 @@ public class HandWrittenSortFieldsProducer : Producer
         this.knowsSpark = knowsSpark;
     }
 
+    /// <summary>
+    /// Nothing can be contributed to a non-partial index entity, so say so rather than skipping it.
+    /// </summary>
+    public IEnumerable<Diagnostic> GetDiagnostics(Compilation compilation)
+        => indexEntities
+            .Where(x => !x.IsPartial && x.Companions.Count > 0)
+            .OrderBy(x => x.ClassName, System.StringComparer.Ordinal)
+            .Select(x => GenerateIndexDiagnostics.ExistingTypeNotPartial.Create(
+                x.Location.ToLocation(compilation), x.ClassName));
+
     protected override void ProduceSource(IndentedTextWriter writer, CancellationToken cancellationToken)
     {
-        var list = indexEntities.ToList();
+        var list = indexEntities.Where(x => x is { IsPartial: true, Companions.Count: > 0 }).ToList();
 
         if (!knowsSpark || list.Count == 0)
             return;
@@ -47,7 +59,9 @@ public class HandWrittenSortFieldsProducer : Producer
         writer.WriteLine();
 
         // Grouped so two index entities in one namespace share a namespace block.
-        foreach (var group in list.GroupBy(x => x.Namespace).OrderBy(g => g.Key, System.StringComparer.Ordinal))
+        foreach (var group in list
+            .GroupBy(x => x.PathSpec?.ContainingNamespace ?? x.Namespace)
+            .OrderBy(g => g.Key, System.StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -76,13 +90,17 @@ public class HandWrittenSortFieldsProducer : Producer
         HandWrittenIndexEntityInfo indexEntity,
         CancellationToken cancellationToken)
     {
+        // Reopens every containing type before the index entity itself. A nested index entity emitted as a
+        // top-level class in its namespace would not compile.
+        using var parents = writer.OpenPathSpec(indexEntity.PathSpec);
+
         using (writer.OpenBlock($"public partial class {indexEntity.ClassName}"))
         {
             foreach (var companion in indexEntity.Companions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                writer.WriteLine($"[{SparkAbstractions}.IgnoreProperty]");
+                writer.WriteLine($"[{SparkAbstractions}.IgnorePropertyAttribute]");
                 var initializer = companion.NeedsDefaultInitializer ? " = default!;" : string.Empty;
                 writer.WriteLine($"public {companion.TypeDisplay} {companion.Name} {{ get; set; }}{initializer}");
             }

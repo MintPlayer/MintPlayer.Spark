@@ -14,7 +14,7 @@ using System.Linq;
 
 namespace TestApp.Indexes
 {
-    [global::MintPlayer.Spark.Abstractions.FromIndex(typeof(Cars_Overview))]
+    [global::MintPlayer.Spark.Abstractions.FromIndexAttribute(typeof(Cars_Overview))]
     public partial class VCar
     {
         public string? Id { get; set; }

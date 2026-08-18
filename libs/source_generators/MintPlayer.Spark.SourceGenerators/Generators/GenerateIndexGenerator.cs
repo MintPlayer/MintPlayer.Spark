@@ -74,7 +74,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 var settings = providers.Right;
 
                 return new GenerateIndexProducer(
-                    Deduplicate(entities.Where(x => x != null).Cast<GeneratedIndexInfo>()),
+                    entities.Where(x => x != null).Cast<GeneratedIndexInfo>().ToList(),
                     knowsSpark,
                     settings.RootNamespace ?? "GeneratedCode");
             });
@@ -121,30 +121,22 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
                 return new HandWrittenSortFieldsProducer(
                     handWritten
-                        .Where(x => x is { IsPartial: true, Companions.Count: > 0 })
+                        .Where(x => x != null)
                         .Cast<HandWrittenIndexEntityInfo>()
-                        .Where(x => !generatedNames.Contains(x.ClassName)),
+                        .Where(x => !generatedNames.Contains(x.ClassName))
+                        .ToList(),
                     knowsSpark,
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
         context.ProduceCode(sourceProvider, handWrittenSourceProvider);
 
-        // Diagnostics travel a separate path: Producer.Produce can only AddSource, and it discards
-        // exceptions, so nothing inside the producer can report a problem.
-        var diagnosticsProvider = entitiesProvider
-            .Combine(handWrittenProvider)
-            .Combine(knowsSparkProvider)
-            .Select(static (providers, ct) => providers.Right
-                ? Collect(
-                    providers.Left.Left.Where(x => x != null).Cast<GeneratedIndexInfo>().ToList(),
-                    providers.Left.Right.Where(x => x != null).Cast<HandWrittenIndexEntityInfo>().ToList())
-                : new List<DiagnosticInfo>());
-
-        context.RegisterSourceOutput(
-            context.CompilationProvider.Combine(diagnosticsProvider),
-            static (spc, pair) => spc.ReportDiagnostic(pair.Right.Select(diagnostic =>
-                diagnostic.Descriptor.Create(diagnostic.Location.ToLocation(pair.Left), diagnostic.MessageArgs))));
+        // Diagnostics come off the producers themselves via IDiagnosticReporter -- the demonstrated pattern.
+        // Producer.Produce can only AddSource and discards exceptions, so a producer cannot report anything
+        // from inside ProduceSource; this is the sanctioned second channel.
+        context.ReportDiagnostics(
+            sourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer),
+            handWrittenSourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer));
     }
 
     /// <summary>
@@ -164,6 +156,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var properties = new List<IndexPropertyInfo>();
         var invalidSearches = new List<InvalidSearchInfo>();
         var ignoredSearches = new List<InvalidSearchInfo>();
+        var unrenderableAttributes = new List<InvalidSearchInfo>();
 
         // [IgnoreProperty] keeps a property out of the index, so a [Search] beside it can never take effect.
         // Reported rather than dropped: the combination reads as "indexed but hidden from the model" and
@@ -202,6 +195,17 @@ public class GenerateIndexGenerator : IncrementalGenerator
             // neither -- see SparkModelSymbols.IsDateTimeOffset for why that asymmetry is deliberate.
             var isDateTimeOffset = property.Type.IsDateTimeOffset();
 
+            var (fieldAttributes, unrenderable) = AttributeRenderer.ForField(property);
+            foreach (var attributeName in unrenderable)
+            {
+                unrenderableAttributes.Add(new InvalidSearchInfo
+                {
+                    PropertyName = property.Name,
+                    TypeDisplay = attributeName,
+                    Location = property.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
+                });
+            }
+
             var field = new IndexPropertyInfo
             {
                 Name = property.Name,
@@ -210,13 +214,14 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
                 MapExpression = $"{itemVariable}.{property.Name}",
                 FieldIndexing = isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
+                Attributes = fieldAttributes,
             };
             properties.Add(field);
 
             // A searchable text field always gets its companion: analyzing the field is what destroys its
             // sortability, so the two are one decision. The companion is left undeclared on purpose.
             if (isSearchableText || isDateTimeOffset)
-                properties.Add(SortCompanionFor(field));
+                properties.Add(SortCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
         }
 
         return new GeneratedIndexInfo
@@ -231,6 +236,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
             Properties = properties,
             InvalidSearchProperties = invalidSearches,
             IgnoredSearchProperties = ignoredSearches,
+            UnrenderableAttributes = unrenderableAttributes,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }
@@ -278,6 +284,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 ? string.Empty
                 : indexEntity.ContainingNamespace.ToDisplayString(),
             ClassName = indexEntity.Name,
+            PathSpec = indexEntity.GetPathSpec(ct),
             IsPartial = isPartial,
             Companions = companions,
             Location = indexEntity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
@@ -291,7 +298,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// or trimming here would make the sort order disagree with the value the user sees, and RavenDB's
     /// default analyzer already lower-cases for comparison purposes.</para>
     /// </summary>
-    private static IndexPropertyInfo SortCompanionFor(IndexPropertyInfo field) => new()
+    private static IndexPropertyInfo SortCompanionFor(IndexPropertyInfo field, List<string> attributes) => new()
     {
         Name = IndexNaming.SortCompanion(field.Name),
         TypeDisplay = field.TypeDisplay,
@@ -299,6 +306,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         MapExpression = field.MapExpression,
         FieldIndexing = null,
         IsSortCompanion = true,
+        Attributes = attributes,
     };
 
     private enum SearchKind
@@ -330,95 +338,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
             return SearchKind.Text;
 
         return SearchKind.Unsupported;
-    }
-
-    /// <summary>
-    /// Drops entities that must not be emitted — currently those whose index name collides with another
-    /// entity's. The first declaration wins so the emitted output stays deterministic; the loser is
-    /// reported by <see cref="Collect"/>.
-    /// </summary>
-    private static IEnumerable<GeneratedIndexInfo> Deduplicate(IEnumerable<GeneratedIndexInfo> entities)
-    {
-        var seenIndexNames = new HashSet<string>();
-        var result = new List<GeneratedIndexInfo>();
-        foreach (var entity in entities.OrderBy(e => e.EntityFullName, System.StringComparer.Ordinal))
-        {
-            if (entity.Properties.Count == 0) continue;
-            if (!seenIndexNames.Add(entity.IndexName)) continue;
-            result.Add(entity);
-        }
-
-        return result;
-    }
-
-    private static List<DiagnosticInfo> Collect(
-        List<GeneratedIndexInfo> entities,
-        List<HandWrittenIndexEntityInfo> handWritten)
-    {
-        var diagnostics = new List<DiagnosticInfo>();
-        var byIndexName = new Dictionary<string, GeneratedIndexInfo>();
-
-        foreach (var entity in entities.OrderBy(e => e.EntityFullName, System.StringComparer.Ordinal))
-        {
-            if (entity.Properties.Count == 0)
-            {
-                diagnostics.Add(new DiagnosticInfo
-                {
-                    Descriptor = GenerateIndexDiagnostics.NoIndexableProperties,
-                    Location = entity.Location,
-                    MessageArgs = new object[] { entity.EntityFullName },
-                });
-                continue;
-            }
-
-            foreach (var invalid in entity.InvalidSearchProperties)
-            {
-                diagnostics.Add(new DiagnosticInfo
-                {
-                    Descriptor = GenerateIndexDiagnostics.SearchOnUnsupportedType,
-                    Location = invalid.Location,
-                    MessageArgs = new object[] { invalid.PropertyName, invalid.TypeDisplay },
-                });
-            }
-
-            foreach (var ignored in entity.IgnoredSearchProperties)
-            {
-                diagnostics.Add(new DiagnosticInfo
-                {
-                    Descriptor = GenerateIndexDiagnostics.SearchOnIgnoredProperty,
-                    Location = ignored.Location,
-                    MessageArgs = new object[] { ignored.PropertyName },
-                });
-            }
-
-            if (byIndexName.TryGetValue(entity.IndexName, out var winner))
-            {
-                diagnostics.Add(new DiagnosticInfo
-                {
-                    Descriptor = GenerateIndexDiagnostics.DuplicateIndexName,
-                    Location = entity.Location,
-                    MessageArgs = new object[] { winner.EntityFullName, entity.EntityFullName, entity.IndexName },
-                });
-                continue;
-            }
-
-            byIndexName.Add(entity.IndexName, entity);
-        }
-
-        // Nothing can be contributed to a non-partial index entity, so say so rather than skipping it.
-        foreach (var indexEntity in handWritten
-            .Where(x => !x.IsPartial && x.Companions.Count > 0)
-            .OrderBy(x => x.ClassName, System.StringComparer.Ordinal))
-        {
-            diagnostics.Add(new DiagnosticInfo
-            {
-                Descriptor = GenerateIndexDiagnostics.ExistingTypeNotPartial,
-                Location = indexEntity.Location,
-                MessageArgs = new object[] { indexEntity.ClassName },
-            });
-        }
-
-        return diagnostics;
     }
 
     private static string? GetNamedArgument(AttributeData attribute, string name)

@@ -51,7 +51,7 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(PlainCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.FromIndex(typeof(Cars_Overview))]");
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.FromIndexAttribute(typeof(Cars_Overview))]");
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ public class GenerateIndexGeneratorTests
 
         generated.Should().Contain("public partial class VehicleView");
         generated.Should().Contain("public partial class Vehicles_Search :");
-        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.FromIndex(typeof(Vehicles_Search))]");
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.FromIndexAttribute(typeof(Vehicles_Search))]");
         generated.Should().NotContain("Cars_Overview");
     }
 
@@ -456,7 +456,7 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnoreProperty]");
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnorePropertyAttribute]");
     }
 
     /// <summary>
@@ -662,6 +662,203 @@ public class GenerateIndexGeneratorTests
         var generated = result.GeneratedSources[0].Source;
         generated.Should().Contain("Index(nameof(VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
         generated.Should().Contain("CreatedOnSort = car.CreatedOn,");
+    }
+
+    // --- attribute carry-over -----------------------------------------------------------------
+
+    /// <summary>
+    /// SPARK002 is an ERROR when an index-entity property lacks a [Reference] its entity has, so carrying it
+    /// over is not cosmetic. And it must NOT gain [IgnoreProperty] — that would strip the reference from the
+    /// model and break breadcrumbs and .Include() resolution.
+    /// </summary>
+    [Fact]
+    public void Reference_is_copied_verbatim_without_IgnoreProperty()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            public class Company { public string? Id { get; set; } }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Reference(typeof(Company))] public string? Owner { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.ReferenceAttribute(typeof(global::TestApp.Entities.Company))]");
+        generated.Should().NotContain("[global::MintPlayer.Spark.Abstractions.IgnorePropertyAttribute]");
+    }
+
+    [Fact]
+    public void Reference_optional_query_argument_is_preserved()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            public class Company { public string? Id { get; set; } }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Reference(typeof(Company), "GetCompanies")] public string? Owner { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("ReferenceAttribute(typeof(global::TestApp.Entities.Company), \"GetCompanies\")");
+    }
+
+    [Fact]
+    public void LookupReference_is_copied()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            public class CarStatus { }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [LookupReference(typeof(CarStatus))] public string? Status { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.LookupReferenceAttribute(typeof(global::TestApp.Entities.CarStatus))]");
+    }
+
+    /// <summary>
+    /// Deny-list, not whitelist: an attribute the generator has never heard of still travels. The reference
+    /// implementation whitelists, so anything outside its list is dropped with no indication.
+    /// </summary>
+    [Fact]
+    public void An_unknown_attribute_is_still_copied()
+    {
+        var generated = Run("""
+            using System;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [AttributeUsage(AttributeTargets.Property)]
+            public sealed class AuditedAttribute : Attribute
+            {
+                public AuditedAttribute(string reason, int level = 0) { }
+                public bool Strict { get; set; }
+            }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Audited("regulatory", 3, Strict = true)] public string? Model { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("[global::TestApp.Entities.AuditedAttribute(\"regulatory\", 3, Strict = true)]");
+    }
+
+    /// <summary>
+    /// An attribute whose type does not resolve is an ERROR symbol: its name renders without a namespace and
+    /// its arguments come back empty, so rendering it produced valid-looking but silently wrong source
+    /// (<c>[MaxLength(250)]</c> became <c>[MaxLength]</c>). It is refused and reported instead.
+    /// </summary>
+    [Fact]
+    public void An_unresolvable_attribute_is_reported_not_silently_mangled()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Nonexistent(250)] public string? Model { get; set; }
+            }
+            """);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_007");
+        result.GeneratedSources[0].Source.Should().NotContain("Nonexistent");
+    }
+
+    /// <summary>
+    /// An optional parameter left at its default should not be restated: an unadorned
+    /// [Reference(typeof(Company))] must not render as [Reference(typeof(Company), null)].
+    /// </summary>
+    [Fact]
+    public void Optional_arguments_left_at_their_default_are_omitted()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            public class Company { public string? Id { get; set; } }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Reference(typeof(Company))] public string? Owner { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("ReferenceAttribute(typeof(global::TestApp.Entities.Company))]");
+        generated.Should().NotContain(", null)");
+    }
+
+    [Fact]
+    public void Generator_directives_are_not_copied()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("Abstractions.SearchAttribute]");
+        generated.Should().NotContain("Abstractions.SearchAttribute(");
+    }
+
+    /// <summary>
+    /// A companion is a plain sort key. Copying the reference would declare a second reference to the same
+    /// target that the model then has to resolve.
+    /// </summary>
+    [Fact]
+    public void A_sort_companion_does_not_inherit_Reference_but_does_inherit_others()
+    {
+        var generated = Run("""
+            using System;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [AttributeUsage(AttributeTargets.Property)]
+            public sealed class AuditedAttribute : Attribute { }
+
+            public class Company { public string? Id { get; set; } }
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Search, Audited, Reference(typeof(Company))] public string? Owner { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        // One Reference (field only), two Audited (field + companion).
+        CountOccurrences(generated, "Abstractions.ReferenceAttribute(typeof").Should().Be(1);
+        CountOccurrences(generated, "AuditedAttribute]").Should().Be(2);
+        generated.Should().Contain("OwnerSort");
     }
 
     private static int CountOccurrences(string haystack, string needle)

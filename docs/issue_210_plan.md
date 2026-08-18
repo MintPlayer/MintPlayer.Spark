@@ -200,6 +200,20 @@ diagnostic on anything else.
 `Index(field, FieldIndexing.Exact)` on the base field plus an automatic companion, no attribute needed.
 Reference-typed fields never get one (R9).
 
+## Producer-pattern conformance
+
+Corrected during W5 after review against the upstream examples in
+`C:\Repos\MintPlayer.Dotnet.Tools\SourceGenerators`. Two house patterns were being reimplemented by hand:
+
+- **Diagnostics belong on the producer**, via `IDiagnosticReporter.GetDiagnostics(Compilation)` plus
+  `context.ReportDiagnostics(...)` — not a hand-rolled `RegisterSourceOutput`. Both producers now implement
+  it, and the local `DiagnosticInfo` model is deleted. This also moves dedup and diagnostics onto the same
+  object, so the emitted source and the reported problems are projected from **one** model rather than two
+  traversals — the "index and context disagree" bug class the PRD warns about.
+- **`writer.OpenPathSpec(symbol.GetPathSpec(ct))` reconstructs containing types.** Hand-rolling
+  `OpenBlock($"namespace {ns}")` was a real defect, not just off-style: a *nested* index entity was emitted as
+  a top-level class in its namespace, which does not compile. Now covered by a test.
+
 ## W5 — Reference and lookup fidelity
 
 `[Reference]` / `[LookupReference]` copied onto view properties; `[Reference]` id properties marked
