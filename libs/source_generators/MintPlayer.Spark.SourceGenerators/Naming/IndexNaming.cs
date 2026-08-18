@@ -46,6 +46,18 @@ internal static class IndexNaming
     /// <summary>Range variable for one document, e.g. <c>Car</c> to <c>car</c>.</summary>
     public static string ItemVariable(string entityName) => CamelCase(entityName);
 
+    /// <summary>
+    /// The context query-root member name, e.g. <c>Car</c> to <c>VCars</c> and <c>Person</c> to <c>VPeople</c>.
+    /// <para>Pluralizes the <em>entity</em> name and re-prefixes, rather than pluralizing the index-entity
+    /// name: the irregular table keys on real words, so <c>Pluralize("VPerson")</c> would yield
+    /// <c>VPersons</c> where the hand-written root is <c>VPeople</c>. A custom
+    /// <c>IndexEntityName</c> is pluralized directly, since no entity name underlies it.</para>
+    /// </summary>
+    public static string ContextRoot(string entityName, string indexEntityName)
+        => indexEntityName == IndexEntityName(entityName)
+            ? $"V{Pluralize(entityName)}"
+            : Pluralize(indexEntityName);
+
     /// <summary>The sort-companion name for a field. Suffix is <c>Sort</c>, with no separator.</summary>
     public static string SortCompanion(string propertyName) => $"{propertyName}Sort";
 

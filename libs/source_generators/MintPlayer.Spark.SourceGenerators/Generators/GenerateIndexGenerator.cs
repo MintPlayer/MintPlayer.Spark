@@ -30,6 +30,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string SparkAbstractionsAssemblyName = "MintPlayer.Spark.Abstractions";
 
+    private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
+
     /// <summary>
     /// Includes nullable reference annotations, so a <c>string?</c> entity property is declared
     /// <c>string?</c> on the index entity rather than silently widening to <c>string</c>.
@@ -174,14 +176,52 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
-        context.ProduceCode(sourceProvider, handWrittenSourceProvider);
+        // Query roots on the app's SparkContext, so a generated index is reachable the same way a
+        // hand-written one is.
+        var contextsProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, ct) => node is ClassDeclarationSyntax { BaseList.Types.Count: > 0 },
+                transform: static (ctx, ct) =>
+                {
+                    if (ctx.Node is not ClassDeclarationSyntax classDeclaration)
+                        return default;
+
+                    if (ctx.SemanticModel.GetDeclaredSymbol(classDeclaration, ct) is not INamedTypeSymbol contextType)
+                        return default;
+
+                    return DescribeContext(contextType, ct);
+                })
+            .Where(static x => x != null)
+            .WithNullableComparer()
+            .Collect();
+
+        var contextSourceProvider = contextsProvider
+            .Combine(allEntitiesProvider)
+            .Combine(knowsSparkProvider)
+            .Combine(settingsProvider)
+            .Select(static Producer (providers, ct) =>
+            {
+                var contexts = providers.Left.Left.Left;
+                var entities = providers.Left.Left.Right;
+                var knowsSpark = providers.Left.Right;
+                var settings = providers.Right;
+
+                return new SparkContextRootsProducer(
+                    contexts.Where(x => x != null).Cast<SparkContextInfo>().ToList(),
+                    entities,
+                    knowsSpark,
+                    settings.RootNamespace ?? "GeneratedCode");
+            });
+
+        context.ProduceCode(sourceProvider, handWrittenSourceProvider, contextSourceProvider);
 
         // Diagnostics come off the producers themselves via IDiagnosticReporter -- the demonstrated pattern.
         // Producer.Produce can only AddSource and discards exceptions, so a producer cannot report anything
         // from inside ProduceSource; this is the sanctioned second channel.
         context.ReportDiagnostics(
             sourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer),
-            handWrittenSourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer));
+            handWrittenSourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer),
+            contextSourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer));
     }
 
     /// <summary>
@@ -287,6 +327,40 @@ public class GenerateIndexGenerator : IncrementalGenerator
             IgnoredSearchProperties = ignoredSearches,
             UnrenderableAttributes = unrenderableAttributes,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
+        };
+    }
+
+    /// <summary>
+    /// Describes the app's <c>SparkContext</c>, or <c>null</c> when the class is not one.
+    /// </summary>
+    private static SparkContextInfo? DescribeContext(INamedTypeSymbol contextType, System.Threading.CancellationToken ct)
+    {
+        if (contextType.IsAbstract) return null;
+
+        var derivesFromSparkContext = false;
+        for (var baseType = contextType.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (baseType.ToDisplayString() == SparkContextFullName)
+            {
+                derivesFromSparkContext = true;
+                break;
+            }
+        }
+
+        if (!derivesFromSparkContext) return null;
+
+        var isPartial = contextType.DeclaringSyntaxReferences
+            .Select(r => r.GetSyntax(ct))
+            .OfType<ClassDeclarationSyntax>()
+            .Any(c => c.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
+
+        return new SparkContextInfo
+        {
+            ClassName = contextType.Name,
+            PathSpec = contextType.GetPathSpec(ct),
+            IsPartial = isPartial,
+            ExistingMemberNames = contextType.GetMembers().Select(m => m.Name).Distinct().ToList(),
+            Location = contextType.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }
 

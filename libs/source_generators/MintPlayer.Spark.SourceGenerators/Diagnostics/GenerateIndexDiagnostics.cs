@@ -80,6 +80,18 @@ internal static class GenerateIndexDiagnostics
         isEnabledByDefault: true);
 
     /// <summary>
+    /// A non-partial SparkContext cannot be extended, so generated query roots would simply not appear. The
+    /// absence of a member is exactly the kind of silence this generator is built to avoid.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ContextNotPartial = new(
+        id: "SPARK_INDEX_008",
+        title: "SparkContext is not partial",
+        messageFormat: "Context '{0}' is not declared 'partial', so index-backed query roots cannot be added to it. Add the 'partial' keyword.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
     /// One index per collection type is a hard ceiling: <c>IIndexRegistry</c> keys registrations by
     /// collection type and silently skips duplicates, so a second index for an entity would be created in
     /// RavenDB and then never used for queries.
