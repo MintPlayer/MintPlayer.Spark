@@ -75,6 +75,9 @@ public class GenerateIndexProducer : Producer
 
             foreach (var property in info.Properties)
             {
+                foreach (var attribute in Attributes(property))
+                    writer.WriteLine(attribute);
+
                 var initializer = property.NeedsDefaultInitializer ? " = default!;" : string.Empty;
                 writer.WriteLine($"public {property.TypeDisplay} {property.Name} {{ get; set; }}{initializer}");
             }
@@ -98,11 +101,20 @@ public class GenerateIndexProducer : Producer
                 foreach (var property in info.Properties)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    writer.WriteLine($"{property.Name} = {info.ItemVariable}.{property.Name},");
+                    writer.WriteLine($"{property.Name} = {property.MapExpression},");
                 }
                 writer.Indent--;
                 writer.WriteLine("};");
                 writer.Indent--;
+
+                // Only fields that need non-default indexing are declared. A sort companion is deliberately
+                // absent from this list: leaving it undeclared is what keeps it a single un-tokenized term
+                // and therefore sortable.
+                foreach (var property in info.Properties.Where(p => p.FieldIndexing is not null))
+                {
+                    writer.WriteLine(
+                        $"Index(nameof({info.IndexEntityName}.{property.Name}), {RavenIndexes}.FieldIndexing.{property.FieldIndexing});");
+                }
 
                 // Mandatory, not conventional. Without it a projection-only field comes back null through
                 // ProjectInto while the index itself is provably correct -- no error, no index fault, just
@@ -115,6 +127,20 @@ public class GenerateIndexProducer : Producer
             writer.WriteLine("/// <summary>Called at the end of the generated constructor. Implement in a hand-written partial to add index configuration.</summary>");
             writer.WriteLine("partial void OnInitialize();");
         }
+    }
+
+    /// <summary>
+    /// Attribute lines for one field declaration. A sort companion always carries
+    /// <c>[IgnoreProperty]</c>: it is hidden from the Spark model — no model attribute, no label, no
+    /// <c>AttributeNames</c> constant — while staying an ordinary property that LINQ can filter on.
+    /// </summary>
+    private static IEnumerable<string> Attributes(IndexPropertyInfo property)
+    {
+        if (property.IsSortCompanion)
+            yield return $"[{SparkAbstractions}.IgnoreProperty]";
+
+        foreach (var attribute in property.Attributes)
+            yield return attribute;
     }
 
     private static string Quote(string value) => $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";

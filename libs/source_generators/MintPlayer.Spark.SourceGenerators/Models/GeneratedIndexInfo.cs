@@ -43,7 +43,31 @@ public partial class GeneratedIndexInfo
 
     public List<IndexPropertyInfo> Properties { get; set; } = new();
 
+    /// <summary>
+    /// Properties marked <c>[Search]</c> whose type cannot be searched. Reported as diagnostics rather
+    /// than quietly producing an analyzed non-text field with an object-typed sort companion, which is what
+    /// the reference implementation does.
+    /// </summary>
+    public List<InvalidSearchInfo> InvalidSearchProperties { get; set; } = new();
+
+    /// <summary>
+    /// Properties marked both <c>[IgnoreProperty]</c> and <c>[Search]</c>. The former keeps them out of the
+    /// index, so the latter can never take effect — reported instead of silently dropped.
+    /// </summary>
+    public List<InvalidSearchInfo> IgnoredSearchProperties { get; set; } = new();
+
     /// <summary>Where to anchor diagnostics about this entity.</summary>
+    public LocationKey? Location { get; set; }
+}
+
+/// <summary>A <c>[Search]</c> on a type that cannot carry it.</summary>
+[AutoValueComparer]
+public partial class InvalidSearchInfo
+{
+    public string PropertyName { get; set; } = string.Empty;
+
+    public string TypeDisplay { get; set; } = string.Empty;
+
     public LocationKey? Location { get; set; }
 }
 
@@ -63,4 +87,32 @@ public partial class IndexPropertyInfo
     /// would otherwise warn CS8618 in a nullable-enabled compilation.
     /// </summary>
     public bool NeedsDefaultInitializer { get; set; }
+
+    /// <summary>
+    /// Expression the map assigns to this field, relative to the document range variable — e.g.
+    /// <c>car.Model</c>, or <c>car.Description!.Translations["nl"]</c> for a language field.
+    /// </summary>
+    public string MapExpression { get; set; } = string.Empty;
+
+    /// <summary>
+    /// <c>FieldIndexing</c> value to declare for this field, or <c>null</c> to declare nothing.
+    /// <para><strong>Null is the meaningful case for a sort companion.</strong> Leaving a field undeclared
+    /// gives it RavenDB's default indexing — a single lower-cased, un-tokenized term — which is what makes
+    /// it sortable. Declaring <c>Exact</c> instead was measured as a regression on both ordering
+    /// (case-sensitive ordinal) and equality (a case-mismatched <c>==</c> returns nothing).</para>
+    /// </summary>
+    public string? FieldIndexing { get; set; }
+
+    /// <summary>
+    /// Whether this field is a generated sort companion, and therefore carries <c>[IgnoreProperty]</c> and
+    /// is excluded from the Spark model.
+    /// </summary>
+    public bool IsSortCompanion { get; set; }
+
+    /// <summary>
+    /// Attributes to copy verbatim onto the declaration, already rendered with <c>global::</c> prefixes.
+    /// A companion inherits the base property's attributes in addition to its own
+    /// <c>[IgnoreProperty]</c>.
+    /// </summary>
+    public List<string> Attributes { get; set; } = new();
 }

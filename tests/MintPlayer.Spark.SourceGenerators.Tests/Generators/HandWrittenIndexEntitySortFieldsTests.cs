@@ -1,0 +1,193 @@
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
+
+namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
+
+/// <summary>
+/// The index entity always lives in the application project, so the generator can contribute a partial half
+/// to it even when the developer keeps the index and the map hand-written. This covers that path.
+/// </summary>
+public class HandWrittenIndexEntitySortFieldsTests
+{
+    private const string GeneratorName = "GenerateIndexGenerator";
+
+    private static GeneratorRunResult Run(string source)
+        => GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(GenerateIndexAttribute)],
+            rootNamespace: "TestApp");
+
+    /// <summary>
+    /// A stand-in for the RavenDB base class, so the fixture compiles without referencing RavenDB. The
+    /// generator matches <c>[FromIndex]</c> on the index entity, not the index's base type.
+    /// </summary>
+    private const string IndexStub = """
+        namespace TestApp.Indexes;
+
+        public class Cars_Overview { }
+        """;
+
+    private static string SourceFor(string indexEntity) => $$"""
+        using MintPlayer.Spark.Abstractions;
+        using TestApp.Indexes;
+
+        {{indexEntity}}
+        """;
+
+    [Fact]
+    public void Contributes_a_companion_to_a_partial_index_entity()
+    {
+        var result = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """) + IndexStub);
+
+        var file = result.GeneratedSources.Should().ContainSingle().Subject;
+        file.HintName.Should().Be("SparkIndexEntitySortFields.g.cs");
+        file.Source.Should().Contain("namespace TestApp.Data");
+        file.Source.Should().Contain("public partial class VCar");
+        file.Source.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnoreProperty]");
+        file.Source.Should().Contain("public string? ModelSort { get; set; }");
+    }
+
+    [Fact]
+    public void Leaves_non_searchable_properties_alone()
+    {
+        var result = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                public string? LicensePlate { get; set; }
+                public int Year { get; set; }
+            }
+            """) + IndexStub);
+
+        result.GeneratedSources.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A developer who already wrote the companion by hand must not get a duplicate member.
+    /// </summary>
+    [Fact]
+    public void Does_not_duplicate_a_hand_written_companion()
+    {
+        var result = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+                [IgnoreProperty] public string? ModelSort { get; set; }
+            }
+            """) + IndexStub);
+
+        result.GeneratedSources.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_non_partial_index_entity_is_an_error_not_a_silent_skip()
+    {
+        var result = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """) + IndexStub);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_001");
+        result.GeneratedSources.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Only_the_companion_is_contributed_not_the_whole_class()
+    {
+        var generated = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+                public int Year { get; set; }
+            }
+            """) + IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain("ModelSort");
+        // The developer owns these; re-declaring them would be a duplicate-member error.
+        generated.Should().NotContain("public int Year");
+        generated.Should().NotContain("FromIndex");
+    }
+
+    /// <summary>
+    /// A generated pair already carries its companions, so the hand-written path must not also contribute
+    /// them to a hand-written partial half of the same index entity.
+    /// </summary>
+    [Fact]
+    public void A_generated_index_entity_is_not_processed_twice()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """);
+
+        // Only the generated pair; no separate sort-fields file contributing a second ModelSort.
+        result.GeneratedSources.Should().ContainSingle();
+        result.GeneratedSources[0].HintName.Should().Be("SparkGeneratedIndexes.g.cs");
+    }
+
+    [Fact]
+    public void Two_index_entities_in_one_namespace_share_a_namespace_block()
+    {
+        var generated = Run(SourceFor("""
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VTruck
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """) + IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain("public partial class VCar");
+        generated.Should().Contain("public partial class VTruck");
+        CountOccurrences(generated, "namespace TestApp.Data").Should().Be(1);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+
+        return count;
+    }
+}

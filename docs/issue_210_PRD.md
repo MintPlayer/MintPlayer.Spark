@@ -420,7 +420,24 @@ Mitigations, both cheap:
   (F1): default indexing is what makes it sortable. The companion is fed a byte-identical copy of the
   base field's map expression, with no normalization.
 - **R8a** `[Search]` is valid on `string`, `string[]` / `IEnumerable<string>`, and `TranslatedString`.
-  It composes with `[IgnoreProperty]` (indexed and searchable, but absent from the model).
+  Anything else is `SPARK_INDEX_005`.
+- **R8e** **`[IgnoreProperty]` excludes a property from the generated index as well as from the model, so
+  `[Search]` on such a property has no effect and is reported as `SPARK_INDEX_006` (warning).**
+
+  This is a deliberate divergence from the reference implementation, which indexes an
+  `[IgnoreProperty, Search]` field and merely hides it from its model — a combination its own app uses for
+  searchable-but-not-displayed values.
+
+  Two coherent designs exist and the choice is a real one:
+
+  | | `[IgnoreProperty]` | Consequence |
+  |---|---|---|
+  | **chosen** | excludes from model *and* index | matches the attribute's own docstring — "Spark treats it as if it did not exist" — and keeps infrastructure fields like Fleet's `RegistrySyncEtag` out of the index. Loses the ability to index without modelling. |
+  | alternative | excludes from model only; `[IgnoreForIndex]` is the sole index control | fully orthogonal and strictly more capable, but indexes every infrastructure field by default, growing index size and re-indexing cost for values nobody queries. |
+
+  The chosen option is the conservative one and is cheap to reverse; the alternative is not, because it
+  silently enlarges every existing index. Either way the combination must not be silent, which is what
+  `SPARK_INDEX_006` guarantees. Revisit if a real case for index-without-model appears.
 - **R8b** For strings the relationship is a strict **biconditional**, verified across 398 generated
   properties in the reference app with zero exceptions: a field is `FieldIndexing.Search` **if and only
   if** it has a sort companion. They are one decision, not two, because analyzing the field is what

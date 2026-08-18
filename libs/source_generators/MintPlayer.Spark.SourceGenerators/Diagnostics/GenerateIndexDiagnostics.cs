@@ -19,7 +19,7 @@ internal static class GenerateIndexDiagnostics
     public static readonly DiagnosticDescriptor ExistingTypeNotPartial = new(
         id: "SPARK_INDEX_001",
         title: "Hand-written index or index-entity class is not partial",
-        messageFormat: "'{0}' already exists and is not declared 'partial', so the generated half for entity '{1}' cannot be emitted. Add the 'partial' keyword, or remove [GenerateIndex] and keep the class hand-written.",
+        messageFormat: "Index entity '{0}' has [Search] properties needing sort companions but is not declared 'partial', so nothing can be contributed to it. Add the 'partial' keyword.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -36,6 +36,31 @@ internal static class GenerateIndexDiagnostics
         id: "SPARK_INDEX_003",
         title: "Entity has no indexable properties",
         messageFormat: "Entity '{0}' has no properties to index, so no index was generated. Every property is either 'Id', unreadable, an indexer, [IgnoreProperty] or [IgnoreForIndex].",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// The reference implementation applies <c>FieldIndexing.Search</c> to an object-typed field without
+    /// complaint, and gives it an object-typed sort companion. Both are meaningless. Diagnose instead.
+    /// </summary>
+    public static readonly DiagnosticDescriptor SearchOnUnsupportedType = new(
+        id: "SPARK_INDEX_005",
+        title: "[Search] on a type that cannot be searched",
+        messageFormat: "Property '{0}' is marked [Search] but its type '{1}' is not searchable. [Search] applies to string, a collection of strings, or TranslatedString.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// <c>[IgnoreProperty]</c> keeps a property out of the generated index as well as out of the model, so a
+    /// <c>[Search]</c> beside it can never take effect. Without this the combination reads as "indexed but
+    /// hidden" — which is what the reference implementation does — and does nothing at all here.
+    /// </summary>
+    public static readonly DiagnosticDescriptor SearchOnIgnoredProperty = new(
+        id: "SPARK_INDEX_006",
+        title: "[Search] has no effect on an [IgnoreProperty] property",
+        messageFormat: "Property '{0}' is marked both [IgnoreProperty] and [Search]. [IgnoreProperty] excludes it from the generated index, so [Search] does nothing. Remove one of the two.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

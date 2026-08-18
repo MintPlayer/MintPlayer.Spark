@@ -26,6 +26,9 @@ internal static class SparkModelSymbols
     private const string TranslatedStringFullName =
         "MintPlayer.Spark.Abstractions.TranslatedString";
 
+    private const string FromIndexAttributeFullName =
+        "MintPlayer.Spark.Abstractions.FromIndexAttribute";
+
     /// <summary>
     /// Whether <paramref name="property"/> carries <c>[IgnoreProperty]</c> and is therefore not
     /// part of the Spark model. Matched on the fully-qualified attribute name so the check does
@@ -57,6 +60,13 @@ internal static class SparkModelSymbols
             a.AttributeClass?.ToDisplayString() == GenerateIndexAttributeFullName);
 
     /// <summary>
+    /// Whether <paramref name="type"/> carries <c>[FromIndex]</c> and is therefore an index entity.
+    /// </summary>
+    public static bool HasFromIndex(this INamedTypeSymbol type)
+        => type.GetAttributes().Any(a =>
+            a.AttributeClass?.ToDisplayString() == FromIndexAttributeFullName);
+
+    /// <summary>
     /// Symbol-level twin of <c>ReflectedTypeExtensions.IsSparkModelProperty</c>: a readable, public,
     /// non-static, non-indexer property other than <c>Id</c> that is not <c>[IgnoreProperty]</c>.
     /// </summary>
@@ -78,8 +88,11 @@ internal static class SparkModelSymbols
         => property.IsSparkModelProperty() && !property.IsIgnoredForIndex();
 
     /// <summary>
-    /// Whether <paramref name="type"/> is <c>TranslatedString</c>, which serializes as a flat per-language
-    /// JSON object rather than as a nested dictionary and therefore cannot be indexed by its CLR path.
+    /// Whether <paramref name="type"/> is <c>TranslatedString</c>, which fans out into one index field per
+    /// language instead of being indexed whole.
+    /// <para>Its flat <c>{"en":..,"nl":..}</c> shape is a System.Text.Json concern and applies only on the
+    /// wire. RavenDB persists it through Newtonsoft as <c>Description.Translations.nl</c>, so the CLR path
+    /// <c>Description.Translations["nl"]</c> is what an index must map — measured, not assumed.</para>
     /// </summary>
     public static bool IsTranslatedString(this ITypeSymbol? type)
         => type?.ToDisplayString() == TranslatedStringFullName;
@@ -91,13 +104,24 @@ internal static class SparkModelSymbols
     /// inherited properties, which is a documented defect of the design this replaces.</para>
     /// </summary>
     public static IEnumerable<IPropertySymbol> GetIndexableProperties(this INamedTypeSymbol type)
+        => type.GetSparkProperties().Where(p => p.IsIndexableProperty());
+
+    /// <summary>
+    /// Every readable public instance property on <paramref name="type"/> and its base types, most-derived
+    /// first, with a name hidden by a more-derived declaration reported once. No Spark filtering applied —
+    /// callers that want the model or index rules apply them on top.
+    /// </summary>
+    public static IEnumerable<IPropertySymbol> GetSparkProperties(this INamedTypeSymbol type)
     {
         var seen = new HashSet<string>();
         for (var current = type; current is not null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
         {
             foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
             {
-                if (!property.IsIndexableProperty()) continue;
+                if (property.IsStatic) continue;
+                if (property.GetMethod is null) continue;
+                if (!property.Parameters.IsEmpty) continue;
+                if (property.DeclaredAccessibility != Accessibility.Public) continue;
                 if (!seen.Add(property.Name)) continue;
                 yield return property;
             }

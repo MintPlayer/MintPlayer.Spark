@@ -405,6 +405,173 @@ public class GenerateIndexGeneratorTests
         generated.Should().Contain("public partial class VTruck");
     }
 
+    // --- [Search] and sort companions ---------------------------------------------------------
+
+    private const string SearchableCar = """
+        using MintPlayer.Spark.Abstractions;
+
+        namespace TestApp.Entities;
+
+        [GenerateIndex]
+        public class Car
+        {
+            [Search] public string Model { get; set; } = string.Empty;
+            public int Year { get; set; }
+        }
+        """;
+
+    [Fact]
+    public void Search_declares_the_base_field_as_analyzed()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("Index(nameof(VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+    }
+
+    [Fact]
+    public void Search_emits_a_sort_companion_with_no_separator()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("public string ModelSort { get; set; } = default!;");
+        generated.Should().NotContain("Model_Sort");
+    }
+
+    /// <summary>
+    /// Leaving the companion undeclared is what makes it sortable: it keeps RavenDB's default indexing,
+    /// a single lower-cased un-tokenized term. Declaring Exact instead was measured as a regression on both
+    /// ordering (case-sensitive ordinal) and equality (a case-mismatched == matches nothing).
+    /// </summary>
+    [Fact]
+    public void The_sort_companion_is_never_declared_with_an_indexing_mode()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("nameof(VCar.ModelSort)");
+        generated.Should().NotContain("FieldIndexing.Exact");
+    }
+
+    [Fact]
+    public void The_sort_companion_is_hidden_from_the_model()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnoreProperty]");
+    }
+
+    /// <summary>
+    /// A byte-identical copy of the base field's expression. Normalizing here (lower-casing, trimming)
+    /// would make the sort order disagree with the value the user sees.
+    /// </summary>
+    [Fact]
+    public void The_sort_companion_is_fed_the_same_expression_as_the_base_field()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("Model = car.Model,");
+        generated.Should().Contain("ModelSort = car.Model,");
+    }
+
+    [Fact]
+    public void A_property_without_Search_gets_neither_indexing_nor_a_companion()
+    {
+        var generated = Run(SearchableCar).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("YearSort");
+        generated.Should().NotContain("nameof(VCar.Year)");
+    }
+
+    [Fact]
+    public void Search_is_valid_on_a_collection_of_strings()
+    {
+        var generated = Run("""
+            using System.Collections.Generic;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Company
+            {
+                [Search] public string[] HistoricNames { get; set; } = [];
+                [Search] public List<string> Clusters { get; set; } = new();
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("HistoricNamesSort");
+        generated.Should().Contain("ClustersSort");
+        generated.Should().Contain("Index(nameof(VCompany.HistoricNames), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+    }
+
+    /// <summary>
+    /// <c>[IgnoreProperty]</c> keeps the property out of the index, so the <c>[Search]</c> beside it can
+    /// never take effect. The reference implementation indexes such a field and merely hides it from its
+    /// model; Spark's <c>[IgnoreProperty]</c> means "as if it did not exist", so the combination is a no-op
+    /// — and a reported one, never a silent one.
+    /// </summary>
+    [Fact]
+    public void Search_on_an_IgnoreProperty_property_is_a_reported_no_op()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string Name { get; set; } = string.Empty;
+                [IgnoreProperty, Search] public string Hidden { get; set; } = string.Empty;
+            }
+            """);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_006");
+        result.GeneratedSources[0].Source.Should().NotContain("Hidden");
+    }
+
+    /// <summary>
+    /// The reference implementation happily applies FieldIndexing.Search to an object-typed field and gives
+    /// it an object-typed sort companion. Both are meaningless, so Spark diagnoses instead.
+    /// </summary>
+    [Fact]
+    public void Search_on_an_unsupported_type_is_an_error()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string Name { get; set; } = string.Empty;
+                [Search] public int Year { get; set; }
+            }
+            """);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_005");
+    }
+
+    [Fact]
+    public void Search_on_an_unsupported_type_does_not_produce_a_companion()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string Name { get; set; } = string.Empty;
+                [Search] public int Year { get; set; }
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("YearSort");
+        generated.Should().NotContain("nameof(VCar.Year)");
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         var count = 0;
