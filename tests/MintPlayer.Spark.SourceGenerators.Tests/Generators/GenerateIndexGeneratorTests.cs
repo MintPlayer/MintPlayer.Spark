@@ -572,6 +572,98 @@ public class GenerateIndexGeneratorTests
         generated.Should().NotContain("nameof(VCar.Year)");
     }
 
+    // --- DateTimeOffset ------------------------------------------------------------------------
+
+    private const string DatedCar = """
+        using System;
+        using MintPlayer.Spark.Abstractions;
+
+        namespace TestApp.Entities;
+
+        [GenerateIndex]
+        public class Car
+        {
+            public DateTimeOffset CreatedOn { get; set; }
+            public DateTimeOffset? ArchivedOn { get; set; }
+            public DateTime LegacyStamp { get; set; }
+            public DateTime? LegacyNullable { get; set; }
+            public DateOnly? RegisteredOn { get; set; }
+        }
+        """;
+
+    [Fact]
+    public void DateTimeOffset_is_indexed_Exact_with_no_attribute_needed()
+    {
+        var generated = Run(DatedCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("Index(nameof(VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
+        generated.Should().Contain("Index(nameof(VCar.ArchivedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
+    }
+
+    [Fact]
+    public void DateTimeOffset_gets_a_sort_companion_automatically()
+    {
+        var generated = Run(DatedCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("CreatedOnSort = car.CreatedOn,");
+        generated.Should().Contain("ArchivedOnSort = car.ArchivedOn,");
+        generated.Should().Contain("public global::System.DateTimeOffset CreatedOnSort { get; set; }");
+        generated.Should().Contain("public global::System.DateTimeOffset? ArchivedOnSort { get; set; }");
+    }
+
+    /// <summary>
+    /// The asymmetry is deliberate, not an oversight: in the reference corpus all 15 DateTimeOffset properties
+    /// get Exact plus a companion and all 22 DateTime properties get neither. Widening it would silently add
+    /// fields to every existing index.
+    /// </summary>
+    [Theory]
+    [InlineData("LegacyStamp")]
+    [InlineData("LegacyNullable")]
+    [InlineData("RegisteredOn")]
+    public void Other_date_types_get_neither_indexing_nor_a_companion(string propertyName)
+    {
+        var generated = Run(DatedCar).GeneratedSources[0].Source;
+
+        generated.Should().NotContain($"{propertyName}Sort");
+        generated.Should().NotContain($"nameof(VCar.{propertyName})");
+    }
+
+    /// <summary>
+    /// A date companion is still left undeclared — only the base field is Exact. Declaring the companion too
+    /// would be the cargo-cult that R8 rules out.
+    /// </summary>
+    [Fact]
+    public void The_date_sort_companion_is_not_itself_declared()
+    {
+        var generated = Run(DatedCar).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("nameof(VCar.CreatedOnSort)");
+        generated.Should().NotContain("nameof(VCar.ArchivedOnSort)");
+    }
+
+    [Fact]
+    public void Search_on_a_DateTimeOffset_is_reported_but_the_date_treatment_still_applies()
+    {
+        var result = Run("""
+            using System;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                [Search] public DateTimeOffset CreatedOn { get; set; }
+            }
+            """);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_005");
+
+        var generated = result.GeneratedSources[0].Source;
+        generated.Should().Contain("Index(nameof(VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
+        generated.Should().Contain("CreatedOnSort = car.CreatedOn,");
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         var count = 0;

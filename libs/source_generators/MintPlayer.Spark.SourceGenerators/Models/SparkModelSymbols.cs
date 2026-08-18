@@ -60,6 +60,25 @@ internal static class SparkModelSymbols
             a.AttributeClass?.ToDisplayString() == GenerateIndexAttributeFullName);
 
     /// <summary>
+    /// Whether <paramref name="type"/> is <c>DateTimeOffset</c> or <c>DateTimeOffset?</c>.
+    /// <para><strong><c>DateTime</c> deliberately does not match.</strong> In the reference corpus every one
+    /// of 15 <c>DateTimeOffset</c> properties is indexed <c>Exact</c> with a sort companion, and every one of
+    /// 22 <c>DateTime</c> properties has neither. The asymmetry is intentional there and is reproduced here
+    /// rather than "tidied up", because widening it would silently add fields to every existing index.</para>
+    /// </summary>
+    public static bool IsDateTimeOffset(this ITypeSymbol type)
+        => type.UnwrapNullable().ToDisplayString() == "System.DateTimeOffset";
+
+    /// <summary>
+    /// The underlying type of a <c>Nullable&lt;T&gt;</c>, or the type itself. Reference-type nullability is
+    /// an annotation rather than a wrapper, so this only affects value types.
+    /// </summary>
+    public static ITypeSymbol UnwrapNullable(this ITypeSymbol type)
+        => type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } named
+            ? named.TypeArguments[0]
+            : type;
+
+    /// <summary>
     /// Whether <paramref name="type"/> carries <c>[FromIndex]</c> and is therefore an index entity.
     /// </summary>
     public static bool HasFromIndex(this INamedTypeSymbol type)

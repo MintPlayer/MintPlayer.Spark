@@ -196,6 +196,12 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 });
             }
 
+            var isSearchableText = searchable && searchKind == SearchKind.Text;
+
+            // A DateTimeOffset is indexed Exact and gets a companion with no attribute at all. DateTime gets
+            // neither -- see SparkModelSymbols.IsDateTimeOffset for why that asymmetry is deliberate.
+            var isDateTimeOffset = property.Type.IsDateTimeOffset();
+
             var field = new IndexPropertyInfo
             {
                 Name = property.Name,
@@ -203,13 +209,13 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 NeedsDefaultInitializer = property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
                 MapExpression = $"{itemVariable}.{property.Name}",
-                FieldIndexing = searchable && searchKind == SearchKind.Text ? "Search" : null,
+                FieldIndexing = isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
             };
             properties.Add(field);
 
             // A searchable text field always gets its companion: analyzing the field is what destroys its
             // sortability, so the two are one decision. The companion is left undeclared on purpose.
-            if (searchable && searchKind == SearchKind.Text)
+            if (isSearchableText || isDateTimeOffset)
                 properties.Add(SortCompanionFor(field));
         }
 
