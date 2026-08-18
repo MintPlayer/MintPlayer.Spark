@@ -155,8 +155,12 @@ Two things it found that were not being looked for, and that changed the design:
 - **`FieldIndexing.Exact` is case-sensitive to the search term**, silently and direction-dependently: `*GOL*`
   matched, `*gol*` returned 0. That is what makes R39 a semantics requirement rather than an optimization.
 
-One irreducible gap: a substring **spanning a whitespace boundary** cannot match, because the query term is split
-on whitespace first. `*olf gt*` → 0 rows. So `Contains("olf GT")` is not recoverable; `Contains("olkswag")` is.
+The spike also concluded that a substring **spanning a whitespace boundary** could not match (`*olf gt*` → 0
+rows). **That conclusion was wrong for the shape actually implemented**: wrapping each word separately gives
+`*olf* *gt*`, which matches, because the words are matched independently rather than as one adjacent run. The
+implementation is therefore slightly *wider* than `Contains`, not narrower — word order and adjacency stop
+mattering. Corrected in PRD F15 and pinned by two tests in `SearchPushdownTests`. A good reminder that a spike
+measures the exact expression handed to it, not the design it is standing in for.
 
 ### S8 — how do multiple `Search` legs combine with a preceding `Where`? PASSED, and found a security hazard
 

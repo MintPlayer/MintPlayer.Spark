@@ -137,6 +137,37 @@ property out of the index, so a `[Search]` beside it never took effect and used 
   from **fan-out** maps (`SelectMany` over a collection). `QueryExecutor`'s `DistinctBy` is still correct — it
   guards a different hazard than the guide described.
 
+## Search now runs in the database
+
+Search was already wired end-to-end — the query-list search box, the `?search=` parameter, the executor's
+`search` argument — but the server implemented it by **materializing the whole collection and running
+`string.Contains` over the mapped rows**. It now becomes a RavenDB `search(...)` clause.
+
+No API change, no client change, and no configuration: every text attribute of a query type is searchable, with
+or without `[Search]`. Substring matching is preserved, so existing behaviour carries over:
+
+```
+?search=olkswag
+→ from index 'Cars/Overview' where (search(LicensePlate, $p0, and) or search(Model, $p1, and))
+```
+
+Two behaviour differences worth knowing:
+
+- **Slightly more forgiving.** Each word is matched independently, so word order and adjacency no longer matter:
+  `gti golf` now finds `Volkswagen Golf GTI`. Nothing that matched before stops matching.
+- **Non-text attributes and reference display text are no longer searched.** Numbers, dates and the document id
+  are excluded, and an attribute's resolved breadcrumb is computed after the query runs so it cannot be an index
+  term. Denormalize that text into the index — which is exactly what `VCar.OwnerFullName` already does — and it
+  becomes searchable again.
+
+`TranslatedString` fields are searched across **all** languages, with no dependency on the request's culture.
+
+Two failure modes were found by measurement and are now guarded rather than discovered in production: an empty
+search term returns *zero rows* in RavenDB rather than acting as a no-op, so it is skipped entirely; and passing
+`SearchOptions` explicitly makes the option leak onto the adjacent clause — which here is the row-level security
+predicate, so an explicit `Or` would have silently turned a security filter into an alternative. The emitted RQL
+shape is pinned by a test for exactly that reason.
+
 ## Known gaps
 
 - **No "Add Sort property" code fix yet.** `SPARK005` names the property to add but there is no lightbulb. A
@@ -147,3 +178,12 @@ property out of the index, so a `[Search]` beside it never took effect and used 
 - **Map/reduce, multi-map, `LoadDocument` and other cross-document maps** stay hand-written.
 - **No client editor for a `TranslatedString` value** — the generated per-language fields are queryable and
   sortable before they are editable.
+- **Streaming queries do not push search down.** `StreamingQueryExecutor` takes no search term; the client
+  filters streamed rows locally, as it did before.
+- **No relevance ranking.** Search narrows the result set; ordering comes from the sort columns. Term-based
+  organic search with relevance is a possible opt-in later, deliberately not the default because it would drop
+  substring matching.
+- **No fuzzy / typo-tolerant search.** Measured and rejected for now: RavenDB's `Fuzzy` is unsupported by Corax
+  (the default engine, and what generated indexes use), exists only on the document-query API rather than the
+  `IQueryable` surface the pipeline is built on, and is mutually exclusive with the wildcard wrapping that
+  preserves substring matching. Details in `docs/issue_210_plan.md` spike S10.

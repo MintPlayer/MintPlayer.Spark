@@ -33,20 +33,27 @@ internal partial class QueryExecutor : IQueryExecutor
     {
         var (isCustom, name) = ResolveSource(query);
 
+        // Null/whitespace collapses to null here, so every path below tests one thing.
+        var searchTerm = BuildSearchTerm(search);
+
         IEnumerable<PersistentObject> allResults;
+        bool searchPushedDown;
         if (isCustom)
         {
-            allResults = await ExecuteCustomQueryAsync(query, name, parent);
+            (allResults, searchPushedDown) = await ExecuteCustomQueryAsync(query, name, parent, searchTerm);
         }
         else
         {
-            allResults = await ExecuteDatabaseQueryAsync(query, name);
+            (allResults, searchPushedDown) = await ExecuteDatabaseQueryAsync(query, name, searchTerm);
         }
 
-        // Apply server-side search filtering
-        if (!string.IsNullOrEmpty(search))
+        // Fallback for shapes that cannot push down: a Custom. query returning a non-Raven
+        // IQueryable, or a type with no searchable field. Also the only path that still matches
+        // Breadcrumb — resolved reference display text, which exists only after mapping and is
+        // therefore not an index term. See the query guide.
+        if (searchTerm != null && !searchPushedDown)
         {
-            var term = search.ToLowerInvariant();
+            var term = search!.ToLowerInvariant();
             allResults = allResults.Where(po =>
                 (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                 (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
@@ -58,6 +65,8 @@ internal partial class QueryExecutor : IQueryExecutor
             ).ToList();
         }
 
+        // Counted after filtering and before paging, either way — which is what keeps
+        // TotalRecords search-aware now that the filter may have run in the database.
         var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
         var totalRecords = materialized.Count;
 
@@ -89,12 +98,13 @@ internal partial class QueryExecutor : IQueryExecutor
 
     #region Database Queries
 
-    private async Task<IEnumerable<PersistentObject>> ExecuteDatabaseQueryAsync(SparkQuery query, string propertyName)
+    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteDatabaseQueryAsync(
+        SparkQuery query, string propertyName, string? searchTerm)
     {
         var sparkContext = sparkContextResolver.ResolveContext(session);
         if (sparkContext == null)
         {
-            return [];
+            return ([], false);
         }
 
         var contextType = sparkContext.GetType();
@@ -102,26 +112,26 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (property == null || !property.CanRead)
         {
-            return [];
+            return ([], false);
         }
 
         var queryable = AccessorCache.GetGetter(property)(sparkContext);
         if (queryable == null)
         {
-            return [];
+            return ([], false);
         }
 
         var queryableType = property.PropertyType;
         var entityType = queryableType.GetGenericArguments().FirstOrDefault();
         if (entityType == null)
         {
-            return [];
+            return ([], false);
         }
 
         var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
         if (entityTypeDefinition == null)
         {
-            return [];
+            return ([], false);
         }
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
@@ -168,6 +178,17 @@ internal partial class QueryExecutor : IQueryExecutor
         queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query");
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
+
+        // After the row filter and before sorting. The position matters for one reason: RavenDB
+        // groups consecutive Search clauses and ANDs that group with its neighbours, so keeping the
+        // security predicate ahead of the search group yields `(predicate) and (search or search)`.
+        // Reversing them, or passing SearchOptions explicitly, ORs the predicate in instead.
+        var searchPushedDown = false;
+        if (searchTerm != null)
+        {
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm);
+        }
+
         if (query.SortColumns.Length > 0)
         {
             queryable = ApplySorting(queryable, sortType, query.SortColumns);
@@ -190,21 +211,21 @@ internal partial class QueryExecutor : IQueryExecutor
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
         await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
-        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
+        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
     }
 
     #endregion
 
     #region Custom Queries
 
-    private async Task<IEnumerable<PersistentObject>> ExecuteCustomQueryAsync(
-        SparkQuery query, string methodName, PersistentObject? parent)
+    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteCustomQueryAsync(
+        SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm)
     {
         // Resolve the entity type for this query
         var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
         if (entityTypeDefinition == null)
         {
-            return [];
+            return ([], false);
         }
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
@@ -213,7 +234,7 @@ internal partial class QueryExecutor : IQueryExecutor
         var entityType = FindClrType(entityTypeDefinition.ClrType);
         if (entityType == null)
         {
-            return [];
+            return ([], false);
         }
 
         // Resolve the Actions class for this entity type
@@ -258,7 +279,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (result == null)
         {
-            return [];
+            return ([], false);
         }
 
         // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
@@ -286,6 +307,14 @@ internal partial class QueryExecutor : IQueryExecutor
             result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
         }
 
+        // Only a RavenDB-backed queryable can push the search into the database; an in-memory
+        // IQueryable has no Search, and the caller's own filtering may already have materialized.
+        var searchPushedDown = false;
+        if (searchTerm != null && methodInfo.IsRavenQueryable)
+        {
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm);
+        }
+
         // Apply sorting if the result is IQueryable
         if (methodInfo.IsQueryable && query.SortColumns.Length > 0)
         {
@@ -309,7 +338,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            return [];
+            return ([], false);
         }
 
         // Row-level authorization, as on the database path. A custom query is a developer saying
@@ -328,7 +357,7 @@ internal partial class QueryExecutor : IQueryExecutor
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
         await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
-        return mapped.Select(m => m.Po).DistinctBy(po => po.Id);
+        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
     }
 
     private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)
@@ -620,6 +649,129 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = orderMethod.Invoke(null, [queryable, lambda])!;
         }
         return queryable;
+    }
+
+    /// <summary>
+    /// The RavenDB search term for a raw user input, or <c>null</c> when there is nothing to search for.
+    /// <para>
+    /// Each whitespace-separated word is wrapped as <c>*word*</c> and the whole thing is matched with
+    /// <see cref="Raven.Client.Documents.Queries.SearchOperator.And"/>, so every word must appear somewhere in the field. That is what
+    /// preserves the substring semantics this replaced: before the pushdown, search was an in-memory
+    /// <c>Contains</c> over already-materialized rows, and a term-based query alone would silently stop
+    /// matching <c>olkswag</c> against <c>Volkswagen</c>.
+    /// </para>
+    /// <para>
+    /// <c>*</c> and <c>?</c> are stripped from the caller's words rather than honoured. A bare <c>*</c>
+    /// matches every document, and measured on RavenDB 7.2.5 a <c>?</c> never matches while a mid-word
+    /// <c>*</c> matches nothing either — so passing them through could only surprise. The term is not
+    /// lower-cased: RavenDB lower-cases it for us.
+    /// </para>
+    /// <para>
+    /// Wrapping each word separately, rather than the whole input, is what lets a substring span a space:
+    /// <c>*olf* *gt*</c> matches <c>Volkswagen Golf GTI</c> because the words are matched independently. The
+    /// side effect is that this is slightly <em>wider</em> than <c>Contains</c> — the words need not be adjacent
+    /// or in order, so <c>gti golf</c> matches where <c>Contains</c> would not. A widening, so no caller loses a
+    /// result.
+    /// </para>
+    /// </summary>
+    internal static string? BuildSearchTerm(string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return null;
+
+        var words = search
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(static word => word.Replace("*", string.Empty).Replace("?", string.Empty))
+            .Where(static word => word.Length > 0)
+            .Select(static word => $"*{word}*");
+
+        var term = string.Join(' ', words);
+        return term.Length == 0 ? null : term;
+    }
+
+    /// <summary>
+    /// The fields a search term is matched against on <paramref name="sortType"/>: its readable
+    /// <see cref="string"/> properties, excluding the document id and anything <c>[IgnoreProperty]</c>.
+    /// <para>
+    /// Deliberately *not* scoped to <c>[Search]</c>. Measured on RavenDB 7.2.5: a wildcard term matches on a
+    /// plain default-indexed field (the whole value is one lower-cased term), while a bare word does not. So
+    /// wildcard search works with or without <c>FieldIndexing.Search</c>, and scoping to declared fields would
+    /// narrow what users can find for no gain. <c>[Search]</c> keeps its own job — token matching, analyzer
+    /// behaviour, and forcing the sort companion.
+    /// </para>
+    /// <para>
+    /// <c>[IgnoreProperty]</c> excludes the sort companions, which hold the same text as the field they
+    /// shadow; searching both would double the clauses to find the same rows. The document id is excluded
+    /// because <c>search(id(), …)</c> was measured to match nothing — a dead clause.
+    /// </para>
+    /// <para>
+    /// A <c>TranslatedString</c> needs no special handling: it fans out to <c>{Prop}_{lang}</c> string fields
+    /// on the projection, so every language is searched, with no dependency on the request's culture.
+    /// </para>
+    /// <para>
+    /// Known gap: a string field a hand-written index declares <c>FieldIndexing.Exact</c> is included and will
+    /// match case-sensitively, because the CLR property carries no trace of the index's field options. The
+    /// generator only ever applies <c>Exact</c> to <c>DateTimeOffset</c>, which is excluded by type.
+    /// </para>
+    /// </summary>
+    private static PropertyInfo[] ResolveSearchableProperties(Type sortType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo[]>(
+            ("QueryExecutor.SearchableProperties", sortType),
+            static k => k.Type.GetCachedProperties()
+                .Where(static p => p.PropertyType == typeof(string)
+                    && p.CanRead
+                    && p.GetIndexParameters().Length == 0
+                    && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
+                    && !p.IsIgnoredForSparkModel())
+                .ToArray());
+
+    /// <summary>
+    /// Adds one <c>Search</c> clause per searchable field, and reports whether anything was added.
+    /// <para>
+    /// <see cref="SearchOptions"/> is never passed. That is a safety requirement rather than a style
+    /// preference: measured on RavenDB 7.2.5, an explicit <see cref="SearchOptions.Or"/> leaks onto the
+    /// <em>adjacent</em> clause and ORs it in. The adjacent clause here is the row-security predicate, so an
+    /// explicit option would turn a security filter into an alternative — silently, returning plausible rows.
+    /// The default <see cref="SearchOptions.Guess"/> instead groups the consecutive clauses and ANDs the group
+    /// with its neighbours in both directions, which is exactly what a multi-field search wants.
+    /// </para>
+    /// <para>Every argument is passed explicitly because <see cref="MethodInfo.Invoke"/> does not apply
+    /// optional parameter defaults.</para>
+    /// </summary>
+    private static (object Queryable, bool Applied) ApplySearch(object queryable, Type elementType, string term)
+    {
+        var properties = ResolveSearchableProperties(elementType);
+        if (properties.Length == 0)
+        {
+            return (queryable, false);
+        }
+
+        var searchMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+            ("QueryExecutor.LinqSearch", elementType),
+            static k => typeof(LinqExtensions).GetMethods()
+                .First(m => m.Name == nameof(LinqExtensions.Search)
+                    && m.IsGenericMethod
+                    && m.GetGenericArguments().Length == 1
+                    && m.GetParameters().Length == 6
+                    // The string overload, not the IEnumerable<string> one.
+                    && m.GetParameters()[2].ParameterType == typeof(string))
+                .MakeGenericMethod(k.Element));
+
+        var selectorType = typeof(Func<,>).MakeGenericType(elementType, typeof(object));
+
+        foreach (var property in properties)
+        {
+            var parameter = System.Linq.Expressions.Expression.Parameter(elementType, "x");
+            // Expression<Func<T, object>>, so the property access needs boxing even for a string.
+            var propertyAccess = System.Linq.Expressions.Expression.Convert(
+                System.Linq.Expressions.Expression.Property(parameter, property), typeof(object));
+            var lambda = System.Linq.Expressions.Expression.Lambda(selectorType, propertyAccess, parameter);
+
+            queryable = searchMethod.Invoke(
+                null,
+                [queryable, lambda, term, 1m, SearchOptions.Guess, Raven.Client.Documents.Queries.SearchOperator.And])!;
+        }
+
+        return (queryable, true);
     }
 
     /// <summary>

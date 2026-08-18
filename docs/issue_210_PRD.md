@@ -492,9 +492,16 @@ Wildcards, on an analyzed (`FieldIndexing.Search`) field containing `"Volkswagen
 So substring parity with today's `Contains` **is** reachable: wrap each whitespace-separated word as `*word*` and
 pass `SearchOperator.And`.
 
-**One irreducible gap:** a substring spanning a whitespace boundary cannot match, because the query term is itself
-split on whitespace. Measured: `*olf gt*` against `"Volkswagen Golf GTI"` → **0 rows**. So today's
-`Contains("olf GT")` is not recoverable, while `Contains("olkswag")` and `Contains("olf")` are.
+**A gap that looked irreducible and is not.** The spike measured `*olf gt*` — one wrapped token containing a
+space — against `"Volkswagen Golf GTI"` → **0 rows**, and concluded that a substring spanning a whitespace
+boundary could not match. That conclusion does not survive the implemented term shape: because each word is
+wrapped *separately*, `*olf* *gt*` matches, since the two wildcard words are matched independently rather than as
+one adjacent run. Pinned by `SearchPushdownTests.A_substring_spanning_a_space_still_matches`.
+
+The real difference is the opposite of a gap: the pushdown is **more permissive** than the `Contains` it replaces,
+because the words need not be adjacent or in order. `Contains("gti golf")` did not match `"Volkswagen Golf GTI"`;
+the search does. That is a widening, so no caller loses a result — but it is a genuine behaviour change and is
+pinned deliberately (`Words_need_not_be_adjacent_or_in_order`) rather than left as an accident.
 
 ### The surprise: wildcards work on fields that were never declared searchable
 
@@ -886,7 +893,7 @@ takes no search term at all; the client filters those in memory (`spark-query-li
 F15 leaves exactly one genuine choice, and it changes user-visible behaviour either way:
 
 - **(a) Substring parity.** Wrap each word of the term as `*word*` and pass `SearchOperator.And`. Today's
-  `Contains` behaviour survives (except substrings spanning a space), the two existing tests keep passing, and
+  `Contains` behaviour survives, the two existing tests keep passing, and
   search works across every text field whether or not it is analyzed. Cost: leading wildcards force term-
   dictionary scans, so this is the slower query shape — still far cheaper than fetching the whole collection,
   but **unmeasured at scale**, and it gives up relevance ranking.
@@ -896,10 +903,20 @@ F15 leaves exactly one genuine choice, and it changes user-visible behaviour eit
   narrows what is searchable to whatever has been declared, and infix matching disappears: `olkswag` stops
   finding `Volkswagen`. Both existing tests change.
 
-**Recommendation: (a).** It is the only option that is a strict improvement — same semantics as today, executed
-in the database instead of in memory, with no regression to explain to anyone. (b) is a genuine feature rather
-than a fix, and it can be added afterwards as an explicit opt-in without disturbing (a); doing it the other way
-round means shipping a regression first.
+**DECIDED: (a).** It is the only option that is a strict improvement — same semantics as today, executed in the
+database instead of in memory, with no regression to explain to anyone. (b) remains available afterwards as an
+explicit opt-in without disturbing (a); doing it the other way round would mean shipping a regression first.
+
+So the term is normalized as: split on whitespace, drop `*` and `?` from each word (they are not wildcards the
+caller gets to supply — a bare `*` matches everything, and F15 measured that `?` and mid-word `*` do not work
+anyway), wrap each surviving word as `*word*`, and pass `SearchOperator.And` so every word must be present
+somewhere in the field. No pre-lower-casing: F15 measured that the term is lower-cased for us.
+
+Two things this shape actually delivered, both verified against a real server and neither predicted by the spike:
+a substring **does** span a whitespace boundary (per-word wrapping, so the words match independently), and the
+result is therefore slightly **wider** than `Contains` rather than narrower — word order and adjacency stop
+mattering. The measured narrowings are only the ones inherent to a pushdown: non-text attributes (R39) and
+`Breadcrumb` (R46).
 
 ### Diagnostics — no silent aborts (F5)
 
