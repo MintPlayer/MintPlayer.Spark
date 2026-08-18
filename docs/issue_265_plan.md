@@ -164,6 +164,18 @@ The second is the one that matters — it proves the opt-in did not quietly rela
 coverage for the licence-less path is a fork CI run, which genuinely has no licence and is the exact
 scenario the option exists for.
 
+## W4 — Guide, release notes, version (R13, R14)
+
+- `docs/guide-rate-limiting.md`, linked from the README's guide table.
+- `docs/release-notes-preview-52.md`, following the `preview-42` precedent and leading with the two
+  breaking changes rather than the features. Both it and the guide state that ordering is a compile-time
+  diagnostic (W5) and that no runtime order checking ships.
+- All 21 package `<Version>` values `10.0.0-preview.51` to `10.0.0-preview.52`, in lockstep. CI publishes
+  on merge to master, so the bump rides the PR; nothing is pushed by hand.
+  - Deliberately **not** bumped: the `preview.51` in `README.md:273`, which is prose about when
+    `modelHashes.json` was introduced. A blanket search-and-replace would have silently rewritten a
+    historical fact into a false one.
+
 ## W5 — `SPARK004`, the middleware-order analyzer (R15)
 
 **Files:** `libs/source_generators/MintPlayer.Spark.SourceGenerators/Diagnostics/MiddlewareOrderAnalyzer.cs`
@@ -207,17 +219,6 @@ The demo was restored; `git diff` on `Demo/` is empty. Analyzer tests use source
 names rather than referencing the ASP.NET shared framework, so the symbol paths — including the
 unrelated-`UseSpark` rejection — are expressible with BCL references only.
 
-## W4 — Guide, release notes, version (R13, R14)
-
-- `docs/guide-rate-limiting.md`, linked from the README's guide table.
-- `docs/release-notes-preview-52.md`, following the `preview-42` precedent and leading with the two
-  breaking changes rather than the features.
-- All 21 package `<Version>` values `10.0.0-preview.51` to `10.0.0-preview.52`, in lockstep. CI publishes
-  on merge to master, so the bump rides the PR; nothing is pushed by hand.
-  - Deliberately **not** bumped: the `preview.51` in `README.md:273`, which is prose about when
-    `modelHashes.json` was introduced. A blanket search-and-replace would have silently rewritten a
-    historical fact into a false one.
-
 ---
 
 ## Verification
@@ -225,7 +226,8 @@ unrelated-`UseSpark` rejection — are expressible with BCL references only.
 Test suites run once, after the implementation was complete, per the batching rule — intermediate work was
 verified by reading and by a clean solution-wide `dotnet build`.
 
-**`MintPlayer.Spark.Tests` — 1491 passed, 0 failed.**
+**`MintPlayer.Spark.Tests` — 1486 passed. `MintPlayer.Spark.SourceGenerators.Tests` — 69 passed.
+0 failed. Solution build clean, with no `SPARK004` warnings.**
 
 Two checks aimed at whether the work could be *fake* rather than at coverage:
 

@@ -73,6 +73,11 @@ app.UseSpark();
 app.MapSpark();
 ```
 
+`app.UseRouting()` must come **before** `app.UseSpark()`: Spark adds middleware that reads endpoint
+metadata (`[Authorize]`, `[EnableRateLimiting]`, `[DisableRateLimiting]`), and before routing has run no
+endpoint is selected, so that metadata is silently ignored. A build-time analyzer (**SPARK004**) reports
+the wrong order, so it surfaces when you compile rather than as behaviour that never happens.
+
 ### Define Your Context
 
 ```csharp

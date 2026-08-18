@@ -2,10 +2,10 @@
 
 Packages: all `MintPlayer.Spark.*` at `10.0.0-preview.52`. No Angular package changes.
 
-This release makes Spark's rate limiter configurable and moves it ahead of authentication
-([#265](https://github.com/MintPlayer/MintPlayer.Spark/issues/265)), and adds an opt-out for the
-RavenDB licence requirement in `SparkTestDriver`. See
-[Rate Limiting](./guide-rate-limiting.md) for the full configuration surface.
+All from [#265](https://github.com/MintPlayer/MintPlayer.Spark/issues/265): the rate limiter becomes
+configurable and moves ahead of authentication, a new analyzer (`SPARK004`) catches `UseSpark()` called
+before `UseRouting()` at build time, and `SparkTestDriver` gains an opt-out for the RavenDB licence
+requirement. See [Rate Limiting](./guide-rate-limiting.md) for the full configuration surface.
 
 **Two breaking changes**, both in the middleware registry and both deliberate. Neither is visible from
 the feature summary, so they are first.
@@ -94,19 +94,6 @@ endpoint still resolve.
 paths — both are now configuration. Delete the manual call, and read the next section for why leaving
 it in is worse than redundant.
 
-### New analyzer: `SPARK004` — `UseSpark()` must follow `UseRouting()`
-
-Middleware added by `UseSpark` reads endpoint metadata — the rate limiter's `[EnableRateLimiting]` /
-`[DisableRateLimiting]`, and `UseAuthorization`'s `[Authorize]`. Before routing has run no endpoint is
-selected, so all of it is silently ignored. `SPARK004` now catches that at build time, at the `UseSpark()`
-call.
-
-It follows `ASP0001` (the equivalent rule for `UseAuthorization`) in both approach and severity: a warning,
-not an error, and silent whenever it cannot be certain — notably when `UseRouting()` is absent from the
-body, which is the correct minimal-hosting shape. Escalate it in `.editorconfig` to make it fatal.
-
-**No runtime order checking ships.** Ordering is a property of your code, not of a request.
-
 ### Do not combine with a manual `app.UseRateLimiter()`
 
 The old doc comment said "no separate `app.UseRateLimiter()` call needed", which read as *harmless if
@@ -120,6 +107,19 @@ twice the expected rate, which reads as a bad traffic estimate.
 
 **Spark cannot detect this.** A manual `UseRateLimiter()` is a call on your own `IApplicationBuilder`,
 invisible at startup, leaving no runtime trace to compare against.
+
+## New analyzer: `SPARK004` — `UseSpark()` must follow `UseRouting()`
+
+Middleware added by `UseSpark` reads endpoint metadata — the rate limiter's `[EnableRateLimiting]` /
+`[DisableRateLimiting]`, and `UseAuthorization`'s `[Authorize]`. Before routing has run no endpoint is
+selected, so all of it is silently ignored. `SPARK004` now catches that at build time, at the `UseSpark()`
+call.
+
+It follows `ASP0001` (the equivalent rule for `UseAuthorization`) in both approach and severity: a warning,
+not an error, and silent whenever it cannot be certain — notably when `UseRouting()` is absent from the
+body, which is the correct minimal-hosting shape. Escalate it in `.editorconfig` to make it fatal.
+
+**No runtime order checking ships.** Ordering is a property of your code, not of a request.
 
 ## `SparkTestDriver.RequireLicense`
 
