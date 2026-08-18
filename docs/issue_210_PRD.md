@@ -946,7 +946,7 @@ references from the plan. Statuses below are as shipped.
   `Microsoft.CodeAnalysis.CSharp.Workspaces` at runtime, which is deliberately not packed, and its presence made
   `GetTypes()` throw `ReflectionTypeLoadException` — **breaking the entire generator test suite**, not just the
   code fix. It needs its own `*.CodeFixes` assembly plus packaging, which is a self-contained piece of work
-  with no bearing on the rest of this issue.
+  with no bearing on the rest of this issue. **Tracked as #270.**
 
   The analyzer already names the property to add, so the gap is a missing lightbulb rather than missing
   information.
@@ -1023,4 +1023,5 @@ references from the plan. Statuses below are as shipped.
     R7a's rule about never generating into the entity's assembly for *index* purposes.
 
   For this issue the rule stands unchanged: **no generator in the library projects.** Deferred to its own
-  issue, with F12 as the ready-made reference for how a second lean generator project is wired.
+  issue — **tracked as #271** — with F12 as the ready-made reference for how a second lean generator project
+  is wired.

@@ -175,7 +175,9 @@ shape is pinned by a test for exactly that reason.
 
 - **No "Add Sort property" code fix yet.** `SPARK005` names the property to add but there is no lightbulb. A
   `CodeFixProvider` cannot live in the analyzer assembly — it needs `Workspaces` at runtime, which is
-  deliberately not packed — so it requires its own assembly and packaging. Follow-up.
+  deliberately not packed — so it requires its own assembly and packaging. Follow-up: #270.
+- **An `IAudit` boilerplate generator** is postponed to #271 — it is the only identified reason to put a
+  generator in a library project, so it is justified on its own terms rather than smuggled in here.
 - **Collection fan-out** (`[GenerateIndex(typeof(Country), nameof(Country.Cities))]`) is not implemented, and the
   constructor overload is withheld so there is no dead surface.
 - **Map/reduce, multi-map, `LoadDocument` and other cross-document maps** stay hand-written.

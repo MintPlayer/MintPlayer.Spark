@@ -399,7 +399,7 @@ that always contains a space, so sorting a people grid by name was broken before
 **The code fix (R26) was attempted and reverted — deferred to its own issue.** A `CodeFixProvider` cannot live in
 the analyzer assembly: it needs `Microsoft.CodeAnalysis.CSharp.Workspaces` at runtime, which is deliberately not
 packed, and its presence made `GetTypes()` throw `ReflectionTypeLoadException`, **breaking the entire generator
-test suite** rather than just the code fix. It needs its own `*.CodeFixes` assembly and packaging.
+test suite** rather than just the code fix. It needs its own `*.CodeFixes` assembly and packaging. **Tracked as #270.**
 
 No suppression logic is written (R27): S4 proved the generated companion satisfies the analyzer by symbol
 lookup alone.
