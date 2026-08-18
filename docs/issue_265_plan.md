@@ -124,15 +124,20 @@ A guard was built and removed; PRD D7 carries the reasoning. The three points th
   the limiter from the end of `UseSpark` to the start changed its side of *authentication*, not of
   *routing*; both positions sit on the same side of routing in either ordering.
 - `UseAuthorization`, which `UseSpark` also calls, carries the identical requirement for `[Authorize]` — a
-  worse silent failure, unvalidated by ASP.NET and by Spark. Guarding the milder case alone is incoherent.
+  worse silent failure, and no middleware validates it in ASP.NET or in Spark. Guarding the milder case at
+  run time while leaving that alone is incoherent.
 
-And the framing that generalises: **ordering is a compile-time property, so it belongs to an analyzer.**
-ASP.NET's own `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do not validate
-their own order; the installed ASP.NET analyzers (6.0/8.0/10.0 ref packs, `ASP0003`–`ASP0029`) do not
-either, but that is the vehicle such a rule would use. Spark already ships
-`MintPlayer.Spark.SourceGenerators` with `SPARK001`–`SPARK003`, so a `UseSpark`-before-`UseRouting`
-diagnostic could live there — reported at the mistake, with no runtime cost and no framework internals.
-Left as a possible follow-up, deliberately out of scope for #265.
+And the framing that generalises: **ordering is a compile-time property, so it belongs to an analyzer —
+and ASP.NET already does it that way.** `UseRouting` / `UseAuthentication` / `UseAuthorization` /
+`UseEndpoints` perform no runtime order checks; the rule ships as **`ASP0001`** — *"The call to
+UseAuthorization should appear between app.UseRouting() and app.UseEndpoints(..) for authorization to be
+correctly evaluated"* — in
+`sdk/<ver>/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/Microsoft.AspNetCore.Analyzers.dll`. First-party
+precedent for this exact class of rule, on the exact case above.
+
+Spark already ships `MintPlayer.Spark.SourceGenerators` with `SPARK001`–`SPARK003`, so a
+`UseSpark`-before-`UseRouting` diagnostic could live there — reported where the mistake is written, no
+runtime cost, no framework internals. Left as a possible follow-up, deliberately out of scope for #265.
 
 ### Collateral, all in tests and all intended
 

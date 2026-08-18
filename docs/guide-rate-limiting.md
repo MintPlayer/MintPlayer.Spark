@@ -134,10 +134,12 @@ is on the same side of routing as the rest of `UseSpark` either way — moving i
 changed nothing about that — and `UseAuthorization`, which `UseSpark` also calls, carries the identical
 requirement for `[Authorize]`.
 
-Ordering is a property of the code you wrote, not of a request, so it is analyzer territory: ASP.NET's own
-`UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do not validate their own order
-either. If Spark ever enforces this, it will be a compile-time diagnostic alongside `SPARK001`–`SPARK003`,
-not middleware.
+Ordering is a property of the code you wrote, not of a request, so it is analyzer territory — which is how
+ASP.NET handles it. `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do no runtime
+order checks; the equivalent rule ships as analyzer **`ASP0001`**: *"The call to UseAuthorization should
+appear between app.UseRouting() and app.UseEndpoints(..) for authorization to be correctly evaluated."*
+If Spark ever enforces its own ordering, it will be a compile-time diagnostic alongside
+`SPARK001`–`SPARK003`, not middleware.
 
 ## Do not also call `UseRateLimiter()`
 

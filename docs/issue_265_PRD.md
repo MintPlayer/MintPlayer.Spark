@@ -247,14 +247,20 @@ The reasoning for removing it is the useful part:
   `UseSpark()`, so the limiter is on the same side of routing as the rest of `UseSpark` in either ordering.
   Moving it from the end of `UseSpark` to the start changed its side of *authentication*, not of *routing*.
 - `UseSpark` calls `UseAuthorization` unconditionally, which carries the identical requirement for
-  `[Authorize]` — a strictly more severe silent failure. Neither ASP.NET nor Spark validates that at
-  runtime. Guarding the limiter while leaving that unguarded is not a coherent safety story.
-- **Middleware ordering is a build-time property, so it belongs to a build-time tool.** ASP.NET's own
-  `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do not check their own order;
-  ordering rules are expressed as analyzers instead. That is the right vehicle for this too. Spark already
-  ships an analyzer project (`MintPlayer.Spark.SourceGenerators`, diagnostics `SPARK001`–`SPARK003`), so a
-  `UseSpark`-before-`UseRouting` rule could live there as a compile-time diagnostic if it is ever wanted —
-  reported where the mistake is, with no runtime cost and no dependence on framework internals.
+  `[Authorize]` — a strictly more severe silent failure. No middleware validates that at runtime, in
+  ASP.NET or in Spark. Guarding the limiter at run time while leaving that alone is not a coherent story.
+- **Middleware ordering is a compile-time property, so it belongs to a compile-time tool — and ASP.NET
+  already demonstrates exactly that.** `UseRouting` / `UseAuthentication` / `UseAuthorization` /
+  `UseEndpoints` do not check their own order at run time; the rule ships as **analyzer `ASP0001`**
+  ("The call to `UseAuthorization` should appear between `app.UseRouting()` and `app.UseEndpoints(..)` for
+  authorization to be correctly evaluated"), in
+  `sdk/<ver>/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/Microsoft.AspNetCore.Analyzers.dll`. That is
+  first-party precedent for this precise class of rule, covering the very case above.
+
+  So the vehicle for a `UseSpark`-before-`UseRouting` rule is an analyzer, not middleware. Spark already
+  ships `MintPlayer.Spark.SourceGenerators` with `SPARK001`–`SPARK003`, so it could live there: reported
+  where the mistake is written, with no runtime cost and no dependence on framework internals. Left as a
+  possible follow-up, deliberately out of scope for #265.
 
 Recorded because two runtime implementations were tried and both were wrong, and the second failure is the
 generalisable one: **whether routing has run cannot be determined from inside the pipeline being built.** No public API
