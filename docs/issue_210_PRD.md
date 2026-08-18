@@ -881,14 +881,17 @@ query type with no searchable field. The fallback is also what preserves `Breadc
 still runs.
 
 **R46** The narrowing in F14 — reference display text (`Breadcrumb`) is not an index term and stops being
-searchable on pushdown paths — is documented in the query guide, with the denormalization remedy the demos
-already use (`VCar.OwnerFullName`).
+searchable on pushdown paths — is documented with the denormalization remedy the demos already use
+(`VCar.OwnerFullName`). Search gets its own guide, `docs/guide-search.md`, linked from the README's guide table
+and from the queries guide: the behaviour has enough surface (wildcard handling, per-language fields, the
+composition order with row security, the fallbacks, four known limits) that burying it in a section of the
+queries guide would hide most of it.
 
 **R47** The streaming query path (`Streaming/StreamingQueryExecutor.cs`, `Endpoints/Queries/StreamExecuteQuery.cs`)
 takes no search term at all; the client filters those in memory (`spark-query-list.component.ts:410-421`).
 **Out of scope**, explicitly, and noted in the release notes so the asymmetry is known rather than surprising.
 
-#### The open decision — matching semantics
+#### Matching semantics — decided
 
 F15 leaves exactly one genuine choice, and it changes user-visible behaviour either way:
 

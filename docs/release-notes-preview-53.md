@@ -162,6 +162,9 @@ Two behaviour differences worth knowing:
 
 `TranslatedString` fields are searched across **all** languages, with no dependency on the request's culture.
 
+Full behaviour — wildcard handling, the composition order with row-level security, the in-memory fallbacks, and
+the known limits — is documented in the new **[Full-Text Search](guide-search.md)** guide.
+
 Two failure modes were found by measurement and are now guarded rather than discovered in production: an empty
 search term returns *zero rows* in RavenDB rather than acting as a no-op, so it is skipped entirely; and passing
 `SearchOptions` explicitly makes the option leak onto the adjacent clause — which here is the row-level security

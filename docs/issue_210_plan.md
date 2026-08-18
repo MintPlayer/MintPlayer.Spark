@@ -497,42 +497,62 @@ What that changes versus the original W14 sketch:
 - **R43, R45–R47 are new** — search-aware `TotalRecords`, an in-memory fallback for non-Raven `Custom.` queries,
   the documented `Breadcrumb` narrowing, and streaming explicitly out of scope.
 
-### One decision still open
+### The decision, settled
 
-**Matching semantics** (PRD "The open decision"): **(a)** wildcard-wrap each word for substring parity with
-today's behaviour, or **(b)** true term-based organic search with relevance ranking, which only works on
-`[Search]` fields and drops infix matching. Recommendation is **(a)** — it is the only option with no
-user-visible regression, and (b) can be layered on afterwards as an opt-in. This decides whether the two existing
-search tests keep passing or get rewritten, so it is settled before any code is written.
+**Matching semantics: (a) substring parity** — wildcard-wrap each word rather than (b) term-based organic search
+with relevance ranking. Chosen because (a) is the only option with no user-visible regression; (b) only works on
+`[Search]` fields and drops infix matching, so it would have meant shipping a regression and walking it back.
+(b) remains available later as an explicit opt-in. Recorded in PRD "Matching semantics — decided".
 
-### Steps
+### What was built
 
-1. Thread `search` into `ExecuteDatabaseQueryAsync` and `ExecuteCustomQueryAsync` instead of post-filtering.
-2. `ResolveSearchableProperties(Type sortType)` — string-typed properties, `Exact` excluded — cached through
-   `ReflectionCache` on the identity-keyed tier, next to `ResolveSortProperty`.
-3. `ApplySearch(queryable, elementType, term)` — reflective `LinqExtensions.Search<T>` following the
-   `ApplyProjection`/`RowSecurity.Where` shape. Watch three things the existing helpers do not hit: the first
-   parameter is the **generic** `IQueryable<T>` (so the `== typeof(IQueryable)` predicate style must not be
-   copied); the selector is `Expression<Func<T, object>>` so a property access needs
-   `Expression.Convert(..., typeof(object))`; and `MethodInfo.Invoke` does not apply optional parameter defaults,
-   so all six arguments are passed explicitly.
-4. Insert between `ComposeRowFilterAsync` and `ApplySorting`, gated on `IsRavenQueryable` for the custom path.
-5. Guard per R40, and keep the in-memory filter as the fallback per R45.
-6. Restore search-aware `TotalRecords` from RavenDB statistics (R43).
-7. Guide + release-note updates for the `Breadcrumb` narrowing (R46) and the streaming asymmetry (R47).
+1. `BuildSearchTerm(string?)` — splits on whitespace, strips caller-supplied `*` and `?`, wraps each surviving
+   word as `*word*`. Returns `null` for null/empty/whitespace **and** for input that reduces to nothing, so every
+   downstream path tests one thing.
+2. `ResolveSearchableProperties(Type)` — readable `string` properties, excluding `Id` and anything
+   `[IgnoreProperty]` (which is what keeps the sort companions out; they hold the same text as the field they
+   shadow). Cached on `ReflectionCache`'s identity-keyed tier next to `ResolveSortProperty`.
+3. `ApplySearch(object, Type, string)` — reflective `LinqExtensions.Search<T>`, one clause per field, returning
+   whether anything was applied. Three things the existing helpers do not hit: the first parameter is the
+   **generic** `IQueryable<T>` (so `ApplyProjection`'s `== typeof(IQueryable)` predicate style cannot be copied);
+   the selector is `Expression<Func<T, object>>`, so the property access needs
+   `Expression.Convert(..., typeof(object))` even for a `string`; and `MethodInfo.Invoke` does not apply optional
+   parameter defaults, so all six arguments are passed explicitly.
+4. Applied between `ComposeRowFilterAsync` and `ApplySorting` on the database path, and gated on
+   `IsRavenQueryable` on the custom path.
+5. The in-memory filter is kept as the fallback for shapes that cannot push down.
+6. Guide (`docs/guide-search.md`), the queries guide, and release notes.
 
-### Tests
+Two steps in the original sketch turned out to be unnecessary:
 
-- The two existing tests are the canary — `QueryExecutorIntegrationTests.cs:162,176` and
-  `ExecuteQueryEndpointTests.cs:83-90` pin substring semantics (`"alice"`, `"SMITH"`, `"ALICE"`). Under
-  option (a) they must pass **unchanged**; that is the whole argument for (a).
-- Multi-word term matches regardless of word order.
-- **RQL shape test**: with row-level security active, assert `(predicate) and (search or search)` — this is the
-  F16 bypass, and it fails by returning extra rows rather than by erroring, so only a shape assertion catches it.
-- Empty term, whitespace term and a bare `*` each leave the result set exactly as an unsearched query returns it.
-- A query type with no searchable field is unaffected.
-- `TotalRecords` reflects the filtered count, not the collection count, on a paged search.
-- A `DateTimeOffset`/`Exact` field does not participate.
+- **`Exact` exclusion needs no code.** The plan said to exclude `Exact` fields. In practice the CLR property
+  carries no trace of the index's field options, so it cannot be detected at runtime — but the generator only
+  ever applies `Exact` to `DateTimeOffset`, which the string type test already excludes. A hand-written index
+  that declares `Exact` on a string is a documented gap, not a silent one.
+- **`TotalRecords` needed no statistics call.** Paging still happens in memory after mapping, so the count is
+  taken after filtering either way and stays search-aware for free. R43 is satisfied without touching RavenDB's
+  query statistics.
+
+### Tests — 32, all passing
+
+- **The canaries pass unchanged**: `QueryExecutorIntegrationTests` and `ExecuteQueryEndpointTests` pin the old
+  substring semantics (`"alice"`, `"SMITH"`, `"ALICE"`). That they did not need editing is the whole argument
+  for option (a).
+- **Pushdown is proved, not assumed.** The canaries alone cannot distinguish a pushdown from the fallback — both
+  return the same rows — so `Search_is_pushed_into_the_database` asserts the emitted RQL via `OnBeforeQuery`:
+  `from 'People' where (search(FirstName, $p0, and) or search(LastName, $p1, and))`. Note the handler must be
+  subscribed **before** the session is opened; RavenDB copies store-level handlers into a session at
+  construction, so a later subscription never fires.
+- **RQL shape with a preceding filter** — `(predicate) and (search … or search …)`, the F16 bypass. It fails by
+  returning extra rows rather than by erroring, so only a shape assertion catches it.
+- Infix substring, prefix, multi-word in any order, every-word-must-match, case-insensitivity both directions.
+- A substring spanning a space **does** match (per-word wrapping), and words need not be adjacent or in order —
+  the two tests that pin the correction to S7's conclusion.
+- Undeclared field matches with a wildcard term but **not** with a bare word — the pair that justifies why the
+  wrapping is not optional and why search is not scoped to `[Search]`.
+- Companions, the document id and non-string fields are excluded from the searchable set.
+- Empty, whitespace and bare-`*` terms all collapse to no search.
+- A row filter still excludes rows the term matches.
 
 ## Test strategy
 

@@ -433,62 +433,23 @@ unmapped sort companion so the convention does not have to be remembered.
 ## Searching
 
 A query list's search box sends its term as `?search=`, and the server pushes it into RavenDB as a
-`search(...)` clause. Nothing needs declaring: **every text attribute of the query type is searchable**, whether
-or not it carries `[Search]`.
+`search(...)` clause across the query type's text fields. Nothing needs declaring — **every text attribute is
+searchable, whether or not it carries `[Search]`** — and each word of the term is matched as a substring.
 
 ```
 GET /spark/queries/{id}/execute?search=olkswag
 → from index 'Cars/Overview' where (search(LicensePlate, $p0, and) or search(Model, $p1, and))
 ```
 
-### What a term matches
+Search and sorting are independent: search narrows, the sort columns order, and the `*Sort` redirect below
+applies unchanged. A search never ranks by relevance.
 
-Each whitespace-separated word is wrapped as `*word*` and all words must be present, so the behaviour is
-substring matching per word:
+Two things a database search cannot match, both of which used to work when filtering happened in memory:
+**non-text attributes**, and **reference display text** (a breadcrumb is computed after the query runs, so it is
+not an index term — denormalize it into the index, as `OwnerFullName` does above).
 
-| term | matches `"Volkswagen Golf GTI"` | why |
-|---|---|---|
-| `olkswag` | yes | infix substring |
-| `volks gti` | yes | both words present |
-| `gti golf` | yes | order does not matter |
-| `volks octavia` | no | every word must match |
-| `VOLKS` | yes | case-insensitive both ways |
-
-Word order and adjacency do not matter, which makes search slightly more forgiving than a plain "contains the
-whole phrase" filter. Wildcards typed by the user are stripped rather than honoured — a bare `*` would otherwise
-match every document — and an empty or whitespace-only term is not a search at all, so clearing the box returns
-the unfiltered list.
-
-`TranslatedString` needs no special handling: it is indexed as one field per language, and all of them are
-searched, so a term matches whichever language it happens to be written in.
-
-### What is not searchable
-
-Two things the in-memory filter used to match and a database search cannot:
-
-- **Non-text attributes.** Numbers, dates and the document id are excluded. Only text fields participate.
-- **Reference display text (breadcrumbs).** An attribute's resolved display value is computed *after* the query
-  runs, so it is not an index term. Searching cars by their owner's name does not work through the reference —
-  **denormalize the text into the index instead**, which is what `VCar.OwnerFullName` is for:
-
-  ```csharp
-  OwnerFullName = car.Owner != null ? owner.FirstName + " " + owner.LastName : null,
-  ```
-
-  Once the text is a field on the index entity, it is searchable like any other.
-
-A query type with no text field at all, and a `Custom.` query whose method does not return an
-`IRavenQueryable<T>`, both fall back to filtering in memory after materialization — correct, but it reads the
-whole result set, so prefer an index-backed query for anything large.
-
-### Searching and sorting together
-
-They are independent. Search narrows, sorting orders, and the sort redirect to `*Sort` companions
-(see above) applies exactly as it does without a search term. A search does not rank by relevance — an explicit
-sort, or the query's default order, is always what determines the order.
-
-> **Streaming queries do not push search down.** The WebSocket path takes no search term; the client filters
-> those rows locally. The asymmetry is known.
+> Full details — wildcard handling, multi-language fields, the composition order with row-level security, the
+> in-memory fallbacks, and why fuzzy matching is not offered — are in **[Full-Text Search](guide-search.md)**.
 
 ## Query Execution Flow
 
