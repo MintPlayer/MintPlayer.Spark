@@ -577,12 +577,29 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <param name="entityType"></param>
     /// <param name="sortColumns"></param>
     /// <returns></returns>
+    /// <summary>
+    /// Orders <paramref name="queryable"/> by the requested columns, redirecting each to its sort companion
+    /// when the model declares one.
+    /// <para>
+    /// Callers, query JSON <c>sortBy</c> and the <c>?sortBy=</c> override all name the <em>display</em>
+    /// attribute. A field indexed <c>FieldIndexing.Search</c> is analyzed and tokenized, so ordering on it is
+    /// meaningless — <c>Volkswagen Golf GTI</c> is stored as the three terms <c>volkswagen</c>, <c>golf</c>,
+    /// <c>gti</c>, and ordering documents by "their" term is then arbitrary. Its sort companion holds the same
+    /// value as a single un-analyzed term, which is what ordering must actually use.
+    /// </para>
+    /// <para>
+    /// This also explains why the problem is invisible until it bites: a space is the tokenization boundary,
+    /// so a single-word value yields one term either way and an analyzed field <em>accidentally</em> sorts
+    /// correctly. Without this redirect a generated companion is correctly indexed, correctly stored, and
+    /// never used.
+    /// </para>
+    /// </summary>
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns)
     {
         for (int i = 0; i < sortColumns.Length; i++)
         {
             var col = sortColumns[i];
-            var propertyInfo = entityType.GetCachedProperty(col.Property);
+            var propertyInfo = entityType.GetCachedProperty(ResolveSortProperty(entityType, col.Property));
             if (propertyInfo == null) continue;
 
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
@@ -603,6 +620,34 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = orderMethod.Invoke(null, [queryable, lambda])!;
         }
         return queryable;
+    }
+
+    /// <summary>
+    /// The property to order by for a requested attribute name: its sort companion when one exists on the
+    /// sort type, otherwise the requested name unchanged.
+    /// <para>
+    /// Derived by convention rather than read from the model. The companion is always
+    /// <c>{Name}Sort</c> — measured across every hand-written index in the reference corpus, with no
+    /// exceptions — so persisting the name per attribute would add a model field, and matching model-hash
+    /// churn on every existing file, to restate something already derivable. It would also be one more thing
+    /// able to go stale: a persisted name outliving the property it points at.
+    /// </para>
+    /// <para>
+    /// The companion must be <c>[IgnoreProperty]</c> to qualify. That is not decoration — it is the signal
+    /// that distinguishes a real sort companion from a coincidence, so an ordinary domain property that
+    /// happens to be named <c>FooSort</c> cannot silently hijack ordering on <c>Foo</c>. Every companion,
+    /// generated or hand-written, carries it.
+    /// </para>
+    /// <para>If a per-attribute override is ever needed, an optional model field can be added later without
+    /// breaking anything: absent would continue to mean "use the convention".</para>
+    /// </summary>
+    private static string ResolveSortProperty(Type sortType, string requested)
+    {
+        var companion = sortType.GetCachedProperty(requested + "Sort");
+        if (companion is null) return requested;
+        if (!companion.IsIgnoredForSparkModel()) return requested;
+
+        return companion.Name;
     }
 
     /// <summary>

@@ -551,31 +551,35 @@ side by side.
 
 ### Sort redirection (F8) — outside the generator
 
-- **R21** `EntityAttributeDefinition` gains a nullable `SortExpression` string, emitted into
-  `App_Data/Model/*.json` by `ModelSynchronizer` for any attribute whose generated view has a sort
-  companion. Absent for attributes without one, so existing model files stay byte-identical where
-  nothing is searchable.
-- **R22** `QueryExecutor.ApplySorting` honours `SortExpression`: a request to sort by `Model` orders by
-  `ModelSort`. Callers, query JSON (`sortBy`) and the `?sortBy=` runtime override all keep naming the
-  display field. A `SortExpression` naming a property absent from the projection must fall back to the
-  display field rather than throwing.
-- **R23** `SortExpression` is settable at runtime on a `PersistentObjectAttribute`, so an action can
-  suppress or override the redirect for one request.
+- **R21** `QueryExecutor.ApplySorting` redirects a requested sort to the attribute's sort companion. Sorting
+  by `Model` orders by `ModelSort`. Callers, query JSON `sortBy` and the `?sortBy=` runtime override all keep
+  naming the display attribute; nothing outside the query pipeline learns that companions exist.
 
-### The missing-sort-property analyzer and code fix (F10, F11)
+  Without this the generated companions are dead weight — correctly indexed, correctly stored, never used —
+  which is the difference between this issue fixing sorting and merely preparing to fix it.
+- **R22** The companion is resolved **by convention at query time, not persisted per attribute.**
 
-- **R24** A new `SPARK0nn`: a projection property indexed `FieldIndexing.Search` (or a
-  `DateTimeOffset` property indexed `Exact`) that has no `{Name}Sort` companion on the same type.
-  Severity warning, not error — unlike SPARK001/002 this is a correctness *risk*, not a broken contract,
-  and existing hand-written indexes must not stop compiling.
-- **R25** The diagnostic is reported on the **hand-written property's location**, never `Location.None`
-  and never a generated location, or it is silently dropped (F11).
-- **R26** A code fix, "Add Sort property", inserting the `[IgnoreProperty]`-decorated companion. This is
-  the first code fix in the repo, so it introduces a `CodeFixProvider` and the
-  `Microsoft.CodeAnalysis.CSharp.Workspaces` reference that goes with it.
-- **R27** No suppression mechanism is built. When either generator emits the companion, the analyzer sees
-  the generated symbol and does not fire (F11). Referencing the lean generator therefore stops the
-  suggestions automatically, which is the requested behaviour with no marker and no configuration.
+  The reference implementation persists a `SortExpression` on every searchable attribute (100+ occurrences in
+  its committed model JSON). Spark does not need to: the name is *always* `{Name}Sort`, measured across every
+  hand-written index in that corpus with no exceptions. Persisting it would add a model field and matching
+  model-hash churn to **every existing model file**, to restate something already derivable — and would add
+  one more thing able to go stale, since a persisted name can outlive the property it points at.
+
+  Their reasons for persisting it do not transfer: their query pipeline resolves the indirection from model
+  metadata rather than by convention, and they expose it as runtime-mutable so an action can suppress the
+  redirect for one request.
+- **R22a** A candidate companion qualifies only if it is **`[IgnoreProperty]`**. That is the signal
+  distinguishing a real companion from a coincidence, so an ordinary domain property named `FooSort` cannot
+  silently hijack ordering on `Foo`. Every companion, generated or hand-written, carries it.
+- **R22b** A missing companion falls back to the requested property unchanged. No diagnostic, no throw:
+  ordering by the display field is merely imperfect, whereas throwing would take the whole query down.
+- **R23** ~~Runtime-settable `SortExpression` on `PersistentObjectAttribute`.~~ **Dropped.** It does not fit
+  Spark's pipeline: sorting is resolved once per request from the sort type, while `PersistentObjectAttribute`
+  instances are per **row**, produced *after* ordering has already been applied. A property there would be
+  dead surface — the same objection that keeps the fan-out constructor out of R1.
+
+  If per-attribute override or suppression is ever wanted, an optional model field can be added later without
+  breaking anything: absent would continue to mean "use the convention".
 
 ### Diagnostics — no silent aborts (F5)
 
