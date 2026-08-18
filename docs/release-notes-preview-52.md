@@ -104,6 +104,12 @@ the limiter now at the top of the pipeline, getting the order wrong places it ah
 selection, where endpoint-attached rate-limiting metadata silently stops applying. An app with no
 early middleware is unaffected and is not checked.
 
+**Minimal hosting is not affected.** An app that never calls `UseRouting()` explicitly and relies on
+`WebApplication` inserting routing is correctly ordered and starts normally. The check accepts both
+`__EndpointRouteBuilder` (explicit `UseRouting()`) and `__GlobalEndpointRouteBuilder`
+(`WebApplication`); since both are ASP.NET Core internals, the failure message says outright that it
+may have failed to recognise a valid pipeline rather than found a mistake, and names the workaround.
+
 ### Do not combine with a manual `app.UseRateLimiter()`
 
 The old doc comment said "no separate `app.UseRateLimiter()` call needed", which read as *harmless if

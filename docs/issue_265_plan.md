@@ -15,7 +15,8 @@ each can be reverted alone.
 | M2 | Middleware stages + limiter moves ahead of authentication + doc-comment fix | R5–R9 | `4ee489c` |
 | M3 | `SparkTestDriver.RequireLicense` | R10, R11 | `ff82a0d` |
 | M4 | Guide, version bump, PRD/plan finalisation | R12 | `50613b3` |
-| M5 | PR #266 review round — error-message accuracy, routing precondition, release notes | R13–R16 | this commit |
+| M5 | PR #266 review round — error-message accuracy, routing precondition, release notes | R13–R16 | `2a48d66` |
+| M6 | Second review round — the routing guard's minimal-hosting false positive | R17 | this commit |
 
 ---
 
@@ -264,3 +265,53 @@ changes rather than the features:
 
 Also documents the placement move as a behaviour change for every app already opted in, and the new
 `UseRouting` refusal.
+
+---
+
+## M6 — the routing guard had a false positive (R17)
+
+The reviewer flagged that `VerifyRoutingHasRun` keys off a private ASP.NET Core detail and **fails
+closed**, and predicted a concrete false positive: a minimal-hosting app that never calls `UseRouting()`
+and relies on `WebApplication` inserting routing for itself. They were explicit that they could not read
+`ApplicationBuilder.Build()`'s auto-insert logic and were reasoning from documented behaviour plus one
+detail — that `WebApplication` stamps `__GlobalEndpointRouteBuilder` instead.
+
+**Measured, and they were right on both counts.** Two probes:
+
+1. A minimal-hosting app's `IApplicationBuilder.Properties` after `Build()` and after `MapGet`:
+
+   ```
+   after Build()  : [__GlobalEndpointRouteBuilder, application.Services, server.Features]
+   after MapGet() : [__GlobalEndpointRouteBuilder, application.Services, server.Features]
+   has __EndpointRouteBuilder      : False
+   has __GlobalEndpointRouteBuilder: True
+   ```
+
+2. Whether such an app is *actually* mis-ordered, or merely unrecognised — the question that decides
+   whether this is a false positive or a true one. A middleware registered straight after `Build()`,
+   with no `UseRouting()` anywhere:
+
+   ```
+   PROBE endpoint at middleware time: HTTP: GET /exempt
+   PROBE DisableRateLimiting metadata visible: True
+   ```
+
+   The endpoint is selected and its metadata is visible. The pipeline is correct; the guard was refusing
+   a working app.
+
+**Fix:** accept either marker. `__EndpointRouteBuilder` (explicit `UseRouting()`, and what `UseEndpoints`
+reads for its own check) or `__GlobalEndpointRouteBuilder` (`WebApplication`, stamped at construction).
+
+**Also fixed: the diagnostic.** The reviewer's deeper point was about failure *direction* — if a key is
+ever renamed, every opted-in app stops starting with a message telling them to do something they already
+did. Refusing on a heuristic while asserting the caller made a mistake is the wrong shape. The message
+now names the possibility that the check has failed to recognise a valid pipeline, and gives the
+unblocking workaround (an explicit `UseRouting()`), so the failure is self-aware rather than misleading.
+
+Kept as fail-closed rather than downgraded to a warning: the true positive it catches is silent, and a
+warning in startup logs is exactly what nobody reads.
+
+**Test:** `Minimal_hosting_without_an_explicit_UseRouting_is_not_refused` builds a real
+`WebApplication`, asserts the key situation that caused the bug, and calls `UseSpark()` through it.
+Verified to **fail** with the single-key version restored — the first draft of this test asserted against
+`ApplyMiddleware`, which never invokes the guard at all, and would have passed either way.

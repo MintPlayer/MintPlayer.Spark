@@ -129,6 +129,16 @@ Get the order wrong and the limiter runs before an endpoint has been selected, s
 global-only — a limiter quietly doing less than configured, which is the exact failure this guide's
 last section is about. An app with no early middleware cannot be affected and is not checked.
 
+**Minimal hosting is fine.** An app that never calls `UseRouting()` explicitly and lets
+`WebApplication` insert routing for itself is correctly ordered — the insertion goes to the *front* of
+the pipeline — and is not refused. Measured: middleware added straight after `Build()` sees a selected
+endpoint and its `[DisableRateLimiting]` metadata.
+
+The check is a heuristic over two ASP.NET Core internals (`__EndpointRouteBuilder` from an explicit
+`UseRouting()`, `__GlobalEndpointRouteBuilder` from `WebApplication`). If it ever refuses a pipeline
+that is genuinely correct, the message says so and an explicit `app.UseRouting()` before
+`app.UseSpark()` unblocks you — please report it.
+
 ## Do not also call `UseRateLimiter()`
 
 **Combining `spark.AddRateLimiter()` with a manual `app.UseRateLimiter()` silently halves your

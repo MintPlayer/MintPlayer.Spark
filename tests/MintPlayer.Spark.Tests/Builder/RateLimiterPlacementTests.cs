@@ -148,6 +148,49 @@ public class RateLimiterPlacementTests : SparkTestDriver
     }
 
     [Fact]
+    public void Minimal_hosting_without_an_explicit_UseRouting_is_not_refused()
+    {
+        // Regression for a false positive found in review. The guard originally keyed only off
+        // "__EndpointRouteBuilder", which an explicit UseRouting() stamps. A minimal-hosting app that
+        // never calls UseRouting() relies on WebApplication inserting routing at the FRONT of the
+        // pipeline while it is built — after UseSpark() has already run — so that key is absent at
+        // check time even though the ordering is correct.
+        //
+        // Measured before fixing: in such an app, middleware added straight after Build() does see a
+        // selected endpoint and does see its [DisableRateLimiting] metadata. The app works; the guard
+        // refused to start it. WebApplication stamps "__GlobalEndpointRouteBuilder" instead, which the
+        // check now also accepts.
+        var webBuilder = WebApplication.CreateBuilder();
+        webBuilder.Services.AddSpark(spark => spark.AddRateLimiter());
+        var app = webBuilder.Build();
+        var appBuilder = (IApplicationBuilder)app;
+
+        appBuilder.Properties.Should().NotContainKey("__EndpointRouteBuilder",
+            "no explicit UseRouting() was called — this is what made the original check fail");
+        appBuilder.Properties.Should().ContainKey("__GlobalEndpointRouteBuilder",
+            "WebApplication stamps this at construction; it is what makes the pipeline safe");
+
+        // Exercise the guard through UseSpark itself, with the limiter registered so the check is
+        // actually reached. UseSpark goes on to create indexes and verify the model hash, which need a
+        // real host — so anything it throws after the guard is out of scope, exactly as in
+        // UseSpark_before_UseRouting_is_tolerated_when_nothing_is_registered_early.
+        try
+        {
+            appBuilder.UseSpark();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("UseRouting"))
+        {
+            Assert.Fail(
+                "the routing guard refused a minimal-hosting app whose pipeline is correctly ordered: "
+                + ex.Message);
+        }
+        catch
+        {
+            // Later machinery (index creation, model-hash verification), not the guard.
+        }
+    }
+
+    [Fact]
     public async Task An_unmetered_path_still_reaches_authentication()
     {
         // The mirror of the above: moving the limiter earlier must not turn it into a blanket gate.

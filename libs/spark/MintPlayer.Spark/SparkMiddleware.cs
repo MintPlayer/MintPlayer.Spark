@@ -132,23 +132,56 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// The key <c>UseRouting()</c> stamps on the builder's properties (the same one
-    /// <c>UseEndpoints</c> reads to verify its own ordering). Its absence at this point in
-    /// <c>UseSpark</c> means routing has not been added yet.
+    /// The keys that indicate routing will run ahead of middleware added from here on. Both are
+    /// ASP.NET Core internals, so this is a heuristic — see <see cref="VerifyRoutingHasRun"/>.
+    /// <list type="bullet">
+    /// <item><description>
+    /// <c>__EndpointRouteBuilder</c> — stamped by an explicit <c>UseRouting()</c>, and the key
+    /// <c>UseEndpoints</c> reads for its own ordering check. The classic hosting style.
+    /// </description></item>
+    /// <item><description>
+    /// <c>__GlobalEndpointRouteBuilder</c> — stamped by <c>WebApplication</c> at construction. A
+    /// minimal-hosting app that never calls <c>UseRouting()</c> relies on <c>WebApplication</c>
+    /// inserting routing at the <em>front</em> of the pipeline while it is built, which happens after
+    /// <c>UseSpark()</c> has already run. Measured: in such an app, middleware added straight after
+    /// <c>Build()</c> still sees a selected endpoint and its <c>[DisableRateLimiting]</c> metadata, so
+    /// the ordering is correct and checking only the first key would refuse a working app.
+    /// </description></item>
+    /// </list>
     /// </summary>
-    private const string EndpointRouteBuilderKey = "__EndpointRouteBuilder";
+    private static readonly string[] RoutingMarkerKeys =
+        ["__EndpointRouteBuilder", "__GlobalEndpointRouteBuilder"];
 
+    /// <summary>
+    /// Fails the build when nothing indicates routing will precede
+    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/> middleware.
+    /// <para>
+    /// Both markers are ASP.NET Core implementation details, so the message has to account for being
+    /// wrong: were a key ever renamed, this would refuse every app that had opted into the limiter,
+    /// and a diagnostic that only said "call UseRouting() first" would be actively misleading to
+    /// someone who already had. So it names that possibility explicitly rather than asserting the
+    /// caller made a mistake.
+    /// </para>
+    /// </summary>
     private static void VerifyRoutingHasRun(IApplicationBuilder app)
     {
-        if (app.Properties.ContainsKey(EndpointRouteBuilderKey))
-            return;
+        foreach (var key in RoutingMarkerKeys)
+        {
+            if (app.Properties.ContainsKey(key))
+                return;
+        }
 
         throw new InvalidOperationException(
-            "UseSpark() was called before UseRouting(), and a module registered middleware for the " +
-            $"'{nameof(SparkMiddlewareStage.BeforeAuthentication)}' stage — the Spark rate limiter " +
-            "does this. That middleware runs ahead of routing, so no endpoint has been selected yet " +
-            "and endpoint-attached metadata such as [EnableRateLimiting] / [DisableRateLimiting] " +
-            "would be silently ignored. Call app.UseRouting() before app.UseSpark().");
+            "UseSpark() appears to have been called before routing was configured, and a module " +
+            $"registered middleware for the '{nameof(SparkMiddlewareStage.BeforeAuthentication)}' " +
+            "stage — the Spark rate limiter does this. That middleware would run ahead of routing, so " +
+            "no endpoint would be selected yet and endpoint-attached metadata such as " +
+            "[EnableRateLimiting] / [DisableRateLimiting] would be silently ignored. Call " +
+            "app.UseRouting() before app.UseSpark(). " +
+            "If you already do — or you use minimal hosting and never call UseRouting() explicitly — " +
+            "then this check has failed to recognise your pipeline rather than found a mistake: " +
+            "please report it, and unblock yourself by adding an explicit app.UseRouting() before " +
+            "app.UseSpark().");
     }
 
     /// <summary>

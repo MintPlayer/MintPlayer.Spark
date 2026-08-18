@@ -203,6 +203,7 @@ in preview.
 | R14 | The `ArgumentException` names `PathPrefixes` as its `ParamName`, not an internal parameter. |
 | R15 | `UseSpark()` refuses to build when routing has not run **and** something is registered at `BeforeAuthentication`. Gated on the registration, because an app with no early middleware cannot be affected. |
 | R16 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change. |
+| R17 | The routing check accepts minimal hosting (`__GlobalEndpointRouteBuilder`) as well as an explicit `UseRouting()` (`__EndpointRouteBuilder`), and — since both are ASP.NET internals — its message states that it may have failed to recognise a valid pipeline rather than asserting the caller erred. |
 
 ## Decisions
 
