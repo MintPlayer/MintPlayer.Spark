@@ -19,6 +19,8 @@ intermediate milestones verified by reading and type-checking.
 | W8 | `culture.json` AdditionalFile + `TranslatedString` fan-out | R10, R17 |
 | W9 | Convert one demo entity; re-synchronize model + hashes | F7, N5 |
 | W10 | Guides, release notes, version bump | — |
+| W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27 |
+| W12 | Lean entity-side generator project for `*.Library` | F12 |
 
 Ordering rationale: W2–W5 are the proven parts of the reference design and ship first. W7 is what makes
 the companions actually used (PRD F8) and is independent of the generator, so it can land in parallel.
@@ -69,6 +71,51 @@ style has its own mini parser). Confirm the file is visible in a real build once
 
 Negative result → the language list moves to an MSBuild property, which is worse ergonomically but keeps
 R10 achievable.
+
+### S4 — are generated symbols visible to the analyzer? PASSED
+
+Whether the "no marker, no editorconfig" suppression design actually works under
+`GeneratedCodeAnalysisFlags.None`. Proven twice — in the test harness and in a real `dotnet build`:
+
+```
+=== BEFORE GENERATOR ===  Proj => Name
+=== AFTER GENERATOR  ===  Proj => Name,NameSort
+```
+
+`GetMembers()` returns the merged partial including generated halves; a partial with at least one
+hand-written declaration is analyzed normally; generators run before analyzers inside one `csc`
+invocation. Full detail and the load-bearing caveat about diagnostic location are in PRD F11.
+
+Had it failed, R27 would have needed a marker type and the lean generator a public marker to advertise
+itself.
+
+### S5 — can a second lean generator project coexist? PASSED, with precedent
+
+`libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators` already *is* this pattern — a lean
+single-generator project loaded alongside the main one in every demo app. W12 copies its csproj.
+Confirmed no `ComparerRegistry` collision, packaging fully inherited, and `spark.targets`' SPARK001
+hard-error does not reach an in-repo `*.Library`. Detail in PRD F12.
+
+### S6 — can an index read one language out of a flat-serialized `TranslatedString`?
+
+**The gating unknown for R10 / W8, and the only spike whose failure changes a requirement rather than an
+implementation detail.** Run against the live RavenDB on `localhost:8080` in a throwaway database.
+
+`TranslatedString` serializes flat (`{"en":..,"nl":..}`) with no `Translations` wrapper, so the CLR path
+and the JSON path disagree. Candidates tested: the dictionary indexer (does RavenDB translate it to
+`Description.nl` or `Description.Translations.nl`?), dynamic fields via `CreateField`, a raw index
+definition / `AdditionalSources`, and abandoning the dictionary shape for real persisted properties. For
+each: does the field populate through `ProjectInto`, can it be sorted, does a space-containing value sort
+correctly, and are there index errors.
+
+Index *errors* are the key signal — a Map that cannot be translated often fails there rather than at
+deploy time, which is the silent-null failure mode this whole issue is trying to eliminate.
+
+The reference implementation offers no guidance here: it maps a `TranslatedString` whole and opaque and
+picks the language at read time, has no dictionary or dynamic-field handling anywhere, and derives map
+expressions from the CLR path only — so pointing a generated index at a converter-flattened field would
+silently yield nulls. Their sanctioned workaround for shape mismatches is a raw expression string. This is
+free design space for Spark, which is why it gets a spike rather than a port.
 
 ---
 
@@ -187,6 +234,47 @@ Update `guide-queries-and-sorting.md` (the generated alternative to the five-ste
 `guide-reference-attributes.md` (carry-over onto generated views). Release notes covering the new model
 field and the `ApplySorting` behaviour change. Version bump; CI publishes on merge to `master` — no
 manual `dotnet nuget push`.
+
+## W11 — Missing-sort-property analyzer and code fix
+
+`Diagnostics/MissingSortPropertyAnalyzer.cs` + `.Rules.cs`, following `ProjectionPropertyAnalyzer`'s
+shape. Fires on a projection property indexed `Search` (or a `DateTimeOffset` indexed `Exact`) with no
+`{Name}Sort` companion; **warning**, not error, so the five existing hand-written pairs keep compiling
+while they are flagged (R24). Anchored on the hand-written property's location (R25) — anchoring it
+anywhere else drops it silently.
+
+The code fix (R26) is the repo's first, so it brings a `CodeFixProvider` and a
+`Microsoft.CodeAnalysis.CSharp.Workspaces` reference. Packaged into the same analyzer assembly.
+
+No suppression logic is written (R27): S4 proved the generated companion satisfies the analyzer by symbol
+lookup alone.
+
+Tests: `GeneratorHarness.RunAnalyzerAsync` for the diagnostic; a combined generator-then-analyzer test
+asserting the diagnostic does **not** fire once the companion is generated — that test is the executable
+form of R27 and guards the interaction that the whole "no marker needed" design rests on.
+
+## W12 — Lean entity-side generator for `*.Library`
+
+New project `libs/source_generators/MintPlayer.Spark.Entities.SourceGenerators` (name TBD), csproj copied
+from `MintPlayer.Spark.AllFeatures.SourceGenerators` with a new `PackageId` and `Description`, keeping
+`GeneratePathProperty="true"` and the Roslyn `Update` pins, both of which are load-bearing (PRD F12).
+
+One generator, one job: entity-side per-language helper properties for `TranslatedString` on `partial`
+entity classes, driven by an attribute added to the **existing** `MintPlayer.Spark.Abstractions` — no new
+attributes package.
+
+`SparkModelSymbols` is duplicated into the project rather than linked, matching what AllFeatures already
+does and the file's own doc comment.
+
+**Shape deferred to S6.** What these helpers can usefully be — computed properties, real persisted
+properties, or something that feeds a dynamic field — depends entirely on what a RavenDB Map can actually
+read out of a flat-serialized `TranslatedString`. A computed `Description_nl => Description?.GetValue("nl")`
+is the obvious design and is very likely *not* indexable, since the server compiles the Map against raw
+JSON and has no `TranslatedString` type. Writing this milestone before S6 reports would mean guessing.
+
+In-repo consumers get a `ProjectReference … OutputItemType="Analyzer" ReferenceOutputAssembly="false"`;
+external consumers a `PackageReference` with `PrivateAssets="all"` and `analyzers` in `IncludeAssets`. If
+it should attach automatically in-repo, copy the `spark-allfeatures.targets` injection pattern.
 
 ---
 
