@@ -9,6 +9,10 @@ using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Testing;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Tests._Infrastructure;
 using MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
@@ -94,100 +98,150 @@ public class RateLimiterPlacementTests : SparkTestDriver
     }
 
     [Fact]
-    public void UseSpark_before_UseRouting_is_refused_when_something_is_registered_early()
+    public async Task Routing_after_UseSpark_is_detected_and_then_refused()
     {
-        // BeforeAuthentication's contract is that routing has already run. UseSpark is documented as
-        // "call after UseRouting()", but documentation is not enforcement: get the order wrong and the
-        // limiter sits ahead of endpoint selection, where [EnableRateLimiting] / [DisableRateLimiting]
-        // silently stop applying and metering falls back to global-only. That is the same
-        // quietly-doing-less failure this whole change exists to remove, so it is checked.
-        var services = new ServiceCollection();
-        services.AddRouting();
-        services.AddLogging();
-        services.AddSpark(spark => spark.AddRateLimiter());
-        using var provider = services.BuildServiceProvider();
+        // The ordering guard, end to end. Observed at request time via public API — an endpoint absent
+        // when the BeforeAuthentication position runs and present once the request returns proves
+        // routing sits downstream, with no dependence on ASP.NET's private property keys and no
+        // guessing about hosting model.
+        //
+        // First offending request logs and arms; the next throws before doing any work, so the failure
+        // lands on a request whose response has not started.
+        using var host = await BuildMisorderedHostAsync();
+        using var client = host.GetTestClient();
 
-        var app = new ApplicationBuilder(provider);
+        var first = await client.GetAsync("/probe");
+        first.IsSuccessStatusCode.Should().BeTrue(
+            "the first offending request is allowed to complete — it is the one that detects the fault");
 
-        // No app.UseRouting() — the mistake under test.
-        var act = () => app.UseSpark();
+        var act = async () => await client.GetAsync("/probe");
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*UseRouting*");
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*UseRouting*");
+        await host.StopAsync();
     }
 
     [Fact]
-    public void UseSpark_before_UseRouting_is_tolerated_when_nothing_is_registered_early()
+    public async Task An_unmatched_path_is_not_mistaken_for_misordering()
     {
-        // The check must not become a blanket new requirement. An app with no BeforeAuthentication
-        // middleware cannot be affected by the ordering, so failing it would cost churn for nothing.
-        //
-        // Asserts only that the routing guard does not fire; UseSpark goes on to do other work
-        // (index creation, model-hash verification) that needs a full host, so anything it throws
-        // afterwards is out of scope here.
-        var services = new ServiceCollection();
-        services.AddRouting();
-        services.AddLogging();
-        services.AddSpark(spark => { });
-        using var provider = services.BuildServiceProvider();
+        // The check must never fire on a 404: no endpoint either side of next(), which says nothing
+        // about ordering. Without this the guard would break any misordered-looking app that simply
+        // received a request for a path it does not serve.
+        using var host = await BuildMisorderedHostAsync();
+        using var client = host.GetTestClient();
 
-        var app = new ApplicationBuilder(provider);
+        var missing = await client.GetAsync("/no-such-path");
+        missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-        try
-        {
-            app.UseSpark();
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("UseRouting"))
-        {
-            Assert.Fail("the routing guard fired even though nothing was registered early");
-        }
-        catch
-        {
-            // Any other failure is later machinery, not the guard.
-        }
+        // Still unarmed — a second unmatched request must also pass rather than throw.
+        var second = await client.GetAsync("/no-such-path");
+        second.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        await host.StopAsync();
     }
 
     [Fact]
-    public void Minimal_hosting_without_an_explicit_UseRouting_is_not_refused()
+    public async Task Correctly_ordered_routing_never_arms_the_guard()
     {
-        // Regression for a false positive found in review. The guard originally keyed only off
-        // "__EndpointRouteBuilder", which an explicit UseRouting() stamps. A minimal-hosting app that
-        // never calls UseRouting() relies on WebApplication inserting routing at the FRONT of the
-        // pipeline while it is built — after UseSpark() has already run — so that key is absent at
-        // check time even though the ordering is correct.
-        //
-        // Measured before fixing: in such an app, middleware added straight after Build() does see a
-        // selected endpoint and does see its [DisableRateLimiting] metadata. The app works; the guard
-        // refused to start it. WebApplication stamps "__GlobalEndpointRouteBuilder" instead, which the
-        // check now also accepts.
+        using var host = await BuildHostAsync(routingFirst: true);
+        using var client = host.GetTestClient();
+
+        for (var i = 0; i < 3; i++)
+        {
+            var response = await client.GetAsync("/probe");
+            response.IsSuccessStatusCode.Should().BeTrue();
+        }
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task Minimal_hosting_without_an_explicit_UseRouting_is_not_refused()
+    {
+        // Regression for the false positive found in review, now structural rather than special-cased.
+        // A minimal-hosting app never calls UseRouting(); WebApplication inserts routing at the FRONT
+        // of the pipeline while it is built, so the ordering is correct even though nothing at
+        // UseSpark-time could have said so. The request-time check sees an endpoint already selected
+        // and settles — no marker key, no hosting-model branch.
         var webBuilder = WebApplication.CreateBuilder();
+        webBuilder.Logging.ClearProviders();
+        webBuilder.WebHost.UseTestServer();
         webBuilder.Services.AddSpark(spark => spark.AddRateLimiter());
-        var app = webBuilder.Build();
+
+        await using var app = webBuilder.Build();
         var appBuilder = (IApplicationBuilder)app;
 
-        appBuilder.Properties.Should().NotContainKey("__EndpointRouteBuilder",
-            "no explicit UseRouting() was called — this is what made the original check fail");
-        appBuilder.Properties.Should().ContainKey("__GlobalEndpointRouteBuilder",
-            "WebApplication stamps this at construction; it is what makes the pipeline safe");
+        // No app.UseRouting() anywhere.
+        UseRoutingOrderGuardOnly(appBuilder);
+        app.MapGet("/probe", () => "ok");
 
-        // Exercise the guard through UseSpark itself, with the limiter registered so the check is
-        // actually reached. UseSpark goes on to create indexes and verify the model hash, which need a
-        // real host — so anything it throws after the guard is out of scope, exactly as in
-        // UseSpark_before_UseRouting_is_tolerated_when_nothing_is_registered_early.
-        try
+        await app.StartAsync();
+        using var client = app.GetTestClient();
+
+        for (var i = 0; i < 3; i++)
         {
-            appBuilder.UseSpark();
+            var response = await client.GetAsync("/probe");
+            response.IsSuccessStatusCode.Should().BeTrue(
+                "minimal hosting routes ahead of this position, so the guard must never arm");
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("UseRouting"))
-        {
-            Assert.Fail(
-                "the routing guard refused a minimal-hosting app whose pipeline is correctly ordered: "
-                + ex.Message);
-        }
-        catch
-        {
-            // Later machinery (index creation, model-hash verification), not the guard.
-        }
+
+        await app.StopAsync();
+    }
+
+    private static Task<IHost> BuildMisorderedHostAsync() => BuildHostAsync(routingFirst: false);
+
+    /// <summary>
+    /// A host carrying the ordering guard and one mapped endpoint, with routing either side of it.
+    /// <para>
+    /// Uses <c>UseSpark</c>'s guard in isolation rather than the whole of <c>UseSpark</c>: the full
+    /// call needs a document store and a model hash, and neither has anything to do with ordering.
+    /// The guard is reached through <see cref="SparkExtensions.UseSpark(IApplicationBuilder)"/> in
+    /// production, and that wiring is covered by
+    /// <see cref="Minimal_hosting_without_an_explicit_UseRouting_is_not_refused"/>.
+    /// </para>
+    /// </summary>
+    private static async Task<IHost> BuildHostAsync(bool routingFirst)
+    {
+        var host = await new HostBuilder()
+            .ConfigureWebHost(web =>
+            {
+                web.UseTestServer();
+                web.ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddLogging(l => l.ClearProviders());
+                });
+                web.Configure(app =>
+                {
+                    if (routingFirst) app.UseRouting();
+
+                    UseRoutingOrderGuardOnly(app);
+
+                    if (!routingFirst) app.UseRouting();
+
+                    app.UseEndpoints(endpoints => endpoints.MapGet("/probe", () => "ok"));
+                });
+            })
+            .StartAsync();
+
+        return host;
+    }
+
+    /// <summary>
+    /// Invokes <c>UseSpark</c>'s private ordering guard. Reflection is the lesser evil here: making it
+    /// public would put a diagnostic on the framework's API surface purely so a test could reach it,
+    /// and testing a copy of the logic would assert the copy.
+    /// </summary>
+    private static void UseRoutingOrderGuardOnly(IApplicationBuilder app)
+    {
+        var method = typeof(SparkExtensions).GetMethod(
+            "UseRoutingOrderGuard",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "SparkExtensions.UseRoutingOrderGuard is gone or renamed — the ordering guard these "
+                + "tests cover no longer exists under that name.");
+
+        method.Invoke(null, [app]);
     }
 
     [Fact]

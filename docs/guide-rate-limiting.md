@@ -113,31 +113,40 @@ Nothing at that stage may read `HttpContext.User`: no credential has been valida
 request looks anonymous. Middleware that needs the principal belongs in the default
 `SparkMiddlewareStage.AfterSpark`.
 
-### `UseRouting()` must come first, and this is enforced
+### `UseRouting()` must come first, and this is checked
 
 The stage's contract is that routing has already run — that is what makes endpoint-attached policies
 resolve. `UseSpark()` has always been documented as "call after `UseRouting()`", and when anything is
-registered at `BeforeAuthentication` it is now **checked** rather than trusted:
+registered at `BeforeAuthentication` the ordering is now **verified** rather than trusted:
 
 ```csharp
-app.UseSpark();       // throws: the limiter would sit ahead of endpoint selection
-app.UseRouting();
+app.UseSpark();
+app.UseRouting();     // too late: the limiter is already ahead of endpoint selection
 ```
 
 Get the order wrong and the limiter runs before an endpoint has been selected, so
 `[EnableRateLimiting]` and `[DisableRateLimiting]` silently stop applying and metering falls back to
 global-only — a limiter quietly doing less than configured, which is the exact failure this guide's
-last section is about. An app with no early middleware cannot be affected and is not checked.
+last section is about.
 
-**Minimal hosting is fine.** An app that never calls `UseRouting()` explicitly and lets
-`WebApplication` insert routing for itself is correctly ordered — the insertion goes to the *front* of
-the pipeline — and is not refused. Measured: middleware added straight after `Build()` sees a selected
-endpoint and its `[DisableRateLimiting]` metadata.
+**How it is detected.** Not at startup, and not by inspecting ASP.NET internals. Whether routing has
+been added is not answerable from `IApplicationBuilder` through any public API, and the private
+property keys that would answer it cannot answer it *correctly* anyway — minimal hosting inserts
+routing while the pipeline is being built, after `UseSpark()` has run, so a correct app and a broken
+one look identical at that moment.
 
-The check is a heuristic over two ASP.NET Core internals (`__EndpointRouteBuilder` from an explicit
-`UseRouting()`, `__GlobalEndpointRouteBuilder` from `WebApplication`). If it ever refuses a pipeline
-that is genuinely correct, the message says so and an explicit `app.UseRouting()` before
-`app.UseSpark()` unblocks you — please report it.
+Instead Spark asks a question a request can actually answer: **was an endpoint absent when this
+position ran, and present once the request came back?** If so, routing is downstream. That is proof
+rather than inference, it needs no knowledge of your hosting model, and it cannot misfire on a path you
+do not serve — a 404 has no endpoint on either side.
+
+The first offending request logs a critical message naming the endpoint; the next one fails before
+doing any work, so the error lands on a request whose response has not started. An app with no
+`BeforeAuthentication` middleware is never checked, since the ordering cannot affect it.
+
+**Minimal hosting needs no special handling.** An app that never calls `UseRouting()` and lets
+`WebApplication` insert routing for itself is correctly ordered, sees an endpoint already selected, and
+the check settles on its first request.
 
 ## Do not also call `UseRateLimiter()`
 

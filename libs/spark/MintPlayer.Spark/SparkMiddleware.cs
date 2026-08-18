@@ -132,56 +132,79 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// The keys that indicate routing will run ahead of middleware added from here on. Both are
-    /// ASP.NET Core internals, so this is a heuristic — see <see cref="VerifyRoutingHasRun"/>.
-    /// <list type="bullet">
-    /// <item><description>
-    /// <c>__EndpointRouteBuilder</c> — stamped by an explicit <c>UseRouting()</c>, and the key
-    /// <c>UseEndpoints</c> reads for its own ordering check. The classic hosting style.
-    /// </description></item>
-    /// <item><description>
-    /// <c>__GlobalEndpointRouteBuilder</c> — stamped by <c>WebApplication</c> at construction. A
-    /// minimal-hosting app that never calls <c>UseRouting()</c> relies on <c>WebApplication</c>
-    /// inserting routing at the <em>front</em> of the pipeline while it is built, which happens after
-    /// <c>UseSpark()</c> has already run. Measured: in such an app, middleware added straight after
-    /// <c>Build()</c> still sees a selected endpoint and its <c>[DisableRateLimiting]</c> metadata, so
-    /// the ordering is correct and checking only the first key would refuse a working app.
-    /// </description></item>
-    /// </list>
-    /// </summary>
-    private static readonly string[] RoutingMarkerKeys =
-        ["__EndpointRouteBuilder", "__GlobalEndpointRouteBuilder"];
-
-    /// <summary>
-    /// Fails the build when nothing indicates routing will precede
-    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/> middleware.
+    /// Detects — and then refuses — a pipeline where routing runs <em>after</em>
+    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/> middleware, which is the one ordering
+    /// that makes that stage quietly do less than it was configured to: no endpoint is selected yet,
+    /// so endpoint-attached metadata such as <c>[EnableRateLimiting]</c> / <c>[DisableRateLimiting]</c>
+    /// is invisible and metering silently falls back to global-only.
     /// <para>
-    /// Both markers are ASP.NET Core implementation details, so the message has to account for being
-    /// wrong: were a key ever renamed, this would refuse every app that had opted into the limiter,
-    /// and a diagnostic that only said "call UseRouting() first" would be actively misleading to
-    /// someone who already had. So it names that possibility explicitly rather than asserting the
-    /// caller made a mistake.
+    /// Deliberately observed at request time rather than guessed at startup. Whether routing has been
+    /// added is not answerable from <see cref="IApplicationBuilder"/> through any public API — the only
+    /// startup-time signals are private ASP.NET Core property keys, and keying a hard startup failure
+    /// to those means a future rename stops every Spark app that opted in. Worse, they cannot even
+    /// answer the question correctly: minimal hosting inserts routing at the front of the pipeline
+    /// while it is built, so at this point in <c>UseSpark</c> a correctly-ordered app can look
+    /// identical to a broken one.
+    /// </para>
+    /// <para>
+    /// What a request can answer, using only public API, is the actual question: was an endpoint
+    /// absent when this position ran and present once the request came back? That means routing sits
+    /// downstream of here. It is proof rather than inference, it needs no knowledge of hosting model,
+    /// and it cannot false-positive on an unmatched path — a 404 has no endpoint either side.
+    /// </para>
+    /// <para>
+    /// The first offending request logs and arms; the next one throws before doing any work, so the
+    /// failure lands on a request whose response has not started. State is per-<c>UseSpark</c> call,
+    /// not static, so hosts in one process (a test run) cannot contaminate each other.
     /// </para>
     /// </summary>
-    private static void VerifyRoutingHasRun(IApplicationBuilder app)
+    private static void UseRoutingOrderGuard(IApplicationBuilder app)
     {
-        foreach (var key in RoutingMarkerKeys)
-        {
-            if (app.Properties.ContainsKey(key))
-                return;
-        }
+        var logger = app.ApplicationServices.GetService<ILoggerFactory>()
+                        ?.CreateLogger("MintPlayer.Spark.MiddlewareOrder");
+        var misordered = false;
+        var settled = false;
 
-        throw new InvalidOperationException(
-            "UseSpark() appears to have been called before routing was configured, and a module " +
-            $"registered middleware for the '{nameof(SparkMiddlewareStage.BeforeAuthentication)}' " +
-            "stage — the Spark rate limiter does this. That middleware would run ahead of routing, so " +
-            "no endpoint would be selected yet and endpoint-attached metadata such as " +
-            "[EnableRateLimiting] / [DisableRateLimiting] would be silently ignored. Call " +
-            "app.UseRouting() before app.UseSpark(). " +
-            "If you already do — or you use minimal hosting and never call UseRouting() explicitly — " +
-            "then this check has failed to recognise your pipeline rather than found a mistake: " +
-            "please report it, and unblock yourself by adding an explicit app.UseRouting() before " +
-            "app.UseSpark().");
+        app.Use(async (context, next) =>
+        {
+            if (misordered)
+            {
+                throw new InvalidOperationException(
+                    "Spark middleware registered for the " +
+                    $"'{nameof(SparkMiddlewareStage.BeforeAuthentication)}' stage — the Spark rate " +
+                    "limiter does this — is running before routing, so no endpoint is selected when it " +
+                    "executes and endpoint-attached metadata such as [EnableRateLimiting] / " +
+                    "[DisableRateLimiting] is silently ignored. Call app.UseRouting() before " +
+                    "app.UseSpark().");
+            }
+
+            if (settled)
+            {
+                await next(context);
+                return;
+            }
+
+            var endpointBefore = context.GetEndpoint();
+            await next(context);
+
+            if (endpointBefore is not null)
+            {
+                // Routing already ran upstream. Nothing further to observe, ever.
+                settled = true;
+                return;
+            }
+
+            if (context.GetEndpoint() is not { } selected)
+                return; // Unmatched path — says nothing either way; keep watching.
+
+            misordered = true;
+            logger?.LogCritical(
+                "app.UseSpark() was called before app.UseRouting(): routing selected endpoint {Endpoint} " +
+                "only after Spark's BeforeAuthentication middleware had already run, so endpoint-level " +
+                "rate-limiting metadata is being ignored. Move app.UseRouting() above app.UseSpark(); " +
+                "the next request will fail until you do.",
+                selected.DisplayName);
+        });
     }
 
     /// <summary>
@@ -245,7 +268,7 @@ public static class SparkExtensions
         // Checked only when something is actually registered early: an app with no such middleware is
         // unaffected by the ordering, and failing it would impose a new requirement for no benefit.
         if (registry.HasMiddleware(SparkMiddlewareStage.BeforeAuthentication))
-            VerifyRoutingHasRun(app);
+            UseRoutingOrderGuard(app);
 
         registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
 

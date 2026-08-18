@@ -201,9 +201,10 @@ in preview.
 | R12 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place. |
 | R13 | A bare `"/"` is refused **with its own message**, not reported as an empty configuration. It reads like "the root path" and means every request; honouring it would silently over-apply the limiter, and reporting it as absent tells a caller who named one prefix that they named none. |
 | R14 | The `ArgumentException` names `PathPrefixes` as its `ParamName`, not an internal parameter. |
-| R15 | `UseSpark()` refuses to build when routing has not run **and** something is registered at `BeforeAuthentication`. Gated on the registration, because an app with no early middleware cannot be affected. |
+| R15 | A misordered pipeline — routing running after `BeforeAuthentication` middleware — must fail rather than silently degrade to global-only metering. Gated on something actually being registered at that stage, because an app with no early middleware cannot be affected. *(Mechanism superseded by R18; the requirement stands.)* |
 | R16 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change. |
-| R17 | The routing check accepts minimal hosting (`__GlobalEndpointRouteBuilder`) as well as an explicit `UseRouting()` (`__EndpointRouteBuilder`), and — since both are ASP.NET internals — its message states that it may have failed to recognise a valid pipeline rather than asserting the caller erred. |
+| R17 | The routing check accepts minimal hosting as well as an explicit `UseRouting()`, and does not assert the caller erred when it may be the check that is wrong. |
+| R18 | The routing check uses **only public API** and no ASP.NET Core internals. Superseded R17's approach: a startup check over private property keys was both brittle (an upstream rename breaks every consumer at once) and unanswerable in principle, since minimal hosting adds routing after `UseSpark()` returns. Verified at request time from observed endpoint selection instead. |
 
 ## Decisions
 

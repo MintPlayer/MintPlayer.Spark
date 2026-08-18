@@ -94,21 +94,27 @@ endpoint still resolve.
 paths — both are now configuration. Delete the manual call, and read the next section for why leaving
 it in is worse than redundant.
 
-### `UseSpark()` before `UseRouting()` is now refused
+### Misordered routing is now detected
 
-Only when a module registered `BeforeAuthentication` middleware — the rate limiter does. Such an app
-gets an `InvalidOperationException` naming the fix.
+Only when a module registered `BeforeAuthentication` middleware — the rate limiter does.
 
 Spark has always documented `UseSpark()` as "call after `UseRouting()`", but nothing enforced it. With
 the limiter now at the top of the pipeline, getting the order wrong places it ahead of endpoint
-selection, where endpoint-attached rate-limiting metadata silently stops applying. An app with no
-early middleware is unaffected and is not checked.
+selection, where endpoint-attached rate-limiting metadata silently stops applying.
 
-**Minimal hosting is not affected.** An app that never calls `UseRouting()` explicitly and relies on
-`WebApplication` inserting routing is correctly ordered and starts normally. The check accepts both
-`__EndpointRouteBuilder` (explicit `UseRouting()`) and `__GlobalEndpointRouteBuilder`
-(`WebApplication`); since both are ASP.NET Core internals, the failure message says outright that it
-may have failed to recognise a valid pipeline rather than found a mistake, and names the workaround.
+Spark now verifies this **at request time, using only public API**: if no endpoint was selected when
+the stage ran but one is present once the request returns, routing is downstream. The first such
+request logs a critical message; the next fails with an `InvalidOperationException` naming the fix.
+
+This is checked at request time rather than at startup on purpose. Whether routing has been added
+cannot be read from `IApplicationBuilder` through any public API, and the private ASP.NET property keys
+that would hint at it are both brittle — a rename would stop every app that opted in — and wrong:
+minimal hosting inserts routing while the pipeline is built, so at `UseSpark()` time a correct app is
+indistinguishable from a broken one.
+
+**Minimal hosting is unaffected** and needs no special handling: routing is inserted at the front, an
+endpoint is already selected, and the check settles on the first request. An app with no early
+middleware is never checked at all.
 
 ### Do not combine with a manual `app.UseRateLimiter()`
 

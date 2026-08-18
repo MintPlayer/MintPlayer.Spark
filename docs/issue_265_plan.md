@@ -16,7 +16,8 @@ each can be reverted alone.
 | M3 | `SparkTestDriver.RequireLicense` | R10, R11 | `ff82a0d` |
 | M4 | Guide, version bump, PRD/plan finalisation | R12 | `50613b3` |
 | M5 | PR #266 review round — error-message accuracy, routing precondition, release notes | R13–R16 | `2a48d66` |
-| M6 | Second review round — the routing guard's minimal-hosting false positive | R17 | this commit |
+| M6 | Second review round — the routing guard's minimal-hosting false positive | R17 | `53ce3c7` |
+| M7 | Replace the internals-based routing check with a public-API one | R18 | this commit |
 
 ---
 
@@ -183,7 +184,7 @@ the exact scenario the option exists for.
 Test suites run **once**, after M3, per the batching rule — intermediate milestones were verified by
 reading and by build (solution-wide `dotnet build`, clean).
 
-**Result: `MintPlayer.Spark.Tests` — 1483 passed, 0 failed.**
+**Result: `MintPlayer.Spark.Tests` — 1491 passed, 0 failed** (1483 at M4, plus the review rounds).
 
 The first sweep was 1481/2, both in `SparkMigrationsExtensionsTests` and both mine — see M2's collateral
 note. Green after the fix, re-run in full rather than in isolation.
@@ -235,7 +236,7 @@ to refuse once the scope is expressed.
 asserted on `ParamName` rather than only on the message text — the old test passed on the message and
 would not have caught this.
 
-### R15 — `BeforeAuthentication`'s routing precondition is now enforced ✅
+### R15 — `BeforeAuthentication`'s routing precondition is now enforced ✅ *(mechanism later replaced — see M7)*
 
 The stage promises routing has run; `UseSpark()` is documented as "call after `UseRouting()`" and nothing
 checked it. An app getting the order wrong placed the limiter ahead of endpoint selection, where
@@ -251,6 +252,11 @@ Detection is `app.Properties["__EndpointRouteBuilder"]` — the key `UseRouting`
 reads for its own ordering check. Verified empirically rather than from memory: a probe printed
 `[application.Services, server.Features]` before `UseRouting()` and
 `[application.Services, server.Features, __EndpointRouteBuilder, __UseRouting]` after.
+
+> **Superseded.** This startup check was wrong twice over — it missed minimal hosting (M6) and it
+> depended on private ASP.NET strings. M7 replaced it with a request-time check using only public API.
+> The requirement (R15) is unchanged; only the mechanism is. Kept here because the reasoning that led
+> from "check it at startup" to "the startup question is unanswerable" is the useful part.
 
 ### R16 — the two breaking changes are named ✅
 
@@ -315,3 +321,51 @@ warning in startup logs is exactly what nobody reads.
 `WebApplication`, asserts the key situation that caused the bug, and calls `UseSpark()` through it.
 Verified to **fail** with the single-key version restored — the first draft of this test asserted against
 `ApplyMiddleware`, which never invokes the guard at all, and would have passed either way.
+
+---
+
+## M7 — the routing check no longer depends on ASP.NET internals (R18)
+
+M6 fixed the false positive by accepting a second private property key. That closed the symptom and
+left the cause: a hard startup failure, for every app that opted into the limiter, keyed to two
+undocumented ASP.NET Core strings. A rename upstream would have broken every consumer at once, and the
+brittleness was load-bearing rather than incidental.
+
+**The deciding realisation is that those keys cannot answer the question correctly even today.**
+Whether routing has been *added* is not the question; whether it *runs before this position* is. Minimal
+hosting inserts routing while the pipeline is being built — after `UseSpark()` has returned — so at
+startup a correctly-ordered minimal-hosting app is indistinguishable from a broken one. M6's second key
+was not a missing case; it was a workaround for asking an unanswerable question. No startup check over
+any set of keys can be made correct.
+
+**What a request can answer, with public API only:** was an endpoint absent when this position ran, and
+present once the request came back? Then routing is downstream. Measured across all four combinations:
+
+| Pipeline | `/matched` | unmatched path |
+|---|---|---|
+| `UseRouting()` before | before=set, after=set → **no fault** | null/null → **no fault** |
+| `UseRouting()` after | before=null, after=set → **fault** | null/null → **no fault** |
+
+Proof rather than inference; no hosting-model branch; and structurally incapable of firing on a path the
+app does not serve, which is what would otherwise turn every 404 into a false positive.
+
+**Implementation.** `UseRoutingOrderGuard` adds one middleware immediately ahead of the
+`BeforeAuthentication` stage, only when something is registered there. First offending request logs
+critical and arms; the next throws *before* calling `next`, so the failure lands on a request whose
+response has not started. State is captured per `UseSpark` call rather than static, so multiple hosts in
+one process — every test run — cannot contaminate each other. Once an endpoint is observed upstream the
+middleware settles and does nothing but forward.
+
+Trade-off accepted: the fault surfaces on the first *matched* request rather than at startup. In
+exchange the check is correct on both hosting models, cannot be broken by an upstream rename, and fires
+only on evidence. `IEndpointFeature` was evaluated as a startup-independent alternative and rejected —
+it is always present, so its absence proves nothing.
+
+**Tests** replace the three startup-guard tests: misordering is detected then refused; a correctly
+ordered pipeline never arms; an unmatched path is never mistaken for misordering; and minimal hosting
+passes *structurally* rather than by special case. Verified to fail with the arming disabled. The
+private guard is reached by reflection, with the alternative — making a diagnostic public purely for a
+test, or asserting against a copy of the logic — recorded in the helper's comment.
+
+Side effect: the bare `catch { }` the Coverage session flagged as an optional nit is gone, along with
+the startup-guard tests that were the only place it appeared.
