@@ -8,7 +8,7 @@
       "nl": "Auto"
     },
     "clrType": "DemoApp.Library.Entities.Car",
-    "queryType": "DemoApp.Data.VCar",
+    "queryType": "DemoApp.Indexes.VCar",
     "indexName": "Cars_Overview",
     "breadcrumb": "{LicensePlate}",
     "tabs": [],

@@ -155,6 +155,49 @@ Group names in `security.json` support translations:
 }
 ```
 
+## Indexing and sorting a TranslatedString
+
+RavenDB cannot usefully sort or search a dictionary, so a `TranslatedString` is not indexed whole. A generated
+index fans it out into one field per configured language:
+
+```csharp
+[GenerateIndex]
+public class Car
+{
+    [Search] public TranslatedString? Description { get; set; }
+}
+```
+
+emits `Description_en`, `Description_fr`, `Description_nl` on the index entity — each mapped from
+`car.Description!.Translations["<lang>"]` — plus a `Description_{lang}Sort` companion per language when
+`[Search]` is present. The languages come from `App_Data/culture.json`, which must be an `AdditionalFiles` item
+because a source generator has no DI and cannot ask `CultureLoader`.
+
+The whole-object field is **replaced**, not kept alongside: a `string?` named `Description` next to the entity's
+`TranslatedString Description` is a type mismatch the model merge rejects. Grids therefore bind a specific
+language column rather than the dictionary.
+
+### The mapping depends on the persisted shape, which is not the wire shape
+
+This is the one trap worth internalising. `TranslatedStringJsonConverter` writes the flat form
+`{"en":"…","nl":"…"}`, but it is a **System.Text.Json** converter and applies only at the HTTP /
+`PersistentObject` boundary. RavenDB persists through **Newtonsoft**, where no converter is registered for the
+type, so the stored document is nested:
+
+```json
+{ "Description": { "Translations": { "en": "…", "nl": "…" } } }
+```
+
+which is exactly why the index maps `Description.Translations["nl"]`.
+
+**Do not add a Newtonsoft converter to make persistence "consistent with the API".** Every generated
+per-language index field would silently become null: no deploy failure, no index error, index state healthy,
+correct row counts, empty values. The model hash would not move and `--spark-verify-model` would still pass.
+A test asserts the stored JSON is nested precisely so that change fails loudly instead.
+
+Two related notes: `GetValue("nl")` cannot be used in a map — the server has no `TranslatedString` type and
+would return null forever — and a missing language key or a null property both index to `null` harmlessly.
+
 ## Culture Configuration
 
 Create `App_Data/culture.json` to define the supported languages and default language:

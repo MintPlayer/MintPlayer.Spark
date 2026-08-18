@@ -4,7 +4,7 @@ using Raven.Client.Documents.Indexes;
 
 namespace HR.Indexes;
 
-public class People_Overview : AbstractIndexCreationTask<Person>
+public partial class People_Overview : AbstractIndexCreationTask<Person>
 {
     public People_Overview()
     {
@@ -13,20 +13,24 @@ public class People_Overview : AbstractIndexCreationTask<Person>
                         {
                             Id = person.Id,
                             FullName = person.FirstName + " " + person.LastName,
+                            FullNameSort = person.FirstName + " " + person.LastName,
                             Email = person.Email,
                             Company = person.Company,
                         };
 
-        Index(nameof(VPerson.FullName), FieldIndexing.Search);
+        // Applies the indexing declared by [Search]; generated from the attributes.
+        IndexSearchFields();
         StoreAllFields(FieldStorage.Yes);
     }
 }
 
 [FromIndex(typeof(People_Overview))]
-public class VPerson
+public partial class VPerson
 {
     public string? Id { get; set; }
+    [Search]
     public string FullName { get; set; } = string.Empty;
+
     public string? Email { get; set; }
     [Reference(typeof(Company))]
     public string? Company { get; set; }

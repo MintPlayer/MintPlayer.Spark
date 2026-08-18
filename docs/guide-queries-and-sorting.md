@@ -289,6 +289,168 @@ For index-based queries, you can sort on computed fields that exist only in the 
 
 The query executor applies sorting after projection, so projected fields like `FullName` are available for sorting even though they do not exist on the entity type.
 
+### Sorting on searchable text — why `*Sort` fields exist
+
+A field indexed `FieldIndexing.Search` is **analyzed**: RavenDB tokenizes it, so `"Volkswagen Golf GTI"` is
+stored as the three terms `volkswagen`, `golf`, `gti`. Sorting orders documents by their term in the field, and
+with three terms per document that order is arbitrary. Measured, it comes back genuinely scrambled:
+
+```
+"Trailing spaces  ", "ZZ Top", "", null, "alfa romeo", "Audi A4", "Volkswagen Golf GTI", …
+```
+
+The repair is a **sort companion**: a second field carrying the same value, with **no `Index(...)` call at
+all**. Left undeclared it keeps RavenDB's default indexing — a single lower-cased, un-tokenized term — so it
+orders correctly, case-insensitively, and can serve `==` and `StartsWith` as well.
+
+| Field | Declared as | Terms for `"Volkswagen Golf GTI"` | Sorts correctly? |
+|---|---|---|---|
+| `Model` | `FieldIndexing.Search` | `volkswagen`, `golf`, `gti` | no |
+| `ModelSort` | *nothing* → `Default` | `volkswagen golf gti` | yes |
+
+**Do not "improve" the companion by declaring `FieldIndexing.Exact` on it.** That is a measured regression on
+both counts: ordering becomes case-sensitive ordinal, so every capitalised value sorts before every lowercase
+one, and equality changes silently — `ModelExact = 'audi a4'` matches nothing where `ModelSort = 'Audi A4'`
+matches. Leaving it undeclared is correct, not an oversight.
+
+**A plain string field needs none of this.** Only a field declared `Search` is tokenized, so an ordinary
+`string` property sorts correctly with no companion at all — measured, and pinned by a test. Tokenization is a
+per-field indexing mode, not something strings do:
+
+| `FieldIndexing` | Terms for `"Volkswagen Golf GTI"` | Sortable | `==` |
+|---|---|---|---|
+| *undeclared* → `Default` | one: `volkswagen golf gti` | yes, case-insensitive | yes |
+| `Search` | three: `volkswagen`, `golf`, `gti` | no | no — full-text match |
+| `Exact` | one: `Volkswagen Golf GTI` | yes, case-sensitive ordinal | case-sensitively only |
+
+Adding `[Search]` later emits the companion *and* activates the redirect, so there is no window where a field is
+analyzed but unsortable.
+
+Two things worth knowing:
+
+- **This is only about values that can contain spaces.** A space is the tokenization boundary, so a
+  single-word value yields one term either way and an analyzed field *accidentally* sorts fine. The bug stays
+  invisible until someone stores a value with a space in it.
+- **Nulls and empties sort first**, not last. RavenDB indexes the sentinel terms `NULL_VALUE` and
+  `EMPTY_STRING` and orders on those literals, which on a lower-cased companion land before every real value.
+  If a UI wants them last, that has to be arranged explicitly.
+
+You never name the companion when sorting. `sortBy`, the `?sortBy=` override and any caller all keep naming the
+display attribute; the query executor redirects to `{Name}Sort` when the projection has one and it is
+`[IgnoreProperty]`. That `[IgnoreProperty]` is required — it is what distinguishes a real companion from an
+ordinary property that happens to be named `FooSort`.
+
+## Generating the index instead of writing it
+
+Everything above can be generated. Put `[GenerateIndex]` on the entity and the index, the index entity and the
+`SparkContext` query root are all emitted for you:
+
+```csharp
+[GenerateIndex]
+public class Car
+{
+    public string? Id { get; set; }
+
+    [Search] public string LicensePlate { get; set; } = string.Empty;
+    [Search] public string Model { get; set; } = string.Empty;
+
+    public int Year { get; set; }
+
+    [IgnoreForIndex] public string? CreatedBy { get; set; }
+}
+```
+
+That yields `Cars_Overview`, a `[FromIndex]`-annotated `VCar` with `LicensePlateSort` and `ModelSort`
+companions, `StoreAllFields(FieldStorage.Yes)`, and a `VCars` root on the context. `Demo/Fleet` is the worked
+example.
+
+Points that matter in practice:
+
+- **The generated types land in the application project, never in the entity's assembly.** Entities usually
+  live in a lean class library; the generator reads `[GenerateIndex]` from referenced assemblies so the library
+  gains no reference to any index type and stays safe to reference for replication.
+- **The context must be `partial`** to receive its query roots. A hand-written root of the same name wins.
+- **`[Search]` does two things with one attribute** — analyzed indexing *and* the sort companion — because
+  analyzing the field is what destroys its sortability.
+- **`DateTimeOffset` gets `Exact` indexing and a companion automatically.** `DateTime` gets neither; the
+  asymmetry is deliberate.
+- **`[IgnoreForIndex]` versus `[IgnoreProperty]`**: the first keeps a property in the model but out of the
+  index; the second removes it from the model everywhere, and therefore from the index too.
+- **`TranslatedString` fans out** into one `Description_{lang}` field per language in `App_Data/culture.json`.
+  That file must be an `AdditionalFiles` item for the generator to see it — a generator has no DI and cannot
+  ask `CultureLoader`:
+
+  ```xml
+  <AdditionalFiles Include="App_Data\culture.json" Condition="Exists('App_Data\culture.json')" />
+  ```
+
+  The `Condition` is not optional: an `AdditionalFiles` item naming a file that does not exist fails the build.
+- **Extending a generated index**: implement `partial void OnInitialize()` on a hand-written partial half. It
+  is called at the end of the generated constructor.
+
+### Keeping a hand-written index, without hand-writing the boilerplate
+
+An index you write yourself can still have its companions and its `Index(...)` calls generated. Declare
+searchability once, with `[Search]` on the index entity, and make both classes `partial`:
+
+```csharp
+[FromIndex(typeof(People_Overview))]
+public partial class VPerson
+{
+    [Search] public string FullName { get; set; } = string.Empty;
+    // FullNameSort is generated.
+}
+
+public partial class People_Overview : AbstractIndexCreationTask<Person>
+{
+    public People_Overview()
+    {
+        Map = people => from person in people
+                        select new VPerson
+                        {
+                            FullName = person.FirstName + " " + person.LastName,
+                            FullNameSort = person.FirstName + " " + person.LastName,
+                        };
+
+        IndexSearchFields();                 // generated from the [Search] attributes
+        StoreAllFields(FieldStorage.Yes);
+    }
+}
+```
+
+`IndexSearchFields()` carries one `Index(...)` call per `[Search]` property and `Exact` per `DateTimeOffset`
+property. **You must call it** — a generator can add members to a partial class but cannot add statements to a
+constructor you wrote. For the same reason the **map assignments stay yours**; `SPARK006` flags a companion the
+map never assigns.
+
+Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
+not. Every demo uses this shape except Fleet, which is fully generated.
+
+Hand-written indexes keep working and are still the answer for anything the generator does not cover — map/reduce,
+multi-map, `LoadDocument` and other cross-document maps. For those, `SPARK005` and `SPARK006` flag a missing or
+unmapped sort companion so the convention does not have to be remembered.
+
+## Searching
+
+A query list's search box sends its term as `?search=`, and the server pushes it into RavenDB as a
+`search(...)` clause across the query type's text fields. Nothing needs declaring — **every text attribute is
+searchable, whether or not it carries `[Search]`** — and each word of the term is matched as a substring.
+
+```
+GET /spark/queries/{id}/execute?search=olkswag
+→ from index 'Cars/Overview' where (search(LicensePlate, $p0, and) or search(Model, $p1, and))
+```
+
+Search and sorting are independent: search narrows, the sort columns order, and the `*Sort` redirect below
+applies unchanged. A search never ranks by relevance.
+
+Two things a database search cannot match, both of which used to work when filtering happened in memory:
+**non-text attributes**, and **reference display text** (a breadcrumb is computed after the query runs, so it is
+not an index term — denormalize it into the index, as `OwnerFullName` does above).
+
+> Full details — wildcard handling, multi-language fields, the composition order with row-level security, the
+> in-memory fallbacks, and why fuzzy matching is not offered — are in **[Full-Text Search](guide-search.md)**.
+
 ## Query Execution Flow
 
 When the frontend requests a query:
@@ -297,10 +459,15 @@ When the frontend requests a query:
 2. Resolves the SparkContext property (e.g. `People`)
 3. Checks IndexRegistry for a projection type linked via `[FromIndex]`
 4. If an index exists, queries using the index and applies `ProjectInto` for computed fields
-5. Applies sorting (on the projection type for index queries, entity type otherwise)
+5. Composes the row-level security filter, then the search term, then sorting — in that order, so the security
+   predicate is ANDed with the search group rather than OR-ed into it
 6. Executes the query against RavenDB
 7. Maps results to `PersistentObject` format using the merged entity type definition
-8. Deduplicates results by ID (indexes with `FieldIndexing.Search` can produce duplicates)
+8. Deduplicates results by ID (fan-out maps — `SelectMany` over a collection — emit one index entry per element, so one document can match several times)
+
+> An earlier version of this guide attributed the duplicates to `FieldIndexing.Search`. That was measured and
+> is not the case: a single-map index over an analyzed field returns exactly one row per document. The
+> deduplication is still correct, it just guards a different hazard.
 9. Returns the results as JSON
 
 ## Complete Example
