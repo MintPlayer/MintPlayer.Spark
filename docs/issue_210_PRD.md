@@ -370,6 +370,11 @@ Mitigations, both cheap:
 - **R29** A test that asserts the **stored** RavenDB JSON for a `TranslatedString` is nested, so adding a
   Newtonsoft converter fails a test instead of silently emptying indexes.
 
+One more measured detail, found while writing R29's behavioural half: **RavenDB drops a map entry that produces
+no terms at all.** An index whose only field is a null translation loses the document from its results
+entirely — not a null value, an absent row. It does not affect a generated index, which always maps the entity's
+other properties too, but it makes a single-field index over an optional translation a trap worth knowing about.
+
 ---
 
 ## Requirements

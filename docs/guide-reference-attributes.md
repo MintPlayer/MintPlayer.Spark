@@ -246,6 +246,23 @@ After synchronization, a lookup reference attribute in the model JSON looks like
 
 Note that `dataType` remains `"string"` (not `"Reference"`). The `lookupReferenceType` field tells the frontend to render a dropdown or modal picker using the lookup values.
 
+### Carry-over onto a generated index entity
+
+With `[GenerateIndex]` you do not repeat these attributes on the projection — they are copied for you, verbatim
+and including optional arguments. `[Reference(typeof(Company), "GetCompanies")]` on the entity arrives intact on
+the index entity, which is what `SPARK002` requires.
+
+Carry-over is a **deny-list**: everything travels except the generator's own directives (`[Search]`,
+`[IgnoreForIndex]`, `[GenerateIndex]`, `[IgnoreProperty]`), so an attribute the generator has never heard of is
+still copied. An attribute whose arguments cannot be rendered as source is skipped **and reported** as
+`SPARK_INDEX_007`, never dropped silently.
+
+A sort companion inherits the copied attributes **except** the reference-shaped ones: a companion is a plain
+sort key, and declaring it a reference would make the model resolve a second reference to the same target.
+
+Note that a `[Reference]` property is **not** given `[IgnoreProperty]` on the index entity. Doing so would strip
+the reference from the model and break breadcrumb and `.Include()` resolution.
+
 ### Lookup References in Index Projections
 
 If you include a lookup reference property in a projection type, apply the `[LookupReference]` attribute on the projection property too:

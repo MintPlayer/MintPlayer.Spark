@@ -289,6 +289,96 @@ For index-based queries, you can sort on computed fields that exist only in the 
 
 The query executor applies sorting after projection, so projected fields like `FullName` are available for sorting even though they do not exist on the entity type.
 
+### Sorting on searchable text — why `*Sort` fields exist
+
+A field indexed `FieldIndexing.Search` is **analyzed**: RavenDB tokenizes it, so `"Volkswagen Golf GTI"` is
+stored as the three terms `volkswagen`, `golf`, `gti`. Sorting orders documents by their term in the field, and
+with three terms per document that order is arbitrary. Measured, it comes back genuinely scrambled:
+
+```
+"Trailing spaces  ", "ZZ Top", "", null, "alfa romeo", "Audi A4", "Volkswagen Golf GTI", …
+```
+
+The repair is a **sort companion**: a second field carrying the same value, with **no `Index(...)` call at
+all**. Left undeclared it keeps RavenDB's default indexing — a single lower-cased, un-tokenized term — so it
+orders correctly, case-insensitively, and can serve `==` and `StartsWith` as well.
+
+| Field | Declared as | Terms for `"Volkswagen Golf GTI"` | Sorts correctly? |
+|---|---|---|---|
+| `Model` | `FieldIndexing.Search` | `volkswagen`, `golf`, `gti` | no |
+| `ModelSort` | *nothing* → `Default` | `volkswagen golf gti` | yes |
+
+**Do not "improve" the companion by declaring `FieldIndexing.Exact` on it.** That is a measured regression on
+both counts: ordering becomes case-sensitive ordinal, so every capitalised value sorts before every lowercase
+one, and equality changes silently — `ModelExact = 'audi a4'` matches nothing where `ModelSort = 'Audi A4'`
+matches. Leaving it undeclared is correct, not an oversight.
+
+Two things worth knowing:
+
+- **This is only about values that can contain spaces.** A space is the tokenization boundary, so a
+  single-word value yields one term either way and an analyzed field *accidentally* sorts fine. The bug stays
+  invisible until someone stores a value with a space in it.
+- **Nulls and empties sort first**, not last. RavenDB indexes the sentinel terms `NULL_VALUE` and
+  `EMPTY_STRING` and orders on those literals, which on a lower-cased companion land before every real value.
+  If a UI wants them last, that has to be arranged explicitly.
+
+You never name the companion when sorting. `sortBy`, the `?sortBy=` override and any caller all keep naming the
+display attribute; the query executor redirects to `{Name}Sort` when the projection has one and it is
+`[IgnoreProperty]`. That `[IgnoreProperty]` is required — it is what distinguishes a real companion from an
+ordinary property that happens to be named `FooSort`.
+
+## Generating the index instead of writing it
+
+Everything above can be generated. Put `[GenerateIndex]` on the entity and the index, the index entity and the
+`SparkContext` query root are all emitted for you:
+
+```csharp
+[GenerateIndex]
+public class Car
+{
+    public string? Id { get; set; }
+
+    [Search] public string LicensePlate { get; set; } = string.Empty;
+    [Search] public string Model { get; set; } = string.Empty;
+
+    public int Year { get; set; }
+
+    [IgnoreForIndex] public string? CreatedBy { get; set; }
+}
+```
+
+That yields `Cars_Overview`, a `[FromIndex]`-annotated `VCar` with `LicensePlateSort` and `ModelSort`
+companions, `StoreAllFields(FieldStorage.Yes)`, and a `VCars` root on the context. `Demo/Fleet` is the worked
+example.
+
+Points that matter in practice:
+
+- **The generated types land in the application project, never in the entity's assembly.** Entities usually
+  live in a lean class library; the generator reads `[GenerateIndex]` from referenced assemblies so the library
+  gains no reference to any index type and stays safe to reference for replication.
+- **The context must be `partial`** to receive its query roots. A hand-written root of the same name wins.
+- **`[Search]` does two things with one attribute** — analyzed indexing *and* the sort companion — because
+  analyzing the field is what destroys its sortability.
+- **`DateTimeOffset` gets `Exact` indexing and a companion automatically.** `DateTime` gets neither; the
+  asymmetry is deliberate.
+- **`[IgnoreForIndex]` versus `[IgnoreProperty]`**: the first keeps a property in the model but out of the
+  index; the second removes it from the model everywhere, and therefore from the index too.
+- **`TranslatedString` fans out** into one `Description_{lang}` field per language in `App_Data/culture.json`.
+  That file must be an `AdditionalFiles` item for the generator to see it — a generator has no DI and cannot
+  ask `CultureLoader`:
+
+  ```xml
+  <AdditionalFiles Include="App_Data\culture.json" Condition="Exists('App_Data\culture.json')" />
+  ```
+
+  The `Condition` is not optional: an `AdditionalFiles` item naming a file that does not exist fails the build.
+- **Extending a generated index**: implement `partial void OnInitialize()` on a hand-written partial half. It
+  is called at the end of the generated constructor.
+
+Hand-written indexes keep working and are still the answer for anything the generator does not cover — map/reduce,
+multi-map, `LoadDocument` and other cross-document maps. For those, `SPARK005` and `SPARK006` flag a missing or
+unmapped sort companion so the convention does not have to be remembered.
+
 ## Query Execution Flow
 
 When the frontend requests a query:
@@ -300,7 +390,11 @@ When the frontend requests a query:
 5. Applies sorting (on the projection type for index queries, entity type otherwise)
 6. Executes the query against RavenDB
 7. Maps results to `PersistentObject` format using the merged entity type definition
-8. Deduplicates results by ID (indexes with `FieldIndexing.Search` can produce duplicates)
+8. Deduplicates results by ID (fan-out maps — `SelectMany` over a collection — emit one index entry per element, so one document can match several times)
+
+> An earlier version of this guide attributed the duplicates to `FieldIndexing.Search`. That was measured and
+> is not the case: a single-map index over an analyzed field returns exactly one row per document. The
+> deduplication is still correct, it just guards a different hazard.
 9. Returns the results as JSON
 
 ## Complete Example
