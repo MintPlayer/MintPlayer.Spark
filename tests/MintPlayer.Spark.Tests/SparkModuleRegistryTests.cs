@@ -16,7 +16,7 @@ public class SparkModuleRegistryTests
 
         registry.AddMiddleware(_ => callCount++);
         registry.AddMiddleware(_ => callCount++);
-        registry.ApplyMiddleware(app);
+        registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
         callCount.Should().Be(2);
     }
@@ -42,7 +42,7 @@ public class SparkModuleRegistryTests
         var registry = new SparkModuleRegistry();
         var app = Substitute.For<IApplicationBuilder>();
 
-        var act = () => registry.ApplyMiddleware(app);
+        var act = () => registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
         act.Should().NotThrow();
     }
@@ -66,7 +66,7 @@ public class SparkModuleRegistryTests
         IApplicationBuilder? captured = null;
 
         registry.AddMiddleware(a => captured = a);
-        registry.ApplyMiddleware(app);
+        registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
         captured.Should().BeSameAs(app);
     }
@@ -112,7 +112,7 @@ public class SparkModuleRegistryTests
         registry.AddMiddleware(_ => order.Add(1));
         registry.AddMiddleware(_ => order.Add(2));
         registry.AddMiddleware(_ => order.Add(3));
-        registry.ApplyMiddleware(app);
+        registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
         order.Should().Equal(1, 2, 3);
     }

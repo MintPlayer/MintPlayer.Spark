@@ -25,26 +25,70 @@ namespace MintPlayer.Spark.Testing;
 ///   1. <c>RAVENDB_LICENSE</c> env var (CI-friendly, JSON content)
 ///   2. <c>raven-license.log</c> at the repository root (local development)
 ///
-/// If neither is present, tests that derive from this class will fail at
-/// <see cref="InitializeAsync"/> with a clear message — see <see cref="LicenseHelper"/>.
+/// If neither is present, tests that derive from this class fail at
+/// <see cref="InitializeAsync"/> with a clear message — see <see cref="LicenseHelper"/>. A suite that
+/// needs to tolerate that (fork pull requests get no organization secrets) overrides
+/// <see cref="RequireLicense"/>.
 /// </summary>
 public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 {
     static SparkTestDriver()
     {
+        // Loud on an invalid licence, tolerant of an absent one — the two halves are separable
+        // because they are triggered by different conditions.
+        //
+        // With a licence present the server validates it and refuses to start on a bad one, which is
+        // what we want: ThrowOnInvalidOrMissingLicense is not consulted at all in that case. Setting
+        // the flag unconditionally instead would turn an *invalid* licence from a startup error into
+        // a silent downgrade to restricted mode, surfacing much later as an obscure "feature not
+        // available in this licence" inside whichever test first touches ETL, encryption or
+        // compression.
+        //
+        // With no licence at all there is nothing to validate, so refusing to start buys no
+        // diagnostic — it just makes every RavenDB test fail for a contributor who cannot have one.
+        // Whether that is tolerable is the fixture's call, not the server's: RequireLicense decides,
+        // at InitializeAsync. This has to be split that way because ConfigureServer is static and
+        // runs once per process before any instance exists, so an instance member cannot reach it.
         var license = LicenseHelper.LoadOrNull();
-        if (license is not null)
+        ConfigureServer(new TestServerOptions
         {
-            ConfigureServer(new TestServerOptions
-            {
-                Licensing = new ServerOptions.LicensingOptions
+            Licensing = license is not null
+                ? new ServerOptions.LicensingOptions
                 {
                     License = license,
                     EulaAccepted = true,
+                }
+                : new ServerOptions.LicensingOptions
+                {
+                    ThrowOnInvalidOrMissingLicense = false,
                 },
-            });
-        }
+        });
     }
+
+    /// <summary>
+    /// Whether a missing RavenDB licence fails the fixture. Defaults to <see langword="true"/>.
+    /// <para>
+    /// The default is the right one for a framework: a licence that was meant to be configured and
+    /// is not should say so, naming <c>RAVENDB_LICENSE</c> and <c>raven-license.log</c>, rather than
+    /// let a suite run in restricted mode and fail obscurely later.
+    /// </para>
+    /// <para>
+    /// Override to <see langword="false"/> for a suite that must survive without one. The motivating
+    /// case is fork pull requests: organization secrets are not exposed to <c>pull_request</c> runs
+    /// from forks, so a contributor without a licence otherwise fails every RavenDB test, including
+    /// the majority that touch no licensed feature. A licence-less embedded server does support
+    /// store, load, query and update — measured, not assumed.
+    /// </para>
+    /// <para>
+    /// This gates <em>this fixture's</em> hard failure, not the server's tolerance — the name reads
+    /// like the latter, and it is not. An <b>invalid</b> licence still fails at startup regardless of
+    /// this property, because a supplied licence is always validated. Server tolerance is decided once
+    /// per process from whether a licence was found at all, so a single test run may freely mix
+    /// strict and relaxed fixtures: the strict ones still fail loudly at their own
+    /// <see cref="InitializeAsync"/>.
+    /// </para>
+    /// </summary>
+    protected virtual bool RequireLicense => true;
 
     protected IDocumentStore Store { get; private set; } = null!;
 
@@ -87,7 +131,8 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 
     public virtual async Task InitializeAsync()
     {
-        LicenseHelper.EnsureAvailable();
+        if (RequireLicense)
+            LicenseHelper.EnsureAvailable();
         Store = GetDocumentStore();
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();

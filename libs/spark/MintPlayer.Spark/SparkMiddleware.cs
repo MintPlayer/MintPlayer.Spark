@@ -177,6 +177,17 @@ public static class SparkExtensions
     {
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
+        // Middleware that must reject a request before the cost of authenticating it is paid — a rate
+        // limiter above all. No credential has been validated yet, so nothing at this stage may read
+        // the principal.
+        //
+        // Like everything in UseSpark, this stage assumes the app called UseRouting() first (see the
+        // method's doc comment), so endpoint metadata resolves and endpoint-attached policies apply.
+        // That is a contract, not a check: UseRouting lives outside UseSpark, so this stage is on the
+        // same side of routing as the rest of UseSpark either way, and UseAuthorization below carries
+        // the identical requirement for [Authorize] — which ASP.NET Core itself leaves unguarded.
+        registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
+
         // Any registered credential is a reason to authenticate, not just Identity. An app whose
         // only callers are machines — client certificates, or bearer tokens from the identity
         // provider — registers no user type, and gating on that alone would leave its middleware
@@ -294,7 +305,7 @@ public static class SparkExtensions
         VerifySparkModelHash(app);
 
         // Run module-specific middleware/startup tasks
-        registry.ApplyMiddleware(app);
+        registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
         return app;
     }

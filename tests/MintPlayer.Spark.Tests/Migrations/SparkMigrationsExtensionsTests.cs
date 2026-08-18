@@ -10,7 +10,8 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// each migration type is registered as scoped (via <c>TryAddScoped</c> inside the builder).
 /// Uses the real <see cref="SparkBuilder"/> so the <c>ISparkBuilder.Registry</c> is a genuine
 /// <see cref="SparkModuleRegistry"/> — middleware registrations are counted via reflection over the
-/// registry's private action list (running the action would invoke the runner and need a live store).
+/// registry's private per-stage action lists (running the action would invoke the runner and need a
+/// live store).
 /// </summary>
 public class SparkMigrationsExtensionsTests
 {
@@ -79,15 +80,25 @@ public class SparkMigrationsExtensionsTests
         migDescriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
     }
 
-    // SparkModuleRegistry keeps its middleware actions in a private List<Action<IApplicationBuilder>>.
-    // We count registrations by reflection so we never have to actually run the startup hook (which
-    // would call SparkMigrationRunner.RunAtStartup and need a live IDocumentStore).
+    // SparkModuleRegistry keeps its middleware actions in a private
+    // Dictionary<SparkMiddlewareStage, List<Action<IApplicationBuilder>>>. We count registrations by
+    // reflection so we never have to actually run the startup hook (which would call
+    // SparkMigrationRunner.RunAtStartup and need a live IDocumentStore).
+    //
+    // Summed across every stage on purpose. Counting only the default stage would let a future
+    // change move this registration to another stage without the idempotency assertions noticing,
+    // and "wired exactly once" is a claim about the whole registry, not about one bucket of it.
     private static int MiddlewareCount(SparkModuleRegistry registry)
     {
         var field = typeof(SparkModuleRegistry)
             .GetField("middlewareActions",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var list = (System.Collections.IList)field.GetValue(registry)!;
-        return list.Count;
+        var byStage = (System.Collections.IDictionary)field.GetValue(registry)!;
+
+        var total = 0;
+        foreach (System.Collections.IList actions in byStage.Values)
+            total += actions.Count;
+
+        return total;
     }
 }
