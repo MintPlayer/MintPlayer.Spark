@@ -117,6 +117,20 @@ public partial class IndexPropertyInfo
     public bool IsSortCompanion { get; set; }
 
     /// <summary>
+    /// Whether this field is a <c>TranslatedString</c> that must fan out into one field per language.
+    /// <para>The expansion happens in the producer, not here: the language set comes from
+    /// <c>App_Data/culture.json</c> via a different provider, and the syntax transform that builds this model
+    /// cannot see it.</para>
+    /// </summary>
+    public bool IsTranslated { get; set; }
+
+    /// <summary>
+    /// Whether the source property carried <c>[Search]</c>. Retained for translated fields, where the producer
+    /// decides per language whether to declare indexing and emit a companion.
+    /// </summary>
+    public bool IsSearchable { get; set; }
+
+    /// <summary>
     /// Attributes to copy verbatim onto the declaration, already rendered with <c>global::</c> prefixes.
     /// A companion inherits the base property's attributes in addition to its own
     /// <c>[IgnoreProperty]</c>.

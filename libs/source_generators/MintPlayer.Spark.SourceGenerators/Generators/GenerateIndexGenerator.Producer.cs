@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Models;
+using MintPlayer.Spark.SourceGenerators.Naming;
 using MintPlayer.SourceGenerators.Tools;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
@@ -25,13 +26,76 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private readonly IEnumerable<GeneratedIndexInfo> entities;
     private readonly bool knowsSpark;
+    private readonly List<string> languages;
 
-    public GenerateIndexProducer(IEnumerable<GeneratedIndexInfo> entities, bool knowsSpark, string rootNamespace)
+    public GenerateIndexProducer(
+        IEnumerable<GeneratedIndexInfo> entities,
+        bool knowsSpark,
+        List<string> languages,
+        string rootNamespace)
         : base(rootNamespace, "SparkGeneratedIndexes.g.cs")
     {
         this.entities = entities;
         this.knowsSpark = knowsSpark;
+        this.languages = languages;
     }
+
+    /// <summary>
+    /// The fields actually emitted for an entity: its properties, with every <c>TranslatedString</c> expanded
+    /// into one field per language.
+    /// <para>
+    /// A <c>TranslatedString</c> is a dictionary, and RavenDB cannot usefully sort or search one. It persists
+    /// nested — <c>Description.Translations.nl</c> — so a per-language field maps
+    /// <c>car.Description!.Translations["nl"]</c>, which RavenDB evaluates natively against the stored
+    /// document. A missing key or a null property both index to null with no error.
+    /// </para>
+    /// <para>
+    /// The whole-object field is replaced rather than kept alongside: emitting a <c>string?</c> named
+    /// <c>Description</c> beside the entity's <c>TranslatedString Description</c> would be a type mismatch the
+    /// model merge rejects, and keeping both doubles every translated field for no query benefit.
+    /// </para>
+    /// </summary>
+    private IEnumerable<IndexPropertyInfo> Fields(GeneratedIndexInfo info)
+    {
+        foreach (var property in info.Properties)
+        {
+            if (!property.IsTranslated)
+            {
+                yield return property;
+                continue;
+            }
+
+            foreach (var language in languages)
+            {
+                var languageField = new IndexPropertyInfo
+                {
+                    Name = IndexNaming.LanguageField(property.Name, language),
+                    TypeDisplay = "string?",
+                    NeedsDefaultInitializer = false,
+                    MapExpression = $"{info.ItemVariable}.{property.Name}!.Translations[{Quote(language)}]",
+                    FieldIndexing = property.IsSearchable ? "Search" : null,
+                    Attributes = property.Attributes,
+                };
+                yield return languageField;
+
+                if (property.IsSearchable)
+                    yield return SortCompanionOf(languageField);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The companion for a per-language field. Same shape as the entity-side companion: identical map
+    /// expression, no <c>FieldIndexing</c>, and <c>[IgnoreProperty]</c> so it stays out of the model.
+    /// </summary>
+    private static IndexPropertyInfo SortCompanionOf(IndexPropertyInfo field) => new()
+    {
+        Name = IndexNaming.SortCompanion(field.Name),
+        TypeDisplay = field.TypeDisplay,
+        MapExpression = field.MapExpression,
+        FieldIndexing = null,
+        IsSortCompanion = true,
+    };
 
     /// <summary>
     /// Diagnostics for the same entity set this producer emits from.
@@ -147,7 +211,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
             // Declared but never assigned in the map: RavenDB supplies the document id for an entity index.
             writer.WriteLine("public string? Id { get; set; }");
 
-            foreach (var property in info.Properties)
+            foreach (var property in Fields(info))
             {
                 foreach (var attribute in Attributes(property))
                     writer.WriteLine(attribute);
@@ -172,7 +236,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                 writer.WriteLine($"select new {info.IndexEntityName}()");
                 writer.WriteLine("{");
                 writer.Indent++;
-                foreach (var property in info.Properties)
+                foreach (var property in Fields(info))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     writer.WriteLine($"{property.Name} = {property.MapExpression},");
@@ -184,7 +248,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                 // Only fields that need non-default indexing are declared. A sort companion is deliberately
                 // absent from this list: leaving it undeclared is what keeps it a single un-tokenized term
                 // and therefore sortable.
-                foreach (var property in info.Properties.Where(p => p.FieldIndexing is not null))
+                foreach (var property in Fields(info).Where(p => p.FieldIndexing is not null))
                 {
                     writer.WriteLine(
                         $"Index(nameof({info.IndexEntityName}.{property.Name}), {RavenIndexes}.FieldIndexing.{property.FieldIndexing});");

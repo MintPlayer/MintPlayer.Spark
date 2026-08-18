@@ -23,8 +23,9 @@ internal static class SparkModelSymbols
     private const string GenerateIndexAttributeFullName =
         "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
 
-    private const string TranslatedStringFullName =
-        "MintPlayer.Spark.Abstractions.TranslatedString";
+    private const string SparkAbstractionsNamespace = "MintPlayer.Spark.Abstractions";
+
+    private const string TranslatedStringTypeName = "TranslatedString";
 
     private const string FromIndexAttributeFullName =
         "MintPlayer.Spark.Abstractions.FromIndexAttribute";
@@ -113,8 +114,14 @@ internal static class SparkModelSymbols
     /// wire. RavenDB persists it through Newtonsoft as <c>Description.Translations.nl</c>, so the CLR path
     /// <c>Description.Translations["nl"]</c> is what an index must map — measured, not assumed.</para>
     /// </summary>
+    /// <remarks>
+    /// Matched on name plus namespace rather than a rendered display string: <c>ToDisplayString()</c> includes
+    /// the nullable annotation, so a <c>TranslatedString?</c> property renders with a trailing <c>?</c> and
+    /// never equals the bare type name.
+    /// </remarks>
     public static bool IsTranslatedString(this ITypeSymbol? type)
-        => type?.ToDisplayString() == TranslatedStringFullName;
+        => type is INamedTypeSymbol { Name: TranslatedStringTypeName } named
+        && named.ContainingNamespace?.ToDisplayString() == SparkAbstractionsNamespace;
 
     /// <summary>
     /// Every indexable property on <paramref name="type"/> and its base types, most-derived first, with

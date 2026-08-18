@@ -32,6 +32,7 @@
 	<ItemGroup>
 		<AdditionalFiles Include="App_Data\translations.json" />
 		<AdditionalFiles Include="App_Data\Model\*.json" />
+		<AdditionalFiles Include="App_Data\culture.json" />
 	</ItemGroup>
 
 	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" />

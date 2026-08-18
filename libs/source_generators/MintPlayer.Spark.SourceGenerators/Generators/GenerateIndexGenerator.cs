@@ -1,12 +1,14 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Diagnostics;
+using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.Spark.SourceGenerators.Naming;
 using MintPlayer.SourceGenerators.Tools;
 using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
@@ -73,6 +75,22 @@ public class GenerateIndexGenerator : IncrementalGenerator
             .Select(static (compilation, ct) => DescribeReferenced(compilation, ct))
             .WithComparer(ComparerRegistry.For<ImmutableArray<GeneratedIndexInfo>>());
 
+        // The supported language set, for fanning a TranslatedString out into one field per language. A
+        // generator has no DI, so CultureLoader -- the singleton that reads this file at runtime -- is out of
+        // reach; the file has to arrive as an AdditionalFiles item. Absent means the single default language,
+        // matching what CultureLoader itself falls back to.
+        var languagesProvider = context.AdditionalTextsProvider
+            // Separator-agnostic on purpose: paths arrive with backslashes from a csproj glob and with forward
+            // slashes from tests.
+            .Where(static text =>
+                Path.GetFileName(text.Path).Equals("culture.json", System.StringComparison.OrdinalIgnoreCase)
+                && text.Path.IndexOf("App_Data", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            .Select(static (text, ct) => CultureJsonReader.ReadLanguages(text.GetText(ct)?.ToString()))
+            .Collect()
+            .Select(static (perFile, ct) => perFile.Length > 0
+                ? perFile[0]
+                : new List<string> { CultureJsonReader.DefaultLanguage });
+
         // Emit nothing when the project does not reference MintPlayer.Spark.Abstractions. Paired with the
         // producer's own early return, per house style: the pipeline gate keeps the work out, the producer
         // gate keeps the file out.
@@ -91,16 +109,19 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
         var sourceProvider = allEntitiesProvider
             .Combine(knowsSparkProvider)
+            .Combine(languagesProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) =>
             {
-                var entities = providers.Left.Left;
-                var knowsSpark = providers.Left.Right;
+                var entities = providers.Left.Left.Left;
+                var knowsSpark = providers.Left.Left.Right;
+                var languages = providers.Left.Right;
                 var settings = providers.Right;
 
                 return new GenerateIndexProducer(
                     entities.ToList(),
                     knowsSpark,
+                    languages,
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
@@ -230,6 +251,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 });
             }
 
+            var isTranslated = searchKind == SearchKind.Translated;
+
             var field = new IndexPropertyInfo
             {
                 Name = property.Name,
@@ -239,6 +262,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 MapExpression = $"{itemVariable}.{property.Name}",
                 FieldIndexing = isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
                 Attributes = fieldAttributes,
+                IsTranslated = isTranslated,
+                IsSearchable = searchable,
             };
             properties.Add(field);
 
