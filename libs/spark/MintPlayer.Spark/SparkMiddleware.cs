@@ -132,6 +132,26 @@ public static class SparkExtensions
     }
 
     /// <summary>
+    /// The key <c>UseRouting()</c> stamps on the builder's properties (the same one
+    /// <c>UseEndpoints</c> reads to verify its own ordering). Its absence at this point in
+    /// <c>UseSpark</c> means routing has not been added yet.
+    /// </summary>
+    private const string EndpointRouteBuilderKey = "__EndpointRouteBuilder";
+
+    private static void VerifyRoutingHasRun(IApplicationBuilder app)
+    {
+        if (app.Properties.ContainsKey(EndpointRouteBuilderKey))
+            return;
+
+        throw new InvalidOperationException(
+            "UseSpark() was called before UseRouting(), and a module registered middleware for the " +
+            $"'{nameof(SparkMiddlewareStage.BeforeAuthentication)}' stage — the Spark rate limiter " +
+            "does this. That middleware runs ahead of routing, so no endpoint has been selected yet " +
+            "and endpoint-attached metadata such as [EnableRateLimiting] / [DisableRateLimiting] " +
+            "would be silently ignored. Call app.UseRouting() before app.UseSpark().");
+    }
+
+    /// <summary>
     /// Reads the host environment at <em>registration</em> time, without building a provider.
     /// <para>
     /// The web host registers its environment as a singleton instance, so it can be read straight
@@ -178,9 +198,22 @@ public static class SparkExtensions
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate
-        // limiter above all. Routing has already run (UseSpark is documented as "call after
-        // UseRouting()"), so endpoint metadata resolves here; no credential has been validated yet,
-        // so nothing at this stage may read the principal.
+        // limiter above all. No credential has been validated yet, so nothing at this stage may read
+        // the principal.
+        //
+        // The stage's contract is that routing has already run, so endpoint metadata resolves and
+        // endpoint-attached policies still apply. UseSpark is documented as "call after UseRouting()",
+        // but documentation is not enforcement: an app that calls UseSpark first gets a limiter placed
+        // ahead of routing, where [EnableRateLimiting]/[DisableRateLimiting] silently stop applying and
+        // metering quietly falls back to global-only. That is the same shape of failure this stage
+        // exists to remove — a rate limiter doing less than it was configured to — so it is checked
+        // rather than trusted.
+        //
+        // Checked only when something is actually registered early: an app with no such middleware is
+        // unaffected by the ordering, and failing it would impose a new requirement for no benefit.
+        if (registry.HasMiddleware(SparkMiddlewareStage.BeforeAuthentication))
+            VerifyRoutingHasRun(app);
+
         registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
 
         // Any registered credential is a reason to authenticate, not just Identity. An app whose

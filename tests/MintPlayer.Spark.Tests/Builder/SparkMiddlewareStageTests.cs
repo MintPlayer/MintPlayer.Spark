@@ -118,6 +118,24 @@ public class SparkMiddlewareStageTests
         act.Should().NotThrow();
     }
 
+    [Fact]
+    public void HasMiddleware_reports_per_stage()
+    {
+        // UseSpark uses this to enforce BeforeAuthentication's routing precondition only when
+        // something is actually registered there — an app with nothing early must not be forced to
+        // reorder its pipeline for a requirement that cannot affect it.
+        var registry = new SparkModuleRegistry();
+
+        registry.HasMiddleware(SparkMiddlewareStage.BeforeAuthentication).Should().BeFalse();
+        registry.HasMiddleware(SparkMiddlewareStage.AfterSpark).Should().BeFalse();
+
+        registry.AddMiddleware(_ => { }, SparkMiddlewareStage.BeforeAuthentication);
+
+        registry.HasMiddleware(SparkMiddlewareStage.BeforeAuthentication).Should().BeTrue();
+        registry.HasMiddleware(SparkMiddlewareStage.AfterSpark).Should().BeFalse(
+            "registering early must not make the later stage look occupied");
+    }
+
     private static IApplicationBuilder NewAppBuilder()
         => new ApplicationBuilder(new ServiceCollection().BuildServiceProvider());
 }

@@ -14,7 +14,8 @@ each can be reverted alone.
 | M1 | `PathPrefixes` on `SparkRateLimiterOptions` | R1–R4 | `1dd49b4` |
 | M2 | Middleware stages + limiter moves ahead of authentication + doc-comment fix | R5–R9 | `4ee489c` |
 | M3 | `SparkTestDriver.RequireLicense` | R10, R11 | `ff82a0d` |
-| M4 | Guide, version bump, PRD/plan finalisation | R12 | this commit |
+| M4 | Guide, version bump, PRD/plan finalisation | R12 | `50613b3` |
+| M5 | PR #266 review round — error-message accuracy, routing precondition, release notes | R13–R16 | this commit |
 
 ---
 
@@ -202,3 +203,64 @@ real host. It also sleeps 11 s afterwards to let the fixed window roll over, sin
 collection shares `127.0.0.1` as its partition key; that coupling is pre-existing and untouched, but it
 means a failure there can be bucket contamination rather than a regression. Per the repo's standing
 caution, a red test from the full suite gets re-run in isolation before being called a regression.
+
+---
+
+## M5 — PR #266 review round
+
+Four points from the reporter's review of the diff. Two were message-accuracy one-liners; one added a
+guard; one was documentation. The review also confirmed the three structural things this change could
+most plausibly have got wrong — `AfterSpark` applying at exactly the old call site (so the Migrations
+startup task still runs after index creation), the placement test discriminating, and the
+`RequireLicense` split — so those are left as they were.
+
+### R13 — `["/"]` reported the wrong problem ✅
+
+A bare root normalized to empty and was dropped, so a caller who named exactly one prefix was told they
+had named none. The *reason* — `"/"` means meter everything, including static assets — existed only in a
+code comment.
+
+Kept as a refusal rather than accepting it as meter-everything. `"/"` reads like "the root path" and
+means the opposite, so honouring it would turn a likely misreading into a silently over-applied limiter;
+an app that genuinely wants everything metered can always say `["/api"]`, which is explicit and cannot
+be misread. Now refused with its own message, and documented on the property, in the `<exception>` tag,
+and in the guide. A `"/"` alongside a real prefix is ignored rather than fatal — there is no ambiguity
+to refuse once the scope is expressed.
+
+### R14 — the `ArgumentException` named an internal parameter ✅
+
+`nameof(configured)` surfaced as `(Parameter 'configured')`, meaningless to a caller who set
+`PathPrefixes`, and contrary to R3's own wording. Now `nameof(SparkRateLimiterOptions.PathPrefixes)`,
+asserted on `ParamName` rather than only on the message text — the old test passed on the message and
+would not have caught this.
+
+### R15 — `BeforeAuthentication`'s routing precondition is now enforced ✅
+
+The stage promises routing has run; `UseSpark()` is documented as "call after `UseRouting()`" and nothing
+checked it. An app getting the order wrong placed the limiter ahead of endpoint selection, where
+`[EnableRateLimiting]`/`[DisableRateLimiting]` silently stop applying and metering falls back to
+global-only — the same *quietly doing less than configured* failure this whole change exists to remove,
+which is why it was worth fixing now rather than deferring as the reviewer allowed.
+
+`UseSpark` throws when routing has not run **and** something is registered early, gated on a new
+`SparkModuleRegistry.HasMiddleware(stage)`. Gating matters: an app with no early middleware cannot be
+affected by the ordering, so failing it would impose a new hard requirement for no benefit.
+
+Detection is `app.Properties["__EndpointRouteBuilder"]` — the key `UseRouting` stamps and `UseEndpoints`
+reads for its own ordering check. Verified empirically rather than from memory: a probe printed
+`[application.Services, server.Features]` before `UseRouting()` and
+`[application.Services, server.Features, __EndpointRouteBuilder, __UseRouting]` after.
+
+### R16 — the two breaking changes are named ✅
+
+New `docs/release-notes-preview-52.md`, following the `preview-42` precedent, leading with both breaking
+changes rather than the features:
+
+- `ApplyMiddleware` changed signature with no overload — public on a public `Abstractions` type, so an
+  external caller stops compiling. The no-default reasoning stands (R8); it is a compile break, not an
+  addition, and saying so is separate from defending it.
+- `AddMiddleware` throws where it previously no-op'd — an app that registered late did not crash before
+  and will not start now. The middleware was never running either way; the change is *when you find out*.
+
+Also documents the placement move as a behaviour change for every app already opted in, and the new
+`UseRouting` refusal.

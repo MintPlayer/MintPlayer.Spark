@@ -56,6 +56,17 @@ An empty `PathPrefixes` **throws at startup**. A limiter scoped to no paths mete
 would leave the app unprotected with nothing to indicate it — the one outcome worse than a startup
 error.
 
+A bare `"/"` is **also refused**, with its own message. It reads like "the root path" but means *every
+request* — static assets and SPA bundles included — which starves browser asset loads rather than
+protecting an endpoint. An API-only app that genuinely wants everything metered says so by naming its
+own prefixes:
+
+```csharp
+options.PathPrefixes = ["/api"];   // explicit, and impossible to misread
+```
+
+A `"/"` alongside a real prefix is simply ignored, since it adds nothing to the scope.
+
 ### One bucket per caller, not per route
 
 Every metered prefix draws on the same per-IP bucket. The budget is a per-caller allowance, so an app
@@ -101,6 +112,22 @@ builder.Registry.AddMiddleware(app => app.UseMiddleware<MyGate>(),
 Nothing at that stage may read `HttpContext.User`: no credential has been validated yet, so every
 request looks anonymous. Middleware that needs the principal belongs in the default
 `SparkMiddlewareStage.AfterSpark`.
+
+### `UseRouting()` must come first, and this is enforced
+
+The stage's contract is that routing has already run — that is what makes endpoint-attached policies
+resolve. `UseSpark()` has always been documented as "call after `UseRouting()`", and when anything is
+registered at `BeforeAuthentication` it is now **checked** rather than trusted:
+
+```csharp
+app.UseSpark();       // throws: the limiter would sit ahead of endpoint selection
+app.UseRouting();
+```
+
+Get the order wrong and the limiter runs before an endpoint has been selected, so
+`[EnableRateLimiting]` and `[DisableRateLimiting]` silently stop applying and metering falls back to
+global-only — a limiter quietly doing less than configured, which is the exact failure this guide's
+last section is about. An app with no early middleware cannot be affected and is not checked.
 
 ## Do not also call `UseRateLimiter()`
 

@@ -4,8 +4,10 @@
 **Branch:** `feat/issue-265-rate-limiter-config` · **Ships in:** `10.0.0-preview.52` ·
 **Plan:** [issue_265_plan.md](issue_265_plan.md) · **Guide:** [guide-rate-limiting.md](guide-rate-limiting.md)
 
-**Status: all three items delivered.** Requirement-by-milestone mapping and verification results are in
-the plan.
+**Status: all three items delivered**, plus a review round on [PR #266](https://github.com/MintPlayer/MintPlayer.Spark/pull/266).
+Requirement-by-milestone mapping, verification results and the review round are in the plan.
+Upgrade-facing notes — including two breaking changes — are in
+[release-notes-preview-52.md](release-notes-preview-52.md).
 
 ## Origin
 
@@ -197,6 +199,10 @@ in preview.
 | R10 | `SparkTestDriver.RequireLicense` — `protected virtual`, default `true`. When `false`, a missing licence no longer fails the fixture. |
 | R11 | An **invalid** licence still fails loudly regardless of `RequireLicense`. |
 | R12 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place. |
+| R13 | A bare `"/"` is refused **with its own message**, not reported as an empty configuration. It reads like "the root path" and means every request; honouring it would silently over-apply the limiter, and reporting it as absent tells a caller who named one prefix that they named none. |
+| R14 | The `ArgumentException` names `PathPrefixes` as its `ParamName`, not an internal parameter. |
+| R15 | `UseSpark()` refuses to build when routing has not run **and** something is registered at `BeforeAuthentication`. Gated on the registration, because an app with no early middleware cannot be affected. |
+| R16 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change. |
 
 ## Decisions
 

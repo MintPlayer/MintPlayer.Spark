@@ -2,6 +2,8 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Authentication;
@@ -89,6 +91,60 @@ public class RateLimiterPlacementTests : SparkTestDriver
 
         CountingHandler.Invocations.Should().Be(authAfterAdmitted,
             "a 429 must cost no credential validation — the limiter runs ahead of UseAuthentication");
+    }
+
+    [Fact]
+    public void UseSpark_before_UseRouting_is_refused_when_something_is_registered_early()
+    {
+        // BeforeAuthentication's contract is that routing has already run. UseSpark is documented as
+        // "call after UseRouting()", but documentation is not enforcement: get the order wrong and the
+        // limiter sits ahead of endpoint selection, where [EnableRateLimiting] / [DisableRateLimiting]
+        // silently stop applying and metering falls back to global-only. That is the same
+        // quietly-doing-less failure this whole change exists to remove, so it is checked.
+        var services = new ServiceCollection();
+        services.AddRouting();
+        services.AddLogging();
+        services.AddSpark(spark => spark.AddRateLimiter());
+        using var provider = services.BuildServiceProvider();
+
+        var app = new ApplicationBuilder(provider);
+
+        // No app.UseRouting() — the mistake under test.
+        var act = () => app.UseSpark();
+
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*UseRouting*");
+    }
+
+    [Fact]
+    public void UseSpark_before_UseRouting_is_tolerated_when_nothing_is_registered_early()
+    {
+        // The check must not become a blanket new requirement. An app with no BeforeAuthentication
+        // middleware cannot be affected by the ordering, so failing it would cost churn for nothing.
+        //
+        // Asserts only that the routing guard does not fire; UseSpark goes on to do other work
+        // (index creation, model-hash verification) that needs a full host, so anything it throws
+        // afterwards is out of scope here.
+        var services = new ServiceCollection();
+        services.AddRouting();
+        services.AddLogging();
+        services.AddSpark(spark => { });
+        using var provider = services.BuildServiceProvider();
+
+        var app = new ApplicationBuilder(provider);
+
+        try
+        {
+            app.UseSpark();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("UseRouting"))
+        {
+            Assert.Fail("the routing guard fired even though nothing was registered early");
+        }
+        catch
+        {
+            // Any other failure is later machinery, not the guard.
+        }
     }
 
     [Fact]

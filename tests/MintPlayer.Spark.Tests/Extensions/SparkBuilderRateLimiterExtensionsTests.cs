@@ -113,8 +113,8 @@ public class SparkBuilderRateLimiterExtensionsTests
     }
 
     /// <summary>
-    /// Every way of writing "no prefixes": absent, blank, whitespace, and a bare root — which would
-    /// normalize to the empty string and therefore mean "meter everything", not "meter /".
+    /// Every way of writing "no prefixes at all": absent, blank, whitespace. A bare <c>"/"</c> is
+    /// deliberately NOT in this set — it is a different mistake and gets its own message.
     /// </summary>
     public static TheoryData<string[]> EmptyPrefixCases()
     {
@@ -122,7 +122,6 @@ public class SparkBuilderRateLimiterExtensionsTests
         cases.Add([]);
         cases.Add([""]);
         cases.Add(["   "]);
-        cases.Add(["/"]);
         return cases;
     }
 
@@ -137,7 +136,41 @@ public class SparkBuilderRateLimiterExtensionsTests
         // A limiter scoped to no paths is a security control that silently does nothing — the one
         // outcome worse than a startup error.
         act.Should().Throw<ArgumentException>()
-           .WithMessage("*PathPrefixes*");
+           .WithMessage("*PathPrefixes*")
+           .Which.ParamName.Should().Be(nameof(SparkRateLimiterOptions.PathPrefixes),
+               "the caller set PathPrefixes, so naming an internal parameter tells them nothing");
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("//")]
+    [InlineData("  /  ")]
+    public void A_bare_root_prefix_is_refused_on_its_own_terms(string root)
+    {
+        // Previously this normalized to empty and was reported as "you named no prefixes" — wrong for
+        // someone who named exactly one. The refusal stands (it would meter static assets too), but it
+        // has to explain itself, or a caller who wrote "/" deliberately is told they configured nothing.
+        var builder = new TestBuilder();
+
+        var act = () => builder.AddRateLimiter(options => options.PathPrefixes = [root]);
+
+        var message = act.Should().Throw<ArgumentException>().Which.Message;
+        message.Should().Contain("every request",
+            "the reason is that it meters everything, not that it is missing");
+        message.Should().NotContain("at least one path prefix",
+            "that is the empty-configuration message and it does not apply here");
+    }
+
+    [Fact]
+    public void A_root_alongside_a_real_prefix_is_ignored_rather_than_fatal()
+    {
+        // "/" contributes nothing to the scope, so with a usable prefix present there is no ambiguity
+        // to refuse — the configuration expresses a coherent intent and is honoured.
+        var builder = new TestBuilder();
+
+        var act = () => builder.AddRateLimiter(options => options.PathPrefixes = ["/", "/api"]);
+
+        act.Should().NotThrow();
     }
 
     [Fact]

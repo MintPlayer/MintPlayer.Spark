@@ -42,6 +42,12 @@ public class SparkRateLimiterOptions
     /// Must not be empty. A limiter asked to meter nothing is a security control that silently does
     /// nothing, so <see cref="SparkBuilderRateLimiterExtensions.AddRateLimiter"/> throws instead.
     /// </para>
+    /// <para>
+    /// A bare <c>"/"</c> is also refused. It reads like "the root path" but means <em>every request</em>,
+    /// static assets and SPA bundles included, which starves browser asset loads rather than protecting
+    /// an endpoint. An API-only app that genuinely wants everything metered says so by naming its own
+    /// prefixes — <c>["/api"]</c> — which is both explicit and impossible to misread.
+    /// </para>
     /// </summary>
     public string[] PathPrefixes { get; set; } = ["/spark", "/connect"];
 }

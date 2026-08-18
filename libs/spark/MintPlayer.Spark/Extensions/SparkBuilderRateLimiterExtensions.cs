@@ -58,9 +58,11 @@ public static class SparkBuilderRateLimiterExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">
-    /// <see cref="SparkRateLimiterOptions.PathPrefixes"/> is empty or contains only blank entries. A
-    /// limiter that meters nothing is a security control that silently does nothing, so this fails at
-    /// startup rather than at the first flood.
+    /// <see cref="SparkRateLimiterOptions.PathPrefixes"/> names no usable prefix — it is empty, holds
+    /// only blank entries, or holds only a bare <c>"/"</c>. A limiter that meters nothing is a security
+    /// control that silently does nothing, so this fails at startup rather than at the first flood.
+    /// The <c>"/"</c> case reports itself distinctly: it is a request to meter <em>everything</em>, not
+    /// an empty configuration, and is refused for that reason rather than treated as absent.
     /// </exception>
     public static ISparkBuilder AddRateLimiter(
         this ISparkBuilder builder,
@@ -133,6 +135,7 @@ public static class SparkBuilderRateLimiterExtensions
     private static PathString[] NormalizePrefixes(string[]? configured)
     {
         var normalized = new List<PathString>();
+        var sawRoot = false;
 
         foreach (var raw in configured ?? [])
         {
@@ -142,7 +145,14 @@ public static class SparkBuilderRateLimiterExtensions
 
             trimmed = trimmed.TrimEnd('/');
             if (trimmed.Length == 0)
-                continue; // "/" on its own would mean "meter everything"; treated as not configured.
+            {
+                // A bare "/" is not "no prefix" and must not be reported as one: it is a request to
+                // meter every request in the app. Refused rather than honoured, and refused with its
+                // own message — telling someone who wrote exactly one prefix that they named none is
+                // a worse error than the one they made.
+                sawRoot = true;
+                continue;
+            }
 
             if (trimmed[0] != '/')
                 trimmed = "/" + trimmed;
@@ -155,12 +165,18 @@ public static class SparkBuilderRateLimiterExtensions
         if (normalized.Count == 0)
         {
             throw new ArgumentException(
-                $"{nameof(SparkRateLimiterOptions)}.{nameof(SparkRateLimiterOptions.PathPrefixes)} " +
-                "must name at least one path prefix. A rate limiter scoped to no paths meters no " +
-                "requests, which would leave the app unprotected with nothing to indicate it. " +
-                "Leave the property at its default (\"/spark\", \"/connect\") or list the prefixes " +
-                "to meter.",
-                nameof(configured));
+                sawRoot
+                    ? "\"/\" is not accepted as a rate-limiter path prefix: it would meter every "
+                      + "request, including static assets and SPA bundles, which starves browser "
+                      + "asset loads rather than protecting an endpoint. Name the prefixes to meter "
+                      + $"instead — e.g. {nameof(SparkRateLimiterOptions.PathPrefixes)} = "
+                      + "[\"/api\"] for an API-only app."
+                    : $"{nameof(SparkRateLimiterOptions)}."
+                      + $"{nameof(SparkRateLimiterOptions.PathPrefixes)} must name at least one path "
+                      + "prefix. A rate limiter scoped to no paths meters no requests, which would "
+                      + "leave the app unprotected with nothing to indicate it. Leave the property at "
+                      + "its default (\"/spark\", \"/connect\") or list the prefixes to meter.",
+                nameof(SparkRateLimiterOptions.PathPrefixes));
         }
 
         return [.. normalized];
