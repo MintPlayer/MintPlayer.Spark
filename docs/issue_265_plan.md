@@ -6,13 +6,15 @@
 Three independent deliverables from one issue. They touch disjoint files, so each is its own commit and
 each can be reverted alone.
 
+**All milestones complete.**
+
 | | Milestone | Requirements | Commit |
 |---|---|---|---|
-| M0 | Spikes — settle the two load-bearing unknowns | — | |
-| M1 | `PathPrefixes` on `SparkRateLimiterOptions` | R1–R4 | |
-| M2 | Middleware stages + limiter moves ahead of authentication + doc-comment fix | R5–R9 | |
-| M3 | `SparkTestDriver.RequireLicense` | R10, R11 | |
-| M4 | Guide, version bump, PRD/plan finalisation | R12 | |
+| M0 | Spikes — settle the two load-bearing unknowns | — | `0396985` |
+| M1 | `PathPrefixes` on `SparkRateLimiterOptions` | R1–R4 | `1dd49b4` |
+| M2 | Middleware stages + limiter moves ahead of authentication + doc-comment fix | R5–R9 | `4ee489c` |
+| M3 | `SparkTestDriver.RequireLicense` | R10, R11 | `ff82a0d` |
+| M4 | Guide, version bump, PRD/plan finalisation | R12 | this commit |
 
 ---
 
@@ -95,8 +97,8 @@ new `SparkMiddlewareStage.cs` in the same folder, `libs/spark/MintPlayer.Spark/S
 
 - `enum SparkMiddlewareStage { AfterSpark = 0, BeforeAuthentication = 1 }`. `AfterSpark` takes the zero
   value on purpose: `default(SparkMiddlewareStage)` must mean today's behaviour, not a silent move.
-- `AddMiddleware(action, stage = AfterSpark)` — the default keeps all six existing registrants
-  (PRD F5) exactly where they are, unchanged and un-recompiled.
+- `AddMiddleware(action, stage = AfterSpark)` — the default keeps the five registrants that predate
+  stages (PRD F5, everything but the limiter) exactly where they are, unchanged and un-recompiled.
 - `ApplyMiddleware(app, stage)` — **stage required, no default** (R8). One appliable-once guard per
   stage; `AddMiddleware` into an already-applied stage throws (R7).
 - `UseSpark` gains `registry.ApplyMiddleware(app, BeforeAuthentication)` as its **first** statement,
@@ -107,9 +109,20 @@ new `SparkMiddlewareStage.cs` in the same folder, `libs/spark/MintPlayer.Spark/S
   middleware sits and why, and warn that combining it with a manual `UseRateLimiter()` double-charges
   every request for half the configured budget with no error — and that Spark cannot detect this (R9).
 
-**Known collateral:** `SparkBuilderRateLimiterExtensionsTests` calls
-`builder.Registry.ApplyMiddleware(app)` directly. R8 makes that a compile error — which is the point:
-that test would otherwise keep passing while applying an empty stage. Updated to apply both stages.
+**Collateral, all in tests and all intended.** R8 turned every bare `ApplyMiddleware(app)` into a
+compile error, which is the point: `SparkBuilderRateLimiterExtensionsTests` would otherwise have kept
+passing while wiring an empty pipeline. Seven call sites across four files now name their stage
+(`SparkModuleRegistryTests` ×4, `CertificateForwardingTrustTests`, `SparkBuilderMessagingExtensionsTests`,
+`SparkBuilderReplicationExtensionsTests`) — all `AfterSpark`, matching what they register.
+
+One failure the compiler could *not* catch, found by the sweep: `SparkMigrationsExtensionsTests`
+counts middleware registrations by reflecting on the private `middlewareActions` field and casting it
+to `IList`, which is now a `Dictionary` keyed by stage — an `InvalidCastException` at runtime. Fixed by
+summing across every stage rather than reading one, deliberately: counting only the default stage would
+let a later change relocate the migrations hook without the idempotency assertions noticing, and "wired
+exactly once" is a claim about the registry, not about one bucket of it. The reflection itself stays —
+that test avoids *running* the action on purpose, since `SparkMigrationRunner.RunAtStartup` needs a live
+document store.
 
 **Tests:** registry-level — a `BeforeAuthentication` registrant is not run by an `AfterSpark` apply and
 vice versa; re-registering after apply throws. Pipeline-level — the limiter's middleware is reached on a
@@ -128,27 +141,60 @@ run (the assertion that actually pins F3, rather than pinning an ordering intege
 - Doc comment states the split from D4 plainly: this gates *the fixture's* hard failure, not the
   server's. Without that, the name promises something it does not do.
 
-**Tests:** a fixture overriding `RequireLicense => false` initialises and round-trips a document with no
-licence in the environment (this is S2, promoted from spike to committed regression test — it is the
-only thing that would catch RavenDB changing this behaviour on a future bump). Default-`true` behaviour
-is left to the existing suite, which is entirely made of fixtures that inherit it.
+**Tests, and an honest limit on them.** The intent was to promote S2 into a committed regression test.
+That is not fully possible, and the test says so rather than implying coverage it does not have:
+`ConfigureServer` is static and runs once per process before any fixture exists, and this repository has
+a `raven-license.log` at its root that `LicenseHelper` finds — so an in-tree test *always* runs against
+a licensed server and cannot reach the `ThrowOnInvalidOrMissingLicense = false` branch at all. Making it
+reach that branch would mean renaming the developer's licence file from inside a test: destructive, and
+hostile to parallel runs.
+
+So `SparkTestDriverLicenseTests` asserts the observable half — a relaxed fixture gets a working store
+and round-trips a document, and the strict default is pinned against an accidental flip. The
+licence-less branch was instead verified **manually**, twice, by temporarily moving the repo-root
+licence aside (with a shell trap guaranteeing restoration) and running the real `SparkTestDriver`:
+
+- a `RequireLicense => false` fixture stored, queried and asserted successfully with no licence present;
+- a strict fixture (`UseSparkOptionsTests`) still failed with the `RavenDB license not found` message.
+
+That second run is the one that matters most — it proves the opt-in did not quietly relax the default.
+The standing coverage for the licence-less path is a fork CI run, which genuinely has no licence and is
+the exact scenario the option exists for.
 
 ## M4 — Guide, version, docs (R12)
 
 - New `docs/guide-rate-limiting.md`: what is metered by default, how to extend the scope, where the
   middleware sits, and the do-not-combine warning — one page an adopter can be pointed at instead of a
-  doc comment.
+  doc comment. Linked from the README's guide table.
 - All 21 package `<Version>` values `10.0.0-preview.51` → `10.0.0-preview.52`, in lockstep. CI publishes
   on merge to master, so the bump rides the PR; nothing is pushed by hand.
-- PRD and this plan filled in with commits and spike results.
+  - Deliberately **not** bumped: the `preview.51` in `README.md:273`, which is prose about when
+    `modelHashes.json` was introduced. A blanket search-and-replace would have silently rewritten a
+    historical fact into a false one.
+- PRD and this plan filled in with commits, spike results, and the two places reality diverged from
+  the written intent (M2's collateral, M3's testability limit).
 
 ---
 
 ## Verification
 
-Test suites run **once**, after M3, per the batching rule — intermediate milestones are verified by
-reading and by build. Targeted runs: `SparkBuilderRateLimiterExtensionsTests`, the new registry tests,
-`SparkTestDriver` licence test, and `RateLimitTests` (E2E, Fleet).
+Test suites run **once**, after M3, per the batching rule — intermediate milestones were verified by
+reading and by build (solution-wide `dotnet build`, clean).
+
+**Result: `MintPlayer.Spark.Tests` — 1483 passed, 0 failed.**
+
+The first sweep was 1481/2, both in `SparkMigrationsExtensionsTests` and both mine — see M2's collateral
+note. Green after the fix, re-run in full rather than in isolation.
+
+Two checks worth naming separately, because each was aimed at a specific way this work could have been
+fake rather than at coverage:
+
+- **The placement test discriminates.** `A_rate_limited_request_is_rejected_before_authentication_runs`
+  was re-run with the limiter temporarily put back on `AfterSpark`, and it **failed**. A test that
+  passes on both placements would assert nothing about F3 — the same trap as #258's F3, where a negative
+  assertion held because the feature was entirely dead.
+- **The licence opt-in did not relax the default.** Verified by hiding the repo-root licence: the
+  relaxed fixture passed, and a strict fixture still failed with `RavenDB license not found`.
 
 `RateLimitTests` is the one to watch. It hammers `/spark/auth/me` for a 429 against Fleet, which opts in
 with `_ => { }` — so it exercises both the unchanged defaults (M1) and the new placement (M2) against a

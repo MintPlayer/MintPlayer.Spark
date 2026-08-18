@@ -152,6 +152,7 @@ MintPlayer.Spark/
 | [Authorization](libs/authorization/MintPlayer.Spark.Authorization/README.md) | Optional security package, `security.json`, groups, permissions, XSRF |
 | [Authentication Schemes & `Everyone`](docs/guide-authentication-schemes.md) | Every scheme in the repo, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
+| [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |

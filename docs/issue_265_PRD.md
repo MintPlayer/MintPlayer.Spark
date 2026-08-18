@@ -1,7 +1,11 @@
 # PRD — Issue #265: rate-limiter configurability, placement, and a licence opt-in for `SparkTestDriver`
 
 **Issue:** [#265](https://github.com/MintPlayer/MintPlayer.Spark/issues/265) ·
-**Branch:** `feat/issue-265-rate-limiter-config` · **Ships in:** `10.0.0-preview.52`
+**Branch:** `feat/issue-265-rate-limiter-config` · **Ships in:** `10.0.0-preview.52` ·
+**Plan:** [issue_265_plan.md](issue_265_plan.md) · **Guide:** [guide-rate-limiting.md](guide-rate-limiting.md)
+
+**Status: all three items delivered.** Requirement-by-milestone mapping and verification results are in
+the plan.
 
 ## Origin
 
