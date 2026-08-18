@@ -92,6 +92,19 @@ internal static class GenerateIndexDiagnostics
         isEnabledByDefault: true);
 
     /// <summary>
+    /// The method carrying the generated <c>Index(...)</c> calls goes on the index class, so that class must be
+    /// partial. Without it the calls would simply not exist and the fields would be indexed with default
+    /// options — searchable text silently not searchable.
+    /// </summary>
+    public static readonly DiagnosticDescriptor IndexNotPartial = new(
+        id: "SPARK_INDEX_009",
+        title: "Index class is not partial",
+        messageFormat: "Index '{0}' is not declared 'partial', so '{1}()' cannot be generated for it. Add the 'partial' keyword and call '{1}()' from the constructor.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
     /// One index per collection type is a hard ceiling: <c>IIndexRegistry</c> keys registrations by
     /// collection type and silently skips duplicates, so a second index for an entity would be created in
     /// RavenDB and then never used for queries.

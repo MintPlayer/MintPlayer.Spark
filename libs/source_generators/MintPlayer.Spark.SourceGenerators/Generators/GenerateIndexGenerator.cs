@@ -32,6 +32,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
 
+    private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
+
     /// <summary>
     /// Includes nullable reference annotations, so a <c>string?</c> entity property is declared
     /// <c>string?</c> on the index entity rather than silently widening to <c>string</c>.
@@ -437,12 +439,24 @@ public class GenerateIndexGenerator : IncrementalGenerator
             indexEntity.GetSparkProperties().Select(p => p.Name), System.StringComparer.Ordinal);
 
         var companions = new List<IndexPropertyInfo>();
+        var indexedFields = new List<IndexPropertyInfo>();
+
         foreach (var property in indexEntity.GetSparkProperties())
         {
             ct.ThrowIfCancellationRequested();
 
-            if (!property.IsSearchable()) continue;
-            if (SearchKindOf(property.Type) != SearchKind.Text) continue;
+            var searchable = property.IsSearchable() && SearchKindOf(property.Type) == SearchKind.Text;
+            var isDateTimeOffset = property.Type.IsDateTimeOffset();
+
+            if (!searchable && !isDateTimeOffset) continue;
+
+            // The declared indexing for the base field, generated from the attribute so the constructor does
+            // not restate it.
+            indexedFields.Add(new IndexPropertyInfo
+            {
+                Name = property.Name,
+                FieldIndexing = searchable ? "Search" : "Exact",
+            });
 
             var companionName = IndexNaming.SortCompanion(property.Name);
 
@@ -459,23 +473,38 @@ public class GenerateIndexGenerator : IncrementalGenerator
             });
         }
 
-        var isPartial = indexEntity.DeclaringSyntaxReferences
-            .Select(r => r.GetSyntax(ct))
-            .OfType<ClassDeclarationSyntax>()
-            .Any(c => c.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
+        var isPartial = IsDeclaredPartial(indexEntity, ct);
+
+        var fromIndex = indexEntity.GetAttributes().FirstOrDefault(a =>
+            a.AttributeClass?.ToDisplayString() == FromIndexAttributeFullName);
+        var indexType = fromIndex?.ConstructorArguments.Length > 0
+            ? fromIndex.ConstructorArguments[0].Value as INamedTypeSymbol
+            : null;
 
         return new HandWrittenIndexEntityInfo
         {
+            IndexClassName = indexType?.Name ?? string.Empty,
+            IndexPathSpec = indexType?.GetPathSpec(ct),
+            IsIndexPartial = indexType is not null && IsDeclaredPartial(indexType, ct),
+            IndexLocation = indexType?.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
+            IndexedFields = indexedFields,
             Namespace = indexEntity.ContainingNamespace.IsGlobalNamespace
                 ? string.Empty
                 : indexEntity.ContainingNamespace.ToDisplayString(),
             ClassName = indexEntity.Name,
+            FullName = indexEntity.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             PathSpec = indexEntity.GetPathSpec(ct),
             IsPartial = isPartial,
             Companions = companions,
             Location = indexEntity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }
+
+    private static bool IsDeclaredPartial(INamedTypeSymbol type, System.Threading.CancellationToken ct)
+        => type.DeclaringSyntaxReferences
+            .Select(r => r.GetSyntax(ct))
+            .OfType<ClassDeclarationSyntax>()
+            .Any(c => c.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
 
     /// <summary>
     /// The sort companion for a searchable field: same value, same nullability, <c>[IgnoreProperty]</c>, and

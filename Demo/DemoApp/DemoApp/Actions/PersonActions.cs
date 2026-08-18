@@ -1,4 +1,3 @@
-using DemoApp.Data;
 using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;

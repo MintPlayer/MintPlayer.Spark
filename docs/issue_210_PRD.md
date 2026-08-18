@@ -526,6 +526,25 @@ side by side.
 - **R30** For a `partial` index entity carrying `[FromIndex]`, emit `{Name}Sort` companions for its
   `[Search]`-marked properties, decorated `[IgnoreProperty]`, exactly as for a generated pair. The
   developer writes the class and its `[Search]` intent; the boilerplate is generated.
+- **R30a** Also emit a `private void IndexSearchFields()` method onto the **index** class, containing the
+  `Index(nameof(V.Field), FieldIndexing.Search)` call per `[Search]` property and `Exact` per `DateTimeOffset`
+  property. The hand-written constructor calls it.
+
+  Without this, `[Search]` on the index entity and `Index(nameof(...), FieldIndexing.Search)` in the constructor
+  state the same fact twice and drift independently — and drift here is invisible, because an un-analyzed field
+  simply is not searchable. The attribute becomes the single declaration.
+
+  A generator can add *members* to a partial class but cannot add *statements* to a hand-written constructor, so
+  the call itself stays the developer's. That is the same limit that keeps the map assignments hand-written
+  (R31), and `IndexSearchFieldsMethod` is therefore effectively public API — renaming it breaks every consumer's
+  constructor.
+- **R30b** The index class must also be `partial`; `SPARK_INDEX_009` otherwise. Without it the method cannot be
+  contributed and the fields would be indexed with default options — searchable text that is silently not
+  searchable.
+- **R30c** The generated `nameof` is **fully qualified** (`nameof(global::App.Data.VCar.Model)`). The method
+  lands on the index class, which may sit in a different namespace than the index entity; co-locating them is
+  the convention but the generator cannot rely on a consumer following it, and an unqualified name there is a
+  `CS0103` inside generated code.
 - **R31** **The generator cannot supply the map assignment for a hand-written index.** A generator adds
   members to a partial class; it cannot reach inside a hand-written `Map = ... select new VCar { ... }`
   initializer to add `ModelSort = car.Model`. So R30 generates a property that is declared, stored and
@@ -610,8 +629,11 @@ side by side.
   Rejected in favour of `OnInitialize()` and hand-written partials.
 - ~~**N4** Emitting `SparkContext` members.~~ **Promoted into scope** — see R33. The blocker was that the
   demo contexts are not `partial`; adding the keyword is accepted.
-- **N5** Migrating the five existing hand-written index pairs. One demo entity is converted as a
-  proof; a full migration is follow-up, since renaming an index re-indexes the database.
+- ~~**N5** Migrating the five existing hand-written index pairs.~~ **Done after all.** Fleet's `Car` is fully
+  generated; DemoApp's and HR's pairs stay hand-written but now declare searchability once via `[Search]` on the
+  index entity and call the generated `IndexSearchFields()`. Index names did not change, so no re-indexing is
+  triggered. DemoApp's index entities also moved from `DemoApp.Data` into `DemoApp.Indexes`, so every index and
+  index entity in the solution is co-located the way the generator emits them.
 - **N6** Collection fan-out (`[GenerateIndex(typeof(Country), nameof(Country.Cities))]`), the
   `...ObjectId` composite keys it needs, and the parented `CustomQueryArgs` query methods that go with
   it. Issue #210 does not ask for it, it is the largest and least-proven part of the reference design,

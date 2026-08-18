@@ -26,6 +26,14 @@ public partial class HandWrittenIndexEntityInfo
     public string ClassName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Fully-qualified, <c>global::</c>-prefixed name of the index entity.
+    /// <para>The generated method lives on the INDEX class, which may sit in a different namespace — so an
+    /// unqualified <c>nameof(VCar.X)</c> there does not resolve. Co-locating them is the convention, but the
+    /// generator cannot rely on a consumer following it.</para>
+    /// </summary>
+    public string FullName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Namespace and containing-type chain, so a <em>nested</em> index entity is reopened inside its parents
     /// rather than emitted as a top-level class in the namespace — which would not compile.
     /// </summary>
@@ -42,6 +50,27 @@ public partial class HandWrittenIndexEntityInfo
     /// own does not get a duplicate member.
     /// </summary>
     public List<IndexPropertyInfo> Companions { get; set; } = new();
+
+    /// <summary>
+    /// Fields needing an <c>Index(...)</c> call, emitted as a method the hand-written constructor calls.
+    /// <para>Declaring searchability on the index entity via <c>[Search]</c> and then repeating it as an
+    /// <c>Index(nameof(VCar.X), FieldIndexing.Search)</c> line in the constructor says the same thing twice, and
+    /// the two drift. The attribute is the single declaration; the calls are generated from it.</para>
+    /// </summary>
+    public List<IndexPropertyInfo> IndexedFields { get; set; } = new();
+
+    /// <summary>The index class named by <c>[FromIndex]</c>, which receives the generated method.</summary>
+    public string IndexClassName { get; set; } = string.Empty;
+
+    public PathSpec? IndexPathSpec { get; set; }
+
+    /// <summary>
+    /// Whether the index class is <c>partial</c>. Without it the method cannot be contributed and
+    /// <c>SPARK_INDEX_009</c> is reported rather than the calls quietly not existing.
+    /// </summary>
+    public bool IsIndexPartial { get; set; }
+
+    public LocationKey? IndexLocation { get; set; }
 
     public LocationKey? Location { get; set; }
 }

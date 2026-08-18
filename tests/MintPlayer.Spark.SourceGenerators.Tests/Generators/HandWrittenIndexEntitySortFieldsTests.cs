@@ -19,13 +19,27 @@ public class HandWrittenIndexEntitySortFieldsTests
             rootNamespace: "TestApp");
 
     /// <summary>
+    /// Passes each fixture piece as its own source <em>file</em>. Concatenating them would put two file-scoped
+    /// namespaces in one file, which is invalid C# and yields unusable symbols.
+    /// </summary>
+    private static GeneratorRunResult RunFiles(params string[] sources)
+        => GeneratorHarness.Run(
+            GeneratorName,
+            sources,
+            referenceTypes: [typeof(GenerateIndexAttribute)],
+            rootNamespace: "TestApp");
+
+    /// <summary>
     /// A stand-in for the RavenDB base class, so the fixture compiles without referencing RavenDB. The
     /// generator matches <c>[FromIndex]</c> on the index entity, not the index's base type.
     /// </summary>
     private const string IndexStub = """
         namespace TestApp.Indexes;
 
-        public class Cars_Overview { }
+        public partial class Cars_Overview
+        {
+            protected void Index(string field, int indexing) { }
+        }
         """;
 
     private static string SourceFor(string indexEntity) => $$"""
@@ -202,6 +216,127 @@ public class HandWrittenIndexEntitySortFieldsTests
         generated.Should().Contain("partial class Views");
         generated.Should().Contain("public partial class VCar");
         generated.Should().Contain("ModelSort");
+    }
+
+    // --- generated Index(...) calls -----------------------------------------------------------
+
+    /// <summary>
+    /// Declaring <c>[Search]</c> on the index entity and then repeating it as an
+    /// <c>Index(nameof(VCar.Model), FieldIndexing.Search)</c> line in the constructor says the same thing twice
+    /// and lets the two drift. The attribute is the single declaration; the calls are generated from it into a
+    /// method the hand-written constructor calls.
+    /// </summary>
+    [Fact]
+    public void Generates_an_IndexSearchFields_method_on_the_index()
+    {
+        var generated = RunFiles("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Indexes;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """, IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain("private void IndexSearchFields()");
+        generated.Should().Contain(
+            "Index(nameof(global::TestApp.Indexes.VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+    }
+
+    /// <summary>
+    /// The method lands on the INDEX class, which may sit in a different namespace than the index entity — so the
+    /// <c>nameof</c> has to be fully qualified. Co-location is the convention, but a consumer need not follow it,
+    /// and an unqualified name there is a CS0103 in generated code.
+    /// </summary>
+    [Fact]
+    public void The_generated_nameof_is_qualified_across_namespaces()
+    {
+        var generated = RunFiles("""
+            using MintPlayer.Spark.Abstractions;
+            using TestApp.Indexes;
+
+            namespace TestApp.Data;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """, IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain("nameof(global::TestApp.Data.VCar.Model)");
+        generated.Should().NotContain("nameof(VCar.Model)");
+    }
+
+    [Fact]
+    public void A_DateTimeOffset_field_is_indexed_Exact_by_the_generated_method()
+    {
+        var generated = RunFiles("""
+            using System;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Indexes;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                public DateTimeOffset CreatedOn { get; set; }
+            }
+            """, IndexStub).GeneratedSources[0].Source;
+
+        generated.Should().Contain(
+            "Index(nameof(global::TestApp.Indexes.VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
+        generated.Should().Contain("CreatedOnSort");
+    }
+
+    /// <summary>
+    /// Without <c>partial</c> on the index the method cannot be contributed, and the fields would silently be
+    /// indexed with default options — searchable text that is not searchable.
+    /// </summary>
+    [Fact]
+    public void A_non_partial_index_is_reported()
+    {
+        var result = RunFiles("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Indexes;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                [Search] public string? Model { get; set; }
+            }
+            """, """
+            namespace TestApp.Indexes;
+
+            public class Cars_Overview
+            {
+                protected void Index(string field, int indexing) { }
+            }
+            """);
+
+        result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_009");
+    }
+
+    [Fact]
+    public void No_method_is_generated_when_nothing_is_searchable()
+    {
+        var result = RunFiles("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Indexes;
+
+            [FromIndex(typeof(Cars_Overview))]
+            public partial class VCar
+            {
+                public string? Model { get; set; }
+            }
+            """, IndexStub);
+
+        result.GeneratedSources.Should().BeEmpty();
     }
 
     private static int CountOccurrences(string haystack, string needle)

@@ -375,6 +375,44 @@ Points that matter in practice:
 - **Extending a generated index**: implement `partial void OnInitialize()` on a hand-written partial half. It
   is called at the end of the generated constructor.
 
+### Keeping a hand-written index, without hand-writing the boilerplate
+
+An index you write yourself can still have its companions and its `Index(...)` calls generated. Declare
+searchability once, with `[Search]` on the index entity, and make both classes `partial`:
+
+```csharp
+[FromIndex(typeof(People_Overview))]
+public partial class VPerson
+{
+    [Search] public string FullName { get; set; } = string.Empty;
+    // FullNameSort is generated.
+}
+
+public partial class People_Overview : AbstractIndexCreationTask<Person>
+{
+    public People_Overview()
+    {
+        Map = people => from person in people
+                        select new VPerson
+                        {
+                            FullName = person.FirstName + " " + person.LastName,
+                            FullNameSort = person.FirstName + " " + person.LastName,
+                        };
+
+        IndexSearchFields();                 // generated from the [Search] attributes
+        StoreAllFields(FieldStorage.Yes);
+    }
+}
+```
+
+`IndexSearchFields()` carries one `Index(...)` call per `[Search]` property and `Exact` per `DateTimeOffset`
+property. **You must call it** — a generator can add members to a partial class but cannot add statements to a
+constructor you wrote. For the same reason the **map assignments stay yours**; `SPARK006` flags a companion the
+map never assigns.
+
+Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
+not. Every demo uses this shape except Fleet, which is fully generated.
+
 Hand-written indexes keep working and are still the answer for anything the generator does not cover — map/reduce,
 multi-map, `LoadDocument` and other cross-document maps. For those, `SPARK005` and `SPARK006` flag a missing or
 unmapped sort companion so the convention does not have to be remembered.

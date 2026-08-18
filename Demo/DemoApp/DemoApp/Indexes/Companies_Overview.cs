@@ -1,10 +1,9 @@
-using DemoApp.Data;
 using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
 
 namespace DemoApp.Indexes;
 
-public class Companies_Overview : AbstractIndexCreationTask<Company>
+public partial class Companies_Overview : AbstractIndexCreationTask<Company>
 {
     public Companies_Overview()
     {
@@ -18,7 +17,8 @@ public class Companies_Overview : AbstractIndexCreationTask<Company>
                                EmployeeCount = company.EmployeeCount
                            };
 
-        Index(nameof(VCompany.Name), FieldIndexing.Search);
+        // Applies the indexing declared by [Search]; generated from the attributes.
+        IndexSearchFields();
         StoreAllFields(FieldStorage.Yes);
     }
 }

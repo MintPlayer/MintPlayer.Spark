@@ -94,6 +94,26 @@ System.Text.Json concern that applies only on the wire. Making persistence "cons
 silently empty every generated per-language field — no deploy failure, no index error, healthy index, correct
 row counts. A test now pins the stored shape so that change fails loudly.
 
+## Hand-written indexes get the boilerplate generated too
+
+A hand-written index no longer needs its companions or its `Index(...)` calls written by hand. Declare
+searchability once with `[Search]` on the index entity, make both classes `partial`, and call the generated
+method from your constructor:
+
+```csharp
+IndexSearchFields();      // one Index(...) call per [Search] property, Exact per DateTimeOffset
+```
+
+Previously `[Search]` and `Index(nameof(VCar.Model), FieldIndexing.Search)` said the same thing twice and drifted
+independently — and drift is invisible here, because an un-analyzed field simply is not searchable.
+
+You still call the method and still write the map assignments: a generator adds *members* to a partial class, it
+cannot add *statements* to a constructor you wrote. `SPARK006` covers the map half.
+
+`SPARK_INDEX_009` fires if the index class is not `partial`. All demos are converted to this shape; DemoApp's
+index entities also moved from `DemoApp.Data` into `DemoApp.Indexes` so every index and index entity in the
+solution is co-located, matching what the generator emits.
+
 ## New analyzer rules for hand-written indexes
 
 Generated pairs are correct by construction and excluded from analysis. Hand-written ones now get:

@@ -8,7 +8,7 @@
       "nl": "Persoon"
     },
     "clrType": "DemoApp.Library.Entities.Person",
-    "queryType": "DemoApp.Data.VPerson",
+    "queryType": "DemoApp.Indexes.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FirstName} {LastName}",
     "breadcrumbProjectionSatisfiable": false,

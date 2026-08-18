@@ -1,10 +1,9 @@
-using DemoApp.Data;
 using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
 
 namespace DemoApp.Indexes;
 
-public class Cars_Overview : AbstractIndexCreationTask<Car>
+public partial class Cars_Overview : AbstractIndexCreationTask<Car>
 {
     public Cars_Overview()
     {
@@ -22,8 +21,8 @@ public class Cars_Overview : AbstractIndexCreationTask<Car>
                           Status = car.Status
                       };
 
-        Index(nameof(VCar.LicensePlate), FieldIndexing.Search);
-        Index(nameof(VCar.OwnerFullName), FieldIndexing.Search);
+        // Applies the indexing declared by [Search]; generated from the attributes.
+        IndexSearchFields();
         StoreAllFields(FieldStorage.Yes);
     }
 }

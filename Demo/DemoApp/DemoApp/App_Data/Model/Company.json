@@ -8,7 +8,7 @@
       "nl": "Bedrijf"
     },
     "clrType": "DemoApp.Library.Entities.Company",
-    "queryType": "DemoApp.Data.VCompany",
+    "queryType": "DemoApp.Indexes.VCompany",
     "indexName": "Companies_Overview",
     "breadcrumb": "{Name}",
     "tabs": [],
