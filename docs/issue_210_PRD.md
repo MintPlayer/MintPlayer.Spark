@@ -169,10 +169,15 @@ There is house-style precedent for reading referenced-assembly attributes
 (`HostTranslationsAggregatorGenerator`), and the Vidyano generator contributes context members for
 entities in referenced assemblies by the same symbol-only path.
 
-The cost is that a metadata walk cannot use `CreateSyntaxProvider`'s incremental caching. Mitigations:
-filter to assemblies that reference `MintPlayer.Spark.Abstractions`, and use the `ICompilationCache`
-provider that `IncrementalGenerator.Initialize` already supplies for exactly this purpose. **Spike S1
-settles whether the cost is acceptable before any of the feature is built.**
+The cost is that a metadata walk cannot use `CreateSyntaxProvider`'s incremental caching — there is no
+syntax to key on. The scan re-runs whenever the compilation changes; what protects downstream work is value
+comparison on the **result**, which the generated comparers already provide.
+
+**Correction:** an earlier draft said to memoize this through the `ICompilationCache` that
+`IncrementalGenerator.Initialize` supplies, "for exactly this purpose". That is wrong — every `GetOrCreate`
+overload on it is constrained to `T : class, IEqualityComparer`, so it caches *comparers*, not data. The
+usable mitigation is the filter: only walk assemblies that reference `MintPlayer.Spark.Abstractions` at all,
+which excludes the BCL and every unrelated package.
 
 ## F4 — Generated code is invisible to the analyzers that currently protect the pattern
 

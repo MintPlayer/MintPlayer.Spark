@@ -6,6 +6,7 @@ using MintPlayer.Spark.SourceGenerators.Naming;
 using MintPlayer.SourceGenerators.Tools;
 using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
@@ -24,6 +25,8 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 public class GenerateIndexGenerator : IncrementalGenerator
 {
     private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
+
+    private const string SparkAbstractionsAssemblyName = "MintPlayer.Spark.Abstractions";
 
     /// <summary>
     /// Includes nullable reference annotations, so a <c>string?</c> entity property is declared
@@ -51,11 +54,24 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     if (!entity.HasGenerateIndex())
                         return default;
 
-                    return Describe(entity, ctx.SemanticModel.Compilation, ct);
+                    return Describe(entity, ct);
                 })
             .Where(static x => x != null)
             .WithNullableComparer()
             .Collect();
+
+        // Entities declared in a REFERENCED assembly. [GenerateIndex] lives on the entity, which routinely
+        // sits in a lean class library, while the index belongs to the app -- so the generator has to see
+        // types it has no syntax for.
+        //
+        // This cannot use CreateSyntaxProvider's incrementality: there is no syntax. The scan therefore
+        // re-runs whenever the compilation changes, and what protects downstream work is value comparison on
+        // the RESULT. (ICompilationCache is not applicable -- it is constrained to IEqualityComparer values,
+        // i.e. it caches comparers, not data.) Cost is bounded by only walking assemblies that reference
+        // MintPlayer.Spark.Abstractions at all.
+        var referencedEntitiesProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => DescribeReferenced(compilation, ct))
+            .WithComparer(ComparerRegistry.For<ImmutableArray<GeneratedIndexInfo>>());
 
         // Emit nothing when the project does not reference MintPlayer.Spark.Abstractions. Paired with the
         // producer's own early return, per house style: the pipeline gate keeps the work out, the producer
@@ -64,7 +80,16 @@ public class GenerateIndexGenerator : IncrementalGenerator
             .Select(static (compilation, ct) =>
                 compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null);
 
-        var sourceProvider = entitiesProvider
+        var allEntitiesProvider = entitiesProvider
+            .Combine(referencedEntitiesProvider)
+            .Select(static (providers, ct) => providers.Left
+                .Where(x => x != null)
+                .Cast<GeneratedIndexInfo>()
+                .Concat(providers.Right)
+                .ToImmutableArray())
+            .WithComparer(ComparerRegistry.For<ImmutableArray<GeneratedIndexInfo>>());
+
+        var sourceProvider = allEntitiesProvider
             .Combine(knowsSparkProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) =>
@@ -74,7 +99,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 var settings = providers.Right;
 
                 return new GenerateIndexProducer(
-                    entities.Where(x => x != null).Cast<GeneratedIndexInfo>().ToList(),
+                    entities.ToList(),
                     knowsSpark,
                     settings.RootNamespace ?? "GeneratedCode");
             });
@@ -102,7 +127,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
             .Collect();
 
         var handWrittenSourceProvider = handWrittenProvider
-            .Combine(entitiesProvider)
+            .Combine(allEntitiesProvider)
             .Combine(knowsSparkProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) =>
@@ -115,9 +140,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 // A generated pair already carries its companions, and the generator does not see its own
                 // output. But a hand-written partial half of a *generated* index entity would be matched
                 // here, so exclude anything whose name we also generate to avoid duplicate members.
-                var generatedNames = new HashSet<string>(generated
-                    .Where(x => x != null)
-                    .Select(x => x!.IndexEntityName), System.StringComparer.Ordinal);
+                var generatedNames = new HashSet<string>(
+                    generated.Select(x => x.IndexEntityName), System.StringComparer.Ordinal);
 
                 return new HandWrittenSortFieldsProducer(
                     handWritten
@@ -144,7 +168,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// <c>null</c> here is paired with a diagnostic from <see cref="Collect"/> — see
     /// <see cref="GenerateIndexDiagnostics"/> for why silence is not an option.
     /// </summary>
-    private static GeneratedIndexInfo? Describe(INamedTypeSymbol entity, Compilation compilation, System.Threading.CancellationToken ct)
+    private static GeneratedIndexInfo? Describe(INamedTypeSymbol entity, System.Threading.CancellationToken ct)
     {
         var attribute = entity.GetAttributes().First(a =>
             a.AttributeClass?.ToDisplayString() == GenerateIndexAttributeFullName);
@@ -239,6 +263,69 @@ public class GenerateIndexGenerator : IncrementalGenerator
             UnrenderableAttributes = unrenderableAttributes,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
+    }
+
+    /// <summary>
+    /// Every <c>[GenerateIndex]</c> entity in a referenced assembly, read from metadata symbols.
+    /// <para>Filtered to assemblies that reference <c>MintPlayer.Spark.Abstractions</c>, since an assembly
+    /// that does not cannot carry the attribute. Without that filter this walks every type in every
+    /// reference, the BCL included.</para>
+    /// </summary>
+    private static ImmutableArray<GeneratedIndexInfo> DescribeReferenced(Compilation compilation, System.Threading.CancellationToken ct)
+    {
+        if (compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) is null)
+            return ImmutableArray<GeneratedIndexInfo>.Empty;
+
+        var builder = ImmutableArray.CreateBuilder<GeneratedIndexInfo>();
+
+        foreach (var reference in compilation.SourceModule.ReferencedAssemblySymbols)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (!ReferencesSparkAbstractions(reference)) continue;
+
+            foreach (var type in AllTypes(reference.GlobalNamespace, ct))
+            {
+                if (!type.HasGenerateIndex()) continue;
+                if (Describe(type, ct) is { } info) builder.Add(info);
+            }
+        }
+
+        return builder.ToImmutable();
+    }
+
+    private static bool ReferencesSparkAbstractions(IAssemblySymbol assembly)
+        => assembly.Name == SparkAbstractionsAssemblyName
+        || assembly.Modules.Any(module => module.ReferencedAssemblies
+            .Any(identity => identity.Name == SparkAbstractionsAssemblyName));
+
+    private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns, System.Threading.CancellationToken ct)
+    {
+        foreach (var member in ns.GetMembers())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            switch (member)
+            {
+                case INamespaceSymbol nested:
+                    foreach (var type in AllTypes(nested, ct)) yield return type;
+                    break;
+                case INamedTypeSymbol type:
+                    yield return type;
+                    foreach (var nestedType in NestedTypes(type, ct)) yield return nestedType;
+                    break;
+            }
+        }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> NestedTypes(INamedTypeSymbol type, System.Threading.CancellationToken ct)
+    {
+        foreach (var nested in type.GetTypeMembers())
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return nested;
+            foreach (var deeper in NestedTypes(nested, ct)) yield return deeper;
+        }
     }
 
     /// <summary>
