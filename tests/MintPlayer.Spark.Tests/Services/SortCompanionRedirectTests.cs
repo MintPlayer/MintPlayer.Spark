@@ -32,6 +32,9 @@ public class SortCompanionRedirectTests : SparkTestDriver
     {
         public string? Id { get; set; }
         public string Model { get; set; } = string.Empty;
+
+        /// <summary>Same values as <see cref="Model"/>, but never declared analyzed anywhere.</summary>
+        public string Trim { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -47,6 +50,7 @@ public class SortCompanionRedirectTests : SparkTestDriver
                           {
                               car.Model,
                               ModelSort = car.Model,
+                              car.Trim,
                           };
             Index(nameof(VCar.Model), FieldIndexing.Search);
             StoreAllFields(FieldStorage.Yes);
@@ -61,6 +65,8 @@ public class SortCompanionRedirectTests : SparkTestDriver
 
         [IgnoreProperty]
         public string ModelSort { get; set; } = string.Empty;
+
+        public string Trim { get; set; } = string.Empty;
     }
 
     /// <summary>Mixed case and interleaved initials, so a case-sensitive ordering is distinguishable.</summary>
@@ -77,7 +83,7 @@ public class SortCompanionRedirectTests : SparkTestDriver
     {
         using var session = Store.OpenAsyncSession();
         foreach (var model in Models)
-            await session.StoreAsync(new Car { Model = model });
+            await session.StoreAsync(new Car { Model = model, Trim = model });
         await session.SaveChangesAsync();
 
         await new Cars_Overview().ExecuteAsync(Store);
@@ -160,6 +166,57 @@ public class SortCompanionRedirectTests : SparkTestDriver
             .ProjectInto<VCar>()
             .ToListAsync();
         prefix.Should().ContainSingle().Which.Model.Should().Be("Volkswagen Golf GTI");
+    }
+
+    /// <summary>
+    /// The question this answers: does a plain <c>string</c> field — no <c>[Search]</c>, no <c>Index(...)</c> call,
+    /// no companion — sort correctly on its own?
+    /// <para>
+    /// It does, and that is why companions are scoped to analyzed fields rather than given to every string. An
+    /// undeclared field keeps RavenDB's default indexing, which lower-cases but does not tokenize, so the whole
+    /// value stays a single term. Declaring <c>Search</c> is what breaks it; the companion is the repair for that,
+    /// not a general requirement.
+    /// </para>
+    /// <para>Same fixture values as the analyzed field, all containing spaces, so this is a like-for-like
+    /// comparison against <see cref="Ordering_by_an_analyzed_field_does_not_sort_correctly"/>.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_plain_string_field_with_no_companion_sorts_correctly()
+    {
+        await SeedAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var results = await session.Query<VCar, Cars_Overview>()
+            .OrderBy(v => v.Trim)
+            .ProjectInto<VCar>()
+            .ToListAsync();
+
+        results.Select(v => v.Trim).Should().Equal(
+            "alfa romeo spider",
+            "Audi A4",
+            "Volkswagen Golf GTI",
+            "Zeta One",
+            "ZZ Top");
+    }
+
+    /// <summary>
+    /// And the same field ordered through the query pipeline's redirect: with no companion to redirect to, it falls
+    /// back to the field itself, which is correct. Nothing is silently left unsorted.
+    /// </summary>
+    [Fact]
+    public async Task A_plain_string_field_sorts_the_same_as_an_analyzed_field_plus_its_companion()
+    {
+        await SeedAsync();
+
+        var viaCompanion = await OrderByCompanionAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var viaPlainField = (await session.Query<VCar, Cars_Overview>()
+            .OrderBy(v => v.Trim)
+            .ProjectInto<VCar>()
+            .ToListAsync()).Select(v => v.Model).ToList();
+
+        viaPlainField.Should().Equal(viaCompanion);
     }
 
     /// <summary>
