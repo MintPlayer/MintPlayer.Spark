@@ -100,6 +100,50 @@ One consequence worth knowing: RavenDB indexes sentinel terms `NULL_VALUE` and `
 those literals, so on a lower-cased companion **nulls and empties sort before every real value**. If a UI
 wants them last, that must be arranged explicitly; it is not free.
 
+### Why companions are scoped to `[Search]` and not given to every string
+
+This is the first question the design attracts, so it is answered here rather than left to be re-derived:
+**a plain `string` field already sorts correctly.** Measured — same fixture, same space-containing values, a field
+with no `[Search]`, no `Index(...)` call and no companion:
+
+```
+"alfa romeo spider", "Audi A4", "Volkswagen Golf GTI", "Zeta One", "ZZ Top"
+```
+
+Byte-identical to ordering the analyzed field through its companion. Pinned by
+`SortCompanionRedirectTests.A_plain_string_field_with_no_companion_sorts_correctly`.
+
+Tokenization is a per-field RavenDB indexing mode, not a property of strings:
+
+| `FieldIndexing` | Analyzer | Terms for `"Volkswagen Golf GTI"` | Sortable | `==` |
+|---|---|---|---|---|
+| *undeclared* → `Default` | `LowerCaseKeywordAnalyzer` | one: `volkswagen golf gti` | yes, case-insensitive | yes |
+| `Search` | `StandardAnalyzer` | **three**: `volkswagen`, `golf`, `gti` | **no** | no — full-text match |
+| `Exact` | `KeywordAnalyzer` | one: `Volkswagen Golf GTI` | yes, case-sensitive ordinal | case-sensitively only |
+| `No` | — | none | no | no |
+
+(The first three rows' term counts are measured; the analyzer names are RavenDB's documented mapping.)
+
+So nothing is broken until a field is declared `Search`, and the companion repairs *that specific damage*. Giving
+every string one would double the indexed field count — larger indexes, more re-indexing work — to duplicate
+ordering that is already correct. It is also what the reference corpus does: across 398 generated string
+properties, `has *Sort` ⟺ `Index(field, Search)`, with zero exceptions.
+
+**The follow-on worry is also handled:** adding `[Search]` later emits the companion *and* the sort redirect picks
+it up, because one attribute drives both. There is no window in which a field is analyzed but unsortable.
+
+Two ways a field can still be tokenized without `[Search]`, both outside what the generator emits:
+
+- a hand-written `Index(nameof(V.X), FieldIndexing.Search)` in the developer's own constructor — covered by
+  `SPARK005`, which flags the missing companion whoever wrote the call;
+- `Analyze(field, "SomeAnalyzer")` or a custom analyzer through `AdditionalSources`, e.g. added in
+  `OnInitialize()`. **Not covered by SPARK005**, which only recognises the `Search`/`Exact` forms. A known gap,
+  and acceptable: naming an analyzer by hand is a deliberate act by someone who already knows what analysis does.
+
+Note `DateTimeOffset` gets `Exact`, never `Search`, so it is never tokenized. Its companion exists for a different
+reason: `Exact` is chosen for precise range and equality matching, and the companion keeps a stable sort key
+independent of that choice.
+
 The reference app also queries `*Sort` fields directly for equality and prefix matching
 (`x.Name == name || x.NameSort == name`, `x.FullNickNameSort.StartsWith(...)`) in several importers,
 which independently confirms that the analyzed field cannot serve either.

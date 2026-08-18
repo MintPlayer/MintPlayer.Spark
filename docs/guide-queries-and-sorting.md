@@ -313,6 +313,19 @@ both counts: ordering becomes case-sensitive ordinal, so every capitalised value
 one, and equality changes silently — `ModelExact = 'audi a4'` matches nothing where `ModelSort = 'Audi A4'`
 matches. Leaving it undeclared is correct, not an oversight.
 
+**A plain string field needs none of this.** Only a field declared `Search` is tokenized, so an ordinary
+`string` property sorts correctly with no companion at all — measured, and pinned by a test. Tokenization is a
+per-field indexing mode, not something strings do:
+
+| `FieldIndexing` | Terms for `"Volkswagen Golf GTI"` | Sortable | `==` |
+|---|---|---|---|
+| *undeclared* → `Default` | one: `volkswagen golf gti` | yes, case-insensitive | yes |
+| `Search` | three: `volkswagen`, `golf`, `gti` | no | no — full-text match |
+| `Exact` | one: `Volkswagen Golf GTI` | yes, case-sensitive ordinal | case-sensitively only |
+
+Adding `[Search]` later emits the companion *and* activates the redirect, so there is no window where a field is
+analyzed but unsortable.
+
 Two things worth knowing:
 
 - **This is only about values that can contain spaces.** A space is the tokenization boundary, so a
