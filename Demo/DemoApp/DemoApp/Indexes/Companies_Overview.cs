@@ -13,6 +13,7 @@ public class Companies_Overview : AbstractIndexCreationTask<Company>
                            {
                                Id = company.Id,
                                Name = company.Name,
+                               NameSort = company.Name,
                                Website = company.Website,
                                EmployeeCount = company.EmployeeCount
                            };

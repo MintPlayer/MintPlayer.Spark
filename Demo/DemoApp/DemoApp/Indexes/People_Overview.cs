@@ -17,7 +17,9 @@ public class People_Overview : AbstractIndexCreationTask<Person> // , VPerson
                         {
                             Id = person.Id,
                             FullName = person.FirstName + " " + person.LastName,
+                            FullNameSort = person.FirstName + " " + person.LastName,
                             Email = person.Email,
+                            EmailSort = person.Email,
                             IsActive = person.IsActive,
                             Company = person.Company,
                         };

@@ -14,9 +14,11 @@ public class Cars_Overview : AbstractIndexCreationTask<Car>
                       {
                           Id = car.Id,
                           LicensePlate = car.LicensePlate,
+                          LicensePlateSort = car.LicensePlate,
                           Model = car.Model,
                           Year = car.Year,
                           OwnerFullName = owner != null ? owner.Name : null,
+                          OwnerFullNameSort = owner != null ? owner.Name : null,
                           Status = car.Status
                       };
 
