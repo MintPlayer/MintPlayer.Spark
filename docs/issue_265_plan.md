@@ -35,12 +35,29 @@ The entire premise of M3. If `ThrowOnInvalidOrMissingLicense = false` yields a s
 cannot store a document, `RequireLicense => false` buys a fork contributor nothing and M3 should be
 dropped rather than shipped as a false promise.
 
-**Method:** a throwaway fixture with `RequireLicense => false`, run in a process where neither
-`RAVENDB_LICENSE` nor `raven-license.log` is visible, doing a store + load + query round trip.
+**Status: PASSED.** A standalone `RavenTestDriver` subclass, built and run **outside the repo tree** so
+that `LicenseHelper.TryReadRepoRootLicense`'s eight-level walk up from `AppContext.BaseDirectory` finds
+nothing (a `raven-license.log` *is* present at this repo's root, so an in-tree spike would have proved
+nothing), with `RAVENDB_LICENSE` unset and `Licensing = new() { ThrowOnInvalidOrMissingLicense = false }`
+as its only server configuration:
 
-**Decision rule:** boots and round-trips → M3 proceeds. Boots but restricted in a way that breaks basic
-CRUD → M3 dropped, PRD amended to say so. Recorded either way — a negative result is the more valuable
-one, because it would mean the issue's suggestion cannot work.
+```
+RAVENDB_LICENSE set: False
+server booted, store initialized
+store: ok
+query: 2 docs
+load: alpha
+indexed query by field: beta.Count=2
+update + query: ok
+```
+
+Store, auto-index query, load, and update all work with no licence at all. The restricted mode a
+licence-less server drops into does not touch anything a typical fixture needs, which is precisely the
+premise the issue rests on — so `RequireLicense => false` is a real capability for a fork contributor,
+not a promise that fails on the first `SaveChanges`.
+
+The decision rule was: boots and round-trips → M3 proceeds; boots but cannot do basic CRUD → M3 dropped
+and the PRD amended to say the issue's suggestion cannot work. The first branch was taken.
 
 ### Not spiked: the double-`UseRateLimiter` double-charge (F4)
 
