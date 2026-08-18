@@ -1,12 +1,11 @@
 # PRD — Issue #265: rate-limiter configurability, placement, and a licence opt-in for `SparkTestDriver`
 
 **Issue:** [#265](https://github.com/MintPlayer/MintPlayer.Spark/issues/265) ·
-**Branch:** `feat/issue-265-rate-limiter-config` · **Ships in:** `10.0.0-preview.52` ·
+**PR:** [#266](https://github.com/MintPlayer/MintPlayer.Spark/pull/266) ·
+**Ships in:** `10.0.0-preview.52` ·
 **Plan:** [issue_265_plan.md](issue_265_plan.md) · **Guide:** [guide-rate-limiting.md](guide-rate-limiting.md)
 
-**Status: all three items delivered**, plus a review round on [PR #266](https://github.com/MintPlayer/MintPlayer.Spark/pull/266).
-Requirement-by-milestone mapping, verification results and the review round are in the plan.
-Upgrade-facing notes — including two breaking changes — are in
+Upgrade-facing notes, including two breaking changes, are in
 [release-notes-preview-52.md](release-notes-preview-52.md).
 
 ## Origin
@@ -187,24 +186,21 @@ in preview.
 
 | | Requirement |
 |---|---|
-| R1 | `SparkRateLimiterOptions.PathPrefixes` — the metered prefixes, defaulting to `["/spark", "/connect"]`. Existing callers see no behaviour change. |
+| R1 | `SparkRateLimiterOptions.PathPrefixes` — the metered prefixes, defaulting to `["/spark", "/connect"]`. Existing callers see no behaviour change. Assigning replaces the defaults rather than adding to them. |
 | R2 | Prefixes are normalized so `"api/browse"`, `"/api/browse"` and `"/api/browse/"` are all accepted and all mean the same thing. `StartsWithSegments` needs a leading slash and no trailing one; making the caller know that is a trap, not an interface. |
-| R3 | An empty `PathPrefixes` throws at `AddRateLimiter` time. A limiter configured to meter nothing is a security control that silently does nothing — the one outcome worse than the error. |
-| R4 | All prefixes share one per-IP bucket, as `/spark` and `/connect` already do. Per-prefix budgets are **not** added (D1). |
-| R5 | `SparkMiddlewareStage` — a two-value stage on the registry. `AfterSpark` (the enum's zero value, and the default) is exactly today's position; `BeforeAuthentication` is immediately after `UseRouting`, before `UseAuthentication`. |
-| R6 | The rate limiter registers at `BeforeAuthentication`. This is the framework's choice, not an app-facing knob (D2). |
-| R7 | `AddMiddleware` for a stage that has already been applied **throws**. Registering too late is a silent no-op today and has bitten this repo before (`AddIndexAssembly`'s doc comment records the same class of bug). |
-| R8 | `ApplyMiddleware` takes the stage explicitly, with **no default** — a defaulted parameter would let a caller apply one stage and silently drop the other, which is the exact failure R7 exists to prevent. |
-| R9 | The misleading `UseRateLimiter` remark is replaced by an explicit warning naming the consequence (double lease, half budget) and stating that Spark cannot detect it. |
-| R10 | `SparkTestDriver.RequireLicense` — `protected virtual`, default `true`. When `false`, a missing licence no longer fails the fixture. |
-| R11 | An **invalid** licence still fails loudly regardless of `RequireLicense`. |
-| R12 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place. |
-| R13 | A bare `"/"` is refused **with its own message**, not reported as an empty configuration. It reads like "the root path" and means every request; honouring it would silently over-apply the limiter, and reporting it as absent tells a caller who named one prefix that they named none. |
-| R14 | The `ArgumentException` names `PathPrefixes` as its `ParamName`, not an internal parameter. |
-| R15 | A misordered pipeline — routing running after `BeforeAuthentication` middleware — must fail rather than silently degrade to global-only metering. Gated on something actually being registered at that stage, because an app with no early middleware cannot be affected. *(Mechanism superseded by R18; the requirement stands.)* |
-| R16 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change. |
-| R17 | The routing check accepts minimal hosting as well as an explicit `UseRouting()`, and does not assert the caller erred when it may be the check that is wrong. |
-| R18 | The routing check uses **only public API** and no ASP.NET Core internals. Superseded R17's approach: a startup check over private property keys was both brittle (an upstream rename breaks every consumer at once) and unanswerable in principle, since minimal hosting adds routing after `UseSpark()` returns. Verified at request time from observed endpoint selection instead. |
+| R3 | Naming no usable prefix throws at `AddRateLimiter` time, with `PathPrefixes` as the exception's `ParamName`. A limiter configured to meter nothing is a security control that silently does nothing — the one outcome worse than the error. |
+| R4 | A bare `"/"` is refused **with its own message**, not reported as an empty configuration (D6). A `"/"` alongside a real prefix is ignored rather than fatal. |
+| R5 | All prefixes share one per-IP bucket, as `/spark` and `/connect` already did. Per-prefix budgets are **not** added (D1). |
+| R6 | `SparkMiddlewareStage` — a two-value stage on the registry. `AfterSpark` (the enum's zero value, and the default) is exactly the pre-change position; `BeforeAuthentication` is immediately after `UseRouting`, before `UseAuthentication`. |
+| R7 | The rate limiter registers at `BeforeAuthentication`. This is the framework's choice, not an app-facing knob (D2). |
+| R8 | `AddMiddleware` for a stage that has already been applied **throws**. Registering too late was a silent no-op, and has bitten this repo before — `AddIndexAssembly`'s doc comment records the same class of bug. |
+| R9 | `ApplyMiddleware` takes the stage explicitly, with **no default** — a defaulted parameter would let a caller apply one stage and silently drop the other, which is the exact failure R8 exists to prevent. |
+| R10 | The misleading `UseRateLimiter` remark is replaced by an explicit warning naming the consequence (double lease, half budget) and stating that Spark cannot detect it (D3). |
+| R11 | A misordered pipeline — routing running *after* `BeforeAuthentication` middleware — fails rather than silently degrading to global-only metering. Detected using **only public API** (D7), and gated on something actually being registered at that stage, since an app with no early middleware cannot be affected. |
+| R12 | `SparkTestDriver.RequireLicense` — `protected virtual`, default `true`. When `false`, a missing licence no longer fails the fixture. |
+| R13 | An **invalid** licence still fails loudly regardless of `RequireLicense`. |
+| R14 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place, linked from the README. |
+| R15 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change for every app already opted in. |
 
 ## Decisions
 
@@ -233,6 +229,35 @@ name is "the server will refuse to start", and it does not.
 only (via `AddRateLimiter(configure)` or `SparkFullOptions.RateLimiter`), and `string[]` is the shape
 that would bind cleanly if that changes later. Adding a config section now would be a second, untested
 path to the same setting.
+
+**D6 — a bare `"/"` is refused, not honoured as meter-everything.** Both were defensible. `"/"` reads as
+*the root path* and means the opposite, so honouring it converts a likely misreading into a silently
+over-applied limiter — metering static assets, the one outcome the extension's design is explicit about
+avoiding. Refusing converts the same misreading into an error that explains itself, and nothing is lost:
+an API-only app that wants everything metered writes `["/api"]`, which cannot be misread. What is *not*
+defensible is the original behaviour, where `"/"` normalized to empty and was reported as "you named no
+prefixes" — wrong for a caller who named exactly one.
+
+**D7 — the routing precondition is verified at request time, using no ASP.NET Core internals.** The
+obvious implementation is a startup check, and it cannot be made correct. Whether routing has been
+*added* is not the question; whether it *runs before this position* is — and minimal hosting inserts
+routing while the pipeline is being built, after `UseSpark()` has returned, so at startup a correctly
+ordered minimal-hosting app is indistinguishable from a broken one. The only startup-time signals are
+private ASP.NET property keys (`__EndpointRouteBuilder`, `__GlobalEndpointRouteBuilder`), which are both
+brittle — an upstream rename would stop every app that opted in — and, per the above, unable to answer
+the question anyway.
+
+A request can answer it with public API alone: an endpoint absent when the stage ran and present once
+the request returned proves routing is downstream. That needs no hosting-model branch and cannot misfire
+on a path the app does not serve, since a 404 has no endpoint either side. `IEndpointFeature` was
+evaluated as an alternative and rejected — it is always present, so its absence proves nothing.
+
+Accepted cost: the fault surfaces on the first *matched* request rather than at startup.
+
+**D8 — that check fails closed rather than warning.** The failure it catches is silent, and a warning in
+startup logs is precisely what nobody reads — the same reasoning that makes D3's doc note worth writing.
+The first offending request logs critical and arms; the next throws *before* calling `next`, so the
+error lands on a request whose response has not started.
 
 ## Out of scope
 
