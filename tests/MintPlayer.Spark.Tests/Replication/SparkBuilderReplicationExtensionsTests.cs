@@ -147,7 +147,7 @@ public class SparkBuilderReplicationExtensionsTests
 
         // Non-WebApplication path takes the early-return branch; the action must run safely.
         var app = Substitute.For<IApplicationBuilder>();
-        var act = () => builder.Registry.ApplyMiddleware(app);
+        var act = () => builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
         act.Should().NotThrow();
     }
 

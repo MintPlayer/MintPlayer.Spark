@@ -29,6 +29,16 @@ public static class SparkBuilderRateLimiterExtensions
     /// </summary>
     /// <remarks>
     /// <para>
+    /// <b>Placement.</b> The middleware is registered at
+    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/>, so it runs immediately after the app's
+    /// <c>UseRouting()</c> and <em>ahead of</em> <c>UseAuthentication()</c>. A flood is therefore
+    /// rejected before any credential is validated — which matters most for an authenticated ingest
+    /// endpoint whose authentication costs a database lookup, where a limiter placed behind
+    /// authentication only protects the app from load it has already absorbed the expensive part of.
+    /// Routing has already run at that point, so endpoint-attached <c>[EnableRateLimiting]</c> /
+    /// <c>[DisableRateLimiting]</c> policies still resolve normally.
+    /// </para>
+    /// <para>
     /// <b>Do not also call <c>app.UseRateLimiter()</c>.</b> This is not a style preference — it
     /// silently halves the configured budget. <c>UseRateLimiter</c> has no idempotence marker (unlike
     /// <c>UseRouting</c>, it does not detect a previous registration and return early), and
@@ -97,7 +107,9 @@ public static class SparkBuilderRateLimiterExtensions
             rl.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         });
 
-        builder.Registry.AddMiddleware(app => app.UseRateLimiter());
+        builder.Registry.AddMiddleware(
+            app => app.UseRateLimiter(),
+            SparkMiddlewareStage.BeforeAuthentication);
 
         return builder;
     }

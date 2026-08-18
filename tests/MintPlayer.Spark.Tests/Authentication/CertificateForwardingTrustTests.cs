@@ -56,7 +56,7 @@ public class CertificateForwardingTrustTests
                         await next(context);
                     });
 
-                    builder.Registry.ApplyMiddleware(app);
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
                     app.Run(async context =>
                         await context.Response.WriteAsync(

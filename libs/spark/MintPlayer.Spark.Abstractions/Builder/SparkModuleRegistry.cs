@@ -4,7 +4,8 @@ public class SparkModuleRegistry
 {
     public Type? IdentityUserType { get; set; }
 
-    private readonly List<Action<IApplicationBuilder>> middlewareActions = [];
+    private readonly Dictionary<SparkMiddlewareStage, List<Action<IApplicationBuilder>>> middlewareActions = [];
+    private readonly HashSet<SparkMiddlewareStage> appliedStages = [];
     private readonly List<Action<IEndpointRouteBuilder>> endpointActions = [];
     private readonly List<SparkCredentialScheme> credentialSchemes = [];
 
@@ -59,7 +60,42 @@ public class SparkModuleRegistry
         return resolved;
     }
 
-    public void AddMiddleware(Action<IApplicationBuilder> action) => middlewareActions.Add(action);
+    /// <summary>
+    /// Declares middleware (or a one-off startup task) that <c>UseSpark()</c> runs.
+    /// <para>
+    /// <paramref name="stage"/> chooses which side of <c>UseAuthentication</c> the action lands on;
+    /// it defaults to <see cref="SparkMiddlewareStage.AfterSpark"/>, which is where every registration
+    /// ran before stages existed. Within a stage, actions run in registration order.
+    /// </para>
+    /// <para>
+    /// Registering into a stage that <see cref="ApplyMiddleware"/> has already run throws. That
+    /// combination is unsatisfiable — the pipeline is past the point the action asked for — and
+    /// without the guard it is a silent no-op, the same failure mode
+    /// <see cref="AddIndexAssembly"/> documents for declarations that arrive too late.
+    /// </para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><paramref name="stage"/> has already been applied.</exception>
+    public void AddMiddleware(
+        Action<IApplicationBuilder> action,
+        SparkMiddlewareStage stage = SparkMiddlewareStage.AfterSpark)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (appliedStages.Contains(stage))
+        {
+            throw new InvalidOperationException(
+                $"Middleware was registered for the '{stage}' stage after that stage had already been " +
+                "applied, so it would never run. Register it from the module's AddXxx(...) body — " +
+                "during service configuration — rather than from inside another AddMiddleware " +
+                "callback, which runs while the pipeline is being built.");
+        }
+
+        if (!middlewareActions.TryGetValue(stage, out var actions))
+            middlewareActions[stage] = actions = [];
+
+        actions.Add(action);
+    }
+
     public void AddEndpoints(Action<IEndpointRouteBuilder> action) => endpointActions.Add(action);
 
     /// <summary>
@@ -89,9 +125,26 @@ public class SparkModuleRegistry
         credentialSchemes.Add(new SparkCredentialScheme(scheme, isAmbient));
     }
 
-    public void ApplyMiddleware(IApplicationBuilder app)
+    /// <summary>
+    /// Runs everything registered for <paramref name="stage"/>, in registration order, and marks the
+    /// stage applied so a later <see cref="AddMiddleware"/> for it fails loudly.
+    /// <para>
+    /// <paramref name="stage"/> is deliberately <b>not</b> optional. A default would let a caller
+    /// apply one stage and silently drop the other — losing middleware with no error, which is
+    /// exactly what the applied-stage guard exists to prevent. Every caller states which stage it is
+    /// building, so <c>UseSpark()</c> cannot half-wire the pipeline by omission.
+    /// </para>
+    /// </summary>
+    public void ApplyMiddleware(IApplicationBuilder app, SparkMiddlewareStage stage)
     {
-        foreach (var action in middlewareActions)
+        ArgumentNullException.ThrowIfNull(app);
+
+        appliedStages.Add(stage);
+
+        if (!middlewareActions.TryGetValue(stage, out var actions))
+            return;
+
+        foreach (var action in actions)
             action(app);
     }
 

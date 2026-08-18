@@ -63,7 +63,7 @@ public class SparkBuilderMessagingExtensionsTests
         // that ApplyMiddleware reaches it.
         var app = Substitute.For<IApplicationBuilder>();
         app.ApplicationServices.Returns(_ => null!); // force a NullReferenceException inside the action so it bubbles back
-        var act = () => builder.Registry.ApplyMiddleware(app);
+        var act = () => builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
         act.Should().Throw<Exception>(); // any throw confirms the action ran
     }
 }

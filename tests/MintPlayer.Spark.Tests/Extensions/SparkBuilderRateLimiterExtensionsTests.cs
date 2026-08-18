@@ -183,7 +183,11 @@ public class SparkBuilderRateLimiterExtensionsTests
                 {
                     foreach (var d in builder.Services) s.Add(d);
                 });
-                web.Configure(app => builder.Registry.ApplyMiddleware(app));
+                web.Configure(app =>
+                {
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
+                });
             })
             .Build();
 
@@ -215,7 +219,11 @@ public class SparkBuilderRateLimiterExtensionsTests
                 });
                 web.Configure(app =>
                 {
-                    builder.Registry.ApplyMiddleware(app);
+                    // Both stages, in the order UseSpark applies them. The limiter lives in
+                    // BeforeAuthentication, so applying only AfterSpark would wire an empty
+                    // pipeline and every assertion here would pass for the wrong reason.
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
                     // Terminal 200 so anything the limiter admits is distinguishable from a 429.
                     app.Run(context =>
                     {
