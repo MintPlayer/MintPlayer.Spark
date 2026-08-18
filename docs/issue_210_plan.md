@@ -22,6 +22,7 @@ intermediate milestones verified by reading and type-checking.
 | W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27, R31 |
 | ~~W12~~ | ~~Lean entity-side generator for `*.Library`~~ — dropped, superseded | — |
 | W13 | Generated `SparkContext` query roots | R33–R36 |
+| W14 | Organic full-text search — make `[Search]` actually searchable | R37–R42 |
 
 Ordering rationale: W2–W5 are the proven parts of the reference design and ship first. W7 is what makes
 the companions actually used (PRD F8) and is independent of the generator, so it can land in parallel.
@@ -362,6 +363,29 @@ Naming comes from the same `IndexNaming` function as everything else, per the "c
 both outputs" rule: the root is the pluralized index-entity name, so `VCar` → `VCars`. That rule exists
 because the reference design derived names in two independent traversals, which is the classic source of
 "the index and the context disagree" bugs.
+
+## W14 — Organic full-text search
+
+Folded into this PR rather than deferred: `[Search]` currently produces an analyzed field that nothing queries,
+so half the attribute is inert and the field pays tokenization cost for nothing. Same shape of gap as the sort
+companions before W7.
+
+Requirements R37–R42. **Two decisions to make first**, both recorded in the PRD:
+
+1. **How the runtime spots a searchable field** (R38). `[Search]` is denied in attribute carry-over, so a
+   generated index entity does not carry it — either lift that denial, or infer searchability from the presence of
+   an `[IgnoreProperty]` companion. This determines whether `AttributeRenderer` changes.
+2. **Which language(s) to search for a `TranslatedString`** (R41) — the request's language, or all of them.
+
+Then: a search term on the query, `.Search(...)` applied reflectively across text fields OR-ed together, before
+sorting. `Exact`/date fields excluded. Empty term or no searchable fields is a no-op, so every existing query
+behaves exactly as it does today.
+
+Ends with an integration test proving a multi-word term matches regardless of word order — the only assertion
+that shows the analyzed field is finally earning its cost.
+
+A search box in `@mintplayer/ng-spark` is deliberately *not* assumed (R42): including it makes this an Angular
+package release too, which is a separate call.
 
 ---
 

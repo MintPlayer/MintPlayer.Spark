@@ -649,6 +649,49 @@ side by side.
   If per-attribute override or suppression is ever wanted, an optional model field can be added later without
   breaking anything: absent would continue to mean "use the convention".
 
+### Organic full-text search (W14)
+
+`[Search]` currently produces an analyzed field that **nothing queries**. No framework code calls
+`.Search(...)`; `QueryExecutor` only reflects an `OrderBy`. So the analyzed half of the attribute is inert, and
+the field pays tokenization cost for no benefit — the mirror image of the sort companions being inert before W7.
+
+- **R37** A query accepts a search term, and `QueryExecutor` applies RavenDB's `.Search(...)` across the
+  searchable fields of the query type, OR-ed together (`SearchOptions.Or`), before sorting and paging.
+- **R38** **Open decision — how the runtime identifies a searchable field.** `[Search]` is a *generator
+  directive* and is deliberately denied in attribute carry-over (R12a), so a **generated** index entity does not
+  carry it and the attribute is invisible at runtime. Two options:
+  1. **Carry `[Search]` onto the index entity** — remove it from the carry-over deny-list. The runtime then reads
+     the attribute directly, which is obvious and self-describing. Cost: the attribute appears on generated code
+     where it no longer instructs anything, and the deny-list gains an exception.
+  2. **Detect via the companion** — a field is searchable iff `{Name}Sort` exists and is `[IgnoreProperty]`. No
+     new surface, and it reuses exactly the signal `ResolveSortProperty` already uses. Cost: indirect, and it
+     couples "searchable" to "has a companion" — true today by construction, but an inferred invariant rather
+     than a declared one.
+
+  Option 1 reads better and is probably right; option 2 is free. Decide before implementing — it determines
+  whether `AttributeRenderer`'s deny-list changes.
+- **R39** Fields indexed `Exact` (i.e. `DateTimeOffset`) must **not** participate: `.Search()` against a
+  non-analyzed field does not do what the caller means. Text only.
+- **R40** No searchable fields, or an empty/whitespace term, means the search is skipped entirely rather than
+  producing an empty result set. A query with no searchable field must keep working exactly as it does now.
+- **R41** For a `TranslatedString` the per-language fields are the searchable ones. **Open question:** search
+  every language, or only the request's language via `RequestCultureResolver`? Searching all is more forgiving;
+  searching one is more predictable and cheaper. Lean towards the request's language with a documented fallback.
+- **R42** The client needs somewhere to type it. Server-side is the deliverable here; a search box in
+  `@mintplayer/ng-spark`'s query-list is a **separate decision** — if it lands, it is an Angular package change
+  and this stops being a server-only release.
+
+Notes for whoever picks this up:
+
+- `LinqExtensions.Search(query, fieldSelector, searchTerms, boost, options)` is the API; it must be invoked
+  reflectively like the existing `ProjectInto`/`OrderBy` paths, and cached through `ReflectionCache` the same way.
+- Apply it **before** `ApplySorting`, and remember `DistinctBy(po => po.Id)` already runs at the end.
+- The measured duplicate-row behaviour matters here: `Search` on a single-map index does **not** duplicate rows
+  (F1), so no extra deduplication is needed beyond what exists.
+- Worth one integration test asserting a multi-word term matches a document whose field contains those words in
+  any order — that is the whole point of an analyzed field, and it is the only thing that proves the tokenization
+  cost is now buying something.
+
 ### Diagnostics — no silent aborts (F5)
 
 - **R18** Every abort path reports a diagnostic. Minimum set: non-partial existing index or view class;
@@ -662,9 +705,8 @@ side by side.
 
 ### Non-goals
 
-- **N1** Organic/full-text search execution. `[Search]` makes a field *indexed* for search and gives it
-  a sort companion; wiring RavenDB's `.Search(...)` into `QueryExecutor` is a **separate future
-  ticket**. Nothing in the framework calls `.Search(...)` today and this issue does not change that.
+- ~~**N1** Organic/full-text search execution.~~ **Promoted into scope** — see R37–R42 and plan W14. `[Search]`
+  already makes a field indexed for search; W14 makes something actually query it.
 - **N2** `Reduce` / map-reduce, multi-map, `AdditionalSources`, spatial, suggestions, term vectors.
   Nothing in the repo uses them. Noted for whenever map-reduce does arrive: sort companions have to be
   propagated through the grouping explicitly (`ModelSort = g.Max(x => x.ModelSort)`), not just through
