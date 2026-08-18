@@ -421,6 +421,163 @@ other properties too, but it makes a single-field index over an optional transla
 
 ---
 
+## F14 — Search is already wired end-to-end; the server side is the only broken half
+
+The ticket was written as "nothing in the framework calls `.Search(...)` yet", which is true but describes a much
+smaller gap than the one that exists. Search is **already plumbed from the search box to the database call**:
+
+| layer | file | state |
+|---|---|---|
+| search input, clear button, result count | `ng-spark/query-list/src/spark-query-list.component.html:41-53` | **exists** |
+| `searchTerm`, `onSearchChange()`, `clearSearch()` | `spark-query-list.component.ts:71,278-302` | **exists** |
+| sends `?search=` | `ng-spark/services/src/spark.service.ts:57,69` | **exists** |
+| typed .NET client | `libs/client/MintPlayer.Spark.Client/SparkClient.cs:243-276` | **exists** |
+| reads `?search=` | `Endpoints/Queries/Execute.cs:89` | **exists** |
+| `IQueryExecutor.ExecuteQueryAsync(..., string? search)` | `Services/QueryExecutor.cs:15` | **exists** |
+| the actual filtering | `QueryExecutor.cs:46-59` | **in-memory `string.Contains` after materializing the whole collection** |
+
+So W14 does not add a feature. It **replaces a working but pathological implementation**, and two consequences
+follow that the original framing missed.
+
+**First, R42 dissolves.** No Angular change is needed; this stays a server-only release.
+
+**Second, there is existing behaviour to preserve, and it is *wider* than `.Search()` naturally reaches.**
+The in-memory filter matches:
+
+```csharp
+po.Name.Contains(term, OrdinalIgnoreCase)
+|| po.Breadcrumb.Contains(term, OrdinalIgnoreCase)
+|| po.Attributes.Any(attr => (attr.Breadcrumb ?? attr.Value?.ToString()).Contains(term, OrdinalIgnoreCase))
+```
+
+Two properties of that are not free to reproduce:
+
+- **It is an infix substring match.** `olkswag` finds `Volkswagen Golf GTI` today. Term-based search does not do
+  that by default — see F15, which measures how close it can get.
+- **It matches `Breadcrumb` — resolved reference display text**, computed after materialization by
+  `BreadcrumbResolver`. That text is **not an index term** and a pushdown cannot see it. Searching a car by its
+  owner's name works today via the breadcrumb and would stop working, unless the app denormalizes that text into
+  the index. The demos already do exactly that (`VCar.OwnerFullName`), which is why the gap is survivable — but
+  it is a real narrowing and must be documented, not discovered.
+
+Two existing tests pin the current semantics and will flag any change:
+`tests/MintPlayer.Spark.Tests/Services/QueryExecutorIntegrationTests.cs:162,176` and
+`tests/.../Endpoints/Queries/ExecuteQueryEndpointTests.cs:83-90` (`"alice"`, `"SMITH"`, `"ALICE"`).
+
+Also worth knowing before touching it: **paging happens after the search filter** (`QueryExecutor.cs:61-64`), so
+`TotalRecords` is search-aware today. A pushdown has to keep it that way (R43), or every paged grid silently
+reports the unfiltered count.
+
+---
+
+## F15 — Substring parity is achievable, and `[Search]` turns out not to be required for it
+
+This is the finding that reshaped W14. Measured on RavenDB.Client **7.2.5**, against a real server, on **both**
+search engines (Corax — the default here — and a twin index forced to Lucene). **They agreed on every result.**
+
+Wildcards, on an analyzed (`FieldIndexing.Search`) field containing `"Volkswagen Golf GTI"`:
+
+| term | measured |
+|---|---|
+| `volks*` trailing | **match** |
+| `*swagen` leading | **match** — RavenDB's historic leading-wildcard restriction does not bite on 7.2.5, on either engine |
+| `*olkswag*` both ends | **match** |
+| `*olf*` token-internal | **match** |
+| `volks* gti` + `SearchOperator.And` | **match**, precisely one document |
+| `VOLKS*`, `*OLKSWAG*` | **match** — the term is lower-cased for you; the framework need not pre-lower-case |
+| `gol?` | **no match** — `?` is unsupported |
+| `go*lf` mid-word `*` | **no match** — only leading/trailing positions work |
+| bare `*` | **matches everything** (all 5 docs) — needs guarding |
+
+So substring parity with today's `Contains` **is** reachable: wrap each whitespace-separated word as `*word*` and
+pass `SearchOperator.And`.
+
+**One irreducible gap:** a substring spanning a whitespace boundary cannot match, because the query term is itself
+split on whitespace. Measured: `*olf gt*` against `"Volkswagen Golf GTI"` → **0 rows**. So today's
+`Contains("olf GT")` is not recoverable, while `Contains("olkswag")` and `Contains("olf")` are.
+
+### The surprise: wildcards work on fields that were never declared searchable
+
+`.Search()` against a plain string field — default `LowerCaseKeywordAnalyzer`, no `[Search]`, no `Index(...)` call:
+
+- **bare-word search is dead:** `search(Trim, "volkswagen")` → **0**. The whole value is one term, so no query
+  token equals it. Even searching the complete value verbatim returns 0, because the *query* is tokenized while
+  the *stored term* is not.
+- **wildcards match the whole value:** `volkswagen*` → 3, `*golf*` → 1, `*olkswag*` → 3.
+
+**Therefore substring search does not require an analyzed field at all**, and the premise that `[Search]` gates
+searchability is wrong. `[Search]` still earns its place — it enables token-level matching, relevance ranking and
+analyzer behaviour, and it forces the sort companion (F1) — but W14 does not depend on it. That inverts R38: the
+question is no longer "how does the runtime find `[Search]` fields" but "should search be scoped to them at all".
+
+`FieldIndexing.Exact` is the one shape to keep out. Measured: it is **case-sensitive to the search term** —
+`*GOL*` matched, `*gol*` returned 0, and plain `"vw"` returned 0 while `VW*` returned 3. Silent, direction-
+dependent mismatching. In this codebase `Exact` is only ever applied to `DateTimeOffset` (W4), which is excluded
+by the type test anyway, but a hand-written index can apply it to a string.
+
+Nothing throws in any of these cases and nothing errors on a field absent from the index (`search(id(), ...)` →
+0 rows). So excluding non-analyzed fields is **not** a correctness requirement — it is purely a semantics choice.
+
+Two more measured details that matter for the implementation:
+
+- **No duplicate rows** on a single-map index, even when one document matches several tokens or several OR-ed
+  legs. The existing `DistinctBy(po => po.Id)` is enough; nothing extra is needed. (Multi-map/fan-out untested.)
+- **There is no required LINQ call order.** `Search` before or after `OrderBy`, `ProjectInto`, `Skip`/`Take` all
+  emit identical RQL and identical results — the provider collects clauses rather than composing sequentially.
+  The one position that matters is `Where`, for the reason in F16.
+
+---
+
+## F16 — `SearchOptions` leaks forward onto the next `Where`, and that is a filter-bypass hazard
+
+Measured, and the most dangerous thing found in this investigation. Passing an explicit `SearchOptions.Or` does
+not just join the search legs — **it leaks onto whatever clause follows**:
+
+```
+.Search(Model, term, Or).Search(Desc, term, Or).Where(v => v.Code == "VW UP")
+  → where search(Model,$p0) or search(Description,$p1) or Code = $p2        4 rows
+```
+
+The trailing `Where` was **OR-ed in, not AND-ed**. Put the `Where` first and precedence breaks the other way:
+
+```
+.Where(Code == "VW UP").Search(Model, Or).Search(Desc, Or)
+  → where (Code = $p0) and search(Model,$p1) or search(Description,$p2)     2 rows — leaked a non-matching row
+```
+
+Spark composes row-level security as exactly such a `Where`, immediately before where search would go
+(`RowSecurity.ComposeRowFilterAsync`, called at `QueryExecutor.cs:168`). An explicit `Or` there would turn a
+security filter into an alternative — **a row-security bypass, silent, with plausible-looking results.**
+
+**The default `SearchOptions.Guess` is the safe one, and it is also exactly what a multi-field OR wants.**
+Measured: it parenthesizes the consecutive `Search` group and ANDs it with neighbours in *both* directions:
+
+```
+.Where(Code == "VW UP").Search(Model).Search(Desc)
+  → where (Code = $p0) and (search(Model,$p1) or search(Description,$p2))   1 row  ✔
+.Search(Model).Search(Desc).Search(Trim).Where(Code == "VW UP")
+  → where (search(...) or search(...) or search(...)) and (Code = $p3)      1 row  ✔
+```
+
+Mixing explicit options is additionally *non-deterministic in intent*: `(And, Or)` and `(Or, And)` both rendered
+`or`. The per-call option does not map to a determinable clause boundary.
+
+So R44 is a hard requirement, not a style preference: **never pass `SearchOptions` explicitly.** The original
+plan's instruction to OR the legs with `SearchOptions.Or` was wrong and would have introduced the bypass.
+
+Empty and null terms, measured:
+
+| input | behaviour |
+|---|---|
+| `""` or `"   "` | **returns nothing** — 0 of 5 rows. Does not throw, does not no-op |
+| `(string)null` | **throws `ArgumentException`** at query-build time (and a bare `null` literal is a CS0121 overload ambiguity) |
+| `Array.Empty<string>()` | **throws `ArgumentException`**: "Cannot search on empty searchTerms array" |
+
+An empty term silently narrowing every grid to zero rows is the worst of those, so the guard in R40 is load-
+bearing rather than defensive.
+
+---
+
 ## Requirements
 
 ### The attribute surface
@@ -651,46 +808,98 @@ side by side.
 
 ### Organic full-text search (W14)
 
-`[Search]` currently produces an analyzed field that **nothing queries**. No framework code calls
-`.Search(...)`; `QueryExecutor` only reflects an `OrderBy`. So the analyzed half of the attribute is inert, and
-the field pays tokenization cost for no benefit — the mirror image of the sort companions being inert before W7.
+Reframed after F14–F16. The premise "`[Search]` produces an analyzed field that nothing queries" is true, but the
+gap is not a missing feature — search is wired end-to-end and the server implements it by **materializing the
+whole collection and filtering in memory** (F14). W14 replaces that with a database pushdown.
 
-- **R37** A query accepts a search term, and `QueryExecutor` applies RavenDB's `.Search(...)` across the
-  searchable fields of the query type, OR-ed together (`SearchOptions.Or`), before sorting and paging.
-- **R38** **Open decision — how the runtime identifies a searchable field.** `[Search]` is a *generator
-  directive* and is deliberately denied in attribute carry-over (R12a), so a **generated** index entity does not
-  carry it and the attribute is invisible at runtime. Two options:
-  1. **Carry `[Search]` onto the index entity** — remove it from the carry-over deny-list. The runtime then reads
-     the attribute directly, which is obvious and self-describing. Cost: the attribute appears on generated code
-     where it no longer instructs anything, and the deny-list gains an exception.
-  2. **Detect via the companion** — a field is searchable iff `{Name}Sort` exists and is `[IgnoreProperty]`. No
-     new surface, and it reuses exactly the signal `ResolveSortProperty` already uses. Cost: indirect, and it
-     couples "searchable" to "has a companion" — true today by construction, but an inferred invariant rather
-     than a declared one.
+**R37** `QueryExecutor` pushes the search term into RavenDB via `LinqExtensions.Search(...)`, invoked
+reflectively and cached through `ReflectionCache` exactly as `ProjectInto` and `OrderBy` already are. It is
+applied on the same untyped `object` queryable, between `ComposeRowFilterAsync` (`QueryExecutor.cs:168`) and
+`ApplySorting` (`:170`). Position within the LINQ chain is otherwise free (F15) — this position is chosen to keep
+the row-security `Where` ahead of the search group, which is what makes F16's `Guess` grouping correct.
 
-  Option 1 reads better and is probably right; option 2 is free. Decide before implementing — it determines
-  whether `AttributeRenderer`'s deny-list changes.
-- **R39** Fields indexed `Exact` (i.e. `DateTimeOffset`) must **not** participate: `.Search()` against a
-  non-analyzed field does not do what the caller means. Text only.
-- **R40** No searchable fields, or an empty/whitespace term, means the search is skipped entirely rather than
-  producing an empty result set. A query with no searchable field must keep working exactly as it does now.
-- **R41** For a `TranslatedString` the per-language fields are the searchable ones. **Open question:** search
-  every language, or only the request's language via `RequestCultureResolver`? Searching all is more forgiving;
-  searching one is more predictable and cheaper. Lean towards the request's language with a documented fallback.
-- **R42** The client needs somewhere to type it. Server-side is the deliverable here; a search box in
-  `@mintplayer/ng-spark`'s query-list is a **separate decision** — if it lands, it is an Angular package change
-  and this stops being a server-only release.
+**R38 — RESOLVED, and inverted.** The question was "how does the runtime find `[Search]` fields". F15 makes it
+moot: wildcards match on *plain* string fields, so searchability is not gated on `[Search]` at all. Searchable
+fields are therefore **every string-typed property of the sort type** (`resultType` when a projection is in play,
+else `entityType` — the same type `ResolveSortProperty` already reflects over), including the per-language
+`{Prop}_{lang}` fields a `[Search]`ed `TranslatedString` fans out to. `[Search]` keeps its existing meaning
+(token matching, relevance, analyzer behaviour, and forcing the sort companion) but no longer decides what is
+searched.
 
-Notes for whoever picks this up:
+This also disposes of the two candidate mechanisms that were on the table, both now unnecessary:
 
-- `LinqExtensions.Search(query, fieldSelector, searchTerms, boost, options)` is the API; it must be invoked
-  reflectively like the existing `ProjectInto`/`OrderBy` paths, and cached through `ReflectionCache` the same way.
-- Apply it **before** `ApplySorting`, and remember `DistinctBy(po => po.Id)` already runs at the end.
-- The measured duplicate-row behaviour matters here: `Search` on a single-map index does **not** duplicate rows
-  (F1), so no extra deduplication is needed beyond what exists.
-- Worth one integration test asserting a multi-word term matches a document whose field contains those words in
-  any order — that is the whole point of an analyzed field, and it is the only thing that proves the tokenization
-  cost is now buying something.
+- carrying `[Search]` through `AttributeRenderer` — not needed, so the deny-list and its pinning test
+  (`GenerateIndexGeneratorTests.cs:813-829`) stay as they are;
+- inferring searchability from the `[IgnoreProperty]` companion — which was **wrong anyway**: `DateTimeOffset`
+  gets a companion while indexed `Exact` (`GenerateIndexGenerator.cs:305,314-315`), so it would have searched
+  date fields in violation of R39.
+
+A third option, persisting an `IsSearchable` flag on `EntityAttributeDefinition`, is rejected on cost (model-hash
+churn plus a `--spark-synchronize-model` rerun) and was **broken as written**: `ModelSynchronizer.cs:471` resolves
+`collectionProp ?? projectionProp`, so the collection property wins and `[Search]` on a projection property whose
+name also exists on the entity would be silently invisible — measured against `VPerson.Email` and
+`VCar.LicensePlate`. Recorded so nobody takes that route later.
+
+**R39** Excluded from search: non-string properties, and any string field indexed `FieldIndexing.Exact`. Not for
+correctness — nothing throws (F15) — but because `Exact` fields mismatch **case-sensitively and silently** in a
+direction-dependent way. The type test covers `DateTimeOffset` for free, since it is not a string.
+
+**R40** The search is skipped **entirely** — not applied with an empty argument — when the term is null,
+empty or whitespace, when it reduces to nothing after wildcard wrapping, or when the type has no searchable
+field. This is load-bearing: measured, an empty term returns **zero rows** rather than no-opping, and `null`
+throws (F16). A bare `*` must not reach RavenDB either; it matches everything.
+
+**R41 — RESOLVED for free.** Under R38 the per-language `{Prop}_{lang}` fields are plain strings on the
+projection, so **all languages are searched**, with no coupling to `RequestCultureResolver` and no fallback rule
+to specify. This is also the more forgiving behaviour: a Dutch-language user still finds a record whose only
+match is its French label. Scoping to the request's language remains available later as a narrowing, which is a
+safer direction of change than widening.
+
+**R42 — DISSOLVED.** No client work: the search box, the `searchTerm` state and the `?search=` parameter all
+already exist (F14). This stays a server-only release.
+
+**R43** `TotalRecords` must remain search-aware. Today it is, because filtering precedes paging
+(`QueryExecutor.cs:61-64`); once the filter moves into the database the count has to come from RavenDB's query
+statistics rather than from the materialized list.
+
+**R44** `SearchOptions` is **never passed explicitly** — every leg uses the default `Guess`. This is a safety
+requirement, not a style one: an explicit `Or` leaks onto the adjacent `Where`, and the adjacent `Where` is
+row-level security (F16). A test must pin the emitted RQL shape
+`(security predicate) and (search or search or ...)`, because this failure mode returns plausible rows rather
+than erroring.
+
+**R45** Paths that cannot push down keep the in-memory filter as a documented fallback: `Custom.` queries whose
+method is not `IRavenQueryable` (`CustomQueryMethodInfo.IsRavenQueryable` already distinguishes them), and any
+query type with no searchable field. The fallback is also what preserves `Breadcrumb` matching (F14) where it
+still runs.
+
+**R46** The narrowing in F14 — reference display text (`Breadcrumb`) is not an index term and stops being
+searchable on pushdown paths — is documented in the query guide, with the denormalization remedy the demos
+already use (`VCar.OwnerFullName`).
+
+**R47** The streaming query path (`Streaming/StreamingQueryExecutor.cs`, `Endpoints/Queries/StreamExecuteQuery.cs`)
+takes no search term at all; the client filters those in memory (`spark-query-list.component.ts:410-421`).
+**Out of scope**, explicitly, and noted in the release notes so the asymmetry is known rather than surprising.
+
+#### The open decision — matching semantics
+
+F15 leaves exactly one genuine choice, and it changes user-visible behaviour either way:
+
+- **(a) Substring parity.** Wrap each word of the term as `*word*` and pass `SearchOperator.And`. Today's
+  `Contains` behaviour survives (except substrings spanning a space), the two existing tests keep passing, and
+  search works across every text field whether or not it is analyzed. Cost: leading wildcards force term-
+  dictionary scans, so this is the slower query shape — still far cheaper than fetching the whole collection,
+  but **unmeasured at scale**, and it gives up relevance ranking.
+- **(b) True organic term search.** Pass the words as-is, letting the analyzer match tokens, with relevance
+  ordering when no explicit sort is requested. Cheaper and it is what "organic search" normally means. Cost: it
+  **only works on `[Search]` fields** (bare-word search on a plain field returns nothing — measured), so it
+  narrows what is searchable to whatever has been declared, and infix matching disappears: `olkswag` stops
+  finding `Volkswagen`. Both existing tests change.
+
+**Recommendation: (a).** It is the only option that is a strict improvement — same semantics as today, executed
+in the database instead of in memory, with no regression to explain to anyone. (b) is a genuine feature rather
+than a fix, and it can be added afterwards as an explicit opt-in without disturbing (a); doing it the other way
+round means shipping a regression first.
 
 ### Diagnostics — no silent aborts (F5)
 
@@ -705,7 +914,7 @@ Notes for whoever picks this up:
 
 ### Non-goals
 
-- ~~**N1** Organic/full-text search execution.~~ **Promoted into scope** — see R37–R42 and plan W14. `[Search]`
+- ~~**N1** Organic/full-text search execution.~~ **Promoted into scope** — see R37–R47 and plan W14. `[Search]`
   already makes a field indexed for search; W14 makes something actually query it.
 - **N2** `Reduce` / map-reduce, multi-map, `AdditionalSources`, spatial, suggestions, term vectors.
   Nothing in the repo uses them. Noted for whenever map-reduce does arrive: sort companions have to be

@@ -22,7 +22,7 @@ intermediate milestones verified by reading and type-checking.
 | W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27, R31 |
 | ~~W12~~ | ~~Lean entity-side generator for `*.Library`~~ — dropped, superseded | — |
 | W13 | Generated `SparkContext` query roots | R33–R36 |
-| W14 | Organic full-text search — make `[Search]` actually searchable | R37–R42 |
+| W14 | Organic full-text search — push the existing search into RavenDB | R37–R47 |
 
 Ordering rationale: W2–W5 are the proven parts of the reference design and ship first. W7 is what makes
 the companions actually used (PRD F8) and is independent of the generator, so it can land in parallel.
@@ -133,6 +133,58 @@ Rejected with evidence rather than by preference:
   exactly the trap this spike existed to find.
 
 Four distinct silent-null modes were catalogued, all error-free; they drive R10a and PRD F13.
+
+### S7 — can `.Search()` reproduce the current substring semantics? PASSED, and it reframed W14
+
+Run against RavenDB.Client 7.2.5, on **both** search engines — Corax (the default here) and a twin index forced
+to Lucene. **Every wildcard result agreed across engines**, so the conclusions are engine-independent.
+
+The spike existed because the framework's current search is an in-memory
+`Contains(term, OrdinalIgnoreCase)`, so a pushdown that only matched whole tokens would be a regression.
+
+Measured: **substring parity is reachable** — wrap each word as `*word*` with `SearchOperator.And`. Leading,
+trailing and both-ends wildcards all match, including token-internal (`*olf*`); RavenDB's historic leading-
+wildcard restriction does not bite on 7.2.5. The term is lower-cased for you, so no pre-normalization is needed.
+`?` is unsupported, mid-word `*` (`go*lf`) does not match, and a bare `*` matches everything.
+
+Two things it found that were not being looked for, and that changed the design:
+
+- **Wildcards match on fields that were never declared searchable.** On a plain `string` with default indexing,
+  bare-word search returns **0** (the whole value is one term) but `*olkswag*` matches. So `[Search]` does not
+  gate searchability, which inverts R38 — see PRD F15.
+- **`FieldIndexing.Exact` is case-sensitive to the search term**, silently and direction-dependently: `*GOL*`
+  matched, `*gol*` returned 0. That is what makes R39 a semantics requirement rather than an optimization.
+
+One irreducible gap: a substring **spanning a whitespace boundary** cannot match, because the query term is split
+on whitespace first. `*olf gt*` → 0 rows. So `Contains("olf GT")` is not recoverable; `Contains("olkswag")` is.
+
+### S8 — how do multiple `Search` legs combine with a preceding `Where`? PASSED, and found a security hazard
+
+The spike was meant to confirm that `SearchOptions.Or` is how you OR several fields. **It is not, and the plan's
+original instruction to use it was wrong.**
+
+Measured: an explicit `SearchOptions.Or` **leaks forward onto the adjacent `Where` clause**, OR-ing it instead of
+AND-ing it. Spark composes row-level security as exactly such a `Where`, immediately before where search goes —
+so an explicit `Or` is a **silent row-security bypass** that returns plausible-looking rows. Putting the `Where`
+first breaks precedence the other way instead.
+
+The default `SearchOptions.Guess` is both safe and exactly right: it parenthesizes the consecutive `Search` group
+and ANDs it with neighbours in both directions. Mixing explicit options is additionally meaningless — `(And, Or)`
+and `(Or, And)` both rendered `or`. Drives R44, and the RQL-shape test that pins it.
+
+Also measured here: no required LINQ call order (`Search` before or after `OrderBy`/`ProjectInto`/`Skip`/`Take`
+emits identical RQL), and **no duplicate rows** on a single-map index even when one document matches several legs
+or several tokens — so the existing `DistinctBy(po => po.Id)` suffices.
+
+### S9 — what does an empty or null term do? PASSED, and the answer is why R40 is load-bearing
+
+Measured: `""` and `"   "` **return zero rows** — they do not throw and they do not no-op. `(string)null`
+**throws `ArgumentException`** at query-build time, and an empty `IEnumerable<string>` throws
+"Cannot search on empty searchTerms array". A bare `null` literal additionally fails to compile (CS0121 between
+the two overloads).
+
+So the "empty term is a no-op" requirement cannot be delegated to RavenDB: without an explicit guard, clearing
+the search box silently empties every grid.
 
 ---
 
@@ -366,28 +418,60 @@ because the reference design derived names in two independent traversals, which 
 
 ## W14 — Organic full-text search
 
-Folded into this PR rather than deferred: `[Search]` currently produces an analyzed field that nothing queries,
-so half the attribute is inert and the field pays tokenization cost for nothing. Same shape of gap as the sort
-companions before W7.
+Reframed by S7–S9 and PRD F14–F16. The ticket reads "nothing calls `.Search(...)` yet", which understates it in
+one direction and overstates it in another: search is **already wired from the search box to the database call**,
+and the server implements it as an in-memory `Contains` over the **fully materialized collection**. So W14 is a
+pushdown replacing a pathological implementation, not a new feature.
 
-Requirements R37–R42. **Two decisions to make first**, both recorded in the PRD:
+What that changes versus the original W14 sketch:
 
-1. **How the runtime spots a searchable field** (R38). `[Search]` is denied in attribute carry-over, so a
-   generated index entity does not carry it — either lift that denial, or infer searchability from the presence of
-   an `[IgnoreProperty]` companion. This determines whether `AttributeRenderer` changes.
-2. **Which language(s) to search for a `TranslatedString`** (R41) — the request's language, or all of them.
+- **R42 dissolves** — the Angular search box, `searchTerm` state and `?search=` parameter all exist. Server-only
+  release, as the release notes already claim.
+- **R38 is resolved and inverted** — `[Search]` does not gate searchability (S7), so neither candidate mechanism
+  is needed. `AttributeRenderer` and its pinning test are untouched. The companion-detection option was wrong
+  anyway: `DateTimeOffset` gets a companion while indexed `Exact`.
+- **R41 is resolved for free** — per-language fields are plain strings on the projection, so all languages are
+  searched with no `RequestCultureResolver` coupling.
+- **R44 is new and mandatory** — never pass `SearchOptions` explicitly (S8), or row-level security gets OR-ed.
+- **R43, R45–R47 are new** — search-aware `TotalRecords`, an in-memory fallback for non-Raven `Custom.` queries,
+  the documented `Breadcrumb` narrowing, and streaming explicitly out of scope.
 
-Then: a search term on the query, `.Search(...)` applied reflectively across text fields OR-ed together, before
-sorting. `Exact`/date fields excluded. Empty term or no searchable fields is a no-op, so every existing query
-behaves exactly as it does today.
+### One decision still open
 
-Ends with an integration test proving a multi-word term matches regardless of word order — the only assertion
-that shows the analyzed field is finally earning its cost.
+**Matching semantics** (PRD "The open decision"): **(a)** wildcard-wrap each word for substring parity with
+today's behaviour, or **(b)** true term-based organic search with relevance ranking, which only works on
+`[Search]` fields and drops infix matching. Recommendation is **(a)** — it is the only option with no
+user-visible regression, and (b) can be layered on afterwards as an opt-in. This decides whether the two existing
+search tests keep passing or get rewritten, so it is settled before any code is written.
 
-A search box in `@mintplayer/ng-spark` is deliberately *not* assumed (R42): including it makes this an Angular
-package release too, which is a separate call.
+### Steps
 
----
+1. Thread `search` into `ExecuteDatabaseQueryAsync` and `ExecuteCustomQueryAsync` instead of post-filtering.
+2. `ResolveSearchableProperties(Type sortType)` — string-typed properties, `Exact` excluded — cached through
+   `ReflectionCache` on the identity-keyed tier, next to `ResolveSortProperty`.
+3. `ApplySearch(queryable, elementType, term)` — reflective `LinqExtensions.Search<T>` following the
+   `ApplyProjection`/`RowSecurity.Where` shape. Watch three things the existing helpers do not hit: the first
+   parameter is the **generic** `IQueryable<T>` (so the `== typeof(IQueryable)` predicate style must not be
+   copied); the selector is `Expression<Func<T, object>>` so a property access needs
+   `Expression.Convert(..., typeof(object))`; and `MethodInfo.Invoke` does not apply optional parameter defaults,
+   so all six arguments are passed explicitly.
+4. Insert between `ComposeRowFilterAsync` and `ApplySorting`, gated on `IsRavenQueryable` for the custom path.
+5. Guard per R40, and keep the in-memory filter as the fallback per R45.
+6. Restore search-aware `TotalRecords` from RavenDB statistics (R43).
+7. Guide + release-note updates for the `Breadcrumb` narrowing (R46) and the streaming asymmetry (R47).
+
+### Tests
+
+- The two existing tests are the canary — `QueryExecutorIntegrationTests.cs:162,176` and
+  `ExecuteQueryEndpointTests.cs:83-90` pin substring semantics (`"alice"`, `"SMITH"`, `"ALICE"`). Under
+  option (a) they must pass **unchanged**; that is the whole argument for (a).
+- Multi-word term matches regardless of word order.
+- **RQL shape test**: with row-level security active, assert `(predicate) and (search or search)` — this is the
+  F16 bypass, and it fails by returning extra rows rather than by erroring, so only a shape assertion catches it.
+- Empty term, whitespace term and a bare `*` each leave the result set exactly as an unsearched query returns it.
+- A query type with no searchable field is unaffected.
+- `TotalRecords` reflects the filtered count, not the collection count, on a paged search.
+- A `DateTimeOffset`/`Exact` field does not participate.
 
 ## Test strategy
 
