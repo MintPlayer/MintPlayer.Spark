@@ -921,6 +921,41 @@ result is therefore slightly **wider** than `Contains` rather than narrower — 
 mattering. The measured narrowings are only the ones inherent to a pushdown: non-text attributes (R39) and
 `Breadcrumb` (R46).
 
+### Sort-companion analyzer for hand-written indexes (F10)
+
+Restored: this block was accidentally dropped by the W7 edit and lived only as dangling `R24`–`R27`
+references from the plan. Statuses below are as shipped.
+
+- **R24** **Done** as `SPARK005` (`SortCompanionAnalyzer`): a projection property indexed
+  `FieldIndexing.Search` — or a `DateTimeOffset` indexed `Exact` — with no `{Name}Sort` companion on the same
+  type. Severity **warning**, not error: unlike SPARK001/002 this is a correctness *risk* rather than a broken
+  contract, and existing hand-written indexes must keep compiling.
+
+  It earned its keep immediately: the first run found **six real pre-existing bugs** — DemoApp's
+  `VPerson.FullName`/`Email`, `VCompany.Name`, `VCar.LicensePlate`/`OwnerFullName` and HR's `VPerson.FullName`.
+  `FullName` is `FirstName + " " + LastName`, so it always contains a space, which means sorting a people grid
+  by name was broken in both demos before this issue.
+
+  A companion rule shipped alongside it: **`SPARK006`** flags a declared companion that the map never assigns,
+  which is the other half of the same defect (R31 — a generator cannot write into a hand-written map, so the
+  property can exist while staying permanently null).
+- **R25** **Done.** The diagnostic is reported on the **hand-written property's location**, never
+  `Location.None` and never a generated location, or it is silently dropped (F11).
+- **R26** **Not done — deferred to its own issue.** The "Add Sort property" code fix was attempted and
+  reverted. A `CodeFixProvider` cannot live in the analyzer assembly: it needs
+  `Microsoft.CodeAnalysis.CSharp.Workspaces` at runtime, which is deliberately not packed, and its presence made
+  `GetTypes()` throw `ReflectionTypeLoadException` — **breaking the entire generator test suite**, not just the
+  code fix. It needs its own `*.CodeFixes` assembly plus packaging, which is a self-contained piece of work
+  with no bearing on the rest of this issue.
+
+  The analyzer already names the property to add, so the gap is a missing lightbulb rather than missing
+  information.
+- **R27** **Done, and it cost nothing.** No suppression mechanism was built. When the generator emits the
+  companion the analyzer sees the generated symbol and does not fire (F11, proved by spike S4), so referencing
+  the generator stops the suggestions automatically — no marker, no configuration. A combined
+  generator-then-analyzer test pins this, because it is the interaction the whole "no marker needed" design
+  rests on.
+
 ### Diagnostics — no silent aborts (F5)
 
 - **R18** Every abort path reports a diagnostic. Minimum set: non-partial existing index or view class;

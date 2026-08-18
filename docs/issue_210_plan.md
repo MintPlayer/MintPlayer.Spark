@@ -19,7 +19,7 @@ intermediate milestones verified by reading and type-checking.
 | W8 | `culture.json` AdditionalFile + `TranslatedString` fan-out | R10, R17 |
 | W9 | Convert one demo entity; re-synchronize model + hashes | F7, N5 |
 | W10 | Guides, release notes, version bump | — |
-| W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27, R31 |
+| W11 | Sort-companion analyzer (`SPARK005`/`SPARK006`) — code fix deferred (R26) | R24–R27, R31 |
 | ~~W12~~ | ~~Lean entity-side generator for `*.Library`~~ — dropped, superseded | — |
 | W13 | Generated `SparkContext` query roots | R33–R36 |
 | W14 | Organic full-text search — push the existing search into RavenDB | R37–R47 |
@@ -386,14 +386,20 @@ manual `dotnet nuget push`.
 
 ## W11 — Missing-sort-property analyzer and code fix
 
-`Diagnostics/MissingSortPropertyAnalyzer.cs` + `.Rules.cs`, following `ProjectionPropertyAnalyzer`'s
+Shipped as `Diagnostics/SortCompanionAnalyzer.cs` + `.Rules.cs`, following `ProjectionPropertyAnalyzer`'s
 shape. Fires on a projection property indexed `Search` (or a `DateTimeOffset` indexed `Exact`) with no
-`{Name}Sort` companion; **warning**, not error, so the five existing hand-written pairs keep compiling
-while they are flagged (R24). Anchored on the hand-written property's location (R25) — anchoring it
-anywhere else drops it silently.
+`{Name}Sort` companion; **warning**, not error, so the existing hand-written pairs keep compiling while they are
+flagged (R24). Anchored on the hand-written property's location (R25) — anchoring it anywhere else drops it
+silently.
 
-The code fix (R26) is the repo's first, so it brings a `CodeFixProvider` and a
-`Microsoft.CodeAnalysis.CSharp.Workspaces` reference. Packaged into the same analyzer assembly.
+It found **six real pre-existing bugs** on its first run, including `FullName` in both DemoApp and HR — a value
+that always contains a space, so sorting a people grid by name was broken before this issue. A second rule,
+`SPARK006`, shipped with it: a declared companion the map never assigns (R31's other half).
+
+**The code fix (R26) was attempted and reverted — deferred to its own issue.** A `CodeFixProvider` cannot live in
+the analyzer assembly: it needs `Microsoft.CodeAnalysis.CSharp.Workspaces` at runtime, which is deliberately not
+packed, and its presence made `GetTypes()` throw `ReflectionTypeLoadException`, **breaking the entire generator
+test suite** rather than just the code fix. It needs its own `*.CodeFixes` assembly and packaging.
 
 No suppression logic is written (R27): S4 proved the generated companion satisfies the analyzer by symbol
 lookup alone.
