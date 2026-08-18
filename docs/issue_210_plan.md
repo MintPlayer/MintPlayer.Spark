@@ -11,7 +11,7 @@ intermediate milestones verified by reading and type-checking.
 |---|---|---|
 | W1 | Attributes + Roslyn symbol helpers | R1–R4, R8a |
 | W2 | Generator skeleton: index + view for a plain entity | R5–R7, R13, R14, R16, R18–R20 |
-| W3 | `[Search]` → search indexing + `Sort` companion | R8, R8a |
+| W3 | `[Search]` → search indexing + `Sort` companion, incl. hand-written index entities | R8, R8a–R8d, R30, R32 |
 | W4 | `DateTimeOffset` → `Exact` + automatic companion | R9 |
 | W5 | Reference / lookup carry-over, `[IgnoreForIndex]` | R3, R12 |
 | W6 | Referenced-assembly entity discovery | R15 |
@@ -19,8 +19,9 @@ intermediate milestones verified by reading and type-checking.
 | W8 | `culture.json` AdditionalFile + `TranslatedString` fan-out | R10, R17 |
 | W9 | Convert one demo entity; re-synchronize model + hashes | F7, N5 |
 | W10 | Guides, release notes, version bump | — |
-| W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27 |
-| W12 | Lean entity-side generator project for `*.Library` | F12 |
+| W11 | Missing-sort-property analyzer + "Add Sort property" code fix | R24–R27, R31 |
+| ~~W12~~ | ~~Lean entity-side generator for `*.Library`~~ — dropped, superseded | — |
+| W13 | Generated `SparkContext` query roots | R33–R36 |
 
 Ordering rationale: W2–W5 are the proven parts of the reference design and ship first. W7 is what makes
 the companions actually used (PRD F8) and is independent of the generator, so it can land in parallel.
@@ -92,9 +93,13 @@ itself.
 ### S5 — can a second lean generator project coexist? PASSED, with precedent
 
 `libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators` already *is* this pattern — a lean
-single-generator project loaded alongside the main one in every demo app. W12 copies its csproj.
-Confirmed no `ComparerRegistry` collision, packaging fully inherited, and `spark.targets`' SPARK001
-hard-error does not reach an in-repo `*.Library`. Detail in PRD F12.
+single-generator project loaded alongside the main one in every demo app. Confirmed no `ComparerRegistry`
+collision, packaging fully inherited, and `spark.targets`' SPARK001 hard-error does not reach an in-repo
+`*.Library`. Detail in PRD F12.
+
+The milestone this was spiked for (W12) has since been dropped, so nothing in this issue consumes the
+result. It is kept because it is the groundwork for the postponed `IAudit` generator (PRD N8), which is the
+one remaining reason to put a generator in a library project.
 
 ### S6 — can an index read one language out of a `TranslatedString`? PASSED, and the premise was wrong
 
@@ -269,7 +274,25 @@ Tests: `GeneratorHarness.RunAnalyzerAsync` for the diagnostic; a combined genera
 asserting the diagnostic does **not** fire once the companion is generated — that test is the executable
 form of R27 and guards the interaction that the whole "no marker needed" design rests on.
 
-## W12 — Lean entity-side generator for `*.Library`
+## W12 — DROPPED (superseded)
+
+Was: a lean entity-side generator project referenced from the `*.Library` projects.
+
+Dropped for two independent reasons. S6 removed its technical justification — a generated index reads one
+language of a `TranslatedString` directly, so no entity-side helper is needed. And its remaining candidate
+job, generating sort companions for hand-written index entities, turns out not to need a library-side
+generator at all: **the index entity always lives in the application project**, so the main generator can
+contribute a partial half to it (R30–R32, folded into W3).
+
+The one real use case for a library-side generator — `IAudit` boilerplate on collection entities — is
+postponed to its own issue as PRD N8. It is the only identified reason to put a generator in a library, and
+it deserves justifying on its own terms rather than riding along here. PRD F12 records exactly how a second
+lean generator project is wired, so that groundwork is not lost.
+
+**For this issue the rule is unchanged: no generator in the library projects.**
+
+<details>
+<summary>Original W12 scope, kept for the record</summary>
 
 New project `libs/source_generators/MintPlayer.Spark.Entities.SourceGenerators` (name TBD), csproj copied
 from `MintPlayer.Spark.AllFeatures.SourceGenerators` with a new `PackageId` and `Description`, keeping
@@ -303,6 +326,28 @@ independent of it.
 In-repo consumers get a `ProjectReference … OutputItemType="Analyzer" ReferenceOutputAssembly="false"`;
 external consumers a `PackageReference` with `PrivateAssets="all"` and `analyzers` in `IncludeAssets`. If
 it should attach automatically in-repo, copy the `spark-allfeatures.targets` injection pattern.
+
+</details>
+
+## W13 — Generated `SparkContext` query roots
+
+Emit `public IRavenQueryable<VCar> VCars => Session.Query<VCar, Cars_Overview>();` onto the app's
+`SparkContext`, matching what Fleet and HR write by hand today (DemoApp omits them entirely).
+
+Requires the context class to be `partial`, which is approved — the demo contexts get the keyword. Two
+consequences to handle rather than discover:
+
+- **It moves the context-roots hash.** `ModelShapeDiscovery.QueryableRoots` walks `IRavenQueryable<>`
+  properties, so adding one changes the model hash even though projection types are skipped from the model
+  itself. Folded into W9's re-synchronize.
+- **Name collisions.** If the developer already declared a member of that name, emit nothing for it rather
+  than producing a duplicate-member compile error — and prefer that over a diagnostic, since a hand-written
+  root is a legitimate override.
+
+Naming comes from the same `IndexNaming` function as everything else, per the "compute the model once, project
+both outputs" rule: the root is the pluralized index-entity name, so `VCar` → `VCars`. That rule exists
+because the reference design derived names in two independent traversals, which is the classic source of
+"the index and the context disagree" bugs.
 
 ---
 
