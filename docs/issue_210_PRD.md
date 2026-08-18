@@ -914,6 +914,21 @@ round means shipping a regression first.
 
 ### Non-goals
 
+- **N9** **Fuzzy / typo-tolerant search.** Asked for during the W14 discussion and spiked (plan S10) rather than
+  guessed at. Rejected on measurement, not preference: **Corax — the 7.x default, and what generated indexes
+  get — does not support `Fuzzy` at all**, failing server-side with `InvalidQueryException: Method 'Fuzzy' is not
+  supported`. It is an index-definition decision (`SearchEngineType.Lucene`), not a query feature, so a per-query
+  fuzzy toggle cannot be honoured on an index not built for it. Independently, `Fuzzy` exists only on the
+  document-query API — zero `IQueryable` extensions, no back-conversion — and must sit immediately after a
+  `WhereEquals`, so it cannot splice into Spark's reflective `IQueryable` pipeline; the `ToAsyncDocumentQuery()`
+  bridge breaks as soon as row security adds a second `Where`. It is also **mutually exclusive with W14's
+  substring wrapping**, because wildcards are counted as edits and silently consume the distance budget.
+
+  Two findings worth keeping for a future issue: fuzzy works **whole-value on plain default-indexed fields**
+  (including the sort companions this issue already emits, so no `[Search]` is needed), and an `EditDistance`
+  knob would have to be translated per term as `1 − d/len − ε`, since similarity is `1 − d/min(len)` and a fixed
+  threshold means a different distance on every field length.
+
 - ~~**N1** Organic/full-text search execution.~~ **Promoted into scope** — see R37–R47 and plan W14. `[Search]`
   already makes a field indexed for search; W14 makes something actually query it.
 - **N2** `Reduce` / map-reduce, multi-map, `AdditionalSources`, spatial, suggestions, term vectors.

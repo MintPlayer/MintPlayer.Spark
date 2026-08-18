@@ -186,6 +186,63 @@ the two overloads).
 So the "empty term is a no-op" requirement cannot be delegated to RavenDB: without an explicit guard, clearing
 the search box silently empties every grid.
 
+### S10 — can we offer fuzzy search (`EditDistance = 2`)? **FAILED — and the blocker is the engine, not the API**
+
+Spiked because it is the obvious next question once search is pushed down. The answer is no, for a reason that
+would not have been found by reading the API surface.
+
+**Corax does not support fuzzy at all.** Every `Fuzzy` query against a Corax index, at every similarity value, on
+both analyzed and plain fields, returned the same server-side error:
+
+```
+Raven.Client.Exceptions.InvalidQueryException: Method 'Fuzzy' is not supported.
+Query: from index 'Cars/Fuzzy' where fuzzy(Model = $p0, 0.5)
+   at ...Persistence.Corax.CoraxQueryBuilder.ToCoraxQuery(...)
+```
+
+The *client* emits valid RQL; the *server* refuses it. Corax is the 7.x default and is what generated indexes get,
+so fuzzy is not a query-side feature Spark can add — it is an **index-definition** decision
+(`SearchEngineType = SearchEngineType.Lucene`, measured to work per-index against a Corax-default server). A
+fuzzy toggle on a query therefore cannot be honoured on an index that was not built for it, and a fuzzy leg
+reaching a Corax index fails as a 500, not as a degraded result.
+
+**Second, independent blocker: `Fuzzy` is document-query-only.** It hangs off `IDocumentQueryBase<T,TSelf>` /
+`IAbstractDocumentQuery<T>`; there are **zero** `IQueryable` extension methods for it in the 7.2.5 assembly and no
+`ToQueryable()` back-conversion. It is also positionally fragile — it must come *immediately* after a
+`WhereEquals`, and anything else throws `InvalidOperationException: Fuzzy can only be used right after Where
+clause with equals operator` (measured for `Search`, `WhereStartsWith`, and a second `Where`).
+
+The `ToAsyncDocumentQuery()` bridge looked like a shortcut and is not: it survives a single lone `Where` plus
+`Include`, but **a second `Where` — i.e. row security, which Spark always adds — or `OrderBy`/paging makes the
+positional guard reject it.** Measured in all three orderings.
+
+Lucene-only behaviour, recorded in case this is ever revisited:
+
+- Similarity is `1 − editDistance / min(len)` with **strict** `>`, matching Lucene 3.x classic `FuzzyQuery`. So a
+  fixed similarity is **not** a fixed edit distance: "distance 2" is 0.6 on a 5-char term and 0.9 on a 20-char
+  one. An `EditDistance` knob must be translated per term as `1 − d/len − ε`.
+- Valid range is `[0.0, 1.0)`. Outside it throws `ArgumentOutOfRangeException` client-side (no clamping), and
+  exactly `1.0` passes the client then fails on the wire with `minimumSimilarity >= 1`.
+- Edit distance is **not** capped at 2 — distance-3 and distance-4 misspellings both matched at low thresholds.
+- **`~` is a literal, not an operator.** `"volkswagon~2"` does not match; the decisive control is that
+  `"volkswagen~"` (correct spelling) *does* match, because StandardAnalyzer discards the `~` as punctuation. There
+  is no `~` back door into fuzzy from a search string.
+- **Fuzzy + wildcard is the dangerous combination.** `*volkswagon*` "matched" only because the two `*` count as
+  literal **edits** (3 edits over min-len 10 = 0.7 > 0.5), while `volks*` silently vanished (5 edits over min-len
+  6 = 0.167). So wildcards eat the edit budget and the threshold becomes meaningless. Any fuzzy path must strip
+  wildcards first — which makes it mutually exclusive with W14's substring-parity wrapping.
+- **Multi-word fuzzy on an analyzed field matches nothing, even spelled correctly** — fuzzy treats the query as
+  one term and an analyzed field holds no multi-word terms. A fuzzy feature would have to tokenize the input
+  itself and emit one leg per word.
+- Unlike `SearchOptions` (S8), `Fuzzy` does **not** leak onto adjacent clauses — verified with a probe whose
+  neighbouring value was one edit from a real term and correctly did not match.
+
+**The one genuinely useful finding**, if this is ever picked up: fuzzy works **whole-value on plain
+default-indexed fields**, which includes the sort companions `[GenerateIndex]` already emits — no `[Search]`
+needed. A narrow feature (one field, whole-value, Lucene index, document query built entirely by Spark rather
+than composed onto a caller's queryable) would avoid the expression-tree translation problem. That is a separate
+issue, not W14.
+
 ---
 
 ## W1 — Attributes and symbol helpers
