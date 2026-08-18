@@ -47,8 +47,14 @@ version has four documented silent failure modes when a step is missed — null 
 ## F1 — Sort fields are the real motivation, and they are undiscoverable
 
 A string field indexed `FieldIndexing.Search` is analyzed and tokenized. Ordering on it is therefore
-meaningless, and the repo's own guide already records the collateral damage: `Search` indexes can
-produce duplicate results, which `QueryExecutor` papers over with `DistinctBy(po => po.Id)`.
+meaningless.
+
+> **Correction to an existing repo claim.** `docs/guide-queries-and-sorting.md` states that
+> `FieldIndexing.Search` indexes can produce duplicate results, which is why `QueryExecutor` applies
+> `DistinctBy(po => po.Id)`. Spike S6 could not reproduce that: every query over a `Search`-indexed field,
+> including `order by` on it, returned exactly one row per document. Duplicates come from **fan-out** maps
+> (`SelectMany` over a collection), not from the analyzer. The `DistinctBy` is still correct — it just
+> guards a different hazard than the docs say. W10 corrects the guide.
 
 Any string whose value **might contain spaces** needs a second, un-analyzed companion field to sort
 and filter on. In Vidyano apps the developer declares this once and the framework does the rest. In
@@ -72,8 +78,27 @@ it is counter-intuitive:
 | `ModelSort` (companion) | *none declared* → `FieldIndexing.Default` | single lower-cased term, not tokenized | yes |
 
 So the companion is created simply by **mapping the value into a second field and leaving it alone**.
-Adding `FieldIndexing.Exact` to it would be wrong-by-cargo-cult: it is unnecessary, and it changes
-case sensitivity relative to the default analyzer.
+
+**Measured in S6, not assumed.** Indexing the same value three ways and dumping the stored terms:
+
+| Field | Declared as | Terms stored |
+|---|---|---|
+| `Model` | `FieldIndexing.Search` | 17 terms — `<volkswagen> <golf> <gti> <audi> <a4> …` |
+| `ModelSort` | *undeclared* | 10 terms, lower-cased, whitespace preserved — `<volkswagen golf gti>` |
+| `ModelExact` | `FieldIndexing.Exact` | 10 terms, case preserved — `<Volkswagen Golf GTI>` |
+
+Ordering by `Model` is garbage exactly as predicted. Ordering by the undeclared companion is correct and
+**case-insensitive** (`alfa romeo` < `Audi A4` < `audi a4 lowercase`, and `Zeta One` < `ZZ Top`).
+
+And adding `FieldIndexing.Exact` to the companion is not merely redundant — it is a **behaviour
+regression on both sort and filter**. Ordering becomes case-sensitive ordinal, so every capitalised value
+sorts before every lowercase one and `ZZ Top` overtakes `Zeta One`; and equality changes silently, with
+`ModelExact = 'audi a4'` returning **0 rows** where `ModelSort = 'Audi A4'` returns 1. Leaving the
+companion undeclared is genuinely correct, not cargo-cult.
+
+One consequence worth knowing: RavenDB indexes sentinel terms `NULL_VALUE` and `EMPTY_STRING` and sorts on
+those literals, so on a lower-cased companion **nulls and empties sort before every real value**. If a UI
+wants them last, that must be arranged explicitly; it is not free.
 
 The reference app also queries `*Sort` fields directly for equality and prefix matching
 (`x.Name == name || x.NameSort == name`, `x.FullNickNameSort.StartsWith(...)`) in several importers,
@@ -84,16 +109,35 @@ including interpolated strings, `??` chains, ternaries and security masks. There
 no lower-casing, no trimming, no accent stripping, no culture handling. Spark should match this;
 inventing normalization would make the sort field disagree with the value the user sees.
 
-## F2 — `TranslatedString` cannot be indexed or sorted at all today
+## F2 — `TranslatedString` is indexable, and the obvious worry about it was unfounded
 
-`TranslatedString` is a `Dictionary<string, string>` serialized flat (`{"en":..,"fr":..,"nl":..}`) and
-classified as a first-class scalar `dataType: "TranslatedString"` in the model. Fleet's
-`Car.Description` is a live example.
+`TranslatedString` is a `Dictionary<string, string>` classified as a first-class scalar
+`dataType: "TranslatedString"` in the model. Fleet's `Car.Description` is a live example.
 
-RavenDB cannot sort or search a dictionary field usefully. What is needed is one flattened property
-per language — `Description_en`, `Description_fr`, `Description_nl` — plus a sort companion for each.
-Writing that by hand is six properties and six index lines per translated field, per entity, and it has
-to be revisited whenever a language is added.
+**Corrected by spike S6.** The initial reading of this PRD was that `TranslatedString` persists *flat*
+(`{"en":..,"nl":..}`) because `TranslatedStringJsonConverter` emits that shape, which would put the CLR
+path and the stored JSON path in conflict and make a generated index field silently null. That is wrong:
+the converter is a **System.Text.Json** converter and therefore applies only at the HTTP /
+`PersistentObject` layer. RavenDB persists through **Newtonsoft**, where only
+`ColorNewtonsoftJsonConverter` is registered. Measured raw JSON from the server:
+
+```json
+{"Id":"SpikeCars/1-A","LicensePlate":"1-AAA-111",
+ "Description":{"Translations":{"en":"Alpha with spaces","nl":"Zebra met spaties"}}}
+```
+
+The stored path is `Description.Translations.nl`, so the CLR expression `x.Description.Translations["nl"]`
+is exactly correct. RavenDB's server-side `DynamicBlittableJson` supports the dictionary indexer natively
+and stores the map verbatim without rewriting it, so a strongly-typed map expression is all that is
+needed — no raw index definition, no `AdditionalSources`, no dynamic fields.
+
+What is still needed is one property per language — `Description_en`, `Description_fr`, `Description_nl` —
+plus a sort companion for each. By hand that is six properties and six map lines per translated field, per
+entity, revisited whenever a language is added.
+
+Measured robustness: a document whose `Translations` lacks the key, and one whose `Description` is null,
+both index to `null` — no `KeyNotFoundException`, no index error, index state Normal. Space-containing
+values sort correctly, and both `==` and `StartsWith` work against the generated field.
 
 **Constraint discovered:** the supported-language set lives in `App_Data/culture.json`, read at
 runtime by the `CultureLoader` DI singleton. A source generator has no DI and cannot see it. The
@@ -298,6 +342,29 @@ So the lean library generator needs nothing invented. Confirmed details that are
   `libs/all_features/MintPlayer.Spark.AllFeatures/Targets/spark-allfeatures.targets`, which injects
   analyzer `ProjectReference`s itself precisely because they do not flow transitively.
 
+## F13 — Generated per-language fields are coupled to the absence of a Newtonsoft converter
+
+This follows directly from F2 and is the most dangerous thing S6 turned up, because it is a trap for a
+future maintainer rather than a problem today.
+
+`TranslatedString` persists nested (`Description.Translations.nl`) purely because no Newtonsoft converter
+is registered for it. If someone later adds one — and there is an entirely reasonable-sounding motive,
+"make persistence consistent with the API shape" — then **every generated per-language index field
+silently becomes null.** Measured: no deploy failure, no index error, index state Normal, correct row
+counts, empty values.
+
+That is the same silent-null class as R10a and the four failure modes in the Origin section, and it cannot
+be caught by any gate that exists: the model hash does not change, `--spark-verify-model` passes, and the
+index reports healthy.
+
+Mitigations, both cheap:
+
+- **R28** A comment on `TranslatedStringJsonConverter` recording that it is System.Text.Json only, that
+  RavenDB persistence deliberately uses the nested Newtonsoft shape, and that generated index fields depend
+  on that.
+- **R29** A test that asserts the **stored** RavenDB JSON for a `TranslatedString` is nested, so adding a
+  Newtonsoft converter fails a test instead of silently emptying indexes.
+
 ---
 
 ## Requirements
@@ -306,7 +373,7 @@ So the lean library generator needs nothing invented. Confirmed details that are
 
 - **R1** `GenerateIndexAttribute` in `MintPlayer.Spark.Abstractions`, `AttributeTargets.Class`,
   `AllowMultiple = false`. **One constructor, `()`**, for an entity index. Named properties:
-  `IndexName`, `ViewName`, `Description`. Nothing else — the Vidyano surface offers several redundant
+  `IndexName`, `IndexEntityName`, `Description`. Nothing else — the Vidyano surface offers several redundant
   ways to say the same thing and that is not carried over. The fan-out overload
   `(Type root, params string[] paths)` is deliberately **not** declared yet (N6): shipping a
   constructor that silently generates nothing is exactly the failure mode F5 exists to prevent.
@@ -357,10 +424,16 @@ So the lean library generator needs nothing invented. Confirmed details that are
   must be reproduced exactly. Reference-typed fields never get a companion, and searchability is **not
   inherited through a reference**: a referenced entity's own `[Search]` does not make the flattened
   field searchable.
-- **R10** For a `TranslatedString` property `Description`, emit one flattened `string?` property per
-  language from `culture.json` (`Description_en`, `Description_fr`, `Description_nl`), each mapped from
-  the dictionary, and — when `[Search]` is present — a `{Field}_{lang}Sort` companion per language.
-  Novel design, no prior art (F9); sequenced last.
+- **R10** For a `TranslatedString` property `Description`, emit one `string?` property per language from
+  `culture.json` (`Description_en`, `Description_fr`, `Description_nl`), each mapped as
+  `x.Description!.Translations["<lang>"]` — the expression RavenDB stores verbatim and evaluates natively
+  against `Description.Translations.<lang>` (F2). When `[Search]` is present, add a `{Field}_{lang}Sort`
+  companion per language. Novel design, no prior art (F9); sequenced last.
+- **R10a** `StoreAllFields(FieldStorage.Yes)` is **mandatory** on every generated index, not merely
+  conventional. S6 measured the failure: without it, a projection-only field such as `Description_nl` comes
+  back `null` while fields that also exist on the document materialize fine from the document, and
+  `OrderBy`/`Where` still work — so the index is provably correct and the projection is silently empty.
+  This is the single most likely way a generated index could appear broken.
 - **R11** The generated view must **never** emit a property whose name equals an entity property but
   whose type differs. For a `TranslatedString` entity property this means no `string?` property named
   `Description`. SPARK001 would be an error, and although it does not analyze generated code per F4,

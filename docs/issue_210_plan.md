@@ -34,20 +34,20 @@ everything else.
 Three unknowns are load-bearing enough that a negative result changes the shape of the work. All three
 are run before W1.
 
-### S1 — is the sort companion actually sortable without an `Index(...)` call?
+### S1 — is the sort companion actually sortable without an `Index(...)` call? PASSED
 
-**The premise of the entire feature.** PRD F1 claims a field with no explicit indexing gets
-`FieldIndexing.Default`, stays a single un-tokenized term, and therefore sorts correctly, while its
-`FieldIndexing.Search` sibling does not.
+**The premise of the entire feature**, and it holds. Run together with S6 against the live server.
 
-If that is wrong — if the default analyzer also tokenizes, or if `StoreAllFields` alone does not make
-the field sortable — then the companion needs explicit `FieldIndexing.Exact` and R8 changes, along with
-the case-sensitivity behaviour that follows.
+Ordering by a `Search`-indexed field is garbage; ordering by an undeclared companion is correct and
+case-insensitive; and adding `FieldIndexing.Exact` to the companion is a measurable regression on *both*
+sort and equality, not just redundant. Stored terms, orderings and the case-sensitivity result are in PRD
+F1.
 
-Method: a `SparkTestDriver`-based integration test with one hand-written index over documents whose
-values contain spaces (`Volkswagen Golf GTI`, `Audi A4`, `alfa romeo`). Assert that ordering by the
-`Search` field is wrong and ordering by the companion is correct, and record the case-sensitivity
-observed. This test is kept permanently as the regression guard for the mechanism.
+Two claims were corrected rather than confirmed: `Search` does **not** produce duplicate rows (fan-out
+does), and nulls/empties sort **first** on a lower-cased companion rather than last. Both are recorded in
+PRD F1 and the guide correction is part of W10.
+
+Kept permanently as the regression guard for the mechanism, in `MintPlayer.Spark.Tests`.
 
 ### S2 — referenced-assembly discovery: visibility and cost
 
@@ -96,26 +96,37 @@ single-generator project loaded alongside the main one in every demo app. W12 co
 Confirmed no `ComparerRegistry` collision, packaging fully inherited, and `spark.targets`' SPARK001
 hard-error does not reach an in-repo `*.Library`. Detail in PRD F12.
 
-### S6 — can an index read one language out of a flat-serialized `TranslatedString`?
+### S6 — can an index read one language out of a `TranslatedString`? PASSED, and the premise was wrong
 
-**The gating unknown for R10 / W8, and the only spike whose failure changes a requirement rather than an
-implementation detail.** Run against the live RavenDB on `localhost:8080` in a throwaway database.
+Run against the live RavenDB on `localhost:8080` and re-verified on embedded 7.2.5 — identical results.
 
-`TranslatedString` serializes flat (`{"en":..,"nl":..}`) with no `Translations` wrapper, so the CLR path
-and the JSON path disagree. Candidates tested: the dictionary indexer (does RavenDB translate it to
-`Description.nl` or `Description.Translations.nl`?), dynamic fields via `CreateField`, a raw index
-definition / `AdditionalSources`, and abandoning the dictionary shape for real persisted properties. For
-each: does the field populate through `ProjectInto`, can it be sorted, does a space-containing value sort
-correctly, and are there index errors.
+**The spike's own premise turned out to be false, which is the most useful thing it produced.**
+`TranslatedString` does *not* persist flat: the flat converter is System.Text.Json and applies only at the
+HTTP layer, while RavenDB persists through Newtonsoft as `Description.Translations.nl`. So there is no
+CLR-path-vs-JSON-path conflict, and the straightforward strongly-typed expression is correct:
 
-Index *errors* are the key signal — a Map that cannot be translated often fails there rather than at
-deploy time, which is the silent-null failure mode this whole issue is trying to eliminate.
+```csharp
+Description_nl = c.Description!.Translations["nl"],
+```
 
-The reference implementation offers no guidance here: it maps a `TranslatedString` whole and opaque and
-picks the language at read time, has no dictionary or dynamic-field handling anywhere, and derives map
-expressions from the CLR path only — so pointing a generated index at a converter-flattened field would
-silently yield nulls. Their sanctioned workaround for shape mismatches is a raw expression string. This is
-free design space for Spark, which is why it gets a spike rather than a port.
+RavenDB stores that map verbatim and evaluates the dictionary indexer natively via `DynamicBlittableJson`.
+Populates through `ProjectInto`, sorts correctly with spaces, supports `==` and `StartsWith`, and a missing
+language key or a null `Description` both index to `null` with no exception and no index error.
+
+Rejected with evidence rather than by preference:
+
+- **Dynamic fields (`CreateField`)** satisfy projection and sorting but `Where(==)` returns **0 rows,
+  silently** — terms are stored case-preserved while the query side lower-cases, because a dynamic field has
+  no index-definition entry to consult. Making them work requires declaring `Store` + `Index(..., Exact)`
+  statically, which needs the language names at build time anyway, at which point a plain static field is
+  strictly better.
+- **A raw string map / `AdditionalSources`** works but buys nothing and loses compile-time checking.
+- **Abandoning the dictionary for real per-language properties** is unnecessary; the dictionary indexes
+  fine.
+- **`Description.GetValue("nl")`** deploys happily, produces no index error, and returns null forever —
+  exactly the trap this spike existed to find.
+
+Four distinct silent-null modes were catalogued, all error-free; they drive R10a and PRD F13.
 
 ---
 
@@ -124,7 +135,7 @@ free design space for Spark, which is why it gets a spike rather than a port.
 `libs/spark/MintPlayer.Spark.Abstractions/`:
 
 - `GenerateIndexAttribute.cs` — `[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]`,
-  parameterless ctor, `IndexName` / `ViewName` / `Description`. No fan-out overload (N6).
+  parameterless ctor, `IndexName` / `IndexEntityName` / `Description`. No fan-out overload (N6).
 - `SearchAttribute.cs` — `AttributeTargets.Property`.
 - `IgnoreForIndexAttribute.cs` — `AttributeTargets.Property`, with a docstring stating the difference
   from `[IgnoreProperty]` (index-only exclusion vs model-wide exclusion), following the precedent set by
@@ -271,11 +282,23 @@ attributes package.
 `SparkModelSymbols` is duplicated into the project rather than linked, matching what AllFeatures already
 does and the file's own doc comment.
 
-**Shape deferred to S6.** What these helpers can usefully be — computed properties, real persisted
-properties, or something that feeds a dynamic field — depends entirely on what a RavenDB Map can actually
-read out of a flat-serialized `TranslatedString`. A computed `Description_nl => Description?.GetValue("nl")`
-is the obvious design and is very likely *not* indexable, since the server compiles the Map against raw
-JSON and has no `TranslatedString` type. Writing this milestone before S6 reports would mean guessing.
+**S6 removed this milestone's original justification — open question for the issue owner.** The reason for
+entity-side per-language helpers was that a generated index could not otherwise reach one language of a
+`TranslatedString`. S6 showed it can, directly, with `x.Description!.Translations["nl"]` in the app-side
+index. So W12 is no longer needed to make W8 work.
+
+Two honest options:
+
+1. **Drop W12.** The app-side generator covers indexing and sorting completely. Nothing in issue #210 then
+   goes unimplemented.
+2. **Keep it for a different, still-real job.** Two candidates: per-language helper properties on the entity
+   for *application code* convenience (unrelated to indexing), or emitting sort companions onto hand-written
+   `partial` index-entity classes in projects that keep their indexes in the library — which is how the
+   reference app is actually laid out, and which would make the W11 code fix unnecessary there.
+
+Not deciding this unilaterally: option 2's value depends on whether Spark apps are expected to keep
+hand-written indexes in libraries long-term, which is a product call. Everything else in the plan is
+independent of it.
 
 In-repo consumers get a `ProjectReference … OutputItemType="Analyzer" ReferenceOutputAssembly="false"`;
 external consumers a `PackageReference` with `PrivateAssets="all"` and `analyzers` in `IncludeAssets`. If

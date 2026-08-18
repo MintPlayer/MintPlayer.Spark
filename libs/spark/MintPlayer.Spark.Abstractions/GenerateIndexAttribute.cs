@@ -51,9 +51,9 @@ public sealed class GenerateIndexAttribute : Attribute
     public string? IndexName { get; set; }
 
     /// <summary>
-    /// Overrides the generated projection class name. Defaults to <c>V{EntityName}</c>.
+    /// Overrides the generated index-entity (projection) class name. Defaults to <c>V{EntityName}</c>.
     /// </summary>
-    public string? ViewName { get; set; }
+    public string? IndexEntityName { get; set; }
 
     /// <summary>
     /// Emitted as <c>[Description]</c> on the generated index class. Purely documentary.
