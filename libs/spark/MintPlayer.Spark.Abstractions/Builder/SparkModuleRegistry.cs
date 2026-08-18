@@ -126,18 +126,6 @@ public class SparkModuleRegistry
     }
 
     /// <summary>
-    /// Whether anything is registered for <paramref name="stage"/>.
-    /// <para>
-    /// Exists so <c>UseSpark()</c> can enforce a stage's preconditions only when they actually matter.
-    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/> promises that routing has already run,
-    /// which Spark can check — but an app with nothing registered early is unaffected either way, and
-    /// failing it would be a new hard requirement for no benefit.
-    /// </para>
-    /// </summary>
-    public bool HasMiddleware(SparkMiddlewareStage stage)
-        => middlewareActions.TryGetValue(stage, out var actions) && actions.Count > 0;
-
-    /// <summary>
     /// Runs everything registered for <paramref name="stage"/>, in registration order, and marks the
     /// stage applied so a later <see cref="AddMiddleware"/> for it fails loudly.
     /// <para>

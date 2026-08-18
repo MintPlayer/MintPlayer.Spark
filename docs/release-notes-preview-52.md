@@ -94,28 +94,6 @@ endpoint still resolve.
 paths — both are now configuration. Delete the manual call, and read the next section for why leaving
 it in is worse than redundant.
 
-### Misordered routing is now detected
-
-Only when a module registered `BeforeAuthentication` middleware — the rate limiter does.
-
-Spark has always documented `UseSpark()` as "call after `UseRouting()`", but nothing enforced it. With
-the limiter now at the top of the pipeline, getting the order wrong places it ahead of endpoint
-selection, where endpoint-attached rate-limiting metadata silently stops applying.
-
-Spark now verifies this **at request time, using only public API**: if no endpoint was selected when
-the stage ran but one is present once the request returns, routing is downstream. The first such
-request logs a critical message; the next fails with an `InvalidOperationException` naming the fix.
-
-This is checked at request time rather than at startup on purpose. Whether routing has been added
-cannot be read from `IApplicationBuilder` through any public API, and the private ASP.NET property keys
-that would hint at it are both brittle — a rename would stop every app that opted in — and wrong:
-minimal hosting inserts routing while the pipeline is built, so at `UseSpark()` time a correct app is
-indistinguishable from a broken one.
-
-**Minimal hosting is unaffected** and needs no special handling: routing is inserted at the front, an
-endpoint is already selected, and the check settles on the first request. An app with no early
-middleware is never checked at all.
-
 ### Do not combine with a manual `app.UseRateLimiter()`
 
 The old doc comment said "no separate `app.UseRateLimiter()` call needed", which read as *harmless if

@@ -10,9 +10,9 @@ order it was built in. Three independent deliverables from one issue, touching d
 | | Work | Requirements |
 |---|---|---|
 | W1 | `PathPrefixes` on `SparkRateLimiterOptions` | R1–R5 |
-| W2 | Middleware stages, the limiter ahead of authentication, and the ordering guard | R6–R11 |
-| W3 | `SparkTestDriver.RequireLicense` | R12, R13 |
-| W4 | Guide, release notes, version bump | R14, R15 |
+| W2 | Middleware stages and the limiter ahead of authentication | R6–R10 |
+| W3 | `SparkTestDriver.RequireLicense` | R11, R12 |
+| W4 | Guide, release notes, version bump | R13, R14 |
 
 Two spikes settled load-bearing unknowns before any of it was written; both are recorded because a
 negative result on either would have changed the shape of the work.
@@ -88,7 +88,7 @@ on its own terms; `"/"` plus a real prefix accepted.
 Path scoping is a per-request decision inside the partition factory, so those tests boot a `TestServer`
 pipeline and read status codes back rather than asserting against DI.
 
-## W2 — Stages, placement, and the ordering guard (R6–R11)
+## W2 — Stages and placement (R6–R10)
 
 **Files:** `libs/spark/MintPlayer.Spark.Abstractions/Builder/SparkMiddlewareStage.cs` (new),
 `SparkModuleRegistry.cs`, `libs/spark/MintPlayer.Spark/SparkMiddleware.cs`,
@@ -102,7 +102,6 @@ pipeline and read status codes back rather than asserting against DI.
   `CreateSparkIndexes`.
 - `ApplyMiddleware(app, stage)` — stage required, no default (R9). Applied-once guard per stage;
   `AddMiddleware` into an already-applied stage throws (R8).
-- `HasMiddleware(stage)` — so the ordering guard is installed only when it can matter.
 - `UseSpark` applies `BeforeAuthentication` as its **first** statement, ahead of the `UseAuthentication`
   branch; the pre-existing final call becomes `ApplyMiddleware(app, AfterSpark)` at exactly the same
   position, so nothing that was correct behind authentication moves.
@@ -111,29 +110,29 @@ pipeline and read status codes back rather than asserting against DI.
   middleware sits and why, and warns that combining it with a manual `UseRateLimiter()` double-charges
   every request for half the configured budget with no error — and that Spark cannot detect this (R10).
 
-### The ordering guard (R11)
+### The routing-order requirement is a contract, not a check
 
-`BeforeAuthentication` promises routing has already run; that is what makes endpoint-attached
-`[EnableRateLimiting]` / `[DisableRateLimiting]` resolve. `UseSpark` has always been documented as "call
-after `UseRouting()`", and documentation is not enforcement.
+`BeforeAuthentication` assumes routing has already run, which is what makes endpoint-attached
+`[EnableRateLimiting]` / `[DisableRateLimiting]` resolve. `UseSpark` has documented "call after
+`UseRouting()`" all along, and that is where it stays. **No runtime validation ships.**
 
-**It is verified at request time, not at startup, and uses no ASP.NET internals** — the reasoning is PRD
-D7, and the short version is that the startup question is unanswerable, not merely awkward. Measured
-across all four combinations:
+A guard was built and removed; PRD D7 carries the reasoning. The three points that decided it:
 
-| Pipeline | matched path | unmatched path |
-|---|---|---|
-| `UseRouting()` before | before=set, after=set → **no fault** | null/null → **no fault** |
-| `UseRouting()` after | before=null, after=set → **fault** | null/null → **no fault** |
+- Spark's limiter is a `GlobalLimiter` and Spark declares no rate-limiting endpoint metadata, so Spark's
+  own behaviour never depended on routing order. Only the *app's* attributes on the *app's* endpoints do.
+- `UseRouting()` is outside `UseSpark()`, so **the placement change did not affect the exposure**. Moving
+  the limiter from the end of `UseSpark` to the start changed its side of *authentication*, not of
+  *routing*; both positions sit on the same side of routing in either ordering.
+- `UseAuthorization`, which `UseSpark` also calls, carries the identical requirement for `[Authorize]` — a
+  worse silent failure, unvalidated by ASP.NET and by Spark. Guarding the milder case alone is incoherent.
 
-`UseRoutingOrderGuard` adds one middleware immediately ahead of the stage, only when
-`HasMiddleware(BeforeAuthentication)`. The first offending request logs critical and arms; the next throws
-before calling `next`, so the failure lands on a request whose response has not started. State is captured
-per `UseSpark` call rather than static, so multiple hosts in one process — every test run — cannot
-contaminate each other. Once an endpoint is observed upstream the middleware settles and only forwards.
-
-Minimal hosting passes **structurally** rather than by special case: `WebApplication` inserts routing at
-the front of the pipeline, so an endpoint is already selected and the check settles on the first request.
+And the framing that generalises: **ordering is a compile-time property, so it belongs to an analyzer.**
+ASP.NET's own `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do not validate
+their own order; the installed ASP.NET analyzers (6.0/8.0/10.0 ref packs, `ASP0003`–`ASP0029`) do not
+either, but that is the vehicle such a rule would use. Spark already ships
+`MintPlayer.Spark.SourceGenerators` with `SPARK001`–`SPARK003`, so a `UseSpark`-before-`UseRouting`
+diagnostic could live there — reported at the mistake, with no runtime cost and no framework internals.
+Left as a possible follow-up, deliberately out of scope for #265.
 
 ### Collateral, all in tests and all intended
 
@@ -151,13 +150,13 @@ hook without the idempotency assertions noticing, and "wired exactly once" is a 
 rather than one bucket of it. The reflection stays: that test avoids *running* the action on purpose,
 since `SparkMigrationRunner.RunAtStartup` needs a live document store.
 
-## W3 — `SparkTestDriver.RequireLicense` (R12, R13)
+## W3 — `SparkTestDriver.RequireLicense` (R11, R12)
 
 **Files:** `libs/testing/MintPlayer.Spark.Testing/SparkTestDriver.cs`
 
 - The static constructor calls `ConfigureServer` **unconditionally**; `Licensing` carries the licence when
   one is found and `ThrowOnInvalidOrMissingLicense = false` when none is. An invalid licence is still
-  supplied and still validated, so R13 holds with no extra code.
+  supplied and still validated, so R12 holds with no extra code.
 - `protected virtual bool RequireLicense => true`, consulted at `InitializeAsync` to gate
   `LicenseHelper.EnsureAvailable()`.
 - The doc comment states the split plainly (PRD D4): this gates *the fixture's* hard failure, not the
@@ -181,7 +180,7 @@ The second is the one that matters — it proves the opt-in did not quietly rela
 coverage for the licence-less path is a fork CI run, which genuinely has no licence and is the exact
 scenario the option exists for.
 
-## W4 — Guide, release notes, version (R14, R15)
+## W4 — Guide, release notes, version (R13, R14)
 
 - `docs/guide-rate-limiting.md`, linked from the README's guide table.
 - `docs/release-notes-preview-52.md`, following the `preview-42` precedent and leading with the two
@@ -201,16 +200,12 @@ verified by reading and by a clean solution-wide `dotnet build`.
 
 **`MintPlayer.Spark.Tests` — 1491 passed, 0 failed.**
 
-Three checks aimed at whether the work could be *fake* rather than at coverage:
+Two checks aimed at whether the work could be *fake* rather than at coverage:
 
 - **The placement test discriminates.** Re-run with the limiter put back on `AfterSpark`,
   `A_rate_limited_request_is_rejected_before_authentication_runs` **fails**. It asserts that a 429 costs no
   credential validation — behaviour, not a stage constant. A test passing on both placements would repeat
   #258's F3, where a negative assertion held because the feature was entirely dead.
-- **The ordering-guard test discriminates.** Re-run with arming disabled,
-  `Routing_after_UseSpark_is_detected_and_then_refused` **fails**. An earlier draft of it asserted through
-  `ApplyMiddleware`, which never invokes the guard, and would have passed against broken code — caught by
-  running exactly this check.
 - **The licence opt-in did not relax the default**, per W3 above.
 
 `RateLimitTests` (E2E, Fleet) was **not** run locally — it needs a live host, and CI covers it. It is the

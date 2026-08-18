@@ -196,11 +196,10 @@ in preview.
 | R8 | `AddMiddleware` for a stage that has already been applied **throws**. Registering too late was a silent no-op, and has bitten this repo before — `AddIndexAssembly`'s doc comment records the same class of bug. |
 | R9 | `ApplyMiddleware` takes the stage explicitly, with **no default** — a defaulted parameter would let a caller apply one stage and silently drop the other, which is the exact failure R8 exists to prevent. |
 | R10 | The misleading `UseRateLimiter` remark is replaced by an explicit warning naming the consequence (double lease, half budget) and stating that Spark cannot detect it (D3). |
-| R11 | A misordered pipeline — routing running *after* `BeforeAuthentication` middleware — fails rather than silently degrading to global-only metering. Detected using **only public API** (D7), and gated on something actually being registered at that stage, since an app with no early middleware cannot be affected. |
-| R12 | `SparkTestDriver.RequireLicense` — `protected virtual`, default `true`. When `false`, a missing licence no longer fails the fixture. |
-| R13 | An **invalid** licence still fails loudly regardless of `RequireLicense`. |
-| R14 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place, linked from the README. |
-| R15 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change for every app already opted in. |
+| R11 | `SparkTestDriver.RequireLicense` — `protected virtual`, default `true`. When `false`, a missing licence no longer fails the fixture. |
+| R12 | An **invalid** licence still fails loudly regardless of `RequireLicense`. |
+| R13 | `docs/guide-rate-limiting.md` — the configuration surface, the placement, and the do-not-combine warning in one place, linked from the README. |
+| R14 | Release notes name both breaking changes (`ApplyMiddleware`'s signature, `AddMiddleware`'s new throw) and the placement move as a behaviour change for every app already opted in. |
 
 ## Decisions
 
@@ -238,26 +237,34 @@ an API-only app that wants everything metered writes `["/api"]`, which cannot be
 defensible is the original behaviour, where `"/"` normalized to empty and was reported as "you named no
 prefixes" — wrong for a caller who named exactly one.
 
-**D7 — the routing precondition is verified at request time, using no ASP.NET Core internals.** The
-obvious implementation is a startup check, and it cannot be made correct. Whether routing has been
-*added* is not the question; whether it *runs before this position* is — and minimal hosting inserts
-routing while the pipeline is being built, after `UseSpark()` has returned, so at startup a correctly
-ordered minimal-hosting app is indistinguishable from a broken one. The only startup-time signals are
-private ASP.NET property keys (`__EndpointRouteBuilder`, `__GlobalEndpointRouteBuilder`), which are both
-brittle — an upstream rename would stop every app that opted in — and, per the above, unable to answer
-the question anyway.
+**D7 — the routing-order requirement is a contract, not a check.** A guard was built and then removed.
+The reasoning for removing it is the useful part:
 
-A request can answer it with public API alone: an endpoint absent when the stage ran and present once
-the request returned proves routing is downstream. That needs no hosting-model branch and cannot misfire
-on a path the app does not serve, since a 404 has no endpoint either side. `IEndpointFeature` was
-evaluated as an alternative and rejected — it is always present, so its absence proves nothing.
+- Spark's limiter is a `GlobalLimiter` and Spark declares no rate-limiting endpoint metadata anywhere, so
+  Spark's own behaviour does not depend on routing order at all. The only thing harmed by a pre-routing
+  placement is the *app's* `[DisableRateLimiting]` / named policies on the *app's* endpoints.
+- **The placement change did not create or worsen the exposure.** `UseRouting()` lives outside
+  `UseSpark()`, so the limiter is on the same side of routing as the rest of `UseSpark` in either ordering.
+  Moving it from the end of `UseSpark` to the start changed its side of *authentication*, not of *routing*.
+- `UseSpark` calls `UseAuthorization` unconditionally, which carries the identical requirement for
+  `[Authorize]` — a strictly more severe silent failure. Neither ASP.NET nor Spark validates that at
+  runtime. Guarding the limiter while leaving that unguarded is not a coherent safety story.
+- **Middleware ordering is a build-time property, so it belongs to a build-time tool.** ASP.NET's own
+  `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do not check their own order;
+  ordering rules are expressed as analyzers instead. That is the right vehicle for this too. Spark already
+  ships an analyzer project (`MintPlayer.Spark.SourceGenerators`, diagnostics `SPARK001`–`SPARK003`), so a
+  `UseSpark`-before-`UseRouting` rule could live there as a compile-time diagnostic if it is ever wanted —
+  reported where the mistake is, with no runtime cost and no dependence on framework internals.
 
-Accepted cost: the fault surfaces on the first *matched* request rather than at startup.
-
-**D8 — that check fails closed rather than warning.** The failure it catches is silent, and a warning in
-startup logs is precisely what nobody reads — the same reasoning that makes D3's doc note worth writing.
-The first offending request logs critical and arms; the next throws *before* calling `next`, so the
-error lands on a request whose response has not started.
+Recorded because two runtime implementations were tried and both were wrong, and the second failure is the
+generalisable one: **whether routing has run cannot be determined from inside the pipeline being built.** No public API
+on `IApplicationBuilder` answers it; the private markers (`__EndpointRouteBuilder`,
+`__GlobalEndpointRouteBuilder`) are brittle *and* give the wrong answer, because minimal hosting inserts
+routing while the pipeline is being built — after `UseSpark()` has returned — so a correct minimal-hosting
+app is indistinguishable from a broken one. `IEndpointFeature` is no help either: it is always present, so
+its absence proves nothing. The only sound *runtime* detection is per request (an endpoint absent before
+`next` and present after proves routing is downstream), which works but was not worth its keep — and, per
+the last bullet above, is answering a compile-time question at run time in the first place.
 
 ## Out of scope
 

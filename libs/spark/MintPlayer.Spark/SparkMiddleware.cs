@@ -132,82 +132,6 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// Detects — and then refuses — a pipeline where routing runs <em>after</em>
-    /// <see cref="SparkMiddlewareStage.BeforeAuthentication"/> middleware, which is the one ordering
-    /// that makes that stage quietly do less than it was configured to: no endpoint is selected yet,
-    /// so endpoint-attached metadata such as <c>[EnableRateLimiting]</c> / <c>[DisableRateLimiting]</c>
-    /// is invisible and metering silently falls back to global-only.
-    /// <para>
-    /// Deliberately observed at request time rather than guessed at startup. Whether routing has been
-    /// added is not answerable from <see cref="IApplicationBuilder"/> through any public API — the only
-    /// startup-time signals are private ASP.NET Core property keys, and keying a hard startup failure
-    /// to those means a future rename stops every Spark app that opted in. Worse, they cannot even
-    /// answer the question correctly: minimal hosting inserts routing at the front of the pipeline
-    /// while it is built, so at this point in <c>UseSpark</c> a correctly-ordered app can look
-    /// identical to a broken one.
-    /// </para>
-    /// <para>
-    /// What a request can answer, using only public API, is the actual question: was an endpoint
-    /// absent when this position ran and present once the request came back? That means routing sits
-    /// downstream of here. It is proof rather than inference, it needs no knowledge of hosting model,
-    /// and it cannot false-positive on an unmatched path — a 404 has no endpoint either side.
-    /// </para>
-    /// <para>
-    /// The first offending request logs and arms; the next one throws before doing any work, so the
-    /// failure lands on a request whose response has not started. State is per-<c>UseSpark</c> call,
-    /// not static, so hosts in one process (a test run) cannot contaminate each other.
-    /// </para>
-    /// </summary>
-    private static void UseRoutingOrderGuard(IApplicationBuilder app)
-    {
-        var logger = app.ApplicationServices.GetService<ILoggerFactory>()
-                        ?.CreateLogger("MintPlayer.Spark.MiddlewareOrder");
-        var misordered = false;
-        var settled = false;
-
-        app.Use(async (context, next) =>
-        {
-            if (misordered)
-            {
-                throw new InvalidOperationException(
-                    "Spark middleware registered for the " +
-                    $"'{nameof(SparkMiddlewareStage.BeforeAuthentication)}' stage — the Spark rate " +
-                    "limiter does this — is running before routing, so no endpoint is selected when it " +
-                    "executes and endpoint-attached metadata such as [EnableRateLimiting] / " +
-                    "[DisableRateLimiting] is silently ignored. Call app.UseRouting() before " +
-                    "app.UseSpark().");
-            }
-
-            if (settled)
-            {
-                await next(context);
-                return;
-            }
-
-            var endpointBefore = context.GetEndpoint();
-            await next(context);
-
-            if (endpointBefore is not null)
-            {
-                // Routing already ran upstream. Nothing further to observe, ever.
-                settled = true;
-                return;
-            }
-
-            if (context.GetEndpoint() is not { } selected)
-                return; // Unmatched path — says nothing either way; keep watching.
-
-            misordered = true;
-            logger?.LogCritical(
-                "app.UseSpark() was called before app.UseRouting(): routing selected endpoint {Endpoint} " +
-                "only after Spark's BeforeAuthentication middleware had already run, so endpoint-level " +
-                "rate-limiting metadata is being ignored. Move app.UseRouting() above app.UseSpark(); " +
-                "the next request will fail until you do.",
-                selected.DisplayName);
-        });
-    }
-
-    /// <summary>
     /// Reads the host environment at <em>registration</em> time, without building a provider.
     /// <para>
     /// The web host registers its environment as a singleton instance, so it can be read straight
@@ -257,19 +181,11 @@ public static class SparkExtensions
         // limiter above all. No credential has been validated yet, so nothing at this stage may read
         // the principal.
         //
-        // The stage's contract is that routing has already run, so endpoint metadata resolves and
-        // endpoint-attached policies still apply. UseSpark is documented as "call after UseRouting()",
-        // but documentation is not enforcement: an app that calls UseSpark first gets a limiter placed
-        // ahead of routing, where [EnableRateLimiting]/[DisableRateLimiting] silently stop applying and
-        // metering quietly falls back to global-only. That is the same shape of failure this stage
-        // exists to remove — a rate limiter doing less than it was configured to — so it is checked
-        // rather than trusted.
-        //
-        // Checked only when something is actually registered early: an app with no such middleware is
-        // unaffected by the ordering, and failing it would impose a new requirement for no benefit.
-        if (registry.HasMiddleware(SparkMiddlewareStage.BeforeAuthentication))
-            UseRoutingOrderGuard(app);
-
+        // Like everything in UseSpark, this stage assumes the app called UseRouting() first (see the
+        // method's doc comment), so endpoint metadata resolves and endpoint-attached policies apply.
+        // That is a contract, not a check: UseRouting lives outside UseSpark, so this stage is on the
+        // same side of routing as the rest of UseSpark either way, and UseAuthorization below carries
+        // the identical requirement for [Authorize] — which ASP.NET Core itself leaves unguarded.
         registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
 
         // Any registered credential is a reason to authenticate, not just Identity. An app whose
