@@ -128,6 +128,36 @@ public class ReferencedAssemblyEntityTests
         result.GeneratedSources.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Nullability, tuple names and friends are encoded as real metadata attributes on a property in a
+    /// referenced assembly, and <c>GetAttributes()</c> returns them beside the author's own. Copying them
+    /// emits <c>[NullableAttribute]</c> explicitly, which is CS8623 — a compile error in the generated file
+    /// that appears only once the entity lives in another assembly, never in source. Found by the real build,
+    /// not by these tests, which is why it gets one.
+    /// </summary>
+    [Fact]
+    public void Compiler_synthesized_metadata_attributes_are_not_copied()
+    {
+        var generated = RunWithLibrary(
+            "namespace Fleet; public class Program { }",
+            librarySource: """
+            using MintPlayer.Spark.Abstractions;
+
+            namespace Fleet.Library.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string? Nullable { get; set; }
+                public string NotNullable { get; set; } = string.Empty;
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().NotContain("Nullable]");
+        generated.Should().NotContain("NullableAttribute");
+        generated.Should().NotContain("System.Runtime.CompilerServices");
+    }
+
     [Fact]
     public void A_nested_entity_in_a_referenced_assembly_is_found()
     {

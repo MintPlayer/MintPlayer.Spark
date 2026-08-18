@@ -87,6 +87,54 @@
         "rules": []
       },
       {
+        "id": "5572b5f2-ee85-4c34-b3fc-f3b5f4a3a444",
+        "name": "Description_en",
+        "label": {
+          "en": "Description_en"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "7a80393d-12c0-40d5-b1f0-c5ffa5e0fc97",
+        "name": "Description_fr",
+        "label": {
+          "en": "Description_fr"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "634d96ca-f1c6-4fd8-b1d0-1edb260f2dac",
+        "name": "Description_nl",
+        "label": {
+          "en": "Description_nl"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
         "id": "a3c1e8f7-5b42-4d19-9e6a-1f8d3c7b2a05",
         "name": "InteriorColor",
         "label": {

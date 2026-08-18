@@ -3,10 +3,27 @@ using MintPlayer.Spark.Abstractions;
 
 namespace Fleet.Entities;
 
+/// <summary>
+/// Demonstrates <see cref="GenerateIndexAttribute"/>: the <c>Cars_Overview</c> index and its <c>VCar</c>
+/// index entity are generated into the <em>Fleet app</em> project, while this entity stays in the lean
+/// library. Nothing here references anything generated — that is what keeps the library free of index types,
+/// so it can be referenced for replication without dragging them along.
+/// </summary>
+[GenerateIndex]
 public class Car
 {
     public string? Id { get; set; }
+
+    /// <summary>
+    /// <see cref="SearchAttribute"/> makes this full-text searchable AND gives it a <c>LicensePlateSort</c>
+    /// companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless,
+    /// and the companion is the repair.
+    /// </summary>
+    [Search]
     public string LicensePlate { get; set; } = string.Empty;
+
+    /// <summary>Searchable, and the reason the companion exists: model names contain spaces.</summary>
+    [Search]
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
     public Color? Color { get; set; }
@@ -25,7 +42,13 @@ public class Car
     /// sets the id, round-trip re-fetch resolves the breadcrumb via the Person
     /// replication collection.
     /// </summary>
+    /// <para>
+    /// <see cref="IgnoreForIndexAttribute"/> keeps it out of the generated index while leaving it a full
+    /// member of the model — the opposite trade-off to <see cref="IgnorePropertyAttribute"/> below. A grid
+    /// never filters or sorts by it, so indexing it would only cost index size and re-indexing work.
+    /// </para>
     [Reference(typeof(Fleet.Replicated.Person))]
+    [IgnoreForIndex]
     public string? Manager { get; set; }
 
     /// <summary>
@@ -34,6 +57,11 @@ public class Car
     /// <c>{ en: "…" }</c> must preserve the existing <c>fr</c> / <c>nl</c> entries rather
     /// than overwriting the whole value.
     /// </summary>
+    /// <para>
+    /// Also demonstrates the <c>TranslatedString</c> fan-out: the generated index cannot sort or search a
+    /// dictionary, so it emits one <c>Description_{lang}</c> field per language in
+    /// <c>App_Data/culture.json</c>, mapped from <c>Description.Translations["{lang}"]</c>.
+    /// </para>
     public TranslatedString? Description { get; set; }
 
     /// <summary>
@@ -42,6 +70,7 @@ public class Car
     /// Demo field: wouldn't necessarily live on the entity in a production app (could be
     /// a metadata field), but keeping it on the entity is the simplest illustration.
     /// </summary>
+    [IgnoreForIndex]
     public string? CreatedBy { get; set; }
 
     /// <summary>

@@ -70,6 +70,13 @@ internal static class AttributeRenderer
             if (Directives.Contains(name)) continue;
             if (!includeReferences && ReferenceAttributes.Contains(name)) continue;
 
+            // Order matters: an UNRESOLVED attribute is an error symbol whose accessibility is NotApplicable,
+            // so the synthesized check below would swallow it. The developer wrote that one and needs to hear
+            // that it was dropped, whereas a compiler-synthesized attribute is noise they never wrote.
+            if (attribute.AttributeClass!.TypeKind != TypeKind.Error
+                && IsCompilerSynthesized(attribute.AttributeClass!))
+                continue;
+
             if (TryRender(attribute, out var text))
                 rendered.Add(text!);
             else
@@ -78,6 +85,24 @@ internal static class AttributeRenderer
 
         return (rendered, unrenderable);
     }
+
+    /// <summary>
+    /// Whether the attribute is one the compiler synthesized rather than something the developer wrote.
+    /// <para>
+    /// Load-bearing for entities in a <strong>referenced assembly</strong>, where nullability, tuple names and
+    /// friends are encoded as real metadata attributes that <c>GetAttributes()</c> returns alongside the
+    /// author's own. Copying them emits <c>[NullableAttribute]</c> explicitly, which is
+    /// <c>CS8623 "Explicit application of NullableAttribute is not allowed"</c> — a compile error in the
+    /// generated file that only appears once the entity is in another assembly, not in source.
+    /// </para>
+    /// <para>
+    /// Also skips non-public attribute types: an <c>internal</c> attribute in another assembly is invisible to
+    /// this compilation and would not resolve.
+    /// </para>
+    /// </summary>
+    private static bool IsCompilerSynthesized(INamedTypeSymbol attributeClass)
+        => attributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"
+        || attributeClass.DeclaredAccessibility != Accessibility.Public;
 
     private static bool TryRender(AttributeData attribute, out string? text)
     {

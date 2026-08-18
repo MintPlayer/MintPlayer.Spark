@@ -31,7 +31,7 @@
 	<ItemGroup>
 		<AdditionalFiles Include="App_Data\translations.json" />
 		<AdditionalFiles Include="App_Data\Model\*.json" />
-		<AdditionalFiles Include="App_Data\culture.json" />
+		<AdditionalFiles Include="App_Data\culture.json" Condition="Exists('App_Data\culture.json')" />
 	</ItemGroup>
 
 	<!-- Angular build during publish -->
