@@ -134,12 +134,23 @@ is on the same side of routing as the rest of `UseSpark` either way — moving i
 changed nothing about that — and `UseAuthorization`, which `UseSpark` also calls, carries the identical
 requirement for `[Authorize]`.
 
-Ordering is a property of the code you wrote, not of a request, so it is analyzer territory — which is how
-ASP.NET handles it. `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseEndpoints` do no runtime
-order checks; the equivalent rule ships as analyzer **`ASP0001`**: *"The call to UseAuthorization should
-appear between app.UseRouting() and app.UseEndpoints(..) for authorization to be correctly evaluated."*
-If Spark ever enforces its own ordering, it will be a compile-time diagnostic alongside
-`SPARK001`–`SPARK003`, not middleware.
+**This is enforced at compile time, by analyzer `SPARK004`.** Get the order wrong and the build warns at
+the `UseSpark()` call:
+
+```
+warning SPARK004: 'UseSpark()' is called before 'UseRouting()'. Endpoint metadata such as [Authorize],
+[EnableRateLimiting] and [DisableRateLimiting] is silently ignored by middleware that runs before
+routing — move 'app.UseRouting()' above 'app.UseSpark()'
+```
+
+Ordering is a property of the code you wrote, not of a request, so it is analyzer territory rather than
+middleware — which is how ASP.NET handles it too: `ASP0001` is the same rule for `UseAuthorization`. Spark
+does no runtime order checking.
+
+`SPARK004` is deliberately quiet when it cannot be certain. It says nothing when `UseRouting()` is absent
+from the body — the correct minimal-hosting shape, and also the case where you configure routing in a
+helper method — and it is a warning rather than an error, so escalate it in `.editorconfig` if you want it
+fatal.
 
 ## Do not also call `UseRateLimiter()`
 

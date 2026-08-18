@@ -94,6 +94,19 @@ endpoint still resolve.
 paths — both are now configuration. Delete the manual call, and read the next section for why leaving
 it in is worse than redundant.
 
+### New analyzer: `SPARK004` — `UseSpark()` must follow `UseRouting()`
+
+Middleware added by `UseSpark` reads endpoint metadata — the rate limiter's `[EnableRateLimiting]` /
+`[DisableRateLimiting]`, and `UseAuthorization`'s `[Authorize]`. Before routing has run no endpoint is
+selected, so all of it is silently ignored. `SPARK004` now catches that at build time, at the `UseSpark()`
+call.
+
+It follows `ASP0001` (the equivalent rule for `UseAuthorization`) in both approach and severity: a warning,
+not an error, and silent whenever it cannot be certain — notably when `UseRouting()` is absent from the
+body, which is the correct minimal-hosting shape. Escalate it in `.editorconfig` to make it fatal.
+
+**No runtime order checking ships.** Ordering is a property of your code, not of a request.
+
 ### Do not combine with a manual `app.UseRateLimiter()`
 
 The old doc comment said "no separate `app.UseRateLimiter()` call needed", which read as *harmless if

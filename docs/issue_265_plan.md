@@ -13,6 +13,7 @@ order it was built in. Three independent deliverables from one issue, touching d
 | W2 | Middleware stages and the limiter ahead of authentication | R6–R10 |
 | W3 | `SparkTestDriver.RequireLicense` | R11, R12 |
 | W4 | Guide, release notes, version bump | R13, R14 |
+| W5 | `SPARK004` — the ordering requirement as a compile-time analyzer | R15 |
 
 Two spikes settled load-bearing unknowns before any of it was written; both are recorded because a
 negative result on either would have changed the shape of the work.
@@ -110,34 +111,12 @@ pipeline and read status codes back rather than asserting against DI.
   middleware sits and why, and warns that combining it with a manual `UseRateLimiter()` double-charges
   every request for half the configured budget with no error — and that Spark cannot detect this (R10).
 
-### The routing-order requirement is a contract, not a check
+### The routing-order requirement moves to an analyzer, not middleware
 
-`BeforeAuthentication` assumes routing has already run, which is what makes endpoint-attached
-`[EnableRateLimiting]` / `[DisableRateLimiting]` resolve. `UseSpark` has documented "call after
-`UseRouting()`" all along, and that is where it stays. **No runtime validation ships.**
-
-A guard was built and removed; PRD D7 carries the reasoning. The three points that decided it:
-
-- Spark's limiter is a `GlobalLimiter` and Spark declares no rate-limiting endpoint metadata, so Spark's
-  own behaviour never depended on routing order. Only the *app's* attributes on the *app's* endpoints do.
-- `UseRouting()` is outside `UseSpark()`, so **the placement change did not affect the exposure**. Moving
-  the limiter from the end of `UseSpark` to the start changed its side of *authentication*, not of
-  *routing*; both positions sit on the same side of routing in either ordering.
-- `UseAuthorization`, which `UseSpark` also calls, carries the identical requirement for `[Authorize]` — a
-  worse silent failure, and no middleware validates it in ASP.NET or in Spark. Guarding the milder case at
-  run time while leaving that alone is incoherent.
-
-And the framing that generalises: **ordering is a compile-time property, so it belongs to an analyzer —
-and ASP.NET already does it that way.** `UseRouting` / `UseAuthentication` / `UseAuthorization` /
-`UseEndpoints` perform no runtime order checks; the rule ships as **`ASP0001`** — *"The call to
-UseAuthorization should appear between app.UseRouting() and app.UseEndpoints(..) for authorization to be
-correctly evaluated"* — in
-`sdk/<ver>/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/Microsoft.AspNetCore.Analyzers.dll`. First-party
-precedent for this exact class of rule, on the exact case above.
-
-Spark already ships `MintPlayer.Spark.SourceGenerators` with `SPARK001`–`SPARK003`, so a
-`UseSpark`-before-`UseRouting` diagnostic could live there — reported where the mistake is written, no
-runtime cost, no framework internals. Left as a possible follow-up, deliberately out of scope for #265.
+`BeforeAuthentication` assumes routing has already run — that is what makes endpoint-attached
+`[EnableRateLimiting]` / `[DisableRateLimiting]` resolve, and what makes `[Authorize]` resolve for the
+`UseAuthorization` call `UseSpark` also makes. **No runtime validation ships.** It is enforced at compile
+time by `SPARK004`; see W5 and PRD D7.
 
 ### Collateral, all in tests and all intended
 
@@ -184,6 +163,49 @@ shell trap guaranteeing restoration:
 The second is the one that matters — it proves the opt-in did not quietly relax the default. Standing
 coverage for the licence-less path is a fork CI run, which genuinely has no licence and is the exact
 scenario the option exists for.
+
+## W5 — `SPARK004`, the middleware-order analyzer (R15)
+
+**Files:** `libs/source_generators/MintPlayer.Spark.SourceGenerators/Diagnostics/MiddlewareOrderAnalyzer.cs`
+(new), `tests/MintPlayer.Spark.SourceGenerators.Tests/Diagnostics/MiddlewareOrderAnalyzerTests.cs` (new)
+
+Ordering is a property of the code rather than of a request, so it belongs to a build-time tool — and
+ASP.NET Core already does exactly this with `ASP0001` for `UseAuthorization`. `SPARK004` reports
+`app.UseSpark()` (or `UseSparkFull()`) called before `app.UseRouting()`, at the `UseSpark` call site.
+
+Design points, all aimed at never crying wolf:
+
+- **Ordered by name token, not by invocation node.** In `app.UseSpark().UseRouting()` every invocation
+  node starts at `app`, so invocation spans cannot order a chain. The method *name* tokens run left to
+  right, which is also the order the runtime composes the middleware in.
+- **No `UseRouting()` in the body → no diagnostic.** That is the correct minimal-hosting shape
+  (`WebApplication` inserts routing at the front itself) and it also covers routing configured in a helper
+  method the analyzer cannot see. Silence beats guessing in both.
+- **Scope is the nearest enclosing body**, including lambdas — `webBuilder.Configure(app => ...)` puts a
+  whole pipeline in one — and the compilation unit, which is what makes a top-level-statements
+  `Program.cs` work with no special handling.
+- **Symbol-confirmed, name-tolerant.** A resolved symbol must be Spark's own extension, so somebody
+  else's `UseSpark` is left alone. An *unresolved* symbol is still reported: mid-edit the model is often
+  incomplete, and an analyzer that goes quiet exactly then is the least useful kind.
+- **Warning, not error** (PRD D8), matching `ASP0001`.
+
+**Tests:** 9 cases — misordered and correct, separate statements and chained, `UseSparkFull`, no-`UseRouting`,
+top-level statements, inside a `Configure` lambda, and an unrelated `UseSpark` extension left alone.
+
+**Verified against the real thing, not just stubs.** The solution builds with **zero** `SPARK004` warnings —
+all four demo apps call `UseRouting()` first, so a false positive would have shown up immediately. Then
+`Demo/DemoApp`'s two lines were swapped and rebuilt, which produced exactly one diagnostic on the right
+line:
+
+```
+Program.cs(53,5): warning SPARK004: 'UseSpark()' is called before 'UseRouting()'. Endpoint metadata such
+as [Authorize], [EnableRateLimiting] and [DisableRateLimiting] is silently ignored by middleware that runs
+before routing — move 'app.UseRouting()' above 'app.UseSpark()'
+```
+
+The demo was restored; `git diff` on `Demo/` is empty. Analyzer tests use source stubs under the real type
+names rather than referencing the ASP.NET shared framework, so the symbol paths — including the
+unrelated-`UseSpark` rejection — are expressible with BCL references only.
 
 ## W4 — Guide, release notes, version (R13, R14)
 
