@@ -193,4 +193,38 @@ public class SourceGeneratorSnapshots
 
         return Verifier.Verify(Render(result));
     }
+
+    /// <summary>
+    /// Pins the whole emitted index / index-entity pair. The structural tests cover individual rules;
+    /// this makes any drift in the generated shape a reviewable diff — which matters more here than for
+    /// the registration generators, because <c>ProjectionPropertyAnalyzer</c> excludes generated code, so
+    /// nothing else validates this output.
+    /// </summary>
+    [Fact]
+    public Task GenerateIndexGenerator_emits_an_index_and_index_entity_pair()
+    {
+        var source = """
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string? Id { get; set; }
+                public string LicensePlate { get; set; } = string.Empty;
+                public string? Model { get; set; }
+                public int Year { get; set; }
+                [IgnoreProperty] public string? RegistrySyncEtag { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            "GenerateIndexGenerator",
+            [source],
+            referenceTypes: [typeof(GenerateIndexAttribute)],
+            rootNamespace: "TestApp");
+
+        return Verifier.Verify(Render(result));
+    }
 }

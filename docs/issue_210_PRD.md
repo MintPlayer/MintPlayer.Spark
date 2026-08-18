@@ -395,11 +395,25 @@ Mitigations, both cheap:
   per included field. `Id` is declared on the view and, for an entity index, not assigned in the `Map`
   (Raven supplies it).
 - **R7** Both emitted types are `partial`, so a developer can extend either by hand.
-- **R7a** No entity-side partial is emitted. The reference implementation generates a `[QueryType]`
-  back-pointer onto the entity because its runtime needs the entity-to-view link declared. Spark derives
-  it: `[FromIndex]` on the view names the index, and `IndexRegistry` recovers the collection type from the
-  index's generic argument. One fewer generated artifact, and entities in a `*.Library` stay untouched —
-  which is what makes the F3 decision work.
+- **R7a** **No entity-side partial is emitted, and `[GenerateIndex]` takes no type argument.** This is the
+  load-bearing constraint of the whole feature, not a tidiness preference.
+
+  The reference implementation puts `[QueryType(typeof(VCar))]` on the entity. That is a *type reference*
+  from the entity's assembly to the index entity, so the index entity must live in the library. The index
+  entity in turn carries `[FromIndex(typeof(Cars_Overview))]`, which is a second type reference that drags
+  the index into the library as well. One attribute on the entity therefore pulls the entire index stack
+  into what should be a lean library — and these libraries get referenced for other purposes, replication
+  among them, so everything they drag in travels with them.
+
+  Spark was built from the start to avoid that: it needs no `[QueryType]` on the collection entity, because
+  the link is *derived* rather than declared. `[FromIndex]` on the index entity names the index, and
+  `IndexRegistry` recovers the collection type from the index's generic argument. The arrows all point one
+  way — app → library — and nothing generated is ever referenced by the library.
+
+  Two rules follow, and both must hold for every future extension of this attribute:
+  1. Never emit a partial for the entity.
+  2. Never give `[GenerateIndex]` a parameter that names a generated type. A `typeof(...)` argument
+     pointing at an index or index entity would reintroduce exactly the coupling this avoids.
 - **R8** A property marked `[Search]` gets `Index(nameof(V.Field), FieldIndexing.Search)` on the base
   field, plus a `{Field}Sort` companion property, always decorated `[IgnoreProperty]`. **Suffix is
   `Sort` with no separator** — `NameSort`, `Name_nlSort`. The companion gets **no `Index(...)` call**
