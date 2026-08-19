@@ -23,6 +23,9 @@ jobs:
   build:
     name: publish-release
     runs-on: ubuntu-latest
+    # Build + full test sweep + pack + publish normally lands well under this;
+    # the ceiling exists so a wedged run can't hold the 6-hour default.
+    timeout-minutes: 45
 
     steps:
     - name: Checkout
@@ -103,6 +106,9 @@ jobs:
     # coverage.cobertura.xml`) is identical between PR and master runs — matches
     # the glob pattern each flagged codecov upload step below uses.
     - name: Test (all projects via Nx)
+      # Step-level so a wedged test run (the intermittent E2E hang) fails here
+      # and the `if: always()` coverage upload below still runs.
+      timeout-minutes: 20
       run: npx nx run-many --target=test
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}

@@ -28,6 +28,10 @@ jobs:
 
     name: pull-request
     runs-on: ubuntu-latest
+    # Normal runs finish in 2-7 minutes; without a ceiling a wedged run holds
+    # the default 6-hour GitHub timeout (measured twice on PR #269, once on
+    # PR #277 — the E2E suite hanging silently after the other suites passed).
+    timeout-minutes: 30
 
     steps:
     - name: Checkout
@@ -106,6 +110,10 @@ jobs:
         done
 
     - name: Run affected tests (.NET + Angular via Nx)
+      # Step-level so the known hang (E2E suite wedging with no output) fails
+      # here and the `if: always()` coverage upload below still runs with
+      # whatever the completed suites produced.
+      timeout-minutes: 20
       run: npx nx affected --target=test
       env:
         # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
