@@ -587,8 +587,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     existingAttr.InCollectionType = inCollectionType ? null : false;
                     existingAttr.InQueryType = inQueryType ? null : false;
-                    // Update ShowedOn based on type availability
-                    existingAttr.ShowedOn = showedOn;
+                    // ShowedOn is presentation constrained by structure: projection/entity
+                    // membership is the capability to appear on a side, the model author picks the
+                    // subset. Strip sides that structurally disappeared, never re-add one (#274).
+                    // An empty result self-heals to the derived capability.
+                    var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
+                    existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
                 }
                 else
                 {
