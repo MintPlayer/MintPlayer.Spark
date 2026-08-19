@@ -811,6 +811,76 @@ public sealed class ModelSynchronizerTests : IDisposable
             .ShowedOn.Should().Be(EShowedOn.PersistentObject);
     }
 
+    // --- #275: hand-set `query` on non-[Reference] attributes must survive synchronize ---
+
+    /// <summary>Sets a field on one attribute object inside the model JSON, preserving the rest.</summary>
+    private void TamperAttribute(string entityName, string attributeName, string field, string? value)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var attrs = root["persistentObject"]!["attributes"]!.AsArray();
+        var attr = attrs.Single(a => a!["name"]!.GetValue<string>() == attributeName)!;
+        attr[field] = value;
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private EntityAttributeDefinition ReadAttribute(string entityName, string attributeName)
+        => Read<EntityTypeFile>(ModelFile(entityName)).PersistentObject.Attributes
+            .Single(a => a.Name == attributeName);
+
+    [Fact]
+    public void Hand_set_query_on_non_reference_attribute_survives_re_synchronize()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        TamperAttribute("MS_TestPerson", "FirstName", "query", "GetPeople");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        ReadAttribute("MS_TestPerson", "FirstName").Query.Should().Be("GetPeople",
+            "a query authored on a non-[Reference] attribute has no derivation source — only the author could have written it");
+
+        // Fixed point: a further run must not change the file.
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new SinglePersonContext());
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+    }
+
+    [Fact]
+    public void Removing_Reference_clears_the_stale_derived_query()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        // Simulate the leftovers of a property that used to carry [Reference]: the stored query
+        // was machine-derived, so it must be cleared, not preserved as if authored.
+        TamperAttribute("MS_TestPerson", "FirstName", "dataType", "Reference");
+        TamperAttribute("MS_TestPerson", "FirstName", "referenceType", typeof(MS_TestTag).FullName);
+        TamperAttribute("MS_TestPerson", "FirstName", "query", "GetTags");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        var attr = ReadAttribute("MS_TestPerson", "FirstName");
+        attr.Query.Should().BeNull("the stored query was derived from the removed [Reference]");
+        attr.ReferenceType.Should().BeNull();
+        attr.DataType.Should().Be("string");
+    }
+
+    [Fact]
+    public void Reference_attribute_query_is_still_rederived_on_every_run()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new TaggedContext());
+
+        TamperAttribute("MS_TestTagged", "TagIds", "query", "GetWrong");
+
+        sync.SynchronizeModels(new TaggedContext());
+
+        ReadAttribute("MS_TestTagged", "TagIds").Query.Should().Be("GetTags",
+            "a [Reference] attribute's query has a derivation source and is structural — it re-derives");
+    }
+
     [Fact]
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
