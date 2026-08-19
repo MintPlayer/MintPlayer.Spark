@@ -5,11 +5,20 @@ namespace HR.Entities;
 // The breadcrumb template lives in App_Data/Model/Person.json ("{FirstName} {LastName} @
 // {Company}") and recurses through references: {Company} renders the Company's breadcrumb,
 // which in turn renders its {Sector} (a Profession) — a 3-level chain.
+//
+// [GenerateIndex] replaces the previously hand-written People_Overview: the FullName concat the
+// hand-written map computed is now an ordinary computed property (persisted, searchable), the
+// complex Address column rides the AddressSort breadcrumb companion, and Jobs (a collection of
+// complex elements) is stored-not-indexed (SPARK_INDEX_010 — expected).
+[GenerateIndex]
 public class Person
 {
     public string? Id { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
+
+    [Search]
+    public string FullName => $"{FirstName} {LastName}";
     public string? Email { get; set; }
     public DateOnly? DateOfBirth { get; set; }
 

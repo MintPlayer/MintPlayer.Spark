@@ -8,7 +8,7 @@
       "nl": "Adres"
     },
     "clrType": "HR.Entities.Address",
-    "breadcrumb": "{Street}, {PostalCode} {City}",
+    "breadcrumb": "{Crumb}",
     "tabs": [],
     "groups": [],
     "attributes": [
