@@ -129,6 +129,12 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                     dropped.Location.ToLocation(compilation), dropped.TypeDisplay, dropped.PropertyName);
             }
 
+            foreach (var complex in entity.ComplexProperties)
+            {
+                yield return GenerateIndexDiagnostics.ComplexPropertyStoredNotIndexed.Create(
+                    complex.Location.ToLocation(compilation), complex.PropertyName, complex.TypeDisplay);
+            }
+
             if (entity.Properties.Count == 0)
             {
                 yield return GenerateIndexDiagnostics.NoIndexableProperties.Create(

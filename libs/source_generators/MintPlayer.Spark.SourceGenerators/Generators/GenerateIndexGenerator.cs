@@ -244,6 +244,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var invalidSearches = new List<InvalidSearchInfo>();
         var ignoredSearches = new List<InvalidSearchInfo>();
         var unrenderableAttributes = new List<InvalidSearchInfo>();
+        var complexProperties = new List<InvalidSearchInfo>();
 
         // [IgnoreProperty] keeps a property out of the index, so a [Search] beside it can never take effect.
         // Reported rather than dropped: the combination reads as "indexed but hidden from the model" and
@@ -276,7 +277,22 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 });
             }
 
-            var isSearchableText = searchable && searchKind == SearchKind.Text;
+            // A complex-typed property (persists as a JSON object) faults Corax per document when
+            // indexed with default options — the whole index silently ends up empty. It stays mapped
+            // and stored (dropping it would blank the AsDetail column) but is declared
+            // FieldIndexing.No. Complex wins over [Search]; SPARK_INDEX_005 above still reports it.
+            var isComplex = property.Type.IsComplexForIndex();
+            if (isComplex)
+            {
+                complexProperties.Add(new InvalidSearchInfo
+                {
+                    PropertyName = property.Name,
+                    TypeDisplay = property.Type.ToDisplayString(TypeFormat),
+                    Location = property.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
+                });
+            }
+
+            var isSearchableText = !isComplex && searchable && searchKind == SearchKind.Text;
 
             // A DateTimeOffset is indexed Exact and gets a companion with no attribute at all. DateTime gets
             // neither -- see SparkModelSymbols.IsDateTimeOffset for why that asymmetry is deliberate.
@@ -302,7 +318,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 NeedsDefaultInitializer = property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
                 MapExpression = $"{itemVariable}.{property.Name}",
-                FieldIndexing = isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
+                FieldIndexing = isComplex ? "No" : isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
                 Attributes = fieldAttributes,
                 IsTranslated = isTranslated,
                 IsSearchable = searchable,
@@ -328,6 +344,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
             InvalidSearchProperties = invalidSearches,
             IgnoredSearchProperties = ignoredSearches,
             UnrenderableAttributes = unrenderableAttributes,
+            ComplexProperties = complexProperties,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }

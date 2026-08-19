@@ -104,6 +104,22 @@ internal static class GenerateIndexDiagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    /// <summary>
+    /// A complex-typed property persists as a JSON object; Corax refuses to index it with default
+    /// options and faults on every document, so the generator maps it with <c>FieldIndexing.No</c> —
+    /// stored and projectable (the AsDetail column keeps rendering) but not filterable or sortable.
+    /// Warning rather than Info per the house rule: a silently inert column is a decision the author
+    /// should see. A [Breadcrumb]-marked property on the complex type upgrades the column to sortable
+    /// via a generated companion; [IgnoreForIndex] drops the field from the index entirely.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ComplexPropertyStoredNotIndexed = new(
+        id: "SPARK_INDEX_010",
+        title: "Complex property is stored but not indexed",
+        messageFormat: "Property '{0}' has complex type '{1}'; it is stored for projection but not indexed, so it cannot be filtered or sorted. Add [Breadcrumb] to a property of '{1}' to make the column sortable, or [IgnoreForIndex] to drop it from the index.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
     // SPARK_INDEX_004 ("Entity already has a hand-written index") was removed in #272: it was
     // declared but never reported, and its premise died when IIndexRegistry started retaining
     // every registration per collection type. Multiple indexes over one entity now coexist; the
