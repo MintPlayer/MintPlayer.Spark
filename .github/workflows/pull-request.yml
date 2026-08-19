@@ -123,6 +123,7 @@ jobs:
       if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
+        url: https://coverage.mintplayer.com
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
         flags: unit
@@ -133,6 +134,7 @@ jobs:
       if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
+        url: https://coverage.mintplayer.com
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
         flags: sourcegen
@@ -143,6 +145,7 @@ jobs:
       if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
+        url: https://coverage.mintplayer.com
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
         flags: client
@@ -153,6 +156,7 @@ jobs:
       if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
       uses: codecov/codecov-action@v5
       with:
+        url: https://coverage.mintplayer.com
         token: ${{ secrets.CODECOV_TOKEN }}
         files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
         flags: e2e
