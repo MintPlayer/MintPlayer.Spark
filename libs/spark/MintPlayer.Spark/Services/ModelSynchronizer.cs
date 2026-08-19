@@ -555,6 +555,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
+                // Captured before the overwrites below: whether the stored attribute WAS a
+                // reference is the provenance signal that decides the Query assignment (#275).
+                var wasReference = existingAttr.DataType == "Reference" || existingAttr.ReferenceType != null;
+
                 // Update existing attribute, preserving custom settings.
                 // "MultiLineString" is a presentation-only override of a string property (render a
                 // textarea instead of a single-line input): the CLR shape is still string, so keep a
@@ -572,7 +576,23 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // part of the structural hash, verification would then confirm the dead reference
                 // rather than catch it.
                 existingAttr.ReferenceType = referenceAttr != null ? referenceType : null;
-                existingAttr.Query = referenceAttr != null ? resolvedQuery : null;
+
+                // Query is provenance-gated (#275): a derived value only exists when the property
+                // carries [Reference] — re-derive it then; clear it when the reference was removed
+                // (the stored value was machine-derived and is now stale); otherwise the stored
+                // value could only have been authored — preserve it.
+                if (referenceAttr != null)
+                {
+                    existingAttr.Query = resolvedQuery;
+                }
+                else if (wasReference)
+                {
+                    if (existingAttr.Query != null)
+                        Console.WriteLine(
+                            $"  Cleared query '{existingAttr.Query}' on attribute '{propertyName}': " +
+                            $"it was derived from a [Reference] that no longer exists.");
+                    existingAttr.Query = null;
+                }
 
                 // IsArray is derived purely from the CLR property shape, so always
                 // refresh it (covers Reference/scalar arrays, not just AsDetail).
