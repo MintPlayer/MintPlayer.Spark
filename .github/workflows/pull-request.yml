@@ -114,7 +114,10 @@ jobs:
       # here and the `if: always()` coverage upload below still runs with
       # whatever the completed suites produced.
       timeout-minutes: 20
-      run: npx nx affected --target=test
+      # --output-style=stream: nx buffers each task's output until the task
+      # finishes, so a hung task prints NOTHING — the wedged E2E runs were
+      # undiagnosable. Streaming trades tidy grouping for a visible last line.
+      run: npx nx affected --target=test --output-style=stream
       env:
         # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
