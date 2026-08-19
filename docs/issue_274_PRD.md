@@ -1,6 +1,6 @@
 # PRD — Issue #274: Synchronize must preserve a hand-edited `showedOn`
 
-**Status:** Planned
+**Status:** Implemented — all milestones done (see [plan](issue_274_plan.md))
 **Issue:** [#274](https://github.com/MintPlayer/MintPlayer.Spark/issues/274)
 **Branch:** `fix/issue-274-preserve-showedon`
 **Plan:** [issue_274_plan.md](issue_274_plan.md)
@@ -77,6 +77,13 @@ dual-present column set.
   are documented as deliberate *because they are structural and feed the hash*. That justification
   does not extend to `showedOn`, which feeds no hash.
 
+### S0 — Reproduced in-repo (2026-08-19)
+
+Hand-trimmed `InteriorColor`'s `"showedOn": "Query, PersistentObject"` to `"PersistentObject"` in
+`Demo/Fleet/Fleet/App_Data/Model/Car.json` and ran `--spark-synchronize-model`: the edit was
+reverted byte-for-byte (git reported a clean tree afterwards), through the real pipeline —
+`[GenerateIndex]`-generated `VCar`, index registry and all. The model hash did not move.
+
 ### F5 — No test pins the current behavior
 
 Grep for `ShowedOn` across `tests/` returns nothing (outside source-generator snapshots). The
@@ -146,10 +153,12 @@ and filed as follow-ups (see below) to keep the diff minimal.
 
 - **`existingAttr.Query` wipe** (`:575`): a hand-set `query` on a non-`[Reference]` attribute with a
   matching CLR property is nulled on every run — same defect class, lower severity (orphaned
-  attributes take the carry-over path and are safe). Follow-up issue to file with this PR.
+  attributes take the carry-over path and are safe). Filed as
+  [#275](https://github.com/MintPlayer/MintPlayer.Spark/issues/275).
 - **SparkQuery staleness** (the inverse problem): `Source`/`IndexName`/`UseProjection` are never
   refreshed after creation, so renaming a `SparkContext` property leaves a dangling
-  `"source": "Database.OldName"` and mints a duplicate query. Follow-up issue to file with this PR.
+  `"source": "Database.OldName"` and mints a duplicate query. Filed as
+  [#276](https://github.com/MintPlayer/MintPlayer.Spark/issues/276).
 - **Per-query column model** (`SparkQuery.Columns` / a `columns` input on `spark-sub-query`):
   named in #274 as "related but separate, can file on request" — not filed; the issue author owns
   that call.

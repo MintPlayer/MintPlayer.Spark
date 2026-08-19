@@ -6,12 +6,14 @@
 Test-first by request: M1 lands the failing tests (red), M2 makes them pass. The PR is squashed, so
 the intermediate red commit never reaches `master`.
 
+**All milestones complete.**
+
 | | Milestone | Commit |
 |---|---|---|
-| S0 | Spike: reproduce the wipe on the Fleet demo | — (no commit; result recorded below) |
-| M1 | Failing tests pinning the preserve contract | |
-| M2 | The fix: intersect `ShowedOn` with structural capability | |
-| M3 | Docs, demo zero-diff verification, follow-up issues, lockstep version bump | |
+| S0 | Spike: reproduce the wipe on the Fleet demo | — confirmed 2026-08-19 (see PRD) |
+| M1 | Failing tests pinning the preserve contract | `424fb77` (3 red / 4 green, as planned) |
+| M2 | The fix: intersect `ShowedOn` with structural capability | `ba3a207` |
+| M3 | Docs, demo zero-diff verification, follow-up issues (#275, #276), lockstep version bump | |
 
 ---
 
@@ -92,9 +94,16 @@ covers `ShowedOn`, so any other failure means the change leaked wider than inten
 - Lockstep version bump: all 21 packable libs `10.0.0-preview.53` → `10.0.0-preview.54`.
 - Update PRD/plan status, commit, open the PR.
 
-## Verification
+## Verification — results
 
-- New tests 1, 2, 4 confirmed RED on master (S0 + M1 run before M2).
-- Full `MintPlayer.Spark.Tests` suite green after M2. If a full-suite run flakes under load,
-  re-run the named tests in isolation before calling it a regression (known flake).
-- Demo model zero-diff sweep (AC 3).
+- RED confirmed on the unfixed code: both trim directions of the dual-present test and the
+  idempotency fixed-point test failed before M2 (3 red, 4 green — the structural pins were green
+  throughout, as predicted). Test 4 (self-heal) is a pin, not a repro: the old code and the fix
+  produce the same healed value there.
+- All 55 synchronizer + idempotency + correctness tests green after M2.
+- Post-fix Fleet re-run of the S0 repro: the hand trim **survives** the real pipeline, and the
+  model hash is byte-identical (`ee5aba58…` before and after) — confirming `showedOn` feeds no
+  hash and the fix is invisible to `--spark-verify-model`, as designed.
+- Zero-diff sweep: `--spark-synchronize-model` on all four demo apps produced no git diff (AC 3).
+- Follow-ups filed: [#275](https://github.com/MintPlayer/MintPlayer.Spark/issues/275),
+  [#276](https://github.com/MintPlayer/MintPlayer.Spark/issues/276).

@@ -372,6 +372,8 @@ After synchronization, you can manually edit the JSON files to:
 
 These manual edits are preserved when you re-run model synchronization. **The synchronizer only adds and updates -- it never deletes.** It does not overwrite labels, rules, or ordering.
 
+`showedOn` is preserved on projected (`[FromIndex]`) entities too: membership in the projection is the *capability* to appear on the query grid, not a mandate. Synchronization derives a default when the attribute is first created, and afterwards only *removes* sides that become structurally impossible (for example, the `Query` flag when the property leaves the projection) -- it never widens a hand-trimmed value back.
+
 ### Attributes without a CLR property
 
 An attribute is kept even when no property matches it, so you can:
