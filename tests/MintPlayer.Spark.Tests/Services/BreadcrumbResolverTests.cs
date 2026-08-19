@@ -38,6 +38,16 @@ public class BreadcrumbResolverTests : SparkTestDriver
     public class BR_Release { public string? Id { get; set; } public string Title { get; set; } = ""; public List<BR_Credit> Credits { get; set; } = []; }
     // A SINGLE (non-array) embedded AsDetail whose reference must also resolve.
     public class BR_Band { public string? Id { get; set; } public string Name { get; set; } = ""; public BR_SongArtist? Leader { get; set; } }
+    // Embedded-complex template tokens (#273): {Customer} on Order renders Person's own breadcrumb.
+    public class BR_Customer { public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; }
+    public class BR_Order { public string? Id { get; set; } public string OrderNo { get; set; } = ""; public BR_Customer? Customer { get; set; } }
+    // Embedded type NOT registered in the model, carrying the property-level [Breadcrumb] marker.
+    public class BR_MarkedAddress
+    {
+        public string City { get; set; } = "";
+        [Breadcrumb, IgnoreProperty] public string Crumb => $"City: {City}";
+    }
+    public class BR_Shipment { public string? Id { get; set; } public string Code { get; set; } = ""; public BR_MarkedAddress? Destination { get; set; } }
 
     // --- model builders ---
     private static EntityAttributeDefinition Scalar(string name) =>
@@ -121,6 +131,52 @@ public class BreadcrumbResolverTests : SparkTestDriver
         result.Get($"spots/{n - 1}").Should().Be($"CAR-{n - 1} (P{n - 1} X) ({n - 1},{n - 1})");
         result.Get("cars/0").Should().Be("CAR-0 (P0 X)");
         result.Get("people/0").Should().Be("P0 X");
+    }
+
+    // --- embedded-complex template tokens (#273) ---
+
+    [Fact]
+    public async Task Embedded_complex_token_renders_the_embedded_types_own_breadcrumb()
+    {
+        var customer = Def(typeof(BR_Customer), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var order = Def(typeof(BR_Order), "{OrderNo}: {Customer}", null, Scalar("OrderNo"), AsDetailSingle("Customer", typeof(BR_Customer)));
+        var (resolver, _) = Build(customer, order);
+        using var session = Store.OpenAsyncSession();
+
+        var root = new BR_Order { Id = "orders/1", OrderNo = "1001", Customer = new BR_Customer { FirstName = "Ada", LastName = "Lovelace" } };
+        var result = await resolver.ResolveAsync(session, [root], order);
+
+        result.Get("orders/1").Should().Be("1001: Ada Lovelace",
+            "an embedded complex token must recurse into the embedded type's breadcrumb, not ToString() it");
+    }
+
+    [Fact]
+    public async Task Null_embedded_complex_token_renders_empty()
+    {
+        var customer = Def(typeof(BR_Customer), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var order = Def(typeof(BR_Order), "{OrderNo}: {Customer}", null, Scalar("OrderNo"), AsDetailSingle("Customer", typeof(BR_Customer)));
+        var (resolver, _) = Build(customer, order);
+        using var session = Store.OpenAsyncSession();
+
+        var root = new BR_Order { Id = "orders/2", OrderNo = "1002", Customer = null };
+        var result = await resolver.ResolveAsync(session, [root], order);
+
+        result.Get("orders/2").Should().Be("1002: ");
+    }
+
+    [Fact]
+    public async Task Unregistered_embedded_type_falls_back_to_its_marked_property()
+    {
+        // BR_MarkedAddress has no entity-type definition — the [Breadcrumb]-marked property is the
+        // type's declared breadcrumb value and must be read directly.
+        var shipment = Def(typeof(BR_Shipment), "{Code} to {Destination}", null, Scalar("Code"), AsDetailSingle("Destination", typeof(BR_MarkedAddress)));
+        var (resolver, _) = Build(shipment);
+        using var session = Store.OpenAsyncSession();
+
+        var root = new BR_Shipment { Id = "shipments/1", Code = "S1", Destination = new BR_MarkedAddress { City = "Ghent" } };
+        var result = await resolver.ResolveAsync(session, [root], shipment);
+
+        result.Get("shipments/1").Should().Be("S1 to City: Ghent");
     }
 
     [Fact]

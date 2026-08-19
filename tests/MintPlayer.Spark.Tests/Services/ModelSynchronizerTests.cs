@@ -313,6 +313,66 @@ public sealed class ModelSynchronizerTests : IDisposable
         Read<EntityTypeFile>(ModelFile("MS_NamedThing")).PersistentObject.Breadcrumb.Should().Be("{Name}");
     }
 
+    // --- #273: JSON-authoritative templates + the property-level [Breadcrumb] marker ---
+
+    [Fact]
+    public void Synthesized_default_breadcrumb_prefers_the_marked_property()
+    {
+        var ctx = new MarkedThingContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        // The [Breadcrumb]-marked (computed, [IgnoreProperty]) member is the type's declared
+        // breadcrumb value — the synthesized template names it, and validation must accept the
+        // marked-ignored placeholder as the sanctioned shape.
+        Read<EntityTypeFile>(ModelFile("MS_MarkedThing")).PersistentObject.Breadcrumb.Should().Be("{Crumb}");
+    }
+
+    [Fact]
+    public void Authored_json_template_survives_re_synchronize()
+    {
+        var ctx = new SinglePersonContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_TestPerson");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{LastName}"));
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{LastName}",
+            "the model JSON is the display authority; synchronize preserves authored templates");
+    }
+
+    [Fact]
+    public void Drift_warning_when_the_authored_template_omits_the_marked_property()
+    {
+        var ctx = new MarkedThingContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_MarkedThing");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{Crumb}", "{FirstName}"));
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(ctx);
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        // The authored template wins, but the drift — grid sorts by Crumb, display shows
+        // FirstName — is warned about, since no gate can see it.
+        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{FirstName}");
+        writer.ToString().Should().Contain("Crumb");
+    }
+
     [Fact]
     public void Breadcrumb_projection_satisfiable_is_null_when_no_projection_type()
     {
@@ -860,6 +920,16 @@ public class MS_BreadcrumbPersonProjection
     public string LastName { get; set; } = string.Empty;
 }
 
+// #273: the property-level marker in its sanctioned computed + [IgnoreProperty] form.
+public class MS_MarkedThing
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+
+    [Breadcrumb, IgnoreProperty]
+    public string Crumb => FirstName.ToUpperInvariant();
+}
+
 // First attribute is Description, but a Name attribute exists and is preferred for the default breadcrumb.
 public class MS_NamedThing
 {
@@ -1064,6 +1134,11 @@ public class NamedContext : SparkContext
 public class OrderedContext : SparkContext
 {
     public IRavenQueryable<MS_OrderedParent> Parents => Session.Query<MS_OrderedParent>();
+}
+
+public class MarkedThingContext : SparkContext
+{
+    public IRavenQueryable<MS_MarkedThing> Things => Session.Query<MS_MarkedThing>();
 }
 
 public class BadBreadcrumbContext : SparkContext
