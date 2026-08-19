@@ -64,7 +64,7 @@ public static class SparkModelShape
         // The [Breadcrumb] attribute is authoritative — the synchronizer overwrites the JSON with it —
         // so it is part of the shape. A breadcrumb authored only in JSON is not.
         var breadcrumb = type.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
-        if (breadcrumb != null)
+        if (breadcrumb?.Template != null)
             builder.Append("  breadcrumb\t").Append(NormalizeNewlines(breadcrumb.Template)).Append('\n');
 
         foreach (var property in type.GetSparkModelProperties().OrderBy(p => p.Name, StringComparer.Ordinal))

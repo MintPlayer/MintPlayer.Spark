@@ -703,7 +703,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // an existing JSON value; otherwise synthesize a sensible default. Then validate the
         // template and flag whether it is renderable from the projection alone.
         var breadcrumbAttr = entityType.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
-        if (breadcrumbAttr is not null)
+        if (breadcrumbAttr?.Template is not null)
             entityTypeDef.Breadcrumb = breadcrumbAttr.Template;
         else if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
             entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(newAttributes);
