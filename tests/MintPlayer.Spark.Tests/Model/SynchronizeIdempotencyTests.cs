@@ -296,6 +296,38 @@ public class SynchronizeIdempotencyTests : IDisposable
     }
 
     [Fact]
+    public void A_hand_trimmed_showedOn_on_a_projected_entity_reaches_a_fixed_point()
+    {
+        // #274: Name is on both IdemProbe and its projection, so synchronize derives
+        // "Query, PersistentObject". A hand trim to "PersistentObject" must survive every
+        // subsequent run — the wipe is invisible to the fixed-point invariant alone because the
+        // stomp is stable (the value is lost on the first re-run and never comes back), so this
+        // test asserts the trimmed value itself as well.
+        _indexRegistry.GetRegistrationForCollectionType(typeof(IdemProbe)).Returns(new IndexRegistration
+        {
+            IndexName = "Probes/Overview",
+            IndexType = typeof(IdemProbe),
+            CollectionType = typeof(IdemProbe),
+            ProjectionType = typeof(IdemProbeProjection),
+        });
+
+        Synchronize();
+
+        var path = Path.Combine(ModelDir, "IdemProbe.json");
+        File.WriteAllText(path, File.ReadAllText(path)
+            .Replace("\"showedOn\": \"Query, PersistentObject\"", "\"showedOn\": \"PersistentObject\""));
+
+        Synchronize();
+        var first = Snapshot();
+
+        Synchronize();
+
+        Snapshot().Should().BeEquivalentTo(first);
+        first["IdemProbe.json"].Should().Contain("\"showedOn\": \"PersistentObject\"",
+            "the hand trim must survive re-synchronize, not be re-derived from projection membership (#274)");
+    }
+
+    [Fact]
     public void A_duplicate_attribute_name_is_reported_rather_than_crashing_the_command()
     {
         Seed("IdemProbe.json", """

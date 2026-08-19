@@ -432,19 +432,10 @@ public sealed class FleetTestHost : IAsyncLifetime
 
             var repoRoot = FindRepoRoot();
             var fleetProject = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "Fleet.csproj");
-            var psi = new ProcessStartInfo("dotnet", $"build \"{fleetProject}\" --configuration Debug")
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var proc = Process.Start(psi)!;
-            var stdout = await proc.StandardOutput.ReadToEndAsync();
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
-                throw new InvalidOperationException(
-                    $"Building Fleet failed (exit {proc.ExitCode}).\nstdout: {stdout}\nstderr: {stderr}");
+            var psi = new ProcessStartInfo("dotnet", $"build \"{fleetProject}\" --configuration Debug");
+            var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
+            if (exitCode != 0)
+                throw new InvalidOperationException($"Building Fleet failed (exit {exitCode}).\n{output}");
 
             _fleetBuilt = true;
         }
@@ -466,16 +457,54 @@ public sealed class FleetTestHost : IAsyncLifetime
         var psi = new ProcessStartInfo(npm, "run build")
         {
             WorkingDirectory = clientApp,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
         };
-        using var proc = Process.Start(psi)!;
-        var stdout = await proc.StandardOutput.ReadToEndAsync();
-        var stderr = await proc.StandardError.ReadToEndAsync();
-        await proc.WaitForExitAsync();
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"npm run build failed (exit {proc.ExitCode}).\nstdout: {stdout}\nstderr: {stderr}");
+        // `npm run build` delegates to `nx run @spark-demo/fleet-demo:build`. On CI that is a
+        // NESTED nx invocation inside the outer `nx affected --target=test` process; sharing the
+        // outer run's daemon and remote cache from a test subprocess is a lock-contention hang
+        // waiting to happen, so opt this child out of both.
+        psi.Environment["NX_DAEMON"] = "false";
+        psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_SERVER"] = "";
+        psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN"] = "";
+
+        var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
+        if (exitCode != 0)
+            throw new InvalidOperationException($"npm run build failed (exit {exitCode}).\n{output}");
+    }
+
+    /// <summary>
+    /// Runs a process to completion, draining stdout and stderr <b>concurrently</b> and killing the
+    /// whole tree on timeout. The previous sequential <c>ReadToEndAsync</c> pattern deadlocked:
+    /// once the child filled the stderr pipe buffer while the parent was still awaiting stdout EOF,
+    /// child and parent blocked each other forever — which on CI surfaced as the test run hanging
+    /// with no output at all.
+    /// </summary>
+    private static async Task<(int ExitCode, string Output)> RunToCompletionAsync(ProcessStartInfo psi, TimeSpan timeout)
+    {
+        psi.UseShellExecute = false;
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException($"Failed to start '{psi.FileName} {psi.Arguments}'");
+
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+
+        using var cts = new CancellationTokenSource(timeout);
+        try
+        {
+            await proc.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { proc.Kill(entireProcessTree: true); }
+            catch { /* best-effort */ }
+            throw new TimeoutException(
+                $"'{psi.FileName} {psi.Arguments}' did not finish within {timeout.TotalMinutes:0} minutes.\n"
+                + $"stdout so far: {await stdoutTask}\nstderr so far: {await stderrTask}");
+        }
+
+        return (proc.ExitCode, $"stdout: {await stdoutTask}\nstderr: {await stderrTask}");
     }
 
     private string? _overrideSettingsFile;

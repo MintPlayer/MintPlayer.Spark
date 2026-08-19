@@ -28,6 +28,10 @@ jobs:
 
     name: pull-request
     runs-on: ubuntu-latest
+    # Normal runs finish in 2-7 minutes; without a ceiling a wedged run holds
+    # the default 6-hour GitHub timeout (measured twice on PR #269, once on
+    # PR #277 — the E2E suite hanging silently after the other suites passed).
+    timeout-minutes: 30
 
     steps:
     - name: Checkout
@@ -106,55 +110,37 @@ jobs:
         done
 
     - name: Run affected tests (.NET + Angular via Nx)
-      run: npx nx affected --target=test
+      # Step-level so the known hang (E2E suite wedging with no output) fails
+      # here and the `if: always()` coverage upload below still runs with
+      # whatever the completed suites produced.
+      timeout-minutes: 20
+      # --output-style=stream: nx buffers each task's output until the task
+      # finishes, so a hung task prints NOTHING — the wedged E2E runs were
+      # undiagnosable. Streaming trades tidy grouping for a visible last line.
+      run: npx nx affected --target=test --output-style=stream
       env:
         # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
-    # One codecov upload per test project, each tagged with its own flag.
-    # codecov.yml has `carryforward: true` on every flag — when nx affected
-    # skips a project on a given PR, codecov reuses that flag's last-known
-    # coverage instead of treating the missing lines as uncovered. That
-    # keeps `codecov/project` accurate on test-only / single-suite PRs.
-    # Each step gates on the presence of the corresponding coverage file
-    # (nx affected may have skipped the project, leaving no file) so a
-    # missing file is a no-op rather than a failure.
-    - name: Upload coverage (unit)
-      if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+    # Upload whatever coverage the affected test projects produced to the
+    # self-hosted Coverage server. `partial: true` + the nx base SHA declare
+    # that this run measured only the affected subset, so the server compares
+    # like-for-like against the base instead of reading the totals as a
+    # whole-workspace collapse — this replaces the per-flag carryforward
+    # workaround the codecov setup needed. `disable-search` because a glob
+    # that matches nothing must be a no-op, not an auto-detected upload of
+    # stray unparsable reports; the hashFiles gate skips the step entirely
+    # when nx affected ran no test project at all.
+    - name: Upload coverage
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
+      uses: MintPlayer/CodeCoverage/action@master
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
-        flags: unit
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (sourcegen)
-      if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
-        flags: sourcegen
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (client)
-      if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
-        flags: client
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (e2e)
-      if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
-        flags: e2e
-        fail_ci_if_error: false
-        verbose: true
+        url: https://coverage.mintplayer.com
+        token: ${{ secrets.COVERAGE_TOKEN }}
+        files: |
+          tests/*/coverage/**/coverage.cobertura.xml
+        disable-search: true
+        partial: true
+        base-sha: ${{ env.NX_BASE }}
+        finish: true
+        fail-ci-if-error: false
