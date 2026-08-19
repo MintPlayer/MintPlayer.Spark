@@ -914,7 +914,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         var before = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single();
         before.Source.Should().Be("Database.People");
-        TamperQuery("MS_TestPerson", "GetPeople", "description", "hand-authored description");
+        TamperQuery("MS_TestPerson", "GetPeople", "alias", "hand-authored-alias");
 
         sync.SynchronizeModels(new RenameV2Context());
 
@@ -924,7 +924,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         query.Source.Should().Be("Database.Persons");
         query.Id.Should().Be(before.Id, "program units reference queries by id");
         query.Name.Should().Be("GetPersons", "a conventionally-named query follows the rename");
-        query.Description.Should().Be("hand-authored description", "authoring on the query survives the retarget");
+        query.Alias.Should().Be("hand-authored-alias", "authoring on the query survives the retarget");
 
         // Fixed point.
         var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));

@@ -111,6 +111,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // Collect existing inline queries for this entity type, plus create default if missing
             var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
 
+            // #276 pre-pass, before the mint loop: a renamed context property otherwise leaves the
+            // old query behind with a dead "Database.OldName" source (silently returning no rows)
+            // AND mints a duplicate for the new name. Exactly one dead Database.* source plus
+            // exactly one unclaimed property is a rename with high confidence — retarget the
+            // existing query in place, preserving its Id (program units reference queries by id)
+            // and all authoring. Anything else is ambiguous: warn and keep, never guess, never
+            // delete. Custom.* queries and indexName/useProjection are never touched — the
+            // synchronizer never wrote them, so every value is authored.
+            var propertyNames = group.Select(x => x.Property.Name).ToList();
+            RetargetRenamedDatabaseQueries(queriesForType, propertyNames, entityType.Name);
+
             // One default query per context property exposing this type.
             foreach (var property in group.Select(x => x.Property))
             {
@@ -731,6 +742,62 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
 
         return entityTypeDef;
+    }
+
+    /// <summary>
+    /// Detects a renamed context property among an entity's <c>Database.*</c> queries and
+    /// retargets the existing query in place. See the call-site comment for the confidence rule;
+    /// dead sources that cannot be paired are kept and warned about — a transient state (a
+    /// property temporarily removed, a module assembly missing) must never destroy authoring.
+    /// </summary>
+    private static void RetargetRenamedDatabaseQueries(
+        List<SparkQuery> queriesForType, IReadOnlyList<string> propertyNames, string entityName)
+    {
+        const string Prefix = "Database.";
+
+        var claimedSources = queriesForType
+            .Where(q => q.Source.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(q => q.Source.Substring(Prefix.Length))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var deadQueries = queriesForType
+            .Where(q => q.Source.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)
+                && !propertyNames.Contains(q.Source.Substring(Prefix.Length), StringComparer.Ordinal))
+            .ToList();
+        var unclaimedProperties = propertyNames
+            .Where(p => !claimedSources.Contains(p))
+            .ToList();
+
+        if (deadQueries.Count == 1 && unclaimedProperties.Count == 1)
+        {
+            var query = deadQueries[0];
+            var oldProperty = query.Source.Substring(Prefix.Length);
+            var newProperty = unclaimedProperties[0];
+
+            query.Source = $"{Prefix}{newProperty}";
+
+            // A conventionally-named query (and its auto-derived alias) follows the rename; an
+            // unconventional name is authored and stays.
+            if (query.Name == $"Get{oldProperty}")
+            {
+                if (query.Alias == oldProperty.ToLowerInvariant())
+                    query.Alias = null;
+                query.Name = $"Get{newProperty}";
+            }
+
+            Console.WriteLine(
+                $"  Retargeted query '{query.Name}' from Database.{oldProperty} to " +
+                $"Database.{newProperty} (renamed context property, {entityName}.json).");
+            return;
+        }
+
+        foreach (var query in deadQueries)
+        {
+            Console.WriteLine(
+                $"Warning: query '{query.Name}' in {entityName}.json sources '{query.Source}', " +
+                $"which is not a property on the SparkContext. It will return no rows. " +
+                $"Retarget or remove it.");
+        }
     }
 
     /// <summary>
