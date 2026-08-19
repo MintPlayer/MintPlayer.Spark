@@ -699,14 +699,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(a => a.Name, StringComparer.Ordinal)];
 
-        // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
-        // an existing JSON value; otherwise synthesize a sensible default. Then validate the
-        // template and flag whether it is renderable from the projection alone.
-        var breadcrumbAttr = entityType.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
-        if (breadcrumbAttr?.Template is not null)
-            entityTypeDef.Breadcrumb = breadcrumbAttr.Template;
-        else if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
-            entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(newAttributes);
+        // Breadcrumb template: the model JSON is the display authority (Vidyano-style) — an
+        // authored value is preserved verbatim; only a missing one gets a synthesized default.
+        // Then validate the template and flag whether it is renderable from the projection alone.
+        if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
+            entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(entityType, newAttributes);
+        else
+            WarnOnBreadcrumbMarkerDrift(entityTypeDef, entityType);
 
         ValidateBreadcrumb(entityTypeDef, entityType, projectionType);
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
@@ -714,12 +713,38 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return entityTypeDef;
     }
 
-    /// <summary>Default breadcrumb when none is authored: prefer Name/FullName/Title, else the first attribute.</summary>
-    private static string? SynthesizeDefaultBreadcrumb(IReadOnlyList<EntityAttributeDefinition> attributes)
+    /// <summary>
+    /// Default breadcrumb when none is authored: the type's <c>[Breadcrumb]</c>-marked property
+    /// when present — that keeps display and the generated sort companion agreeing by default —
+    /// else prefer Name/FullName/Title, else the first attribute.
+    /// </summary>
+    private static string? SynthesizeDefaultBreadcrumb(Type entityType, IReadOnlyList<EntityAttributeDefinition> attributes)
     {
+        var marked = entityType.GetBreadcrumbProperty();
+        if (marked is not null)
+            return $"{{{marked.Name}}}";
+
         var name = attributes.FirstOrDefault(a => a.Name is "Name" or "FullName" or "Title")?.Name
             ?? attributes.FirstOrDefault()?.Name;
         return name is null ? null : $"{{{name}}}";
+    }
+
+    /// <summary>
+    /// An authored template that omits the type's <c>[Breadcrumb]</c>-marked property means the
+    /// grid sorts a column by one string while the breadcrumb displays another — legal, but
+    /// invisible to every gate (the template is presentational and unhashed), so it is warned
+    /// about rather than silently accepted.
+    /// </summary>
+    private static void WarnOnBreadcrumbMarkerDrift(EntityTypeDefinition def, Type entityType)
+    {
+        var marked = entityType.GetBreadcrumbProperty();
+        if (marked is null || string.IsNullOrEmpty(def.Breadcrumb)) return;
+        if (def.Breadcrumb.Contains($"{{{marked.Name}}}", StringComparison.Ordinal)) return;
+
+        Console.WriteLine(
+            $"Warning: entity '{def.Name}' marks [Breadcrumb] on '{marked.Name}', but its " +
+            $"breadcrumb template '{def.Breadcrumb}' does not reference it. Sorting (via the " +
+            $"generated companion) and display will disagree.");
     }
 
     /// <summary>Fails fast on malformed templates (bad braces, unknown placeholder attribute).</summary>
@@ -744,6 +769,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             if (field.AttributeName == "Id") continue;
             if (attrNames.Contains(field.AttributeName)) continue;
 
+            // The sanctioned marker shape — a [Breadcrumb] property hidden with [IgnoreProperty] —
+            // is persisted and readable, so a placeholder naming it renders fine despite being
+            // outside the model.
+            if (IsBreadcrumbMarkedProperty(field.AttributeName, entityType, projectionType))
+                continue;
+
             // Distinguish "no such property" from "you excluded it" — otherwise adding
             // [IgnoreProperty] to a breadcrumb field fails with a misleading "unknown attribute".
             if (IsIgnoredProperty(field.AttributeName, entityType, projectionType))
@@ -762,6 +793,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     private static bool IsIgnoredProperty(string name, Type? entityType, Type? projectionType)
         => (entityType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false)
             || (projectionType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false);
+
+    private static bool IsBreadcrumbMarkedProperty(string name, Type? entityType, Type? projectionType)
+        => entityType?.GetCachedProperty(name)?.GetCachedCustomAttribute<BreadcrumbAttribute>() is not null
+            || projectionType?.GetCachedProperty(name)?.GetCachedCustomAttribute<BreadcrumbAttribute>() is not null;
 
     /// <summary>
     /// null = renderable from the projection (or no projection); false = a placeholder field

@@ -250,38 +250,13 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
-    public void Breadcrumb_attribute_on_the_entity_is_authoritative()
-    {
-        var ctx = new BreadcrumbContext();
-        var sync = CreateSynchronizer();
-
-        sync.SynchronizeModels(ctx);
-
-        var file = Read<EntityTypeFile>(ModelFile("MS_BreadcrumbPerson"));
-        file.PersistentObject.Breadcrumb.Should().Be("{LastName}, {FirstName}");
-    }
-
-    [Fact]
-    public void Breadcrumb_attribute_wins_over_a_preserved_json_value_on_re_synchronize()
-    {
-        var ctx = new BreadcrumbContext();
-        var sync = CreateSynchronizer();
-
-        sync.SynchronizeModels(ctx);
-        // Tamper with the persisted breadcrumb, then re-sync: the [Breadcrumb] attribute must win.
-        var path = ModelFile("MS_BreadcrumbPerson");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("{LastName}, {FirstName}", "{FirstName}"));
-
-        sync.SynchronizeModels(ctx);
-
-        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{LastName}, {FirstName}");
-    }
-
-    [Fact]
-    public void Throws_on_breadcrumb_referencing_an_unknown_attribute()
+    public void Throws_on_authored_breadcrumb_referencing_an_unknown_attribute()
     {
         var ctx = new BadBreadcrumbContext();
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_BadBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{Nope}"));
 
         var act = () => sync.SynchronizeModels(ctx);
 
@@ -290,10 +265,13 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
-    public void Throws_on_breadcrumb_with_unbalanced_braces()
+    public void Throws_on_authored_breadcrumb_with_unbalanced_braces()
     {
         var ctx = new UnbalancedBreadcrumbContext();
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_UnbalancedBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"{FirstName}\"", "\"{FirstName\""));
 
         var act = () => sync.SynchronizeModels(ctx);
 
@@ -837,6 +815,9 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredBreadcrumbContext());
+        var path = ModelFile("MS_IgnoredBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{InternalToken}"));
 
         var act = () => sync.SynchronizeModels(new IgnoredBreadcrumbContext());
 
@@ -904,7 +885,6 @@ public class MS_OrderedParent
     public string Name { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{LastName}, {FirstName}")]
 public class MS_BreadcrumbPerson
 {
     public string? Id { get; set; }
@@ -938,14 +918,12 @@ public class MS_NamedThing
     public string Name { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{Nope}")]
 public class MS_BadBreadcrumb
 {
     public string? Id { get; set; }
     public string FirstName { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{FirstName")]
 public class MS_UnbalancedBreadcrumb
 {
     public string? Id { get; set; }
@@ -1002,7 +980,6 @@ public class MS_EmbeddedChildParent
     public MS_IgnoredChild? Child { get; set; }
 }
 
-[Breadcrumb("{InternalToken}")]
 public class MS_IgnoredBreadcrumb
 {
     public string? Id { get; set; }

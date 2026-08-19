@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Configuration;
 using Raven.Client.Documents.Session;
@@ -192,6 +193,15 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                                 sb.Append(Render(rid, renderEntity, defById, denied, true, visited));
                         }
                     }
+                    else if (attr is { DataType: "AsDetail", IsArray: false } && !string.IsNullOrEmpty(attr.AsDetailType))
+                    {
+                        // Embedded complex token: recurse into the embedded type's own breadcrumb.
+                        // Before #273 this fell into the scalar arm and rendered ToString() — the
+                        // CLR type name — silently.
+                        var child = ReadValue(entity, field.AttributeName);
+                        if (child is not null)
+                            sb.Append(RenderEmbedded(child, 0, renderEntity, defById, denied, expandReferences, visited));
+                    }
                     else
                     {
                         sb.Append(FormatScalar(ReadValue(entity, field.AttributeName)));
@@ -203,6 +213,81 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         if (openedScope)
             visited.Remove(id);
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// The breadcrumb of an embedded (id-less) value, rendered in place: its entity-type
+    /// definition's template when one is registered, else the value's <c>[Breadcrumb]</c>-marked
+    /// property. Embedded values form a finite document tree, so recursion terminates on the data;
+    /// the depth cap only guards template-level pathologies.
+    /// </summary>
+    private string RenderEmbedded(
+        object child,
+        int depth,
+        Dictionary<string, object> renderEntity,
+        Dictionary<string, EntityTypeDefinition?> defById,
+        HashSet<string> denied,
+        bool expandReferences,
+        HashSet<string> visited)
+    {
+        if (depth >= options.Breadcrumb.MaxDepth)
+            return string.Empty;
+
+        var type = child.GetType();
+        var def = modelLoader.GetEntityTypeByClrType(type.FullName ?? type.Name);
+
+        if (def is not null && !string.IsNullOrEmpty(def.Breadcrumb))
+        {
+            var sb = new StringBuilder();
+            foreach (var token in BreadcrumbTemplate.Parse(def.Breadcrumb))
+            {
+                switch (token)
+                {
+                    case LiteralToken literal:
+                        sb.Append(literal.Text);
+                        break;
+
+                    case FieldToken field:
+                        var attr = def.Attributes.FirstOrDefault(a => a.Name == field.AttributeName);
+                        if (attr is { DataType: "Reference" } && !string.IsNullOrEmpty(attr.ReferenceType))
+                        {
+                            if (!expandReferences) break;
+                            // Reference targets nested inside embedded values are preloaded by
+                            // CollectRootReferenceIds, so the by-id render finds them in memory.
+                            var parts = ExtractIds(child, field.AttributeName)
+                                .Select(rid => Render(rid, renderEntity, defById, denied, true, visited))
+                                .Where(s => !string.IsNullOrEmpty(s));
+                            sb.Append(string.Join(options.Breadcrumb.ReferenceSeparator, parts));
+                        }
+                        else if (attr is { DataType: "AsDetail", IsArray: false } && !string.IsNullOrEmpty(attr.AsDetailType))
+                        {
+                            var nested = ReadValue(child, field.AttributeName);
+                            if (nested is not null)
+                                sb.Append(RenderEmbedded(nested, depth + 1, renderEntity, defById, denied, expandReferences, visited));
+                        }
+                        else
+                        {
+                            sb.Append(FormatScalar(ReadValue(child, field.AttributeName)));
+                        }
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        // Unregistered (or template-less) embedded type: the [Breadcrumb]-marked property is the
+        // type's declared breadcrumb value.
+        var marked = type.GetBreadcrumbProperty();
+        if (marked is null)
+            return def?.Name ?? type.Name;
+
+        var value = AccessorCache.GetGetter(marked)(child);
+        if (value is null)
+            return string.Empty;
+
+        return SparkModelShape.IsComplexType(value.GetType())
+            ? RenderEmbedded(value, depth + 1, renderEntity, defById, denied, expandReferences, visited)
+            : FormatScalar(value);
     }
 
     /// <summary>Every <c>[Reference]</c> attribute of a type — root attributes all need a display label.</summary>

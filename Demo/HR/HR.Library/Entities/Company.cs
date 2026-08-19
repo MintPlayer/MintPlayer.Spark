@@ -2,9 +2,9 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-// {Sector} is a reference to a Profession, so the Company breadcrumb embeds the Profession's
-// breadcrumb — the middle link of the Person → Company → Profession chain.
-[Breadcrumb("{Name} · {Sector}")]
+// The breadcrumb template lives in App_Data/Model/Company.json ("{Name} · {Sector}"); {Sector}
+// is a reference to a Profession, so the Company breadcrumb embeds the Profession's breadcrumb —
+// the middle link of the Person → Company → Profession chain.
 public class Company
 {
     public string? Id { get; set; }

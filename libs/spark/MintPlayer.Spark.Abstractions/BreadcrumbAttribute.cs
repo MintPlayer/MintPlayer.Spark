@@ -10,22 +10,13 @@ namespace MintPlayer.Spark.Abstractions;
 /// every save (and every session dirty-check), so a throwing getter makes the entity unsavable.
 /// </summary>
 /// <remarks>
-/// On a <b>class</b> (the legacy template form): declares the display template, a string of
-/// literal text and <c>{AttributeName}</c> placeholders. This form is being replaced by the
-/// <c>"breadcrumb"</c> template in the entity's model JSON, which the synchronizer preserves and
-/// validates; see the model documentation.
+/// Display <b>templates</b> (literal text plus <c>{AttributeName}</c> placeholders, reference
+/// tokens rendering the referenced entity's breadcrumb) live in the entity's model JSON as the
+/// <c>"breadcrumb"</c> field — the synchronizer preserves an authored value, synthesizes a default
+/// (preferring the marked property) and validates placeholders. The class-level template form of
+/// this attribute was removed in #273.
 /// </remarks>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
 public sealed class BreadcrumbAttribute : Attribute
 {
-    public string? Template { get; }
-
-    public BreadcrumbAttribute()
-    {
-    }
-
-    public BreadcrumbAttribute(string template)
-    {
-        Template = template;
-    }
 }

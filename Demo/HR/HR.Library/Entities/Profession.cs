@@ -2,7 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-[Breadcrumb("{Description}")]
+// Breadcrumb template in App_Data/Model/Profession.json: "{Description}".
 public class Profession
 {
     public string? Id { get; set; }

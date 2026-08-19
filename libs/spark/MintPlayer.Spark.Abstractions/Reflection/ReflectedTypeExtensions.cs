@@ -57,6 +57,25 @@ public static class ReflectedTypeExtensions
     }
 
     /// <summary>
+    /// The property-level <c>[Breadcrumb]</c>-marked property of <paramref name="type"/>, or
+    /// <c>null</c>. A raw member scan on purpose — the sanctioned marker shape is a computed
+    /// property carrying <c>[IgnoreProperty]</c> (persisted, hidden from the model), which the
+    /// model filters would wrongly exclude. Ordinal-min name wins when several are marked,
+    /// mirroring the source generator's rule. Runtime twin of
+    /// <c>SparkModelSymbols.GetBreadcrumbProperties</c> — keep the two in step.
+    /// </summary>
+    public static PropertyInfo? GetBreadcrumbProperty(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo?>(
+            ("BreadcrumbMarkedProperty", type),
+            static k => k.Type.GetCachedProperties()
+                .Where(p => p.CanRead && p.GetCachedCustomAttribute<BreadcrumbAttribute>() is not null)
+                .OrderBy(p => p.Name, StringComparer.Ordinal)
+                .FirstOrDefault());
+    }
+
+    /// <summary>
     /// Returns the properties of <paramref name="type"/> that take part in the Spark
     /// model, i.e. <see cref="GetCachedProperties"/> filtered by
     /// <see cref="IsSparkModelProperty"/>.
