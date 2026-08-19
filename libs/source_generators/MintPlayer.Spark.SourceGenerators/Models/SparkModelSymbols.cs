@@ -30,6 +30,12 @@ internal static class SparkModelSymbols
     private const string FromIndexAttributeFullName =
         "MintPlayer.Spark.Abstractions.FromIndexAttribute";
 
+    private const string BreadcrumbAttributeFullName =
+        "MintPlayer.Spark.Abstractions.BreadcrumbAttribute";
+
+    private const string ReferenceAttributeFullName =
+        "MintPlayer.Spark.Abstractions.ReferenceAttribute";
+
     /// <summary>
     /// Whether <paramref name="property"/> carries <c>[IgnoreProperty]</c> and is therefore not
     /// part of the Spark model. Matched on the fully-qualified attribute name so the check does
@@ -155,6 +161,29 @@ internal static class SparkModelSymbols
     }
 
     /// <summary>
+    /// Whether <paramref name="property"/> carries the property-level <c>[Breadcrumb]</c> marker —
+    /// "the containing type renders as this property".
+    /// </summary>
+    public static bool HasBreadcrumbMarker(this IPropertySymbol property)
+        => property.HasAttribute(BreadcrumbAttributeFullName);
+
+    /// <summary>Whether <paramref name="property"/> carries <c>[Reference]</c> (a document id).</summary>
+    public static bool IsReferenceProperty(this IPropertySymbol property)
+        => property.HasAttribute(ReferenceAttributeFullName);
+
+    /// <summary>
+    /// The <c>[Breadcrumb]</c>-marked properties of <paramref name="type"/> (base chain included),
+    /// ordinal name order. A <em>raw</em> member scan on purpose: the sanctioned marker shape is a
+    /// computed property carrying <c>[IgnoreProperty]</c> (persisted, hidden from the model,
+    /// index-reachable), which the model/index filters would wrongly exclude.
+    /// </summary>
+    public static List<IPropertySymbol> GetBreadcrumbProperties(this INamedTypeSymbol type)
+        => type.GetSparkProperties()
+            .Where(p => p.HasBreadcrumbMarker())
+            .OrderBy(p => p.Name, System.StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
     /// Whether <paramref name="type"/> persists as a JSON object (or a collection of them) and would
     /// therefore fault Corax when indexed with default options — the fix is <c>FieldIndexing.No</c>.
     /// <para>Symbol-level twin of <c>SparkModelShape.IsComplexType</c>/<c>GetDataType</c>, keyed on the
@@ -179,6 +208,18 @@ internal static class SparkModelSymbols
                 && (IsDictionaryLike(unwrapped) || GetCollectionElementType(unwrapped) is not null || !IsScalarForIndex(unwrapped));
 
         return !IsScalarForIndex(current);
+    }
+
+    /// <summary>
+    /// A single embedded JSON object — the breadcrumb-companion-eligible subset of
+    /// <see cref="IsComplexForIndex"/>: collections and dictionaries have no single value to sort by.
+    /// </summary>
+    public static bool IsSingularComplexForIndex(this ITypeSymbol type)
+    {
+        var current = type.UnwrapNullable();
+        return type.IsComplexForIndex()
+            && !IsDictionaryLike(current)
+            && GetCollectionElementType(current) is null;
     }
 
     private static bool IsScalarForIndex(ITypeSymbol type)

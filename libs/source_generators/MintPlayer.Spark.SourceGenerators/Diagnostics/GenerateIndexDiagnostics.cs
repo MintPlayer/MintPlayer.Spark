@@ -120,6 +120,33 @@ internal static class GenerateIndexDiagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    /// <summary>
+    /// Two properties of one walked type carry the <c>[Breadcrumb]</c> marker. The ordinal-min name
+    /// wins — the same determinism rule as the registry's default index — but the tie is authored
+    /// ambiguity worth surfacing.
+    /// </summary>
+    public static readonly DiagnosticDescriptor MultipleBreadcrumbProperties = new(
+        id: "SPARK_INDEX_011",
+        title: "Multiple [Breadcrumb] properties on one type",
+        messageFormat: "Type '{0}' marks multiple [Breadcrumb] properties; '{1}' (ordinal-min) is used for the sort companion. Remove the extra markers.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// A <c>[Breadcrumb]</c> marker was found but cannot produce a sort companion — the marked
+    /// property is a <c>[Reference]</c> id (a map expression cannot follow a document reference), a
+    /// collection (no single value to sort by), a cycle, or the companion name collides with a real
+    /// entity property. The complex field falls back to stored-not-indexed.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BreadcrumbCompanionNotGenerated = new(
+        id: "SPARK_INDEX_012",
+        title: "[Breadcrumb] cannot produce a sort companion",
+        messageFormat: "Property '{0}': {1} The field is stored for projection but stays unsortable.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
     // SPARK_INDEX_004 ("Entity already has a hand-written index") was removed in #272: it was
     // declared but never reported, and its premise died when IIndexRegistry started retaining
     // every registration per collection type. Multiple indexes over one entity now coexist; the

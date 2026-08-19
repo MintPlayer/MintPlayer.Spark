@@ -258,7 +258,9 @@ public class BreadcrumbCompanionTests
             }
             """);
 
-        result.GeneratedSources[0].Source.Should().NotContain("AddressSort = person.Address");
+        // The entity's own AddressSort maps as itself; the breadcrumb companion must not be emitted.
+        result.GeneratedSources[0].Source.Should().Contain("AddressSort = person.AddressSort,");
+        result.GeneratedSources[0].Source.Should().NotContain("AddressSort = person.Address!.City");
         result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_012");
     }
 
