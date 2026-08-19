@@ -15,6 +15,17 @@ public class TestCar_Overview : AbstractIndexCreationTask<TestCar>
     }
 }
 
+// Second index over the same collection type (#272 — coexistence)
+public class VTestCarSearch { public string? Id { get; set; } }
+
+public class TestCar_Search : AbstractIndexCreationTask<TestCar>
+{
+    public TestCar_Search()
+    {
+        Map = cars => from c in cars select new { c.Id };
+    }
+}
+
 public class IndexRegistryTests
 {
     private readonly IndexRegistry _registry = new();
@@ -112,5 +123,55 @@ public class IndexRegistryTests
         _registry.RegisterProjection(typeof(VTestCar), typeof(TestCar_Overview));
 
         _registry.IsProjectionType(typeof(VTestCar)).Should().BeFalse();
+    }
+
+    // #272 — two indexes over one collection type must coexist; the generic query path
+    // uses a deterministic default (ordinal-min index name), independent of registration order.
+
+    [Fact]
+    public void GetRegistrationForCollectionType_WithDuplicates_ReturnsOrdinalMinDefault_OverviewFirst()
+    {
+        _registry.RegisterIndex(typeof(TestCar_Overview));
+        _registry.RegisterIndex(typeof(TestCar_Search));
+
+        _registry.GetRegistrationForCollectionType(typeof(TestCar))!
+            .IndexName.Should().Be("TestCar_Overview");
+    }
+
+    [Fact]
+    public void GetRegistrationForCollectionType_WithDuplicates_ReturnsOrdinalMinDefault_SearchFirst()
+    {
+        _registry.RegisterIndex(typeof(TestCar_Search));
+        _registry.RegisterIndex(typeof(TestCar_Overview));
+
+        _registry.GetRegistrationForCollectionType(typeof(TestCar))!
+            .IndexName.Should().Be("TestCar_Overview");
+    }
+
+    [Fact]
+    public void RegisterIndex_TwoIndexesForOneCollection_RetainsBoth()
+    {
+        _registry.RegisterIndex(typeof(TestCar_Overview));
+        _registry.RegisterIndex(typeof(TestCar_Search));
+
+        _registry.GetAllRegistrations().Should().HaveCount(2);
+        _registry.GetRegistrationByIndexName("TestCar_Search").Should().NotBeNull();
+        _registry.GetRegistrationByIndexName("TestCar_Overview").Should().NotBeNull();
+    }
+
+    [Fact]
+    public void RegisterProjection_AttachesToEachIndexIndependently()
+    {
+        _registry.RegisterIndex(typeof(TestCar_Overview));
+        _registry.RegisterIndex(typeof(TestCar_Search));
+        _registry.RegisterProjection(typeof(VTestCar), typeof(TestCar_Overview));
+        _registry.RegisterProjection(typeof(VTestCarSearch), typeof(TestCar_Search));
+
+        _registry.GetRegistrationByIndexName("TestCar_Overview")!.ProjectionType.Should().Be(typeof(VTestCar));
+        _registry.GetRegistrationByIndexName("TestCar_Search")!.ProjectionType.Should().Be(typeof(VTestCarSearch));
+        // Every registered projection is recognized, not just the default index's (#272):
+        // a losing projection mistaken for an entity would be emitted as its own model file.
+        _registry.IsProjectionType(typeof(VTestCar)).Should().BeTrue();
+        _registry.IsProjectionType(typeof(VTestCarSearch)).Should().BeTrue();
     }
 }
