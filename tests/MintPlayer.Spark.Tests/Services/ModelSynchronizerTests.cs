@@ -651,6 +651,128 @@ public sealed class ModelSynchronizerTests : IDisposable
             .Select(a => a.Name).Should().NotContain("InternalToken");
     }
 
+    // --- showedOn is preserved on projected entities (#274) ---
+
+    private void RegisterBookProjection(Type projectionType)
+    {
+        var registration = new IndexRegistration
+        {
+            IndexName = "Books_Index",
+            IndexType = typeof(MS_ProjectedBook),
+            CollectionType = typeof(MS_ProjectedBook),
+            ProjectionType = projectionType,
+        };
+        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_ProjectedBook)).Returns(registration);
+    }
+
+    private void TamperShowedOn(string entityName, string attributeName, string newValue)
+    {
+        var path = ModelFile(entityName);
+        var tampered = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(path),
+            $"(\"name\": \"{attributeName}\".*?\"showedOn\": )\"[^\"]+\"",
+            $"$1\"{newValue}\"",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        File.WriteAllText(path, tampered);
+    }
+
+    private EntityAttributeDefinition BookAttribute(string name) =>
+        Read<EntityTypeFile>(ModelFile("MS_ProjectedBook")).PersistentObject.Attributes
+            .Single(a => a.Name == name);
+
+    [Theory]
+    [InlineData("PersistentObject", EShowedOn.PersistentObject)]
+    [InlineData("Query", EShowedOn.Query)]
+    public void Hand_trimmed_ShowedOn_on_a_dual_present_attribute_survives_re_synchronize(
+        string trimmed, EShowedOn expected)
+    {
+        // The #274 repro: Title exists on both the entity and the projection, so its derived
+        // capability is Query|PersistentObject. An author narrows it (e.g. to keep a load-bearing
+        // but constant column off the generic grid); re-synchronize must not widen it back.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        TamperShowedOn("MS_ProjectedBook", "Title", trimmed);
+
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        BookAttribute("Title").ShowedOn.Should().Be(expected,
+            "showedOn is presentation; projection membership is the capability to show, not a mandate");
+    }
+
+    [Fact]
+    public void Attribute_leaving_the_projection_loses_the_Query_flag()
+    {
+        // Structural narrowing must keep working: once Title is no longer on the projection, a
+        // grid column for it could only ever render empty. Synchronize may remove sides that
+        // structurally disappeared — it must just never add one back.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ProjectedBookContext());
+        BookAttribute("Title").ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
+
+        RegisterBookProjection(typeof(MS_ProjectedBookViewWithoutTitle));
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        BookAttribute("Title").ShowedOn.Should().Be(EShowedOn.PersistentObject);
+    }
+
+    [Fact]
+    public void ShowedOn_with_no_valid_side_self_heals_to_the_derived_capability()
+    {
+        // A hand-set "Query" on a collection-only attribute has no valid side left after the
+        // intersection. Healing to the capability beats an empty flag set, which would make the
+        // attribute permanently invisible everywhere.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        TamperShowedOn("MS_ProjectedBook", "Secret", "Query");
+
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.PersistentObject);
+    }
+
+    [Fact]
+    public void Adding_a_projection_to_an_existing_entity_still_narrows_single_sided_attributes()
+    {
+        // The adoption path (#274's real-world trigger): the entity was synchronized long before
+        // [GenerateIndex] was added, so every attribute stores the "both" default. The first sync
+        // after the projection appears must still narrow single-sided attributes — their stored
+        // value intersected with the new capability — while dual-present ones keep both flags.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new ProjectedBookContext());
+        BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
+
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        sync.SynchronizeModels(new ProjectedBookContext());
+
+        BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.PersistentObject,
+            "not on the projection, so it can never render on the grid");
+        BookAttribute("Title").ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
+        BookAttribute("AuthorName").ShowedOn.Should().Be(EShowedOn.Query,
+            "projection-only, created by this run with the derived default");
+    }
+
+    [Fact]
+    public void Plain_entity_ShowedOn_is_untouched_on_re_synchronize()
+    {
+        // No projection: the entity itself backs the query, every side is always capable, so the
+        // authored value passes through verbatim.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        TamperShowedOn("MS_TestPerson", "FirstName", "PersistentObject");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).PersistentObject.Attributes
+            .Single(a => a.Name == "FirstName")
+            .ShowedOn.Should().Be(EShowedOn.PersistentObject);
+    }
+
     [Fact]
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
@@ -823,6 +945,34 @@ public class MS_IgnoredBreadcrumb
 public class IgnoredContext : SparkContext
 {
     public IRavenQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
+}
+
+// --- showedOn preservation fixtures (#274) ---
+
+public class MS_ProjectedBook
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;   // dual-present: also on the projection
+    public string Secret { get; set; } = string.Empty;  // collection-only
+}
+
+public class MS_ProjectedBookView
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string AuthorName { get; set; } = string.Empty; // projection-only
+}
+
+// Stand-in for a projection that dropped Title (e.g. [IgnoreForIndex] added later).
+public class MS_ProjectedBookViewWithoutTitle
+{
+    public string? Id { get; set; }
+    public string AuthorName { get; set; } = string.Empty;
+}
+
+public class ProjectedBookContext : SparkContext
+{
+    public IRavenQueryable<MS_ProjectedBook> Books => Session.Query<MS_ProjectedBook>();
 }
 
 // --- get-only computed property fixtures (#253) ---
