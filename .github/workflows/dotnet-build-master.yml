@@ -107,53 +107,20 @@ jobs:
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
-    # Master runs every test project unconditionally — all four coverage files
-    # are present. Each uploads under its own flag so codecov's carryforward
-    # logic has a full, fresh baseline to serve to PRs where `nx affected`
-    # skipped one or more projects. See codecov.yml `flag_management`.
-    - name: Upload coverage (unit)
-      if: always() && hashFiles('tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
+    # Master runs every test project unconditionally, so this is a whole-
+    # workspace upload (no `partial`) — it becomes the baseline the Coverage
+    # server compares partial PR uploads against.
+    - name: Upload coverage
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
+      uses: MintPlayer/CodeCoverage/action@master
       with:
         url: https://coverage.mintplayer.com
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml
-        flags: unit
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (sourcegen)
-      if: always() && hashFiles('tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        url: https://coverage.mintplayer.com
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml
-        flags: sourcegen
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (client)
-      if: always() && hashFiles('tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        url: https://coverage.mintplayer.com
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml
-        flags: client
-        fail_ci_if_error: false
-        verbose: true
-
-    - name: Upload coverage (e2e)
-      if: always() && hashFiles('tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml') != ''
-      uses: codecov/codecov-action@v5
-      with:
-        url: https://coverage.mintplayer.com
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml
-        flags: e2e
-        fail_ci_if_error: false
-        verbose: true
+        token: ${{ secrets.COVERAGE_TOKEN }}
+        files: |
+          tests/*/coverage/**/coverage.cobertura.xml
+        disable-search: true
+        finish: true
+        fail-ci-if-error: false
 
     - name: PushNuget
       run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
