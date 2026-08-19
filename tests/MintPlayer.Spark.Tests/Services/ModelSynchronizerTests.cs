@@ -250,38 +250,13 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
-    public void Breadcrumb_attribute_on_the_entity_is_authoritative()
-    {
-        var ctx = new BreadcrumbContext();
-        var sync = CreateSynchronizer();
-
-        sync.SynchronizeModels(ctx);
-
-        var file = Read<EntityTypeFile>(ModelFile("MS_BreadcrumbPerson"));
-        file.PersistentObject.Breadcrumb.Should().Be("{LastName}, {FirstName}");
-    }
-
-    [Fact]
-    public void Breadcrumb_attribute_wins_over_a_preserved_json_value_on_re_synchronize()
-    {
-        var ctx = new BreadcrumbContext();
-        var sync = CreateSynchronizer();
-
-        sync.SynchronizeModels(ctx);
-        // Tamper with the persisted breadcrumb, then re-sync: the [Breadcrumb] attribute must win.
-        var path = ModelFile("MS_BreadcrumbPerson");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("{LastName}, {FirstName}", "{FirstName}"));
-
-        sync.SynchronizeModels(ctx);
-
-        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{LastName}, {FirstName}");
-    }
-
-    [Fact]
-    public void Throws_on_breadcrumb_referencing_an_unknown_attribute()
+    public void Throws_on_authored_breadcrumb_referencing_an_unknown_attribute()
     {
         var ctx = new BadBreadcrumbContext();
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_BadBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{Nope}"));
 
         var act = () => sync.SynchronizeModels(ctx);
 
@@ -290,10 +265,13 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
-    public void Throws_on_breadcrumb_with_unbalanced_braces()
+    public void Throws_on_authored_breadcrumb_with_unbalanced_braces()
     {
         var ctx = new UnbalancedBreadcrumbContext();
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_UnbalancedBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"{FirstName}\"", "\"{FirstName\""));
 
         var act = () => sync.SynchronizeModels(ctx);
 
@@ -311,6 +289,66 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         // Description is the first declared attribute, but Name is preferred for the default.
         Read<EntityTypeFile>(ModelFile("MS_NamedThing")).PersistentObject.Breadcrumb.Should().Be("{Name}");
+    }
+
+    // --- #273: JSON-authoritative templates + the property-level [Breadcrumb] marker ---
+
+    [Fact]
+    public void Synthesized_default_breadcrumb_prefers_the_marked_property()
+    {
+        var ctx = new MarkedThingContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        // The [Breadcrumb]-marked (computed, [IgnoreProperty]) member is the type's declared
+        // breadcrumb value — the synthesized template names it, and validation must accept the
+        // marked-ignored placeholder as the sanctioned shape.
+        Read<EntityTypeFile>(ModelFile("MS_MarkedThing")).PersistentObject.Breadcrumb.Should().Be("{Crumb}");
+    }
+
+    [Fact]
+    public void Authored_json_template_survives_re_synchronize()
+    {
+        var ctx = new SinglePersonContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_TestPerson");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{LastName}"));
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{LastName}",
+            "the model JSON is the display authority; synchronize preserves authored templates");
+    }
+
+    [Fact]
+    public void Drift_warning_when_the_authored_template_omits_the_marked_property()
+    {
+        var ctx = new MarkedThingContext();
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+        var path = ModelFile("MS_MarkedThing");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{Crumb}", "{FirstName}"));
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(ctx);
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        // The authored template wins, but the drift — grid sorts by Crumb, display shows
+        // FirstName — is warned about, since no gate can see it.
+        Read<EntityTypeFile>(path).PersistentObject.Breadcrumb.Should().Be("{FirstName}");
+        writer.ToString().Should().Contain("Crumb");
     }
 
     [Fact]
@@ -773,10 +811,214 @@ public sealed class ModelSynchronizerTests : IDisposable
             .ShowedOn.Should().Be(EShowedOn.PersistentObject);
     }
 
+    // --- #275: hand-set `query` on non-[Reference] attributes must survive synchronize ---
+
+    /// <summary>Sets a field on one attribute object inside the model JSON, preserving the rest.</summary>
+    private void TamperAttribute(string entityName, string attributeName, string field, string? value)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var attrs = root["persistentObject"]!["attributes"]!.AsArray();
+        var attr = attrs.Single(a => a!["name"]!.GetValue<string>() == attributeName)!;
+        attr[field] = value;
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private EntityAttributeDefinition ReadAttribute(string entityName, string attributeName)
+        => Read<EntityTypeFile>(ModelFile(entityName)).PersistentObject.Attributes
+            .Single(a => a.Name == attributeName);
+
+    [Fact]
+    public void Hand_set_query_on_non_reference_attribute_survives_re_synchronize()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        TamperAttribute("MS_TestPerson", "FirstName", "query", "GetPeople");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        ReadAttribute("MS_TestPerson", "FirstName").Query.Should().Be("GetPeople",
+            "a query authored on a non-[Reference] attribute has no derivation source — only the author could have written it");
+
+        // Fixed point: a further run must not change the file.
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new SinglePersonContext());
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+    }
+
+    [Fact]
+    public void Removing_Reference_clears_the_stale_derived_query()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        // Simulate the leftovers of a property that used to carry [Reference]: the stored query
+        // was machine-derived, so it must be cleared, not preserved as if authored.
+        TamperAttribute("MS_TestPerson", "FirstName", "dataType", "Reference");
+        TamperAttribute("MS_TestPerson", "FirstName", "referenceType", typeof(MS_TestTag).FullName);
+        TamperAttribute("MS_TestPerson", "FirstName", "query", "GetTags");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        var attr = ReadAttribute("MS_TestPerson", "FirstName");
+        attr.Query.Should().BeNull("the stored query was derived from the removed [Reference]");
+        attr.ReferenceType.Should().BeNull();
+        attr.DataType.Should().Be("string");
+    }
+
+    [Fact]
+    public void Reference_attribute_query_is_still_rederived_on_every_run()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new TaggedContext());
+
+        TamperAttribute("MS_TestTagged", "TagIds", "query", "GetWrong");
+
+        sync.SynchronizeModels(new TaggedContext());
+
+        ReadAttribute("MS_TestTagged", "TagIds").Query.Should().Be("GetTags",
+            "a [Reference] attribute's query has a derivation source and is structural — it re-derives");
+    }
+
+    // --- #276: SparkQuery source staleness after a context property rename ---
+
+    private void TamperQuery(string entityName, string queryName, string field, string? value)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var queries = root["queries"]!.AsArray();
+        var query = queries.Single(q => q!["name"]!.GetValue<string>() == queryName)!;
+        query[field] = value;
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void AddQuery(string entityName, string queryName, string source)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        root["queries"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = Guid.NewGuid().ToString(),
+            ["name"] = queryName,
+            ["source"] = source,
+        });
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    [Fact]
+    public void Renamed_context_property_retargets_the_existing_query_instead_of_minting_a_duplicate()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new RenameV1Context());
+
+        var before = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single();
+        before.Source.Should().Be("Database.People");
+        TamperQuery("MS_TestPerson", "GetPeople", "alias", "hand-authored-alias");
+
+        sync.SynchronizeModels(new RenameV2Context());
+
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries;
+        queries.Should().ContainSingle("a rename must retarget in place, not leave a dead query plus a duplicate");
+        var query = queries[0];
+        query.Source.Should().Be("Database.Persons");
+        query.Id.Should().Be(before.Id, "program units reference queries by id");
+        query.Name.Should().Be("GetPersons", "a conventionally-named query follows the rename");
+        query.Alias.Should().Be("hand-authored-alias", "authoring on the query survives the retarget");
+
+        // Fixed point.
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new RenameV2Context());
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+    }
+
+    [Fact]
+    public void Unpairable_dead_Database_source_is_kept_and_warned()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        AddQuery("MS_TestPerson", "GetGhosts", "Database.Ghosts");
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(new SinglePersonContext());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries;
+        queries.Should().HaveCount(2, "synchronize adds and modifies; it does not delete");
+        queries.Single(q => q.Name == "GetGhosts").Source.Should().Be("Database.Ghosts");
+        writer.ToString().Should().Contain("Ghosts", "a dead source silently returns no rows — it must be warned about");
+    }
+
+    [Fact]
+    public void Custom_source_queries_pass_through_untouched()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        AddQuery("MS_TestPerson", "GetTop", "Custom.GetTop");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+        var top = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single(q => q.Name == "GetTop");
+        top.Source.Should().Be("Custom.GetTop");
+    }
+
+    [Fact]
+    public void Ambiguous_multi_rename_falls_back_to_warn_and_mint()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new MultiRenameV1Context());
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(new MultiRenameV2Context());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        // Two same-typed properties renamed at once cannot be paired — never guess. Old queries
+        // stay (warned), new ones are minted.
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestCar")).Queries;
+        queries.Select(q => q.Name).Should().BeEquivalentTo(
+            ["GetCars", "GetArchivedCars", "GetVehicles", "GetArchivedVehicles"]);
+        writer.ToString().Should().Contain("Cars");
+    }
+
+    [Fact]
+    public void Hand_authored_indexName_on_a_query_is_never_cleared()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People/Search");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().Be("People/Search", "the synchronizer never wrote indexName — every value is authored");
+    }
+
     [Fact]
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
         var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new IgnoredBreadcrumbContext());
+        var path = ModelFile("MS_IgnoredBreadcrumb");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{InternalToken}"));
 
         var act = () => sync.SynchronizeModels(new IgnoredBreadcrumbContext());
 
@@ -844,7 +1086,6 @@ public class MS_OrderedParent
     public string Name { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{LastName}, {FirstName}")]
 public class MS_BreadcrumbPerson
 {
     public string? Id { get; set; }
@@ -860,6 +1101,16 @@ public class MS_BreadcrumbPersonProjection
     public string LastName { get; set; } = string.Empty;
 }
 
+// #273: the property-level marker in its sanctioned computed + [IgnoreProperty] form.
+public class MS_MarkedThing
+{
+    public string? Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+
+    [Breadcrumb, IgnoreProperty]
+    public string Crumb => FirstName.ToUpperInvariant();
+}
+
 // First attribute is Description, but a Name attribute exists and is preferred for the default breadcrumb.
 public class MS_NamedThing
 {
@@ -868,14 +1119,12 @@ public class MS_NamedThing
     public string Name { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{Nope}")]
 public class MS_BadBreadcrumb
 {
     public string? Id { get; set; }
     public string FirstName { get; set; } = string.Empty;
 }
 
-[Breadcrumb("{FirstName")]
 public class MS_UnbalancedBreadcrumb
 {
     public string? Id { get; set; }
@@ -932,7 +1181,6 @@ public class MS_EmbeddedChildParent
     public MS_IgnoredChild? Child { get; set; }
 }
 
-[Breadcrumb("{InternalToken}")]
 public class MS_IgnoredBreadcrumb
 {
     public string? Id { get; set; }
@@ -1064,6 +1312,34 @@ public class NamedContext : SparkContext
 public class OrderedContext : SparkContext
 {
     public IRavenQueryable<MS_OrderedParent> Parents => Session.Query<MS_OrderedParent>();
+}
+
+public class MarkedThingContext : SparkContext
+{
+    public IRavenQueryable<MS_MarkedThing> Things => Session.Query<MS_MarkedThing>();
+}
+
+// #276: rename-retarget fixtures — the same entity exposed under an old and a new property name.
+public class RenameV1Context : SparkContext
+{
+    public IRavenQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
+}
+
+public class RenameV2Context : SparkContext
+{
+    public IRavenQueryable<MS_TestPerson> Persons => Session.Query<MS_TestPerson>();
+}
+
+public class MultiRenameV1Context : SparkContext
+{
+    public IRavenQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
+    public IRavenQueryable<MS_TestCar> ArchivedCars => Session.Query<MS_TestCar>();
+}
+
+public class MultiRenameV2Context : SparkContext
+{
+    public IRavenQueryable<MS_TestCar> Vehicles => Session.Query<MS_TestCar>();
+    public IRavenQueryable<MS_TestCar> ArchivedVehicles => Session.Query<MS_TestCar>();
 }
 
 public class BadBreadcrumbContext : SparkContext

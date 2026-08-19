@@ -1,24 +1,22 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
-/// Declares the breadcrumb template for an entity type. The template is a string of
-/// literal text and <c>{AttributeName}</c> placeholders. A placeholder that names a
-/// scalar attribute renders its value; one that names a <see cref="ReferenceAttribute"/>
-/// reference renders the <em>referenced entity's</em> breadcrumb (resolved recursively).
+/// On a <b>property</b> (the marker form, no argument): declares that the containing type renders
+/// as this property — "this type's breadcrumb is this value". The property may be stored or a
+/// computed get-only member combining several fields (<c>[Breadcrumb] string FullName =&gt;
+/// $"{FirstName} {LastName}"</c>); either way the value persists into the document JSON, so a
+/// generated index can sort a complex-typed column by it and the resolver can render an embedded
+/// object with it. <b>A computed getter must be null-safe</b>: it runs during serialization of
+/// every save (and every session dirty-check), so a throwing getter makes the entity unsavable.
 /// </summary>
-/// <example><c>[Breadcrumb("{ParkedCar} ({Coordinates})")]</c></example>
 /// <remarks>
-/// Templates are authored against the <b>collection</b> type's property names, so the same
-/// breadcrumb resolves identically on the collection-backed detail page and the
-/// projection-backed query list. Use <c>{{</c> / <c>}}</c> for literal braces.
+/// Display <b>templates</b> (literal text plus <c>{AttributeName}</c> placeholders, reference
+/// tokens rendering the referenced entity's breadcrumb) live in the entity's model JSON as the
+/// <c>"breadcrumb"</c> field — the synchronizer preserves an authored value, synthesizes a default
+/// (preferring the marked property) and validates placeholders. The class-level template form of
+/// this attribute was removed in #273.
 /// </remarks>
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
 public sealed class BreadcrumbAttribute : Attribute
 {
-    public string Template { get; }
-
-    public BreadcrumbAttribute(string template)
-    {
-        Template = template;
-    }
 }

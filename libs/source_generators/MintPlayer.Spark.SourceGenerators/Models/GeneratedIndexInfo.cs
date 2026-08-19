@@ -63,6 +63,27 @@ public partial class GeneratedIndexInfo
     /// </summary>
     public List<InvalidSearchInfo> UnrenderableAttributes { get; set; } = new();
 
+    /// <summary>
+    /// Complex-typed properties (persist as JSON objects): mapped and stored for projection but
+    /// declared <c>FieldIndexing.No</c> — Corax faults per document on a complex field with default
+    /// indexing. Reported as SPARK_INDEX_010 so the stored-but-unfilterable column is never a
+    /// silent decision.
+    /// <para>Reuses <see cref="InvalidSearchInfo"/>: <c>TypeDisplay</c> carries the property's type.</para>
+    /// </summary>
+    public List<InvalidSearchInfo> ComplexProperties { get; set; } = new();
+
+    /// <summary>
+    /// Walked types with more than one <c>[Breadcrumb]</c>-marked property. <c>PropertyName</c>
+    /// carries the type display, <c>TypeDisplay</c> the ordinal-min winner. SPARK_INDEX_011.
+    /// </summary>
+    public List<InvalidSearchInfo> BreadcrumbAmbiguities { get; set; } = new();
+
+    /// <summary>
+    /// Complex properties whose <c>[Breadcrumb]</c> chain cannot produce a companion.
+    /// <c>PropertyName</c> carries the entity property, <c>TypeDisplay</c> the reason. SPARK_INDEX_012.
+    /// </summary>
+    public List<InvalidSearchInfo> BreadcrumbRejections { get; set; } = new();
+
     /// <summary>Where to anchor diagnostics about this entity.</summary>
     public LocationKey? Location { get; set; }
 }

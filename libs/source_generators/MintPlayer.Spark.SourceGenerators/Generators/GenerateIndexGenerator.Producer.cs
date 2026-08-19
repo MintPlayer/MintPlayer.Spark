@@ -129,6 +129,24 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                     dropped.Location.ToLocation(compilation), dropped.TypeDisplay, dropped.PropertyName);
             }
 
+            foreach (var complex in entity.ComplexProperties)
+            {
+                yield return GenerateIndexDiagnostics.ComplexPropertyStoredNotIndexed.Create(
+                    complex.Location.ToLocation(compilation), complex.PropertyName, complex.TypeDisplay);
+            }
+
+            foreach (var ambiguity in entity.BreadcrumbAmbiguities)
+            {
+                yield return GenerateIndexDiagnostics.MultipleBreadcrumbProperties.Create(
+                    ambiguity.Location.ToLocation(compilation), ambiguity.PropertyName, ambiguity.TypeDisplay);
+            }
+
+            foreach (var rejection in entity.BreadcrumbRejections)
+            {
+                yield return GenerateIndexDiagnostics.BreadcrumbCompanionNotGenerated.Create(
+                    rejection.Location.ToLocation(compilation), rejection.PropertyName, rejection.TypeDisplay);
+            }
+
             if (entity.Properties.Count == 0)
             {
                 yield return GenerateIndexDiagnostics.NoIndexableProperties.Create(

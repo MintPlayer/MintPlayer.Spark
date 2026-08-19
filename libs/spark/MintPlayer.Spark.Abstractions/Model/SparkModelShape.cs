@@ -61,11 +61,10 @@ public static class SparkModelShape
         if (!string.IsNullOrEmpty(modelType.IndexName))
             builder.Append("  index\t").Append(modelType.IndexName).Append('\n');
 
-        // The [Breadcrumb] attribute is authoritative — the synchronizer overwrites the JSON with it —
-        // so it is part of the shape. A breadcrumb authored only in JSON is not.
-        var breadcrumb = type.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
-        if (breadcrumb != null)
-            builder.Append("  breadcrumb\t").Append(NormalizeNewlines(breadcrumb.Template)).Append('\n');
+        // Breadcrumb templates live in the model JSON (presentational, deliberately unhashed —
+        // ModelFileShape ignores them); the property-level [Breadcrumb] marker enters the shape
+        // indirectly through the projection/index it changes. Nothing breadcrumb-related is
+        // hashed here since #273.
 
         foreach (var property in type.GetSparkModelProperties().OrderBy(p => p.Name, StringComparer.Ordinal))
             AppendProperty(builder, property);
@@ -162,14 +161,6 @@ public static class SparkModelShape
 
     private static string Sha256Hex(string canonicalText)
         => Convert.ToHexStringLower(SHA256.HashData(Utf8NoBom.GetBytes(canonicalText)));
-
-    /// <summary>
-    /// Collapses CRLF and lone CR to LF. Author-supplied text such as a <c>[Breadcrumb]</c> template
-    /// is the only way a newline reaches this hash, but the cost of an unnormalised one is a
-    /// deployment that refuses to start on Linux after the hash was written on Windows.
-    /// </summary>
-    private static string? NormalizeNewlines(string? value)
-        => value?.Replace("\r\n", "\n").Replace("\r", "\n");
 
     // --- type classification (single definition, shared with the model generator) ---------------
 

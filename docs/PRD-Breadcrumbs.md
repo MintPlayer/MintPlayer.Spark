@@ -1,3 +1,9 @@
+> **Superseded note (#273, 2026-08-19):** the class-level `[Breadcrumb("template")]` attribute
+> described below was removed. Templates now live exclusively in the model JSON (`"breadcrumb"` on
+> the persistent object — same grammar, same recursion), and the C# surface is the property-level
+> `[Breadcrumb]` marker ("this type renders as this property"), which also drives the generated
+> `{Name}Sort` companion for complex columns. See `docs/issue_272_273_275_276_PRD.md`.
+
 # PRD — Recursive Breadcrumb Resolution for PersistentObjects & References
 
 **Status:** Draft for review

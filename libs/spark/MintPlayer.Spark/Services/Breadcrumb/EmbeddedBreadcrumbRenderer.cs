@@ -15,11 +15,34 @@ namespace MintPlayer.Spark.Services.Breadcrumb;
 /// </summary>
 internal static class EmbeddedBreadcrumbRenderer
 {
-    /// <returns>The rendered breadcrumb, or <c>null</c> when the type has no template.</returns>
-    public static string? Render(object entity, EntityTypeDefinition def, BreadcrumbResult breadcrumbs, string referenceSeparator)
+    /// <returns>The rendered breadcrumb, or <c>null</c> when the type declares no breadcrumb
+    /// (neither a template nor a <c>[Breadcrumb]</c>-marked property).</returns>
+    public static string? Render(
+        object entity,
+        EntityTypeDefinition? def,
+        BreadcrumbResult breadcrumbs,
+        string referenceSeparator,
+        Func<string, EntityTypeDefinition?>? defByClrType = null,
+        int depth = 0)
     {
-        if (string.IsNullOrEmpty(def.Breadcrumb))
-            return null;
+        if (depth >= 8)
+            return string.Empty;
+
+        if (string.IsNullOrEmpty(def?.Breadcrumb))
+        {
+            // Marker fallback: an unregistered (or template-less) embedded type renders as its
+            // [Breadcrumb]-marked property.
+            var marked = entity.GetType().GetBreadcrumbProperty();
+            if (marked is null)
+                return null;
+            var value = AccessorCache.GetGetter(marked)(entity);
+            if (value is null)
+                return string.Empty;
+            return Abstractions.Model.SparkModelShape.IsComplexType(value.GetType())
+                ? Render(value, defByClrType?.Invoke(value.GetType().FullName ?? value.GetType().Name),
+                    breadcrumbs, referenceSeparator, defByClrType, depth + 1) ?? string.Empty
+                : value.ToString() ?? string.Empty;
+        }
 
         var sb = new StringBuilder();
         foreach (var token in BreadcrumbTemplate.Parse(def.Breadcrumb))
@@ -38,6 +61,15 @@ internal static class EmbeddedBreadcrumbRenderer
                             .Select(breadcrumbs.Get)
                             .Where(s => !string.IsNullOrEmpty(s));
                         sb.Append(string.Join(referenceSeparator, parts));
+                    }
+                    else if (attr is { DataType: "AsDetail", IsArray: false } && !string.IsNullOrEmpty(attr.AsDetailType))
+                    {
+                        // Embedded complex token: recurse into the embedded type's own breadcrumb
+                        // instead of ToString()-ing the object (#273).
+                        var child = ReadValue(entity, field.AttributeName);
+                        if (child is not null)
+                            sb.Append(Render(child, defByClrType?.Invoke(attr.AsDetailType!),
+                                breadcrumbs, referenceSeparator, defByClrType, depth + 1) ?? string.Empty);
                     }
                     else
                     {

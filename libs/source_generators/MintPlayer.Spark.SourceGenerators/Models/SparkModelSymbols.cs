@@ -30,6 +30,12 @@ internal static class SparkModelSymbols
     private const string FromIndexAttributeFullName =
         "MintPlayer.Spark.Abstractions.FromIndexAttribute";
 
+    private const string BreadcrumbAttributeFullName =
+        "MintPlayer.Spark.Abstractions.BreadcrumbAttribute";
+
+    private const string ReferenceAttributeFullName =
+        "MintPlayer.Spark.Abstractions.ReferenceAttribute";
+
     /// <summary>
     /// Whether <paramref name="property"/> carries <c>[IgnoreProperty]</c> and is therefore not
     /// part of the Spark model. Matched on the fully-qualified attribute name so the check does
@@ -152,6 +158,140 @@ internal static class SparkModelSymbols
                 yield return property;
             }
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> carries the property-level <c>[Breadcrumb]</c> marker —
+    /// "the containing type renders as this property".
+    /// </summary>
+    public static bool HasBreadcrumbMarker(this IPropertySymbol property)
+        => property.HasAttribute(BreadcrumbAttributeFullName);
+
+    /// <summary>Whether <paramref name="property"/> carries <c>[Reference]</c> (a document id).</summary>
+    public static bool IsReferenceProperty(this IPropertySymbol property)
+        => property.HasAttribute(ReferenceAttributeFullName);
+
+    /// <summary>
+    /// The <c>[Breadcrumb]</c>-marked properties of <paramref name="type"/> (base chain included),
+    /// ordinal name order. A <em>raw</em> member scan on purpose: the sanctioned marker shape is a
+    /// computed property carrying <c>[IgnoreProperty]</c> (persisted, hidden from the model,
+    /// index-reachable), which the model/index filters would wrongly exclude.
+    /// </summary>
+    public static List<IPropertySymbol> GetBreadcrumbProperties(this INamedTypeSymbol type)
+        => type.GetSparkProperties()
+            .Where(p => p.HasBreadcrumbMarker())
+            .OrderBy(p => p.Name, System.StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// Whether <paramref name="type"/> persists as a JSON object (or a collection of them) and would
+    /// therefore fault Corax when indexed with default options — the fix is <c>FieldIndexing.No</c>.
+    /// <para>Symbol-level twin of <c>SparkModelShape.IsComplexType</c>/<c>GetDataType</c>, keyed on the
+    /// <em>serialized</em> shape rather than the CLR shape, which makes it deliberately stricter in two
+    /// places: a user-defined struct is <c>IsValueType</c> but persists as a JSON object (complex here,
+    /// scalar at runtime), and a dictionary persists as a JSON object even though its
+    /// <c>KeyValuePair</c> element is a struct. The runtime rules must not be widened to match — they
+    /// classify model columns, not index safety.</para>
+    /// <para>Allow-list, so an unknown type degrades to complex: worst case a stored-but-unfilterable
+    /// field, never a faulting index.</para>
+    /// </summary>
+    public static bool IsComplexForIndex(this ITypeSymbol type)
+    {
+        var current = type.UnwrapNullable();
+
+        // Dictionaries persist as JSON objects; their KeyValuePair element must not be unwrapped
+        // into a scalar verdict.
+        if (IsDictionaryLike(current)) return true;
+
+        if (GetCollectionElementType(current) is { } element)
+            return element.UnwrapNullable() is var unwrapped
+                && (IsDictionaryLike(unwrapped) || GetCollectionElementType(unwrapped) is not null || !IsScalarForIndex(unwrapped));
+
+        return !IsScalarForIndex(current);
+    }
+
+    /// <summary>
+    /// A single embedded JSON object — the breadcrumb-companion-eligible subset of
+    /// <see cref="IsComplexForIndex"/>: collections and dictionaries have no single value to sort by.
+    /// </summary>
+    public static bool IsSingularComplexForIndex(this ITypeSymbol type)
+    {
+        var current = type.UnwrapNullable();
+        return type.IsComplexForIndex()
+            && !IsDictionaryLike(current)
+            && GetCollectionElementType(current) is null;
+    }
+
+    private static bool IsScalarForIndex(ITypeSymbol type)
+    {
+        if (type.TypeKind == TypeKind.Enum) return true;
+        if (type.IsTranslatedString()) return true;
+
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Boolean:
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+            case SpecialType.System_Single:
+            case SpecialType.System_Double:
+            case SpecialType.System_Decimal:
+            case SpecialType.System_Char:
+            case SpecialType.System_String:
+            case SpecialType.System_DateTime:
+                return true;
+        }
+
+        return type.ToDisplayString() switch
+        {
+            "System.Guid" => true,
+            "System.DateTimeOffset" => true,
+            "System.TimeSpan" => true,
+            "System.DateOnly" => true,
+            "System.TimeOnly" => true,
+            // Persisted as an "#rrggbb" string by ColorNewtonsoftJsonConverter — recursing into
+            // R/G/B would be wrong, and inerting it would regress working Color columns.
+            "System.Drawing.Color" => true,
+            _ => false,
+        };
+    }
+
+    private static bool IsDictionaryLike(ITypeSymbol type)
+        => type is INamedTypeSymbol named
+        && named.AllInterfaces.Concat(new[] { named })
+            .Any(i => i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                && i.TypeArguments.Length == 1
+                && i.TypeArguments[0].OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>");
+
+    /// <summary>
+    /// The element type of an array or <c>IEnumerable&lt;T&gt;</c>-shaped collection, or <c>null</c> for a
+    /// non-collection. <c>string</c> is not a collection here, mirroring the runtime's
+    /// <c>GetCollectionElementType</c> (an <c>IEnumerable&lt;char&gt;</c> persists as a string).
+    /// </summary>
+    public static ITypeSymbol? GetCollectionElementType(this ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String) return null;
+        if (type is IArrayTypeSymbol array) return array.ElementType;
+
+        if (type is INamedTypeSymbol named)
+        {
+            foreach (var candidate in named.AllInterfaces.Concat(new[] { named }))
+            {
+                if (candidate.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                    && candidate.TypeArguments.Length == 1
+                    && candidate.TypeArguments[0].SpecialType != SpecialType.System_Char)
+                {
+                    return candidate.TypeArguments[0];
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool HasAttribute(this IPropertySymbol property, string fullName)

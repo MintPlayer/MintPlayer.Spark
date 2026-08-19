@@ -111,6 +111,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // Collect existing inline queries for this entity type, plus create default if missing
             var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
 
+            // #276 pre-pass, before the mint loop: a renamed context property otherwise leaves the
+            // old query behind with a dead "Database.OldName" source (silently returning no rows)
+            // AND mints a duplicate for the new name. Exactly one dead Database.* source plus
+            // exactly one unclaimed property is a rename with high confidence — retarget the
+            // existing query in place, preserving its Id (program units reference queries by id)
+            // and all authoring. Anything else is ambiguous: warn and keep, never guess, never
+            // delete. Custom.* queries and indexName/useProjection are never touched — the
+            // synchronizer never wrote them, so every value is authored.
+            var propertyNames = group.Select(x => x.Property.Name).ToList();
+            RetargetRenamedDatabaseQueries(queriesForType, propertyNames, entityType.Name);
+
             // One default query per context property exposing this type.
             foreach (var property in group.Select(x => x.Property))
             {
@@ -555,6 +566,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             if (existingAttrs.TryGetValue(propertyName, out var existingAttr))
             {
+                // Captured before the overwrites below: whether the stored attribute WAS a
+                // reference is the provenance signal that decides the Query assignment (#275).
+                var wasReference = existingAttr.DataType == "Reference" || existingAttr.ReferenceType != null;
+
                 // Update existing attribute, preserving custom settings.
                 // "MultiLineString" is a presentation-only override of a string property (render a
                 // textarea instead of a single-line input): the CLR shape is still string, so keep a
@@ -572,7 +587,23 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // part of the structural hash, verification would then confirm the dead reference
                 // rather than catch it.
                 existingAttr.ReferenceType = referenceAttr != null ? referenceType : null;
-                existingAttr.Query = referenceAttr != null ? resolvedQuery : null;
+
+                // Query is provenance-gated (#275): a derived value only exists when the property
+                // carries [Reference] — re-derive it then; clear it when the reference was removed
+                // (the stored value was machine-derived and is now stale); otherwise the stored
+                // value could only have been authored — preserve it.
+                if (referenceAttr != null)
+                {
+                    existingAttr.Query = resolvedQuery;
+                }
+                else if (wasReference)
+                {
+                    if (existingAttr.Query != null)
+                        Console.WriteLine(
+                            $"  Cleared query '{existingAttr.Query}' on attribute '{propertyName}': " +
+                            $"it was derived from a [Reference] that no longer exists.");
+                    existingAttr.Query = null;
+                }
 
                 // IsArray is derived purely from the CLR property shape, so always
                 // refresh it (covers Reference/scalar arrays, not just AsDetail).
@@ -699,14 +730,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(a => a.Name, StringComparer.Ordinal)];
 
-        // Breadcrumb template: the [Breadcrumb] attribute is authoritative; otherwise preserve
-        // an existing JSON value; otherwise synthesize a sensible default. Then validate the
-        // template and flag whether it is renderable from the projection alone.
-        var breadcrumbAttr = entityType.GetCustomAttribute<BreadcrumbAttribute>(inherit: true);
-        if (breadcrumbAttr is not null)
-            entityTypeDef.Breadcrumb = breadcrumbAttr.Template;
-        else if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
-            entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(newAttributes);
+        // Breadcrumb template: the model JSON is the display authority (Vidyano-style) — an
+        // authored value is preserved verbatim; only a missing one gets a synthesized default.
+        // Then validate the template and flag whether it is renderable from the projection alone.
+        if (string.IsNullOrEmpty(entityTypeDef.Breadcrumb))
+            entityTypeDef.Breadcrumb = SynthesizeDefaultBreadcrumb(entityType, newAttributes);
+        else
+            WarnOnBreadcrumbMarkerDrift(entityTypeDef, entityType);
 
         ValidateBreadcrumb(entityTypeDef, entityType, projectionType);
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
@@ -714,12 +744,94 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return entityTypeDef;
     }
 
-    /// <summary>Default breadcrumb when none is authored: prefer Name/FullName/Title, else the first attribute.</summary>
-    private static string? SynthesizeDefaultBreadcrumb(IReadOnlyList<EntityAttributeDefinition> attributes)
+    /// <summary>
+    /// Detects a renamed context property among an entity's <c>Database.*</c> queries and
+    /// retargets the existing query in place. See the call-site comment for the confidence rule;
+    /// dead sources that cannot be paired are kept and warned about — a transient state (a
+    /// property temporarily removed, a module assembly missing) must never destroy authoring.
+    /// </summary>
+    private static void RetargetRenamedDatabaseQueries(
+        List<SparkQuery> queriesForType, IReadOnlyList<string> propertyNames, string entityName)
     {
+        const string Prefix = "Database.";
+
+        var claimedSources = queriesForType
+            .Where(q => q.Source.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(q => q.Source.Substring(Prefix.Length))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var deadQueries = queriesForType
+            .Where(q => q.Source.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)
+                && !propertyNames.Contains(q.Source.Substring(Prefix.Length), StringComparer.Ordinal))
+            .ToList();
+        var unclaimedProperties = propertyNames
+            .Where(p => !claimedSources.Contains(p))
+            .ToList();
+
+        if (deadQueries.Count == 1 && unclaimedProperties.Count == 1)
+        {
+            var query = deadQueries[0];
+            var oldProperty = query.Source.Substring(Prefix.Length);
+            var newProperty = unclaimedProperties[0];
+
+            query.Source = $"{Prefix}{newProperty}";
+
+            // A conventionally-named query (and its auto-derived alias) follows the rename; an
+            // unconventional name is authored and stays.
+            if (query.Name == $"Get{oldProperty}")
+            {
+                if (query.Alias == oldProperty.ToLowerInvariant())
+                    query.Alias = null;
+                query.Name = $"Get{newProperty}";
+            }
+
+            Console.WriteLine(
+                $"  Retargeted query '{query.Name}' from Database.{oldProperty} to " +
+                $"Database.{newProperty} (renamed context property, {entityName}.json).");
+            return;
+        }
+
+        foreach (var query in deadQueries)
+        {
+            Console.WriteLine(
+                $"Warning: query '{query.Name}' in {entityName}.json sources '{query.Source}', " +
+                $"which is not a property on the SparkContext. It will return no rows. " +
+                $"Retarget or remove it.");
+        }
+    }
+
+    /// <summary>
+    /// Default breadcrumb when none is authored: the type's <c>[Breadcrumb]</c>-marked property
+    /// when present — that keeps display and the generated sort companion agreeing by default —
+    /// else prefer Name/FullName/Title, else the first attribute.
+    /// </summary>
+    private static string? SynthesizeDefaultBreadcrumb(Type entityType, IReadOnlyList<EntityAttributeDefinition> attributes)
+    {
+        var marked = entityType.GetBreadcrumbProperty();
+        if (marked is not null)
+            return $"{{{marked.Name}}}";
+
         var name = attributes.FirstOrDefault(a => a.Name is "Name" or "FullName" or "Title")?.Name
             ?? attributes.FirstOrDefault()?.Name;
         return name is null ? null : $"{{{name}}}";
+    }
+
+    /// <summary>
+    /// An authored template that omits the type's <c>[Breadcrumb]</c>-marked property means the
+    /// grid sorts a column by one string while the breadcrumb displays another — legal, but
+    /// invisible to every gate (the template is presentational and unhashed), so it is warned
+    /// about rather than silently accepted.
+    /// </summary>
+    private static void WarnOnBreadcrumbMarkerDrift(EntityTypeDefinition def, Type entityType)
+    {
+        var marked = entityType.GetBreadcrumbProperty();
+        if (marked is null || string.IsNullOrEmpty(def.Breadcrumb)) return;
+        if (def.Breadcrumb.Contains($"{{{marked.Name}}}", StringComparison.Ordinal)) return;
+
+        Console.WriteLine(
+            $"Warning: entity '{def.Name}' marks [Breadcrumb] on '{marked.Name}', but its " +
+            $"breadcrumb template '{def.Breadcrumb}' does not reference it. Sorting (via the " +
+            $"generated companion) and display will disagree.");
     }
 
     /// <summary>Fails fast on malformed templates (bad braces, unknown placeholder attribute).</summary>
@@ -744,6 +856,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             if (field.AttributeName == "Id") continue;
             if (attrNames.Contains(field.AttributeName)) continue;
 
+            // The sanctioned marker shape — a [Breadcrumb] property hidden with [IgnoreProperty] —
+            // is persisted and readable, so a placeholder naming it renders fine despite being
+            // outside the model.
+            if (IsBreadcrumbMarkedProperty(field.AttributeName, entityType, projectionType))
+                continue;
+
             // Distinguish "no such property" from "you excluded it" — otherwise adding
             // [IgnoreProperty] to a breadcrumb field fails with a misleading "unknown attribute".
             if (IsIgnoredProperty(field.AttributeName, entityType, projectionType))
@@ -762,6 +880,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     private static bool IsIgnoredProperty(string name, Type? entityType, Type? projectionType)
         => (entityType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false)
             || (projectionType?.GetCachedProperty(name)?.IsIgnoredForSparkModel() ?? false);
+
+    private static bool IsBreadcrumbMarkedProperty(string name, Type? entityType, Type? projectionType)
+        => entityType?.GetCachedProperty(name)?.GetCachedCustomAttribute<BreadcrumbAttribute>() is not null
+            || projectionType?.GetCachedProperty(name)?.GetCachedCustomAttribute<BreadcrumbAttribute>() is not null;
 
     /// <summary>
     /// null = renderable from the projection (or no projection); false = a placeholder field

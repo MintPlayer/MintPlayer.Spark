@@ -86,14 +86,9 @@ public class SparkModelShapeTests
             .Should().Be(PinnedShapeProbeHash);
     }
 
-    [Fact]
-    public void A_breadcrumb_template_with_CRLF_hashes_the_same_as_one_with_LF()
-    {
-        // The only route by which a newline reaches this hash is author-supplied text. Verified
-        // cross-platform with a self-contained spike run on Windows and on Linux under WSL.
-        // Compared on the body, since the two fixtures legitimately differ in type name.
-        ShapeBody<CrLfBreadcrumbProbe>().Should().Be(ShapeBody<LfBreadcrumbProbe>());
-    }
+    // The CRLF/LF breadcrumb-normalization test was removed with the class-level [Breadcrumb]
+    // template (#273): breadcrumb templates now live only in the model JSON, which this hash
+    // deliberately does not cover, so no author-supplied newline can reach it any more.
 
     [Fact]
     public void TranslatedString_is_its_own_data_type_not_AsDetail()
@@ -343,19 +338,4 @@ public sealed class ShapeProbeWithOtherReference
 {
     public string? Id { get; set; }
     [Reference(typeof(ShapeProbeOtherCompany))] public string? CompanyId { get; set; }
-}
-
-
-/// <summary>Same shape, breadcrumb newline written as CRLF.</summary>
-[Breadcrumb("{Id}\r\nsecond")]
-public sealed class CrLfBreadcrumbProbe
-{
-    public string? Id { get; set; }
-}
-
-/// <summary>Same shape, breadcrumb newline written as LF.</summary>
-[Breadcrumb("{Id}\nsecond")]
-public sealed class LfBreadcrumbProbe
-{
-    public string? Id { get; set; }
 }

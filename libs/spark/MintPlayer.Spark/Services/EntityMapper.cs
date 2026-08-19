@@ -202,9 +202,9 @@ internal partial class EntityMapper : IEntityMapper
         if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null && string.IsNullOrEmpty(po.Id))
         {
             var def = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-            if (def is not null)
-                breadcrumb = EmbeddedBreadcrumbRenderer.Render(
-                    entity, def, breadcrumbs, options?.Breadcrumb.ReferenceSeparator ?? ", ");
+            breadcrumb = EmbeddedBreadcrumbRenderer.Render(
+                entity, def, breadcrumbs, options?.Breadcrumb.ReferenceSeparator ?? ", ",
+                modelLoader.GetEntityTypeByClrType);
         }
         if (string.IsNullOrWhiteSpace(breadcrumb))
             breadcrumb = entityType.Name;

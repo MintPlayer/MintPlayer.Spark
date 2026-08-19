@@ -20,9 +20,22 @@ public interface IIndexRegistry
     void RegisterProjection(Type projectionType, Type indexType);
 
     /// <summary>
-    /// Gets the registration for a collection type, if any index maps from it.
+    /// Gets the default registration for a collection type, if any index maps from it — the one
+    /// the generic query path (grids, model synchronization, model hashing) resolves through.
+    /// When several indexes map the same collection, the default is the registration with the
+    /// smallest index name under ordinal comparison; the others remain fully usable via
+    /// <see cref="GetRegistrationsForCollectionType"/> and by-name lookups, or directly through
+    /// <c>session.Query&lt;TProjection, TIndex&gt;()</c>, which never consults the registry.
+    /// Name order (rather than registration order) keeps the winner stable across recompiles:
+    /// registration order tracks type-metadata order, so reordering two index classes in a file
+    /// would silently move the model hash.
     /// </summary>
     IndexRegistration? GetRegistrationForCollectionType(Type collectionType);
+
+    /// <summary>
+    /// Gets all registrations whose index maps the given collection type, default first.
+    /// </summary>
+    IReadOnlyList<IndexRegistration> GetRegistrationsForCollectionType(Type collectionType);
 
     /// <summary>
     /// Gets the registration by index name.
@@ -55,7 +68,9 @@ public sealed class IndexRegistration
 internal partial class IndexRegistry : IIndexRegistry
 {
     private readonly Dictionary<string, IndexRegistration> _byIndexName = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<Type, IndexRegistration> _byCollectionType = new();
+    // Every registration for a collection type is retained, kept sorted by ordinal index name so
+    // the default (element 0) is deterministic across scan orders, assembly orders and recompiles.
+    private readonly Dictionary<Type, List<IndexRegistration>> _byCollectionType = new();
     private readonly object _lock = new();
 
     public void RegisterIndex(Type indexType)
@@ -71,7 +86,7 @@ internal partial class IndexRegistry : IIndexRegistry
 
         lock (_lock)
         {
-            if (_byIndexName.TryGetValue(indexName, out var existing))
+            if (_byIndexName.ContainsKey(indexName))
             {
                 // Already registered, skip
                 return;
@@ -85,7 +100,22 @@ internal partial class IndexRegistry : IIndexRegistry
             };
 
             _byIndexName[indexName] = registration;
-            _byCollectionType[collectionType] = registration;
+
+            if (!_byCollectionType.TryGetValue(collectionType, out var registrations))
+            {
+                _byCollectionType[collectionType] = registrations = [];
+            }
+            var insertAt = registrations.FindIndex(r => string.CompareOrdinal(indexName, r.IndexName) < 0);
+            registrations.Insert(insertAt < 0 ? registrations.Count : insertAt, registration);
+
+            if (registrations.Count > 1)
+            {
+                Console.WriteLine(
+                    $"Warning: {registrations.Count} indexes map collection {collectionType.Name} " +
+                    $"({string.Join(", ", registrations.Select(r => r.IndexName))}). " +
+                    $"The generic query path uses {registrations[0].IndexName}; the others remain " +
+                    $"usable via session.Query<TProjection, TIndex>().");
+            }
 
             Console.WriteLine($"Registered index: {indexName} (Collection: {collectionType.Name})");
         }
@@ -113,7 +143,17 @@ internal partial class IndexRegistry : IIndexRegistry
     {
         lock (_lock)
         {
-            return _byCollectionType.TryGetValue(collectionType, out var registration) ? registration : null;
+            return _byCollectionType.TryGetValue(collectionType, out var registrations) ? registrations[0] : null;
+        }
+    }
+
+    public IReadOnlyList<IndexRegistration> GetRegistrationsForCollectionType(Type collectionType)
+    {
+        lock (_lock)
+        {
+            return _byCollectionType.TryGetValue(collectionType, out var registrations)
+                ? [.. registrations]
+                : [];
         }
     }
 
@@ -137,7 +177,9 @@ internal partial class IndexRegistry : IIndexRegistry
     {
         lock (_lock)
         {
-            return _byCollectionType.Values.Any(r => r.ProjectionType == type);
+            // Scan every registration, not just defaults: a projection for a non-default index
+            // is still a projection — mistaking it for an entity would emit it as its own model file.
+            return _byIndexName.Values.Any(r => r.ProjectionType == type);
         }
     }
 

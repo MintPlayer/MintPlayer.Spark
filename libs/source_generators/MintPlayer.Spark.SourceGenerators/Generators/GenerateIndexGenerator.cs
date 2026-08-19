@@ -244,6 +244,11 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var invalidSearches = new List<InvalidSearchInfo>();
         var ignoredSearches = new List<InvalidSearchInfo>();
         var unrenderableAttributes = new List<InvalidSearchInfo>();
+        var complexProperties = new List<InvalidSearchInfo>();
+        var breadcrumbAmbiguities = new List<InvalidSearchInfo>();
+        var breadcrumbRejections = new List<InvalidSearchInfo>();
+        var entityPropertyNames = new HashSet<string>(
+            entity.GetSparkProperties().Select(p => p.Name), System.StringComparer.Ordinal);
 
         // [IgnoreProperty] keeps a property out of the index, so a [Search] beside it can never take effect.
         // Reported rather than dropped: the combination reads as "indexed but hidden from the model" and
@@ -276,7 +281,71 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 });
             }
 
-            var isSearchableText = searchable && searchKind == SearchKind.Text;
+            // A complex-typed property (persists as a JSON object) faults Corax per document when
+            // indexed with default options — the whole index silently ends up empty. It stays mapped
+            // and stored (dropping it would blank the AsDetail column) but is declared
+            // FieldIndexing.No. Complex wins over [Search]; SPARK_INDEX_005 above still reports it.
+            var isComplex = property.Type.IsComplexForIndex();
+            IndexPropertyInfo? breadcrumbCompanion = null;
+            if (isComplex)
+            {
+                var location = property.Locations.FirstOrDefault(l => l.IsInSource).AsKey();
+                var resolution = property.Type.IsSingularComplexForIndex()
+                    && property.Type.UnwrapNullable() is INamedTypeSymbol complexType
+                    ? ResolveBreadcrumbPath(complexType, breadcrumbAmbiguities, location)
+                    : BreadcrumbResolution.None();
+
+                if (resolution.Segments is { } segments)
+                {
+                    var companionName = IndexNaming.SortCompanion(property.Name);
+                    if (entityPropertyNames.Contains(companionName))
+                    {
+                        breadcrumbRejections.Add(new InvalidSearchInfo
+                        {
+                            PropertyName = property.Name,
+                            TypeDisplay = $"the companion name '{companionName}' collides with a property already declared on the entity.",
+                            Location = location,
+                        });
+                    }
+                    else
+                    {
+                        var leaf = segments[segments.Count - 1];
+                        breadcrumbCompanion = new IndexPropertyInfo
+                        {
+                            Name = companionName,
+                            TypeDisplay = leaf.Type.ToDisplayString(TypeFormat),
+                            NeedsDefaultInitializer = leaf.Type.IsReferenceType
+                                && leaf.Type.NullableAnnotation != NullableAnnotation.Annotated,
+                            // "!." per segment: purely a C#-nullability silencer — RavenDB evaluates
+                            // the map server-side over stored JSON, where a missing path yields null.
+                            MapExpression = $"{itemVariable}.{property.Name}!." +
+                                string.Join("!.", segments.Select(s => s.Name)),
+                            FieldIndexing = null,
+                            IsSortCompanion = true,
+                        };
+                    }
+                }
+                else if (resolution.Rejection is { } reason)
+                {
+                    breadcrumbRejections.Add(new InvalidSearchInfo
+                    {
+                        PropertyName = property.Name,
+                        TypeDisplay = reason,
+                        Location = location,
+                    });
+                }
+                else
+                {
+                    complexProperties.Add(new InvalidSearchInfo
+                    {
+                        PropertyName = property.Name,
+                        TypeDisplay = property.Type.ToDisplayString(TypeFormat),
+                        Location = location,
+                    });
+                }
+            }
+
+            var isSearchableText = !isComplex && searchable && searchKind == SearchKind.Text;
 
             // A DateTimeOffset is indexed Exact and gets a companion with no attribute at all. DateTime gets
             // neither -- see SparkModelSymbols.IsDateTimeOffset for why that asymmetry is deliberate.
@@ -302,7 +371,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 NeedsDefaultInitializer = property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
                 MapExpression = $"{itemVariable}.{property.Name}",
-                FieldIndexing = isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
+                FieldIndexing = isComplex ? "No" : isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
                 Attributes = fieldAttributes,
                 IsTranslated = isTranslated,
                 IsSearchable = searchable,
@@ -313,6 +382,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
             // sortability, so the two are one decision. The companion is left undeclared on purpose.
             if (isSearchableText || isDateTimeOffset)
                 properties.Add(SortCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
+
+            if (breadcrumbCompanion is not null)
+                properties.Add(breadcrumbCompanion);
         }
 
         return new GeneratedIndexInfo
@@ -328,6 +400,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
             InvalidSearchProperties = invalidSearches,
             IgnoredSearchProperties = ignoredSearches,
             UnrenderableAttributes = unrenderableAttributes,
+            ComplexProperties = complexProperties,
+            BreadcrumbAmbiguities = breadcrumbAmbiguities,
+            BreadcrumbRejections = breadcrumbRejections,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }
@@ -505,6 +580,96 @@ public class GenerateIndexGenerator : IncrementalGenerator
             .Select(r => r.GetSyntax(ct))
             .OfType<ClassDeclarationSyntax>()
             .Any(c => c.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
+
+    /// <summary>
+    /// Outcome of walking a complex type for its <c>[Breadcrumb]</c> property: a resolved segment
+    /// path, a rejection reason (SPARK_INDEX_012), or nothing found (SPARK_INDEX_010).
+    /// </summary>
+    private readonly struct BreadcrumbResolution
+    {
+        private BreadcrumbResolution(List<IPropertySymbol>? segments, string? rejection)
+        {
+            Segments = segments;
+            Rejection = rejection;
+        }
+
+        public List<IPropertySymbol>? Segments { get; }
+        public string? Rejection { get; }
+
+        public static BreadcrumbResolution Path(List<IPropertySymbol> segments) => new(segments, null);
+        public static BreadcrumbResolution Reject(string reason) => new(null, reason);
+        public static BreadcrumbResolution None() => new(null, null);
+    }
+
+    /// <summary>
+    /// The persisted path from a complex type to its breadcrumb value, one hop per level: each type
+    /// in the chain must itself mark a <c>[Breadcrumb]</c> property (explicit at every level — the
+    /// walk never guesses a plausible scalar); a marker on a scalar terminates the path, a marker on
+    /// a singular complex property delegates to that type's own declaration. Recursion in depth is
+    /// expected to live in the entity's own C# (a computed property reading the child's), so the
+    /// depth cap is a cycle backstop, not a feature.
+    /// </summary>
+    private static BreadcrumbResolution ResolveBreadcrumbPath(
+        INamedTypeSymbol complexType,
+        List<InvalidSearchInfo> ambiguities,
+        LocationKey? location)
+    {
+        const int MaxDepth = 8;
+        var segments = new List<IPropertySymbol>();
+        var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var current = complexType;
+
+        while (true)
+        {
+            if (!visited.Add(current))
+                return BreadcrumbResolution.Reject(
+                    $"the [Breadcrumb] chain through '{current.Name}' is cyclic.");
+            if (segments.Count >= MaxDepth)
+                return BreadcrumbResolution.Reject(
+                    $"the [Breadcrumb] chain exceeds {MaxDepth} levels.");
+
+            var marked = current.GetBreadcrumbProperties();
+            if (marked.Count == 0)
+            {
+                return segments.Count == 0
+                    ? BreadcrumbResolution.None()
+                    : BreadcrumbResolution.Reject(
+                        $"the [Breadcrumb] chain dead-ends at '{current.Name}', which marks no property.");
+            }
+
+            if (marked.Count > 1)
+            {
+                ambiguities.Add(new InvalidSearchInfo
+                {
+                    PropertyName = current.ToDisplayString(TypeFormat),
+                    TypeDisplay = marked[0].Name,
+                    Location = location,
+                });
+            }
+
+            var winner = marked[0];
+
+            if (winner.IsReferenceProperty())
+                return BreadcrumbResolution.Reject(
+                    $"the marked property '{current.Name}.{winner.Name}' is a [Reference] id — an index map cannot follow a document reference.");
+
+            var winnerType = winner.Type.UnwrapNullable();
+            if (winnerType.GetCollectionElementType() is not null)
+                return BreadcrumbResolution.Reject(
+                    $"the marked property '{current.Name}.{winner.Name}' is a collection — there is no single value to sort by.");
+
+            segments.Add(winner);
+
+            if (!winner.Type.IsComplexForIndex())
+                return BreadcrumbResolution.Path(segments);
+
+            if (!winner.Type.IsSingularComplexForIndex() || winnerType is not INamedTypeSymbol next)
+                return BreadcrumbResolution.Reject(
+                    $"the marked property '{current.Name}.{winner.Name}' has a type the chain cannot continue through.");
+
+            current = next;
+        }
+    }
 
     /// <summary>
     /// The sort companion for a searchable field: same value, same nullability, <c>[IgnoreProperty]</c>, and
