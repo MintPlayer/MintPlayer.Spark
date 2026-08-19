@@ -881,6 +881,137 @@ public sealed class ModelSynchronizerTests : IDisposable
             "a [Reference] attribute's query has a derivation source and is structural — it re-derives");
     }
 
+    // --- #276: SparkQuery source staleness after a context property rename ---
+
+    private void TamperQuery(string entityName, string queryName, string field, string? value)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var queries = root["queries"]!.AsArray();
+        var query = queries.Single(q => q!["name"]!.GetValue<string>() == queryName)!;
+        query[field] = value;
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void AddQuery(string entityName, string queryName, string source)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        root["queries"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = Guid.NewGuid().ToString(),
+            ["name"] = queryName,
+            ["source"] = source,
+        });
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    [Fact]
+    public void Renamed_context_property_retargets_the_existing_query_instead_of_minting_a_duplicate()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new RenameV1Context());
+
+        var before = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single();
+        before.Source.Should().Be("Database.People");
+        TamperQuery("MS_TestPerson", "GetPeople", "description", "hand-authored description");
+
+        sync.SynchronizeModels(new RenameV2Context());
+
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries;
+        queries.Should().ContainSingle("a rename must retarget in place, not leave a dead query plus a duplicate");
+        var query = queries[0];
+        query.Source.Should().Be("Database.Persons");
+        query.Id.Should().Be(before.Id, "program units reference queries by id");
+        query.Name.Should().Be("GetPersons", "a conventionally-named query follows the rename");
+        query.Description.Should().Be("hand-authored description", "authoring on the query survives the retarget");
+
+        // Fixed point.
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new RenameV2Context());
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+    }
+
+    [Fact]
+    public void Unpairable_dead_Database_source_is_kept_and_warned()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        AddQuery("MS_TestPerson", "GetGhosts", "Database.Ghosts");
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(new SinglePersonContext());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries;
+        queries.Should().HaveCount(2, "synchronize adds and modifies; it does not delete");
+        queries.Single(q => q.Name == "GetGhosts").Source.Should().Be("Database.Ghosts");
+        writer.ToString().Should().Contain("Ghosts", "a dead source silently returns no rows — it must be warned about");
+    }
+
+    [Fact]
+    public void Custom_source_queries_pass_through_untouched()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        AddQuery("MS_TestPerson", "GetTop", "Custom.GetTop");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+        var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
+        var top = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single(q => q.Name == "GetTop");
+        top.Source.Should().Be("Custom.GetTop");
+    }
+
+    [Fact]
+    public void Ambiguous_multi_rename_falls_back_to_warn_and_mint()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new MultiRenameV1Context());
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(new MultiRenameV2Context());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        // Two same-typed properties renamed at once cannot be paired — never guess. Old queries
+        // stay (warned), new ones are minted.
+        var queries = Read<EntityTypeFile>(ModelFile("MS_TestCar")).Queries;
+        queries.Select(q => q.Name).Should().BeEquivalentTo(
+            ["GetCars", "GetArchivedCars", "GetVehicles", "GetArchivedVehicles"]);
+        writer.ToString().Should().Contain("Cars");
+    }
+
+    [Fact]
+    public void Hand_authored_indexName_on_a_query_is_never_cleared()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People/Search");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().Be("People/Search", "the synchronizer never wrote indexName — every value is authored");
+    }
+
     [Fact]
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
@@ -1186,6 +1317,29 @@ public class OrderedContext : SparkContext
 public class MarkedThingContext : SparkContext
 {
     public IRavenQueryable<MS_MarkedThing> Things => Session.Query<MS_MarkedThing>();
+}
+
+// #276: rename-retarget fixtures — the same entity exposed under an old and a new property name.
+public class RenameV1Context : SparkContext
+{
+    public IRavenQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
+}
+
+public class RenameV2Context : SparkContext
+{
+    public IRavenQueryable<MS_TestPerson> Persons => Session.Query<MS_TestPerson>();
+}
+
+public class MultiRenameV1Context : SparkContext
+{
+    public IRavenQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
+    public IRavenQueryable<MS_TestCar> ArchivedCars => Session.Query<MS_TestCar>();
+}
+
+public class MultiRenameV2Context : SparkContext
+{
+    public IRavenQueryable<MS_TestCar> Vehicles => Session.Query<MS_TestCar>();
+    public IRavenQueryable<MS_TestCar> ArchivedVehicles => Session.Query<MS_TestCar>();
 }
 
 public class BadBreadcrumbContext : SparkContext
