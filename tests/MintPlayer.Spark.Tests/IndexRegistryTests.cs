@@ -160,6 +160,25 @@ public class IndexRegistryTests
     }
 
     [Fact]
+    public void GetRegistrationsForCollectionType_ReturnsAll_DefaultFirst()
+    {
+        _registry.RegisterIndex(typeof(TestCar_Search));
+        _registry.RegisterIndex(typeof(TestCar_Overview));
+
+        var registrations = _registry.GetRegistrationsForCollectionType(typeof(TestCar));
+
+        registrations.Should().HaveCount(2);
+        registrations[0].IndexName.Should().Be("TestCar_Overview");
+        registrations[1].IndexName.Should().Be("TestCar_Search");
+    }
+
+    [Fact]
+    public void GetRegistrationsForCollectionType_ReturnsEmpty_WhenNotRegistered()
+    {
+        _registry.GetRegistrationsForCollectionType(typeof(string)).Should().BeEmpty();
+    }
+
+    [Fact]
     public void RegisterProjection_AttachesToEachIndexIndependently()
     {
         _registry.RegisterIndex(typeof(TestCar_Overview));

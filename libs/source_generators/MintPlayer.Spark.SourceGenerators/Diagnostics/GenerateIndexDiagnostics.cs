@@ -104,16 +104,9 @@ internal static class GenerateIndexDiagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    /// <summary>
-    /// One index per collection type is a hard ceiling: <c>IIndexRegistry</c> keys registrations by
-    /// collection type and silently skips duplicates, so a second index for an entity would be created in
-    /// RavenDB and then never used for queries.
-    /// </summary>
-    public static readonly DiagnosticDescriptor EntityAlreadyHasHandWrittenIndex = new(
-        id: "SPARK_INDEX_004",
-        title: "Entity already has a hand-written index",
-        messageFormat: "Entity '{0}' already has the hand-written index '{1}'. Only one index per entity is registered, so the generated index would be deployed but never queried. Remove [GenerateIndex], or delete the hand-written index.",
-        category: Category,
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+    // SPARK_INDEX_004 ("Entity already has a hand-written index") was removed in #272: it was
+    // declared but never reported, and its premise died when IIndexRegistry started retaining
+    // every registration per collection type. Multiple indexes over one entity now coexist; the
+    // generic query path uses a deterministic default (ordinal-min index name) and the registry
+    // warns at registration time. Do not reuse the id.
 }
