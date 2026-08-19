@@ -424,11 +424,29 @@ constructor you wrote. For the same reason the **map assignments stay yours**; `
 map never assigns.
 
 Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
-not. Every demo uses this shape except Fleet, which is fully generated.
+not.
 
 Hand-written indexes keep working and are still the answer for anything the generator does not cover — map/reduce,
 multi-map, `LoadDocument` and other cross-document maps. For those, `SPARK005` and `SPARK006` flag a missing or
 unmapped sort companion so the convention does not have to be remembered.
+
+### Several indexes over one entity
+
+Multiple indexes mapping the same collection type — a `[GenerateIndex]` beside a hand-written index with
+computed fields, say — coexist. The registry retains every registration; the **generic query path uses one
+deterministic default** (the smallest index name under ordinal comparison — name order, not registration
+order, so reordering declarations can never silently move the model hash), and warns at startup when a
+collection has more than one. The others stay fully usable by hand via `session.Query<TProjection, TIndex>()`,
+which never consults the registry.
+
+### Complex fields and the breadcrumb sort companion
+
+A complex-typed property (a nested object, a collection of non-scalars, a dictionary) cannot be indexed with
+default options — Corax faults on every document, leaving the index silently empty — so a generated index maps
+it **stored but not indexed** (`FieldIndexing.No`): the AsDetail column keeps rendering, but cannot be
+filtered or sorted (`SPARK_INDEX_010`). To make a singular complex column sortable, mark a property of its
+type with `[Breadcrumb]` (typically a null-safe computed property carrying `[IgnoreProperty]`); the generator
+emits a `{Name}Sort` companion reading the persisted value, and the runtime sort redirect does the rest.
 
 ## Searching
 

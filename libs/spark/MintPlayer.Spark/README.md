@@ -374,6 +374,25 @@ These manual edits are preserved when you re-run model synchronization. **The sy
 
 `showedOn` is preserved on projected (`[FromIndex]`) entities too: membership in the projection is the *capability* to appear on the query grid, not a mandate. Synchronization derives a default when the attribute is first created, and afterwards only *removes* sides that become structurally impossible (for example, the `Query` flag when the property leaves the projection) -- it never widens a hand-trimmed value back.
 
+A hand-set `query` on an attribute **without** `[Reference]` is preserved too -- it has no derivation source, so only you could have written it. A `[Reference]` attribute's `query` keeps re-deriving on every run, and removing `[Reference]` clears the now-stale derived value (with a console note).
+
+**Breadcrumbs are configured in the model JSON.** The `"breadcrumb"` template on the persistent object is the display authority: literal text plus `{AttributeName}` placeholders; a placeholder naming a `[Reference]` renders the referenced entity's breadcrumb (recursively), and one naming an embedded complex property renders that type's own breadcrumb. Synchronization preserves an authored template, synthesizes a default when missing (preferring the type's `[Breadcrumb]`-marked property, below), and validates placeholders. The property-level `[Breadcrumb]` marker in C# declares "this type renders as this property" -- typically a null-safe computed property carrying `[IgnoreProperty]` (persisted by RavenDB, hidden from the model):
+
+```csharp
+public class Address
+{
+    public string Street { get; set; } = "";
+    public string City { get; set; } = "";
+
+    [Breadcrumb, IgnoreProperty]
+    public string Crumb => $"{Street}, {City}";
+}
+```
+
+For a `[GenerateIndex]` entity with a complex-typed property of that type, the generator emits a `{Name}Sort` companion reading the persisted marked value, which makes the complex grid column sortable. A complex type without a marker stays stored-but-unsortable (`FieldIndexing.No`, warned as `SPARK_INDEX_010` -- Corax refuses to index a complex object with default options, so mapping it verbatim would leave the index empty). Sorting or filtering a `FieldIndexing.No` field does not error; it silently returns unordered/empty results.
+
+**Renamed a SparkContext property?** When exactly one query's `Database.*` source goes dead and exactly one property is unclaimed, synchronization retargets the existing query in place -- same `id` (program units keep working), authored settings intact, conventional `Get{Name}` names follow the rename. Anything ambiguous is warned about and left alone; a dead `Database.*` source is never deleted, only warned (it silently returns no rows). `Custom.*` queries and hand-authored `indexName`/`useProjection` are never touched.
+
 ### Attributes without a CLR property
 
 An attribute is kept even when no property matches it, so you can:
