@@ -13,7 +13,7 @@ re-verifies in the demo app. The PR is squashed, so the intermediate red commit 
 | S1 | Spike: does a projection query poison the identity map? | ✅ no — landed as a test, not a probe |
 | M1 | Failing tests pinning the contract (red) | ✅ `20153a5` — 5 red / 1 green control, as planned |
 | M2 | The fix: typed batched reload, both call sites | ✅ `1ea2f47` — 6/6 green |
-| M3 | Verify in the demo app + full suite sweep | ✅ unit 1563/1563; E2E `RowLevelAuthzTests` 3/3 against the real Fleet host; metadata-trigger E2E added |
+| M3 | Verify in the demo app + full suite sweep | ✅ unit 1563/1563 · Client 38/38 · SourceGenerators 197/197 · E2E 78/78, incl. the new metadata-trigger test proved red (real HTTP 500 from Fleet) before green |
 | M4 | Version bump, release notes, follow-up issue | ✅ `preview.57` across all 21 packages; notes written |
 
 **Design note — why the reload uses reflection.** `FilterAsync` receives `Type entityType`, not a
