@@ -131,6 +131,22 @@ of `entityType`. With the typed load, `TrackEntity<T>` surfaces an `InvalidOpera
 on it anyway. Both are loud, so nothing gets quieter. Keeping it loud is consistent with
 `RowSecurity.cs:168-172`.
 
+### F6 — A session write re-derives `Raven-Clr-Type`, so the E2E repro must patch server-side
+
+The first attempt at the end-to-end verification set the bogus CLR type through a session
+(`GetMetadataFor(entity)[RavenClrType] = …` on a loaded document, then `SaveChangesAsync`). It
+**passed against the unfixed build** — the client re-derives `Raven-Clr-Type` from the entity it is
+serializing and silently overwrote the value, so the test proved nothing.
+
+Two things follow. The helper now patches server-side (`PatchOperation` with a JS script writing
+`this['@metadata']['Raven-Clr-Type']`) and **verifies the read-back, throwing if it does not stick** —
+a fixture that can quietly do nothing is the same class of silent failure this PRD argues against
+everywhere else. And the unit-level route works only because it stamps the metadata on a *newly
+stored* entity in the same `SaveChanges`, which is not the same operation.
+
+With the server-side patch the real Fleet app returns **HTTP 500** from
+`GET /spark/queries/{id}/execute` on the unfixed build, and the caller's rows on the fixed one.
+
 ## Requirements
 
 - **R1** — `FilterAsync` evaluates the row rule against an instance of `entityType`, regardless of what

@@ -114,4 +114,47 @@ public class RowLevelAuthzTests
                 "parent fetch must apply the row-level gate — cannot scope a query to an inaccessible parent");
         }
     }
+
+    /// <summary>
+    /// #281 — a row rule over a <c>[FromIndex]</c>-projected entity. <c>Car</c> carries both:
+    /// <c>CarActions</c> declares a row filter, and <c>Car.json</c> binds the generic query to
+    /// <c>Cars_Overview</c>/<c>VCar</c>. The filter cannot compose into a projection query, so the
+    /// post-materialization reload is the only gate — and it used to ask RavenDB for <c>object</c>,
+    /// which yields a <c>JObject</c> whenever the document's CLR-type metadata does not resolve. The
+    /// compiled <c>Expression&lt;Func&lt;Car, bool&gt;&gt;</c> then failed its argument check and the
+    /// request 500'd before a single row was judged.
+    /// <para>
+    /// Both affected paths are asserted: the generic <c>Database.Cars</c> query (QueryExecutor) and
+    /// the PO list (DatabaseAccess, which takes its projection from the entity file's
+    /// <c>queryType</c>/<c>indexName</c>). The assertion is presence, not absence, and the metadata
+    /// helper waits for indexing — so a stale index fails loudly rather than passing vacuously.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_row_ruled_car_is_still_listed_when_its_document_has_no_resolvable_clr_type()
+    {
+        var email = $"fleet-{Guid.NewGuid():N}@e2e.local";
+        var password = _fixture.Host.AdminPass;
+        await _fixture.Host.SeedUserAsync(email, password, "Fleet managers");
+
+        using var client = SparkClientFactory.ForFleet(_fixture.Host);
+        await client.LoginAsync(email, password);
+
+        var created = await client.CreatePersistentObjectAsync(
+            CarFixture.New(CarFixture.RandomLicensePlate("CT"), model: "CT1"));
+        created.Id.Should().NotBeNullOrEmpty(
+            "the caller must own a car before its visibility means anything"
+            + $"\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
+
+        await _fixture.Host.SetUnresolvableClrTypeAsync(created.Id!);
+
+        var result = await client.ExecuteQueryAsync(GetCarsQueryId);
+        result.Data.Should().Contain(po => po.Id == created.Id,
+            "the row filter is written on Car, so the reload must produce a Car regardless of what "
+            + $"the stored metadata claims\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
+
+        var cars = await client.ListPersistentObjectsAsync(CarFixture.TypeId);
+        cars.Should().Contain(po => po.Id == created.Id,
+            $"the PO-list path projects too\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
+    }
 }
