@@ -2,6 +2,7 @@
 
 **Status:** Implemented — all milestones done (see [plan](issue_281_plan.md)) · ships `10.0.0-preview.57`
 **Issue:** [#281](https://github.com/MintPlayer/MintPlayer.Spark/issues/281)
+**PR:** [#282](https://github.com/MintPlayer/MintPlayer.Spark/pull/282) · **Follow-up:** [#283](https://github.com/MintPlayer/MintPlayer.Spark/issues/283)
 **Branch:** `fix/issue-281-rowsecurity-typed-base-load`
 **Plan:** [issue_281_plan.md](issue_281_plan.md)
 
@@ -165,17 +166,36 @@ With the server-side patch the real Fleet app returns **HTTP 500** from
 
 ## Acceptance criteria
 
-1. A generic `Database.*` query over an entity with a row rule **and** a `[FromIndex]` projection
-   returns the caller's rows — including when the base documents carry unresolvable or absent
-   CLR-type metadata.
-2. The same holds through the PO-list path (`DatabaseAccess.GetPersistentObjectsAsync`).
-3. `RedactAsync` redacts correctly over a projection under the same metadata conditions.
-4. A projected row whose base document was deleted is dropped, not thrown on.
-5. Base documents come back as the entity type even when the projection query already touched the
-   same ids in the same session (issue detail 1 / spike S1).
-6. `filterSession.Advanced.NumberOfRequests` is still `1` for a filtered page (R3).
-7. The existing row-security and `[FromIndex]` suites stay green; the E2E `RowLevelAuthzTests` stay
-   green.
+All met. Every new test was observed failing before the fix and passing after.
+
+| | Criterion | Verified by |
+|---|---|---|
+| 1 | A generic `Database.*` query over an entity with a row rule **and** a `[FromIndex]` projection returns the caller's rows — including when the base documents carry unresolvable or absent CLR-type metadata | `RowFilterProjectionReloadTests` (unit) + the Fleet browser run: **500 → 200** on the identical request |
+| 2 | The same holds through the PO-list path (`DatabaseAccess.GetPersistentObjectsAsync`) | E2E `A_row_ruled_car_is_still_listed_when_its_document_has_no_resolvable_clr_type` asserts both surfaces |
+| 3 | `RedactAsync` redacts correctly over a projection under the same metadata conditions | `Redaction_over_a_projection_reads_the_entity_type_when_the_stored_clr_type_does_not_resolve` |
+| 4 | A projected row whose base document was deleted is dropped, not thrown on | `A_projection_whose_base_document_was_deleted_is_dropped` |
+| 5 | Base documents come back as the entity type even when the projection query already touched the same ids in the same session | `A_projection_query_in_the_same_session_does_not_poison_the_typed_reload` — S1.1 answered: projections are **not** tracked under the document id |
+| 6 | `NumberOfRequests` is still `1` for a filtered page (R3) | asserted in the resolvable-metadata control test |
+| 7 | Existing row-security and `[FromIndex]` suites stay green; E2E `RowLevelAuthzTests` stay green | unit 1563/1563 · Client 38/38 · SourceGenerators 197/197 · E2E 78/78 |
+
+**AC 7, additionally — the fix must not loosen the gate.** "No longer 500s" would also be satisfied by
+disabling row security, so the Fleet run checked all three branches of `CarActions.GetRowFilterAsync`
+against four metadata-less cars, one owned by a different user and sorting *first* in the grid's own
+order (so its absence cannot be a paging artifact — and `Cars/Overview` was queried directly to
+confirm the index really held all four):
+
+| Caller | Filter branch | Result |
+|---|---|---|
+| anonymous | `car => false` | **401** — type-level authz denies before the row filter is reached |
+| `Fleet managers`, non-admin | `car => car.CreatedBy == userId` | **200**, `TotalRecords: 3` — own cars only, foreign car absent |
+| `Administrators` | `null` | **200**, `TotalRecords: 4` — foreign car included |
+
+The admin branch exercises a **different path** and is the reason it was worth checking separately:
+`filter == null` returns at `RowSecurity.cs:157`, before the reload — so admins never reached the bug,
+and the fix must leave them untouched. It does. (The service/machine principal — authenticated, no
+`NameIdentifier` → also `null` — is the same early return; its credential plumbing is covered by
+`ModuleCertificateCredentialTests` / `JwtBearerCredentialTests`.) `TotalRecords` tracks the filtered
+set, so the count does not leak the existence of hidden rows.
 
 ## Out of scope
 
