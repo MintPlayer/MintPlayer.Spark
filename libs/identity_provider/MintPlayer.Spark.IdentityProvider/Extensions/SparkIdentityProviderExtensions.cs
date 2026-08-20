@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.IdentityProvider.Indexes;
@@ -17,6 +18,15 @@ namespace MintPlayer.Spark.IdentityProvider.Extensions;
 
 public static class SparkIdentityProviderExtensions
 {
+    /// <summary>
+    /// The application's local-credential mode, or <see cref="SparkLocalCredentials.Full"/> when the
+    /// identity provider is used without <c>AddAuthentication</c> — in which case nothing has
+    /// expressed an opinion and the provider keeps its own login page.
+    /// </summary>
+    private static SparkLocalCredentials LocalCredentialsOf(IServiceProvider services) =>
+        (services.GetService(typeof(SparkAuthenticationOptions)) as SparkAuthenticationOptions)
+            ?.LocalCredentials ?? SparkLocalCredentials.Full;
+
     /// <summary>
     /// Configures this Spark application as an OIDC Identity Provider.
     /// Registers OIDC endpoints, signing key service, token generator,
@@ -109,12 +119,22 @@ public static class SparkIdentityProviderExtensions
         // OIDC protocol endpoints
         var connectGroup = endpoints.MapGroup("/connect");
         connectGroup.MapGet("/authorize", (Delegate)Authorize.Handle);
-        connectGroup.MapGet("/login", (Delegate)Login.HandleGet);
-        connectGroup.MapPost("/login", (Delegate)Login.HandlePost).RequireAntiforgery();
+
+        // The provider's own password form. It honours the application's SparkLocalCredentials mode
+        // for the same reason /spark/auth/login does — and because it would otherwise be a way to
+        // keep a password surface alive in an application that had turned local credentials off.
+        // The protocol endpoints below are untouched: an identity provider that federates to an
+        // upstream provider still needs every one of them.
+        if (LocalCredentialsOf(endpoints.ServiceProvider) != SparkLocalCredentials.Disabled)
+        {
+            connectGroup.MapGet("/login", (Delegate)Login.HandleGet);
+            connectGroup.MapPost("/login", (Delegate)Login.HandlePost).RequireAntiforgery();
+            connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
+            connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost).RequireAntiforgery();
+        }
+
         connectGroup.MapGet("/consent", (Delegate)Consent.HandleGet);
         connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost).RequireAntiforgery();
-        connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
-        connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost).RequireAntiforgery();
         connectGroup.MapGet("/applications", (Delegate)ConnectedApplications.HandleGet);
         connectGroup.MapPost("/applications/revoke", (Delegate)ConnectedApplications.HandleRevoke).RequireAntiforgery();
 

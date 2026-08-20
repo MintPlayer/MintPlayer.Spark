@@ -62,6 +62,12 @@ public static class SparkBuilderAuthorizationExtensions
 
         builder.Registry.IdentityUserType = typeof(TUser);
 
+        // Published so other Spark packages can honour the same mode instead of carrying their own
+        // copy of the flag. MintPlayer.Spark.IdentityProvider serves a second local-credential
+        // surface at /connect/login; two flags could disagree, and an application reporting that
+        // local credentials are off while still serving a password form would be believed.
+        builder.Services.AddSingleton(options);
+
         var identityBuilder = builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
         configureProviders?.Invoke(identityBuilder);
 
