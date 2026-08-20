@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import { HttpInterceptorFn } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { tap } from 'rxjs';
-import { SPARK_AUTH_CONFIG, sanitizeReturnUrl } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, resolveSignInUrl, sanitizeReturnUrl } from '@mintplayer/ng-spark-auth/models';
 
 export const sparkAuthInterceptor: HttpInterceptorFn = (req, next) => {
   const config = inject(SPARK_AUTH_CONFIG);
@@ -23,7 +23,7 @@ export const sparkAuthInterceptor: HttpInterceptorFn = (req, next) => {
           // back as an open redirect after authentication.
           const pathOnly = router.url.split('?')[0].split('#')[0];
           const returnUrl = sanitizeReturnUrl(pathOnly, config.defaultRedirectUrl);
-          router.navigate([config.loginUrl], {
+          router.navigate([resolveSignInUrl(config, router)], {
             queryParams: { returnUrl },
           });
         }

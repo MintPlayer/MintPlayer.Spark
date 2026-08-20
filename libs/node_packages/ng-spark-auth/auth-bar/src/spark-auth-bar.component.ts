@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
-import { SPARK_AUTH_CONFIG } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, resolveSignInUrl } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
 
@@ -15,6 +15,9 @@ export class SparkAuthBarComponent {
   readonly authService = inject(SparkAuthService);
   readonly config = inject(SPARK_AUTH_CONFIG);
   private readonly router = inject(Router);
+
+  /** Same target the guard and interceptor use, so the bar cannot link somewhere they would not send you. */
+  readonly signInUrl = resolveSignInUrl(this.config, this.router);
 
   async onLogout(): Promise<void> {
     try {

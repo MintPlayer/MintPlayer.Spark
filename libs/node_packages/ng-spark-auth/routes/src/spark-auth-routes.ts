@@ -1,48 +1,73 @@
 import { SPARK_AUTH_ROUTE_PATHS, SparkAuthRouteConfig, SparkAuthRouteEntry, SparkAuthRoutePaths } from '@mintplayer/ng-spark-auth/models';
 
-interface ResolvedEntry {
+type Loader = () => Promise<any>;
+
+interface Child {
   path: string;
-  loadComponent: () => Promise<any>;
+  loadComponent: Loader;
 }
 
-function resolveEntry(
-  entry: SparkAuthRouteEntry | undefined,
-  defaultPath: string,
-  defaultLoader: () => Promise<any>,
-): ResolvedEntry {
-  if (entry === undefined || typeof entry === 'string') {
-    return {
-      path: typeof entry === 'string' ? entry : defaultPath,
-      loadComponent: defaultLoader,
-    };
-  }
-  return {
-    path: entry.path,
-    loadComponent: entry.component
-      ? () => Promise.resolve(entry.component!)
-      : defaultLoader,
-  };
+/** The routed path for an entry, independent of how its component is loaded. */
+function entryPath(entry: SparkAuthRouteEntry | undefined, defaultPath: string): string {
+  if (entry === undefined) return defaultPath;
+  return typeof entry === 'string' ? entry : entry.path;
 }
 
+/** An explicitly supplied component wins over the library's lazy import. */
+function child(entry: SparkAuthRouteEntry | undefined, path: string, defaultLoader: Loader): Child {
+  const component = typeof entry === 'object' && entry.component ? entry.component : undefined;
+  return { path, loadComponent: component ? () => Promise.resolve(component) : defaultLoader };
+}
+
+/**
+ * The routes for Spark's authentication pages.
+ *
+ * `config.localCredentials` chooses how much of the email/password family to route, mirroring the
+ * server's `SparkLocalCredentials`. `GET /spark/auth/capabilities` reports what the server is
+ * actually running, so the two can be checked against each other.
+ *
+ * The `import()` expressions live *inside* the branches that need them. That placement is the point:
+ * a bundler decides whether to emit a lazy chunk from whether the `import()` call site is reachable,
+ * not from whether the route object referencing it survives — so filtering the children array after
+ * the fact would still ship every page. Excluded pages must have no reachable `import()` at all.
+ *
+ * `SPARK_AUTH_ROUTE_PATHS` is still provided in full. The excluded pages are excluded together, so
+ * nothing that survives can link to something that does not, and the token stays `Required`.
+ */
 export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
-  const login = resolveEntry(config?.login, 'login',
-    () => import('@mintplayer/ng-spark-auth/login').then(m => m.SparkLoginComponent));
-  const twoFactor = resolveEntry(config?.twoFactor, 'login/two-factor',
-    () => import('@mintplayer/ng-spark-auth/two-factor').then(m => m.SparkTwoFactorComponent));
-  const register = resolveEntry(config?.register, 'register',
-    () => import('@mintplayer/ng-spark-auth/register').then(m => m.SparkRegisterComponent));
-  const forgotPassword = resolveEntry(config?.forgotPassword, 'forgot-password',
-    () => import('@mintplayer/ng-spark-auth/forgot-password').then(m => m.SparkForgotPasswordComponent));
-  const resetPassword = resolveEntry(config?.resetPassword, 'reset-password',
-    () => import('@mintplayer/ng-spark-auth/reset-password').then(m => m.SparkResetPasswordComponent));
+  const mode = config?.localCredentials ?? 'full';
 
   const paths: SparkAuthRoutePaths = {
-    login: '/' + login.path,
-    twoFactor: '/' + twoFactor.path,
-    register: '/' + register.path,
-    forgotPassword: '/' + forgotPassword.path,
-    resetPassword: '/' + resetPassword.path,
+    login: '/' + entryPath(config?.login, 'login'),
+    twoFactor: '/' + entryPath(config?.twoFactor, 'login/two-factor'),
+    register: '/' + entryPath(config?.register, 'register'),
+    forgotPassword: '/' + entryPath(config?.forgotPassword, 'forgot-password'),
+    resetPassword: '/' + entryPath(config?.resetPassword, 'reset-password'),
   };
+
+  const children: Child[] = [];
+
+  if (mode !== 'disabled') {
+    children.push(
+      child(config?.login, entryPath(config?.login, 'login'),
+        () => import('@mintplayer/ng-spark-auth/login').then(m => m.SparkLoginComponent)),
+      // Reachable only from the login page's RequiresTwoFactor branch, and it posts to the same
+      // /login endpoint — so it belongs to password sign-in, not to authentication in general.
+      child(config?.twoFactor, entryPath(config?.twoFactor, 'login/two-factor'),
+        () => import('@mintplayer/ng-spark-auth/two-factor').then(m => m.SparkTwoFactorComponent)),
+      child(config?.forgotPassword, entryPath(config?.forgotPassword, 'forgot-password'),
+        () => import('@mintplayer/ng-spark-auth/forgot-password').then(m => m.SparkForgotPasswordComponent)),
+      child(config?.resetPassword, entryPath(config?.resetPassword, 'reset-password'),
+        () => import('@mintplayer/ng-spark-auth/reset-password').then(m => m.SparkResetPasswordComponent)),
+    );
+  }
+
+  if (mode === 'full') {
+    children.push(
+      child(config?.register, entryPath(config?.register, 'register'),
+        () => import('@mintplayer/ng-spark-auth/register').then(m => m.SparkRegisterComponent)),
+    );
+  }
 
   return [
     {
@@ -50,13 +75,7 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
       providers: [
         { provide: SPARK_AUTH_ROUTE_PATHS, useValue: paths },
       ],
-      children: [
-        { path: login.path, loadComponent: login.loadComponent },
-        { path: twoFactor.path, loadComponent: twoFactor.loadComponent },
-        { path: register.path, loadComponent: register.loadComponent },
-        { path: forgotPassword.path, loadComponent: forgotPassword.loadComponent },
-        { path: resetPassword.path, loadComponent: resetPassword.loadComponent },
-      ],
+      children,
     },
   ];
 }
