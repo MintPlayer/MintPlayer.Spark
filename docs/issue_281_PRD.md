@@ -179,8 +179,16 @@ With the server-side patch the real Fleet app returns **HTTP 500** from
 
 ## Out of scope
 
-- The two `BreadcrumbResolver` untyped loads (F4). The silent-`JObject` degradation there is real but
-  distinct, is not a crash, and is mitigated on the query paths by F3 priming. Worth its own issue.
+- The two `BreadcrumbResolver` untyped loads (F4) — filed as
+  [#283](https://github.com/MintPlayer/MintPlayer.Spark/issues/283). Following up on them turned out to
+  be worse than "silent degradation": the BFS level gates each referenced document on
+  `IsAllowedAsync(doc.GetType(), "Read", doc)`, and a `JObject` runtime type resolves to
+  `DefaultPersistentObjectActions<JObject>` whose hooks are permissive — **measured returning `true`**,
+  so the referenced entity's own row rule is never consulted. A fail-open, unlike every neighbouring
+  decision here. It is probably not a disclosure today only because `GetEntityTypeByClrType` then
+  fails for the same reason and the breadcrumb renders blank; confirming that is the first task of
+  #283. The F3 priming mitigates the *root* documents on the query paths but not the referenced ones,
+  which is exactly where the gate lives.
 - Pushing a row filter down into a projection query (`ComposeRowFilterAsync`'s deliberate no-op).
   Unchanged: `FilterAsync` remains the gate for projections by design.
 - Any change to how documents acquire `@Raven-Clr-Type`. The fix makes Spark independent of it.
