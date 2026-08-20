@@ -245,6 +245,9 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
         if (!string.IsNullOrEmpty(info.Description))
             writer.WriteLine($"[global::System.ComponentModel.Description({Quote(info.Description!)})]");
 
+        if (info.IsDefault)
+            writer.WriteLine($"[{SparkAbstractions}.DefaultIndexAttribute]");
+
         using (writer.OpenBlock($"public partial class {info.IndexName} : {RavenIndexes}.AbstractIndexCreationTask<{info.EntityFullName}>"))
         {
             using (writer.OpenBlock($"public {info.IndexName}()"))

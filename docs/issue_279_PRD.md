@@ -118,8 +118,10 @@ resolve by collection type at runtime.
   silently null-filling computed fields.)
 - **R279.5** The per-entity default is authored via a new **`[DefaultIndex]` attribute on the index class**
   (in `MintPlayer.Spark.Abstractions` — typeless, arrow rule holds). Enforcement is two-layered: Roslyn
-  analyzer **SPARK009** errors when two indexes over the same collection type both carry it (compile-time DX,
-  single compilation), and catalog-build validation is the authoritative cross-assembly check, reached by
+  analyzer **SPARK009** errors when two claims over the same collection type collide — two `[DefaultIndex]`
+  markers, or a `[DefaultIndex]` index beside a `[GenerateIndex]` entity that has not opted out (the entity
+  counts as a claim for its generated index, so the clash never depends on generated-tree analysis)
+  (compile-time DX, single compilation), and catalog-build validation is the authoritative cross-assembly check, reached by
   runtime startup, `--spark-synchronize-model`, `--spark-verify-model`, and the test-host hash writer alike
   (the SPARK_INDEX_004 lesson: analyzer-only guards don't cover `AddIndexesFrom(...)` and can be disabled).
 - **R279.6** Default rules operate over **projection-bearing** entries (F279.14): zero → no default, entity

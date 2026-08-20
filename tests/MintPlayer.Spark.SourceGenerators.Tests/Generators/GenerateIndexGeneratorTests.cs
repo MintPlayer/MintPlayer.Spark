@@ -55,6 +55,38 @@ public class GenerateIndexGeneratorTests
     }
 
     /// <summary>
+    /// The generated index is the entity's generic-surface index, so it elects itself the model-shaping
+    /// default unless the entity opts out (issue #279).
+    /// </summary>
+    [Fact]
+    public void Generated_index_carries_DefaultIndex_by_default()
+    {
+        var generated = Run(PlainCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.DefaultIndexAttribute]");
+    }
+
+    [Fact]
+    public void IsDefault_false_omits_the_DefaultIndex_marker()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex(IsDefault = false)]
+            public class Car
+            {
+                public string? Id { get; set; }
+                public string LicensePlate { get; set; } = string.Empty;
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("public partial class Cars_Overview");
+        generated.Should().NotContain("DefaultIndexAttribute");
+    }
+
+    /// <summary>
     /// Both generated types belong to the application project, never to the assembly that declares the
     /// entity — that is what lets an entity library stay lean.
     /// </summary>
