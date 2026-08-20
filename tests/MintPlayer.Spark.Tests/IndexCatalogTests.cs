@@ -15,21 +15,21 @@ public class IndexCatalogTests
     private class Car { public string? Id { get; set; } }
     private class Person { public string? Id { get; set; } }
 
-    private class Cars_Overview : AbstractIndexCreationTask<Car> { }
-    private class Cars_Search : AbstractIndexCreationTask<Car> { }
+    private abstract class Cars_Overview : AbstractIndexCreationTask<Car> { }
+    private abstract class Cars_Search : AbstractIndexCreationTask<Car> { }
     private class VCarOverview { }
     private class VCarSearch { }
 
     [DefaultIndex]
-    private class Cars_MarkedOverview : AbstractIndexCreationTask<Car> { }
+    private abstract class Cars_MarkedOverview : AbstractIndexCreationTask<Car> { }
 
     [DefaultIndex]
-    private class Cars_MarkedSearch : AbstractIndexCreationTask<Car> { }
+    private abstract class Cars_MarkedSearch : AbstractIndexCreationTask<Car> { }
 
     [DefaultIndex]
-    private class Cars_MarkedWithoutProjection : AbstractIndexCreationTask<Car> { }
+    private abstract class Cars_MarkedWithoutProjection : AbstractIndexCreationTask<Car> { }
 
-    private class People_Overview : AbstractIndexCreationTask<Person> { }
+    private abstract class People_Overview : AbstractIndexCreationTask<Person> { }
 
     private static IndexCatalog Frozen(params (Type Index, Type? Projection)[] indexes)
     {

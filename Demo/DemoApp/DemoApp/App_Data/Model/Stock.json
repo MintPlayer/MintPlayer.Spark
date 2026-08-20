@@ -112,7 +112,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Stock",
       "isStreamingQuery": false
     },
@@ -133,7 +132,6 @@
         }
       ],
       "renderMode": "VirtualScrolling",
-      "useProjection": false,
       "entityType": "Stock",
       "isStreamingQuery": true
     }

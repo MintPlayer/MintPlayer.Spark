@@ -294,7 +294,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "OidcApplication",
       "isStreamingQuery": false
     }

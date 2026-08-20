@@ -217,7 +217,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Person",
       "isStreamingQuery": false
     },
@@ -237,7 +236,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
+      "indexName": "People_Overview",
       "entityType": "Person",
       "isStreamingQuery": false
     }

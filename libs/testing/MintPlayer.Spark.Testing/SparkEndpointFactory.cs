@@ -107,8 +107,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         // module (or configureSpark) that declares an index assembly would be
                         // invisible to the value written while being visible to the check verifying
                         // it, and every test host would fail the gate with no obvious cause.
+                        // The fixture-armed catalog must feed the hash writer too: the startup check
+                        // recomputes the shape through the runtime catalog, and a projection the
+                        // writer never saw would read as model drift.
                         MintPlayer.Spark.SparkDevelopmentExtensions.WriteSparkModelHashes(
-                            typeof(TContext), _contentRoot, services);
+                            typeof(TContext), _contentRoot, services, configureIndexCatalog);
 
                         var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));
                         services.Remove(existing);

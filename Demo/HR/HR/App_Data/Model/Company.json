@@ -160,7 +160,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Company",
       "isStreamingQuery": false
     }

@@ -170,7 +170,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "GitHubProject",
       "isStreamingQuery": false
     }

@@ -121,6 +121,20 @@ public static class SparkDevelopmentExtensions
     /// </para>
     /// </summary>
     public static void WriteSparkModelHashes(Type contextType, string contentRootPath, IServiceCollection? services)
+        => WriteSparkModelHashes(contextType, contentRootPath, services, configureIndexCatalog: null);
+
+    /// <summary>
+    /// As <see cref="WriteSparkModelHashes(Type, string, IServiceCollection?)"/>, additionally applying
+    /// <paramref name="configureIndexCatalog"/> to the offline catalog before it freezes. A test host
+    /// that arms fixture indexes into the runtime catalog must arm the hash writer's catalog with the
+    /// same hook, or the value written and the value the startup check computes describe different
+    /// models and the host refuses to start.
+    /// </summary>
+    public static void WriteSparkModelHashes(
+        Type contextType,
+        string contentRootPath,
+        IServiceCollection? services,
+        Action<IIndexCatalog>? configureIndexCatalog)
     {
         ArgumentNullException.ThrowIfNull(contextType);
         ArgumentNullException.ThrowIfNull(contentRootPath);
@@ -135,6 +149,8 @@ public static class SparkDevelopmentExtensions
 
         foreach (var assembly in assemblies)
             SparkExtensions.PopulateProjectionTypes(indexCatalog, assembly);
+
+        configureIndexCatalog?.Invoke(indexCatalog);
 
         indexCatalog.Freeze();
 

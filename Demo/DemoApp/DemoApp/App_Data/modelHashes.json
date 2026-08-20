@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "modelHash": "d4f648bcaddd739a03e3ec903edad958b53127df5e8a42de2517be3032068e73",
+  "modelHash": "7c4bf7723f8410d3ef759e63fdad174520ff336f564060e7ae643c4a2529b5ef",
   "contextRoots": "69a7d18ccbd2883346e610e284c3bf485547edd95d1a02fb5583a30b938faa6b",
-  "modelFiles": "68ca90b906de9e7a1627cb5ae2abb92e9ccc2d7a70c098698c1d592888c288b7",
+  "modelFiles": "53e2479934eb7009b40a8bbdcccf48612feff688525d93ba58a762352d3d5806",
   "files": {
     "Address.json": "23217de2b81a99a45613f2462b655a9c20dfd081911103cfc5b74c3d39aa142b",
-    "Car.json": "65f925e0396933b1686cefe33ed609f70c015baf6b5ae0d7bbe2ab54f1d900e7",
-    "Company.json": "aba5be16b1bce1af774f66c26e8faf54f50340736b5661b2dbe27f8aa3f89242",
-    "Person.json": "d510facc1ed87983f0a02ef0146ccc08f873e98537feb70457fbfcc0de5f49eb",
+    "Car.json": "baec1bfefdeb23f81b1ded5af79738be73e502f1324cde52bd213f5676b0d331",
+    "Company.json": "23e648033ad582b8e2ffcf820081175ff2b84bff3e878cf4cb7988d967fdfde4",
+    "Person.json": "b1ff5fbbbdc226deef1930f7c03809b0c3d388b9de1bd1a35c22826a63b614cf",
     "Stock.json": "1b9e5a6302dfb45fb9be4651b9ebba5ec8e23245de3e5f3a84b7d2d2ea38a709"
   },
   "entities": {
