@@ -38,6 +38,7 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
   const mode = config?.localCredentials ?? 'full';
 
   const paths: SparkAuthRoutePaths = {
+    signIn: '/' + entryPath(config?.signIn, 'sign-in'),
     login: '/' + entryPath(config?.login, 'login'),
     twoFactor: '/' + entryPath(config?.twoFactor, 'login/two-factor'),
     register: '/' + entryPath(config?.register, 'register'),
@@ -46,6 +47,15 @@ export function sparkAuthRoutes(config?: SparkAuthRouteConfig): any[] {
   };
 
   const children: Child[] = [];
+
+  // Only when local credentials are limited. In 'full' mode the login page is already the landing
+  // page, and emitting a second one would change the routes of every app that never opted in.
+  if (mode !== 'full') {
+    children.push(
+      child(config?.signIn, entryPath(config?.signIn, 'sign-in'),
+        () => import('@mintplayer/ng-spark-auth/sign-in').then(m => m.SparkSignInComponent)),
+    );
+  }
 
   if (mode !== 'disabled') {
     children.push(

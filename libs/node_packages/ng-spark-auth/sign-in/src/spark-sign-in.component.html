@@ -1,0 +1,28 @@
+<div class="d-flex justify-content-center">
+  <bs-card style="width: 100%; max-width: 400px;">
+    <bs-card-header>
+      <h3 class="mb-0 text-center">{{ 'auth.login' | t }}</h3>
+    </bs-card-header>
+    <div class="p-4">
+      @if (loading()) {
+        <div class="text-center"><bs-spinner /></div>
+      } @else if (failed()) {
+        <bs-alert [type]="colors.danger" class="mb-0">{{ 'auth.signInUnavailable' | t }}</bs-alert>
+      } @else {
+        @for (provider of providers(); track provider.scheme) {
+          <button type="button" class="btn btn-outline-primary w-100 mb-2" (click)="signInWith(provider)">
+            {{ provider.displayName }}
+          </button>
+        } @empty {
+          <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
+        }
+
+        @if (localCredentialsAvailable()) {
+          <div class="text-center mt-3">
+            <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
+          </div>
+        }
+      }
+    </div>
+  </bs-card>
+</div>

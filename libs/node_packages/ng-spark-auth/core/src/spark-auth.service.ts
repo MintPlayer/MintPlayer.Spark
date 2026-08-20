@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   AuthUser,
   SPARK_AUTH_CONFIG,
+  SparkAuthCapabilities,
   SPARK_EXTERNAL_LOGIN_MESSAGE_TYPE,
   SparkExternalLoginError,
   SparkExternalLoginOptions,
@@ -51,6 +52,17 @@ export class SparkAuthService {
     await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/logout`, {}));
     await this.csrfRefresh();
     this.currentUser.set(null);
+  }
+
+  /**
+   * What sign-in methods this deployment actually offers.
+   *
+   * Read from the server rather than assumed from the client's own route configuration: the two are
+   * configured independently, and a mismatch is otherwise invisible until a user hits it.
+   */
+  async capabilities(): Promise<SparkAuthCapabilities> {
+    return await firstValueFrom(
+      this.http.get<SparkAuthCapabilities>(`${this.config.apiBasePath}/capabilities`));
   }
 
   async csrfRefresh(): Promise<void> {

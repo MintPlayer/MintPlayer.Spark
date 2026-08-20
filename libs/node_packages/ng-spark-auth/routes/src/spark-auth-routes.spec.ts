@@ -17,8 +17,15 @@ describe('sparkAuthRoutes', () => {
     );
   });
 
-  it('emits no local-credential page when disabled', () => {
-    expect(childPaths({ localCredentials: 'disabled' })).toEqual([]);
+  it('emits no local-credential page when disabled, only the sign-in landing', () => {
+    // The landing page is what makes 'disabled' usable — without it there would be no route to
+    // point loginUrl at, and the guard would redirect into nothing.
+    expect(childPaths({ localCredentials: 'disabled' })).toEqual(['sign-in']);
+  });
+
+  it('does not emit the sign-in landing in full mode', () => {
+    // Emitting it by default would change the routes of every app that never opted in.
+    expect(childPaths()).not.toContain('sign-in');
   });
 
   it('drops only registration in sign-in-only mode', () => {
@@ -27,7 +34,7 @@ describe('sparkAuthRoutes', () => {
 
     expect(paths).not.toContain('register');
     expect(paths.sort()).toEqual(
-      ['login', 'login/two-factor', 'forgot-password', 'reset-password'].sort(),
+      ['sign-in', 'login', 'login/two-factor', 'forgot-password', 'reset-password'].sort(),
     );
   });
 
@@ -38,6 +45,7 @@ describe('sparkAuthRoutes', () => {
       .find((p: any) => p.provide === SPARK_AUTH_ROUTE_PATHS);
 
     expect(provider.useValue).toEqual({
+      signIn: '/sign-in',
       login: '/login',
       twoFactor: '/login/two-factor',
       register: '/register',

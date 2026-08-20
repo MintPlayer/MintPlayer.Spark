@@ -15,6 +15,8 @@ export type SparkLocalCredentialsMode = 'full' | 'sign-in-only' | 'disabled';
 /** The routable local-credential pages. Kept separate from {@link SparkAuthRouteConfig} so that
  * adding non-route options below cannot widen {@link SparkAuthRoutePaths}. */
 export interface SparkAuthRouteEntries {
+  /** The provider-button landing page. Routed whenever local credentials are limited. */
+  signIn?: SparkAuthRouteEntry;
   login?: SparkAuthRouteEntry;
   twoFactor?: SparkAuthRouteEntry;
   register?: SparkAuthRouteEntry;
