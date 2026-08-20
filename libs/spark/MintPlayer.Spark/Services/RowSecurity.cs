@@ -175,9 +175,6 @@ internal partial class RowSecurity : IRowSecurity
             idGetter = AccessorCache.GetGetter(idProperty);
         }
 
-        // One batched load for the whole page, not one per row. The request session caps requests
-        // (MaxNumberOfRequestsPerSession, default 30) precisely to catch the per-row shape — a
-        // projection-backed query over a row-scoped type would throw past ~29 rows.
         Dictionary<string, object>? baseDocuments = null;
         if (projecting)
         {
@@ -187,9 +184,7 @@ internal partial class RowSecurity : IRowSecurity
                 .Cast<string>()
                 .ToList();
 
-            baseDocuments = ids.Count > 0
-                ? await session.LoadAsync<object>(ids)
-                : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids);
         }
 
         var visible = new List<object>(entities.Count);
@@ -307,11 +302,9 @@ internal partial class RowSecurity : IRowSecurity
                     .Cast<string>()
                     .ToList();
 
-            // One batch; on the query paths FilterAsync already pulled these into the session,
-            // so this is served from cache rather than costing a request.
-            baseDocuments = ids.Count > 0
-                ? await session.LoadAsync<object>(ids)
-                : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            // On the query paths FilterAsync already pulled these into the session, so this is
+            // served from the identity map rather than costing a request.
+            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids);
         }
 
         foreach (var (po, row) in items)
@@ -342,6 +335,65 @@ internal partial class RowSecurity : IRowSecurity
             foreach (var name in names)
                 RedactAttribute(po, name);
         }
+    }
+
+    /// <summary>
+    /// Batch-loads the documents behind a page of projected rows, as <paramref name="entityType"/>.
+    /// <para>
+    /// The type argument is load-bearing, not cosmetic. Both row hooks are declared over the entity
+    /// (<c>Expression&lt;Func&lt;TEntity, bool&gt;&gt;</c>, <c>GetProtectedAttributesAsync(string,
+    /// TEntity)</c>) and both are invoked reflectively, so a value RavenDB materialized as something
+    /// else fails the argument check before a single row is judged. Asking for <c>object</c> made
+    /// that outcome depend on the stored document: RavenDB recovers the CLR type from
+    /// <c>@Raven-Clr-Type</c> when it can, and falls back to a <c>JObject</c> when the metadata is
+    /// absent or names a type this process cannot resolve — a raw put, a bulk insert, an import, an
+    /// entity since moved between assemblies. Naming the declared type here removes that dependency
+    /// rather than narrowing it (#281).
+    /// </para>
+    /// <para>
+    /// It also primes the session's identity map with correctly-typed instances. The map returns a
+    /// tracked entity regardless of what type a later load asks for, so the untyped loads that run
+    /// after this one within a request — redaction, breadcrumb resolution — reuse these rather than
+    /// re-deriving a type from metadata that may not resolve.
+    /// </para>
+    /// <para>
+    /// One batched request, never one per row: the request session caps requests
+    /// (MaxNumberOfRequestsPerSession, default 30), so a per-row load would throw past ~29 rows.
+    /// Ids with no document are simply absent — callers treat unverifiable as not shown.
+    /// </para>
+    /// </summary>
+    private static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
+        IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids)
+    {
+        // Same comparer RavenDB builds its own result with: document ids are case-insensitive, and
+        // an index-projected Id can differ in case from the stored one.
+        var baseDocuments = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        if (ids.Count == 0)
+            return baseDocuments;
+
+        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
+            ("RowSecurity.SessionLoadManyAsync", entityType),
+            static k => typeof(IAsyncDocumentSession)
+                .GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(IEnumerable<string>), typeof(CancellationToken)])
+                ?.MakeGenericMethod(k.Entity));
+
+        // Reflection applies no default arguments, so the token is passed explicitly.
+        if (loadMethod?.Invoke(session, [ids, CancellationToken.None]) is not Task task)
+            return baseDocuments;
+
+        await task;
+
+        // Task<Dictionary<string, TEntity>>, copied into the object-valued shape the callers hold.
+        if (task.GetCompletedTaskResult() is System.Collections.IDictionary loaded)
+        {
+            foreach (System.Collections.DictionaryEntry entry in loaded)
+            {
+                if (entry.Value is not null)
+                    baseDocuments[(string)entry.Key] = entry.Value;
+            }
+        }
+
+        return baseDocuments;
     }
 
     /// <summary>Redact = value gone, attribute invisible — not omitted. A dotted name reaches

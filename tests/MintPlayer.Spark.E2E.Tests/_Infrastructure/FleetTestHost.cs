@@ -10,6 +10,7 @@ using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Operations;
 using Raven.Client.ServerWide;
 using Raven.Client.ServerWide.Operations;
 
@@ -310,6 +311,56 @@ public sealed class FleetTestHost : IAsyncLifetime
         appStore.Initialize();
         using var session = appStore.OpenAsyncSession();
         return await session.LoadAsync<T>(documentId);
+    }
+
+    /// <summary>
+    /// Rewrites one app document's CLR-type metadata to a name no assembly in this process can
+    /// resolve, then waits for indexing.
+    /// <para>
+    /// Reproduces the shape a document takes when it was not written by this app's session — a raw
+    /// put, a bulk insert, a Smuggler import, an ETL — or when its entity type has since been
+    /// renamed or moved to another assembly. RavenDB cannot recover the type on load then, which is
+    /// the condition that turned a row-ruled query over a projected entity into an HTTP 500 (#281).
+    /// </para>
+    /// <para>
+    /// Patches server-side rather than through a session, and verifies the read-back. A session
+    /// write does not work here: the client re-derives <c>Raven-Clr-Type</c> from the entity it is
+    /// serializing, so it silently overwrites the value and the caller's test passes having proved
+    /// nothing. A helper that can quietly do nothing is the same failure this test exists to catch,
+    /// so it throws instead.
+    /// </para>
+    /// </summary>
+    public async Task SetUnresolvableClrTypeAsync(string documentId)
+    {
+        const string ghostType = "Ghost.Fleet.Entities.Car, Ghost.Fleet";
+
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+
+        var status = await appStore.Operations.SendAsync(new PatchOperation(
+            documentId,
+            changeVector: null,
+            new PatchRequest
+            {
+                Script = "this['@metadata']['Raven-Clr-Type'] = args.clrType;",
+                Values = { ["clrType"] = ghostType },
+            }));
+
+        if (status is not (PatchStatus.Patched or PatchStatus.NotModified))
+            throw new InvalidOperationException($"Patching '{documentId}' in '{TestDatabase}' returned {status}.");
+
+        using (var session = appStore.OpenAsyncSession())
+        {
+            var reloaded = await session.LoadAsync<object>(documentId)
+                ?? throw new InvalidOperationException($"Document '{documentId}' not found in '{TestDatabase}'.");
+            var actual = session.Advanced.GetMetadataFor(reloaded)
+                .GetString(Raven.Client.Constants.Documents.Metadata.RavenClrType);
+            if (actual != ghostType)
+                throw new InvalidOperationException(
+                    $"Expected '{documentId}' to carry CLR type '{ghostType}' but it carries '{actual}'.");
+        }
+
+        await appStore.WaitForIndexingAsync(TestDatabase);
     }
 
     public async Task InitializeAsync()
