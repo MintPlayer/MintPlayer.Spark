@@ -19,8 +19,9 @@ public sealed class EntityTypeDefinition
     /// </summary>
     public string? QueryType { get; set; }
     /// <summary>
-    /// The name of the RavenDB index to use for list queries when QueryType is set.
-    /// Derived from the IndexRegistry based on the index class name.
+    /// The name of the entity's default RavenDB index — the [DefaultIndex]-elected (or sole)
+    /// projection-bearing index, written by the synchronizer. Load-bearing at runtime: the PO-list
+    /// path queries through it, and a query without its own indexName falls back to it.
     /// Example: "Cars_Overview"
     /// </summary>
     public string? IndexName { get; set; }

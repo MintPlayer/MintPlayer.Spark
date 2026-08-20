@@ -24,7 +24,7 @@ public interface IModelSynchronizer
 internal partial class ModelSynchronizer : IModelSynchronizer
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
-    [Inject] private readonly IIndexRegistry indexRegistry;
+    [Inject] private readonly IIndexCatalog indexCatalog;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -57,7 +57,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         {
             var et = GetQueryableEntityType(prop.PropertyType);
             if (et == null) continue;
-            if (indexRegistry.IsProjectionType(et)) continue;
+            if (et.IsSparkProjection()) continue;
             var clrTypeName = et.FullName ?? et.Name;
             entityTypeToQueryName[clrTypeName] = $"Get{prop.Name}";
         }
@@ -88,7 +88,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .Where(x =>
             {
                 // Projection types are merged into their collection type's JSON file
-                if (!indexRegistry.IsProjectionType(x.EntityType!)) return true;
+                if (!x.EntityType!.IsSparkProjection()) return true;
                 Console.WriteLine($"Skipping projection type: {x.EntityType!.Name} (merged into collection type)");
                 return false;
             })
@@ -99,10 +99,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityType = group.Key;
             var clrType = entityType.FullName ?? entityType.Name;
 
-            // Get projection type from IndexRegistry (populated from FromIndexAttribute on projections)
-            var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
-            Type? projectionType = registration?.ProjectionType;
-            string? indexName = registration?.IndexName;
+            // The entity's model-shaping default: the [DefaultIndex]-elected (or sole)
+            // projection-bearing index. Null when no index over this entity has a projection —
+            // then the file carries no binding (that invariant is hash-relevant).
+            var defaultEntry = indexCatalog.GetDefaultForCollectionType(entityType);
+            Type? projectionType = defaultEntry?.ProjectionType;
+            string? indexName = defaultEntry?.IndexName;
 
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
@@ -117,10 +119,41 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // exactly one unclaimed property is a rename with high confidence — retarget the
             // existing query in place, preserving its Id (program units reference queries by id)
             // and all authoring. Anything else is ambiguous: warn and keep, never guess, never
-            // delete. Custom.* queries and indexName/useProjection are never touched — the
-            // synchronizer never wrote them, so every value is authored.
+            // delete. Custom.* queries are never touched.
             var propertyNames = group.Select(x => x.Property.Name).ToList();
             RetargetRenamedDatabaseQueries(queriesForType, propertyNames, entityType.Name);
+
+            // Query indexName stamping + maintenance (#279). The field is load-bearing at runtime,
+            // so every Database.* query gets an explicit binding. Provenance is stored==derived:
+            //   empty              -> stamp the entity default (behavior-preserving: empty already
+            //                         fell back to the entity file's binding, which is the default)
+            //   == derived default -> machine-owned, already correct
+            //   != derived, known  -> authored (a deliberate non-default index), preserved verbatim
+            //   != derived, dead   -> the named index no longer exists (renamed or removed):
+            //                         retarget to the default (or clear) with a console note —
+            //                         failing here would leave renames unrepairable by synchronize
+            foreach (var databaseQuery in queriesForType.Where(q =>
+                         q.Source.StartsWith("Database.", StringComparison.Ordinal)))
+            {
+                var stored = databaseQuery.IndexName;
+                if (string.Equals(stored, indexName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (string.IsNullOrEmpty(stored))
+                {
+                    if (indexName is null) continue;
+                    databaseQuery.IndexName = indexName;
+                    Console.WriteLine($"Stamped indexName '{indexName}' on query '{databaseQuery.Name}'.");
+                }
+                else if (indexCatalog.GetByIndexName(stored) is null)
+                {
+                    databaseQuery.IndexName = indexName;
+                    Console.WriteLine(indexName is null
+                        ? $"Cleared indexName '{stored}' on query '{databaseQuery.Name}': no index with that name exists."
+                        : $"Retargeted indexName '{stored}' -> '{indexName}' on query '{databaseQuery.Name}': no index named '{stored}' exists.");
+                }
+                // else: authored binding to a known non-default index — preserved verbatim.
+            }
 
             // One default query per context property exposing this type.
             foreach (var property in group.Select(x => x.Property))
@@ -139,6 +172,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // so two consecutive runs produced different bytes.
                     EntityType = entityType.Name,
                     Source = $"Database.{property.Name}",
+                    // Stamped at mint (#279): the query declares its index instead of relying on
+                    // an ambient default. Null when the entity has no projection-bearing index.
+                    IndexName = indexName,
                     SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
                         : []
@@ -227,17 +263,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // path — and this loop runs after every write, so it used to delete a file the same run had
         // just produced and report success. Matching on the full type name is not an option: the
         // path carries only the simple name.
-        foreach (var registration in indexRegistry.GetAllRegistrations())
+        foreach (var entry in indexCatalog.GetAllEntries())
         {
-            if (registration.ProjectionType == null)
+            if (entry.ProjectionType == null)
                 continue;
 
-            var staleModelFile = Path.Combine(modelPath, $"{registration.ProjectionType.Name}.json");
+            var staleModelFile = Path.Combine(modelPath, $"{entry.ProjectionType.Name}.json");
             if (writtenFiles.Contains(staleModelFile) || !File.Exists(staleModelFile))
                 continue;
 
             File.Delete(staleModelFile);
-            Console.WriteLine($"Removed stale projection model file: {registration.ProjectionType.Name}.json");
+            Console.WriteLine($"Removed stale projection model file: {entry.ProjectionType.Name}.json");
         }
 
         WriteModelHashes(contextType);
@@ -251,7 +287,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     {
         // Computed after every model file has been written, so the file hash covers the output of
         // this same run.
-        var hashFile = BuildModelHashes(contextType, indexRegistry, hostEnvironment.ContentRootPath);
+        var hashFile = BuildModelHashes(contextType, indexCatalog, hostEnvironment.ContentRootPath);
         hashFile.Write(hostEnvironment.ContentRootPath);
 
         Console.WriteLine($"Model hash: {hashFile.ModelHash} -> {ModelHashFile.PathFor(hostEnvironment.ContentRootPath)}");
@@ -261,12 +297,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// Computes the hash file for a context type. Shared with the startup check so the value written
     /// and the value verified can never be produced by two different pieces of code.
     /// </summary>
-    internal static ModelHashFile BuildModelHashes(Type contextType, IIndexRegistry indexRegistry, string contentRootPath)
+    internal static ModelHashFile BuildModelHashes(Type contextType, IIndexCatalog indexCatalog, string contentRootPath)
     {
-        var shapes = ModelShapeDiscovery.Discover(contextType, indexRegistry);
+        var shapes = ModelShapeDiscovery.Discover(contextType, indexCatalog);
         var perEntity = SparkModelShape.ComputePerEntityHashes(shapes);
         var contextRoots = SparkModelShape.ComputeContextRootsHash(
-            ModelShapeDiscovery.RootEntityNames(contextType, indexRegistry));
+            ModelShapeDiscovery.RootEntityNames(contextType));
         var fileHashes = ModelHashFile.ComputeFileHashes(contentRootPath);
         var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
 

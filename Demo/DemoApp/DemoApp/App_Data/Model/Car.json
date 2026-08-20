@@ -226,7 +226,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
+      "indexName": "Cars_Overview",
       "entityType": "Car",
       "isStreamingQuery": false
     }

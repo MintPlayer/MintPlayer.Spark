@@ -178,10 +178,12 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
     {
         await SeedPeopleAsync();
 
-        await using var factory = new SparkEndpointFactory<TestContext>(Store, [PersonModel()]);
-        var registry = factory.GetService<IIndexRegistry>();
-        registry.RegisterIndex(typeof(People_Overview));
-        registry.RegisterProjection(typeof(VPerson), typeof(People_Overview));
+        await using var factory = new SparkEndpointFactory<TestContext>(Store, [PersonModel()],
+            configureIndexCatalog: catalog =>
+            {
+                catalog.RegisterIndex(typeof(People_Overview));
+                catalog.RegisterProjection(typeof(VPerson), typeof(People_Overview));
+            });
 
         var executor = factory.GetService<IQueryExecutor>();
         var result = await executor.ExecuteQueryAsync(new SparkQuery
@@ -189,6 +191,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
             Id = Guid.NewGuid(),
             Name = "PeopleByAddress",
             Source = "Database.People",
+            IndexName = "People_Overview",
             SortColumns = [new SortColumn { Property = "Address", Direction = "asc" }],
         });
 

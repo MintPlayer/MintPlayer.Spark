@@ -23,6 +23,7 @@ namespace TestApp.Indexes
         public int Year { get; set; }
     }
     
+    [global::MintPlayer.Spark.Abstractions.DefaultIndexAttribute]
     public partial class Cars_Overview : global::Raven.Client.Documents.Indexes.AbstractIndexCreationTask<global::TestApp.Entities.Car>
     {
         public Cars_Overview()

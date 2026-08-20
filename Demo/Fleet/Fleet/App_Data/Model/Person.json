@@ -119,7 +119,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Person",
       "isStreamingQuery": false
     }

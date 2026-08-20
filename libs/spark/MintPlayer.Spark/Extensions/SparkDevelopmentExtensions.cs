@@ -105,7 +105,7 @@ public static class SparkDevelopmentExtensions
     /// host would fail the startup check, which fails closed by design.
     /// </para>
     /// <para>
-    /// Uses the same index registry source as the startup check, so the value written and the value
+    /// Uses the same index catalog source as the startup check, so the value written and the value
     /// verified cannot diverge.
     /// </para>
     /// </summary>
@@ -121,22 +121,40 @@ public static class SparkDevelopmentExtensions
     /// </para>
     /// </summary>
     public static void WriteSparkModelHashes(Type contextType, string contentRootPath, IServiceCollection? services)
+        => WriteSparkModelHashes(contextType, contentRootPath, services, configureIndexCatalog: null);
+
+    /// <summary>
+    /// As <see cref="WriteSparkModelHashes(Type, string, IServiceCollection?)"/>, additionally applying
+    /// <paramref name="configureIndexCatalog"/> to the offline catalog before it freezes. A test host
+    /// that arms fixture indexes into the runtime catalog must arm the hash writer's catalog with the
+    /// same hook, or the value written and the value the startup check computes describe different
+    /// models and the host refuses to start.
+    /// </summary>
+    public static void WriteSparkModelHashes(
+        Type contextType,
+        string contentRootPath,
+        IServiceCollection? services,
+        Action<IIndexCatalog>? configureIndexCatalog)
     {
         ArgumentNullException.ThrowIfNull(contextType);
         ArgumentNullException.ThrowIfNull(contentRootPath);
 
-        var indexRegistry = new IndexRegistry();
+        var indexCatalog = new IndexCatalog();
 
         var assemblies = (services is null ? null : GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies())
             ?? (Assembly.GetEntryAssembly() is { } entryAssembly ? [entryAssembly] : (IReadOnlyList<Assembly>)[]);
 
         foreach (var assembly in assemblies)
-            SparkExtensions.PopulateIndexTypes(indexRegistry, assembly);
+            SparkExtensions.PopulateIndexTypes(indexCatalog, assembly);
 
         foreach (var assembly in assemblies)
-            SparkExtensions.PopulateProjectionTypes(indexRegistry, assembly);
+            SparkExtensions.PopulateProjectionTypes(indexCatalog, assembly);
 
-        ModelSynchronizer.BuildModelHashes(contextType, indexRegistry, contentRootPath)
+        configureIndexCatalog?.Invoke(indexCatalog);
+
+        indexCatalog.Freeze();
+
+        ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRootPath)
             .Write(contentRootPath);
     }
 
@@ -151,12 +169,12 @@ public static class SparkDevelopmentExtensions
     /// </summary>
     private static void Verify(WebApplicationBuilder builder, SparkContext sparkContext)
     {
-        if (!TryBuildIndexRegistry(builder.Services, out var indexRegistry))
+        if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
         var contentRoot = builder.Environment.ContentRootPath;
         var expected = ModelHashFile.Read(contentRoot);
-        var actual = ModelSynchronizer.BuildModelHashes(sparkContext.GetType(), indexRegistry, contentRoot);
+        var actual = ModelSynchronizer.BuildModelHashes(sparkContext.GetType(), indexCatalog, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
@@ -192,17 +210,17 @@ public static class SparkDevelopmentExtensions
         // Session stays null on purpose. The synchronizer reflects over the context's property
         // TYPES and never invokes a getter, so no RavenDB connection is opened — which is what
         // makes this runnable in CI. Opening one here would reintroduce that dependency.
-        if (!TryBuildIndexRegistry(builder.Services, out var indexRegistry))
+        if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
-        var synchronizer = new ModelSynchronizer(builder.Environment, indexRegistry);
+        var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog);
         synchronizer.SynchronizeModels(sparkContext);
 
         Console.WriteLine("Model synchronization completed.");
     }
 
     /// <summary>
-    /// Builds an index registry from the declared assemblies. Shared by both commands so a
+    /// Builds a frozen index catalog from the declared assemblies. Shared by both commands so a
     /// synchronize and the verify that checks it can never see a different set of projections.
     /// <para>
     /// Reads the declarations off the module registry's singleton descriptor — the same
@@ -210,10 +228,15 @@ public static class SparkDevelopmentExtensions
     /// commands and the running application resolve the same assemblies. Falls back to the entry
     /// assembly when no host called <c>AddSpark</c>.
     /// </para>
+    /// <para>
+    /// Freezing runs the <c>[DefaultIndex]</c> validation, so an ambiguous default fails the command
+    /// here exactly as it would fail the application at startup.
+    /// </para>
     /// </summary>
-    private static bool TryBuildIndexRegistry(IServiceCollection services, out IIndexRegistry indexRegistry)
+    private static bool TryBuildIndexCatalog(IServiceCollection services, out IIndexCatalog indexCatalog)
     {
-        indexRegistry = new IndexRegistry();
+        var catalog = new IndexCatalog();
+        indexCatalog = catalog;
 
         var assemblies = GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies()
             ?? (Assembly.GetEntryAssembly() is { } entryAssembly ? [entryAssembly] : (IReadOnlyList<Assembly>)[]);
@@ -229,10 +252,21 @@ public static class SparkDevelopmentExtensions
         // Indexes across every assembly before any projection: a projection resolves its index by
         // name, so cross-assembly projections must not depend on scan order.
         foreach (var assembly in assemblies)
-            SparkExtensions.PopulateIndexTypes(indexRegistry, assembly);
+            SparkExtensions.PopulateIndexTypes(catalog, assembly);
 
         foreach (var assembly in assemblies)
-            SparkExtensions.PopulateProjectionTypes(indexRegistry, assembly);
+            SparkExtensions.PopulateProjectionTypes(catalog, assembly);
+
+        try
+        {
+            catalog.Freeze();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"Spark: {ex.Message}");
+            Environment.ExitCode = ExitMisconfigured;
+            return false;
+        }
 
         return true;
     }

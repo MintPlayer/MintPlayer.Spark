@@ -31,7 +31,7 @@ public class OidcAdminRegistrationTests : OidcTestHost
         // Constructed directly rather than resolved: the synchronizer is a build-time tool and is
         // no longer in the container outside Development. This is test infrastructure asserting what
         // the synchronizer writes, not a consumer of a production service.
-        new ModelSynchronizer(Factory.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexRegistry>())
+        new ModelSynchronizer(Factory.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexCatalog>())
             .SynchronizeModels(new AdminContext());
 
         var contentRoot = Factory.GetService<IHostEnvironment>().ContentRootPath;

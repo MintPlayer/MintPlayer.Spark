@@ -107,7 +107,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Company",
       "isStreamingQuery": false
     },
@@ -127,7 +126,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Company",
       "isStreamingQuery": true
     }

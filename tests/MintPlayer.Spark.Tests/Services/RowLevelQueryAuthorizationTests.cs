@@ -65,7 +65,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ISparkContextResolver _contextResolver = Substitute.For<ISparkContextResolver>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
@@ -101,7 +101,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
             return ctx;
         });
 
-        _indexRegistry.GetRegistrationForCollectionType(Arg.Any<Type>()).Returns((IndexRegistration?)null);
+        _indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);
         _referenceResolver.GetReferenceProperties(Arg.Any<Type>(), Arg.Any<Type>())
             .Returns(new List<(PropertyInfo Property, ReferenceAttribute Attribute)>());
 
@@ -114,7 +114,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
 
         var session = Store.OpenAsyncSession();
         return new QueryExecutor(
-            session, entityMapper, _modelLoader, _contextResolver, _indexRegistry,
+            session, entityMapper, _modelLoader, _contextResolver, _indexCatalog,
             _permissionService, _actionsResolver, _referenceResolver,
             new BreadcrumbResolver(_modelLoader, new BreadcrumbClosure(_modelLoader), permissive, new SparkOptions()),
             new RowSecurity(_actionsResolver));

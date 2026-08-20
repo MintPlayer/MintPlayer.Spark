@@ -157,7 +157,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "OidcScope",
       "isStreamingQuery": false
     }

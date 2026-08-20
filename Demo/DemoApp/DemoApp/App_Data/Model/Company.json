@@ -111,7 +111,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
+      "indexName": "Companies_Overview",
       "entityType": "Company",
       "isStreamingQuery": false
     }

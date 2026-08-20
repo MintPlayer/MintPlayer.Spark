@@ -88,8 +88,8 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         // in tandem with re-routing GetEntryAssembly via reflection isn't worth the bend —
         // instead we just exercise the success path on an assembly with no index types,
         // which still hits the loops (zero-iteration) and IndexCreation.CreateIndexes.
-        var indexRegistry = Substitute.For<IIndexRegistry>();
-        var app = BuildAppBuilder(Store, indexRegistry);
+        var indexCatalog = Substitute.For<IIndexCatalog>();
+        var app = BuildAppBuilder(Store, indexCatalog);
         var emptyAssembly = typeof(string).Assembly; // mscorlib has no AbstractIndexCreationTask types
 
         var method = PrivateMethod("CreateSparkIndexes");
@@ -97,34 +97,34 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 
         act.Should().NotThrow();
         // Zero index/projection types found → registry untouched.
-        indexRegistry.DidNotReceiveWithAnyArgs().RegisterIndex(default!);
-        indexRegistry.DidNotReceiveWithAnyArgs().RegisterProjection(default!, default!);
+        indexCatalog.DidNotReceiveWithAnyArgs().RegisterIndex(default!);
+        indexCatalog.DidNotReceiveWithAnyArgs().RegisterProjection(default!, default!);
     }
 
     [Fact]
-    public void CreateSparkIndexes_registers_each_AbstractIndexCreationTask_subclass_with_the_index_registry()
+    public void CreateSparkIndexes_registers_each_AbstractIndexCreationTask_subclass_with_the_index_catalog()
     {
-        var indexRegistry = Substitute.For<IIndexRegistry>();
-        var app = BuildAppBuilder(Store, indexRegistry);
+        var indexCatalog = Substitute.For<IIndexCatalog>();
+        var app = BuildAppBuilder(Store, indexCatalog);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
         PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
         // The fixture-local SimpleProbeIndex and MultiMapProbeIndex must have been registered.
-        indexRegistry.Received().RegisterIndex(typeof(SimpleProbeIndex));
-        indexRegistry.Received().RegisterIndex(typeof(MultiMapProbeIndex));
+        indexCatalog.Received().RegisterIndex(typeof(SimpleProbeIndex));
+        indexCatalog.Received().RegisterIndex(typeof(MultiMapProbeIndex));
     }
 
     [Fact]
-    public void CreateSparkIndexes_registers_each_FromIndex_attributed_projection_with_the_index_registry()
+    public void CreateSparkIndexes_registers_each_FromIndex_attributed_projection_with_the_index_catalog()
     {
-        var indexRegistry = Substitute.For<IIndexRegistry>();
-        var app = BuildAppBuilder(Store, indexRegistry);
+        var indexCatalog = Substitute.For<IIndexCatalog>();
+        var app = BuildAppBuilder(Store, indexCatalog);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
         PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
-        indexRegistry.Received().RegisterProjection(typeof(ProbeProjection), typeof(SimpleProbeIndex));
+        indexCatalog.Received().RegisterProjection(typeof(ProbeProjection), typeof(SimpleProbeIndex));
     }
 
     [Fact]
@@ -133,11 +133,11 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         // Pass a substituted IDocumentStore that throws on the static IndexCreation.CreateIndexes
         // path — actually the static helper enumerates conventions on the store, which on a
         // null store throws NullReferenceException.
-        var indexRegistry = Substitute.For<IIndexRegistry>();
+        var indexCatalog = Substitute.For<IIndexCatalog>();
         var brokenStore = Substitute.For<IDocumentStore>();
         // Conventions throws → IndexCreation.CreateIndexes propagates → outer catch swallows.
         brokenStore.Conventions.Throws(new InvalidOperationException("test-broken-store"));
-        var app = BuildAppBuilder(brokenStore, indexRegistry);
+        var app = BuildAppBuilder(brokenStore, indexCatalog);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
         var method = PrivateMethod("CreateSparkIndexes");
@@ -150,11 +150,11 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 
     // --- helpers --------------------------------------------------------
 
-    private static IApplicationBuilder BuildAppBuilder(IDocumentStore store, IIndexRegistry indexRegistry)
+    private static IApplicationBuilder BuildAppBuilder(IDocumentStore store, IIndexCatalog indexCatalog)
     {
         var services = new ServiceCollection();
         services.AddSingleton(store);
-        services.AddSingleton(indexRegistry);
+        services.AddSingleton(indexCatalog);
         var app = Substitute.For<IApplicationBuilder>();
         app.ApplicationServices.Returns(services.BuildServiceProvider());
         return app;

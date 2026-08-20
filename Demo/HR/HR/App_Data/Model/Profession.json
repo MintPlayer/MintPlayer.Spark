@@ -56,7 +56,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Profession",
       "isStreamingQuery": false
     }

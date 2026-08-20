@@ -22,7 +22,7 @@ public class QueryExecutorUnitTests
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ISparkContextResolver _contextResolver = Substitute.For<ISparkContextResolver>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
     private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
@@ -30,7 +30,7 @@ public class QueryExecutorUnitTests
 
     private QueryExecutor CreateExecutor() => new(
         _session, _entityMapper, _modelLoader, _contextResolver,
-        _indexRegistry, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
+        _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity());
 
     private static SparkQuery Q(string source) => new()

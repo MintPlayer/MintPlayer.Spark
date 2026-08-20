@@ -370,24 +370,25 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// Populates <paramref name="indexRegistry"/> from the index and projection types declared in
-    /// <paramref name="targetAssembly"/>. Pure reflection — no database, no host, no DI.
+    /// Populates <paramref name="indexCatalog"/> from the index and projection types declared in
+    /// <paramref name="targetAssembly"/>. Pure reflection — no database, no host, no DI. The caller
+    /// freezes once every assembly is registered.
     /// <para>
     /// Separated from <see cref="CreateSparkIndexes"/> so the offline paths (model synchronization
-    /// and the startup model-hash check) can populate the registry without a live
-    /// <c>IDocumentStore</c>. Both consult the registry for projection types and index names, and an
-    /// unpopulated registry does not fail — it silently emits projection types as their own model
+    /// and the startup model-hash check) can populate the catalog without a live
+    /// <c>IDocumentStore</c>. Both consult the catalog for projection types and index names, and an
+    /// unpopulated catalog does not fail — it silently emits projection types as their own model
     /// files and skips the query-type merge. Wrong output, no error, which is why this must run.
     /// </para>
     /// <para>
-    /// Deliberately does not swallow exceptions: a registry that failed to populate has to fail the
+    /// Deliberately does not swallow exceptions: a catalog that failed to populate has to fail the
     /// run. Only the database call in <see cref="CreateSparkIndexes"/> is best-effort.
     /// </para>
     /// </summary>
-    internal static void PopulateIndexRegistry(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    internal static void PopulateIndexCatalog(IIndexCatalog indexCatalog, Assembly targetAssembly)
     {
-        PopulateIndexTypes(indexRegistry, targetAssembly);
-        PopulateProjectionTypes(indexRegistry, targetAssembly);
+        PopulateIndexTypes(indexCatalog, targetAssembly);
+        PopulateProjectionTypes(indexCatalog, targetAssembly);
     }
 
     /// <summary>
@@ -399,7 +400,7 @@ public static class SparkExtensions
     /// fail to resolve — and the failure is only a console warning.
     /// </para>
     /// </summary>
-    internal static void PopulateIndexTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    internal static void PopulateIndexTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
     {
         var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
             ("SparkMiddleware.IndexTypes", targetAssembly),
@@ -409,12 +410,12 @@ public static class SparkExtensions
 
         foreach (var indexType in indexTypes)
         {
-            indexRegistry.RegisterIndex(indexType);
+            indexCatalog.RegisterIndex(indexType);
         }
     }
 
     /// <summary>Registers the <c>[FromIndex]</c> projection types declared in <paramref name="targetAssembly"/>.</summary>
-    internal static void PopulateProjectionTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
+    internal static void PopulateProjectionTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
     {
         var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
             ("SparkMiddleware.ProjectionTypes", targetAssembly),
@@ -425,7 +426,7 @@ public static class SparkExtensions
         foreach (var projectionType in projectionTypes)
         {
             var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
-            indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+            indexCatalog.RegisterProjection(projectionType, attr.IndexType);
         }
     }
 
@@ -463,7 +464,7 @@ public static class SparkExtensions
     private static void VerifySparkModelHash(IApplicationBuilder app)
     {
         var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
 
         using var scope = app.ApplicationServices.CreateScope();
         var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
@@ -476,7 +477,7 @@ public static class SparkExtensions
 
         ModelHashVerifier.Verify(
             sparkContext.GetType(),
-            indexRegistry,
+            indexCatalog,
             hostEnvironment.ContentRootPath,
             hostEnvironment.IsDevelopment(),
             Console.WriteLine);
@@ -485,7 +486,6 @@ public static class SparkExtensions
     private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
 
         if (assemblies.Count == 0)
         {
@@ -493,18 +493,25 @@ public static class SparkExtensions
             return;
         }
 
-        // Materialize every assembly before the first database call. Registry population is a
+        // Materialize every assembly before the first database call. Catalog population is a
         // correctness precondition — the model-hash check runs straight after this and must see a
-        // complete registry even when RavenDB is unreachable and the deployment below fails.
+        // complete catalog even when RavenDB is unreachable and the deployment below fails.
         //
         // Indexes across all assemblies first, then projections across all of them: a projection
         // resolves its index by name, so a projection in one assembly over an index in another must
         // not depend on which assembly was scanned first.
-        foreach (var assembly in assemblies)
-            PopulateIndexTypes(indexRegistry, assembly);
+        //
+        // Freezing runs the [DefaultIndex] validation, so an ambiguous default fails startup here —
+        // before any query can resolve through it.
+        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
 
         foreach (var assembly in assemblies)
-            PopulateProjectionTypes(indexRegistry, assembly);
+            PopulateIndexTypes(indexCatalog, assembly);
+
+        foreach (var assembly in assemblies)
+            PopulateProjectionTypes(indexCatalog, assembly);
+
+        indexCatalog.Freeze();
 
         // Deployment is best-effort, but per assembly: one unreachable or broken module must not
         // cost every other module its indexes, which is what a single surrounding catch did.

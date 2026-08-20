@@ -148,7 +148,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "useProjection": false,
       "entityType": "Car",
       "isStreamingQuery": false
     }
