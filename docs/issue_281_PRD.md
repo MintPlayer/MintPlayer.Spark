@@ -1,6 +1,6 @@
 # PRD — Issue #281: a row rule over a `[FromIndex]`-projected entity throws
 
-**Status:** In progress — see [plan](issue_281_plan.md)
+**Status:** Implemented — all milestones done (see [plan](issue_281_plan.md)) · ships `10.0.0-preview.57`
 **Issue:** [#281](https://github.com/MintPlayer/MintPlayer.Spark/issues/281)
 **Branch:** `fix/issue-281-rowsecurity-typed-base-load`
 **Plan:** [issue_281_plan.md](issue_281_plan.md)

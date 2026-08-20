@@ -9,12 +9,24 @@ re-verifies in the demo app. The PR is squashed, so the intermediate red commit 
 
 | | Milestone | State |
 |---|---|---|
-| S0 | Spike: reproduce the throw in the test app | ✅ done — see below |
-| S1 | Spike: does a projection query poison the identity map? | pending |
-| M1 | Failing tests pinning the contract (red) | pending |
-| M2 | The fix: typed batched reload, both call sites | pending |
-| M3 | Verify in the demo app + full suite sweep | pending |
-| M4 | Version bump, docs, follow-up issue | pending |
+| S0 | Spike: reproduce the throw in the test app | ✅ reproduced on `master`, production trace frame-for-frame |
+| S1 | Spike: does a projection query poison the identity map? | ✅ no — landed as a test, not a probe |
+| M1 | Failing tests pinning the contract (red) | ✅ `20153a5` — 5 red / 1 green control, as planned |
+| M2 | The fix: typed batched reload, both call sites | ✅ `1ea2f47` — 6/6 green |
+| M3 | Verify in the demo app + full suite sweep | ✅ unit 1563/1563; E2E `RowLevelAuthzTests` 3/3 against the real Fleet host; metadata-trigger E2E added |
+| M4 | Version bump, release notes, follow-up issue | ✅ `preview.57` across all 21 packages; notes written |
+
+**Design note — why the reload uses reflection.** `FilterAsync` receives `Type entityType`, not a
+compile-time `T`: its callers resolve the type from a model-JSON `ClrType` string at runtime, so a
+generic `FilterAsync<TEntity>` would only push `MakeGenericMethod` up into `QueryExecutor` and
+`DatabaseAccess` — more reflection, not less. The one route that would remove it —
+`LoadAsync<BlittableJsonReaderObject>` (a fixed type argument) followed by
+`Conventions.Serialization.DeserializeEntityFromBlittable(Type, …)` — is blocked: RavenDB 7.2.5
+exposes the `Serialization` property publicly but its `ISerializationConventions` type is **not
+public** (measured), so the method is unreachable. What remains is one `MakeGenericMethod` cached in
+`ReflectionCache` per entity type, mirroring `DatabaseAccess.LoadEntityAsync` (`:347-365`) — the same
+call with the single-id overload. Note the rule itself is already invoked through
+`Delegate.DynamicInvoke` (`RowSecurity.cs:410`); this path is reflective end to end by construction.
 
 ---
 
