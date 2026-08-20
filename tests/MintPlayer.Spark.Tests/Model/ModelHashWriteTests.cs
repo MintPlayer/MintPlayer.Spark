@@ -16,7 +16,7 @@ public class ModelHashWriteTests : IDisposable
         Path.GetTempPath(), "spark-hashwrite-" + Guid.NewGuid().ToString("N"));
 
     private readonly IHostEnvironment _hostEnv = Substitute.For<IHostEnvironment>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
 
     public ModelHashWriteTests()
     {
@@ -30,7 +30,7 @@ public class ModelHashWriteTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexRegistry)
+    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
         .SynchronizeModels(new HashProbeContext());
 
     private string HashFilePath => ModelHashFile.PathFor(_contentRoot);
@@ -235,7 +235,7 @@ public class ModelHashWriteTests : IDisposable
     }
 
     private ModelHashFile Recompute()
-        => ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexRegistry, _contentRoot);
+        => ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexCatalog, _contentRoot);
 
     [Fact]
     public void Read_returns_null_when_the_file_is_absent_or_malformed()

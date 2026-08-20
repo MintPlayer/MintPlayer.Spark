@@ -18,7 +18,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly IHostEnvironment _hostEnv = Substitute.For<IHostEnvironment>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
     private readonly string _modelPath;
 
     public ModelSynchronizerTests()
@@ -27,9 +27,9 @@ public sealed class ModelSynchronizerTests : IDisposable
         Directory.CreateDirectory(_tempDir);
         _modelPath = Path.Combine(_tempDir, "App_Data", "Model");
         _hostEnv.ContentRootPath.Returns(_tempDir);
-        _indexRegistry.GetAllRegistrations().Returns([]);
-        _indexRegistry.IsProjectionType(Arg.Any<Type>()).Returns(false);
-        _indexRegistry.GetRegistrationForCollectionType(Arg.Any<Type>()).Returns((IndexRegistration?)null);
+        _indexCatalog.GetAllEntries().Returns([]);
+        _indexCatalog.GetDefaultForCollectionType(Arg.Any<Type>()).Returns((IndexCatalogEntry?)null);
+        _indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);
     }
 
     public void Dispose()
@@ -37,7 +37,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private ModelSynchronizer CreateSynchronizer() => new(_hostEnv, _indexRegistry);
+    private ModelSynchronizer CreateSynchronizer() => new(_hostEnv, _indexCatalog);
 
     private string ModelFile(string entityName) => Path.Combine(_modelPath, $"{entityName}.json");
 
@@ -368,14 +368,14 @@ public sealed class ModelSynchronizerTests : IDisposable
     {
         // MS_BreadcrumbPerson breadcrumb is "{LastName}, {FirstName}", but the MS_TestVehicle
         // projection has neither field → the list path must batch-load the collection documents.
-        var registration = new IndexRegistration
+        var entry = new IndexCatalogEntry
         {
             IndexName = "BcPeople_Index",
             IndexType = typeof(MS_BreadcrumbPerson),
             CollectionType = typeof(MS_BreadcrumbPerson),
             ProjectionType = typeof(MS_TestVehicle),
         };
-        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(registration);
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
         var ctx = new BreadcrumbContext();
         var sync = CreateSynchronizer();
@@ -391,14 +391,14 @@ public sealed class ModelSynchronizerTests : IDisposable
     {
         // The projection carries LastName and FirstName, so the breadcrumb renders from the
         // projection alone — satisfiable stays null (no collection-document load needed).
-        var registration = new IndexRegistration
+        var entry = new IndexCatalogEntry
         {
             IndexName = "BcPeople_Index",
             IndexType = typeof(MS_BreadcrumbPerson),
             CollectionType = typeof(MS_BreadcrumbPerson),
             ProjectionType = typeof(MS_BreadcrumbPersonProjection),
         };
-        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(registration);
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
         var ctx = new BreadcrumbContext();
         var sync = CreateSynchronizer();
@@ -410,21 +410,21 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
-    public void Removes_stale_projection_model_files_listed_in_IndexRegistry()
+    public void Removes_stale_projection_model_files_listed_in_the_catalog()
     {
         // Pre-create a stale Vehicle.json model file. Then register a projection that maps
         // collection MS_TestCar → projection MS_TestVehicle. Synchronize must delete Vehicle.json.
         Directory.CreateDirectory(_modelPath);
         File.WriteAllText(ModelFile("MS_TestVehicle"), """{"persistentObject":{"id":"00000000-0000-0000-0000-000000000000","name":"MS_TestVehicle","clrType":"X"}}""");
 
-        var registration = new IndexRegistration
+        var entry = new IndexCatalogEntry
         {
             IndexName = "Cars_Index",
             IndexType = typeof(MS_TestCar),
             CollectionType = typeof(MS_TestCar),
             ProjectionType = typeof(MS_TestVehicle),
         };
-        _indexRegistry.GetAllRegistrations().Returns([registration]);
+        _indexCatalog.GetAllEntries().Returns([entry]);
 
         var ctx = new EmptyContext();
         var sync = CreateSynchronizer();
@@ -440,8 +440,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         // If a SparkContext exposes IRavenQueryable<TProjection>, the synchronizer should
         // skip it — projection types are merged into their collection's file by the
         // collection-type pass (or simply not written when no collection type is exposed).
-        _indexRegistry.IsProjectionType(typeof(MS_TestVehicle)).Returns(true);
-
+        // Projection-ness comes from [FromIndex] on MS_TestVehicle (#279), not a registry stub.
         var ctx = new ProjectionOnlyContext();
         var sync = CreateSynchronizer();
 
@@ -673,14 +672,14 @@ public sealed class ModelSynchronizerTests : IDisposable
     {
         // The two name sets are unioned, so an entity-side ignore has to veto a projection that
         // still declares the property — otherwise the exclusion silently does nothing.
-        var registration = new IndexRegistration
+        var entry = new IndexCatalogEntry
         {
             IndexName = "IgnoredPeople_Index",
             IndexType = typeof(MS_IgnoredPerson),
             CollectionType = typeof(MS_IgnoredPerson),
             ProjectionType = typeof(MS_IgnoredPersonProjection),
         };
-        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_IgnoredPerson)).Returns(registration);
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_IgnoredPerson)).Returns(entry);
 
         var sync = CreateSynchronizer();
         sync.SynchronizeModels(new IgnoredContext());
@@ -693,14 +692,15 @@ public sealed class ModelSynchronizerTests : IDisposable
 
     private void RegisterBookProjection(Type projectionType)
     {
-        var registration = new IndexRegistration
+        var entry = new IndexCatalogEntry
         {
             IndexName = "Books_Index",
             IndexType = typeof(MS_ProjectedBook),
             CollectionType = typeof(MS_ProjectedBook),
             ProjectionType = projectionType,
         };
-        _indexRegistry.GetRegistrationForCollectionType(typeof(MS_ProjectedBook)).Returns(registration);
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_ProjectedBook)).Returns(entry);
+        _indexCatalog.GetByIndexName("Books_Index").Returns(entry);
     }
 
     private void TamperShowedOn(string entityName, string attributeName, string newValue)
@@ -999,17 +999,131 @@ public sealed class ModelSynchronizerTests : IDisposable
         writer.ToString().Should().Contain("Cars");
     }
 
+    // --- Query indexName stamping + provenance (#279) ---
+
     [Fact]
-    public void Hand_authored_indexName_on_a_query_is_never_cleared()
+    public void Minted_query_is_stamped_with_the_default_indexName()
     {
+        var entry = new IndexCatalogEntry
+        {
+            IndexName = "People_Overview",
+            IndexType = typeof(MS_TestPerson),
+            CollectionType = typeof(MS_TestPerson),
+            ProjectionType = typeof(MS_BreadcrumbPersonProjection),
+        };
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
+
         var sync = CreateSynchronizer();
         sync.SynchronizeModels(new SinglePersonContext());
-        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People/Search");
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().Be("People_Overview");
+    }
+
+    [Fact]
+    public void An_unstamped_query_gains_the_default_indexName_on_the_next_synchronize()
+    {
+        // A pre-#279 model has queries without indexName. Empty is machine domain: the runtime
+        // fell back to the entity file's binding, which is the default — stamping makes it explicit.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        var entry = new IndexCatalogEntry
+        {
+            IndexName = "People_Overview",
+            IndexType = typeof(MS_TestPerson),
+            CollectionType = typeof(MS_TestPerson),
+            ProjectionType = typeof(MS_BreadcrumbPersonProjection),
+        };
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         sync.SynchronizeModels(new SinglePersonContext());
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
-            .Should().Be("People/Search", "the synchronizer never wrote indexName — every value is authored");
+            .Should().Be("People_Overview");
+    }
+
+    [Fact]
+    public void Hand_authored_indexName_naming_a_known_index_is_preserved()
+    {
+        // A deliberate binding to a non-default index is authoring; synchronize must not
+        // retarget it to the default.
+        var defaultEntry = new IndexCatalogEntry
+        {
+            IndexName = "People_Overview",
+            IndexType = typeof(MS_TestPerson),
+            CollectionType = typeof(MS_TestPerson),
+            ProjectionType = typeof(MS_BreadcrumbPersonProjection),
+        };
+        var searchEntry = new IndexCatalogEntry
+        {
+            IndexName = "People_Search",
+            IndexType = typeof(MS_TestPerson),
+            CollectionType = typeof(MS_TestPerson),
+        };
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(defaultEntry);
+        _indexCatalog.GetByIndexName("People_Overview").Returns(defaultEntry);
+        _indexCatalog.GetByIndexName("People_Search").Returns(searchEntry);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Search");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().Be("People_Search", "a binding to a known index is authored, not machine-owned");
+    }
+
+    [Fact]
+    public void A_dead_indexName_is_retargeted_to_the_default_with_a_note()
+    {
+        // The named index no longer exists (renamed or removed). Failing would leave the model
+        // unrepairable by the very command that repairs models — retarget with a console note.
+        var entry = new IndexCatalogEntry
+        {
+            IndexName = "People_Overview",
+            IndexType = typeof(MS_TestPerson),
+            CollectionType = typeof(MS_TestPerson),
+            ProjectionType = typeof(MS_BreadcrumbPersonProjection),
+        };
+        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
+
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Gone");
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            sync.SynchronizeModels(new SinglePersonContext());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().Be("People_Overview");
+        writer.ToString().Should().Contain("People_Gone");
+    }
+
+    [Fact]
+    public void A_dead_indexName_is_cleared_when_the_entity_has_no_default()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(new SinglePersonContext());
+        TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Gone");
+
+        sync.SynchronizeModels(new SinglePersonContext());
+
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
+            .Should().BeNull();
     }
 
     [Fact]
@@ -1045,11 +1159,16 @@ public class MS_TestCar
     public string Brand { get; set; } = string.Empty;
 }
 
+// [FromIndex] is what makes this a projection (#279) — the fixture index type is a token; the
+// synchronizer only tests attribute presence.
+[FromIndex(typeof(MS_TestVehicleIndex))]
 public class MS_TestVehicle
 {
     public string? Id { get; set; }
     public string DisplayName { get; set; } = string.Empty;
 }
+
+public class MS_TestVehicleIndex;
 
 public class MS_TestTag
 {

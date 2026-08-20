@@ -44,7 +44,7 @@ public static class ModelHashVerifier
 
     public static void Verify(
         Type contextType,
-        IIndexRegistry indexRegistry,
+        IIndexCatalog indexCatalog,
         string contentRootPath,
         bool isDevelopment,
         Action<string> log)
@@ -53,7 +53,7 @@ public static class ModelHashVerifier
             return;
 
         var expected = ModelHashFile.Read(contentRootPath);
-        var actual = ModelSynchronizer.BuildModelHashes(contextType, indexRegistry, contentRootPath);
+        var actual = ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRootPath);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
             return;

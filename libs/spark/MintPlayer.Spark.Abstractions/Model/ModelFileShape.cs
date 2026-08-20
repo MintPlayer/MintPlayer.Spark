@@ -23,10 +23,13 @@ namespace MintPlayer.Spark.Abstractions.Model;
 /// </para>
 ///
 /// <para>
-/// <b>Structural</b> (hashed): entity name, CLR type, alias, projection/query type, index name, and
-/// per attribute — name, data type, required, read-only, array-ness, reference target, detail type,
-/// lookup type, sortability, projection membership, and validation rules. Validation is included
-/// deliberately: silently dropping a rule is an attack, not a restyling.
+/// <b>Structural</b> (hashed): entity name, CLR type, alias, projection/query type, index name, per
+/// attribute — name, data type, required, read-only, array-ness, reference target, detail type,
+/// lookup type, sortability, projection membership, and validation rules — and per inline query its
+/// <c>indexName</c>. Validation is included deliberately: silently dropping a rule is an attack, not
+/// a restyling. A query's <c>indexName</c> is structural since issue #279 made it load-bearing: the
+/// runtime resolves the index through it, so a hand-edit changes which index answers the query and
+/// must trip verification. The rest of a query (name, sort columns, render mode) stays presentational.
 /// </para>
 ///
 /// <para>
@@ -103,6 +106,24 @@ public static class ModelFileShape
                         AppendInline(builder, field, attribute);
 
                     AppendRules(builder, attribute);
+                    builder.Append('\n');
+                }
+            }
+
+            // A query contributes a line only when it carries an indexName, so a model whose queries
+            // were never stamped hashes exactly as it did before the field became structural.
+            if (document.RootElement.TryGetProperty("queries", out var queries) && queries.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var query in queries.EnumerateArray()
+                             .OrderBy(q => q.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "", StringComparer.Ordinal))
+                {
+                    if (!query.TryGetProperty("indexName", out var indexName)
+                        || indexName.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                        continue;
+
+                    builder.Append("  query");
+                    AppendInline(builder, "name", query);
+                    AppendInline(builder, "indexName", query);
                     builder.Append('\n');
                 }
             }

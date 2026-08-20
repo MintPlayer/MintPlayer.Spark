@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Services;
 /// the queryable roots plus the transitive closure of embedded complex types.
 /// <para>
 /// Lives here rather than in Abstractions because it needs <c>IRavenQueryable&lt;&gt;</c>,
-/// <see cref="SparkContext"/> and <see cref="IIndexRegistry"/>, none of which Abstractions can see.
+/// <see cref="SparkContext"/> and <see cref="IIndexCatalog"/>, none of which Abstractions can see.
 /// The hashing itself is in <see cref="SparkModelShape"/>, which stays dependency-free.
 /// </para>
 /// <para>
@@ -23,10 +23,10 @@ public static class ModelShapeDiscovery
     /// Discovers every entity in the model, ordered by full type name so callers get a stable
     /// sequence regardless of reflection order.
     /// </summary>
-    public static IReadOnlyList<SparkModelType> Discover(Type sparkContextType, IIndexRegistry indexRegistry)
+    public static IReadOnlyList<SparkModelType> Discover(Type sparkContextType, IIndexCatalog indexCatalog)
     {
         ArgumentNullException.ThrowIfNull(sparkContextType);
-        ArgumentNullException.ThrowIfNull(indexRegistry);
+        ArgumentNullException.ThrowIfNull(indexCatalog);
 
         var discovered = new Dictionary<Type, SparkModelType>();
         var embedded = new Queue<Type>();
@@ -35,26 +35,23 @@ public static class ModelShapeDiscovery
         {
             // Projection types are merged into their collection type's file rather than getting one
             // of their own, so they are not entities in their own right.
-            if (indexRegistry.IsProjectionType(entityType))
+            if (entityType.IsSparkProjection())
                 continue;
 
-            var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
-
-            // The index name is taken only when a projection exists, mirroring what the generator
-            // writes. A registration is created for any index keyed by collection type, so an index
-            // WITHOUT a projection yields a registration carrying an IndexName that the model file
-            // deliberately omits. Hashing it anyway would make the hash describe something the model
-            // does not record: deleting such an index would move the hash with no accompanying model
-            // diff, so verification would fail while `git diff` showed nothing to explain it.
-            var projectionType = registration?.ProjectionType;
+            // The catalog's default exists only when a projection-bearing index maps the entity,
+            // which preserves the invariant the old registry code enforced by hand: an index
+            // WITHOUT a projection contributes no indexName to the model file, so hashing one
+            // would make the hash describe something the model does not record — deleting such an
+            // index would move the hash with no accompanying model diff.
+            var defaultEntry = indexCatalog.GetDefaultForCollectionType(entityType);
             discovered[entityType] = new SparkModelType(
                 entityType,
-                projectionType?.FullName,
-                projectionType != null ? registration?.IndexName : null);
+                defaultEntry?.ProjectionType?.FullName,
+                defaultEntry?.IndexName);
 
             CollectEmbedded(entityType, embedded);
-            if (projectionType is not null)
-                CollectEmbedded(projectionType, embedded);
+            if (defaultEntry?.ProjectionType is not null)
+                CollectEmbedded(defaultEntry.ProjectionType, embedded);
         }
 
         while (embedded.Count > 0)
@@ -75,13 +72,12 @@ public static class ModelShapeDiscovery
     /// which is what notices a root being removed — per-entity hashes cannot see that, because the
     /// orphaned model file and its CLR class both still exist and still agree.
     /// </summary>
-    public static IReadOnlyList<string> RootEntityNames(Type sparkContextType, IIndexRegistry indexRegistry)
+    public static IReadOnlyList<string> RootEntityNames(Type sparkContextType)
     {
         ArgumentNullException.ThrowIfNull(sparkContextType);
-        ArgumentNullException.ThrowIfNull(indexRegistry);
 
         return [.. QueryableRoots(sparkContextType)
-            .Where(t => !indexRegistry.IsProjectionType(t))
+            .Where(t => !t.IsSparkProjection())
             .Select(t => t.Name)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)];

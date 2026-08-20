@@ -102,11 +102,12 @@ resolve by collection type at runtime.
   (name-keyed catalog lookup); the declared name is authoritative. A `query.IndexName` naming an unknown
   index is an **error**, not a fallback.
 - **R279.2** A minted `Database.*` query is **stamped** with the entity's default `indexName` at mint time,
-  and existing machine-owned values are maintained on every synchronize, provenance-gated per F279.15: a
-  stored value equal to the derived default is machine-owned (retargeted when the default changes, cleared
-  when the binding disappears, with a console note); any other value is authored and preserved verbatim
-  (validated against the catalog — an authored name matching no known index fails synchronize). `Custom.*`
-  queries are never stamped or touched.
+  and existing values are maintained on every synchronize, provenance-gated per F279.15: an empty value is
+  machine domain and gains the default; a value equal to the derived default is machine-owned and already
+  correct; a value naming a **known** index is authored and preserved verbatim; a value naming a **dead**
+  index (renamed or removed) is retargeted to the default — or cleared when there is none — with a console
+  note, because failing there would make synchronize unable to repair the very drift it exists to repair.
+  `Custom.*` queries are never stamped or touched.
 - **R279.3** `SparkQuery.UseProjection` is deleted (server model, wire echo, ng-spark model, demo JSON via
   re-sync). Whether a query projects is derived from whether its resolved index has a `[FromIndex]`
   companion.

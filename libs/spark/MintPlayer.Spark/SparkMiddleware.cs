@@ -501,7 +501,7 @@ public static class SparkExtensions
     private static void VerifySparkModelHash(IApplicationBuilder app)
     {
         var hostEnvironment = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
-        var indexRegistry = app.ApplicationServices.GetRequiredService<IIndexRegistry>();
+        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
 
         using var scope = app.ApplicationServices.CreateScope();
         var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
@@ -514,7 +514,7 @@ public static class SparkExtensions
 
         ModelHashVerifier.Verify(
             sparkContext.GetType(),
-            indexRegistry,
+            indexCatalog,
             hostEnvironment.ContentRootPath,
             hostEnvironment.IsDevelopment(),
             Console.WriteLine);

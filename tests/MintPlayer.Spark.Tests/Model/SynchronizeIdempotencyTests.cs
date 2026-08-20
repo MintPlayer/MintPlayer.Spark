@@ -31,7 +31,7 @@ public class SynchronizeIdempotencyTests : IDisposable
         Path.GetTempPath(), "spark-idem-" + Guid.NewGuid().ToString("N"));
 
     private readonly IHostEnvironment _hostEnv = Substitute.For<IHostEnvironment>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
 
     public SynchronizeIdempotencyTests()
     {
@@ -47,7 +47,7 @@ public class SynchronizeIdempotencyTests : IDisposable
 
     private string ModelDir => Path.Combine(_contentRoot, "App_Data", "Model");
 
-    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexRegistry)
+    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
         .SynchronizeModels(new IdemContext());
 
     private Dictionary<string, string> Snapshot() =>
@@ -303,7 +303,7 @@ public class SynchronizeIdempotencyTests : IDisposable
         // subsequent run — the wipe is invisible to the fixed-point invariant alone because the
         // stomp is stable (the value is lost on the first re-run and never comes back), so this
         // test asserts the trimmed value itself as well.
-        _indexRegistry.GetRegistrationForCollectionType(typeof(IdemProbe)).Returns(new IndexRegistration
+        _indexCatalog.GetDefaultForCollectionType(typeof(IdemProbe)).Returns(new IndexCatalogEntry
         {
             IndexName = "Probes/Overview",
             IndexType = typeof(IdemProbe),
@@ -391,7 +391,7 @@ public class SynchronizeCorrectnessTests : IDisposable
 
     private string ModelDir => Path.Combine(_contentRoot, "App_Data", "Model");
 
-    private void Synchronize(IIndexRegistry registry, SparkContext context) =>
+    private void Synchronize(IIndexCatalog registry, SparkContext context) =>
         new ModelSynchronizer(_hostEnv, registry).SynchronizeModels(context);
 
     private JsonElement PersistentObject(string fileName)
@@ -405,8 +405,8 @@ public class SynchronizeCorrectnessTests : IDisposable
     {
         // Both fields feed the structural hash, so a stale value does not merely linger — the
         // verifier confirms a reference to a type that no longer exists.
-        var withProjection = Substitute.For<IIndexRegistry>();
-        withProjection.GetRegistrationForCollectionType(typeof(IdemProbe)).Returns(new IndexRegistration
+        var withProjection = Substitute.For<IIndexCatalog>();
+        withProjection.GetDefaultForCollectionType(typeof(IdemProbe)).Returns(new IndexCatalogEntry
         {
             IndexName = "Probes/Overview",
             IndexType = typeof(IdemProbe),
@@ -418,7 +418,7 @@ public class SynchronizeCorrectnessTests : IDisposable
         PersistentObject("IdemProbe.json").TryGetProperty("queryType", out _).Should().BeTrue();
 
         // The projection is deleted from the codebase: the registry no longer knows it.
-        Synchronize(Substitute.For<IIndexRegistry>(), new IdemContext());
+        Synchronize(Substitute.For<IIndexCatalog>(), new IdemContext());
 
         var po = PersistentObject("IdemProbe.json");
         po.TryGetProperty("queryType", out _).Should().BeFalse("a dead projection reference must not survive");
@@ -431,8 +431,8 @@ public class SynchronizeCorrectnessTests : IDisposable
         // Model files are keyed by simple type name, so an entity named the same as some other
         // index's projection resolves to the same path. The stale-projection cleanup runs after all
         // writes, so it used to delete a file this very run had produced — and report success.
-        var registry = Substitute.For<IIndexRegistry>();
-        registry.GetAllRegistrations().Returns([new IndexRegistration
+        var registry = Substitute.For<IIndexCatalog>();
+        registry.GetAllEntries().Returns([new IndexCatalogEntry
         {
             IndexName = "Other/Overview",
             IndexType = typeof(IdemProbe),
@@ -456,8 +456,8 @@ public class SynchronizeCorrectnessTests : IDisposable
         var stale = Path.Combine(ModelDir, $"{nameof(IdemProbeProjection)}.json");
         File.WriteAllText(stale, "{ \"persistentObject\": { \"name\": \"IdemProbeProjection\", \"clrType\": \"X\" }, \"queries\": [] }");
 
-        var registry = Substitute.For<IIndexRegistry>();
-        registry.GetAllRegistrations().Returns([new IndexRegistration
+        var registry = Substitute.For<IIndexCatalog>();
+        registry.GetAllEntries().Returns([new IndexCatalogEntry
         {
             IndexName = "Probes/Overview",
             IndexType = typeof(IdemProbe),
@@ -475,7 +475,7 @@ public class SynchronizeCorrectnessTests : IDisposable
     {
         // Both properties map to one IdemProbe.json. Writing per property meant the second write
         // dropped the query the first had added, and the file oscillated between the two forever.
-        var registry = Substitute.For<IIndexRegistry>();
+        var registry = Substitute.For<IIndexCatalog>();
 
         Synchronize(registry, new TwoRootsContext());
 

@@ -16,7 +16,7 @@ public class ModelHashVerifierTests : IDisposable
         Path.GetTempPath(), "spark-hashverify-" + Guid.NewGuid().ToString("N"));
 
     private readonly IHostEnvironment _hostEnv = Substitute.For<IHostEnvironment>();
-    private readonly IIndexRegistry _indexRegistry = Substitute.For<IIndexRegistry>();
+    private readonly IIndexCatalog _indexCatalog = Substitute.For<IIndexCatalog>();
     private readonly List<string> _log = [];
 
     public ModelHashVerifierTests()
@@ -33,11 +33,11 @@ public class ModelHashVerifierTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexRegistry)
+    private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
         .SynchronizeModels(new HashProbeContext());
 
     private void Verify(bool isDevelopment = false) => ModelHashVerifier.Verify(
-        typeof(HashProbeContext), _indexRegistry, _contentRoot, isDevelopment, _log.Add);
+        typeof(HashProbeContext), _indexCatalog, _contentRoot, isDevelopment, _log.Add);
 
     private void PlantExtraModelFile() => File.WriteAllText(
         Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), "Injected.json"),
@@ -122,7 +122,7 @@ public class ModelHashVerifierTests : IDisposable
     {
         Synchronize();
         PlantExtraModelFile();
-        var actual = ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexRegistry, _contentRoot);
+        var actual = ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexCatalog, _contentRoot);
 
         Environment.SetEnvironmentVariable(ModelHashVerifier.OverrideVariable, actual.ModelHash);
 
@@ -137,7 +137,7 @@ public class ModelHashVerifierTests : IDisposable
     {
         Synchronize();
         PlantExtraModelFile();
-        var actual = ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexRegistry, _contentRoot);
+        var actual = ModelSynchronizer.BuildModelHashes(typeof(HashProbeContext), _indexCatalog, _contentRoot);
         Environment.SetEnvironmentVariable(ModelHashVerifier.OverrideVariable, actual.ModelHash);
 
         Verify();
