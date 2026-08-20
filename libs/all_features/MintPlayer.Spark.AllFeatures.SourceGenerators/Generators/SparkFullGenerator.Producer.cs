@@ -103,7 +103,7 @@ public class SparkFullProducer : Producer
                     writer.WriteLine("global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthorization(spark, options.Authorization);");
 
                 if (userType != null)
-                    writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Identity, options.IdentityProviders);");
+                    writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Authentication, options.Identity, options.IdentityProviders);");
 
                 if (flags.HasMessaging)
                     writer.WriteLine("global::MintPlayer.Spark.Messaging.SparkBuilderMessagingExtensions.AddMessaging(spark, options.Messaging);");

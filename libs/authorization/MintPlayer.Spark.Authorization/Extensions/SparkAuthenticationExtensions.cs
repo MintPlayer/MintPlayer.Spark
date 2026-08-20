@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
 
@@ -57,48 +58,39 @@ internal static class SparkAuthenticationExtensions
     }
 
     /// <summary>
-    /// Maps the ASP.NET Core Identity API endpoints for Spark authentication
-    /// under the <c>/spark/auth</c> route prefix.
-    /// Provides: POST /spark/auth/register, POST /spark/auth/login, POST /spark/auth/refresh,
-    /// GET /spark/auth/confirmEmail, POST /spark/auth/forgotPassword, POST /spark/auth/resetPassword,
-    /// POST /spark/auth/manage/2fa, GET /spark/auth/manage/info, POST /spark/auth/manage/info,
-    /// GET /spark/auth/me, POST /spark/auth/logout.
+    /// Maps Spark's authentication endpoints under the <c>/spark/auth</c> route prefix.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three groups, only the first of which is configurable:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <b>Local credentials</b> — POST /register, POST /login, POST /refresh, GET /confirmEmail,
+    /// POST /resendConfirmationEmail, POST /forgotPassword, POST /resetPassword, POST /manage/2fa,
+    /// GET|POST /manage/info. Mapped by Microsoft's <c>MapIdentityApi</c>, gated by
+    /// <paramref name="localCredentials"/>.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Spark's own</b> — GET /me, POST /logout, POST /csrf-refresh (source-generated). Always mapped;
+    /// /csrf-refresh in particular is load-bearing, because without it the XSRF cookie is never rotated
+    /// after sign-in and every subsequent mutating call fails antiforgery.
+    /// </description></item>
+    /// <item><description>
+    /// <b>External login</b> — GET /external-login, GET /external-login-callback. Always mapped.
+    /// </description></item>
+    /// </list>
+    /// </remarks>
     internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(
-        this IEndpointRouteBuilder endpoints)
+        this IEndpointRouteBuilder endpoints,
+        SparkLocalCredentials localCredentials = SparkLocalCredentials.Full)
         where TUser : SparkUser, new()
     {
         var authGroup = endpoints.MapGroup("/spark/auth");
-        // R2-H3: MapIdentityApi mounts /login, /register, /forgotPassword,
-        // /resetPassword, /manage/2fa, /manage/info etc. — Microsoft's defaults
-        // do not attach IAntiforgeryMetadata. We collect the endpoints the
-        // call mapped, then stamp RequireAntiforgeryTokenAttribute on each
-        // mutating one so Spark's CSRF middleware enforces double-submit on
-        // 2FA-disable / password-change / email-rotate. The login endpoint
-        // itself is excluded — the user doesn't have a session yet so there's
-        // no XSRF-TOKEN cookie to validate, and CSRF against /login lets the
-        // attacker log the victim into the attacker's account (separate
-        // concern that's mitigated by cookie SameSite + the post-login
-        // immediate-action flows being independently gated).
-        var identityConvention = authGroup.MapIdentityApi<TUser>();
-        var antiforgeryGatedRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "/manage/2fa",
-            "/manage/info",
-            "/resetPassword",
-            "/forgotPassword",
-            "/logout",
-        };
-        identityConvention.Add(builder =>
-        {
-            if (builder is Microsoft.AspNetCore.Routing.RouteEndpointBuilder route
-                && route.RoutePattern.RawText is { } raw
-                && antiforgeryGatedRoutes.Any(suffix => raw.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                && IsMutatingMethod(route.Metadata))
-            {
-                route.Metadata.Add(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(true));
-            }
-        });
+
+        // Microsoft's mapper is all-or-nothing and its defaults attach no IAntiforgeryMetadata, so
+        // both the filtering and the CSRF stamping live in LocalCredentialEndpointFilter.
+        endpoints.MapLocalCredentialApi<TUser>(localCredentials);
 
         // Map Spark auth endpoints (source-generated)
         endpoints.MapSparkAuthEndpoints();
@@ -292,22 +284,4 @@ internal static class SparkAuthenticationExtensions
         return returnUrl;
     }
 
-    private static bool IsMutatingMethod(IList<object> metadata)
-    {
-        foreach (var m in metadata)
-        {
-            if (m is Microsoft.AspNetCore.Routing.HttpMethodMetadata methods)
-            {
-                foreach (var method in methods.HttpMethods)
-                {
-                    if (string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(method, "PUT", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(method, "PATCH", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(method, "DELETE", StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-            }
-        }
-        return false;
-    }
 }
