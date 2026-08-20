@@ -324,7 +324,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         var modelLoader = Substitute.For<IModelLoader>();
         var contextResolver = Substitute.For<ISparkContextResolver>();
-        var indexRegistry = Substitute.For<IIndexRegistry>();
+        var indexCatalog = Substitute.For<IIndexCatalog>();
         var permissionService = Substitute.For<IPermissionService>();
         var actionsResolver = Substitute.For<IActionsResolver>();
         var referenceResolver = Substitute.For<IReferenceResolver>();
@@ -351,7 +351,7 @@ public class RowFilterPushdownTests : SparkTestDriver
                 .SetValue(ctx, ci.Arg<IAsyncDocumentSession>());
             return ctx;
         });
-        indexRegistry.GetRegistrationForCollectionType(Arg.Any<Type>()).Returns((IndexRegistration?)null);
+        indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);
         referenceResolver.GetReferenceProperties(Arg.Any<Type>(), Arg.Any<Type>())
             .Returns(new List<(PropertyInfo Property, ReferenceAttribute Attribute)>());
         actionsResolver.ResolveForType(typeof(Note)).Returns(new ScopedNoteActions(entityMapper));
@@ -359,7 +359,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         var rowSecurity = new RowSecurity(actionsResolver);
         using var session = Store.OpenAsyncSession();
         var executor = new QueryExecutor(
-            session, entityMapper, modelLoader, contextResolver, indexRegistry,
+            session, entityMapper, modelLoader, contextResolver, indexCatalog,
             permissionService, actionsResolver, referenceResolver,
             new BreadcrumbResolver(modelLoader, new BreadcrumbClosure(modelLoader), rowSecurity, new SparkOptions()),
             rowSecurity);

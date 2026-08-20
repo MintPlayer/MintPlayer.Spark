@@ -84,7 +84,12 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<TestContext>(Store, [CompanyModel(), EmployeeModel()]);
+        _factory = new SparkEndpointFactory<TestContext>(Store, [CompanyModel(), EmployeeModel()],
+            configureIndexCatalog: catalog =>
+            {
+                catalog.RegisterIndex(typeof(Employees_ByLastName));
+                catalog.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
+            });
         _executor = _factory.GetService<IQueryExecutor>();
     }
 
@@ -392,27 +397,24 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Database_query_through_registered_index_uses_ApplyIndexWithType_and_ApplyProjection()
+    public async Task Database_query_through_declared_index_uses_ApplyIndexWithType_and_ApplyProjection()
     {
         // Exercises the cached MethodInfos for:
         //   - IAsyncDocumentSession.Query<TResult, TIndexCreator>() (zero-arg overload)
         //   - LinqExtensions.ProjectInto<T>(IQueryable)
         //   - LinqExtensions.ToListAsync<T>(IQueryable, CancellationToken)
+        // The binding is declared on the query (#279) — nothing resolves by collection type.
         await SeedAsync();
 
-        // Deploy the index to RavenDB and register it with the framework's IndexRegistry.
         await new Employees_ByLastName().ExecuteAsync(Store);
         await Store.WaitForIndexingAsync();
-
-        var indexRegistry = _factory.GetService<IIndexRegistry>();
-        indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
-        indexRegistry.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
 
         var query = new SparkQuery
         {
             Id = Guid.NewGuid(),
             Name = "EmployeesByIndex",
             Source = "Database.Employees",
+            IndexName = "Employees_ByLastName",
         };
 
         var result = await _executor.ExecuteQueryAsync(query);
@@ -428,15 +430,12 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
         await new Employees_ByLastName().ExecuteAsync(Store);
         await Store.WaitForIndexingAsync();
 
-        var indexRegistry = _factory.GetService<IIndexRegistry>();
-        indexRegistry.RegisterIndex(typeof(Employees_ByLastName));
-        indexRegistry.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
-
         var query = new SparkQuery
         {
             Id = Guid.NewGuid(),
             Name = "EmployeesByIndexSorted",
             Source = "Database.Employees",
+            IndexName = "Employees_ByLastName",
             SortColumns = [
                 new SortColumn { Property = "LastName", Direction = "asc" },
             ],
@@ -452,25 +451,57 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Database_query_with_explicit_IndexName_uses_ApplyIndexByName_when_no_index_type_registered()
+    public async Task Database_query_with_unknown_IndexName_throws_instead_of_falling_back()
     {
-        // SparkQuery.IndexName is set but no index *type* is registered with the registry —
-        // QueryExecutor must fall through to the ApplyIndexByName path that takes the index
-        // name as a string and reflects on the 3-arg Query<T>(string, string, bool) overload.
+        // A declared name is authoritative (#279): naming an index the catalog doesn't know is an
+        // error, never a silent raw-collection query with null computed fields.
+        await SeedAsync();
+
+        var query = new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "EmployeesByUnknownIndex",
+            Source = "Database.Employees",
+            IndexName = "Employees_DoesNotExist",
+        };
+
+        var act = () => _executor.ExecuteQueryAsync(query);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("Employees_DoesNotExist"));
+    }
+
+    [Fact]
+    public async Task Database_query_without_indexName_falls_back_to_the_entity_files_declared_binding()
+    {
+        // R279.4: query.indexName → entity file's queryType/indexName → raw collection. Here the
+        // query carries no name, the model does — the model-declared default routes through the
+        // index and its projection.
         await SeedAsync();
 
         await new Employees_ByLastName().ExecuteAsync(Store);
         await Store.WaitForIndexingAsync();
 
+        var employeeModel = EmployeeModel();
+        employeeModel.PersistentObject.QueryType = typeof(VEmployee).FullName;
+        employeeModel.PersistentObject.IndexName = "Employees_ByLastName";
+
+        await using var factory = new SparkEndpointFactory<TestContext>(Store, [CompanyModel(), employeeModel],
+            configureIndexCatalog: catalog =>
+            {
+                catalog.RegisterIndex(typeof(Employees_ByLastName));
+                catalog.RegisterProjection(typeof(VEmployee), typeof(Employees_ByLastName));
+            });
+        var executor = factory.GetService<IQueryExecutor>();
+
         var query = new SparkQuery
         {
             Id = Guid.NewGuid(),
-            Name = "EmployeesByExplicitIndex",
+            Name = "EmployeesByModelBinding",
             Source = "Database.Employees",
-            IndexName = "Employees_ByLastName",
         };
 
-        var result = await _executor.ExecuteQueryAsync(query);
+        var result = await executor.ExecuteQueryAsync(query);
 
         result.TotalRecords.Should().Be(3);
     }

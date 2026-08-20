@@ -22,7 +22,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
-    [Inject] private readonly IIndexRegistry indexRegistry;
+    [Inject] private readonly IIndexCatalog indexCatalog;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IReferenceResolver referenceResolver;
@@ -137,31 +137,35 @@ internal partial class QueryExecutor : IQueryExecutor
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         Type resultType = entityType;
-        string? indexName = query.IndexName;
 
-        var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
-        if (registration?.ProjectionType != null)
+        // Declared-only resolution (issue #279): the query names its index; a query without one
+        // falls back to the entity file's model-declared default binding; an empty binding queries
+        // the raw collection. Nothing resolves by collection type — a declared name is
+        // authoritative, and an unknown one is an error rather than a silent null-field grid.
+        var indexName = !string.IsNullOrEmpty(query.IndexName)
+            ? query.IndexName
+            : entityTypeDefinition.IndexName;
+
+        Type? indexType = null;
+        if (!string.IsNullOrEmpty(indexName))
         {
-            resultType = registration.ProjectionType;
-            if (string.IsNullOrEmpty(indexName))
+            var entry = indexCatalog.GetByIndexName(indexName)
+                ?? throw new InvalidOperationException(
+                    $"Query '{query.Name}' resolves to index '{indexName}', but no deployed index has that " +
+                    $"name. Fix the query's indexName in the model, or register the assembly declaring the " +
+                    $"index via AddIndexesFrom(...).");
+
+            indexType = entry.IndexType;
+            if (entry.ProjectionType != null)
             {
-                indexName = registration.IndexName;
+                resultType = entry.ProjectionType;
             }
-        }
 
-        Type? indexType = registration?.IndexType;
-        if (!string.IsNullOrEmpty(indexName) && indexType != null)
-        {
             queryable = ApplyIndexWithType(session, entityType, indexType);
-        }
-        else if (!string.IsNullOrEmpty(indexName))
-        {
-            queryable = ApplyIndexByName(session, entityType, indexName);
-        }
-
-        if (!string.IsNullOrEmpty(indexName) && resultType != entityType)
-        {
-            queryable = ApplyProjection(queryable, resultType);
+            if (resultType != entityType)
+            {
+                queryable = ApplyProjection(queryable, resultType);
+            }
         }
 
         // Chain .Include() before executing: [Reference] property names + the type's
@@ -284,7 +288,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
         // Without this, RavenDB loads full documents which lack computed index fields.
-        if (methodInfo.IsRavenQueryable && indexRegistry.IsProjectionType(methodInfo.ResultElementType))
+        if (methodInfo.IsRavenQueryable && methodInfo.ResultElementType.IsSparkProjection())
         {
             result = ApplyProjection(result, methodInfo.ResultElementType);
         }
@@ -542,35 +546,6 @@ internal partial class QueryExecutor : IQueryExecutor
     }
 
     /// <summary>
-    /// Returns session.Query&lt;entityType&gt;(indexName, null, false)
-    /// </summary>
-    /// <param name="session"></param>
-    /// <param name="entityType"></param>
-    /// <param name="indexName"></param>
-    /// <returns></returns>
-    /// <exception cref="InvalidOperationException"></exception>
-    private object ApplyIndexByName(IAsyncDocumentSession session, Type entityType, string indexName)
-    {
-        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
-            ("QueryExecutor.SessionQueryByIndexName", entityType),
-            static k =>
-            {
-                var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
-                    .FirstOrDefault(m => m.Name == "Query"
-                        && m.IsGenericMethod
-                        && m.GetGenericArguments().Length == 1
-                        && m.GetParameters().Length == 3
-                        && m.GetParameters()[0].ParameterType == typeof(string)
-                        && m.GetParameters()[1].ParameterType == typeof(string)
-                        && m.GetParameters()[2].ParameterType == typeof(bool))
-                    ?? throw new InvalidOperationException("Could not find Query<T>(string, string, bool) method on IAsyncDocumentSession");
-                return sessionQueryMethod.MakeGenericMethod(k.Type);
-            });
-        var ravenIndexName = indexName.Replace("_", "/");
-        return genericMethod.Invoke(session, [ravenIndexName, null, false])!;
-    }
-
-    /// <summary>
     /// Returns queryable.ProjectInto&lt;resultType&gt;() to apply index projections for computed/stored fields.
     /// </summary>
     /// <param name="queryable"></param>
@@ -629,7 +604,15 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             var col = sortColumns[i];
             var propertyInfo = entityType.GetCachedProperty(ResolveSortProperty(entityType, col.Property));
-            if (propertyInfo == null) continue;
+            if (propertyInfo == null)
+            {
+                // Not an error: a model attribute can legitimately be absent from a narrower
+                // projection. But dropping the column silently reads as broken ordering (#279).
+                Console.WriteLine(
+                    $"Warning: sort column '{col.Property}' has no matching property on {entityType.Name}; " +
+                    $"the column is skipped and rows keep their index order.");
+                continue;
+            }
 
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
             var methodName = i == 0

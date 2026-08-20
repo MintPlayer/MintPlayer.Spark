@@ -15,10 +15,8 @@ export interface SparkQuery {
   alias?: string;
   sortColumns: SparkQuerySortColumn[];
   renderMode?: SparkQueryRenderMode;
-  /** Optional RavenDB index name for queries using indexes */
+  /** The RavenDB index this query runs against, resolved by name server-side. */
   indexName?: string;
-  /** When true, uses the projection type from [QueryType] attribute */
-  useProjection?: boolean;
   /** Optional entity type name (e.g., "Person"). When set, used for entity type resolution. */
   entityType?: string;
   /** When true, this query uses WebSocket streaming with snapshot + patch updates. */

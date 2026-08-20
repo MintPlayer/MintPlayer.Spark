@@ -36,16 +36,13 @@ public sealed class SparkQuery
     public SparkQueryRenderMode RenderMode { get; set; } = SparkQueryRenderMode.Pagination;
 
     /// <summary>
-    /// Optional RavenDB index name. When specified, the query will use this index
-    /// and return the projection type registered in the IndexRegistry.
+    /// The RavenDB index this query runs against, resolved by name through the index catalog; its
+    /// <c>[FromIndex]</c> projection (when it has one) becomes the result shape. Stamped with the
+    /// entity's default index when the synchronizer mints the query; a hand-authored value is
+    /// preserved and authoritative. Empty falls back to the entity file's declared binding, and an
+    /// empty binding queries the raw collection.
     /// </summary>
     public string? IndexName { get; set; }
-
-    /// <summary>
-    /// When true, indicates this query uses a projection type (from IndexRegistry)
-    /// rather than the full entity type.
-    /// </summary>
-    public bool UseProjection { get; set; }
 
     /// <summary>
     /// The entity/view-model type name this query returns (e.g., "Person", "CompanyProductsOverview").

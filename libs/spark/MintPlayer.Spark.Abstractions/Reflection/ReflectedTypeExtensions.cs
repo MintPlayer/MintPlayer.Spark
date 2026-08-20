@@ -57,6 +57,15 @@ public static class ReflectedTypeExtensions
     }
 
     /// <summary>
+    /// Whether <paramref name="type"/> is a <c>[FromIndex]</c> projection — an index entity, not a
+    /// collection entity. The attribute is the single source of truth for projection-ness (issue
+    /// #279): the old registry answer scanned registration state, which could silently miss a
+    /// projection whose assembly was never registered.
+    /// </summary>
+    public static bool IsSparkProjection(this Type type)
+        => type.GetCachedCustomAttribute<FromIndexAttribute>() is not null;
+
+    /// <summary>
     /// The property-level <c>[Breadcrumb]</c>-marked property of <paramref name="type"/>, or
     /// <c>null</c>. A raw member scan on purpose — the sanctioned marker shape is a computed
     /// property carrying <c>[IgnoreProperty]</c> (persisted, hidden from the model), which the

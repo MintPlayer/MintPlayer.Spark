@@ -118,7 +118,6 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                 SortColumns = sortOverrides ?? query.SortColumns,
                 RenderMode = query.RenderMode,
                 IndexName = query.IndexName,
-                UseProjection = query.UseProjection,
                 EntityType = query.EntityType,
                 IsStreamingQuery = query.IsStreamingQuery,
             };

@@ -18,7 +18,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
-    [Inject] private readonly IIndexRegistry indexRegistry;
     [Inject] private readonly IServiceProvider serviceProvider;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IReferenceResolver referenceResolver;
@@ -146,15 +145,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = ResolveType(clrType);
         if (entityType == null) return [];
 
-        // Check IndexRegistry for projection type - if so, query the index instead of the collection
+        // Declared binding (issue #279): the entity file's queryType/indexName — written by the
+        // synchronizer and hash-covered — replaces the ambient registry lookup. An empty binding
+        // queries the raw collection; a binding whose projection type no longer resolves is a loud
+        // error, because the silent alternative is a grid of null computed fields.
         Type queryType = entityType;
         string? indexName = null;
 
-        var registration = indexRegistry.GetRegistrationForCollectionType(entityType);
-        if (registration?.ProjectionType != null)
+        if (!string.IsNullOrEmpty(entityTypeDefinition.IndexName) && !string.IsNullOrEmpty(entityTypeDefinition.QueryType))
         {
-            queryType = registration.ProjectionType;
-            indexName = registration.IndexName;
+            queryType = ResolveType(entityTypeDefinition.QueryType)
+                ?? throw new InvalidOperationException(
+                    $"Entity '{entityTypeDefinition.Name}' declares projection '{entityTypeDefinition.QueryType}' " +
+                    $"(index '{entityTypeDefinition.IndexName}'), but the type does not resolve. Re-run " +
+                    $"--spark-synchronize-model, or register the assembly declaring it via AddIndexesFrom(...).");
+            indexName = entityTypeDefinition.IndexName;
         }
 
         // Include paths — [Reference] property names + GetDefaultIncludes() (#239), deduped.

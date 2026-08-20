@@ -46,12 +46,19 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// <paramref name="configureServices"/>. Endpoints and middleware a module registers on the
     /// builder's registry flow into the pipeline automatically.
     /// </param>
+    /// <param name="configureIndexCatalog">
+    /// Optional hook to register fixture indexes/projections into the <see cref="IIndexCatalog"/>.
+    /// Runs before <c>UseSpark()</c> freezes the catalog — fixture indexes are nested test classes
+    /// the assembly scan must not discover wholesale (fixtures for the catalog's own error cases
+    /// would fail every host), so arming is explicit and per fixture.
+    /// </param>
     public SparkEndpointFactory(
         IDocumentStore testStore,
         IEnumerable<EntityTypeFile> models,
         Action<IServiceCollection>? configureServices = null,
         Action<ISparkBuilder>? configureSpark = null,
-        string environment = "Testing")
+        string environment = "Testing",
+        Action<MintPlayer.Spark.Services.IIndexCatalog>? configureIndexCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -111,6 +118,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                     })
                     .Configure(app =>
                     {
+                        if (configureIndexCatalog is not null)
+                            configureIndexCatalog(app.ApplicationServices.GetRequiredService<MintPlayer.Spark.Services.IIndexCatalog>());
                         app.UseRouting();
                         app.UseSpark();
                         app.UseEndpoints(endpoints => endpoints.MapSpark());
