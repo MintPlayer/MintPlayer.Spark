@@ -12,7 +12,8 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(...withSparkAuth()),
     provideAnimations(),
-    provideSparkAuth(),
+    // There is no /login route in this app; unauthenticated users go to the sign-in landing.
+    provideSparkAuth({ loginUrl: '/sign-in' }),
     provideZonelessChangeDetection()
   ]
 };

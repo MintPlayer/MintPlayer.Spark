@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
@@ -27,7 +28,12 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.UseContext<WebhooksDemoSparkContext>();
     spark.AddActions();
     spark.AddAuthorization(options => options.DefaultBehavior = MintPlayer.Spark.Authorization.Configuration.DefaultAccessBehavior.AllowAll);
-    spark.AddAuthentication<SparkUser>(configureProviders: identity =>
+    // GitHub is the only way in, so the local email/password surface is not mapped at all —
+    // register, login, refresh, confirmEmail, resendConfirmationEmail, forgotPassword,
+    // resetPassword and POST manage/info are absent from the route table.
+    spark.AddAuthentication<SparkUser>(
+        configure: auth => auth.LocalCredentials = SparkLocalCredentials.Disabled,
+        configureProviders: identity =>
     {
         identity.AddGitHub(options =>
         {
