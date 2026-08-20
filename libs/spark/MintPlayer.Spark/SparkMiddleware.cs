@@ -390,6 +390,13 @@ public static class SparkExtensions
         PopulateProjectionTypes(indexRegistry, targetAssembly);
     }
 
+    /// <summary>Catalog counterpart of <see cref="PopulateIndexRegistry"/> (issue #279). Caller freezes.</summary>
+    internal static void PopulateIndexCatalog(IIndexCatalog indexCatalog, Assembly targetAssembly)
+    {
+        PopulateIndexTypes(indexCatalog, targetAssembly);
+        PopulateProjectionTypes(indexCatalog, targetAssembly);
+    }
+
     /// <summary>
     /// Registers the index types declared in <paramref name="targetAssembly"/>.
     /// <para>
@@ -413,6 +420,21 @@ public static class SparkExtensions
         }
     }
 
+    /// <summary>Catalog counterpart of <see cref="PopulateIndexTypes(IIndexRegistry, Assembly)"/>; shares its scan cache.</summary>
+    internal static void PopulateIndexTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
+    {
+        var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.IndexTypes", targetAssembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
+                .ToArray());
+
+        foreach (var indexType in indexTypes)
+        {
+            indexCatalog.RegisterIndex(indexType);
+        }
+    }
+
     /// <summary>Registers the <c>[FromIndex]</c> projection types declared in <paramref name="targetAssembly"/>.</summary>
     internal static void PopulateProjectionTypes(IIndexRegistry indexRegistry, Assembly targetAssembly)
     {
@@ -426,6 +448,22 @@ public static class SparkExtensions
         {
             var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
             indexRegistry.RegisterProjection(projectionType, attr.IndexType);
+        }
+    }
+
+    /// <summary>Catalog counterpart of <see cref="PopulateProjectionTypes(IIndexRegistry, Assembly)"/>; shares its scan cache.</summary>
+    internal static void PopulateProjectionTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
+    {
+        var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.ProjectionTypes", targetAssembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
+                .ToArray());
+
+        foreach (var projectionType in projectionTypes)
+        {
+            var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
+            indexCatalog.RegisterProjection(projectionType, attr.IndexType);
         }
     }
 
@@ -505,6 +543,19 @@ public static class SparkExtensions
 
         foreach (var assembly in assemblies)
             PopulateProjectionTypes(indexRegistry, assembly);
+
+        // The catalog is the declared-binding successor of the registry (issue #279); freezing runs
+        // the [DefaultIndex] validation, so an ambiguous default fails startup here — before any
+        // query can resolve through it.
+        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
+
+        foreach (var assembly in assemblies)
+            PopulateIndexTypes(indexCatalog, assembly);
+
+        foreach (var assembly in assemblies)
+            PopulateProjectionTypes(indexCatalog, assembly);
+
+        indexCatalog.Freeze();
 
         // Deployment is best-effort, but per assembly: one unreachable or broken module must not
         // cost every other module its indexes, which is what a single surrounding catch did.
