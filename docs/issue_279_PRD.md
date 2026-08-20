@@ -135,8 +135,10 @@ resolve by collection type at runtime.
   retain-all + ordinal-min machinery, the preview.55 plural API) is **deleted**. Replacement: `IIndexCatalog`
   — name-keyed (OrdinalIgnoreCase) entries `(IndexName, IndexType, CollectionType, ProjectionType,
   IsDefault)`, populated once from the existing two-pass assembly scan and frozen, used by runtime,
-  synchronizer, and offline commands so their answers cannot diverge. `IsProjectionType` becomes a
-  `[FromIndex]` attribute check (extension method), removed from the service surface.
+  synchronizer, and offline commands so their answers cannot diverge. Two CLR index classes sharing a name
+  **throw at registration** (they would deploy over the same RavenDB index; the registry's first-wins skip
+  becomes an error). `IsProjectionType` becomes a `[FromIndex]` attribute check (extension method), removed
+  from the service surface.
 - **R279.8** Constraints preserved: program units reference queries by `Id` (`Endpoints/ProgramUnits/Get.cs`
   — verified index-free); idempotent synchronize (fixed-point); #274/#275/#276 provenance; row security
   filters on the base entity type (`QueryExecutor.cs:178,203-204,213`, `DatabaseAccess.cs:166-172`);
@@ -165,7 +167,10 @@ grid/lookup/PO-list → Spark query (by name or Id) → query.indexName ┐
   `PopulateIndexTypes`/`PopulateProjectionTypes` two-pass over `ResolveIndexAssemblies()`), then **frozen**.
   Surface: `GetByIndexName(string)`, `GetDefaultForCollectionType(Type)` (synchronizer-only consumer,
   enforces R279.6 with a candidates-naming error), `GetAllEntries()`. Validation (R279.5/R279.6 errors) runs
-  at freeze, so runtime startup and all three offline commands get it for free.
+  at freeze, so runtime startup and all three offline commands get it for free. Test hosts that arm fixture
+  indexes (`SparkEndpointFactory`'s `configureIndexCatalog`) must thread the same hook into
+  `WriteSparkModelHashes` — the hash writer and the startup verifier must compute through one catalog, or
+  an armed projection reads as model drift and the host refuses to start.
 - **QueryExecutor**: `indexName = query.IndexName`, falling back to
   `entityTypeDefinition.IndexName` (already loaded at :131). Non-empty ⇒ catalog lookup (unknown ⇒ throw
   naming the query and the name); `resultType = entry.ProjectionType ?? entityType`; apply via the entry's
