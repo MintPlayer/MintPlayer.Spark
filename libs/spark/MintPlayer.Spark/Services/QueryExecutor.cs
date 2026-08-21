@@ -199,7 +199,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (query.SortColumns.Length > 0)
         {
-            queryable = ApplySorting(queryable, sortType, query.SortColumns);
+            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
         }
 
         var materialized = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
@@ -336,7 +336,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Apply sorting if the result is IQueryable
         if (isQueryable && query.SortColumns.Length > 0)
         {
-            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns);
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition);
         }
 
         // Materialize results
@@ -691,11 +691,36 @@ internal partial class QueryExecutor : IQueryExecutor
     /// never used.
     /// </para>
     /// </summary>
-    private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns)
+    private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns,
+        EntityTypeDefinition definition)
     {
         for (int i = 0; i < sortColumns.Length; i++)
         {
             var col = sortColumns[i];
+
+            // The sort column names an attribute of the query surface, or it is refused (#295).
+            //
+            // Ordering is a comparison oracle: sorting by a field and observing where a row lands
+            // binary-searches its value. Redaction nulls the value in the response but does nothing
+            // to the ORDER BY, so without this check an attribute the caller may never read is still
+            // fully readable one comparison at a time.
+            //
+            // Gating on ShowedOn rather than on the redaction hook is deliberate. GetProtectedAttributesAsync
+            // takes an entity and may answer differently per row, so it cannot decide a query-level
+            // operation — and by the time rows exist the ordering has already happened. "Not on the
+            // query surface" is static, already synchronized, and already how an app hides a column.
+            //
+            // Checked against the DECLARED name, before ResolveSortProperty redirects: a sort
+            // companion is only ever used when it IsIgnoredForSparkModel, so it is never a model
+            // attribute and would fail this check itself.
+            if (!IsSortableAttribute(definition, col.Property))
+            {
+                Console.WriteLine(
+                    $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
+                    $"surface; the column is refused and rows keep their index order.");
+                continue;
+            }
+
             var propertyInfo = entityType.GetCachedProperty(ResolveSortProperty(entityType, col.Property));
             if (propertyInfo == null)
             {
@@ -869,6 +894,18 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <para>If a per-attribute override is ever needed, an optional model field can be added later without
     /// breaking anything: absent would continue to mean "use the convention".</para>
     /// </summary>
+    /// <summary>
+    /// Whether <paramref name="requested"/> names an attribute the caller may order by: it must exist
+    /// in the model and be part of the query surface.
+    /// </summary>
+    private static bool IsSortableAttribute(EntityTypeDefinition definition, string requested)
+    {
+        var attribute = definition.Attributes
+            .FirstOrDefault(a => string.Equals(a.Name, requested, StringComparison.OrdinalIgnoreCase));
+
+        return attribute is not null && attribute.ShowedOn.HasFlag(EShowedOn.Query);
+    }
+
     private static string ResolveSortProperty(Type sortType, string requested)
     {
         var companion = sortType.GetCachedProperty(requested + "Sort");
