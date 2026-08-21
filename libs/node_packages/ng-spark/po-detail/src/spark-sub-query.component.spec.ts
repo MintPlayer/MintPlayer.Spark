@@ -165,6 +165,54 @@ describe('SparkSubQueryComponent', () => {
     expect(component.loading()).toBe(false);
   });
 
+  describe('without a parent', () => {
+    // A query does not have to be a detail of something: a page can host a grid
+    // that stands on its own. Requiring a parent made that shape load nothing at
+    // all — no request, no error, no log — so these assert the loading actually
+    // happens, not merely that the inputs are optional.
+    function createParentless(serviceOverrides: Record<string, unknown> = {}) {
+      const made = createComponent(serviceOverrides);
+      made.fixture.componentRef.setInput('parentId', '');
+      made.fixture.componentRef.setInput('parentType', '');
+      return made;
+    }
+
+    it('loads the query when no parent is given', async () => {
+      const { fixture, component, service } = createParentless();
+      fixture.detectChanges();
+      await flush();
+
+      expect(service.getQuery).toHaveBeenCalledWith('q-lines');
+      expect(component.query()?.id).toBe('q-lines');
+      expect(component.loading()).toBe(false);
+      expect(component.fetchFn()).not.toBeNull();
+    });
+
+    it('omits parentId and parentType from the execute call', async () => {
+      const { fixture, component, service } = createParentless();
+      fixture.detectChanges();
+      await flush();
+
+      await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as never);
+
+      const opts = (service.executeQuery as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(opts.parentId).toBeFalsy();
+      expect(opts.parentType).toBeFalsy();
+    });
+
+    it('still loads when only one half of the parent is given', async () => {
+      // Half a parent is not a parent. The execute endpoint resolves one only
+      // when both are present, so the grid must not be held hostage by the other.
+      const { fixture, component, service } = createComponent();
+      fixture.componentRef.setInput('parentType', '');
+      fixture.detectChanges();
+      await flush();
+
+      expect(service.getQuery).toHaveBeenCalledWith('q-lines');
+      expect(component.fetchFn()).not.toBeNull();
+    });
+  });
+
   it('fetchFn is null before the query has resolved', async () => {
     const { fixture, component } = createComponent({
       getQuery: vi.fn(() => new Promise<SparkQuery>(() => {})),

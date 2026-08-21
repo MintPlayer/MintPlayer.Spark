@@ -30,8 +30,22 @@ export class SparkSubQueryComponent {
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   queryId = input.required<string>();
-  parentId = input.required<string>();
-  parentType = input.required<string>();
+
+  /**
+   * The parent persistent object this query is scoped to, when it has one.
+   *
+   * Optional, because not every query is a detail of something: a page can host
+   * a grid that stands on its own — "my accounts", a dashboard list — and the
+   * server already treats an absent parent as "no parent" rather than as an
+   * error. Leaving these required made that shape impossible to express: the
+   * component simply never loaded, with no request, no error and no log.
+   *
+   * Pass both or neither. One without the other is ignored, matching
+   * `SparkService.executeQuery`, which omits either param when it is falsy, and
+   * the execute endpoint, which resolves a parent only when both are present.
+   */
+  parentId = input<string>('');
+  parentType = input<string>('');
 
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
@@ -59,7 +73,9 @@ export class SparkSubQueryComponent {
       const qId = this.queryId();
       const pId = this.parentId();
       const pType = this.parentType();
-      if (qId && pId && pType) {
+      // Only the query id is required. Requiring a parent here is what made a
+      // standalone grid silently render nothing.
+      if (qId) {
         this.loadData(qId, pId, pType);
       }
     });
