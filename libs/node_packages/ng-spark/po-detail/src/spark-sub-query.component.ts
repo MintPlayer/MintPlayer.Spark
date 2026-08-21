@@ -1,12 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
-import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe } from '@mintplayer/ng-spark/pipes';
+import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
 import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
@@ -21,7 +23,7 @@ import {
 
 @Component({
   selector: 'spark-sub-query',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
   templateUrl: './spark-sub-query.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -47,10 +49,12 @@ export class SparkSubQueryComponent {
   parentId = input<string>('');
   parentType = input<string>('');
 
+  colors = Color;
+
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
   allEntityTypes = signal<EntityType[]>([]);
-  resultCount = signal<number | null>(null);
+  errorMessage = signal<string | null>(null);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
   canRead = signal(false);
@@ -77,14 +81,24 @@ export class SparkSubQueryComponent {
       // standalone grid silently render nothing.
       if (qId) {
         this.loadData(qId, pId, pType);
+      } else {
+        // No query id at all. `loading` starts true, so without this the component
+        // would spin forever instead of saying anything.
+        this.loading.set(false);
       }
     });
   }
 
   private async loadData(queryId: string, parentId: string, parentType: string): Promise<void> {
     this.loading.set(true);
-    this.resultCount.set(null);
+    this.errorMessage.set(null);
     this.fetchFn.set(null);
+    // Reset everything derived from the previous query, not just the fetch. Leaving
+    // `entityType`/`canRead` behind let a failed reload build a row link out of the
+    // PREVIOUS type and the previous permission.
+    this.query.set(null);
+    this.entityType.set(null);
+    this.canRead.set(false);
     try {
       const [resolvedQuery, entityTypes] = await Promise.all([
         this.sparkService.getQuery(queryId),
@@ -135,7 +149,6 @@ export class SparkSubQueryComponent {
       take: req.perPage,
       parentId, parentType,
     }).then(r => {
-      this.resultCount.set(r.totalRecords);
       return {
         data: r.data,
         totalRecords: r.totalRecords,
@@ -144,7 +157,6 @@ export class SparkSubQueryComponent {
         page: req.page,
       };
     }).catch(() => {
-      this.resultCount.set(0);
       return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
     });
   }

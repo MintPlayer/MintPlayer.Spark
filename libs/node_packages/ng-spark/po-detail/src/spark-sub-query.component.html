@@ -1,45 +1,61 @@
-@if (query(); as q) {
+@if (loading()) {
+  <bs-card style="display: block; margin: 1rem 0;">
+    <div class="text-center p-3">
+      <bs-spinner />
+    </div>
+  </bs-card>
+} @else if (query(); as q) {
   <bs-card style="display: block; margin: 1rem 0;">
     <bs-card-header>{{ (q.description | resolveTranslation) || q.name }}</bs-card-header>
-    @if (loading()) {
-      <div class="text-center p-3">
-        <bs-spinner />
-      </div>
-    } @else {
-      <div class="p-3">
-        <bs-datatable
-            [virtualScroll]="isVirtualScrolling()"
-            [itemSize]="40"
-            [isResponsive]="isVirtualScrolling()"
-            [fetch]="fetchFn()"
-            [(settings)]="settings">
-          @for (attr of visibleAttributes(); track attr.id) {
-            <div *bsDatatableColumn="attr.name; sortable: true">
-              {{ (attr.label | resolveTranslation) || attr.name }}
-            </div>
-          }
+    <div class="p-3">
+      @if (errorMessage(); as err) {
+        <bs-alert [type]="colors.danger" class="mb-3">
+          {{ err }}
+        </bs-alert>
+      }
+      <bs-datatable
+          [virtualScroll]="isVirtualScrolling()"
+          [itemSize]="40"
+          [isResponsive]="isVirtualScrolling()"
+          [fetch]="fetchFn()"
+          [(settings)]="settings">
+        @for (attr of visibleAttributes(); track attr.id) {
+          <div *bsDatatableColumn="attr.name; sortable: true">
+            {{ (attr.label | resolveTranslation) || attr.name }}
+          </div>
+        }
 
-          <ng-container *bsRowTemplate="let item">
-            @let row = $any(item);
-            @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-              <td>
-                @if (row) {
-                  @if (first && canRead()) {
-                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
-                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                    </a>
-                  } @else {
+        <ng-container *bsRowTemplate="let item">
+          @let row = $any(item);
+          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+            <td>
+              @if (row) {
+                @if (first && canRead()) {
+                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
                     <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  }
+                  </a>
                 } @else {
-                  &nbsp;
+                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
                 }
-              </td>
-            }
-          </ng-container>
-        </bs-datatable>
-      </div>
-    }
+              } @else {
+                &nbsp;
+              }
+            </td>
+          }
+        </ng-container>
+      </bs-datatable>
+    </div>
+  </bs-card>
+} @else {
+  <!-- The query could not be resolved. Rendering the card shell keeps the host's
+       layout intact and, crucially, makes the failure visible: this branch used to
+       render nothing at all. -->
+  <bs-card style="display: block; margin: 1rem 0;">
+    <div class="p-3">
+      <bs-alert [type]="colors.danger" class="mb-0">
+        {{ errorMessage() || ('spark.query.unavailable' | t) }}
+      </bs-alert>
+    </div>
   </bs-card>
 }
 
@@ -47,8 +63,10 @@
   @if (getColumnRendererComponent(attr); as rendererType) {
     <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
   } @else if (attr.dataType === 'boolean') {
+    @let boolVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
     <input type="checkbox"
-      [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+      [checked]="boolVal === true"
+      [indeterminate]="boolVal === null || boolVal === undefined"
       disabled
       onclick="return false;">
   } @else if (attr.dataType === 'color') {

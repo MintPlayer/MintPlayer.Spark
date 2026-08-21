@@ -108,19 +108,8 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
                     return Results.Json(new { error = "Parent not found" }, statusCode: 404);
             }
 
-            // Clone query with sort overrides if provided
-            var effectiveQuery = new SparkQuery
-            {
-                Id = query.Id,
-                Name = query.Name,
-                Source = query.Source,
-                Alias = query.Alias,
-                SortColumns = sortOverrides ?? query.SortColumns,
-                RenderMode = query.RenderMode,
-                IndexName = query.IndexName,
-                EntityType = query.EntityType,
-                IsStreamingQuery = query.IsStreamingQuery,
-            };
+            // Copy only when the request overrides the sort; the cached definition is shared.
+            var effectiveQuery = sortOverrides is null ? query : query.WithSortColumns(sortOverrides);
 
             var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search);
             return Results.Json(results);

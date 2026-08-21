@@ -119,7 +119,6 @@ describe('SparkSubQueryComponent', () => {
     expect(opts.take).toBe(10);
     expect(res.totalRecords).toBe(2);
     expect(res.totalPages).toBe(1);
-    expect(component.resultCount()).toBe(2);
   });
 
   it('VirtualScrolling mode still uses the fetch callback (virtual is just a flag)', async () => {
