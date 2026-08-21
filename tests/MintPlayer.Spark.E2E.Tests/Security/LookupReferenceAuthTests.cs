@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// R2-H4 — LookupReference mutation endpoints (POST /spark/lookupref/{name},
 /// PUT/DELETE /spark/lookupref/{name}/{key}) used to accept any caller with a valid
 /// XSRF token. They're now gated behind Edit/LookupReferences. Fleet's
-/// security.json doesn't grant that to Everyone or Fleet managers — only admins.
+/// security.json doesn't grant that to anonymous callers or Fleet managers — only admins.
 /// </summary>
 [Collection(FleetE2ECollection.Name)]
 public class LookupReferenceAuthTests

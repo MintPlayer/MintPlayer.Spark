@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -42,7 +43,10 @@ public abstract class OidcTestHost : SparkTestDriver
             models: [],
             configureSpark: spark =>
             {
-                spark.AddAuthentication<SparkUser>();
+                // Explicit since preview.60: LocalCredentials now defaults to Disabled, and these
+                // tests sign in with a password at /connect/login.
+                spark.AddAuthentication<SparkUser>(
+                    configure: auth => auth.LocalCredentials = SparkLocalCredentials.Full);
                 spark.AddIdentityProvider(options =>
                 {
                     // Pinned rather than derived from the Host header: O7's fix makes this

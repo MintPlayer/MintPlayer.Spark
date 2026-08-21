@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject, signal, effect, afterNextRender, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { RouterModule } from '@angular/router';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective } from '@mintplayer/ng-bootstrap/accordion';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
@@ -26,7 +26,6 @@ export class ShellComponent {
   private readonly sparkService = inject(SparkService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly router = inject(Router);
   readonly authService = inject(SparkAuthService);
 
   readonly lang = inject(SparkLanguageService);
@@ -49,11 +48,6 @@ export class ShellComponent {
   private async loadProgramUnits(): Promise<void> {
     const config = await this.sparkService.getProgramUnits();
     this.programUnitGroups.set(config.programUnitGroups.sort((a, b) => a.order - b.order));
-  }
-
-  async loginWithGitHub(): Promise<void> {
-    const result = await this.authService.loginWithProvider('GitHub', { returnUrl: '/github-projects' });
-    if (result.success) this.router.navigate(['/github-projects']);
   }
 
   async logout(): Promise<void> {

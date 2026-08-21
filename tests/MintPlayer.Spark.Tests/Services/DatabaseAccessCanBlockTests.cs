@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <para>
 /// The factory here does NOT run under the permissive test default: <see cref="IAccessControl"/>
 /// is replaced with a Read/Query-only double, reproducing the documented anonymous-read pattern
-/// (grant <c>QueryRead</c> to Everyone + a row filter) that surfaced the overclaim on Coverage.
+/// (grant <c>QueryRead</c> to the anonymous group + a row filter) that surfaced the overclaim on Coverage.
 /// The restrictive direction — a row rule denying what type-level allows — is pinned by
 /// <see cref="DatabaseAccessRowLevelAuthzTests.Get_attaches_the_per_row_can_block_for_a_row_scoped_type"/>
 /// and must not regress.

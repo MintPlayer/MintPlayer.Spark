@@ -1,9 +1,18 @@
 {
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
+  },
   "groups": {
     "00000000-0000-0000-0000-000000000000": {
-      "en": "Everyone",
-      "fr": "Tout le monde",
-      "nl": "Iedereen"
+      "en": "Anonymous visitors",
+      "fr": "Visiteurs anonymes",
+      "nl": "Anonieme bezoekers"
+    },
+    "a1b2c3d4-0000-0000-0000-00000000000f": {
+      "en": "Signed-in users",
+      "fr": "Utilisateurs connectés",
+      "nl": "Aangemelde gebruikers"
     },
     "a1b2c3d4-0000-0000-0000-000000000001": {
       "en": "Administrators",
@@ -32,6 +41,12 @@
       "id": "00000000-0000-0000-0000-000000000001",
       "resource": "QueryRead/Company",
       "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000000f",
+      "resource": "QueryRead/Company",
+      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
       "isDenied": false
     },
     {

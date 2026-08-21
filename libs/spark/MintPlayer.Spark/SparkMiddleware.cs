@@ -288,6 +288,8 @@ public static class SparkExtensions
         // rather than a configuration mistake.
         VerifySparkModelHash(app);
 
+        ReportSecurityPosture(app);
+
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
@@ -465,6 +467,49 @@ public static class SparkExtensions
             hostEnvironment.ContentRootPath,
             hostEnvironment.IsDevelopment(),
             Console.WriteLine);
+    }
+
+    /// <summary>
+    /// Prints which rights an anonymous caller holds, on every startup.
+    /// <para>
+    /// Follows the principle <c>ModelHashVerifier</c> states — warned on every startup, never once —
+    /// and prints the negative case explicitly. "Anonymous callers can reach nothing" is the whole
+    /// point: silence is indistinguishable from the check not running, so an operator reading a log
+    /// could not tell a closed surface from a summary that was never emitted.
+    /// </para>
+    /// <para>
+    /// Logs rather than throws. Malformed configuration is refused at load, because the file then
+    /// does not say what its author thinks it says; a genuinely public API is a policy decision an
+    /// application is entitled to make, and refusing to start over it would be wrong.
+    /// </para>
+    /// </summary>
+    private static void ReportSecurityPosture(IApplicationBuilder app)
+    {
+        var reporter = app.ApplicationServices.GetService<ISecurityPostureReporter>();
+        if (reporter is null)
+            return;   // No authorization package, so no posture to describe.
+
+        var logger = app.ApplicationServices.GetService<ILoggerFactory>()
+            ?.CreateLogger("MintPlayer.Spark.Security");
+        if (logger is null)
+            return;
+
+        var posture = reporter.Describe();
+
+        if (posture.AnonymouslyReachable.Count == 0)
+        {
+            logger.LogInformation("Spark security: anonymous callers can reach nothing.");
+        }
+        else
+        {
+            logger.LogWarning(
+                "Spark security: anonymous callers can reach {Count} right(s) — {Rights}.",
+                posture.AnonymouslyReachable.Count,
+                string.Join(", ", posture.AnonymouslyReachable));
+        }
+
+        foreach (var warning in posture.Warnings)
+            logger.LogWarning("Spark security: {Warning}", warning);
     }
 
     private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)

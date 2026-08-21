@@ -2,6 +2,8 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Controllers;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -21,10 +23,26 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-builder.Services.AddControllers();
 builder.Services.AddWebhooksDemo();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
+    // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
+    // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.
+    spark.AddControllers();
+    spark.UseControllers();
+
+    // #300, demonstrated: /api/github/projects/{id}/sync-columns is a cookie-authenticated POST
+    // that had no CSRF check, because nothing attaches IAntiforgeryMetadata to a controller and
+    // MVC's own [ValidateAntiForgeryToken] implements a different interface entirely. Naming /api
+    // here covers it with no per-endpoint annotation. The SPA already echoes the XSRF-TOKEN cookie
+    // — withSparkAuth() wires withXsrfConfiguration — so nothing else changes.
+    spark.AddAntiforgeryProtection(antiforgery =>
+    {
+        antiforgery.PathPrefixes = ["/spark", "/connect", "/api"];
+        antiforgery.RequireAntiforgery = true;
+    });
+
     spark.UseContext<WebhooksDemoSparkContext>();
     spark.AddActions();
     spark.AddAuthorization(options => options.DefaultBehavior = MintPlayer.Spark.Authorization.Configuration.DefaultAccessBehavior.AllowAll);
@@ -97,7 +115,6 @@ app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {
-    endpoints.MapControllers();
     endpoints.MapSpark();
     endpoints.MapGet("/health", () => Results.Ok());
 });

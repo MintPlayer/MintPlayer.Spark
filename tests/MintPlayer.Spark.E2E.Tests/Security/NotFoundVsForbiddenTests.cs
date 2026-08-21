@@ -38,7 +38,7 @@ public class NotFoundVsForbiddenTests
 
         // Plain-user client: register + try to log in. If Fleet requires email confirmation
         // the login may fail, which is fine — the oracle-distinguishability assertion still
-        // holds for the resulting anonymous principal (the Everyone group), who also has no
+        // holds for the resulting anonymous principal (the anonymous group), who also has no
         // Car rights.
         using var plainClient = SparkClientFactory.ForFleet(_fixture.Host);
         var email = $"plain-{Guid.NewGuid():N}@e2e.local";

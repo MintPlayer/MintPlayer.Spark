@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Authentication;
 /// Both defects this closes were silent. Spark's endpoints carry no <c>[Authorize]</c> and name no
 /// scheme, so ASP.NET ran only the default authenticate scheme and an app could register a
 /// certificate or bearer handler that never executed — the caller arrived anonymous with
-/// <c>Everyone</c> rights, no error, no log (F7). And antiforgery was demanded of every mutating
+/// the anonymous group's rights, no error, no log (F7). And antiforgery was demanded of every mutating
 /// request whatever authenticated it, so an external caller with no cookie to echo got a bare 400
 /// with no body (F8).
 /// </para>

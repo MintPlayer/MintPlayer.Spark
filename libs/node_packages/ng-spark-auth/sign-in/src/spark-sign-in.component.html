@@ -10,14 +10,24 @@
         <bs-alert [type]="colors.danger" class="mb-0">{{ 'auth.signInUnavailable' | t }}</bs-alert>
       } @else {
         @for (provider of providers(); track provider.scheme) {
-          <button type="button" class="btn btn-outline-primary w-100 mb-2" (click)="signInWith(provider)">
-            {{ provider.displayName }}
-          </button>
+          @if (providerTemplate(); as tpl) {
+            <ng-container *ngTemplateOutlet="tpl; context: contextFor(provider)" />
+          } @else {
+            <button type="button" class="btn btn-outline-primary w-100 mb-2" (click)="signInWith(provider)">
+              @if (provider.iconClass) {
+                <i [class]="provider.iconClass" class="me-2"></i>
+              }
+              {{ provider.displayName }}
+            </button>
+          }
         } @empty {
           <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
         }
 
-        @if (localCredentialsAvailable()) {
+        <!-- Two conditions, not one. The server may still accept passwords while this app chose not
+             to mount the page — sparkAuthRoutes is opt-in per feature now — and a [routerLink] bound
+             to undefined silently navigates to the current route rather than failing. -->
+        @if (localCredentialsAvailable() && routePaths.login) {
           <div class="text-center mt-3">
             <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
           </div>

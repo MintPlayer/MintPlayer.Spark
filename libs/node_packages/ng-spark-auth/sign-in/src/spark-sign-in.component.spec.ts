@@ -91,7 +91,7 @@ describe('SparkSignInComponent', () => {
 
     buttons(harness)[0].click();
 
-    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google');
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: undefined });
   });
 
   it('reports that sign-in is unavailable when capabilities cannot be loaded', async () => {

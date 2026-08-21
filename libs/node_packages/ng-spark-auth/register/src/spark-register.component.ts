@@ -57,7 +57,11 @@ export class SparkRegisterComponent {
 
     try {
       await this.authService.register(email!, password!);
-      this.router.navigate([this.routePaths.login], {
+      // An app can mount registration without the password form (external-only sign-in with
+      // self-service account creation). Landing on the site root beats navigating to `undefined`,
+      // which the router resolves to the current route — leaving the user on a form they just
+      // submitted successfully.
+      this.router.navigate([this.routePaths.login ?? '/'], {
         queryParams: { registered: 'true' },
       });
     } catch (err: any) {

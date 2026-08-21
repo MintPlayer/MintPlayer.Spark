@@ -17,7 +17,12 @@ public enum SparkLocalCredentials
 {
     /// <summary>
     /// Everything: registration, password sign-in, and the full password-recovery family.
-    /// The default, and the behaviour of every Spark version before this option existed.
+    /// <para>
+    /// No longer the default. It stays value 0 so that a configuration binder reading an absent or
+    /// unparseable value does not silently produce a <em>different</em> posture than an explicit
+    /// one — the default is chosen in <see cref="SparkAuthenticationOptions.LocalCredentials"/>,
+    /// where it is visible, rather than by which enum member happens to be first.
+    /// </para>
     /// </summary>
     Full = 0,
 
@@ -31,6 +36,9 @@ public enum SparkLocalCredentials
     /// No local credentials at all — sign-in happens exclusively through an external provider.
     /// The endpoints are not mapped, so they are absent from the route table rather than merely
     /// returning 404.
+    /// <para>
+    /// The default since preview.60, matching the client's opt-in routes.
+    /// </para>
     /// </summary>
     Disabled = 2,
 }

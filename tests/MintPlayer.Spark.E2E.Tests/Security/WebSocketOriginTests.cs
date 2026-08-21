@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 [Collection(FleetE2ECollection.Name)]
 public class WebSocketOriginTests
 {
-    // StreamCompanies — a streaming query on Company. Everyone has QueryRead/Company,
+    // StreamCompanies — a streaming query on Company. The anonymous group has QueryRead/Company,
     // and the WS handshake upgrade only succeeds (101) for a query whose IsStreamingQuery
     // is true; a non-streaming query would 400 ("not a streaming query") before the upgrade.
     private static readonly Guid StreamCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440004");
@@ -57,7 +57,7 @@ public class WebSocketOriginTests
 
         try
         {
-            // StreamCompanies is granted to Everyone, so unauth + no Origin succeeds.
+            // StreamCompanies is granted to anonymous callers, so unauth + no Origin succeeds.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await ws.ConnectAsync(new Uri(wssUrl), cts.Token);
             ws.State.Should().BeOneOf([WebSocketState.Open, WebSocketState.CloseSent, WebSocketState.Closed],

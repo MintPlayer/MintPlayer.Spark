@@ -59,10 +59,14 @@
         </form>
       </bs-form>
 
-      <div class="mt-3 text-center">
-        <span>{{ 'auth.alreadyHaveAccount' | t }} </span>
-        <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
-      </div>
+      <!-- withRegistration() is opt-in independently of withLocalLogin(), so the password form may
+           not be mounted. An unguarded [routerLink]="undefined" navigates to the current route. -->
+      @if (routePaths.login) {
+        <div class="mt-3 text-center">
+          <span>{{ 'auth.alreadyHaveAccount' | t }} </span>
+          <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
+        </div>
+      }
     </div>
   </bs-card>
 </div>
