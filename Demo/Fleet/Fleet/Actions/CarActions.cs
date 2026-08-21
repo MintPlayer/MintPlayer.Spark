@@ -159,11 +159,17 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
     /// <c>VCar</c> (the <c>Cars_Overview</c> projection) doesn't carry <c>CreatedBy</c>, the filter
     /// can't push down here, so it's applied via the post-materialization fallback — still correct,
     /// just not pushed into RQL.
+    /// <para>
+    /// Deliberately <c>async</c>, and deliberately returning the queryable rather than a list: this
+    /// is the shape that used to lose every capability the sync one keeps (#294). The query declares
+    /// <c>sortColumns</c> on <c>Year</c> in Car.json, so if async queries were second-class again the
+    /// grid would come back unsorted — visibly, on screen, with nothing failing in the test suite.
+    /// </para>
     /// Source: "Custom.Recent_Cars"
     /// </summary>
-    public IRavenQueryable<VCar> Recent_Cars()
+    public async Task<IRavenQueryable<VCar>> Recent_Cars()
     {
-        return session.Query<VCar, Cars_Overview>()
-            .Where(c => c.Year >= 2020);
+        return await Task.FromResult(session.Query<VCar, Cars_Overview>()
+            .Where(c => c.Year >= 2020));
     }
 }

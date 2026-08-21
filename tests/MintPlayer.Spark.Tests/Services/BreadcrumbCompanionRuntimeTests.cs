@@ -102,6 +102,10 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
             Breadcrumb = "{Name}",
             Attributes = [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },
+                // Declared because the test sorts by it. Synchronization would emit this for a
+                // complex property, and since #295 a sort column must name a modelled attribute of
+                // the query surface — an undeclared one is refused rather than resolved by reflection.
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Address", DataType = "AsDetail" },
             ],
         },
     };

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -13,6 +14,7 @@ internal partial class AccessControlService : IAccessControl
     [Inject] private readonly IGroupMembershipProvider groupMembershipProvider;
     [Inject] private readonly IOptions<AuthorizationOptions> options;
     [Inject] private readonly ILogger<AccessControlService> logger;
+    [Inject] private readonly IHttpContextAccessor? httpContextAccessor;
 
     /// <summary>
     /// Combined action patterns that include multiple individual actions.
@@ -36,6 +38,39 @@ internal partial class AccessControlService : IAccessControl
     /// </summary>
     private const string EveryoneGroupName = "Everyone";
 
+    /// <summary>
+    /// Well-known group name that applies to every authenticated caller, whatever claims they carry.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to <see cref="EveryoneGroupName"/>, and the thing that makes "signed-in users
+    /// only" expressible (#304). Group membership otherwise comes purely from claims, so a signed-in
+    /// user with no group claims resolved to exactly the same set as an anonymous visitor —
+    /// <c>{Everyone}</c> — leaving no way to grant a right to the former without also granting it to
+    /// the latter. Removing the grant instead denies both, and because type-level rights gate row
+    /// rules, it also stops any row rule from ever running.
+    /// <para>
+    /// Authentication state is read here rather than synthesized as a claim in the membership
+    /// provider, so an external identity provider cannot assert this group name for itself.
+    /// </para>
+    /// <para>
+    /// Opt-in by definition, exactly as <c>Everyone</c> is: an app whose security.json declares no
+    /// group by this name is unaffected.
+    /// </para>
+    /// </remarks>
+    private const string AuthenticatedGroupName = "Authenticated";
+
+    /// <summary>
+    /// Resolves a well-known group by its default (culture-invariant) name, or null when the app's
+    /// configuration does not declare it.
+    /// </summary>
+    private static Guid? ResolveWellKnownGroupId(SecurityConfiguration config, string groupName)
+    {
+        var group = config.Groups
+            .FirstOrDefault(g => string.Equals(g.Value.GetDefaultValue(), groupName, StringComparison.OrdinalIgnoreCase));
+
+        return !string.IsNullOrEmpty(group.Key) && Guid.TryParse(group.Key, out var id) ? id : null;
+    }
+
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
     {
         var config = configLoader.GetConfiguration();
@@ -46,11 +81,16 @@ internal partial class AccessControlService : IAccessControl
         var groupIds = ResolveGroupIds(config, groupNamesList);
 
         // Always include the "Everyone" group if it exists in the configuration
-        var everyoneGroup = config.Groups
-            .FirstOrDefault(g => string.Equals(g.Value.GetDefaultValue(), EveryoneGroupName, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrEmpty(everyoneGroup.Key) && Guid.TryParse(everyoneGroup.Key, out var everyoneGroupId))
+        if (ResolveWellKnownGroupId(config, EveryoneGroupName) is { } everyoneGroupId)
         {
             groupIds.Add(everyoneGroupId);
+        }
+
+        // ...and "Authenticated" for a caller who actually signed in.
+        if (httpContextAccessor?.HttpContext?.User.Identity?.IsAuthenticated == true
+            && ResolveWellKnownGroupId(config, AuthenticatedGroupName) is { } authenticatedGroupId)
+        {
+            groupIds.Add(authenticatedGroupId);
         }
 
         // No groups (not even Everyone) = no access (unless default allows)

@@ -250,9 +250,9 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         public IRavenQueryable<Employee> AllEmployees(CustomQueryArgs _) => _session.Query<Employee>();
         public IRavenQueryable<Employee> NoArgs() => _session.Query<Employee>();
-        // Async returns Task<IEnumerable<T>> (already-materialized) — that's the only async
-        // shape the executor supports cleanly; Task<IRavenQueryable<T>> would synchronously
-        // enumerate the Raven query after awaiting and Raven rejects sync ops on async sessions.
+        // Already-materialized async shape. Task<IRavenQueryable<T>> is equally supported since
+        // #294 — capabilities come from the runtime result, so an awaited Raven queryable takes
+        // the async path rather than a blocking ToList(). See AsyncCustomQueryTests.
         public async Task<IEnumerable<Employee>> AllEmployeesAsync(CustomQueryArgs _)
         {
             return await _session.Query<Employee>().ToListAsync();

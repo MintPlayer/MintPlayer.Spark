@@ -275,6 +275,31 @@ An unauthenticated caller against Fleet or HR can list and read Company records,
 *Pinned end to end by `PermissionsEndpointAuthTests.Unauthenticated_GET_permissions_for_Company_reports_read_but_no_write`
 and `..._for_Car_reports_no_access`.*
 
+### `Authenticated` — the counterpart
+
+Because `Everyone` includes anonymous callers and every other group comes from claims, a signed-in
+user carrying **no group claims** resolved to the same set as an anonymous visitor: `{Everyone}`. The
+two were indistinguishable to `security.json`.
+
+Since preview.59 there is a second well-known group, matched the same way by display name, added only
+when `HttpContext.User.Identity.IsAuthenticated` is true:
+
+```json
+{ "resource": "QueryRead/Repository", "groupId": "<the Authenticated group's id>", "isDenied": false }
+```
+
+That expresses the commonest shape there is — *any signed-in user may query this type, and a row rule
+narrows it to their own rows* — which previously could not be written at all.
+
+**Migrating a type off an anonymous grant: move the grant, do not delete it.** Type-level rights gate
+row rules (`DatabaseAccess.cs:84` runs before the row gate at `:106`), so with no grant at all
+`GetRowFilterAsync` and `IsAllowedAsync` never run and *every* caller is denied — signed-in ones
+included. A row rule narrows an admitted right; it cannot grant one.
+
+Like `Everyone`, it is opt-in by definition: an app that declares no group by this name is unaffected.
+Authentication state is read where `Everyone` is already resolved rather than synthesized as a claim
+in the membership provider, so an external identity provider cannot assert the group name for itself.
+
 ---
 
 ## 5a. Which writes are authorized — and why the framework's own are not
@@ -534,6 +559,32 @@ the server's deployment-time mode agree — that mismatch is otherwise invisible
   token once `POST /login` is gone.
 - This is a surface control, not a rate limit. `spark.AddRateLimiter()` remains worth enabling for
   whatever surface you do mount — see [rate limiting](./guide-rate-limiting.md).
+
+---
+
+## The `user:email` scope is not optional for GitHub
+
+`AddGitHub` requests `user:email` by default, and auto-provisioning depends on it.
+
+Spark refuses to create an account for an external identity unless the issuer **attested** the email
+address. GitHub's `/user` endpoint returns whatever the user set as primary, verified or not, so the
+attestation comes from `/user/emails` — which an OAuth App token cannot read without `user:email`.
+Without the scope there is no `urn:github:email_verified` claim, and first-time sign-in fails with
+`email_not_verified`.
+
+Two provider types, two different things to check:
+
+| | What grants the email read |
+|---|---|
+| **OAuth App** | the `user:email` scope, requested by default since preview.59 |
+| **GitHub App** | scopes are ignored entirely; grant the **"Email addresses: Read-only"** account permission |
+
+A non-success response from `/user/emails` is logged at Warning naming both. Signing in to an
+*already-linked* account is unaffected — only first-time binding is gated — which is why this can look
+fine in a long-running app and fail for every new user.
+
+It matters most in `SparkLocalCredentials.Disabled`: there are no local accounts to fall back on, so a
+provisioning failure means nobody can sign in at all.
 
 ---
 
