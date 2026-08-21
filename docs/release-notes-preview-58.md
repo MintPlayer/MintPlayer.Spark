@@ -97,6 +97,50 @@ documents — is untouched in all modes: a provider that federates to an upstrea
 them. The mode is read from `SparkAuthenticationOptions` rather than duplicated, so the two packages
 cannot disagree.
 
+## SparkContext may now have constructor dependencies (#292)
+
+The offline model commands used to instantiate the context, which required a public parameterless
+constructor and so ruled out putting any dependency on it. They now work from the context **type** —
+which is all they ever read — so nothing is constructed:
+
+```csharp
+public class MyAppContext(ICurrentUser currentUser) : SparkContext
+{
+    public IRavenQueryable<Account> MyAccounts =>
+        Session.Query<Account>().Where(a => a.OwnerId == currentUser.Id);
+}
+```
+
+`--spark-synchronize-model` and `--spark-verify-model` still open no session and no database, so they
+remain runnable in CI.
+
+Two new rejections, both exit code 2:
+
+- an **abstract** context type, or `SparkContext` itself — it declares no query roots and would describe
+  an empty model. While the commands instantiated the context this was impossible by accident; working
+  from a `Type` removes that accident, so the check is now explicit.
+- writing a model hash for a context with **no query roots when the model directory is not empty**. The
+  resulting hash file would certify an empty model over a populated directory, which
+  `--spark-verify-model` cannot detect — both sides of its comparison come from the same context type —
+  and which therefore surfaces as a startup failure in Production instead.
+
+`IModelSynchronizer.SynchronizeModels` now takes a `Type`. It is `internal`, so this is not a public
+break; the `new()` constraint dropped from `SynchronizeSparkModelsIfRequested<TContext>` is relaxing.
+
+## Fixed: a scoped context property silently returned every row (#293)
+
+A context property that composed a predicate onto its query lost that predicate whenever the query ran
+against an index — `QueryExecutor` built the index query from scratch and discarded the property's
+value. **It failed open:** the grid showed every row, with no error and no log.
+
+The property's expression is now replayed onto the index-backed query. A property that composes nothing
+produces exactly the query it always did.
+
+If you already have such a property and an index binding on that entity, it was not filtering. See
+[guide-queries-and-sorting.md](./guide-queries-and-sorting.md) — including the note that a scoped
+property scopes the grid only and is **not** an authorization boundary; a by-id read or write never
+consults it, so that remains a row rule's job.
+
 ## Package versions
 
 - All `MintPlayer.Spark.*` packages → `10.0.0-preview.58`

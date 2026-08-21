@@ -172,10 +172,16 @@ public class SparkCronSchedulerTests : SparkTestDriver
         // running it again on the next occurrence.
         try
         {
+            // No explicit bound: this is the only wait here that needs TWO occurrences of a
+            // once-a-second schedule, so it starts a second behind the others and then pays the same
+            // per-run cost twice (a compare-exchange round trip each). The 8s the single-occurrence
+            // waits use left it about a quarter of their headroom, which is enough in isolation and
+            // not enough under a full-suite run — it timed out at 8s and passed on its own.
+            // AsyncWait's 20s default is a failure bound, not a performance assertion: it returns as
+            // soon as the condition holds, so a looser bound costs nothing on the happy path.
             await AsyncWait.UntilAsync(
                 () => recorder.Count(nameof(ThrowingJob)) >= 2,
-                "the throwing job to run twice — a thrown exception must be caught so the schedule keeps firing",
-                TimeSpan.FromSeconds(8));
+                "the throwing job to run twice — a thrown exception must be caught so the schedule keeps firing");
         }
         finally
         {

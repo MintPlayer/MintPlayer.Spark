@@ -448,6 +448,57 @@ filtered or sorted (`SPARK_INDEX_010`). To make a singular complex column sortab
 type with `[Breadcrumb]` (typically a null-safe computed property carrying `[IgnoreProperty]`); the generator
 emits a `{Name}Sort` companion reading the persisted value, and the runtime sort redirect does the rest.
 
+## Scoping a query on the context
+
+A context property is not limited to a bare root. It may compose onto it, and it may depend on
+services — the context is registered with `AddScoped<SparkContext, TContext>()`, so constructor
+injection works like any other scoped service:
+
+```csharp
+public class MyAppContext(ICurrentUser currentUser) : SparkContext
+{
+    public IRavenQueryable<Account> Accounts => Session.Query<Account>();
+
+    public IRavenQueryable<Account> MyAccounts =>
+        Session.Query<Account>().Where(a => a.OwnerId == currentUser.Id);
+}
+```
+
+Point a query's `source` at `Database.MyAccounts` and the grid is scoped to the signed-in user.
+
+The composed predicate is preserved when the query runs against an index: the property's expression is
+replayed onto the index-backed query rather than replaced by it. A property that composes nothing
+produces exactly the query it always did.
+
+> **Before `preview.58` this silently failed open.** The index query was built from scratch and the
+> property's `Where` was discarded, so a scoped grid returned every row with no error and no log. If
+> you are upgrading and have such a property, it was not filtering.
+
+### A scoped property is not an authorization boundary
+
+It scopes the **grid**. A by-id read, save or delete never consults the context property — those go
+through `session.LoadAsync` — so a user who knows an id can still fetch and modify a row a scoped
+property would have hidden.
+
+Use a **row rule** when the requirement is access control, and treat the context property as the way to
+express *which rows this screen is about*. The two are complementary: a row rule cannot express a
+predicate on an index-only field (for a projected query it is evaluated against the reloaded document),
+which is exactly the case the context property covers.
+
+### Why a context can have constructor dependencies
+
+Before `preview.58` the offline model commands (`--spark-synchronize-model`, `--spark-verify-model`)
+instantiated the context, which required a public parameterless constructor and so ruled the pattern
+out. They now work from the context **type** — they only ever read property types — so nothing is
+constructed and no session or service provider is needed. They stay runnable in CI.
+
+Two rejections come with that: passing an abstract type (or `SparkContext` itself) is refused, as is
+writing a model hash for a context with no query roots when the model directory is not empty. Both
+describe an empty model, and the resulting hash file would otherwise certify emptiness over a populated
+directory — which `--spark-verify-model` cannot detect and which surfaces as a startup failure in
+Production.
+
+
 ## Searching
 
 A query list's search box sends its term as `?search=`, and the server pushes it into RavenDB as a
