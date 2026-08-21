@@ -55,6 +55,11 @@ public static class SparkExtensions
         // Register the Spark services
         services.AddSparkServices();
 
+        // Open generics are skipped by the [Register] generator, so the row-rule facade is wired
+        // here. It is the seam an application reaches for to apply an entity's row rule from its own
+        // controllers and jobs (#301).
+        services.AddScoped(typeof(Abstractions.Authorization.ISparkRowRule<>), typeof(Services.SparkRowRule<>));
+
         // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
         // build-time tool, so outside Development it is not in the container at all — there is
         // nothing to resolve rather than a guard to get past.

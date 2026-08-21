@@ -47,6 +47,11 @@ internal static class SparkAuthorizationExtensions
         // Register core services
         services.AddSparkAuthorizationServices();
 
+        // [SparkAuthorize] on a controller action or endpoint. Registered here rather than in the
+        // Controllers module because the attribute belongs to whoever owns security.json, and it
+        // applies equally to a minimal-API RequireAuthorization().
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Services.SparkAuthorizeHandler>();
+
         return services;
     }
 

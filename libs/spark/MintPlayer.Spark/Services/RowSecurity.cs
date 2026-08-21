@@ -98,6 +98,18 @@ internal interface IRowSecurity
         Type entityType,
         Type resultType,
         string action);
+
+    /// <summary>
+    /// The type's filter expression for this caller and action, straight from the hook, or null when
+    /// the type declares none or the override returns null for this caller.
+    /// <para>
+    /// Exposed so <c>ISparkRowRule&lt;T&gt;</c> can hand an application the raw predicate <em>through
+    /// the same per-request memo</em> the pipeline uses. A public service with its own memo would
+    /// double hook invocations on any request that touched both a controller and /spark, against a
+    /// cap of 30 requests per session — the cap the memo exists to protect (#239).
+    /// </para>
+    /// </summary>
+    Task<LambdaExpression?> GetFilterExpressionAsync(Type entityType, string action);
 }
 
 [Register(typeof(IRowSecurity), ServiceLifetime.Scoped)]
@@ -124,6 +136,9 @@ internal partial class RowSecurity : IRowSecurity
     // reintroduces an N+1-shaped loop that invokes the hook far more than the model should need.
     private int hookInvocations;
     private const int HookInvocationWarnThreshold = 20;
+
+    public Task<LambdaExpression?> GetFilterExpressionAsync(Type entityType, string action)
+        => InvokeGetRowFilterAsync(entityType, action);
 
     public async Task<bool> IsAllowedAsync(Type entityType, string action, object entity)
     {

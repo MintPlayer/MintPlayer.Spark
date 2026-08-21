@@ -71,7 +71,14 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
             logger.LogInformation("Loaded security configuration with {GroupCount} groups and {RightCount} rights",
                 config?.Groups.Count ?? 0, config?.Rights.Count ?? 0);
 
-            return config ?? new SecurityConfiguration();
+            var loaded = config ?? new SecurityConfiguration();
+
+            // Validated on the way out of the loader, so a hot reload is held to the same standard
+            // as startup. A file that has drifted into meaninglessness must not quietly replace one
+            // that had not.
+            SecurityConfigurationValidator.Validate(loaded);
+
+            return loaded;
         }
         catch (Exception ex)
         {

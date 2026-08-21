@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Services;
 /// <c>@collection</c> is not the authorized type's collection is treated as not-found.
 /// </para>
 /// </summary>
-internal interface ICollectionGuard
+public interface ICollectionGuard
 {
     /// <summary>
     /// Whether a document just loaded and tracked by <paramref name="session"/> genuinely belongs
