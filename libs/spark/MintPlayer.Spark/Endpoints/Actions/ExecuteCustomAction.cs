@@ -53,10 +53,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         // Security sweep M3: execution must agree with the listing. The action resolver scans every
@@ -147,10 +144,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (Exception ex)
         {

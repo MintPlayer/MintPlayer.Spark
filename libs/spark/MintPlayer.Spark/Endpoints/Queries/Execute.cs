@@ -14,13 +14,29 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var id = httpContext.Request.RouteValues["id"]!.ToString()!;
         var query = queryLoader.ResolveQuery(id);
 
-        if (query is null)
+        // Authorize BEFORE anything else touches the request.
+        //
+        // Two reasons, and both were live holes. An unresolvable query used to 404 here
+        // while an existing-but-denied one fell through to a 403 further down, so the
+        // status told a caller which query ids are real. And the ?sortColumns= parse
+        // below rejects an unknown column with 400, so an unauthorized caller could
+        // enumerate the entity's attribute names by watching 400-vs-403 -- authorization
+        // has to come first, or the parser answers questions on its behalf.
+        //
+        // Deliberate deviation from the audit's literal "keep 401 for unauthenticated":
+        // this follows its metadata sibling Queries/Get.cs, which already answers 404 to
+        // anonymous callers for the same id. The grid fetches metadata first, so the
+        // login redirect was never reachable on this path anyway.
+        if (query is null ||
+            query.EntityType is null ||
+            !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
         {
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
@@ -116,14 +132,11 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
         }
         catch (SparkAccessDeniedException)
         {
-            if (httpContext.User.Identity?.IsAuthenticated != true)
-            {
-                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
-            }
-            else
-            {
-                return Results.Json(new { error = "Access denied" }, statusCode: 403);
-            }
+            // The same 404 as the gate above, for anonymous callers too. Splitting on
+            // authentication HERE would undo the gate: an anonymous caller would get 404
+            // for an unknown query and 401 for a real one, which is the existence oracle
+            // this endpoint just closed.
+            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
     }
 }

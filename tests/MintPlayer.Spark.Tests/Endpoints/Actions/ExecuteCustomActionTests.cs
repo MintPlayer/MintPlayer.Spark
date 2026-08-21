@@ -81,7 +81,11 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
-    public async Task Authorization_check_failure_for_authenticated_user_returns_403()
+    // Changed by audit M-3: an authenticated caller who is denied must be indistinguishable
+    // from one asking for something that does not exist, or the status tells them the
+    // resource is real. Anonymous callers still get 401 -- see the tests below, and the
+    // login redirect depends on it.
+    public async Task Authorization_check_failure_for_authenticated_user_returns_404()
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _permissions.EnsureAuthorizedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -95,7 +99,7 @@ public class ExecuteCustomActionTests
 
         var result = await endpoint.HandleAsync(context);
 
-        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.Forbidden);
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
