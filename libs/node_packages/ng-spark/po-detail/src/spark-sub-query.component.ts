@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked, TemplateRef, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
@@ -140,6 +140,9 @@ export class SparkSubQueryComponent {
    * wherever it is rendered.
    */
   customActions = signal<CustomActionDefinition[]>([]);
+
+  /** Emitted whenever a load or a page fetch fails, for a host in bespoke chrome. */
+  error = output<HttpErrorResponse>();
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
   canRead = signal(false);
@@ -206,6 +209,27 @@ export class SparkSubQueryComponent {
     }
   }
 
+  private reportError(err: HttpErrorResponse): void {
+    this.errorMessage.set(this.describe(err));
+    this.error.emit(err);
+  }
+
+  /**
+   * A 404 is deliberately generic.
+   *
+   * `Endpoints/Queries/Get.cs` answers 404 with byte-identical bodies for "no such
+   * query" and "you may not see it", so existence is not disclosed (audit M-3). The
+   * component therefore cannot tell them apart, and both "Not found" and "Access
+   * denied" would be a guess — one of them leaking, the other misleading.
+   */
+  private describe(err: HttpErrorResponse): string {
+    if (err?.status === 404) {
+      return this.lang.t('spark.query.unavailable') || 'This list is not available.';
+    }
+    return err?.error?.error || err?.message
+      || this.lang.t('common.unexpectedError') || 'An unexpected error occurred';
+  }
+
   reload(): void {
     const q = this.query();
     if (q) this.fetchFn.set(this.makeFetch(q, this.parentId(), this.parentType()));
@@ -262,8 +286,9 @@ export class SparkSubQueryComponent {
       this.fetchFn.set(this.makeFetch(resolvedQuery, parentId, parentType));
 
       this.loadLookupReferenceOptions();
-    } catch {
+    } catch (e) {
       this.fetchFn.set(null);
+      this.reportError(e as HttpErrorResponse);
     } finally {
       this.loading.set(false);
     }
@@ -276,6 +301,7 @@ export class SparkSubQueryComponent {
       take: req.perPage,
       parentId, parentType,
     }).then(r => {
+      this.errorMessage.set(null);
       return {
         data: r.data,
         totalRecords: r.totalRecords,
@@ -283,7 +309,10 @@ export class SparkSubQueryComponent {
         perPage: req.perPage,
         page: req.page,
       };
-    }).catch(() => {
+    }).catch((e: HttpErrorResponse) => {
+      // Report before returning the empty page, or a failed fetch is indistinguishable
+      // from a query that legitimately has no rows.
+      this.reportError(e);
       return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
     });
   }

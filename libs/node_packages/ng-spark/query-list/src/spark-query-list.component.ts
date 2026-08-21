@@ -85,7 +85,13 @@ export class SparkQueryListComponent {
   }));
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+    // The handler is async and this is a subscribe, so a rejection lands nowhere:
+    // the metadata load would reject, entityType() would stay null, and the template
+    // would render a spinner FOREVER -- while this component has had an errorMessage
+    // surface all along that only the fetch path ever reached. Catch it here.
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
+      this.onParamsChange(params).catch((e: HttpErrorResponse) => this.reportLoadFailure(e));
+    });
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
   }
 
@@ -97,6 +103,12 @@ export class SparkQueryListComponent {
     this.resultCount.set(null);
     this.allItems.set([]);
     this.streamItems.set([]);
+    this.errorMessage.set(null);
+    // Reset the permission-derived state too. Without this, navigating A -> B where
+    // B's load fails leaves A's buttons and A's canRead/canCreate on screen.
+    this.canRead.set(false);
+    this.canCreate.set(false);
+    this.customActions.set([]);
     this.disconnectStreaming();
 
     const queryId = params.get('queryId');
@@ -174,6 +186,18 @@ export class SparkQueryListComponent {
       // nothing emits, so an action authored per the documentation rendered NOWHERE.
       this.customActions.set(filterQueryActions(actions, this.query()));
     }
+  }
+
+  /**
+   * A load failure has to render, not just be swallowed: a denied query answers 404
+   * (audit M-3, so existence is not leaked), which is indistinguishable from a missing
+   * one -- hence a deliberately generic message rather than a guess at which it was.
+   */
+  private reportLoadFailure(err: HttpErrorResponse): void {
+    this.errorMessage.set(
+      err?.status === 404
+        ? (this.lang.t('spark.query.unavailable') || 'This list is not available.')
+        : (err?.error?.error || err?.message || 'An unexpected error occurred'));
   }
 
   async onCustomAction(action: CustomActionDefinition): Promise<void> {

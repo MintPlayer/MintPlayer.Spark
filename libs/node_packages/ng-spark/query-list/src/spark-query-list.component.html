@@ -136,6 +136,12 @@
         </ng-container>
       </bs-datatable>
     }
+  } @else if (errorMessage(); as err) {
+    <!-- The metadata load failed. This used to be unreachable: the rejection was
+         swallowed by an async subscribe handler, so the spinner below span forever. -->
+    <bs-alert [type]="colors.danger" class="m-3 d-block">
+      {{ err }}
+    </bs-alert>
   } @else {
     <div class="text-center p-5">
       <bs-spinner />
