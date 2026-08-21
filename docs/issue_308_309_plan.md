@@ -1,213 +1,264 @@
-# Plan — `spark-sub-query` becomes embeddable
+# Plan — a query declares its own chrome
 
-**PRD:** `docs/issue_308_309_PRD.md`
+**PRD:** `docs/issue_308_309_PRD.md` (v2)
 **Issues:** #308 (implemented), #309 (items 1–4)
 **PR:** #308, grown to cover both
 **Branch:** `fix/parentless-sub-query`
 **Base:** `master` @ `7ad2e30`
-**Release:** `@mintplayer/ng-spark@22.3.0` + `10.0.0-preview.61` (M5 ships — decided 2026-08-21)
+**Release:** `10.0.0-preview.61` + `@mintplayer/ng-spark@22.3.0` — **both mandatory**
 
 ---
 
 ## Milestones
 
-| M | Title | Issue | Blocking Coverage? |
+| M | Title | Server? | Blocking Coverage? |
 |---|---|---|---|
 | M0 | Spikes | — | — |
-| M1 | Template restructure: three states, one gate | #309(3), F2 | prerequisite |
-| M2 | Chrome: projected header + `showCard` | #309(1) | **yes** |
-| M3 | Error surface: signal, alert, output | #309(3) | no |
-| M4 | Refresh: `reload()` + `reloadToken` | #309(2) | no (hack exists) |
-| M5 | `RowsNavigable`, all three link sites | #309(4) | no (but invalid HTML today) |
-| M6 | Version, lock, release notes, docs | F8 | **yes** — nothing ships without it |
+| M1 | Template restructure: explicit states, one gate | no | prerequisite |
+| M2 | `SparkQuery` gains four fields, in one change | **yes** | **yes** |
+| M3 | Query actions render in the sub-query header | no | **yes** |
+| M4 | `headerRenderer` registry + `headerTemplate` + `showCard` | no | no |
+| M5 | Error surface: signal, alert, output | no | no |
+| M6 | Refresh: `reload()` + `reloadToken` | no | no |
+| M7 | `rowsNavigable` at every link site | no | no |
+| M8 | Drift fixes D-1, D-2, D-3, D-6 | no | no (D-1 is severe) |
+| M9 | Version, lock, release notes, docs | — | **yes** |
 
-M1 is a prerequisite for M2 and M3 and must land first. M5 is the only milestone touching
-the server; it is deliberately last so it can be cut without disturbing M1–M4.
+M1 is a prerequisite for M3–M5. M2 lands early because every later server-fed behaviour
+depends on the fields existing; **all four fields go in one edit** so `preview.61` and the
+model-file churn happen once.
 
-**#308 is already implemented and green on this branch** (235 specs). It is not re-planned
-here — it only needs the version bump it never carried (M6).
+**#308 is already implemented and green** (235 specs). It is not re-planned here — it only
+needs the version bump it never carried (M9).
+
+**Deliberately NOT in this PR:** the grid-core unification (`@mintplayer/ng-spark/grid`,
+`injectSparkGrid`). See the PRD's Out-of-scope section. File it as its own issue before
+merging this, so the deferral is tracked rather than forgotten.
 
 ---
 
 ## Spikes
 
-Each spike is a question that can come back "no". Run all of M0 before writing M1.
+Run all of M0 before writing M1. Each spike can come back "no".
 
-### S1 — Does hoisting the loading/error states out of the `query()` gate change what `spark-po-detail` renders?
+### S1 — Does an action bar in the card header disturb the stacked-card layout?
 
-The sole in-repo consumer stacks N sub-queries and relies on the card's `margin: 1rem 0` as
-the only separator. M1 moves the spinner and adds an alert outside the gate.
+`spark-po-detail` stacks N sub-queries and relies on the card's `margin: 1rem 0` as the only
+separator. M1 moves the spinner out of the gate; M3 adds a `bs-priority-nav` into the header.
 
-**Method:** run DemoApp or HR, open a PO detail with ≥2 sub-queries, screenshot before and
-after M1. **Pass:** spacing and card boundaries identical once loaded; a spinner now appears
-during the initial load where previously nothing did.
-**If it fails:** keep the margin on a wrapper element that renders in every state.
+**Method:** run DemoApp or HR, open a PO detail with ≥2 sub-queries, screenshot before M1 and
+after M3, including one query with a declared action and one without.
+**Pass:** spacing and card boundaries unchanged; a spinner now appears during the initial
+load where nothing did before; the action bar does not change header height for queries with
+no actions.
+**Fail:** keep the margin on a wrapper that renders in every state, and/or collapse the nav
+when the action list is empty.
 
-### S2 — Does `reloadToken` in a second effect actually preserve page and sort?
+### S2 — Does `executeCustomAction` succeed for a query whose rows are fabricated?
 
-R7 is the whole point of splitting data-level from metadata-level refresh, and the
+`MyAccountRow` has no documents. The action passes no parent and no selection, so
+`ExecuteCustomAction.cs:108-131` should skip the parent reload — **assert it, don't assume
+it.** This is the spike that decides whether the PRD's F3 ("Resync becomes a Spark action")
+is real.
+
+**Method:** a .NET test invoking a `showedOn: "query"` action on an entity type whose rows
+are synthesised in memory, with no parent and no `selectedItems`.
+**Pass:** 200, handler ran, no attempted document load.
+**Fail:** query actions need a no-parent dispatch path, which changes M3's size materially —
+stop and re-scope.
+
+### S3 — Does `reloadToken` actually preserve page and sort?
+
+R9 is the whole point of splitting data-level from metadata-level refresh, and the
 ng-bootstrap `fetch` setter *defeats its own dedupe* by resetting `_initialFetchDone`
-(`mp-datatable.ts:344-357`). Reassigning `fetchFn` may therefore reset the datatable's
-internal paging state even though our `settings` signal is untouched.
+(`mp-datatable.ts:344-357`).
 
 **Method:** spec — load, go to page 2, sort by a second column, bump `reloadToken`, assert
 `executeQuery` was called again with the **same** `skip`/`take`/`sortColumns`.
-**Pass:** identical params, one extra call. **Fail:** the datatable re-fetches page 1 →
-fall back to exposing `reload()` only, and document that the token resets paging.
+**Pass:** identical params, one extra call.
+**Fail:** drop the token, ship `reload()` only, and document that refresh resets paging.
 
-### S3 — Does `<ng-content>` default content give us the caption fallback?
+### S4 — Do the four new fields survive a double synchronize?
 
-D1 depends on `<ng-content select="[subQueryHeader]">{{ caption }}</ng-content>` rendering
-the caption when nothing is projected. Angular's default-content support is real but has
-edge cases under OnPush and with structural directives on the projected node.
+The PRD's F11 says yes by construction (`CollectQueriesFor` returns the same references; all
+mutating passes are `Database.`-filtered) and `ModelSynchronizerTests.cs:961-974` already
+pins `Custom.*` pass-through. **But the fatal case is different**: with no
+`[JsonExtensionData]` anywhere in the repo, an *undeclared* JSON property is destroyed on the
+first run and runs 2–3 are byte-identical, so **the loss is itself a fixed point** and
+invisible to the idempotency tests. #279 lost `"useProjection": false` from 17 places exactly
+this way.
 
-**Method:** two specs — one with a projected header, one without — asserting the rendered
-header text. **Pass:** caption when absent, projected content when present, no duplication.
-**If it fails:** probe with `contentChild(SubQueryHeaderDirective)` and `@if` on it; costs a
-directive export on the entry point.
-
-### S4 — Does a hand-set `rowsNavigable: false` survive `--spark-synchronize-model`?
-
-Synchronize must be a **fixed point**: read-modify-write that drops a hand-authored field is
-a known bug class in this repo. `ModelSynchronizer.cs:122` claims `Custom.*` queries are
-never touched and `:136`/`:829` scope stamping to `Database.`, so preservation should be
-free — **assert it, do not assume it**.
-
-**Method:** set `rowsNavigable: false` on a `Custom.*` query in a demo model file, run
-synchronize twice, diff the file after each run.
-**Pass:** byte-identical both times. **Fail:** add explicit preservation, as #274 did for
-`showedOn`.
+**Method:** extend the existing test with the four new fields on both a `Database.*` and a
+`Custom.*` query; run synchronize three times; assert byte-identity **and** assert the fields
+are still present — presence, not just stability. Then delete one field from the C# model
+locally and confirm the test goes red.
+**Pass:** stable and present; the negative control fails.
+**Fail:** add explicit preservation, as #274 did for `showedOn`.
 
 ### S5 — Reproduce the nested anchor
 
-F6 is the evidence that #309's stated workaround does not work, and AC 9 depends on the fix.
-
-**Method:** a spec on a query whose first attribute has a renderer that emits an `<a>`;
-assert `querySelectorAll('a a').length === 1` today, `0` after M5.
-**Pass:** the nested anchor is observed before the fix. **If it is not observed**, F6 is
-wrong and M5's justification needs revisiting before any server field is added.
+**Method:** a spec on a query whose first attribute has a renderer emitting an `<a>`; assert
+`querySelectorAll('a a').length === 1` today, `0` after M7.
+**Pass:** the nested anchor is observed before the fix.
+**Fail:** the PRD's F9 is wrong and M7's justification needs revisiting before the server
+field is used.
 
 ### S6 — Do the M-3 security tests still pass untouched?
 
-R10. M3 changes how the client *renders* a 404; nothing server-side should move.
+R12. M5 changes how the client *renders* a 404; nothing server-side moves.
 
 **Method:** run `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` unmodified.
-**Pass:** green, with no edits to either file. **Any required edit is a stop-and-ask**, not
-a fix.
+**Pass:** green with no edits. **Any required edit is a stop-and-ask**, not a fix.
 
 ### Not spiked: whether omitting `bs-card` breaks the datatable
 
-Already answered by reading ng-bootstrap: `BsCardComponent`/`BsCardHeaderComponent` are pure
-content projection, `.card-header` is a **global class rule** rather than `::slotted`, and
-`bs-datatable` is `:host{display:block;width:100%}` with no card dependency. The only
-difference is the loss of `overflow:hidden` clipping on a wide responsive table — covered by
-S1's eyeball, not worth a spike.
+Answered by reading ng-bootstrap: the card components are pure content projection,
+`.card-header` is a **global class rule** not `::slotted`, and `bs-datatable` is
+`:host{display:block;width:100%}` with no card dependency. Only `overflow:hidden` clipping is
+lost — covered by S1's eyeball.
 
 ### Not spiked: the 404-vs-403 decision
 
-F5 settled it from four independent sources (the comment, the audit finding, the commit that
-introduced it, and two tests). There is nothing left to measure.
+The PRD's F8 settled it from four independent sources. Nothing left to measure.
+
+### Withdrawn: v1's S3 (`<ng-content>` default content)
+
+Moot — projection is no longer the mechanism.
 
 ---
 
 ## M1 — Template restructure
 
-`spark-sub-query.component.html`, `.ts`.
-
-Replace the single `@if (query(); as q)` gate with explicit states:
+`spark-sub-query.component.{html,ts}`. Replace the single `@if (query(); as q)` with:
 
 ```
 [error alert — outside every gate]
-@if (loading())      { spinner }
-@else if (query())   { body }
+@if (loading())           { spinner }
+@else if (query())        { header + body }
 @else if (errorMessage()) { card shell + message }
 ```
 
-- Move the spinner out of the gate so it is reachable on first load (F2).
-- `loadData` resets `query` alongside `resultCount`/`fetchFn` at `.ts:86-87`, so a failed
-  re-load stops leaving stale chrome (F2).
-- Delete `resultCount` (F3), including its spec assertion at `.spec.ts:122`.
+- Spinner out of the gate, so it is reachable on first load (F4).
+- `loadData` resets `query`, `entityType` and `canRead` alongside `resultCount`/`fetchFn` at
+  `.ts:85-87` — this is drift fix **D-3**.
+- Delete `resultCount` (F6) and its spec assertion at `.spec.ts:122`.
 
-**Behaviour change, intended:** a first load now shows a spinner; a failed load now shows
-something. Both were previously invisible.
+**Intended behaviour change:** a first load now shows a spinner; a failed load now shows
+something.
 
-**Verify:** S1; existing 235 specs stay green.
+**Verify:** S1; the 235 existing specs stay green.
 
-## M2 — Chrome
+## M2 — `SparkQuery`: four fields, one change *(server)*
 
-- `<ng-content select="[subQueryHeader]">` inside `<bs-card-header>`, with
-  `{{ (q.description | resolveTranslation) || q.name }}` as default content (S3).
-- `showCard = input(true)`; when false, emit the body div and the spinner, no card.
-- Keep `margin: 1rem 0` with the card only — in bare mode spacing is the host's, by design.
+`libs/spark/MintPlayer.Spark.Abstractions/SparkQuery.cs` + `models/src/spark-query.ts`:
+`Actions`, `HeaderRenderer`, `HeaderRendererOptions`, `RowsNavigable` — **all nullable**
+(`WhenWritingNull`, or synchronize stamps 23 model files).
 
-**Specs** (nested `describe`, mirroring the `describe('without a parent')` precedent):
-projected header replaces the caption; absent projection keeps it; `showCard=false` has no
-`bs-card` but still renders `bs-datatable`; `showCard=false` still shows the spinner while
-loading. DOM assertions — these are the first specs in this file to need them.
+- `RowsNavigable` default resolution: `Database.*` → true; `Custom.*` → true unless
+  explicitly false. **Never default `Custom.*` to false** (F10).
+- Checklist item: `Endpoints/Queries/Execute.cs:112-123` hand-clones `SparkQuery` and already
+  drops `Description` — either extend it or delete it in favour of the real object.
+- No JSON schema exists to update (F11).
 
-**Verify:** AC 2, 3, 4, 10.
+**Verify:** S4; AC 19.
 
-## M3 — Error surface
+## M3 — Query actions in the header
 
-- `errorMessage = signal<string | null>(null)`; both catches bind their error.
-- Extraction `e.error?.error || e.message || t(fallback)`; **404 → generic message** (F5).
-- `error = output<HttpErrorResponse>()`.
-- Alert rendered outside every gate (M1 made this possible).
-- Clear on `loadData` entry and on fetch success.
+- Fix the filter to `a.showedOn === 'query' || a.showedOn === 'both'`
+  (`spark-query-list.component.ts:171`). Breaking in name only — `'query'` renders nowhere
+  today (F2).
+- Render the action bar in `<bs-card-header>`, reusing the `bs-priority-nav` loop from
+  `spark-query-list.component.html:9-15`.
+- Apply the `Actions` allowlist: `null` → today's set; a list → narrowed **display**.
+- Wire `refreshOnCompleted` to M6's `reload()`.
 
-**Specs:** first-load 404 renders an alert and emits the output; a fetch rejection renders an
-alert instead of an empty grid; a recovering fetch clears it.
+⚠️ **`Actions` is not an authorization boundary** — the grant is, enforced at
+`ExecuteCustomAction.cs:52` regardless of which query the caller clicked from. Say so in the
+code comment, not just here.
 
-**Verify:** AC 5, 6, 7; S6.
+**Verify:** S2; AC 2, 3, 4.
 
-## M4 — Refresh
+## M4 — `headerRenderer`, `headerTemplate`, `showCard`
 
-- `reload(): void` — data-level, `fetchFn.set(this.makeFetch(...))`, mirroring
-  `spark-query-list.component.ts:268-276`.
-- `reloadToken = input<unknown>(null)` in a **second** effect that calls `reload()` and skips
-  its first run. The existing effect must not read it (R7).
+- `SPARK_QUERY_CHROME` token + `provideSparkQueryChrome`, shaped exactly like
+  `SPARK_ATTRIBUTE_RENDERERS` including `factory: () => []`. Resolve through
+  `withDeclaredInputs`; pass `reload` as an **input callback** (`NgComponentOutlet` has no
+  outputs).
+- `headerTemplate = input<TemplateRef<{$implicit: SparkQuery}> | null>(null)`, matching
+  `extraActionsTemplate` — **not** `<ng-content>`.
+- `showCard = input(true)`; the bare branch emits the body div **and** the spinner.
+- Precedence, implemented once: `headerRenderer` → `headerTemplate` → caption + actions.
 
-**Specs:** `reload()` re-fetches with unchanged params; a token bump does the same; the
-token's initial value does **not** double-fetch on mount.
+**Verify:** AC 5, 6, 7.
 
-**Verify:** AC 8; S2.
+## M5 — Error surface
 
-## M5 — `RowsNavigable` *(server; ships — but stays cuttable if S4/S5 fail)*
+`errorMessage` signal; both catches bind their error; chain
+`e.error?.error || e.message || t(fallback)`; **404 → generic message**;
+`error = output<HttpErrorResponse>()`; alert outside every gate; cleared on `loadData` entry
+and fetch success. This subsumes drift fix **D-6**.
 
-- `SparkQuery.RowsNavigable` (`bool?`) + `rowsNavigable?: boolean` in `spark-query.ts`.
-- Default in the query-resolution path: `Database.*` → true; `Custom.*` → true unless
-  explicitly false.
-- Guard becomes `first && canRead() && rowsNavigable()` in **all three** sites:
-  `spark-sub-query.component.html:27-30`, `spark-query-list.component.html:92-95` and
-  `:124-127`.
+**Verify:** AC 9, 10, 11; S6.
+
+## M6 — Refresh
+
+- `reload(): void` — public, **data-level**, mirroring `spark-query-list.component.ts:268-276`.
+- `reloadToken = input<unknown>(null)` in a **second** effect that skips its first run; the
+  existing effect must not read it (R9).
+- `spark-query-list.refresh()` → public `reload()`, so both components agree (**D-8**).
+
+**Verify:** AC 12; S3.
+
+## M7 — `rowsNavigable` at every link site
+
+- First collapse `spark-query-list.component.html:87-104` ≡ `:119-136` (a same-file copy),
+  which reduces three link sites to two.
+- Guard becomes `first && canRead() && rowsNavigable()`.
 - Set `rowsNavigable: false` on `Stock.json` (`Custom.StreamItems`) and `ProjectColumn.json`
-  (`Custom.GetProjectColumns`) — both currently render dead links, so the demos carry the
+  (`Custom.GetProjectColumns`) — both render dead links today, so the demos carry the
   evidence.
 
-**Verify:** AC 9; S4; S5. Fleet's `Stolen_Cars`/`Recent_Cars` links still work.
+**Verify:** AC 13; S5. Fleet's `Stolen_Cars`/`Recent_Cars` links still work.
 
-## M6 — Release
+## M8 — Drift fixes
 
-1. `libs/node_packages/ng-spark/package.json` → **22.3.0**. Peer ranges unchanged.
-2. `npm install` **from the repo root** — the lock records a stale `22.0.8`. Commit it.
-3. `docs/release-notes-preview-61.md` if M5 ships (server change → 20 `.csproj` bumps to
-   `preview.61`); otherwise a client-only note stating the npm version explicitly. Since the
-   new policy makes even breaks minors, the notes must say plainly which category this is.
-4. Update the sub-query section of the component docs with the projection slot and the new
-   inputs.
-5. **Review the version diff before merging.** `npm-publish@v4` no-ops on an existing
-   version, so a forgotten bump is a *green run that publishes nothing* (F8).
+- **D-1** — wrap `spark-query-list.onParamsChange` (`:87-91`) in try/catch and route the
+  failure into the `errorMessage` signal already rendered at `html:67-71`. Three lines.
+  Shipping "a failed load must never render nothing" while the sibling renders a permanent
+  spinner on the same 404 would be incoherent.
+- **D-2** — bind `[indeterminate]` in the sub-query's boolean cell (`html:50-53`).
+- D-3 and D-6 land in M1 and M5 respectively.
 
-**Verify:** AC 12 — `npm view @mintplayer/ng-spark version` reports `22.3.0` after merge.
+D-4, D-5, D-7 go to the grid-core follow-up.
+
+**Verify:** AC 14, 15, 16.
+
+## M9 — Release
+
+1. `libs/node_packages/ng-spark/package.json` → **22.3.0**; peer ranges unchanged.
+2. All 20 `libs/**/*.csproj` → **`10.0.0-preview.61`** (hand-maintained per file; there is no
+   `Directory.Build.props` carrying the version).
+3. `npm install` **from the repo root** — the lock records a stale `22.0.8`. Commit it.
+4. `docs/release-notes-preview-61.md`, following the preview-60 shape. Since the versioning
+   policy makes even breaks minors, the notes must state plainly which category this is, and
+   must carry the `showedOn` filter change.
+5. Docs: `docs/guide-custom-actions.md` (query actions; and fix the false "available to all
+   users" at `:159`), `docs/guide-queries-and-sorting.md`,
+   `docs/Spark-API-Specification.md:470-483` (still documents `useProjection`, deleted in
+   #279), `libs/spark/MintPlayer.Spark/README.md:394,475,503-504`.
+6. **Review the version diff before merging** — `npm-publish@v4` no-ops on an existing
+   version, so a forgotten bump is a *green run that publishes nothing*.
+
+**Verify:** AC 20.
 
 ---
 
 ## Verification
 
-- `nx run @mintplayer/ng-spark:test` — 235 specs today, plus ~11 new. Full suite, once, at
-  the end.
-- If M5 ships: the .NET suite, with `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests`
-  **unmodified** (S6).
+- `nx run @mintplayer/ng-spark:test` — 235 today, plus ~18 new. Full suite once, at the end.
+- .NET suite, with `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` **unmodified**
+  (S6), plus the extended `ModelSynchronizerTests` (S4) and the query-action dispatch test
+  (S2).
 - Manual: DemoApp/HR PO detail for S1; a bare `showCard=false` grid for the responsive-table
   overflow eyeball.
 - Do **not** run `ng serve`/`ng build` against a demo ClientApp — the ASP.NET host owns the
@@ -215,16 +266,13 @@ token's initial value does **not** double-fetch on mount.
 
 ## Open questions
 
-1. ~~**Does Coverage need M5, or only M1–M3?**~~ **Decided 2026-08-21: M5 ships in this PR.**
-   Nested anchors are invalid HTML and the dead `/po/` links are live in two demos, so this
-   is a real bug rather than a polish item. It is the only milestone touching the server, so
-   the release becomes `10.0.0-preview.61` + `@mintplayer/ng-spark@22.3.0`, and M6 must bump
-   all 20 `.csproj` files. If M5 turns out to be blocked (S4 or S5 failing), cut it and
-   downgrade to a client-only release rather than holding M1–M4 behind it.
-2. **`reloadToken` vs `reload()` for Coverage.** The page holds `gridEpoch` already, so the
-   token is a one-line swap. If S2 fails, the token is the half that gets dropped.
-3. **Should M2's projection slot be exported as a directive?** Only if S3 fails and the
-   `contentChild` probe is needed.
+1. ~~Does M5 ship?~~ **Moot in v2** — the server is touched by M2 regardless, so `preview.61`
+   is mandatory and `rowsNavigable` no longer swings the release shape.
+2. **`refreshQuery` and `DisableQueryActions` client handlers** — implement here, or document
+   as inert? They stop being curiosities the moment query actions ship. Recommend: wire
+   `refreshQuery` (M6 makes it nearly free) and document `DisableQueryActions` as inert.
+3. **Coverage's migration lands after this merges** — it cannot compile until `preview.61`
+   and `22.3.0` publish. Merge, publish, then migrate.
 
 ## Outcome
 
