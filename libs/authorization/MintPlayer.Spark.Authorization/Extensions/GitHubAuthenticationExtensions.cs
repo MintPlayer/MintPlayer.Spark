@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Json;
@@ -30,6 +32,17 @@ public static class GitHubAuthenticationExtensions
             options.UserInformationEndpoint = "https://api.github.com/user";
             options.CallbackPath = "/signin-github";
             options.SignInScheme = IdentityConstants.ExternalScheme;
+
+            // Required, not optional (#296). Auto-provisioning refuses to create an account without
+            // an issuer-attested email, and the only source of that attestation is /user/emails,
+            // which an OAuth App token cannot reach without this scope. Requesting nothing therefore
+            // made first-time sign-in impossible — and in SparkLocalCredentials.Disabled, where there
+            // are no local accounts to fall back on, made the app unsignable-into altogether.
+            //
+            // Inert for a GitHub App, which derives permissions from its installation and ignores
+            // scopes entirely; there the equivalent is the "Email addresses: Read-only" account
+            // permission. Added before configureOptions so a consumer can still override it.
+            options.Scope.Add("user:email");
 
             // Map GitHub user info to standard claims
             options.ClaimActions.MapJsonKey(ClaimTypes.NameIdentifier, "id");
@@ -63,7 +76,22 @@ public static class GitHubAuthenticationExtensions
                 emailsRequest.Headers.UserAgent.Add(new ProductInfoHeaderValue("SparkAuth", "1.0"));
 
                 using var emailsResponse = await context.Backchannel.SendAsync(emailsRequest, context.HttpContext.RequestAborted);
-                if (emailsResponse.IsSuccessStatusCode)
+                if (!emailsResponse.IsSuccessStatusCode)
+                {
+                    // Loud, because the consequence is silent: no claim means the callback refuses to
+                    // provision, and the user sees only a generic "email not verified". Without this
+                    // line there is nothing anywhere connecting that to a missing scope or permission.
+                    context.HttpContext.RequestServices
+                        .GetService<ILoggerFactory>()
+                        ?.CreateLogger(typeof(GitHubAuthenticationExtensions).FullName!)
+                        .LogWarning(
+                            "GitHub /user/emails returned {StatusCode}, so no verified-email claim was issued and " +
+                            "a first-time sign-in cannot provision an account. For an OAuth App, grant the " +
+                            "'user:email' scope; for a GitHub App, grant the 'Email addresses: Read-only' account " +
+                            "permission. Signing in to an already-linked account is unaffected.",
+                            (int)emailsResponse.StatusCode);
+                }
+                else
                 {
                     using var emails = JsonDocument.Parse(await emailsResponse.Content.ReadAsStringAsync());
                     foreach (var entry in emails.RootElement.EnumerateArray())
@@ -76,11 +104,9 @@ public static class GitHubAuthenticationExtensions
                         }
                     }
                 }
-                // If /user/emails fails (scope not granted, rate limit, network),
-                // we deliberately don't emit the claim — the callback will refuse
-                // to auto-provision. Logging in to an *existing* linked account
-                // (matched by ProviderKey) still works; only first-time binding
-                // is gated.
+                // The claim is deliberately not emitted when the lookup fails — the callback then
+                // refuses to auto-provision. Signing in to an *existing* linked account (matched by
+                // ProviderKey) still works; only first-time binding is gated.
             };
 
             // Allow consumer to override/extend
