@@ -54,6 +54,20 @@ export class SparkSubQueryComponent {
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
   allEntityTypes = signal<EntityType[]>([]);
+  /**
+   * Why the component renders its own failure instead of only reporting one.
+   *
+   * `SparkService` is a bare `firstValueFrom` passthrough with no interceptor, so
+   * every failure surfaces here and nowhere else. A host embedding this grid cannot
+   * surface what it never sees, and the default has to be visible with no host
+   * cooperation — hence a rendered alert, not just an output.
+   *
+   * A 404 is deliberately vague. `Endpoints/Queries/Get.cs` answers 404 for BOTH
+   * "no such query" and "you may not see it", with byte-identical bodies, so that
+   * existence is not disclosed (security audit M-3). This component therefore
+   * genuinely cannot tell the two apart, and any message claiming otherwise would
+   * either leak or mislead.
+   */
   errorMessage = signal<string | null>(null);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
