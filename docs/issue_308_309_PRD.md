@@ -6,7 +6,7 @@
 **Branch:** `fix/parentless-sub-query`
 **Plan:** `docs/issue_308_309_plan.md`
 **Base:** `master` @ `7ad2e30`
-**Release:** `@mintplayer/ng-spark@22.3.0` (minor — additive), `10.0.0-preview.61` only if M5 ships
+**Release:** `@mintplayer/ng-spark@22.3.0` (minor — additive) + `10.0.0-preview.61` (M5 ships)
 
 ---
 

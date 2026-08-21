@@ -5,7 +5,7 @@
 **PR:** #308, grown to cover both
 **Branch:** `fix/parentless-sub-query`
 **Base:** `master` @ `7ad2e30`
-**Release:** `@mintplayer/ng-spark@22.3.0`; `10.0.0-preview.61` only if M5 ships
+**Release:** `@mintplayer/ng-spark@22.3.0` + `10.0.0-preview.61` (M5 ships — decided 2026-08-21)
 
 ---
 
@@ -172,7 +172,7 @@ token's initial value does **not** double-fetch on mount.
 
 **Verify:** AC 8; S2.
 
-## M5 — `RowsNavigable` *(server; cut this and M1–M4 still ship)*
+## M5 — `RowsNavigable` *(server; ships — but stays cuttable if S4/S5 fail)*
 
 - `SparkQuery.RowsNavigable` (`bool?`) + `rowsNavigable?: boolean` in `spark-query.ts`.
 - Default in the query-resolution path: `Database.*` → true; `Custom.*` → true unless
@@ -215,10 +215,12 @@ token's initial value does **not** double-fetch on mount.
 
 ## Open questions
 
-1. **Does Coverage need M5, or only M1–M3?** Its `account-login` renderer already draws the
-   correct link; M5 removes the wrong outer one. Nested anchors are invalid HTML, so this is
-   a real bug — but it is the only milestone that touches the server and forces a
-   `preview.61`. Cutting it makes this a pure client release.
+1. ~~**Does Coverage need M5, or only M1–M3?**~~ **Decided 2026-08-21: M5 ships in this PR.**
+   Nested anchors are invalid HTML and the dead `/po/` links are live in two demos, so this
+   is a real bug rather than a polish item. It is the only milestone touching the server, so
+   the release becomes `10.0.0-preview.61` + `@mintplayer/ng-spark@22.3.0`, and M6 must bump
+   all 20 `.csproj` files. If M5 turns out to be blocked (S4 or S5 failing), cut it and
+   downgrade to a client-only release rather than holding M1–M4 behind it.
 2. **`reloadToken` vs `reload()` for Coverage.** The page holds `gridEpoch` already, so the
    token is a one-line swap. If S2 fails, the token is the half that gets dropped.
 3. **Should M2's projection slot be exported as a directive?** Only if S3 fails and the
