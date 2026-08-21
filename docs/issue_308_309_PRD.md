@@ -357,13 +357,44 @@ effect that skips its first run. The existing effect must not read it, or the to
 the expensive reload and silently resets the user's page (R9). `spark-query-list.refresh()`
 becomes public and is renamed `reload()` so both components agree (D-8).
 
-### D8 — Drift fixes carried by this PR
+### D8 — All eight drift fixes, and the grid core that prevents the ninth
 
-D-1, D-2, D-3, D-6 (F5). D-1 in particular: shipping a PR whose thesis is "a failed load must
-never render nothing" while the sibling renders a permanent spinner **on the same 404** would
-be incoherent. It is a three-line try/catch into a surface that already exists.
+**All of D-1 … D-8 land here.** D-1 in particular: shipping a PR whose thesis is "a failed
+load must never render nothing" while the sibling renders a permanent spinner **on the same
+404** would be incoherent.
 
-D-4, D-5, D-7 are refactor-shaped and go to the follow-up (§Out of scope).
+D-4, D-5 and D-7 are refactor-shaped, which is why they come with the refactor:
+
+### D9 — One grid core, consumed by both components
+
+A new leaf entry point `@mintplayer/ng-spark/grid`:
+
+```ts
+export function injectSparkGrid(source: SparkGridSource): SparkGridState;
+export interface SparkGridState { /* query, entityType, visibleAttributes, permissions,
+  settings, fetchFn, loading, error, errorMessage, reload(), reloadMetadata() … */ }
+@Component({ selector: 'spark-grid-rows' }) export class SparkGridRowsComponent { … }
+```
+
+`injectSparkGrid` becomes **the only writer of the reset sequence** — one
+`resetForNewSource()` clearing *every* derived signal, and one `try/catch` around the whole
+metadata load. D-1, D-3, D-4, D-5 and D-6 then stop being five fixes and become one
+invariant, and the ninth drift bug cannot be written.
+
+**Not one merged component.** `spark-query-list` is route-coupled (`route.paramMap.subscribe`)
+and carries streaming, search and a websocket dependency graph; merging would drag all of it
+into every detail page's bundle and produce a nine-input component whose valid combinations
+are not orthogonal. Two thin presentational shells over one headless core.
+
+Shared SCSS (the virtual-scrolling sizing that fixes D-7) goes to `styles/_grid.scss`,
+following the existing `@use '../../styles/actionbar';` precedent — `styles/` has no
+`ng-package.json`, so it is not an entry point and a relative `@use` is correct.
+
+Cross-entry-point imports are already the norm here (`po-detail` imports
+`@mintplayer/ng-spark/{services,pipes,renderers,icon,models}`), and `tsconfig.base.json:6`
+maps `@mintplayer/ng-spark/*` by wildcard, so a new `grid/` folder needs **zero config**. The
+shared code must **not** live in `query-list` — that would create `po-detail → query-list` and
+drag the websocket graph along with it.
 
 ## Decisions
 
@@ -380,7 +411,8 @@ D-4, D-5, D-7 are refactor-shaped and go to the follow-up (§Out of scope).
 | `Custom.*` defaults to navigable | F10 — the opposite breaks three working Fleet/HR queries |
 | `Actions` narrows display only | Authorization stays at the grant; the allowlist is not a gate |
 | Fix #309(3) purely client-side | F8 — the 404 is a named remediation with tests pinning it |
-| Grid-core unification deferred to a follow-up PR | F5 — worth doing, worth doing second; see §Out of scope |
+| **Grid-core unification ships here, not in a follow-up** | Owner: one PR. Every extra PR is another full round of workflow runs, and waiting on CI is the bottleneck. Size is not a reason to split |
+| Two shells over one headless core, not one merged component | D9 — merging drags route-coupling, streaming and websockets into every detail page |
 
 ## Acceptance criteria
 
@@ -404,11 +436,18 @@ D-4, D-5, D-7 are refactor-shaped and go to the follow-up (§Out of scope).
 14. **D-1:** a denied query on `spark-query-list` renders an alert, not a permanent spinner.
 15. **D-2:** a null boolean renders indeterminate in a sub-query.
 16. **D-3:** switching `queryId` never emits a link built from the previous type/permission.
-17. `spark-po-detail`'s stacked sub-queries are visually unchanged apart from a new action bar
+17. **D-4:** navigating between query routes never carries the previous route's action buttons
+    or `canCreate` onto the next.
+18. **D-7:** `renderMode: VirtualScrolling` sizes identically in a sub-query and a query list.
+19. Both components' loading pipelines route through `injectSparkGrid`; the reset sequence and
+    the metadata `try/catch` exist in exactly **one** place.
+20. A server-emitted `refreshQuery` operation refreshes the grid; `refreshOnCompleted` on a
+    po-detail action refreshes its sub-queries.
+21. `spark-po-detail`'s stacked sub-queries are visually unchanged apart from a new action bar
     where a query declares one.
-18. `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` pass **unmodified**.
-19. A double `--spark-synchronize-model` leaves the four new fields byte-identical.
-20. `npm view @mintplayer/ng-spark version` reports `22.3.0`; NuGet reports `preview.61`.
+22. `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` pass **unmodified**.
+23. A double `--spark-synchronize-model` leaves the four new fields byte-identical.
+24. `npm view @mintplayer/ng-spark version` reports `22.3.0`; NuGet reports `preview.61`.
 
 ## Migration
 
@@ -429,28 +468,39 @@ which currently render dead links.
    the page's own card — or drop the card and let the query own it.
 6. Keep the reauth alert and install-hint paragraph on the page: they are page chrome.
 
-## Out of scope / follow-ups
+## Also in scope — everything this work uncovered
 
-- **Grid-core unification — file as its own issue, next preview.** A new
-  `@mintplayer/ng-spark/grid` leaf entry point with `injectSparkGrid` + `SparkGridState` +
-  `SparkGridRowsComponent`, consumed by both components; D-4, D-5, D-7 fall out of the single
-  reset path and shared SCSS. **Not** one merged component — route-coupling, streaming,
-  search and the websocket graph would then land in every detail page's bundle. Deferred
-  because this PR already carries a server wire change, a release bump and six milestones,
-  and because unification's risk concentrates in the streaming/virtual-scroll paths with the
-  thinnest coverage. Costs ~165 duplicated lines and a ~150-250 line spec rewrite.
-- **`refreshQuery` and `DisableQueryActions` have no client handlers.** Both stop being
-  curiosities the moment query actions ship. Decide in this PR: implement, or document as
-  inert.
-- **`selectionRule` is transported (`custom-action.ts:9`) but never evaluated**, and
-  `selectedItems` is never populated by the query list. Unimplemented, not misconfigured.
+This PR is the single unit of work. Nothing related is deferred to a follow-up; every extra
+PR costs another full round of workflow runs.
+
+- **Grid-core unification** — §D9. `@mintplayer/ng-spark/grid`, both components reduced to
+  chrome, D-4/D-5/D-7 falling out of the single reset path and shared SCSS. ~165 duplicated
+  lines removed, ~150-250 spec lines rewritten.
+- **`refreshQuery` client handler** — the server can already emit the operation
+  (`client-operations/src/operations.ts:37-40`) but `provide.ts:14-30` wires only `notify`, so
+  it is silently dropped. `reload()` is the missing piece; wire it.
+- **`DisableQueryActions` client handler** — `IClientAccessor.cs:62` has no handler either. A
+  server that can disable a query action the client always renders is a visible
+  inconsistency once query actions ship. Wire it, or make the no-op explicit in code.
+- **`spark-po-detail` does not refresh its sub-queries** after `refreshOnCompleted`
+  (`:248-251` refreshes only the PO). Once `reload()` exists, it must.
 - **`docs/guide-custom-actions.md:159`** claims actions are "available to all users" —
-  contradicted by the deny-all default in `PermissionService.cs:9-13`. Fix in passing.
-- **`Endpoints/Queries/Execute.cs:112-123`** hand-clones `SparkQuery` and drops `Description`
-  already. Worth deleting in favour of the real object.
+  contradicted by the deny-all default at `PermissionService.cs:9-13`.
+- **`Endpoints/Queries/Execute.cs:112-123`** hand-clones `SparkQuery` and already drops
+  `Description`. Delete it in favour of the real object rather than extending the clone.
 - **`docs/Spark-API-Specification.md:470-483`** still documents `useProjection`, deleted in
   #279.
-- **`[object Object]`** from a missing `| resolveTranslation` in `spark-po-edit.component.html:5`
-  and `spark-po-create.component.html:8`.
+- **`[object Object]`** from a missing `| resolveTranslation` in
+  `spark-po-edit.component.html:5` and `spark-po-create.component.html:8`.
+- **Coverage's migration** (§Migration) is part of this unit of work, not a later chore. It
+  cannot compile until `preview.61` and `22.3.0` publish, so it lands as one PR in that repo
+  immediately after this one publishes — planned here, executed there.
+
+### Genuinely out of scope
+
+- **`selectionRule` is transported (`custom-action.ts:9`) but never evaluated**, and
+  `selectedItems` is never populated by the query list. That is unimplemented feature work
+  with no caller, not a defect in this path — a query action needs no selection.
 - **M-3 is still PARTIAL** — `PersistentObject/Get.cs:39-49` and `Queries/Execute.cs:128-138`
-  still return 403.
+  still return 403 where the audit wants 404. A security change to endpoints this PR does not
+  otherwise touch, tracked by its own audit.

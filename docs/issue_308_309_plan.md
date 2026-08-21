@@ -22,18 +22,23 @@
 | M6 | Refresh: `reload()` + `reloadToken` | no | no |
 | M7 | `rowsNavigable` at every link site | no | no |
 | M8 | Drift fixes D-1, D-2, D-3, D-6 | no | no (D-1 is severe) |
-| M9 | Version, lock, release notes, docs | — | **yes** |
+| M9 | Grid core: `@mintplayer/ng-spark/grid`, D-4/D-5/D-7 | no | no |
+| M10 | `refreshQuery` + `DisableQueryActions` handlers; sub-query refresh | no | no |
+| M11 | Loose ends: `Execute.cs` clone, doc corrections | small | no |
+| M12 | Version, lock, release notes, docs | — | **yes** |
 
 M1 is a prerequisite for M3–M5. M2 lands early because every later server-fed behaviour
 depends on the fields existing; **all four fields go in one edit** so `preview.61` and the
-model-file churn happen once.
+model-file churn happen once. M9 lands after M1–M8 so the core is extracted from code that is
+already correct, rather than refactoring and fixing at the same time.
 
 **#308 is already implemented and green** (235 specs). It is not re-planned here — it only
-needs the version bump it never carried (M9).
+needs the version bump it never carried (M12).
 
-**Deliberately NOT in this PR:** the grid-core unification (`@mintplayer/ng-spark/grid`,
-`injectSparkGrid`). See the PRD's Out-of-scope section. File it as its own issue before
-merging this, so the deferral is tracked rather than forgotten.
+**Nothing is deferred to a follow-up PR.** Every extra PR costs another full round of workflow
+runs, and waiting on CI is the bottleneck — so a large diff is the intended outcome, not a
+problem to design around. The Coverage-side migration is part of the same unit of work and is
+planned in the PRD's §Migration; it can only be executed after this publishes.
 
 ---
 
@@ -227,13 +232,58 @@ and fetch success. This subsumes drift fix **D-6**.
   Shipping "a failed load must never render nothing" while the sibling renders a permanent
   spinner on the same 404 would be incoherent.
 - **D-2** — bind `[indeterminate]` in the sub-query's boolean cell (`html:50-53`).
-- D-3 and D-6 land in M1 and M5 respectively.
-
-D-4, D-5, D-7 go to the grid-core follow-up.
+- D-3 and D-6 land in M1 and M5 respectively; D-4, D-5, D-7 fall out of M9.
 
 **Verify:** AC 14, 15, 16.
 
-## M9 — Release
+## M9 — Grid core
+
+New leaf entry point `@mintplayer/ng-spark/grid` (folder + `ng-package.json` + `index.ts`;
+`tsconfig.base.json:6` maps `@mintplayer/ng-spark/*` by wildcard, so **no config edit**):
+
+- `injectSparkGrid(source): SparkGridState` — the whole loading pipeline: query resolution,
+  entity type, permissions, lookups, settings, `makeFetch`, `reload()`/`reloadMetadata()`.
+  **The only writer of the reset sequence**: one `resetForNewSource()` clearing every derived
+  signal, one `try/catch` around the metadata load. That single invariant *is* the fix for
+  **D-4** and **D-5**.
+- `SparkGridRowsComponent` — the row/cell rendering, killing the remaining duplicate anchor
+  block and the two copies of `#cellContent`.
+- `styles/_grid.scss` for the virtual-scrolling sizing → **D-7**. Relative `@use`, following
+  `query-list/src/spark-query-list.component.scss:1`; `styles/` is not an entry point.
+- Both components reduce to chrome. **Do not** put the shared code in `query-list` — that
+  creates `po-detail → query-list` and drags `bs-priority-nav`, `bs-form`,
+  `SparkStreamingService` and the websocket code into every detail page's bundle.
+
+Breaking, and enumerated: the components' incidentally-public internals (`query`,
+`entityType`, `canRead`, `fetchFn`, `settings`, `visibleAttributes`, `getColumnRenderer*`, …)
+move onto the state object. Selectors, entry points and every bound input survive, so no demo
+and nothing in Coverage changes. ~150-250 spec lines get rewritten against the state object.
+
+**Verify:** AC 17, 18, 19; the full ng-spark suite.
+
+## M10 — Client-operation handlers
+
+- Register a `refreshQuery` handler in `client-operations/src/provide.ts` (only `notify` is
+  wired today, and the dispatcher drops unknown types silently). M6's `reload()` is the
+  missing piece.
+- `spark-po-detail` calls `reload()` on its sub-queries after `refreshOnCompleted`
+  (`:248-251` refreshes only the PO today).
+- `DisableQueryActions` (`IClientAccessor.cs:62`): wire it, or make the no-op explicit in
+  code rather than leaving it silently inert now that query actions render.
+
+**Verify:** AC 20.
+
+## M11 — Loose ends
+
+- Delete the `SparkQuery` hand-clone at `Endpoints/Queries/Execute.cs:112-123` in favour of
+  the real object — it already drops `Description`, and M2 gives it three more fields to drop.
+- `docs/guide-custom-actions.md:159` — "available to all users" contradicts the deny-all
+  default at `PermissionService.cs:9-13`.
+- `docs/Spark-API-Specification.md:470-483` — still documents `useProjection`, deleted in #279.
+- Add the missing `| resolveTranslation` in `spark-po-edit.component.html:5` and
+  `spark-po-create.component.html:8` (`[object Object]` today).
+
+## M12 — Release
 
 1. `libs/node_packages/ng-spark/package.json` → **22.3.0**; peer ranges unchanged.
 2. All 20 `libs/**/*.csproj` → **`10.0.0-preview.61`** (hand-maintained per file; there is no
@@ -268,11 +318,12 @@ D-4, D-5, D-7 go to the grid-core follow-up.
 
 1. ~~Does M5 ship?~~ **Moot in v2** — the server is touched by M2 regardless, so `preview.61`
    is mandatory and `rowsNavigable` no longer swings the release shape.
-2. **`refreshQuery` and `DisableQueryActions` client handlers** — implement here, or document
-   as inert? They stop being curiosities the moment query actions ship. Recommend: wire
-   `refreshQuery` (M6 makes it nearly free) and document `DisableQueryActions` as inert.
+2. ~~`refreshQuery` / `DisableQueryActions` — implement or defer?~~ **Both ship (M10).**
 3. **Coverage's migration lands after this merges** — it cannot compile until `preview.61`
-   and `22.3.0` publish. Merge, publish, then migrate.
+   and `22.3.0` publish. Merge, publish, then migrate, as one PR in that repo.
+4. **Is a single sweep enough at the end?** M9 rewrites ~150-250 spec lines on top of M1–M8.
+   Per the batching rule the suite runs once, at the end — but if M9's rewrite churns, that
+   one sweep may need a second pass. Not a reason to split the PR.
 
 ## Outcome
 
