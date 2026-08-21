@@ -35,7 +35,8 @@
             <span class="me-auto">{{ (q.description | resolveTranslation) || q.name }}</span>
             <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
               @for (action of customActions(); track action.name) {
-                <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary" (click)="onCustomAction(action)">
+                <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary"
+                        [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
                   {{ action.displayName | resolveTranslation }}
                 </button>
               }
@@ -56,6 +57,8 @@
         </bs-alert>
       }
       <bs-datatable
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
           [virtualScroll]="isVirtualScrolling()"
           [itemSize]="40"
           [isResponsive]="isVirtualScrolling()"

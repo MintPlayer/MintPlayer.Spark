@@ -13,7 +13,7 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
-import { filterQueryActions } from '@mintplayer/ng-spark/models';
+import { filterQueryActions, parseSelectionRule, selectionModeFor } from '@mintplayer/ng-spark/models';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
@@ -109,6 +109,9 @@ export class SparkQueryListComponent {
     this.canRead.set(false);
     this.canCreate.set(false);
     this.customActions.set([]);
+    // Ids from the previous query are meaningless against the next one, and would be POSTed
+    // as though they belonged to it.
+    this.selection.set([]);
     this.disconnectStreaming();
 
     const queryId = params.get('queryId');
@@ -206,7 +209,7 @@ export class SparkQueryListComponent {
       if (!confirm(message)) return;
     }
     try {
-      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
+      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name, undefined, this.selection());
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) {
         this.reload();
@@ -344,6 +347,21 @@ export class SparkQueryListComponent {
    * navigable -- defaulting Custom.* to false would strip the working links off every
    * custom query that does return documents.
    */
+  /**
+   * Rows the user has ticked. Lives here rather than in the datatable so the action bar can
+   * read it, and MUST be cleared whenever the source changes — otherwise route A's selection
+   * is POSTed as ids of route B's type.
+   */
+  selection = signal<PersistentObject[]>([]);
+
+  /** 'none' unless an action is selection-gated, so unaffected grids gain no checkbox column. */
+  selectionMode = computed(() => selectionModeFor(this.customActions()));
+
+  /** Whether an action's selection rule is satisfied right now. The server checks it again. */
+  isActionEnabled(action: CustomActionDefinition): boolean {
+    return parseSelectionRule(action.selectionRule)(this.selection().length);
+  }
+
   rowsNavigable = computed(() => this.query()?.rowsNavigable !== false);
 
   isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');

@@ -8,7 +8,10 @@
       }
       @if (showCustomActions()) {
         @for (action of customActions(); track action.name) {
-          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary" (click)="onCustomAction(action)">
+          <!-- Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
+               priority nav on every selection change. The server enforces the same rule. -->
+          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary"
+                  [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
             {{ action.displayName | resolveTranslation }}
           </button>
         }
@@ -73,6 +76,8 @@
 
     @if (isStreaming()) {
       <bs-datatable class="flex-grow-1"
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
           [virtualScroll]="isVirtualScrolling()"
           [itemSize]="40"
           [isResponsive]="isVirtualScrolling()"
@@ -90,6 +95,8 @@
       </bs-datatable>
     } @else {
       <bs-datatable class="flex-grow-1"
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
           [virtualScroll]="isVirtualScrolling()"
           [itemSize]="40"
           [isResponsive]="isVirtualScrolling()"

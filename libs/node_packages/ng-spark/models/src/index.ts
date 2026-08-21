@@ -16,3 +16,4 @@ export * from './streaming-message';
 export * from './as-detail-conversions';
 export * from './query-actions';
 export * from './selection-rule';
+export * from './selection-mode';
