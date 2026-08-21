@@ -11,6 +11,7 @@ import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
 import { SPARK_ATTRIBUTE_RENDERERS, SPARK_QUERY_CHROME, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
@@ -170,6 +171,8 @@ export class SparkSubQueryComponent {
    */
   selection = signal<PersistentObject[]>([]);
 
+  private readonly queryRefresh = inject(SparkQueryRefreshService);
+
   /** 'none' unless an action is selection-gated, so unaffected grids gain no checkbox column. */
   selectionMode = computed(() => selectionModeFor(this.customActions()));
 
@@ -209,7 +212,9 @@ export class SparkSubQueryComponent {
     // fetched, and reacting to the token's starting value would double-fetch on mount.
     let first = true;
     effect(() => {
+      // Both the host's token and the server's refreshQuery drive the same cheap refresh.
       this.reloadToken();
+      this.queryRefresh.tokenFor(this.queryId());
       if (first) { first = false; return; }
       untracked(() => this.reload());
     });

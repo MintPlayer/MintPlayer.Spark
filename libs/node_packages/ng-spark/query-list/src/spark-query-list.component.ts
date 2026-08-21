@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
@@ -14,6 +14,7 @@ import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
 import { filterQueryActions, parseSelectionRule, selectionModeFor } from '@mintplayer/ng-spark/models';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
@@ -90,9 +91,18 @@ export class SparkQueryListComponent {
     // would render a spinner FOREVER -- while this component has had an errorMessage
     // surface all along that only the fetch path ever reached. Catch it here.
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
-      this.onParamsChange(params).catch((e: HttpErrorResponse) => this.reportLoadFailure(e));
+      this.onParamsChange(params).catch((e: unknown) => this.reportLoadFailure(e as HttpErrorResponse));
     });
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
+
+    // Server-issued refreshQuery. Its own effect, skipping the first run, so it drives the
+    // cheap data refresh and never re-resolves metadata (which would reset page and sort).
+    let firstRefreshTick = true;
+    effect(() => {
+      this.queryRefresh.tokenFor(this.query()?.alias || this.query()?.id);
+      if (firstRefreshTick) { firstRefreshTick = false; return; }
+      untracked(() => this.reload());
+    });
   }
 
   private async onParamsChange(params: any): Promise<void> {
@@ -353,6 +363,8 @@ export class SparkQueryListComponent {
    * is POSTed as ids of route B's type.
    */
   selection = signal<PersistentObject[]>([]);
+
+  private readonly queryRefresh = inject(SparkQueryRefreshService);
 
   /** 'none' unless an action is selection-gated, so unaffected grids gain no checkbox column. */
   selectionMode = computed(() => selectionModeFor(this.customActions()));
