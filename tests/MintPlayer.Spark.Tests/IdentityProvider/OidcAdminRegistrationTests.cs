@@ -32,7 +32,7 @@ public class OidcAdminRegistrationTests : OidcTestHost
         // no longer in the container outside Development. This is test infrastructure asserting what
         // the synchronizer writes, not a consumer of a production service.
         new ModelSynchronizer(Factory.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexCatalog>())
-            .SynchronizeModels(new AdminContext());
+            .SynchronizeModels(typeof(AdminContext));
 
         var contentRoot = Factory.GetService<IHostEnvironment>().ContentRootPath;
         var path = Path.Combine(contentRoot, "App_Data", "Model", entityName + ".json");

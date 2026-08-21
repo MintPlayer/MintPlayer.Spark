@@ -44,13 +44,29 @@ public static class SparkBuilderAuthorizationExtensions
     /// Registers ASP.NET Core Identity services, bearer + cookie authentication,
     /// and the RavenDB user/role stores.
     /// </summary>
+    /// <param name="configure">
+    /// Configures Spark's own authentication surface — notably
+    /// <see cref="SparkAuthenticationOptions.LocalCredentials"/>, which chooses how much of the
+    /// email/password endpoint family to mount. Defaults to <see cref="SparkLocalCredentials.Full"/>,
+    /// so an application that omits it keeps the endpoint set Spark has always mapped.
+    /// </param>
     public static ISparkBuilder AddAuthentication<TUser>(
         this ISparkBuilder builder,
+        Action<SparkAuthenticationOptions>? configure = null,
         Action<IdentityOptions>? configureIdentity = null,
         Action<IdentityBuilder>? configureProviders = null)
         where TUser : SparkUser, new()
     {
+        var options = new SparkAuthenticationOptions();
+        configure?.Invoke(options);
+
         builder.Registry.IdentityUserType = typeof(TUser);
+
+        // Published so other Spark packages can honour the same mode instead of carrying their own
+        // copy of the flag. MintPlayer.Spark.IdentityProvider serves a second local-credential
+        // surface at /connect/login; two flags could disagree, and an application reporting that
+        // local credentials are off while still serving a password form would be believed.
+        builder.Services.AddSingleton(options);
 
         var identityBuilder = builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
         configureProviders?.Invoke(identityBuilder);
@@ -64,8 +80,9 @@ public static class SparkBuilderAuthorizationExtensions
 
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>
-            endpoints.MapSparkIdentityApi<TUser>());
+            endpoints.MapSparkIdentityApi<TUser>(options.LocalCredentials));
 
         return builder;
     }
+
 }

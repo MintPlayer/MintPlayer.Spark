@@ -31,7 +31,7 @@ public class ModelHashWriteTests : IDisposable
     }
 
     private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
-        .SynchronizeModels(new HashProbeContext());
+        .SynchronizeModels(typeof(HashProbeContext));
 
     private string HashFilePath => ModelHashFile.PathFor(_contentRoot);
 

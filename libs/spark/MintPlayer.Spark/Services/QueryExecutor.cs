@@ -6,6 +6,7 @@ using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -161,7 +162,10 @@ internal partial class QueryExecutor : IQueryExecutor
                 resultType = entry.ProjectionType;
             }
 
-            queryable = ApplyIndexWithType(session, entityType, indexType);
+            // Re-root rather than replace: a context property may have composed a predicate onto its
+            // query (a user-scoped grid), and building the index query from scratch silently dropped
+            // it. A bare property short-circuits to exactly the query built here.
+            queryable = RerootOntoIndexQuery(queryable, ApplyIndexWithType(session, entityType, indexType));
             if (resultType != entityType)
             {
                 queryable = ApplyProjection(queryable, resultType);
@@ -543,6 +547,51 @@ internal partial class QueryExecutor : IQueryExecutor
                 return sessionQueryMethod.MakeGenericMethod(k.Result, k.Index);
             });
         return genericMethod.Invoke(session, [])!;
+    }
+
+    /// <summary>
+    /// Replays whatever the context property composed onto its query — a <c>Where</c>, an
+    /// <c>OrderBy</c> — on top of the index-backed query, instead of discarding it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A context property is free to return more than a bare root:
+    /// <c>MyAccounts =&gt; Session.Query&lt;Account&gt;().Where(a =&gt; a.OwnerId == currentUser.Id)</c>.
+    /// Building the index query from scratch threw that predicate away, so the grid returned every
+    /// row — fail-open, with no error and no log. Re-rooting keeps the author's intent.
+    /// </para>
+    /// <para>
+    /// A bare root short-circuits to the index query itself, so the RQL for every property that does
+    /// not compose anything is byte-identical to before. That is every context property in the repo
+    /// today, including the ones the index generator emits.
+    /// </para>
+    /// <para>
+    /// Note the scope: this makes a scoped property honest for the <em>grid</em>. It is not an
+    /// authorization boundary — a by-id GET, PUT or DELETE never consults the context property, so a
+    /// row rule is still what enforces access.
+    /// </para>
+    /// </remarks>
+    private static object RerootOntoIndexQuery(object propertyQueryable, object indexQueryable)
+    {
+        if (propertyQueryable is not IQueryable composed || indexQueryable is not IQueryable indexed)
+            return indexQueryable;
+
+        // `session.Query<T>()` surfaces as a constant holding the provider's own inspector; anything
+        // composed on top of it is a method call over that constant.
+        if (composed.Expression is ConstantExpression)
+            return indexQueryable;
+
+        if (composed.ElementType != indexed.ElementType)
+            return indexQueryable;
+
+        return indexed.Provider.CreateQuery(new QueryRootSwapper(indexed.Expression).Visit(composed.Expression));
+    }
+
+    /// <summary>Swaps the root queryable of an expression tree for another query's expression.</summary>
+    private sealed class QueryRootSwapper(Expression replacement) : ExpressionVisitor
+    {
+        protected override Expression VisitConstant(ConstantExpression node)
+            => typeof(IQueryable).IsAssignableFrom(node.Type) ? replacement : node;
     }
 
     /// <summary>

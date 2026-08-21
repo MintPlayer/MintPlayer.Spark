@@ -15,6 +15,18 @@ public class SparkFullOptions
     public Action<AuthorizationOptions>? Authorization { get; set; }
 
     /// <summary>
+    /// Configures Spark's authentication surface — notably
+    /// <see cref="SparkAuthenticationOptions.LocalCredentials"/>, which chooses how much of the
+    /// email/password endpoint family to mount. When null, the full local-credential surface is
+    /// mounted, as it always has been.
+    /// </summary>
+    /// <remarks>
+    /// This gates only <em>local</em> credentials. External login providers configured through
+    /// <see cref="IdentityProviders"/> are mounted in every mode.
+    /// </remarks>
+    public Action<SparkAuthenticationOptions>? Authentication { get; set; }
+
+    /// <summary>
     /// Configures ASP.NET Core Identity options (password rules, lockout, etc.).
     /// When null, default identity settings are used.
     /// </summary>

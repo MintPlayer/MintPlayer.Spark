@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Services;
 
 public interface IModelSynchronizer
 {
-    void SynchronizeModels(SparkContext sparkContext);
+    void SynchronizeModels(Type contextType);
 }
 
 // Deliberately NOT [Register]-ed. That attribute is harvested unconditionally into the generated
@@ -34,9 +34,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    public void SynchronizeModels(SparkContext sparkContext)
+    public void SynchronizeModels(Type contextType)
     {
-        var contextType = sparkContext.GetType();
+        ArgumentNullException.ThrowIfNull(contextType);
         var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
 
         // Ensure directory exists
@@ -276,7 +276,44 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             Console.WriteLine($"Removed stale projection model file: {entry.ProjectionType.Name}.json");
         }
 
+        if (WouldCertifyAnEmptyModel(contextType, queryableProperties.Count, modelPath))
+            return;
+
         WriteModelHashes(contextType);
+    }
+
+    /// <summary>
+    /// Refuses to stamp a hash file that certifies an empty model over a model directory that still
+    /// has content in it.
+    /// </summary>
+    /// <remarks>
+    /// A context with no <c>IRavenQueryable&lt;&gt;</c> properties produces no model files, and this
+    /// method deletes none — so the directory keeps whatever a previous run wrote. Writing the hash
+    /// file anyway records "the model is empty" alongside a populated directory, which is the one
+    /// combination nothing downstream can detect: <c>--spark-verify-model</c> derives both sides of
+    /// its comparison from the same context type and so agrees, while the running application derives
+    /// the shape from its DI-resolved context and disagrees — surfacing as a startup failure in
+    /// Production, a long way from the command that caused it.
+    /// <para>
+    /// An empty context with an empty directory is left alone: that is a new or deliberately empty
+    /// application, not a mistake.
+    /// </para>
+    /// </remarks>
+    private static bool WouldCertifyAnEmptyModel(Type contextType, int queryableRootCount, string modelPath)
+    {
+        if (queryableRootCount > 0)
+            return false;
+
+        if (!Directory.Exists(modelPath) || Directory.GetFiles(modelPath, "*.json").Length == 0)
+            return false;
+
+        Console.Error.WriteLine(
+            $"Spark: '{contextType.Name}' declares no IRavenQueryable<> properties, but {modelPath} " +
+            "already contains model files. Refusing to write a model hash that would certify an empty " +
+            "model over them — the running application would then fail at startup instead. Check that " +
+            "the context type passed to model synchronization is the application's own context.");
+        Environment.ExitCode = 2;
+        return true;
     }
 
     /// <summary>

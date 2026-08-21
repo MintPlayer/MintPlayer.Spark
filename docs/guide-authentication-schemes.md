@@ -441,6 +441,102 @@ endpoint only asks it earlier. The E2E test that pinned the old 400 now asserts 
 
 ---
 
+## Choosing how much of the local-credential surface to mount
+
+`spark.AddAuthentication<TUser>()` mounts ASP.NET Core Identity's endpoint family under
+`/spark/auth`. An application that signs users in exclusively through an external provider does not
+want most of it, and `SparkLocalCredentials` chooses how much is mapped:
+
+```csharp
+spark.AddAuthentication<SparkUser>(
+    configure: auth => auth.LocalCredentials = SparkLocalCredentials.Disabled,
+    configureProviders: identity => identity.AddGitHub(options => { /* … */ }));
+```
+
+| Mode | Mapped | Not mapped |
+|---|---|---|
+| `Full` (default) | everything below | — |
+| `SignInOnly` | `login`, `refresh`, `forgotPassword`, `resetPassword`, `confirmEmail`, `manage/2fa`, `GET|POST manage/info` | `register`, `resendConfirmationEmail` |
+| `Disabled` | `manage/2fa`, `GET manage/info` | `register`, `login`, `refresh`, `confirmEmail`, `resendConfirmationEmail`, `forgotPassword`, `resetPassword`, `POST manage/info` |
+
+`/spark/auth/me`, `/spark/auth/logout`, `/spark/auth/csrf-refresh`, `/spark/auth/external-login` and
+`/spark/auth/external-login-callback` are mapped in **every** mode. **External login providers are
+never affected by this setting** — it gates local passwords only, and `Disabled` in fact *requires*
+at least one provider (see below).
+
+The excluded endpoints are absent from the route table, not shadowed behind middleware that returns
+404. They do not appear in the endpoint data source or in OpenAPI.
+
+### Why a mode rather than one switch per endpoint
+
+Closing `register` alone is the obvious move and it is not enough. `register` is a loud
+account-enumeration oracle — an existing address comes back `400 DuplicateUserName`, a new one
+`200`. But `forgotPassword`, `resetPassword`, `confirmEmail` and `resendConfirmationEmail` stay live
+and, while ASP.NET Core returns a uniform response from each, they retain a timing side-channel and
+remain an unauthenticated mail-send trigger keyed on an email address. `login` distinguishes
+`LockedOut` and `NotAllowed`, which are reachable only for an account that exists.
+
+On the client the same conclusion arrives by a different route: the pages form a star centred on the
+login page, and every template dereferences its siblings' paths unconditionally, so removing any
+proper subset leaves a dangling `routerLink`. The family is the unit on both tiers.
+
+### `Disabled` requires an external provider
+
+Mapping throws at startup if `LocalCredentials` is `Disabled` and no interactive provider is
+registered. The alternative is an application that boots healthy and that nobody can sign into, with
+a symptom — a sign-in page with no buttons — that points nowhere near the cause.
+
+A scheme counts as interactive when it carries a `DisplayName`. That is what separates `AddGitHub` /
+`AddGoogle` from Identity's internal cookies and from machine-caller schemes such as API tokens or
+JWT bearer, which would be a dead end if offered as a sign-in button.
+
+### The client half
+
+Pass the matching mode to `sparkAuthRoutes`, and point `loginUrl` at a route that exists:
+
+```ts
+// app.routes.ts
+...sparkAuthRoutes({ localCredentials: 'disabled' }),   // emits only /sign-in
+
+// app.config.ts
+provideSparkAuth({ loginUrl: '/sign-in' }),
+```
+
+`sparkAuthRoutes` routes `SparkSignInComponent` at `/sign-in` whenever local credentials are limited.
+It renders one button per provider, read from `GET /spark/auth/capabilities` rather than from a
+hard-coded scheme name. In `full` mode it is not routed — the login page is already the landing page.
+
+`loginUrl` is the single target the guard, the interceptor and `SparkAuthBarComponent` all redirect
+to. Nothing connects it to the routes that exist, so pointing it at an unregistered route used to
+produce a redirect into a blank page with no error at all; it now warns once in development.
+
+### Discovering the configuration at runtime
+
+`GET /spark/auth/capabilities` is anonymous and reports both halves:
+
+```json
+{ "localCredentials": "Disabled", "externalProviders": [{ "scheme": "GitHub", "displayName": "GitHub" }] }
+```
+
+The mode is derived from the route table rather than read back from configuration, so it cannot claim
+a surface that was never mapped. Use it to check that the client's build-time route configuration and
+the server's deployment-time mode agree — that mismatch is otherwise invisible until a user hits it.
+
+### Notes
+
+- `MintPlayer.Spark.IdentityProvider` honours the same mode: `Disabled` also drops `/connect/login`
+  and `/connect/two-factor`. Every OIDC protocol endpoint is untouched, since a provider that
+  federates upstream still needs all of them.
+- `POST /manage/info` counts as local-credential in `Disabled` mode because it rotates the email the
+  external binding was provisioned against, desynchronizing it from the issuer-attested claim.
+  `GET /manage/info` is kept.
+- The Bearer credential scheme stays registered in `Disabled` mode, but nothing can issue a bearer
+  token once `POST /login` is gone.
+- This is a surface control, not a rate limit. `spark.AddRateLimiter()` remains worth enabling for
+  whatever surface you do mount — see [rate limiting](./guide-rate-limiting.md).
+
+---
+
 ## See also
 
 - [Authorization package](../libs/authorization/MintPlayer.Spark.Authorization/README.md) — `security.json`, groups, rights syntax
