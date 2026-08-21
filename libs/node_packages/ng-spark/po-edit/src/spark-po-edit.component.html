@@ -2,7 +2,7 @@
 <div class="container">
   @for (error of generalErrors(); track error.errorMessage) {
     <bs-alert [type]="colors.danger" class="mb-3">
-      {{ error.errorMessage }}
+      {{ error.errorMessage | resolveTranslation }}
     </bs-alert>
   }
 
