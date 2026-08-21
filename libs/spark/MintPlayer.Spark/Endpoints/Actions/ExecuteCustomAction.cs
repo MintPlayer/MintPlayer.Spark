@@ -23,6 +23,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     }
 
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly ISparkTypeResolver typeResolver;
 
     /// <summary>
     /// Upper bound on submitted selected items, whatever the action's selection rule says.
@@ -52,7 +54,10 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, StatusCodes.Status404NotFound);
+            // Same shape as a denial. This ran BEFORE the grant check below, so a specific
+            // 404 here against a 401 there told an anonymous caller which entity types are
+            // real -- the M-3 oracle, in the one endpoint the sweep missed.
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         var typeName = entityType.ClrType.Split('.').Last();
@@ -159,7 +164,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 parent = await databaseAccess.GetPersistentObjectAsync(entityType.Id, submittedParent.Id);
                 if (parent is null)
                 {
-                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
                 }
             }
 
@@ -173,9 +178,35 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                     : await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id);
                 if (loaded is null)
                 {
-                    return ClientResult.Envelope(clientAccessor, new { error = "Not found" }, StatusCodes.Status404NotFound);
+                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
                 }
                 selectedItems.Add(loaded);
+            }
+
+            // Ask the row rule about THIS action, not about "Read".
+            //
+            // The loads above gated every named row on "Read" — necessary (acting on a row you
+            // cannot see is a blind write and an existence oracle) but not sufficient: it answers
+            // "may I see this", never "may I Archive this". Only rows actually named are checked;
+            // a pure command that names none is governed solely by its {ActionName}/{Type} grant,
+            // and inventing a synthetic subject for it would either deny every command or teach
+            // authors the check is vacuous.
+            //
+            // All-or-nothing, before ExecuteAsync runs. Filtering would hand the action a quietly
+            // smaller set, and with refreshOnCompleted the user would see a refreshed grid and
+            // assume all of it happened. Reporting WHICH rows were dropped is itself disclosure,
+            // so silent filtering is the only M-3-compatible filtering — and it is worse than a
+            // refusal.
+            var rowIds = selectedItems.Select(i => i.Id!)
+                .Concat(parent?.Id is { Length: > 0 } parentId ? [parentId] : Array.Empty<string>())
+                .Where(rowId => !string.IsNullOrEmpty(rowId))
+                .ToArray();
+
+            var clrType = typeResolver.Resolve(entityType.ClrType);
+            if (rowIds.Length > 0 && clrType is not null &&
+                !await rowSecurity.AreAllowedAsync(session, clrType, actionName, rowIds))
+            {
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
             var args = new CustomActionArgs

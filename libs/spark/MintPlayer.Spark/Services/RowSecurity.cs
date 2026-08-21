@@ -36,6 +36,39 @@ internal interface IRowSecurity
     Task<bool> IsAllowedAsync(Type entityType, string action, object entity);
 
     /// <summary>
+    /// Whether the caller may perform <paramref name="action"/> on every one of
+    /// <paramref name="ids"/> — where <paramref name="action"/> is a CUSTOM action's name, not
+    /// one of the built-in verbs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This closes a gap that made <c>ISparkRowRule&lt;T&gt;.IsAllowedAsync</c>'s action parameter
+    /// a promise the framework never kept: the detail path passes "Read"/"Edit"/"Delete", but no
+    /// custom action's name ever reached a row rule, so a rule could not say "may Archive rows
+    /// they own, but not rows they can merely see". Every such policy had to be hand-written
+    /// inside each action, with nothing to tell the author it was needed.
+    /// </para>
+    /// <para>
+    /// <b>A refinement, never an entry point.</b> It resolves entities directly and therefore
+    /// applies NEITHER the type-level right NOR the collection guard. Call it only for ids that
+    /// have just been loaded through the row-gated read path, which applied both — otherwise a
+    /// caller-supplied id gets judged by a rule that was never told the id is foreign.
+    /// </para>
+    /// <para>
+    /// Costs no request: the read that named these ids left them tracked, so this is an
+    /// identity-map hit. It loads under the DECLARED entity type rather than <c>object</c>,
+    /// because an untyped load returns a JObject whenever <c>@Raven-Clr-Type</c> does not resolve
+    /// and the reflective hook would then reject its own argument.
+    /// </para>
+    /// <para>
+    /// Batched rather than per-id so it cannot regress into an N+1 if the identity map is ever
+    /// cold, and all-or-nothing: an id whose document cannot be resolved is refused, matching
+    /// <c>FilterAsync</c>'s stance that unverifiable is not shown.
+    /// </para>
+    /// </remarks>
+    Task<bool> AreAllowedAsync(IAsyncDocumentSession session, Type entityType, string action, IReadOnlyCollection<string> ids);
+
+    /// <summary>
     /// Whether this entity type has a row-level rule at all — i.e. its Actions class overrides
     /// <c>IsAllowedAsync</c> or <c>GetRowFilterAsync</c> rather than inheriting the permissive defaults.
     /// <para>
@@ -144,6 +177,26 @@ internal partial class RowSecurity : IRowSecurity
     {
         var rule = await ResolveEffectiveRuleAsync(entityType, action);
         return rule is null || await rule(entity);
+    }
+
+    public async Task<bool> AreAllowedAsync(IAsyncDocumentSession session, Type entityType, string action, IReadOnlyCollection<string> ids)
+    {
+        if (ids.Count == 0) return true;
+
+        var rule = await ResolveEffectiveRuleAsync(entityType, action);
+        // No rule for this action means no restriction — the same "null is unrestricted"
+        // convention GetRowFilterAsync uses. A type with no row rule at all is unaffected by
+        // this gate entirely.
+        if (rule is null) return true;
+
+        var documents = await LoadBaseDocumentsAsync(session, entityType, ids);
+        foreach (var id in ids)
+        {
+            if (!documents.TryGetValue(id, out var entity)) return false;
+            if (!await rule(entity)) return false;
+        }
+
+        return true;
     }
 
     public bool HasRowRule(Type entityType)

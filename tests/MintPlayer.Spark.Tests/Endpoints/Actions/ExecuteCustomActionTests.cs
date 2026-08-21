@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
@@ -58,7 +59,10 @@ public class ExecuteCustomActionTests
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns((EntityTypeDefinition?)null);
         var endpoint = NewEndpoint();
-        var context = NewContext(objectTypeId: "unknown", actionName: "Archive");
+        // Authenticated on purpose: M-3 makes an unknown type answer exactly as a DENIED one, and
+        // for an anonymous caller that is 401. The 404 this asserts is the authenticated shape,
+        // which is what makes "no such type" indistinguishable from "not yours".
+        var context = NewContext(objectTypeId: "unknown", actionName: "Archive", authenticated: true);
 
         var result = await endpoint.HandleAsync(context);
 
@@ -186,7 +190,7 @@ public class ExecuteCustomActionTests
 
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive",
-            body: new CustomActionRequest { Parent = parent });
+            body: new CustomActionRequest { Parent = parent }, authenticated: true);
 
         var result = await endpoint.HandleAsync(context);
 
@@ -251,7 +255,7 @@ public class ExecuteCustomActionTests
 
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive",
-            body: new CustomActionRequest { SelectedItems = selected });
+            body: new CustomActionRequest { SelectedItems = selected }, authenticated: true);
 
         var result = await endpoint.HandleAsync(context);
 
@@ -435,8 +439,14 @@ public class ExecuteCustomActionTests
     private readonly Raven.Client.Documents.Session.IAsyncDocumentSession _session =
         Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>();
 
+    // Permissive by default: these tests exercise dispatch, not row rules. The row-action gate
+    // has its own tests; a Substitute would return false for the unstubbed Task<bool> and refuse
+    // every request that names a row.
+    private readonly IRowSecurity _rowSecurity = new PermissiveRowSecurity();
+    private readonly ISparkTypeResolver _typeResolver = Substitute.For<ISparkTypeResolver>();
+
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader);
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader);
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,
