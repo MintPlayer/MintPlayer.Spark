@@ -24,7 +24,7 @@ import {
   ReferenceChipsPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SparkGridRenderers, initialGridSettings, isVirtualScrollingQuery, visibleGridAttributes } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
@@ -53,7 +53,7 @@ export class SparkQueryListComponent {
   private readonly sparkService = inject(SparkService);
   private readonly streamingService = inject(SparkStreamingService);
   protected readonly lang = inject(SparkLanguageService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly destroyRef = inject(DestroyRef);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -166,16 +166,7 @@ export class SparkQueryListComponent {
       this.entityType.set(resolvedEntityType);
       this.allEntityTypes.set(resolvedEntityTypes);
 
-      const initialSortColumns: SortColumn[] = (resolvedQuery?.sortColumns || []).map(sc => ({
-        property: sc.property,
-        direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
-      }));
-
-      this.settings.set(new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1], selected: 1 },
-        sortColumns: initialSortColumns
-      }));
+      this.settings.set(initialGridSettings(resolvedQuery));
 
       if (resolvedQuery?.isStreamingQuery) {
         // Streaming: WebSocket feeds allItems; the datatable binds [data]="streamItems()".
@@ -376,41 +367,20 @@ export class SparkQueryListComponent {
 
   rowsNavigable = computed(() => this.query()?.rowsNavigable !== false);
 
-  isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');
+  isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
 
-  visibleAttributes = computed(() => {
-    return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
-      .sort((a, b) => a.order - b.order) || [];
-  });
+  visibleAttributes = computed(() => visibleGridAttributes(this.entityType()));
 
   getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.columnComponent ?? null;
+    return this.gridRenderers.columnComponentFor(attr);
   }
 
   getColumnRendererInputs(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
-    const itemAttr = item.attributes.find(a => a.name === attr.name);
-    return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
-      item,
-    });
+    return this.gridRenderers.columnInputsFor(component, item, attr);
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
-    if (lookupAttrs.length === 0) return;
-
-    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    const entries = await Promise.all(
-      lookupNames.map(async name => {
-        const result = await this.sparkService.getLookupReference(name);
-        return [name, result] as const;
-      })
-    );
-    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
+    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleAttributes()));
   }
 
   onCreate(): void {

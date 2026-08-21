@@ -70,6 +70,9 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     executeQuery: vi.fn().mockResolvedValue(samplePage),
     getLookupReference: vi.fn().mockResolvedValue({ name: 'dummy', values: [] } as any),
+    // The component loads the query's actions alongside its permissions, so an unstubbed
+    // method rejects the Promise.all and the whole load fails.
+    getCustomActions: vi.fn().mockResolvedValue([]),
     ...serviceOverrides,
   };
 

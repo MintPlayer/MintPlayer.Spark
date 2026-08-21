@@ -14,7 +14,8 @@ import { SparkService } from '@mintplayer/ng-spark/services';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
-import { SPARK_ATTRIBUTE_RENDERERS, SPARK_QUERY_CHROME, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_QUERY_CHROME, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SparkGridRenderers, initialGridSettings, isVirtualScrollingQuery, visibleGridAttributes, SPARK_GRID_PAGE_SIZES } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   filterQueryActions,
@@ -37,7 +38,7 @@ import {
 })
 export class SparkSubQueryComponent {
   private readonly sparkService = inject(SparkService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly chromeRegistry = inject(SPARK_QUERY_CHROME);
   readonly lang = inject(SparkLanguageService);
 
@@ -150,7 +151,7 @@ export class SparkSubQueryComponent {
   loading = signal(true);
   canRead = signal(false);
   settings = signal(new DatatableSettings({
-    perPage: { values: [10, 25, 50], selected: 10 },
+    perPage: { values: SPARK_GRID_PAGE_SIZES, selected: SPARK_GRID_PAGE_SIZES[0] },
     page: { values: [1], selected: 1 },
     sortColumns: []
   }));
@@ -183,13 +184,9 @@ export class SparkSubQueryComponent {
 
   rowsNavigable = computed(() => this.query()?.rowsNavigable !== false);
 
-  isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');
+  isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
 
-  visibleAttributes = computed(() => {
-    return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
-      .sort((a, b) => a.order - b.order) || [];
-  });
+  visibleAttributes = computed(() => visibleGridAttributes(this.entityType()));
 
   constructor() {
     effect(() => {
@@ -289,11 +286,6 @@ export class SparkSubQueryComponent {
       this.query.set(resolvedQuery);
       this.allEntityTypes.set(entityTypes);
 
-      const initialSortColumns: SortColumn[] = (resolvedQuery.sortColumns || []).map(sc => ({
-        property: sc.property,
-        direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
-      }));
-
       // Resolve entity type from query's entityType field
       if (resolvedQuery.entityType) {
         const et = entityTypes.find(t =>
@@ -310,11 +302,7 @@ export class SparkSubQueryComponent {
         }
       }
 
-      this.settings.set(new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1], selected: 1 },
-        sortColumns: initialSortColumns
-      }));
+      this.settings.set(initialGridSettings(resolvedQuery));
       // The datatable drives paging/sorting via [(settings)] and calls fetchFn
       // per page. Virtual scrolling is just the [virtualScroll] template flag.
       this.fetchFn.set(this.makeFetch(resolvedQuery, parentId, parentType));
@@ -352,31 +340,14 @@ export class SparkSubQueryComponent {
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
-    if (lookupAttrs.length === 0) return;
-
-    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    const entries = await Promise.all(
-      lookupNames.map(async name => {
-        const result = await this.sparkService.getLookupReference(name);
-        return [name, result] as const;
-      })
-    );
-    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
+    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleAttributes()));
   }
 
   getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.columnComponent ?? null;
+    return this.gridRenderers.columnComponentFor(attr);
   }
 
   getColumnRendererInputs(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
-    const itemAttr = item.attributes.find(a => a.name === attr.name);
-    return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
-      item,
-    });
+    return this.gridRenderers.columnInputsFor(component, item, attr);
   }
 }
