@@ -59,6 +59,7 @@
         "nl": "Projectkolommen"
       },
       "source": "Custom.GetProjectColumns",
+      "rowsNavigable": false,
       "sortColumns": [
         {
           "property": "Name",

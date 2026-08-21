@@ -82,7 +82,7 @@
                      2. `canRead()` answers "may I open it", which is a different
                         question from "is there anything to open": a Custom.* query can
                         fabricate rows in memory whose ids resolve to no document. -->
-                @if (first && canRead()) {
+                @if (first && canRead() && rowsNavigable()) {
                   <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
                     <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
                   </a>

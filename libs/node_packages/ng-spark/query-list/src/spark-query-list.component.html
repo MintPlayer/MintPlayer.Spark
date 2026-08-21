@@ -85,22 +85,7 @@
         }
 
         <ng-container *bsRowTemplate="let item">
-          @let row = $any(item);
-          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-            <td>
-              @if (row) {
-                @if (first && canRead()) {
-                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  </a>
-                } @else {
-                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                }
-              } @else {
-                &nbsp;
-              }
-            </td>
-          }
+          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
         </ng-container>
       </bs-datatable>
     } @else {
@@ -117,22 +102,7 @@
         }
 
         <ng-container *bsRowTemplate="let item">
-          @let row = $any(item);
-          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-            <td>
-              @if (row) {
-                @if (first && canRead()) {
-                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  </a>
-                } @else {
-                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                }
-              } @else {
-                &nbsp;
-              }
-            </td>
-          }
+          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
         </ng-container>
       </bs-datatable>
     }
@@ -148,6 +118,35 @@
     </div>
   }
 </div>
+
+<!--
+  One row template for both the streaming and the paged datatable. These were two
+  byte-identical copies in the same file, which is how the first column's link came to
+  need fixing in three places instead of one.
+-->
+<ng-template #rowCells let-item>
+  @let row = $any(item);
+  @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+    <td>
+      @if (row) {
+        <!-- `canRead()` answers "may I open it"; `rowsNavigable()` answers "is there
+             anything to open". A Custom.* query can fabricate rows in memory whose ids
+             resolve to no document, and only the query author knows. Note cellContent
+             renders INSIDE this anchor, so a custom renderer cannot suppress the link --
+             it would nest a second one. -->
+        @if (first && canRead() && rowsNavigable()) {
+          <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
+            <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+          </a>
+        } @else {
+          <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+        }
+      } @else {
+        &nbsp;
+      }
+    </td>
+  }
+</ng-template>
 
 <ng-template #cellContent let-item let-attr="attr">
   @if (getColumnRendererComponent(attr); as rendererType) {

@@ -335,6 +335,17 @@ export class SparkQueryListComponent {
     this.onSearchChange();
   }
 
+  /**
+   * Whether the first column links to a detail page.
+   *
+   * Declared by the query, because the framework cannot derive it: `Database.*` rows
+   * are always real documents, but a `Custom.*` query may return loadable documents
+   * (Fleet's Stolen_Cars) or rows fabricated in memory (StreamItems). Absent means
+   * navigable -- defaulting Custom.* to false would strip the working links off every
+   * custom query that does return documents.
+   */
+  rowsNavigable = computed(() => this.query()?.rowsNavigable !== false);
+
   isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');
 
   visibleAttributes = computed(() => {
