@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -48,6 +48,21 @@ export class SparkSubQueryComponent {
    */
   parentId = input<string>('');
   parentType = input<string>('');
+
+  /**
+   * Change this to re-run the query. Any value works; only its identity matters.
+   *
+   * A declarative token rather than only a `reload()` method, because calling a
+   * method means holding a component handle, and hosts wrap this grid in `@if`,
+   * where a `viewChild` is intermittently undefined. Nothing else in ng-spark
+   * uses `viewChild` either — the house idiom is to re-seed a signal.
+   *
+   * This drives the CHEAP refresh (see {@link reload}). It deliberately does not
+   * feed the main effect: re-running `loadData` would re-resolve the query, the
+   * entity types, the permissions and the lookups, and reset the user's page and
+   * sort on every button press.
+   */
+  reloadToken = input<unknown>(null);
 
   colors = Color;
 
@@ -101,6 +116,29 @@ export class SparkSubQueryComponent {
         this.loading.set(false);
       }
     });
+
+    // Separate effect, so the token drives the cheap refresh and never the full
+    // metadata reload. `first` skips the initial run: the effect above has already
+    // fetched, and reacting to the token's starting value would double-fetch on mount.
+    let first = true;
+    effect(() => {
+      this.reloadToken();
+      if (first) { first = false; return; }
+      untracked(() => this.reload());
+    });
+  }
+
+  /**
+   * Re-run the query, keeping the current page, sort and scroll position.
+   *
+   * Data-level on purpose: it re-seeds the fetch closure and nothing else, mirroring
+   * `SparkQueryListComponent.reload()`. Use it after something mutates server-side
+   * state the query reads from. For a definition change — new columns, a renamed
+   * query — the inputs themselves must change; that is the expensive path.
+   */
+  reload(): void {
+    const q = this.query();
+    if (q) this.fetchFn.set(this.makeFetch(q, this.parentId(), this.parentType()));
   }
 
   private async loadData(queryId: string, parentId: string, parentType: string): Promise<void> {

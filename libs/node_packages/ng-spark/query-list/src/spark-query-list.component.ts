@@ -181,7 +181,7 @@ export class SparkQueryListComponent {
       await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) {
-        this.refresh();
+        this.reload();
       }
     } catch (e) {
       const err = e as HttpErrorResponse;
@@ -265,8 +265,14 @@ export class SparkQueryListComponent {
     });
   }
 
-  /** Force a refetch (e.g. after a custom action) without changing page/sort. */
-  private refresh(): void {
+  /**
+   * Force a refetch (e.g. after a custom action) without changing page/sort.
+   *
+   * Public so a host can drive it, and named to match
+   * `SparkSubQueryComponent.reload()` — the two grids had drifted into having the
+   * same mechanism under different names, one of them unreachable.
+   */
+  reload(): void {
     if (this.isStreaming()) {
       this.applyFilter();
       return;
