@@ -25,10 +25,21 @@ public class StreamExecuteQueryTests : IAsyncLifetime
 
     private readonly IQueryLoader _queryLoader = Substitute.For<IQueryLoader>();
     private readonly IStreamingQueryExecutor _executor = Substitute.For<IStreamingQueryExecutor>();
+
+    // The stream endpoint now authorizes at the HANDSHAKE (audit M-3) instead of accepting
+    // the socket and closing it with "Access denied" — which told the caller the query was
+    // real before refusing it. These tests are about streaming mechanics, so the permission
+    // check is stubbed permissive; the refusal path has its own tests.
+    private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private IHost _host = null!;
 
     public async Task InitializeAsync()
     {
+        // Permissive by default: NSubstitute returns false for an unstubbed Task<bool>, which
+        // the new handshake gate would treat as "denied" and refuse every connection.
+        _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
         _host = new HostBuilder()
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
@@ -47,7 +58,7 @@ public class StreamExecuteQueryTests : IAsyncLifetime
                     {
                         endpoints.MapGet("/stream/{id}", async httpContext =>
                         {
-                            var endpoint = new StreamExecuteQuery(_queryLoader, _executor);
+                            var endpoint = new StreamExecuteQuery(_queryLoader, _executor, _permissions);
                             var result = await endpoint.HandleAsync(httpContext);
                             await result.ExecuteAsync(httpContext);
                         });
