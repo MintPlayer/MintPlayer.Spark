@@ -1,7 +1,7 @@
 # Spark 10.0.0-preview.60 — controllers under Spark's rules, an honest group vocabulary, opt-in auth routes
 
 **Packages:** every `MintPlayer.Spark.*` package → `10.0.0-preview.60`, plus a new
-`MintPlayer.Spark.Controllers`. `@mintplayer/ng-spark-auth` → **23.0.0** (major),
+`MintPlayer.Spark.Controllers`. `@mintplayer/ng-spark-auth` → **22.3.0** (breaking, but the major stays in lockstep with Angular 22),
 `@mintplayer/ng-spark` → 22.2.0.
 
 **Issues:** [#298](https://github.com/MintPlayer/MintPlayer.Spark/issues/298),
