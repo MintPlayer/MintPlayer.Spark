@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
@@ -212,29 +213,7 @@ public static class SparkExtensions
         // bodies — Spark's JSON API is not protected by it alone. This middleware closes
         // that gap for any mutating HTTP method (POST/PUT/PATCH/DELETE) whose endpoint has
         // IAntiforgeryMetadata.RequiresValidation = true.
-        app.Use(async (context, next) =>
-        {
-            var endpoint = context.GetEndpoint();
-            var metadata = endpoint?.Metadata.GetMetadata<IAntiforgeryMetadata>();
-            if (metadata is { RequiresValidation: true }
-                && IsMutatingMethod(context.Request.Method)
-                && !IsNonAmbientCredential(context))
-            {
-                var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-                try
-                {
-                    await antiforgery.ValidateRequestAsync(context);
-                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: true));
-                }
-                catch (AntiforgeryValidationException ex)
-                {
-                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: false, error: ex));
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    return;
-                }
-            }
-            await next(context);
-        });
+        app.UseSparkAntiforgery();
 
         // Keep the built-in middleware registered — EndpointMiddleware uses its presence as a
         // "antiforgery was wired" probe when the endpoint has IAntiforgeryMetadata. For
@@ -548,45 +527,6 @@ public static class SparkExtensions
         return false;
     }
 
-    private static bool IsMutatingMethod(string method) =>
-        HttpMethods.IsPost(method)
-        || HttpMethods.IsPut(method)
-        || HttpMethods.IsDelete(method)
-        || HttpMethods.IsPatch(method);
-
-    /// <summary>
-    /// True when the request was authenticated by a credential the browser does not attach on its
-    /// own — a bearer token, a client certificate, an API key.
-    /// <para>
-    /// CSRF is an attack on <i>ambient</i> authority: it works because a cross-site page can make
-    /// the browser replay a cookie it is holding. A caller that had to construct its own
-    /// <c>Authorization</c> header, or complete a TLS handshake with a private key, cannot be made
-    /// to do either by a third-party page. Demanding an antiforgery token of such a caller protects
-    /// nothing and makes external POSTs impossible — a CI job has no <c>XSRF-TOKEN</c> cookie to
-    /// echo, so it got a bare 400 with no body (F8).
-    /// </para>
-    /// <para>
-    /// The decision reads the scheme that actually produced <c>HttpContext.User</c>, not the shape
-    /// of the request. That distinction is the security property: were this keyed on "did the
-    /// caller send an <c>Authorization</c> header", an attacker could disable the check on a
-    /// cookie-authenticated victim by attaching a junk header. A junk header authenticates nothing,
-    /// so no scheme records itself here and the gate still runs.
-    /// </para>
-    /// </summary>
-    private static bool IsNonAmbientCredential(HttpContext context)
-        => context.Features.Get<ISparkAuthenticatedSchemeFeature>() is { Scheme.IsAmbient: false };
-
-    /// <summary>
-    /// Spark's implementation of <see cref="IAntiforgeryValidationFeature"/> used to record
-    /// the outcome of <see cref="IAntiforgery.ValidateRequestAsync"/>. The concrete class
-    /// in <c>Microsoft.AspNetCore.Antiforgery</c> is internal, so we provide our own.
-    /// </summary>
-    private sealed class SparkAntiforgeryValidationFeature(bool isValid, AntiforgeryValidationException? error = null)
-        : IAntiforgeryValidationFeature
-    {
-        public bool IsValid { get; } = isValid;
-        public Exception? Error { get; } = error;
-    }
 }
 
 public partial class SparkMiddleware
