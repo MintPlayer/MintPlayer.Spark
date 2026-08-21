@@ -149,7 +149,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <param name="action">One of "Read" / "Query" / "Edit" / "Delete" / "New" — the
     /// same vocabulary used by <c>IPermissionService.IsAllowedAsync</c>.</param>
     /// <param name="entity">The specific row being evaluated.</param>
-    [NoInterfaceMember]
     public virtual Task<bool> IsAllowedAsync(string action, T entity) => Task.FromResult(true);
 
     /// <summary>
@@ -221,7 +220,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// rather than one load apiece.</para>
     /// </summary>
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
-    [NoInterfaceMember]
     public virtual Task<System.Linq.Expressions.Expression<Func<T, bool>>?> GetRowFilterAsync(string action)
         => Task.FromResult<System.Linq.Expressions.Expression<Func<T, bool>>?>(null);
 
@@ -240,7 +238,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// evaluated against the base entity even when the query returned index projections.
     /// </summary>
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
-    [NoInterfaceMember]
     public virtual Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)
         => Task.FromResult<IReadOnlyCollection<string>?>(null);
 

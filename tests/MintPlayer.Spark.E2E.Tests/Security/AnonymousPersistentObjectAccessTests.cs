@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// the request would satisfy every test that existed.
 /// </para>
 /// <para>
-/// Fleet's <c>security.json</c> grants <c>Everyone</c> exactly one right — <c>QueryRead/Company</c>
+/// Fleet's <c>security.json</c> grants <c>anonymous</c> exactly one right — <c>QueryRead/Company</c>
 /// — so these tests pin both sides of that line: Company is readable without authenticating, Car is
 /// not, and nothing is writable.
 /// </para>
@@ -27,7 +27,7 @@ public class AnonymousPersistentObjectAccessTests
     private readonly FleetE2ECollectionFixture _fixture;
     public AnonymousPersistentObjectAccessTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
-    /// <summary>No login. The framework must treat this exactly as the <c>Everyone</c> baseline.</summary>
+    /// <summary>No login. The framework must treat this exactly as the <c>anonymous</c> baseline.</summary>
     private SparkClient Anonymous() => SparkClientFactory.ForFleet(_fixture.Host);
 
     [Fact]
@@ -42,12 +42,12 @@ public class AnonymousPersistentObjectAccessTests
         // authenticated and still lacks the right. Accepting either would stop distinguishing
         // "refused because anonymous" from "refused despite a session", which is the whole subject.
         ex.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "Car is granted to Administrators and Fleet managers, never to Everyone — and an "
-            + "unauthenticated caller holds only Everyone's rights");
+            "Car is granted to Administrators and Fleet managers, never to anonymous callers — and an "
+            + "unauthenticated caller holds only the anonymous group's rights");
     }
 
     /// <summary>
-    /// The other side of the line, and the one that would catch an over-correction: `Everyone` does
+    /// The other side of the line, and the one that would catch an over-correction: the anonymous group does
     /// grant <c>QueryRead/Company</c>, so this must keep working without a login. A change that
     /// locked anonymous callers out entirely would be a behaviour change in the demos, not a fix.
     /// </summary>
@@ -59,7 +59,7 @@ public class AnonymousPersistentObjectAccessTests
         var companies = await client.ListPersistentObjectsAsync(CompanyTypeName);
 
         companies.Should().NotBeNull(
-            "security.json grants QueryRead/Company to Everyone, which applies to callers who "
+            "security.json grants QueryRead/Company to the anonymous group, which applies to callers who "
             + "never authenticated");
     }
 
@@ -77,11 +77,11 @@ public class AnonymousPersistentObjectAccessTests
         // Accepting a 400 here would let the test pass on the antiforgery gate alone and never
         // exercise whether anonymous callers can create.
         ex.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "an anonymous caller holds only Everyone's rights, which do not include creating a Car");
+            "an anonymous caller holds only the anonymous group's rights, which do not include creating a Car");
     }
 
     /// <summary>
-    /// Everyone's grant is <c>QueryRead</c> — read only. Write access must not come with it, which
+    /// the anonymous group's grant is <c>QueryRead</c> — read only. Write access must not come with it, which
     /// is the distinction a single combined right would blur.
     /// </summary>
     [Fact]

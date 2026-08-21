@@ -79,7 +79,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(existingItem),
-    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: true }),
+    getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue([customAction]),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
@@ -138,7 +138,7 @@ describe('SparkPoDetailComponent', () => {
     // Unruled types omit the can block entirely; behaviour is exactly as before, backward-compatible.
     const { harness } = await setup({
       get: vi.fn().mockResolvedValue(existingItem),
-      getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: false }),
+      getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: false }),
     } as Partial<SparkService>);
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
     await harness.fixture.whenStable();

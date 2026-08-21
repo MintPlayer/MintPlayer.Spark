@@ -3,7 +3,9 @@ using HR;
 using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.Messaging;
@@ -18,15 +20,23 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
+    // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
+    // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.
+    spark.AddControllers();
+    spark.UseControllers();
+
     spark.UseContext<HRContext>();
     spark.AddActions();
     spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
 
     spark.AddAuthorization();
-    spark.AddAuthentication<SparkUser>();
+    // Explicit since preview.60: the default is now Disabled, matching the client's opt-in
+    // routes. HR mounts the full password family, so it says so.
+    spark.AddAuthentication<SparkUser>(
+        configure: auth => auth.LocalCredentials = SparkLocalCredentials.Full);
 
     // HR doubles as the identity provider: it serves /connect/* and administers its own clients
     // and scopes through the PersistentObject screens (see HRContext). Issuer is pinned rather
@@ -73,7 +83,6 @@ app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {
-    endpoints.MapControllers();
     endpoints.MapSpark();
 });
 

@@ -97,7 +97,7 @@ Each value is the **intersection** of the caller's type-level right and the row 
 
 ## ⚠️ Anonymous / public read — the row filter is the only gate
 
-A common pattern: grant a type's `Query`/`Read` right to **`Everyone`** in `security.json`, then use `GetRowFilterAsync` to expose only the public subset. Coverage does exactly this — anonymous viewers see public repositories; authenticated viewers additionally see private repos their identity can access:
+A common pattern: grant a type's `Query`/`Read` right to the **`anonymous`** well-known group in `security.json`, then use `GetRowFilterAsync` to expose only the public subset. Coverage does exactly this — anonymous viewers see public repositories; authenticated viewers additionally see private repos their identity can access:
 
 ```csharp
 public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
@@ -108,13 +108,15 @@ public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsyn
 }
 ```
 
-**When you grant `Everyone`, the row filter is the only thing between the public internet and the entire collection.** There is no second gate behind it. Consequences to hold in mind:
+**When you grant `anonymous`, the row filter is the only thing between the public internet and the entire collection.** There is no second gate behind it. Consequences to hold in mind:
 
 - A bug that returns `null` (no restriction) instead of a restricting expression discloses **every row**, including private ones. Fail toward the restrictive branch: default `owners` to empty, and only widen it for an authenticated, authorized caller.
 - The filter runs for **every** request to that type, authenticated or not. Don't assume a caller exists — an anonymous request has no user id.
 - Row-level denial on this path is a filtered-out row, not an error — a mistake is silent. Test the anonymous case explicitly.
 
-If you are not deliberately publishing a public subset, **do not grant `Everyone`** — scope the type-level right to an authenticated group and let the row filter refine within it.
+If you are not deliberately publishing a public subset, **do not grant `anonymous`** — grant `authenticated` (or a named group) instead and let the row filter refine within it.
+
+⚠️ Note that `anonymous` is **not** the old `Everyone`: it applies only while the caller has not signed in. A right that both an anonymous visitor and a signed-in user should have is two grants. And never simply *delete* a type-level grant to lock a type down — type-level rights gate row rules, so with no grant at all `GetRowFilterAsync` never runs and signed-in callers are denied too.
 
 ## System context (module sync)
 

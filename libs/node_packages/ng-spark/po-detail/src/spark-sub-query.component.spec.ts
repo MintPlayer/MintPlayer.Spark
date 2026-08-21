@@ -67,7 +67,7 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
   const service: any = {
     getQuery: vi.fn().mockResolvedValue(linesQuery),
     getEntityTypes: vi.fn().mockResolvedValue([lineType]),
-    getPermissions: vi.fn().mockResolvedValue({ canRead: true, canCreate: true, canEdit: true, canDelete: true }),
+    getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     executeQuery: vi.fn().mockResolvedValue(samplePage),
     getLookupReference: vi.fn().mockResolvedValue({ name: 'dummy', values: [] } as any),
     ...serviceOverrides,

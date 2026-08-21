@@ -3,6 +3,8 @@ using Fleet;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Controllers;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.IdentityProvider.Extensions;
@@ -39,7 +41,6 @@ builder.WebHost.ConfigureKestrel(kestrel =>
     });
 });
 
-builder.Services.AddControllers();
 builder.Services.AddSparkFull(builder.Configuration, options =>
 {
     // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
@@ -47,8 +48,19 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
     options.Replication = opt => opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
     options.RateLimiter = _ => { };
 
+    // Explicit since preview.60: LocalCredentials now defaults to Disabled, matching the client's
+    // opt-in routes. Fleet's E2E smoke test signs in with a password, so it says Full out loud
+    // rather than relying on a default that has moved.
+    options.Authentication = auth => auth.LocalCredentials = SparkLocalCredentials.Full;
+
     options.Configure = spark =>
     {
+        // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
+        // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
+        // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.
+        spark.AddControllers();
+        spark.UseControllers();
+
         // A module presenting its registered certificate becomes an ordinary Spark caller: the CN
         // names the module, the handler emits `group = "Module:{CN}"`, and security.json governs it
         // exactly like a person. Nothing here is replication-specific — the credential works on
@@ -131,7 +143,6 @@ app.UseSparkFull();
 
 app.UseEndpoints(endpoints =>
 {
-    endpoints.MapControllers();
     endpoints.MapSparkFull();
 });
 

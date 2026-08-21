@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents.Session;
 
@@ -33,6 +34,9 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
         => Task.FromResult(queryable);
 
     public void ResetRequestFilterCache() { }
+
+    public Task<LambdaExpression?> GetFilterExpressionAsync(Type entityType, string action)
+        => Task.FromResult<LambdaExpression?>(null);
 
     public Task RedactAsync(
         IAsyncDocumentSession session,

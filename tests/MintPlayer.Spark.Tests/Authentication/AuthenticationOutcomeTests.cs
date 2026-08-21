@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Authentication;
 /// </para>
 /// <para>
 /// The consequence is documented rather than fixed: a rejected credential yields the same rights
-/// as anonymity (the <c>Everyone</c> baseline), and the only trace it leaves is the composite
+/// as anonymity (the anonymous baseline), and the only trace it leaves is the composite
 /// handler's warning.
 /// </para>
 /// </summary>

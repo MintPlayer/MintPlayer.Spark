@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Converters;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
@@ -53,6 +54,11 @@ public static class SparkExtensions
 
         // Register the Spark services
         services.AddSparkServices();
+
+        // Open generics are skipped by the [Register] generator, so the row-rule facade is wired
+        // here. It is the seam an application reaches for to apply an entity's row rule from its own
+        // controllers and jobs (#301).
+        services.AddScoped(typeof(Abstractions.Authorization.ISparkRowRule<>), typeof(Services.SparkRowRule<>));
 
         // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
         // build-time tool, so outside Development it is not in the container at all — there is
@@ -212,29 +218,7 @@ public static class SparkExtensions
         // bodies — Spark's JSON API is not protected by it alone. This middleware closes
         // that gap for any mutating HTTP method (POST/PUT/PATCH/DELETE) whose endpoint has
         // IAntiforgeryMetadata.RequiresValidation = true.
-        app.Use(async (context, next) =>
-        {
-            var endpoint = context.GetEndpoint();
-            var metadata = endpoint?.Metadata.GetMetadata<IAntiforgeryMetadata>();
-            if (metadata is { RequiresValidation: true }
-                && IsMutatingMethod(context.Request.Method)
-                && !IsNonAmbientCredential(context))
-            {
-                var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-                try
-                {
-                    await antiforgery.ValidateRequestAsync(context);
-                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: true));
-                }
-                catch (AntiforgeryValidationException ex)
-                {
-                    context.Features.Set<IAntiforgeryValidationFeature>(new SparkAntiforgeryValidationFeature(isValid: false, error: ex));
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    return;
-                }
-            }
-            await next(context);
-        });
+        app.UseSparkAntiforgery();
 
         // Keep the built-in middleware registered — EndpointMiddleware uses its presence as a
         // "antiforgery was wired" probe when the endpoint has IAntiforgeryMetadata. For
@@ -303,6 +287,8 @@ public static class SparkExtensions
         // shows up as missing columns and values silently dropped on save, which reads as data loss
         // rather than a configuration mistake.
         VerifySparkModelHash(app);
+
+        ReportSecurityPosture(app);
 
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
@@ -483,6 +469,49 @@ public static class SparkExtensions
             Console.WriteLine);
     }
 
+    /// <summary>
+    /// Prints which rights an anonymous caller holds, on every startup.
+    /// <para>
+    /// Follows the principle <c>ModelHashVerifier</c> states — warned on every startup, never once —
+    /// and prints the negative case explicitly. "Anonymous callers can reach nothing" is the whole
+    /// point: silence is indistinguishable from the check not running, so an operator reading a log
+    /// could not tell a closed surface from a summary that was never emitted.
+    /// </para>
+    /// <para>
+    /// Logs rather than throws. Malformed configuration is refused at load, because the file then
+    /// does not say what its author thinks it says; a genuinely public API is a policy decision an
+    /// application is entitled to make, and refusing to start over it would be wrong.
+    /// </para>
+    /// </summary>
+    private static void ReportSecurityPosture(IApplicationBuilder app)
+    {
+        var reporter = app.ApplicationServices.GetService<ISecurityPostureReporter>();
+        if (reporter is null)
+            return;   // No authorization package, so no posture to describe.
+
+        var logger = app.ApplicationServices.GetService<ILoggerFactory>()
+            ?.CreateLogger("MintPlayer.Spark.Security");
+        if (logger is null)
+            return;
+
+        var posture = reporter.Describe();
+
+        if (posture.AnonymouslyReachable.Count == 0)
+        {
+            logger.LogInformation("Spark security: anonymous callers can reach nothing.");
+        }
+        else
+        {
+            logger.LogWarning(
+                "Spark security: anonymous callers can reach {Count} right(s) — {Rights}.",
+                posture.AnonymouslyReachable.Count,
+                string.Join(", ", posture.AnonymouslyReachable));
+        }
+
+        foreach (var warning in posture.Warnings)
+            logger.LogWarning("Spark security: {Warning}", warning);
+    }
+
     private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
@@ -548,45 +577,6 @@ public static class SparkExtensions
         return false;
     }
 
-    private static bool IsMutatingMethod(string method) =>
-        HttpMethods.IsPost(method)
-        || HttpMethods.IsPut(method)
-        || HttpMethods.IsDelete(method)
-        || HttpMethods.IsPatch(method);
-
-    /// <summary>
-    /// True when the request was authenticated by a credential the browser does not attach on its
-    /// own — a bearer token, a client certificate, an API key.
-    /// <para>
-    /// CSRF is an attack on <i>ambient</i> authority: it works because a cross-site page can make
-    /// the browser replay a cookie it is holding. A caller that had to construct its own
-    /// <c>Authorization</c> header, or complete a TLS handshake with a private key, cannot be made
-    /// to do either by a third-party page. Demanding an antiforgery token of such a caller protects
-    /// nothing and makes external POSTs impossible — a CI job has no <c>XSRF-TOKEN</c> cookie to
-    /// echo, so it got a bare 400 with no body (F8).
-    /// </para>
-    /// <para>
-    /// The decision reads the scheme that actually produced <c>HttpContext.User</c>, not the shape
-    /// of the request. That distinction is the security property: were this keyed on "did the
-    /// caller send an <c>Authorization</c> header", an attacker could disable the check on a
-    /// cookie-authenticated victim by attaching a junk header. A junk header authenticates nothing,
-    /// so no scheme records itself here and the gate still runs.
-    /// </para>
-    /// </summary>
-    private static bool IsNonAmbientCredential(HttpContext context)
-        => context.Features.Get<ISparkAuthenticatedSchemeFeature>() is { Scheme.IsAmbient: false };
-
-    /// <summary>
-    /// Spark's implementation of <see cref="IAntiforgeryValidationFeature"/> used to record
-    /// the outcome of <see cref="IAntiforgery.ValidateRequestAsync"/>. The concrete class
-    /// in <c>Microsoft.AspNetCore.Antiforgery</c> is internal, so we provide our own.
-    /// </summary>
-    private sealed class SparkAntiforgeryValidationFeature(bool isValid, AntiforgeryValidationException? error = null)
-        : IAntiforgeryValidationFeature
-    {
-        public bool IsValid { get; } = isValid;
-        public Exception? Error { get; } = error;
-    }
 }
 
 public partial class SparkMiddleware

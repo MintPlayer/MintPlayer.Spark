@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// per-collection read authorization to ETL deployment. Both were covered only by unit tests over
 /// substituted parts — and that gap turned out to be load-bearing: <b>F13 was a defect in M11's own
 /// fix</b>. Neither endpoint established <c>HttpContext.User</c>, so every authenticated module
-/// arrived at the newly-added permission check holding nothing but <c>Everyone</c>'s rights, and
+/// arrived at the newly-added permission check holding nothing but <c>anonymous</c>'s rights, and
 /// every cross-module write would have been refused in production. Nothing failed, because nothing
 /// exercised the whole path.
 /// </para>

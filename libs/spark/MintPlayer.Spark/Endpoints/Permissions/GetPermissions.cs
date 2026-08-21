@@ -23,11 +23,18 @@ internal sealed partial class GetPermissions : IGetEndpoint, IMemberOf<SparkGrou
         }
 
         var target = entityType.Name;
+
+        // canQuery is reported alongside the rest because Query and Read are independently
+        // grantable: 'Query/Person' alone lists rows while refusing a by-id load, and 'Read/Person'
+        // alone does the reverse. The combined 'QueryRead' bundles them invisibly, so the one right
+        // it adds beyond a reader's expectation was precisely the one introspection never mentioned
+        // — a client could not tell "no grid" from "no permissions endpoint" (#298).
+        var canQuery = await permissionService.IsAllowedAsync("Query", target);
         var canRead = await permissionService.IsAllowedAsync("Read", target);
         var canCreate = await permissionService.IsAllowedAsync("New", target);
         var canEdit = await permissionService.IsAllowedAsync("Edit", target);
         var canDelete = await permissionService.IsAllowedAsync("Delete", target);
 
-        return Results.Json(new { canRead, canCreate, canEdit, canDelete });
+        return Results.Json(new { canQuery, canRead, canCreate, canEdit, canDelete });
     }
 }

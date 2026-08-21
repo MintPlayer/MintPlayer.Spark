@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions;
+using System.Linq.Expressions;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Actions;
@@ -60,4 +61,62 @@ public interface IPersistentObjectActions<T> where T : class
     /// </summary>
     /// <param name="entity">The entity about to be deleted</param>
     Task OnBeforeDeleteAsync(T entity);
+
+    // ---- Row-level security ------------------------------------------------------------------
+    //
+    // These three were deliberately absent from this interface and reached by reflection instead,
+    // on the reasoning that a hook nobody has overridden is not part of the contract. The cost of
+    // that was hidden: the public IActionsResolver returns an IPersistentObjectActions<T> that
+    // cannot be asked for a row rule, so an application with a mixed /spark + /api surface had no
+    // way to reuse the rule it had already written, and rewrote the predicate per endpoint (#301).
+    //
+    // Declaring them here is what makes ISparkRowRule<T> possible without reflection. It breaks
+    // hand-written implementers of this interface — classes deriving from
+    // DefaultPersistentObjectActions<T> are unaffected, which is every actions class in every demo
+    // and the shape the source generator emits.
+
+    /// <summary>
+    /// Whether the current caller may perform <paramref name="action"/> on this specific row.
+    /// Consulted by every read path — list, query, stream and detail — and on write, where a
+    /// rejected row is a rejected write.
+    /// <para>
+    /// Return <see langword="true"/> to impose no restriction; that is what
+    /// <see cref="DefaultPersistentObjectActions{T}"/> does, so a type that does not care about row
+    /// security costs nothing. Genuinely per-row and <b>not</b> memoized — express I/O-backed rules
+    /// in <see cref="GetRowFilterAsync"/> instead.
+    /// </para>
+    /// </summary>
+    /// <param name="action">One of "Read" / "Query" / "Edit" / "Delete" / "New".</param>
+    Task<bool> IsAllowedAsync(string action, T entity);
+
+    /// <summary>
+    /// The same policy as a composable predicate, so the framework can push it into the RavenDB
+    /// query instead of reading a whole collection and discarding most of it.
+    /// <para>
+    /// <b><see langword="null"/> means unrestricted</b>, not "deny everything". A caller consuming
+    /// this directly must never coalesce it to <c>x =&gt; false</c>. Note also that the filter is
+    /// only half the rule: the effective rule is this predicate AND
+    /// <see cref="IsAllowedAsync"/>, so a type overriding only the latter returns
+    /// <see langword="null"/> here and is <em>not</em> unrestricted. Prefer
+    /// <c>ISparkRowRule&lt;T&gt;.ApplyAsync</c>, which applies both halves in one call.
+    /// </para>
+    /// <para>
+    /// Invoked at most once per (entity type, action) per request and cached, so awaiting I/O here
+    /// is safe. See <see cref="DefaultPersistentObjectActions{T}.GetRowFilterAsync"/> for the full
+    /// cost contract and the reasons this is an expression rather than a pre-filtered query.
+    /// </para>
+    /// </summary>
+    Task<Expression<Func<T, bool>>?> GetRowFilterAsync(string action);
+
+    /// <summary>
+    /// The attributes of this specific row the current caller must not see. The framework nulls
+    /// their values, marks them invisible on every read path, and shields them from write-back.
+    /// <see langword="null"/> or empty means nothing is redacted — the default, costing nothing.
+    /// <para>
+    /// A dotted name ("Jobs.Salary") reaches a column inside an AsDetail attribute's embedded rows.
+    /// This is <b>attribute</b> visibility, distinct from the <b>row</b> visibility the two hooks
+    /// above express.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity);
 }

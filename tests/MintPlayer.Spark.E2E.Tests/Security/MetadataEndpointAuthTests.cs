@@ -7,10 +7,10 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// <summary>
 /// H-1 — Metadata endpoints must filter their response by the caller's permissions. Each test
 /// runs as an anonymous caller (fresh SparkClient with no cookies), so the request reaches
-/// the server as the Everyone principal. The response must include only entities/queries the
+/// the server as an anonymous principal. The response must include only entities/queries the
 /// caller has at least <c>Query</c> rights on.
 ///
-/// In Fleet, Everyone has <c>QueryRead/Company</c> — so the anonymous caller sees Company in
+/// In Fleet, the anonymous group has <c>QueryRead/Company</c> — so the anonymous caller sees Company in
 /// <see cref="SparkClient.ListEntityTypesAsync"/> and <c>GetCompanies</c> in
 /// <see cref="SparkClient.ListQueriesAsync"/>, but Car/Person/CarBrand/CarStatus must be
 /// filtered out. A blanket 200 + full catalogue is the vulnerability.
@@ -29,14 +29,14 @@ public class MetadataEndpointAuthTests
         var queries = await client.ListQueriesAsync();
         var names = queries.Select(q => q.Name).ToArray();
 
-        // Everyone has QueryRead/Company per App_Data/security.json, so GetCompanies stays.
+        // The anonymous group has QueryRead/Company per App_Data/security.json, so GetCompanies stays.
         names.Should().Contain("GetCompanies",
             "queries the anonymous principal does have QueryRead rights on must stay visible");
 
-        // Everyone does NOT have QueryRead on Car/Person/CarBrand/CarStatus — filtered out.
-        names.Should().NotContain("GetCars", "Car query is not granted to Everyone");
-        names.Should().NotContain("GetPeople", "Person query is not granted to Everyone");
-        names.Should().NotContain("Stolen_Cars", "custom Car query is not granted to Everyone");
+        // The anonymous group does NOT have QueryRead on Car/Person/CarBrand/CarStatus — filtered out.
+        names.Should().NotContain("GetCars", "Car query is not granted to anonymous callers");
+        names.Should().NotContain("GetPeople", "Person query is not granted to anonymous callers");
+        names.Should().NotContain("Stolen_Cars", "custom Car query is not granted to anonymous callers");
     }
 
     [Fact]
@@ -47,9 +47,9 @@ public class MetadataEndpointAuthTests
         var types = await client.ListEntityTypesAsync();
         var names = types.Select(t => t.Name).ToArray();
 
-        names.Should().Contain("Company", "Company type is visible to Everyone");
-        names.Should().NotContain("Car", "Car type is not visible to Everyone");
-        names.Should().NotContain("Person", "Person type is not visible to Everyone");
+        names.Should().Contain("Company", "Company type is visible to anonymous callers");
+        names.Should().NotContain("Car", "Car type is not visible to anonymous callers");
+        names.Should().NotContain("Person", "Person type is not visible to anonymous callers");
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class MetadataEndpointAuthTests
     {
         using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // The Car "GetCars" query is gated by QueryRead/Car which Everyone does not have.
+        // The Car "GetCars" query is gated by QueryRead/Car which the anonymous group does not have.
         // The endpoint must behave as if the query doesn't exist (M-3: 404 vs 403 must be
         // indistinguishable) — SparkClient surfaces that as null.
         var query = await client.GetQueryAsync(Guid.Parse("a20e8400-e29b-41d4-a716-446655440001"));

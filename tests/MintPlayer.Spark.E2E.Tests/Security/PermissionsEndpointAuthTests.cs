@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// M-1 — GET /spark/permissions/{entityTypeId} is allowed to be called anonymously because
 /// the Angular SPA needs to know which program units to render for a visitor. What it MUST
 /// NOT do is inflate the flags (<c>canCreate</c>/<c>canEdit</c>/<c>canDelete</c>) beyond
-/// what the anonymous "Everyone" group is actually granted in security.json.
+/// what the anonymous group is actually granted in security.json.
 /// </summary>
 [Collection(FleetE2ECollection.Name)]
 public class PermissionsEndpointAuthTests
@@ -21,7 +21,7 @@ public class PermissionsEndpointAuthTests
     {
         using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // Car is granted to Administrators + Fleet managers, not Everyone. Either the server
+        // Car is granted to Administrators + Fleet managers, not the anonymous group. Either the server
         // throws (401/403, also secure) or returns permissions with every flag false.
         try
         {
@@ -43,18 +43,18 @@ public class PermissionsEndpointAuthTests
     {
         using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // Company has QueryRead/Company granted to Everyone — anon can read, but must not
+        // Company has QueryRead/Company granted to anonymous callers — anon can read, but must not
         // see any mutation permissions.
         //
         // CanRead is asserted, not merely implied by the test name. Without it this test passed
-        // whether or not the Everyone grant existed at all: it only checked the three write flags,
+        // whether or not the anonymous grant existed at all: it only checked the three write flags,
         // which are false for anonymous regardless. The read grant is the entire subject here, and
         // it is the one thing the assertions did not cover.
         var perms = await client.GetPermissionsAsync("Company");
 
         perms.Should().NotBeNull();
         perms!.CanRead.Should().BeTrue(
-            "security.json grants QueryRead/Company to Everyone, and Everyone applies to callers "
+            "security.json grants QueryRead/Company to the anonymous group, and it applies to callers "
             + "who never authenticated");
         perms.CanCreate.Should().BeFalse();
         perms.CanEdit.Should().BeFalse();

@@ -5,9 +5,9 @@
 //   @mintplayer/ng-spark-auth/guards       (sparkAuthGuard)
 //   @mintplayer/ng-spark-auth/interceptors (sparkAuthInterceptor)
 //   @mintplayer/ng-spark-auth/pipes        (TranslateKeyPipe)
-//   @mintplayer/ng-spark-auth/routes       (sparkAuthRoutes)
+//   @mintplayer/ng-spark-auth/routes       (sparkAuthRoutes + its with* features)
 //   @mintplayer/ng-spark-auth/auth-bar     (SparkAuthBarComponent)
-//   @mintplayer/ng-spark-auth/{login,two-factor,register,forgot-password,reset-password}
+//   @mintplayer/ng-spark-auth/{login,two-factor,register,forgot-password,reset-password,sign-in}
 
 export type { SparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
 export { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';

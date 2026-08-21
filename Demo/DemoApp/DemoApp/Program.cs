@@ -2,6 +2,7 @@ using DemoApp;
 using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Messaging;
 using System.Text.RegularExpressions;
@@ -16,10 +17,16 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // Add services to the container.
-builder.Services.AddControllers();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<DemoSparkContext>();
+
+    // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
+    // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
+    // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.
+    spark.AddControllers();
+    spark.UseControllers();
+
     spark.AddActions();
     spark.AddMessaging();
     spark.AddRecipients();
@@ -55,7 +62,6 @@ app.UseSpark();
 
 app.UseEndpoints(endpoints =>
 {
-    endpoints.MapControllers();
     endpoints.MapSpark();
 });
 

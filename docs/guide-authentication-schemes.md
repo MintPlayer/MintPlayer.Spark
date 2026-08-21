@@ -1,4 +1,4 @@
-# Authentication schemes, `Everyone`, and what happens when authentication fails
+# Authentication schemes, well-known groups, and what happens when authentication fails
 
 Who a caller is, how Spark decides it, and what they get when the answer is "nobody".
 
@@ -24,7 +24,7 @@ answer for module traffic", which is exactly the property F4 and F12 existed to 
 |---|---|---|
 | Spark endpoints — browser | Identity cookie | `security.json` |
 | Spark endpoints — API client | Identity bearer, or external JWT (`Spark:JwtBearer`) | `security.json` |
-| Spark endpoints — anonymous | none | `security.json` (`Everyone` only) |
+| Spark endpoints — anonymous | none | `security.json` (the `anonymous` group only) |
 | Inter-module: `/spark/sync/apply`, `/spark/etl/deploy` | client certificate → `Module:{Name}` | **`security.json`** |
 | OAuth protocol: `/connect/token`, introspect, revoke | `client_id` + secret | the protocol's own rules — **not** `security.json` |
 | GitHub webhooks | HMAC signature | none — no identity exists |
@@ -201,7 +201,7 @@ allowed to touch (**F4**). It now routes through the same chokepoint as every ot
 Two consequences for an existing deployment:
 
 - Register `spark.AddModuleCertificateAuthentication()`, or the calling module arrives anonymous and
-  holds only `Everyone`'s rights.
+  holds only the `anonymous` group's rights.
 - Grant it in `security.json` under the group name `Module:{Name}` — the scheme emits
   `group = "Module:HR"`, so a module is granted exactly like any other group.
 
@@ -228,10 +228,10 @@ and is not done.
 
 | Outcome | `HttpContext.User` | Groups | Rights (with `security.json`) |
 |---|---|---|---|
-| **A. No credential** | Unauthenticated empty principal | none | `Everyone` only |
-| **B. Credential accepted** | Authenticated principal | its group claims **+ `Everyone`** | its groups' rights + `Everyone`'s |
-| **C. Credential refused by every scheme** | **identical to A** | none | `Everyone` only |
-| **D. Authentication not configured** | identical to A | none | `Everyone` only |
+| **A. No credential** | Unauthenticated empty principal | none | `anonymous` only |
+| **B. Credential accepted** | Authenticated principal | its group claims **+ `authenticated`** | its groups' rights + `authenticated`'s |
+| **C. Credential refused by every scheme** | **identical to A** | none | `anonymous` only |
+| **D. Authentication not configured** | identical to A | none | `anonymous` only |
 
 **A, C and D are indistinguishable downstream.** ASP.NET's authentication middleware assigns
 `HttpContext.User` only when a result carries a principal, and both `AuthenticateResult.Fail` and
@@ -255,50 +255,102 @@ It never changes whether access is granted.
 
 ---
 
-## 5. `Everyone` is a baseline grant, not an anonymous-only group
+## 5. `anonymous` and `authenticated` — the well-known groups
 
-`AccessControlService.cs:48-54` adds `Everyone` to **every** caller's group set — authenticated or
-not, before the no-groups check, with no authentication-state test anywhere near it. It is matched by
-*display name*: any group whose default translation is literally `Everyone`.
-
-So `Everyone`'s rights are the floor for every caller in every outcome. A signed-in administrator has
-them too.
-
-**This is not a defect, but it is a sharp edge**: a right granted to `Everyone` is granted to the
-public internet. In both shipped demos that grant is exactly one entry:
+Two group roles are decided from authentication state rather than from claims. An application
+declares which of its groups play them, **by id**:
 
 ```json
-{ "resource": "QueryRead/Company", "groupId": "00000000-0000-0000-0000-000000000000" }
+{
+  "wellKnown": {
+    "anonymous":     "00000000-0000-0000-0000-000000000000",
+    "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "nl": "Anonieme bezoekers" },
+    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users",    "nl": "Aangemelde gebruikers" }
+  }
+}
 ```
 
-An unauthenticated caller against Fleet or HR can list and read Company records, and nothing else.
-*Pinned end to end by `PermissionsEndpointAuthTests.Unauthenticated_GET_permissions_for_Company_reports_read_but_no_write`
+`anonymous` applies while the caller has **not** signed in; `authenticated` applies once they have.
+They are mutually exclusive, and both are optional — an application declaring neither behaves exactly
+as one declaring neither always did.
+
+### What replaced `Everyone`, and why the migration is "one grant becomes two"
+
+`Everyone` was added to **every** caller's group set — signed-in or not — so its rights were the
+floor for everybody. It is deleted, and `anonymous` is not a drop-in replacement: it is **narrower**.
+
+> Every right you granted to `Everyone` was granted to the public internet. Decide, per right,
+> whether that was intended. If it was, move it to `anonymous`. If it was not, move it to
+> `authenticated` — **do not delete it**. A right that both should keep becomes two grants.
+
+⚠️ Fleet granted `QueryRead/Company` through `Everyone` and nowhere else, so the anonymous-only
+migration would have locked every signed-in Fleet user out of Company. That is the failure mode this
+paragraph exists to prevent.
+
+**And never simply delete the grant.** Type-level rights gate row rules — `DatabaseAccess.cs:84` runs
+before the row gate at `:106` — so with no grant at all `GetRowFilterAsync` and `IsAllowedAsync` never
+run and *every* caller is denied, signed-in ones included. A row rule narrows an admitted right; it
+cannot grant one.
+
+A file still declaring a group named `Everyone` with no `wellKnown` block **fails to load**, with
+these instructions inline. Once the roles are declared by id a group's *name* carries no behaviour at
+all, so an application is then free to call a group whatever it likes — including "Everyone".
+
+### Why by id rather than by name
+
+The well-known groups used to be matched by *display name*, through
+`TranslatedString.GetDefaultValue()`:
+
+```csharp
+public string GetDefaultValue() => Translations.Values.FirstOrDefault() ?? string.Empty;
+```
+
+That is the first translation in **file order** — not the English one. So
+`{"en":"Everyone","nl":"Iedereen"}` matched and `{"nl":"Iedereen","en":"Everyone"}` did not:
+reordering two JSON keys silently changed who could reach what. Renaming a group for the UI silently
+un-declared its role, and two groups sharing a first translation resolved arbitrarily. Meanwhile
+claim-based membership resolution matched a name against *any* translation — two different matching
+rules, sixty lines apart.
+
+An explicit id map fixes localization, renaming, duplicates and case in one move.
+
+### A claim cannot assert a well-known group
+
+Every id named in `wellKnown` is excluded from claim-derived membership resolution. So a principal
+carrying `group: "Signed-in users"` does **not** get the authenticated group — authentication state
+decides it, and nothing else can.
+
+This is worth stating because it was previously false while being documented as true. A comment
+shipped in #306 asserted the guarantee; `ResolveGroupIds` matched any provider-returned name against
+any translation of any group, well-known ones included, so the name resolved the id at step 1 and the
+`IsAuthenticated` test was never reached. Inert with the shipped claims provider, which returns
+nothing for an unauthenticated caller — and silently broken by any custom one.
+
+### The commonest shape
+
+*Any signed-in user may query this type, and a row rule narrows it to their own rows.* Before the
+`authenticated` group existed this could not be written at all: a signed-in user carrying no group
+claims resolved to exactly the same set as an anonymous visitor, so the two were indistinguishable to
+`security.json`.
+
+```json
+{ "resource": "QueryRead/Repository", "groupId": "a1b2c3d4-0000-0000-0000-00000000000f" }
+```
+
+### Seeing the anonymous surface
+
+Every startup prints which rights an anonymous caller holds, **including when the answer is nothing**
+— silence is indistinguishable from the check not running. `--spark-verify-security` fails CI when
+that set changes, against a baseline written by `--spark-synchronize-security`. Both run without a
+database, because the posture is computed from `security.json` alone.
+
+In both shipped demos the anonymous grant is exactly one entry, `QueryRead/Company`, mirrored by an
+`authenticated` twin. *Pinned end to end by
+`PermissionsEndpointAuthTests.Unauthenticated_GET_permissions_for_Company_reports_read_but_no_write`
 and `..._for_Car_reports_no_access`.*
-
-### `Authenticated` — the counterpart
-
-Because `Everyone` includes anonymous callers and every other group comes from claims, a signed-in
-user carrying **no group claims** resolved to the same set as an anonymous visitor: `{Everyone}`. The
-two were indistinguishable to `security.json`.
-
-Since preview.59 there is a second well-known group, matched the same way by display name, added only
-when `HttpContext.User.Identity.IsAuthenticated` is true:
-
-```json
-{ "resource": "QueryRead/Repository", "groupId": "<the Authenticated group's id>", "isDenied": false }
-```
-
-That expresses the commonest shape there is — *any signed-in user may query this type, and a row rule
-narrows it to their own rows* — which previously could not be written at all.
-
-**Migrating a type off an anonymous grant: move the grant, do not delete it.** Type-level rights gate
-row rules (`DatabaseAccess.cs:84` runs before the row gate at `:106`), so with no grant at all
-`GetRowFilterAsync` and `IsAllowedAsync` never run and *every* caller is denied — signed-in ones
-included. A row rule narrows an admitted right; it cannot grant one.
-
-Like `Everyone`, it is opt-in by definition: an app that declares no group by this name is unaffected.
-Authentication state is read where `Everyone` is already resolved rather than synthesized as a claim
-in the membership provider, so an external identity provider cannot assert the group name for itself.
 
 ---
 
@@ -369,8 +421,8 @@ Which `IAccessControl` is registered last wins.
 | Configuration | Behaviour | Where |
 |---|---|---|
 | Neither opt-in called | **Denies everything**, unconditionally | `DenyAllAccessControl`, the DI default (`SparkMiddleware.cs:65`) |
-| `spark.AddAuthorization()` | `security.json` groups + rights, with `Everyone` always added | `AccessControlService` |
-| `spark.AllowAnonymousAccess()` | **Allows everything.** `security.json`, groups and `Everyone` are never consulted at all | `AllowAllAccessControl` |
+| `spark.AddAuthorization()` | `security.json` groups + rights, plus the `anonymous`/`authenticated` well-known group | `AccessControlService` |
+| `spark.AllowAnonymousAccess()` | **Allows everything.** `security.json` and groups are never consulted at all | `AllowAllAccessControl` |
 | `AddAuthorization(o => o.DefaultBehavior = AllowAll)` | `security.json` as above, but an unmatched resource is *allowed* instead of denied | `AccessControlService`, both the empty-groups branch and the final fallthrough |
 
 Spark's real fail-closed guarantee lives in the first row — the deny-all DI default (R2-H1) — not in
@@ -378,7 +430,7 @@ any authentication check. The other three are deliberate ways to waive it, and a
 for unauthenticated callers too.
 
 **A missing `security.json` is not a locked door.** The loader logs a warning and returns an empty
-configuration (`SecurityConfigurationLoader.cs:57-61`). With no groups and no `Everyone`, every
+configuration (`SecurityConfigurationLoader.cs:57-61`). With no groups and no well-known role, every
 request falls to `DefaultBehavior` — so an app that set `AllowAll` for convenience and has no
 `security.json` allows everything to everyone. That is exactly WebhooksDemo's configuration
 (`Demo/WebhooksDemo/WebhooksDemo/Program.cs:29`, no `App_Data/security.json`); it is a demo, but do
@@ -400,8 +452,8 @@ not copy the pairing into an app that matters.
 | Behaviour | Covered | Where |
 |---|---|---|
 | Anonymous caller **cannot list or create** a protected entity (`Car`) | **E2E** | `AnonymousPersistentObjectAccessTests` (4 tests) |
-| Anonymous caller **can** read what `Everyone` grants (`Company`) | **E2E** | same |
-| Anonymous caller gets `Everyone` rights and no more, as reported | **E2E** | `PermissionsEndpointAuthTests` (2 tests) |
+| Anonymous caller **can** read what the `anonymous` group grants (`Company`) | **E2E** | same |
+| Anonymous caller gets the `anonymous` group's rights and no more, as reported | **E2E** | `PermissionsEndpointAuthTests` (2 tests) |
 | Anonymous caller sees only permitted metadata | **E2E** | `MetadataEndpointAuthTests` (4 tests) |
 | Anonymous caller cannot mutate lookup references | **E2E** | `LookupReferenceAuthTests` (2 tests) |
 | Denied and non-existent are indistinguishable to the client | **E2E** | `NotFoundVsForbiddenTests` |
@@ -431,7 +483,7 @@ not copy the pairing into an app that matters.
   replication endpoints rely on the certificate identity rather than their own check.
 - **A rejected credential's *authorization* outcome is untested.** `AuthenticationOutcomeTests`
   proves the principal is anonymous, and `CredentialSchemeTests` proves the antiforgery gate stays
-  armed — but nothing asserts that a garbage bearer token yields exactly `Everyone` rights on a real
+  armed — but nothing asserts that a garbage bearer token yields exactly the `anonymous` group's rights on a real
   permission check.
 - **Logout is not proven to revoke anything.** `LogoutTests` asserts that `SignOutAsync` was *called*
   with the right scheme, against a mock. No test logs in, logs out, and retries with the stale
@@ -517,19 +569,29 @@ JWT bearer, which would be a dead end if offered as a sign-in button.
 
 ### The client half
 
-Pass the matching mode to `sparkAuthRoutes`, and point `loginUrl` at a route that exists:
+Opt into the pages the server actually mounts, and point `loginUrl` at a route that exists:
 
 ```ts
-// app.routes.ts
-...sparkAuthRoutes({ localCredentials: 'disabled' }),   // emits only /sign-in
+// app.routes.ts — external sign-in only
+...sparkAuthRoutes(withExternalLogin(githubProvider())),
+
+// app.routes.ts — password sign-in as well
+...sparkAuthRoutes(withLocalLogin(), withRegistration(), withExternalLogin(githubProvider())),
 
 // app.config.ts
 provideSparkAuth({ loginUrl: '/sign-in' }),
 ```
 
-`sparkAuthRoutes` routes `SparkSignInComponent` at `/sign-in` whenever local credentials are limited.
-It renders one button per provider, read from `GET /spark/auth/capabilities` rather than from a
-hard-coded scheme name. In `full` mode it is not routed — the login page is already the landing page.
+**Nothing is mounted unless a feature asks for it** — `sparkAuthRoutes()` with no arguments emits no
+pages at all. `withExternalLogin(...)` routes `SparkSignInComponent` at `/sign-in`; it renders one
+button per provider, read from `GET /spark/auth/capabilities` rather than from a hard-coded scheme
+name. A `githubProvider()` declaration only *decorates* that button — icon, label, ordering, keyed by
+scheme — so it cannot conjure a provider the server does not have, and a provider the server adds
+later gets a default button rather than disappearing.
+
+The client and server halves are configured independently and can disagree without anything failing,
+which is why the sign-in page warns in development when it is routed against a server still reporting
+`localCredentials = Full`.
 
 `loginUrl` is the single target the guard, the interceptor and `SparkAuthBarComponent` all redirect
 to. Nothing connects it to the routes that exist, so pointing it at an unregistered route used to

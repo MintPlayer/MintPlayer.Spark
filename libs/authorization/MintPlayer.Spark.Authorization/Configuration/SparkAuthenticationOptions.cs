@@ -7,22 +7,38 @@ namespace MintPlayer.Spark.Authorization.Configuration;
 /// </summary>
 /// <example>
 /// <code>
-/// // An application that only allows GitHub sign-in:
+/// // An application that only allows GitHub sign-in — the default posture:
 /// spark.AddAuthentication&lt;SparkUser&gt;(
-///     auth =&gt; auth.LocalCredentials = SparkLocalCredentials.Disabled,
 ///     configureProviders: identity =&gt; identity.AddGitHub(...));
+///
+/// // An application that also wants email/password sign-in:
+/// spark.AddAuthentication&lt;SparkUser&gt;(
+///     auth =&gt; auth.LocalCredentials = SparkLocalCredentials.Full);
 /// </code>
 /// </example>
 public class SparkAuthenticationOptions
 {
     /// <summary>
     /// How much of the local-credential surface to mount. Defaults to
-    /// <see cref="SparkLocalCredentials.Full"/>, so an application that does not set it keeps
-    /// the endpoint set Spark has always mapped.
+    /// <see cref="SparkLocalCredentials.Disabled"/>.
     /// </summary>
     /// <remarks>
-    /// Setting this to <see cref="SparkLocalCredentials.Disabled"/> without registering an
-    /// external provider leaves an application nobody can sign into, and is rejected at startup.
+    /// <para>
+    /// The default was <see cref="SparkLocalCredentials.Full"/> and is now
+    /// <see cref="SparkLocalCredentials.Disabled"/>, to match the client: <c>sparkAuthRoutes()</c>
+    /// mounts nothing unless a feature asks for it, and leaving the two defaults on opposite
+    /// postures is exactly the mismatch <c>SparkSignInComponent</c>'s dev-mode warning exists to
+    /// catch. An application that wants password sign-in now says so.
+    /// </para>
+    /// <para>
+    /// The password-recovery family is an account-enumeration and mail-send surface even where
+    /// nobody holds a password, so the safe default is the one that mounts nothing and the
+    /// application opts in.
+    /// </para>
+    /// <para>
+    /// Leaving this at the default without registering an external provider makes an application
+    /// nobody can sign into, and is rejected at startup — loudly, which is the point.
+    /// </para>
     /// </remarks>
-    public SparkLocalCredentials LocalCredentials { get; set; } = SparkLocalCredentials.Full;
+    public SparkLocalCredentials LocalCredentials { get; set; } = SparkLocalCredentials.Disabled;
 }
