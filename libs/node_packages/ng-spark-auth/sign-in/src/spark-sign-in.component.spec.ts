@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- see the provider below
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { describe, expect, it, vi } from 'vitest';
@@ -50,8 +51,14 @@ async function setup(capabilitiesImpl: () => Promise<SparkAuthCapabilities>) {
     providers: [
       provideRouter(routes),
       // bs-alert binds a synthetic animation property, so rendering either alert branch throws
-      // without an animations provider. Noop rather than real animations: the assertions are about
-      // which branch rendered, not about how it got there.
+      // ("Found the synthetic property @…") without an animations provider. Noop rather than real
+      // animations: the assertions are about which branch rendered, not how it got there.
+      //
+      // Deprecated, unavoidably. The whole provider family is deprecated as of Angular 20.2 in
+      // favour of animate.enter/animate.leave, with intent to remove in v23 — but that migration
+      // belongs to @mintplayer/ng-bootstrap, which still emits synthetic props. Every demo app in
+      // this repo carries the same deprecated call for the same reason.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       provideNoopAnimations(),
       { provide: SparkAuthService, useValue: auth },
       { provide: SparkAuthTranslationService, useValue: { t: (k: string) => k } },
