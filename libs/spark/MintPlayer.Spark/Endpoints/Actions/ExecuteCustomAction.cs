@@ -23,6 +23,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     }
 
     [Inject] private readonly IModelLoader modelLoader;
+
+    /// <summary>
+    /// Upper bound on submitted selected items, whatever the action's selection rule says.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately generous — real selections are single- or double-digit — while still
+    /// bounding what one request can cost. See the comment at the check for why the existing
+    /// "estimatedRequests" figure is not a bound at all.
+    /// </remarks>
+    private const int MaxSelectedItems = 200;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
@@ -60,10 +70,13 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         // ICustomAction in the AppDomain, so an action shipped by a referenced library — or one
         // retired by removing it from customActions.json (the documented way) — was still callable
         // by name. Gate on the configuration, exactly as ListCustomActions does: absent → 404.
-        if (!configLoader.GetConfiguration().Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+        var configuration = configLoader.GetConfiguration();
+        if (!configuration.Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
         {
             return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
+
+        var definition = configuration.First(kv => kv.Key.Equals(actionName, StringComparison.OrdinalIgnoreCase)).Value;
 
         var action = actionResolver.Resolve(actionName);
         if (action is null)
@@ -72,6 +85,44 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         }
 
         var request = await httpContext.Request.ReadFromJsonAsync<CustomActionRequest>();
+
+        var selectedCount = request?.SelectedItems?.Length ?? 0;
+
+        // A hard ceiling on the selection, whether or not a rule is declared.
+        //
+        // This is NOT belt-and-braces for the rule below. IgnoreMaxRequests sets
+        // MaxNumberOfRequestsPerSession to int.MaxValue for the whole handler, and the
+        // "estimatedRequests" figure it is handed is only a logging threshold — one that
+        // is itself computed from SelectedItems.Length, so the warning fires later the
+        // larger the abuse. Each selected id then costs a document load, a collection-guard
+        // check, a row-rule evaluation, breadcrumb resolution and redaction. Without this,
+        // any caller holding one action grant can turn a single request into unbounded
+        // server work, and no rate limiter is on this route by default.
+        if (selectedCount > MaxSelectedItems)
+        {
+            return ClientResult.Envelope(clientAccessor,
+                new { error = $"At most {MaxSelectedItems} items can be selected; {selectedCount} were submitted." },
+                StatusCodes.Status400BadRequest);
+        }
+
+        // Enforce the declared selection rule, BEFORE the reload loop below, so a violating
+        // request costs no database work.
+        //
+        // Scoped to the query path — "the request named no parent" — because the rule
+        // describes a query view's selection. Fleet's CarCopy is "=1" with showedOn "both",
+        // and its detail-page invocation legitimately sends a parent and no selection;
+        // enforcing there would 400 the very action this rule was written for.
+        //
+        // ⚠️ This is input validation, not authorization. The gate is the grant checked
+        // above, which holds regardless of which query the caller clicked from — a caller
+        // can always POST directly, and no narrowing here changes that.
+        var invokedFromQuery = request?.Parent is null || string.IsNullOrEmpty(request.Parent.Id);
+        if (invokedFromQuery && !SelectionRuleParser.Parse(definition.SelectionRule)(selectedCount))
+        {
+            return ClientResult.Envelope(clientAccessor,
+                new { error = $"Action '{actionName}' requires a selection of '{definition.SelectionRule}'; {selectedCount} items were submitted." },
+                StatusCodes.Status400BadRequest);
+        }
 
         if (request?.RetryResults is { Length: > 0 } retryResults)
         {
