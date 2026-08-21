@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, TemplateRef, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
@@ -13,7 +13,7 @@ import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
-import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SPARK_QUERY_CHROME, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   CustomActionDefinition,
   filterQueryActions,
@@ -35,6 +35,7 @@ import {
 export class SparkSubQueryComponent {
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly chromeRegistry = inject(SPARK_QUERY_CHROME);
   readonly lang = inject(SparkLanguageService);
 
   queryId = input.required<string>();
@@ -69,6 +70,45 @@ export class SparkSubQueryComponent {
    * sort on every button press.
    */
   reloadToken = input<unknown>(null);
+
+  /**
+   * Render without the surrounding card, for a host that owns its own chrome — a tab
+   * body, a modal, a dashboard tile.
+   *
+   * Prefer letting the query declare its header (`headerRenderer`, `actions`): that
+   * works everywhere, including where this component is auto-rendered and no host
+   * exists. This is the escape hatch for a genuinely chromeless embed, not the way to
+   * customise a header.
+   */
+  showCard = input(true);
+
+  /**
+   * Replace the header for one hand-instantiated usage.
+   *
+   * A `TemplateRef` rather than `<ng-content>` deliberately: it matches
+   * `spark-po-detail`'s `extraActionsTemplate`/`extraContentTemplate`, and unlike
+   * projection it can be forwarded by a host that is itself several layers up.
+   *
+   * Precedence is headerRenderer -> headerTemplate -> caption + declared actions.
+   */
+  headerTemplate = input<TemplateRef<{ $implicit: SparkQuery }> | null>(null);
+
+  /** The registered header component this query asked for, if any. */
+  headerComponent = computed(() => {
+    const name = this.query()?.headerRenderer;
+    if (!name) return null;
+    return this.chromeRegistry.find(c => c.name === name)?.headerComponent ?? null;
+  });
+
+  headerComponentInputs = computed(() => {
+    const component = this.headerComponent();
+    if (!component) return {};
+    return withDeclaredInputs(component, {
+      query: this.query() ?? undefined,
+      options: this.query()?.headerRendererOptions,
+      reload: () => this.reload(),
+    });
+  });
 
   colors = Color;
 

@@ -12,32 +12,40 @@
   final `@else` always renders something. Do not fold these back into one gate,
   and do not move the spinner inside the `query()` branch.
 -->
-@if (loading()) {
-  <bs-card style="display: block; margin: 1rem 0;">
+<ng-template #content>
+  @if (loading()) {
     <div class="text-center p-3">
       <bs-spinner />
     </div>
-  </bs-card>
-} @else if (query(); as q) {
-  <bs-card style="display: block; margin: 1rem 0;">
-    <bs-card-header>
-      @if (customActions().length) {
-        <!-- Caption and actions share the header. The nav renders only when the query
-             declares actions, so a query without them is pixel-identical to before. -->
-        <div class="d-flex align-items-center gap-2">
-          <span class="me-auto">{{ (q.description | resolveTranslation) || q.name }}</span>
-          <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
-            @for (action of customActions(); track action.name) {
-              <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary" (click)="onCustomAction(action)">
-                {{ action.displayName | resolveTranslation }}
-              </button>
-            }
-          </bs-priority-nav>
-        </div>
-      } @else {
-        {{ (q.description | resolveTranslation) || q.name }}
-      }
-    </bs-card-header>
+  } @else if (query(); as q) {
+    @if (headerComponent(); as headerType) {
+      <bs-card-header>
+        <ng-container *ngComponentOutlet="headerType; inputs: headerComponentInputs()"></ng-container>
+      </bs-card-header>
+    } @else if (headerTemplate(); as headerTpl) {
+      <bs-card-header>
+        <ng-container *ngTemplateOutlet="headerTpl; context: { $implicit: q }"></ng-container>
+      </bs-card-header>
+    } @else {
+      <bs-card-header>
+        @if (customActions().length) {
+          <!-- Caption and actions share the header. The nav renders only when the query
+               declares actions, so a query without them is pixel-identical to before. -->
+          <div class="d-flex align-items-center gap-2">
+            <span class="me-auto">{{ (q.description | resolveTranslation) || q.name }}</span>
+            <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+              @for (action of customActions(); track action.name) {
+                <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary" (click)="onCustomAction(action)">
+                  {{ action.displayName | resolveTranslation }}
+                </button>
+              }
+            </bs-priority-nav>
+          </div>
+        } @else {
+          {{ (q.description | resolveTranslation) || q.name }}
+        }
+      </bs-card-header>
+    }
     <div class="p-3">
       <!-- A page-fetch failure while the grid is already resolved. Without this the
            catch returns an empty page and a failed query is indistinguishable from
@@ -89,18 +97,30 @@
         </ng-container>
       </bs-datatable>
     </div>
-  </bs-card>
-} @else {
-  <!-- The query could not be resolved. Rendering the card shell keeps the host's
-       layout intact and, crucially, makes the failure visible: this branch used to
-       render nothing at all. -->
-  <bs-card style="display: block; margin: 1rem 0;">
+  } @else {
+    <!-- The query could not be resolved. Rendering something keeps the host's layout
+         intact and, crucially, makes the failure visible: this branch used to render
+         nothing at all. -->
     <div class="p-3">
       <bs-alert [type]="colors.danger" class="mb-0">
         {{ errorMessage() || ('spark.query.unavailable' | t) }}
       </bs-alert>
     </div>
+  }
+</ng-template>
+
+<!--
+  The card is the component's, unless the host says otherwise. `bs-card-header` is
+  styled by a GLOBAL `.card-header` rule rather than `::slotted`, so the header keeps
+  its appearance with no `bs-card` ancestor — which is what makes the bare branch a
+  wrapper change only, with no duplicated content.
+-->
+@if (showCard()) {
+  <bs-card style="display: block; margin: 1rem 0;">
+    <ng-container *ngTemplateOutlet="content"></ng-container>
   </bs-card>
+} @else {
+  <ng-container *ngTemplateOutlet="content"></ng-container>
 }
 
 <ng-template #cellContent let-item let-attr="attr">
