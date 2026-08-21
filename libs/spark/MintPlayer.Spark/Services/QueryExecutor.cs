@@ -252,9 +252,7 @@ internal partial class QueryExecutor : IQueryExecutor
         var methodInfo = ResolveCustomQueryMethod(actionsInstance.GetType(), methodName);
         if (methodInfo == null)
         {
-            throw new InvalidOperationException(
-                $"Custom query method '{methodName}' not found on actions class '{actionsInstance.GetType().Name}'. " +
-                $"Expected a public method returning IQueryable<T> with zero parameters or one CustomQueryArgs parameter.");
+            throw new InvalidOperationException(DescribeUnusableCustomQuery(actionsInstance.GetType(), methodName));
         }
 
         // Build args and invoke
@@ -290,16 +288,28 @@ internal partial class QueryExecutor : IQueryExecutor
             return ([], false);
         }
 
+        // Capabilities come from the object, not from the signature (#294). A method declared
+        // IQueryable<T> whose body is session.Query<T>() returns a Raven queryable, and asking the
+        // declared type would deny it projection, includes and search pushdown for no reason. Asking
+        // the object cannot over-claim: it either is a Raven queryable or it is not.
+        //
+        // This is also why the two must be computed here rather than cached alongside the MethodInfo:
+        // the same method can only be resolved once, but what it returns is a per-invocation fact.
+        var isRavenQueryable = typeof(IRavenQueryable<>)
+            .MakeGenericType(methodInfo.ResultElementType)
+            .IsInstanceOfType(result);
+        var isQueryable = result is IQueryable;
+
         // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
         // Without this, RavenDB loads full documents which lack computed index fields.
-        if (methodInfo.IsRavenQueryable && methodInfo.ResultElementType.IsSparkProjection())
+        if (isRavenQueryable && methodInfo.ResultElementType.IsSparkProjection())
         {
             result = ApplyProjection(result, methodInfo.ResultElementType);
         }
 
         // Chain .Include() on the custom query too (#239) — custom queries applied no includes
         // before. Only for RavenDB-backed queryables (an in-memory IQueryable has no .Include).
-        if (methodInfo.IsRavenQueryable)
+        if (isRavenQueryable)
         {
             var includePaths = referenceResolver.ResolveIncludePaths(methodInfo.ResultElementType, entityType);
             if (includePaths.Count > 0)
@@ -310,7 +320,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Push the row filter into the custom query too — a custom query says where rows come
         // from, not which of them this caller may see. No-op when the method yields projections.
-        if (methodInfo.IsQueryable)
+        if (isQueryable)
         {
             result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
         }
@@ -318,24 +328,28 @@ internal partial class QueryExecutor : IQueryExecutor
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
         // IQueryable has no Search, and the caller's own filtering may already have materialized.
         var searchPushedDown = false;
-        if (searchTerm != null && methodInfo.IsRavenQueryable)
+        if (searchTerm != null && isRavenQueryable)
         {
             (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm);
         }
 
         // Apply sorting if the result is IQueryable
-        if (methodInfo.IsQueryable && query.SortColumns.Length > 0)
+        if (isQueryable && query.SortColumns.Length > 0)
         {
             result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns);
         }
 
         // Materialize results
         IEnumerable<object> entities;
-        if (methodInfo.IsRavenQueryable)
+        if (isRavenQueryable)
         {
+            // Raven-backed: enumerate asynchronously. Reaching MaterializeQueryable with one of these
+            // is what made Task<IRavenQueryable<T>> throw before #294 — a blocking ToList() over an
+            // async session, which RavenDB rejects. Both branches now ask the object the same
+            // question, so they can no longer disagree.
             entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType);
         }
-        else if (result is IQueryable)
+        else if (isQueryable)
         {
             // In-memory IQueryable — materialize via LINQ ToList
             entities = MaterializeQueryable(result, methodInfo.ResultElementType);
@@ -379,6 +393,41 @@ internal partial class QueryExecutor : IQueryExecutor
         // Otherwise, we need to infer from the method return type — but we need the Actions class first.
         // For now, return null if not set (EntityType should be set for Custom queries).
         return null;
+    }
+
+    /// <summary>
+    /// Explains why a custom query could not be bound, distinguishing a genuinely missing method from
+    /// one that exists but whose shape the executor cannot use.
+    /// </summary>
+    /// <remarks>
+    /// Worth the extra reflection because the two failures look identical to a caller but need
+    /// opposite fixes. Before #294 a method returning <c>ValueTask&lt;IQueryable&lt;T&gt;&gt;</c> was
+    /// reported as "not found" — sending the author looking for a typo in a name that was correct.
+    /// </remarks>
+    private static string DescribeUnusableCustomQuery(Type actionsType, string methodName)
+    {
+        const string expected =
+            "Expected a public method returning IQueryable<T>, IRavenQueryable<T>, IEnumerable<T>, " +
+            "or a Task<> of one of those, with zero parameters or one CustomQueryArgs parameter.";
+
+        var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+        if (method == null)
+        {
+            return $"Custom query method '{methodName}' not found on actions class '{actionsType.Name}'. {expected}";
+        }
+
+        var parameters = method.GetParameters();
+        var signature = $"{method.ReturnType} {methodName}(" +
+            string.Join(", ", parameters.Select(p => p.ParameterType.Name)) + ")";
+
+        if (parameters.Length > 1 || (parameters.Length == 1 && parameters[0].ParameterType != typeof(CustomQueryArgs)))
+        {
+            return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' takes parameters " +
+                   $"the executor cannot supply: {signature}. {expected}";
+        }
+
+        return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' returns a shape the " +
+               $"executor cannot use: {signature}. Note that ValueTask is not supported — use Task. {expected}";
     }
 
     /// <summary>
@@ -428,16 +477,11 @@ internal partial class QueryExecutor : IQueryExecutor
             if (elementType == null)
                 return null;
 
-            var isRavenQueryable = !isAsync && typeof(IRavenQueryable<>).MakeGenericType(elementType).IsAssignableFrom(returnType);
-            var isQueryable = !isAsync && typeof(IQueryable).IsAssignableFrom(returnType);
-
             return new CustomQueryMethodInfo
             {
                 Method = method,
                 AcceptsArgs = acceptsArgs,
                 ResultElementType = elementType,
-                IsQueryable = isQueryable,
-                IsRavenQueryable = isRavenQueryable,
                 IsAsync = isAsync,
             };
         });
@@ -880,12 +924,21 @@ internal partial class QueryExecutor : IQueryExecutor
     #endregion
 }
 
+/// <summary>
+/// What <c>ResolveCustomQueryMethod</c> can know from a signature alone: how to invoke the method,
+/// what it yields elements of, and whether the call must be awaited.
+/// </summary>
+/// <remarks>
+/// Deliberately carries no capability flags. Whether the result can be sorted, filtered, searched or
+/// projected is a property of the <em>object</em> the method returns, not of its declared type — a
+/// method declared <c>IQueryable&lt;T&gt;</c> commonly returns a Raven queryable, and inferring from
+/// the signature under-serves it (#294). The flags are therefore computed per invocation, after the
+/// await, in <c>ExecuteCustomQueryAsync</c>.
+/// </remarks>
 internal sealed class CustomQueryMethodInfo
 {
     public required MethodInfo Method { get; init; }
     public required bool AcceptsArgs { get; init; }
     public required Type ResultElementType { get; init; }
-    public required bool IsQueryable { get; init; }
-    public required bool IsRavenQueryable { get; init; }
     public required bool IsAsync { get; init; }
 }
