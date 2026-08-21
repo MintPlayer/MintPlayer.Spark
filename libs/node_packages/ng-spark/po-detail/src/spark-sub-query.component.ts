@@ -1,17 +1,22 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
+import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { NgComponentOutlet } from '@angular/common';
 import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
+  CustomActionDefinition,
+  filterQueryActions,
   EntityType,
   EntityAttributeDefinition,
   LookupReference,
@@ -23,13 +28,14 @@ import {
 
 @Component({
   selector: 'spark-sub-query',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
   templateUrl: './spark-sub-query.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkSubQueryComponent {
   private readonly sparkService = inject(SparkService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  readonly lang = inject(SparkLanguageService);
 
   queryId = input.required<string>();
 
@@ -84,6 +90,16 @@ export class SparkSubQueryComponent {
    * either leak or mislead.
    */
   errorMessage = signal<string | null>(null);
+
+  /**
+   * Actions the query declares, rendered in this component's own header.
+   *
+   * This is what makes a query's chrome work with no host: a sub-query is rendered
+   * automatically from `EntityTypeDefinition.Queries`, so there is nobody to project
+   * a toolbar in. The query says what belongs in its header, and it follows the query
+   * wherever it is rendered.
+   */
+  customActions = signal<CustomActionDefinition[]>([]);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   loading = signal(true);
   canRead = signal(false);
@@ -136,6 +152,20 @@ export class SparkSubQueryComponent {
    * state the query reads from. For a definition change — new columns, a renamed
    * query — the inputs themselves must change; that is the expensive path.
    */
+  async onCustomAction(action: CustomActionDefinition): Promise<void> {
+    if (action.confirmationMessageKey) {
+      const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
+      if (!confirm(message)) return;
+    }
+    try {
+      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
+      if (action.refreshOnCompleted) this.reload();
+    } catch (e) {
+      const err = e as HttpErrorResponse;
+      this.errorMessage.set(err.error?.error || err.message || this.lang.t('common.actionFailed') || 'Action failed');
+    }
+  }
+
   reload(): void {
     const q = this.query();
     if (q) this.fetchFn.set(this.makeFetch(q, this.parentId(), this.parentType()));
@@ -151,6 +181,7 @@ export class SparkSubQueryComponent {
     this.query.set(null);
     this.entityType.set(null);
     this.canRead.set(false);
+    this.customActions.set([]);
     try {
       const [resolvedQuery, entityTypes] = await Promise.all([
         this.sparkService.getQuery(queryId),
@@ -172,8 +203,12 @@ export class SparkSubQueryComponent {
         );
         this.entityType.set(et || null);
         if (et) {
-          const permissions = await this.sparkService.getPermissions(et.id);
+          const [permissions, actions] = await Promise.all([
+            this.sparkService.getPermissions(et.id),
+            this.sparkService.getCustomActions(et.id),
+          ]);
           this.canRead.set(permissions.canRead);
+          this.customActions.set(filterQueryActions(actions, resolvedQuery));
         }
       }
 

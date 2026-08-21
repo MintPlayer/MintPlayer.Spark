@@ -13,6 +13,7 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
+import { filterQueryActions } from '@mintplayer/ng-spark/models';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
@@ -168,7 +169,10 @@ export class SparkQueryListComponent {
       ]);
       this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
-      this.customActions.set(actions.filter(a => a.showedOn === 'list' || a.showedOn === 'both'));
+      // 'query', not 'list'. The server model and docs/guide-custom-actions.md have
+      // always documented "detail" | "query" | "both"; this filter tested for a value
+      // nothing emits, so an action authored per the documentation rendered NOWHERE.
+      this.customActions.set(filterQueryActions(actions, this.query()));
     }
   }
 
