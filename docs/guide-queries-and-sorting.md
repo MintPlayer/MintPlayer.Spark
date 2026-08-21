@@ -340,6 +340,33 @@ display attribute; the query executor redirects to `{Name}Sort` when the project
 `[IgnoreProperty]`. That `[IgnoreProperty]` is required — it is what distinguishes a real companion from an
 ordinary property that happens to be named `FooSort`.
 
+### A sort column must be on the query surface
+
+A caller-supplied `sortColumns` entry must name an attribute that exists in the type's model **and**
+whose `showedOn` includes `Query`. Anything else is refused, logged, and the rows keep their index
+order.
+
+This is a security boundary, not tidiness. Ordering is a comparison oracle: redaction blanks a value
+in the response but leaves `ORDER BY` intact, so an attribute a caller may never read could otherwise
+be recovered one comparison at a time — sort ascending, sort descending, observe where the row lands,
+bisect. Silently, and indistinguishable from ordinary paging.
+
+So narrowing an attribute's `showedOn` to `PersistentObject` now does what a reader would assume:
+removes it from the grid **and** from the set of things the grid can be ordered by.
+
+```json
+{ "name": "InstallationId", "dataType": "string", "showedOn": "PersistentObject" }
+```
+
+Two things worth knowing:
+
+- **The check runs on the declared name, before sort-companion redirection.** A companion
+  (`{Name}Sort`) is only ever used when it is ignored for the Spark model, so it is never an attribute
+  itself and would fail the check. Sorting by the complex field it stands in for keeps working.
+- **The gate is `showedOn`, not the redaction hook.** `GetProtectedAttributesAsync` takes an entity
+  and may answer differently per row, so it cannot decide a query-level operation — and by the time
+  rows exist, the ordering has already happened.
+
 ## Generating the index instead of writing it
 
 Everything above can be generated. Put `[GenerateIndex]` on the entity and the index, the index entity and the
@@ -498,6 +525,33 @@ describe an empty model, and the resulting hash file would otherwise certify emp
 directory — which `--spark-verify-model` cannot detect and which surfaces as a startup failure in
 Production.
 
+
+## Async custom queries
+
+A custom query may be `async`, and since preview.59 it is treated exactly like its sync twin —
+declared `sortColumns`, header-click sorting, row-filter pushdown, search pushdown, index projection
+and `.Include()` all apply.
+
+```csharp
+public async Task<IRavenQueryable<VCar>> Recent_Cars()
+    => await Task.FromResult(session.Query<VCar, Cars_Overview>().Where(c => c.Year >= 2020));
+```
+
+Capabilities are inferred from the **object the method returns**, not from its declared type. That
+matters because the declared type is routinely weaker than the object: `session.Query<T>()` assigned
+to `IQueryable<T>` is the common idiom, and it still gets the RavenDB path.
+
+| Return type | Treated as |
+|---|---|
+| `IRavenQueryable<T>` / `Task<IRavenQueryable<T>>` | full RavenDB query |
+| `IQueryable<T>` / `Task<IQueryable<T>>` backed by `session.Query<T>()` | full RavenDB query |
+| `IQueryable<T>` over an in-memory source | in-memory queryable — sorting and row filtering only |
+| `IEnumerable<T>` / `Task<IEnumerable<T>>` | already materialized; no pushdown, no declared sorting |
+| `ValueTask<...>` | **not supported** — use `Task` |
+
+Note the last two rows. An already-materialized result cannot be ordered by the database, so a
+declared `sortColumns` on a `Task<IEnumerable<T>>` query does nothing. If you need declared sorting,
+return the queryable and let the framework enumerate it.
 
 ## Searching
 
