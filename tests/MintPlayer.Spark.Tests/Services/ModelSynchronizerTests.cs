@@ -48,7 +48,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Creates_Model_directory_when_missing_even_if_context_has_no_queries()
     {
-        var ctx = new EmptyContext();
+        var ctx = typeof(EmptyContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -60,7 +60,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Writes_one_JSON_file_per_IRavenQueryable_property()
     {
-        var ctx = new TwoEntityContext();
+        var ctx = typeof(TwoEntityContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -72,7 +72,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Writes_PersistentObject_with_ClrType_Name_and_default_query()
     {
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -93,7 +93,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Generates_attribute_definitions_from_entity_properties()
     {
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -106,7 +106,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Preserves_existing_PersistentObject_id_and_attribute_ids_on_re_synchronize()
     {
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -129,7 +129,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Reference_collection_property_is_typed_Reference_array()
     {
-        var ctx = new TaggedContext();
+        var ctx = typeof(TaggedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -144,7 +144,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Bare_list_of_primitive_is_scalar_array_not_AsDetail()
     {
-        var ctx = new TaggedContext();
+        var ctx = typeof(TaggedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -159,7 +159,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Sortable_attribute_on_AsDetail_array_sets_IsSortable_true()
     {
-        var ctx = new OrderedContext();
+        var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -174,7 +174,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void AsDetail_array_without_Sortable_leaves_IsSortable_null()
     {
-        var ctx = new OrderedContext();
+        var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -189,7 +189,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Sortable_attribute_on_a_non_AsDetail_array_property_is_ignored()
     {
-        var ctx = new OrderedContext();
+        var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -202,7 +202,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void IsSortable_survives_re_synchronize()
     {
-        var ctx = new OrderedContext();
+        var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -215,7 +215,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void MultiLineString_dataType_is_preserved_on_re_synchronize()
     {
-        var ctx = new OrderedContext();
+        var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -239,7 +239,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Synthesizes_a_default_breadcrumb_from_the_first_attribute_when_none_authored()
     {
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -252,7 +252,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Throws_on_authored_breadcrumb_referencing_an_unknown_attribute()
     {
-        var ctx = new BadBreadcrumbContext();
+        var ctx = typeof(BadBreadcrumbContext);
         var sync = CreateSynchronizer();
         sync.SynchronizeModels(ctx);
         var path = ModelFile("MS_BadBreadcrumb");
@@ -267,7 +267,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Throws_on_authored_breadcrumb_with_unbalanced_braces()
     {
-        var ctx = new UnbalancedBreadcrumbContext();
+        var ctx = typeof(UnbalancedBreadcrumbContext);
         var sync = CreateSynchronizer();
         sync.SynchronizeModels(ctx);
         var path = ModelFile("MS_UnbalancedBreadcrumb");
@@ -282,7 +282,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Synthesized_default_breadcrumb_prefers_a_Name_attribute_over_the_first_attribute()
     {
-        var ctx = new NamedContext();
+        var ctx = typeof(NamedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -296,7 +296,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Synthesized_default_breadcrumb_prefers_the_marked_property()
     {
-        var ctx = new MarkedThingContext();
+        var ctx = typeof(MarkedThingContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -310,7 +310,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Authored_json_template_survives_re_synchronize()
     {
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -326,7 +326,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Drift_warning_when_the_authored_template_omits_the_marked_property()
     {
-        var ctx = new MarkedThingContext();
+        var ctx = typeof(MarkedThingContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -355,7 +355,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Breadcrumb_projection_satisfiable_is_null_when_no_projection_type()
     {
         // No projection registered → the satisfiable flag is left null (renderable as-is).
-        var ctx = new SinglePersonContext();
+        var ctx = typeof(SinglePersonContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -377,7 +377,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         };
         _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
-        var ctx = new BreadcrumbContext();
+        var ctx = typeof(BreadcrumbContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -400,7 +400,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         };
         _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
-        var ctx = new BreadcrumbContext();
+        var ctx = typeof(BreadcrumbContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -426,7 +426,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         };
         _indexCatalog.GetAllEntries().Returns([entry]);
 
-        var ctx = new EmptyContext();
+        var ctx = typeof(EmptyContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -441,7 +441,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         // skip it — projection types are merged into their collection's file by the
         // collection-type pass (or simply not written when no collection type is exposed).
         // Projection-ness comes from [FromIndex] on MS_TestVehicle (#279), not a registry stub.
-        var ctx = new ProjectionOnlyContext();
+        var ctx = typeof(ProjectionOnlyContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -454,7 +454,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Ignored_property_is_excluded_from_generated_attributes()
     {
-        var ctx = new IgnoredContext();
+        var ctx = typeof(IgnoredContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -481,7 +481,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             """);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredContext());
+        sync.SynchronizeModels(typeof(IgnoredContext));
 
         var file = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson"));
         file.PersistentObject.Attributes.Select(a => a.Name).Should().NotContain("InternalToken");
@@ -511,7 +511,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             """);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredContext());
+        sync.SynchronizeModels(typeof(IgnoredContext));
 
         var attrs = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes;
         var virtualAttr = attrs.Should().ContainSingle(a => a.Name == "TotalPurchaseBudget").Subject;
@@ -548,7 +548,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             """);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredContext());
+        sync.SynchronizeModels(typeof(IgnoredContext));
 
         var attrs = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes;
         attrs.Should().ContainSingle(a => a.Name == "Nickname")
@@ -573,7 +573,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             """);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredContext());
+        sync.SynchronizeModels(typeof(IgnoredContext));
 
         var names = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes
             .Select(a => a.Name).ToArray();
@@ -588,7 +588,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Get_only_property_becomes_a_read_only_attribute()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ComputedContext());
+        sync.SynchronizeModels(typeof(ComputedContext));
 
         var attrs = Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes;
 
@@ -620,7 +620,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             """);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ComputedContext());
+        sync.SynchronizeModels(typeof(ComputedContext));
 
         Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes
             .Should().ContainSingle(a => a.Name == "Quantity")
@@ -633,7 +633,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         // Reflection reports `this[int]` as a property named "Item". It needs an argument to
         // produce a value, so there is nothing an attribute could read.
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IndexerContext());
+        sync.SynchronizeModels(typeof(IndexerContext));
 
         Read<EntityTypeFile>(ModelFile("MS_IndexerEntity")).PersistentObject.Attributes
             .Select(a => a.Name)
@@ -645,7 +645,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     {
         // Discovery and attribute generation share the filter: an ignored property must not drag
         // its type into the model as an embedded type nothing references.
-        var ctx = new IgnoredEmbeddedContext();
+        var ctx = typeof(IgnoredEmbeddedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -658,7 +658,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     [Fact]
     public void Ignored_property_on_an_embedded_type_is_excluded_from_that_types_model()
     {
-        var ctx = new EmbeddedChildContext();
+        var ctx = typeof(EmbeddedChildContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
@@ -682,7 +682,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         _indexCatalog.GetDefaultForCollectionType(typeof(MS_IgnoredPerson)).Returns(entry);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredContext());
+        sync.SynchronizeModels(typeof(IgnoredContext));
 
         Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes
             .Select(a => a.Name).Should().NotContain("InternalToken");
@@ -729,11 +729,11 @@ public sealed class ModelSynchronizerTests : IDisposable
         // but constant column off the generic grid); re-synchronize must not widen it back.
         RegisterBookProjection(typeof(MS_ProjectedBookView));
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         TamperShowedOn("MS_ProjectedBook", "Title", trimmed);
 
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         BookAttribute("Title").ShowedOn.Should().Be(expected,
             "showedOn is presentation; projection membership is the capability to show, not a mandate");
@@ -747,11 +747,11 @@ public sealed class ModelSynchronizerTests : IDisposable
         // structurally disappeared — it must just never add one back.
         RegisterBookProjection(typeof(MS_ProjectedBookView));
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
         BookAttribute("Title").ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
 
         RegisterBookProjection(typeof(MS_ProjectedBookViewWithoutTitle));
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         BookAttribute("Title").ShowedOn.Should().Be(EShowedOn.PersistentObject);
     }
@@ -764,11 +764,11 @@ public sealed class ModelSynchronizerTests : IDisposable
         // attribute permanently invisible everywhere.
         RegisterBookProjection(typeof(MS_ProjectedBookView));
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         TamperShowedOn("MS_ProjectedBook", "Secret", "Query");
 
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.PersistentObject);
     }
@@ -781,11 +781,11 @@ public sealed class ModelSynchronizerTests : IDisposable
         // after the projection appears must still narrow single-sided attributes — their stored
         // value intersected with the new capability — while dual-present ones keep both flags.
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
         BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
 
         RegisterBookProjection(typeof(MS_ProjectedBookView));
-        sync.SynchronizeModels(new ProjectedBookContext());
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
 
         BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.PersistentObject,
             "not on the projection, so it can never render on the grid");
@@ -800,11 +800,11 @@ public sealed class ModelSynchronizerTests : IDisposable
         // No projection: the entity itself backs the query, every side is always capable, so the
         // authored value passes through verbatim.
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         TamperShowedOn("MS_TestPerson", "FirstName", "PersistentObject");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).PersistentObject.Attributes
             .Single(a => a.Name == "FirstName")
@@ -832,18 +832,18 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Hand_set_query_on_non_reference_attribute_survives_re_synchronize()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         TamperAttribute("MS_TestPerson", "FirstName", "query", "GetPeople");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         ReadAttribute("MS_TestPerson", "FirstName").Query.Should().Be("GetPeople",
             "a query authored on a non-[Reference] attribute has no derivation source — only the author could have written it");
 
         // Fixed point: a further run must not change the file.
         var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
     }
 
@@ -851,7 +851,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Removing_Reference_clears_the_stale_derived_query()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         // Simulate the leftovers of a property that used to carry [Reference]: the stored query
         // was machine-derived, so it must be cleared, not preserved as if authored.
@@ -859,7 +859,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         TamperAttribute("MS_TestPerson", "FirstName", "referenceType", typeof(MS_TestTag).FullName);
         TamperAttribute("MS_TestPerson", "FirstName", "query", "GetTags");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         var attr = ReadAttribute("MS_TestPerson", "FirstName");
         attr.Query.Should().BeNull("the stored query was derived from the removed [Reference]");
@@ -871,11 +871,11 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Reference_attribute_query_is_still_rederived_on_every_run()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new TaggedContext());
+        sync.SynchronizeModels(typeof(TaggedContext));
 
         TamperAttribute("MS_TestTagged", "TagIds", "query", "GetWrong");
 
-        sync.SynchronizeModels(new TaggedContext());
+        sync.SynchronizeModels(typeof(TaggedContext));
 
         ReadAttribute("MS_TestTagged", "TagIds").Query.Should().Be("GetTags",
             "a [Reference] attribute's query has a derivation source and is structural — it re-derives");
@@ -910,13 +910,13 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Renamed_context_property_retargets_the_existing_query_instead_of_minting_a_duplicate()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new RenameV1Context());
+        sync.SynchronizeModels(typeof(RenameV1Context));
 
         var before = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single();
         before.Source.Should().Be("Database.People");
         TamperQuery("MS_TestPerson", "GetPeople", "alias", "hand-authored-alias");
 
-        sync.SynchronizeModels(new RenameV2Context());
+        sync.SynchronizeModels(typeof(RenameV2Context));
 
         var queries = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries;
         queries.Should().ContainSingle("a rename must retarget in place, not leave a dead query plus a duplicate");
@@ -928,7 +928,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         // Fixed point.
         var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
-        sync.SynchronizeModels(new RenameV2Context());
+        sync.SynchronizeModels(typeof(RenameV2Context));
         File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
     }
 
@@ -936,7 +936,7 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Unpairable_dead_Database_source_is_kept_and_warned()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         AddQuery("MS_TestPerson", "GetGhosts", "Database.Ghosts");
 
         var original = Console.Out;
@@ -944,7 +944,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         Console.SetOut(writer);
         try
         {
-            sync.SynchronizeModels(new SinglePersonContext());
+            sync.SynchronizeModels(typeof(SinglePersonContext));
         }
         finally
         {
@@ -961,12 +961,12 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Custom_source_queries_pass_through_untouched()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         AddQuery("MS_TestPerson", "GetTop", "Custom.GetTop");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         var afterSecond = File.ReadAllText(ModelFile("MS_TestPerson"));
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         File.ReadAllText(ModelFile("MS_TestPerson")).Should().Be(afterSecond);
         var top = Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single(q => q.Name == "GetTop");
@@ -977,14 +977,14 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Ambiguous_multi_rename_falls_back_to_warn_and_mint()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new MultiRenameV1Context());
+        sync.SynchronizeModels(typeof(MultiRenameV1Context));
 
         var original = Console.Out;
         using var writer = new StringWriter();
         Console.SetOut(writer);
         try
         {
-            sync.SynchronizeModels(new MultiRenameV2Context());
+            sync.SynchronizeModels(typeof(MultiRenameV2Context));
         }
         finally
         {
@@ -1015,7 +1015,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
             .Should().Be("People_Overview");
@@ -1027,7 +1027,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         // A pre-#279 model has queries without indexName. Empty is machine domain: the runtime
         // fell back to the entity file's binding, which is the default — stamping makes it explicit.
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         var entry = new IndexCatalogEntry
         {
@@ -1039,7 +1039,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
             .Should().Be("People_Overview");
@@ -1068,10 +1068,10 @@ public sealed class ModelSynchronizerTests : IDisposable
         _indexCatalog.GetByIndexName("People_Search").Returns(searchEntry);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Search");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
             .Should().Be("People_Search", "a binding to a known index is authored, not machine-owned");
@@ -1093,7 +1093,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Gone");
 
         var original = Console.Out;
@@ -1101,7 +1101,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         Console.SetOut(writer);
         try
         {
-            sync.SynchronizeModels(new SinglePersonContext());
+            sync.SynchronizeModels(typeof(SinglePersonContext));
         }
         finally
         {
@@ -1117,10 +1117,10 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void A_dead_indexName_is_cleared_when_the_entity_has_no_default()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
         TamperQuery("MS_TestPerson", "GetPeople", "indexName", "People_Gone");
 
-        sync.SynchronizeModels(new SinglePersonContext());
+        sync.SynchronizeModels(typeof(SinglePersonContext));
 
         Read<EntityTypeFile>(ModelFile("MS_TestPerson")).Queries.Single().IndexName
             .Should().BeNull();
@@ -1130,11 +1130,11 @@ public sealed class ModelSynchronizerTests : IDisposable
     public void Breadcrumb_referencing_an_ignored_property_fails_with_an_explanatory_message()
     {
         var sync = CreateSynchronizer();
-        sync.SynchronizeModels(new IgnoredBreadcrumbContext());
+        sync.SynchronizeModels(typeof(IgnoredBreadcrumbContext));
         var path = ModelFile("MS_IgnoredBreadcrumb");
         File.WriteAllText(path, File.ReadAllText(path).Replace("{FirstName}", "{InternalToken}"));
 
-        var act = () => sync.SynchronizeModels(new IgnoredBreadcrumbContext());
+        var act = () => sync.SynchronizeModels(typeof(IgnoredBreadcrumbContext));
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*IgnoreProperty*",

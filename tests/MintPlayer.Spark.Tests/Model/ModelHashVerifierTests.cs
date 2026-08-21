@@ -34,7 +34,7 @@ public class ModelHashVerifierTests : IDisposable
     }
 
     private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
-        .SynchronizeModels(new HashProbeContext());
+        .SynchronizeModels(typeof(HashProbeContext));
 
     private void Verify(bool isDevelopment = false) => ModelHashVerifier.Verify(
         typeof(HashProbeContext), _indexCatalog, _contentRoot, isDevelopment, _log.Add);

@@ -48,7 +48,7 @@ public class SynchronizeIdempotencyTests : IDisposable
     private string ModelDir => Path.Combine(_contentRoot, "App_Data", "Model");
 
     private void Synchronize() => new ModelSynchronizer(_hostEnv, _indexCatalog)
-        .SynchronizeModels(new IdemContext());
+        .SynchronizeModels(typeof(IdemContext));
 
     private Dictionary<string, string> Snapshot() =>
         Directory.GetFiles(ModelDir, "*.json")
@@ -391,8 +391,8 @@ public class SynchronizeCorrectnessTests : IDisposable
 
     private string ModelDir => Path.Combine(_contentRoot, "App_Data", "Model");
 
-    private void Synchronize(IIndexCatalog registry, SparkContext context) =>
-        new ModelSynchronizer(_hostEnv, registry).SynchronizeModels(context);
+    private void Synchronize(IIndexCatalog registry, Type contextType) =>
+        new ModelSynchronizer(_hostEnv, registry).SynchronizeModels(contextType);
 
     private JsonElement PersistentObject(string fileName)
     {
@@ -414,11 +414,11 @@ public class SynchronizeCorrectnessTests : IDisposable
             ProjectionType = typeof(IdemProbeProjection),
         });
 
-        Synchronize(withProjection, new IdemContext());
+        Synchronize(withProjection, typeof(IdemContext));
         PersistentObject("IdemProbe.json").TryGetProperty("queryType", out _).Should().BeTrue();
 
         // The projection is deleted from the codebase: the registry no longer knows it.
-        Synchronize(Substitute.For<IIndexCatalog>(), new IdemContext());
+        Synchronize(Substitute.For<IIndexCatalog>(), typeof(IdemContext));
 
         var po = PersistentObject("IdemProbe.json");
         po.TryGetProperty("queryType", out _).Should().BeFalse("a dead projection reference must not survive");
@@ -441,7 +441,7 @@ public class SynchronizeCorrectnessTests : IDisposable
             ProjectionType = typeof(MintPlayer.Spark.Tests.Collides.IdemProbe),
         }]);
 
-        Synchronize(registry, new IdemContext());
+        Synchronize(registry, typeof(IdemContext));
 
         File.Exists(Path.Combine(ModelDir, "IdemProbe.json")).Should()
             .BeTrue("the cleanup must not delete a file written during the same run");
@@ -465,7 +465,7 @@ public class SynchronizeCorrectnessTests : IDisposable
             ProjectionType = typeof(IdemProbeProjection),
         }]);
 
-        Synchronize(registry, new IdemContext());
+        Synchronize(registry, typeof(IdemContext));
 
         File.Exists(stale).Should().BeFalse();
     }
@@ -477,13 +477,13 @@ public class SynchronizeCorrectnessTests : IDisposable
         // dropped the query the first had added, and the file oscillated between the two forever.
         var registry = Substitute.For<IIndexCatalog>();
 
-        Synchronize(registry, new TwoRootsContext());
+        Synchronize(registry, typeof(TwoRootsContext));
 
         var queries = QueryNames();
         queries.Should().BeEquivalentTo(["GetProbes", "GetArchivedProbes"]);
 
-        Synchronize(registry, new TwoRootsContext());
-        Synchronize(registry, new TwoRootsContext());
+        Synchronize(registry, typeof(TwoRootsContext));
+        Synchronize(registry, typeof(TwoRootsContext));
 
         QueryNames().Should().BeEquivalentTo(queries, "and it must converge, not oscillate");
     }

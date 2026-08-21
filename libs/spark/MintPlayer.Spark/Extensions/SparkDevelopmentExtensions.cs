@@ -62,13 +62,13 @@ public static class SparkDevelopmentExtensions
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
 
-        if (!TryCreateRegisteredContext(builder.Services, out var sparkContext))
+        if (!TryResolveRegisteredContextType(builder.Services, out var contextType))
             return true;
 
         if (verifyOnly)
-            Verify(builder, sparkContext);
+            Verify(builder, contextType);
         else
-            Synchronize(builder, sparkContext);
+            Synchronize(builder, contextType);
 
         return true;
     }
@@ -79,7 +79,7 @@ public static class SparkDevelopmentExtensions
     /// prefer to name the context at the call site rather than rely on the registration.
     /// </summary>
     public static bool SynchronizeSparkModelsIfRequested<TContext>(this WebApplicationBuilder builder, string[] args)
-        where TContext : SparkContext, new()
+        where TContext : SparkContext
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
@@ -89,9 +89,9 @@ public static class SparkDevelopmentExtensions
             return false;
 
         if (verifyOnly)
-            Verify(builder, new TContext());
+            Verify(builder, typeof(TContext));
         else
-            Synchronize(builder, new TContext());
+            Synchronize(builder, typeof(TContext));
 
         return true;
     }
@@ -167,14 +167,17 @@ public static class SparkDevelopmentExtensions
     /// checkout, needs a git index, and reports drift for any unrelated dirt.
     /// </para>
     /// </summary>
-    private static void Verify(WebApplicationBuilder builder, SparkContext sparkContext)
+    private static void Verify(WebApplicationBuilder builder, Type contextType)
     {
+        if (!IsUsableContextType(contextType))
+            return;
+
         if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
         var contentRoot = builder.Environment.ContentRootPath;
         var expected = ModelHashFile.Read(contentRoot);
-        var actual = ModelSynchronizer.BuildModelHashes(sparkContext.GetType(), indexCatalog, contentRoot);
+        var actual = ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
@@ -205,16 +208,20 @@ public static class SparkDevelopmentExtensions
         Environment.ExitCode = ExitDrift;
     }
 
-    private static void Synchronize(WebApplicationBuilder builder, SparkContext sparkContext)
+    private static void Synchronize(WebApplicationBuilder builder, Type contextType)
     {
-        // Session stays null on purpose. The synchronizer reflects over the context's property
-        // TYPES and never invokes a getter, so no RavenDB connection is opened — which is what
-        // makes this runnable in CI. Opening one here would reintroduce that dependency.
+        // The context is never instantiated. The synchronizer reflects over the context's property
+        // TYPES and never invokes a getter, so no session, no service provider and no RavenDB
+        // connection are needed — which is what makes this runnable in CI, and what lets an
+        // application put constructor dependencies on its context (#292).
+        if (!IsUsableContextType(contextType))
+            return;
+
         if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
         var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog);
-        synchronizer.SynchronizeModels(sparkContext);
+        synchronizer.SynchronizeModels(contextType);
 
         Console.WriteLine("Model synchronization completed.");
     }
@@ -281,12 +288,20 @@ public static class SparkDevelopmentExtensions
 
     /// <summary>
     /// Recovers the concrete <see cref="SparkContext"/> type from the registration made by
-    /// <c>UseContext&lt;TContext&gt;()</c> and instantiates it. Reports the specific
-    /// misconfiguration rather than letting a null reference surface later.
+    /// <c>UseContext&lt;TContext&gt;()</c>. Reports the specific misconfiguration rather than letting
+    /// a null reference surface later.
     /// </summary>
-    private static bool TryCreateRegisteredContext(IServiceCollection services, out SparkContext sparkContext)
+    /// <remarks>
+    /// The type is never instantiated. Both commands read property <em>types</em> only, so an
+    /// instance would carry nothing but its own <c>GetType()</c> — and requiring one imposed a public
+    /// parameterless constructor on every consuming context, which ruled out putting any dependency
+    /// on it (#292). Note the asymmetry that made this a papercut rather than a decision:
+    /// <c>UseContext&lt;TContext&gt;</c> never had a <c>new()</c> constraint, so the compiler accepted
+    /// such a context and only these commands rejected it.
+    /// </remarks>
+    private static bool TryResolveRegisteredContextType(IServiceCollection services, out Type contextType)
     {
-        sparkContext = null!;
+        contextType = null!;
 
         var descriptor = services.LastOrDefault(d => d.ServiceType == typeof(SparkContext));
         if (descriptor is null)
@@ -299,26 +314,60 @@ public static class SparkDevelopmentExtensions
             return false;
         }
 
-        if (descriptor.ImplementationType is not { } contextType)
+        if (descriptor.ImplementationType is not { } registeredType)
         {
             Console.Error.WriteLine(
-                "Spark: the registered SparkContext has no implementation type, so it cannot be " +
-                "constructed for model synchronization. Use the " +
+                "Spark: the registered SparkContext has no implementation type, so its model shape " +
+                "cannot be determined. Use the " +
                 "SynchronizeSparkModelsIfRequested<TContext>(args) overload.");
             Environment.ExitCode = ExitMisconfigured;
             return false;
         }
 
-        if (contextType.GetConstructor(Type.EmptyTypes) is null)
+        contextType = registeredType;
+        return true;
+    }
+
+    /// <summary>
+    /// Rejects a context type that cannot describe a model: the abstract <see cref="SparkContext"/>
+    /// base itself, or any abstract subclass.
+    /// </summary>
+    /// <remarks>
+    /// This guard used to be accidental. While the commands instantiated the context,
+    /// <c>Activator.CreateInstance</c> threw on an abstract type and the mistake could not happen;
+    /// resolving a <see cref="Type"/> instead removes that barrier, so the check has to be deliberate.
+    /// <para>
+    /// It matters because the failure is silent and lands far from its cause. The property scan looks
+    /// for <c>IRavenQueryable&lt;&gt;</c> properties, and the base type has none — so the model shape
+    /// comes back empty, and while no model file is deleted, <c>modelHashes.json</c> is rewritten to
+    /// certify an empty model over a still-populated model directory. <c>--spark-verify-model</c>
+    /// cannot catch it, because it derives both sides of its comparison from the same caller-supplied
+    /// type; the running application uses the DI instance's concrete type, so the mismatch first
+    /// appears as a startup failure in Production.
+    /// </para>
+    /// </remarks>
+    private static bool IsUsableContextType(Type contextType)
+    {
+        ArgumentNullException.ThrowIfNull(contextType);
+
+        if (contextType == typeof(SparkContext) || contextType.IsAbstract)
         {
             Console.Error.WriteLine(
-                $"Spark: SparkContext '{contextType.Name}' has no public parameterless constructor, " +
-                "which model synchronization requires in order to construct it without a service provider.");
+                $"Spark: '{contextType.Name}' is not a concrete SparkContext, so it declares no query " +
+                "roots and would describe an empty model. Pass the application's own context type " +
+                "(the one registered with spark.UseContext<TContext>()).");
             Environment.ExitCode = ExitMisconfigured;
             return false;
         }
 
-        sparkContext = (SparkContext)Activator.CreateInstance(contextType)!;
+        if (!typeof(SparkContext).IsAssignableFrom(contextType))
+        {
+            Console.Error.WriteLine(
+                $"Spark: '{contextType.Name}' does not derive from SparkContext.");
+            Environment.ExitCode = ExitMisconfigured;
+            return false;
+        }
+
         return true;
     }
 }
