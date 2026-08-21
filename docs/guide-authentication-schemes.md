@@ -569,19 +569,29 @@ JWT bearer, which would be a dead end if offered as a sign-in button.
 
 ### The client half
 
-Pass the matching mode to `sparkAuthRoutes`, and point `loginUrl` at a route that exists:
+Opt into the pages the server actually mounts, and point `loginUrl` at a route that exists:
 
 ```ts
-// app.routes.ts
-...sparkAuthRoutes({ localCredentials: 'disabled' }),   // emits only /sign-in
+// app.routes.ts — external sign-in only
+...sparkAuthRoutes(withExternalLogin(githubProvider())),
+
+// app.routes.ts — password sign-in as well
+...sparkAuthRoutes(withLocalLogin(), withRegistration(), withExternalLogin(githubProvider())),
 
 // app.config.ts
 provideSparkAuth({ loginUrl: '/sign-in' }),
 ```
 
-`sparkAuthRoutes` routes `SparkSignInComponent` at `/sign-in` whenever local credentials are limited.
-It renders one button per provider, read from `GET /spark/auth/capabilities` rather than from a
-hard-coded scheme name. In `full` mode it is not routed — the login page is already the landing page.
+**Nothing is mounted unless a feature asks for it** — `sparkAuthRoutes()` with no arguments emits no
+pages at all. `withExternalLogin(...)` routes `SparkSignInComponent` at `/sign-in`; it renders one
+button per provider, read from `GET /spark/auth/capabilities` rather than from a hard-coded scheme
+name. A `githubProvider()` declaration only *decorates* that button — icon, label, ordering, keyed by
+scheme — so it cannot conjure a provider the server does not have, and a provider the server adds
+later gets a default button rather than disappearing.
+
+The client and server halves are configured independently and can disagree without anything failing,
+which is why the sign-in page warns in development when it is routed against a server still reporting
+`localCredentials = Full`.
 
 `loginUrl` is the single target the guard, the interceptor and `SparkAuthBarComponent` all redirect
 to. Nothing connects it to the routes that exist, so pointing it at an unregistered route used to

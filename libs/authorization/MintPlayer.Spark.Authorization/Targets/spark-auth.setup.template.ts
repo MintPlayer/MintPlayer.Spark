@@ -3,13 +3,17 @@
 // Feel free to customize it to match your application's needs.
 
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
-import { sparkAuthRoutes } from '@mintplayer/ng-spark-auth/routes';
+import {
+  sparkAuthRoutes,
+  withLocalLogin,
+  withRegistration,
+  type SparkAuthRoutesFeature,
+} from '@mintplayer/ng-spark-auth/routes';
 import { sparkAuthGuard } from '@mintplayer/ng-spark-auth/guards';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 
 import type { SparkAuthConfig } from '@mintplayer/ng-spark-auth';
-import type { SparkAuthRouteConfig } from '@mintplayer/ng-spark-auth/models';
 
 /**
  * Provides Spark authentication services.
@@ -50,15 +54,19 @@ export function setupSparkAuthHttp() {
  *   {
  *     path: '',
  *     children: [
- *       ...setupSparkAuthRoutes(),
+ *       ...setupSparkAuthRoutes(withLocalLogin(), withRegistration()),
  *       // ... your other routes
  *     ]
  *   }
  * ];
  * ```
  */
-export function setupSparkAuthRoutes(config?: SparkAuthRouteConfig) {
-  return sparkAuthRoutes(config);
+export function setupSparkAuthRoutes(...features: SparkAuthRoutesFeature[]) {
+  // Called with no features, this mounts the email/password pages — which is what a freshly
+  // scaffolded app expects. Pass features explicitly to change that:
+  //   setupSparkAuthRoutes(withExternalLogin(githubProvider()))
+  // and pass nothing at all by calling sparkAuthRoutes() directly, which mounts no pages.
+  return sparkAuthRoutes(...(features.length > 0 ? features : [withLocalLogin(), withRegistration()]));
 }
 
 /** Re-export the auth guard for protecting routes. */
@@ -71,4 +79,4 @@ export { SparkAuthBarComponent };
 export { SparkAuthService };
 
 /** Re-export config types for customization. */
-export type { SparkAuthConfig, SparkAuthRouteConfig };
+export type { SparkAuthConfig };

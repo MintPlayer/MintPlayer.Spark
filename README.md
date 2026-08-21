@@ -113,6 +113,8 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Spark.SubscriptionWorker.Abstractions/
 │   ├── cron/
 │   │   └── MintPlayer.Spark.Cron/                # Cron-scheduled background jobs (multi-node safe)
+│   ├── controllers/
+│   │   └── MintPlayer.Spark.Controllers/         # Mount your own MVC controllers inside Spark's pipeline
 │   ├── webhooks/
 │   │   ├── MintPlayer.Spark.Webhooks.GitHub/     # GitHub webhook integration
 │   │   └── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
@@ -156,7 +158,8 @@ MintPlayer.Spark/
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Authorization](libs/authorization/MintPlayer.Spark.Authorization/README.md) | Optional security package, `security.json`, groups, permissions, XSRF |
-| [Authentication Schemes & `Everyone`](docs/guide-authentication-schemes.md) | Every scheme in the repo, what an unauthenticated caller gets, and what happens when authentication fails |
+| [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
+| [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
 | [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |

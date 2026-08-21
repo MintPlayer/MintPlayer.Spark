@@ -426,8 +426,23 @@ export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
 You can also skip the generated file and import directly from the npm package:
 
 ```typescript
-import { provideSparkAuth, withSparkAuth, sparkAuthRoutes } from '@mintplayer/ng-spark-auth';
+import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
+import {
+  sparkAuthRoutes, withLocalLogin, withRegistration, withExternalLogin, githubProvider,
+} from '@mintplayer/ng-spark-auth/routes';
 ```
+
+The root entry point carries the bootstrap API only; everything else lives on a sub-path (`/routes`,
+`/core`, `/models`, `/guards`, …).
+
+Pages are **opted into individually** — `sparkAuthRoutes()` with no features mounts nothing:
+
+```typescript
+...sparkAuthRoutes(withLocalLogin(), withRegistration()),
+...sparkAuthRoutes(withExternalLogin(githubProvider())),
+```
+
+Match them to the server's `SparkLocalCredentials`, which defaults to `Disabled`.
 
 ## MSBuild Properties
 
