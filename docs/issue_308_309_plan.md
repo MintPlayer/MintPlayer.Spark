@@ -25,15 +25,22 @@
 | M9 | Grid core: `@mintplayer/ng-spark/grid`, D-4/D-5/D-7 | no | no |
 | M10 | `refreshQuery` + `DisableQueryActions` handlers; sub-query refresh | no | no |
 | M11 | Loose ends: `Execute.cs` clone, doc corrections | small | no |
-| M12 | Version, lock, release notes, docs | — | **yes** |
+| M12 | Row selection in the grid core | no | no |
+| M13 | `selectionRule` evaluated — client affordance, **server enforcement** | **yes** | no |
+| M14 | Selection hardening: per-action row gate, payload ceiling | **yes** | no |
+| M15 | **M-3 completed** — uniform 404, incl. type existence | **yes** | no |
+| M16 | Version, lock, release notes, docs | — | **yes** |
 
 M1 is a prerequisite for M3–M5. M2 lands early because every later server-fed behaviour
 depends on the fields existing; **all four fields go in one edit** so `preview.61` and the
 model-file churn happen once. M9 lands after M1–M8 so the core is extracted from code that is
-already correct, rather than refactoring and fixing at the same time.
+already correct, rather than refactoring and fixing at the same time. M12 depends on M9 (the
+`selection` signal belongs on `SparkGridState`, so the reset invariant covers it) and M13
+depends on M2, M3 and M12. M15 is independent of everything else and can land any time after
+M0.
 
 **#308 is already implemented and green** (235 specs). It is not re-planned here — it only
-needs the version bump it never carried (M12).
+needs the version bump it never carried (M16).
 
 **Nothing is deferred to a follow-up PR.** Every extra PR costs another full round of workflow
 runs, and waiting on CI is the bottleneck — so a large diff is the intended outcome, not a
@@ -59,18 +66,78 @@ no actions.
 **Fail:** keep the margin on a wrapper that renders in every state, and/or collapse the nav
 when the action list is empty.
 
-### S2 — Does `executeCustomAction` succeed for a query whose rows are fabricated?
+### ~~S2~~ — withdrawn, already answered green
 
-`MyAccountRow` has no documents. The action passes no parent and no selection, so
-`ExecuteCustomAction.cs:108-131` should skip the parent reload — **assert it, don't assume
-it.** This is the spike that decides whether the PRD's F3 ("Resync becomes a Spark action")
-is real.
+*Was: does `executeCustomAction` succeed for a query whose rows are fabricated?* It does, and
+an existing test pins it: `ExecuteCustomActionTests.cs:282-296`
+(`Empty_body_forwards_null_parent_and_empty_selected_items` → 200). The reload loop at
+`ExecuteCustomAction.cs:118-131` is simply skipped when the selection is empty. No spike
+needed; the budget goes to S9.
 
-**Method:** a .NET test invoking a `showedOn: "query"` action on an entity type whose rows
-are synthesised in memory, with no parent and no `selectedItems`.
-**Pass:** 200, handler ran, no attempted document load.
-**Fail:** query actions need a no-parent dispatch path, which changes M3's size materially —
-stop and re-scope.
+### S9 — Does enforcing `selectionRule` break `CarCopy` from the detail page? **Run this first**
+
+`Fleet/CarCopy` is `"=1"` with `showedOn: "both"`. The **detail** invocation sends a parent and
+`selectedItems: []` → `count == 0` → **400** under naive enforcement. That is a regression the
+obvious implementation ships, and it decides a semantic rather than an implementation detail.
+
+**Method:** a .NET test invoking `CarCopy` from the detail path (parent set, no selection) with
+`"=1"` in force.
+**Pass:** 200 — the rule is scoped to the query path only, keyed off "the request named no
+parent", matching `CustomActionDefinition.cs:20` (*"Selection rule for **query-view**
+actions"*) and `custom-actions-prd.md:134` (*"Only relevant when `showedOn` includes
+`query`"*).
+**Fail:** the path cannot be inferred from the wire, and the request must carry an explicit
+origin — a wire change; stop and re-scope.
+
+### S7 — Does `[selectionMode]` survive virtual scrolling and server-side paging?
+
+`selection` is a `ModelSignal<TData[]>` with identity via `rowKey`, but the grid reassigns
+`fetchFn` to refetch and `mp-datatable`'s `fetch` setter resets `_initialFetchDone`. A
+selection that silently empties on every page turn — or worse, survives as stale object
+references with `compareWith` unset — makes the feature a trap.
+
+**Method:** spec — `selectionMode='multiple'`, select two rows on page 1, go to page 2 and
+back, assert `selection()` identity; repeat with `virtualScroll=true`; repeat across a
+`reload()`.
+**Pass:** preserved by `rowKey` across refetch and paging, or deterministically cleared.
+**Fail:** bind `compareWith: (a,b) => a.id === b.id`; if still insufficient, scope selection to
+the current page — which changes M13's semantics and must be documented.
+
+### S8 — Do the C# and TS selection-rule parsers agree?
+
+The biggest risk is Vidyano's own measured failure: two ports of one algorithm that diverged
+(unguarded `int.Parse` vs `isNaN`; a `var`-capture bug in the JS AND-combine loop that breaks
+3+ terms).
+
+**Method:** one committed fixture — `""`, `null`, `" "`, `"=0"`, `"=1"`, `">0"`, `">=1"`,
+`"<=5"`, `"!=0"`, `"0<X"`, `"1<X<5"`, `">=1X<=5"`, `"1"`, `"1-5"`, `"*"`, `"=abc"`, `"=1.5"`,
+`">= 1"`, `"x>0"` — asserted against counts 0, 1, 2, 5, 10 in **both** an xUnit theory and a
+Vitest spec, generated from that one file.
+**Pass:** identical results in every cell, including the malformed rows.
+**Fail:** cut the grammar to `=N` / `>N` / `>=N` / `<=N` / `!=N`, drop the `X` placeholder and
+ranges, and document the reduction as a deliberate divergence from Vidyano.
+
+### S10 — What does a large selection actually cost?
+
+Quantify the amplification finding before picking a ceiling.
+
+**Method:** POST an action with N = 1, 10, 100, 1000 `selectedItems` against a type **with** a
+row rule; measure wall time and `session.Advanced.NumberOfRequests`.
+**Pass:** the numbers justify a specific default, written into the config with a comment citing
+the measurement.
+**Fail:** if N=100 is already pathological, the loop needs batch loading and the ceiling drops.
+
+### S11 — Does the unknown-type shape change perturb the existing unit tests?
+
+M15 makes unknown entity types answer in the denied shape, so `GET /spark/po/Bogus` returns 401
+to an anonymous caller. Six unknown-type tests (`ListEndpointTests.cs:36`,
+`CreateEndpointTests.cs:58`, `UpdateEndpointTests.cs:51/61`, `DeleteEndpointTests.cs:36/45`)
+run with no authz configured, so their outcome depends on the stub principal.
+
+**Method:** run them against the changed endpoints before rewriting anything.
+**Pass:** still green — the stub authenticates, so they see 404.
+**Fail:** they see 401; update each deliberately and record that unknown-type-as-anonymous is
+now 401 by design, not by accident.
 
 ### S3 — Does `reloadToken` actually preserve page and sort?
 
@@ -283,7 +350,78 @@ and nothing in Coverage changes. ~150-250 spec lines get rewritten against the s
 - Add the missing `| resolveTranslation` in `spark-po-edit.component.html:5` and
   `spark-po-create.component.html:8` (`[object Object]` today).
 
-## M12 — Release
+## M12 — Row selection in the grid core
+
+- `selection = signal<PersistentObject[]>([])` on `SparkGridState`, **cleared by
+  `resetForNewSource()`** — otherwise it is D-4's shape, with route A's selection POSTed as
+  ids of route B's type.
+- `[selectionMode]` + `[(selection)]` on both `bs-datatable` instances
+  (`spark-query-list.component.html:75-80`, `:107-112`) and on the sub-query's, via
+  `SparkGridRowsComponent`. `rowKey` stays at its `String(row.id)` default.
+- `selectionMode` computed `'none'` unless a visible action is gated → grids without gated
+  actions are pixel-identical.
+
+**Verify:** S7.
+
+## M13 — `selectionRule` evaluated
+
+- `Services/SelectionRuleParser.cs` (C#) + `models/src/selection-rule.ts`, both generated
+  against **one committed fixture**.
+- Loader-time validation: a malformed rule is a loud config error, not a fail-open at execute.
+- Client: button `[disabled]` from the parsed rule; `spark-query-list.component.ts:181` passes
+  `selection()`.
+- Server: check between the existence gate (`:69`) and the reload loop (`:118`) → **400** on
+  violation, before any document load. Scoped to the query path (S9).
+- Comment at the enforcement site: **this is not an authorization boundary; the grant is.**
+- Fix `CarCopyAction.cs:16` to `args.SelectedItems.FirstOrDefault() ?? args.Parent` and drop
+  the `"No item selected"` throw — unreachable once `"=1"` is enforced, and this file is the
+  template consumers copy.
+
+**Verify:** S8, S9; AC 24, 25, 26, 27.
+
+## M14 — Selection hardening
+
+- Per-item `rowSecurity.IsAllowedAsync(entityType, actionName, entity)` when the type has a row
+  rule, refusing with the same 404 as `:128`. Closes the gap where the gate is hardcoded to
+  `"Read"` while `ISparkRowRule` is action-parameterised.
+- **Unconditional ceiling** on `SelectedItems.Length` (default 200), applying even when the
+  rule is null — with a comment recording that `IgnoreMaxRequests` sets `int.MaxValue` and
+  `estimatedRequests` is log-only, so the ceiling is the only real bound.
+
+**Verify:** S10; AC 28, 29.
+
+## M15 — M-3 completed
+
+Per the PRD's D11 contract table.
+
+1. `Queries/Execute.cs` — hoist an up-front gate mirroring `Queries/Get.cs:23-28`, **before**
+   the sort-column parse, then make `:128-138` a uniform 404. Closes the query oracle and the
+   attribute-name disclosure together.
+2. `PersistentObject/{Get,List,Create,Update,Delete}.cs` — `isAuthed ? 403 : 401` becomes
+   `isAuthed ? 404 : 401`, with the denial body **byte-identical** to that endpoint's
+   not-found body (three of them interpolate the requested id, so the denial must too).
+3. `Actions/ExecuteCustomAction.cs:54-60` and `:148-154` — same, body `"Not found"`.
+4. **Unknown entity types adopt the denied shape** — `Get.cs:22-25`, `List.cs:21-24`,
+   `Create.cs:33-36`, `Update.cs:34-37`, `Delete.cs:32-36`,
+   `ExecuteCustomAction.cs:43-46`, `ListCustomActions.cs:22-25`.
+5. `Permissions/GetPermissions.cs` — unknown type returns the same **200 all-false** as a
+   denied one (it is deliberately anonymous-callable; audit M-1).
+6. `StreamExecuteQuery.cs` — refuse at the handshake, not by closing the socket afterwards.
+7. **Not changed:** controllers (`[SparkAuthorize]`), Replication, IdentityProvider, all
+   `LookupReferences/*` (already leak-free — they authorize before resolving the name).
+
+**Tests.** Edit exactly one: `ExecuteCustomActionTests.cs:84-98` → 404. Preserve every 401
+assertion — each is an *anonymous* caller, and
+`AnonymousPersistentObjectAccessTests.cs:41-43` explains in code why the distinction matters.
+Add: byte-identical comparisons (status **and** raw body) for each endpoint; denied-execute vs
+unknown-query-id; denied execute with a bogus sort column not returning 400; the
+anonymous-still-401 negative control; row-denied ≡ type-denied. Strengthen
+`NotFoundVsForbiddenTests` by making its second principal genuinely authenticated and
+comparing bodies — an addition, not a rollback, so S6 still holds.
+
+**Verify:** S6, S11; AC 30–35.
+
+## M16 — Release
 
 1. `libs/node_packages/ng-spark/package.json` → **22.3.0**; peer ranges unchanged.
 2. All 20 `libs/**/*.csproj` → **`10.0.0-preview.61`** (hand-maintained per file; there is no
@@ -291,9 +429,15 @@ and nothing in Coverage changes. ~150-250 spec lines get rewritten against the s
 3. `npm install` **from the repo root** — the lock records a stale `22.0.8`. Commit it.
 4. `docs/release-notes-preview-61.md`, following the preview-60 shape. Since the versioning
    policy makes even breaks minors, the notes must state plainly which category this is, and
-   must carry the `showedOn` filter change.
-5. Docs: `docs/guide-custom-actions.md` (query actions; and fix the false "available to all
-   users" at `:159`), `docs/guide-queries-and-sorting.md`,
+   must carry: the `showedOn` filter change; **`selectionRule` becoming enforced** (a rule that
+   was decoration now returns 400, and the per-action row gate can refuse actions that work
+   today); and **M-3** (authenticated-denied is now 404, `SparkClient` callers get `null`
+   where they used to get a throwing 403, unknown entity types answer in the denied shape).
+5. Docs: `docs/guide-custom-actions.md` — query actions, the false "available to all users"
+   at `:159`, and `:119-127` becomes the single normative `selectionRule` grammar (operator
+   table, `X` placeholder, malformed = config error, query-path-only scope);
+   **`docs/prd/custom-actions-prd.md:134`'s "defaults to `=0`" is wrong and must be
+   corrected**; `docs/guide-queries-and-sorting.md`,
    `docs/Spark-API-Specification.md:470-483` (still documents `useProjection`, deleted in
    #279), `libs/spark/MintPlayer.Spark/README.md:394,475,503-504`.
 6. **Review the version diff before merging** — `npm-publish@v4` no-ops on an existing

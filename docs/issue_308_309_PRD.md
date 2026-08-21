@@ -240,6 +240,116 @@ mandatory** (20 `.csproj` files).
 run that publishes nothing*. `ng-spark-auth` does not depend on ng-spark and needs no bump.
 No demo declares an ng-spark range. `package-lock.json` records a stale `22.0.8`.
 
+### F13 — `selectionRule` is a half-delivered security remediation, not new feature work
+
+`CustomActionDefinition.cs:19-22` declares `string? SelectionRule` (*"`=0` none, `=1` exactly
+one, `>0` one or more"*), `ListCustomActions.cs:52` transports it, `custom-action.ts:9`
+receives it — and **nothing reads it**. `ExecuteCustomAction` never fetches the definition
+object at all, so the field is unreachable on the execute path by construction.
+
+**It is already authored.** `Demo/Fleet/Fleet/App_Data/customActions.json:7` sets
+`"selectionRule": "=1"` on `CarCopy`, `showedOn: "both"`.
+
+**Which makes it a live bug.** The `'both'` filter renders the button in the car list;
+clicking POSTs no parent and no selection; `CarCopyAction.cs:16-18` throws
+`InvalidOperationException("No item selected")` → **500 "Operation failed"**. The demo's
+flagship custom action is broken from the grid, and the field whose entire job is preventing
+exactly that is inert.
+
+**And it is a named, unfinished remediation.** `docs/issue_236_security_sweep_PRD.md:72`
+records *"`SelectionRule` is advisory"* as finding **M3**, and
+`docs/issue_236_security_sweep_plan.md:62` names the fix: *"…404s if absent (mirror
+`ListCustomActions`); **enforce `SelectionRule` server-side**."* The first clause shipped
+(`ExecuteCustomAction.cs:62-69`); the second never did.
+
+**The semantics are Vidyano's, and the two Spark specs contradict each other.**
+`Vidyano.Core/Common/ExpressionParser.cs:11-13` parses a cardinality expression to
+`Func<int,bool>`: whitespace stripped, split on the `X` count placeholder and AND-combined
+(so `1<X<5` is a range), operators `<= >= < > != =` matched in that order, number-first
+mirrored (`0<X` → `>0`), unrecognised input → **always true**. Vidyano evaluates it
+**client-side only**, to disable (not hide) the button; `Vidyano.Service` never parses it.
+
+Spark's own docs disagree on the default: `docs/prd/custom-actions-prd.md:134` says omitting it
+means `"=0"`; `docs/guide-custom-actions.md:126` says no requirement. Those are opposite, and
+`"=0"` is itself glossed two ways — "no selection required" in prose versus `count == 0` as a
+predicate. **This PR picks one and writes it down.**
+
+**The client half is far cheaper than assumed.** `BsDatatableComponent` already supports
+selection natively in the pinned version: `selectionMode: 'none'|'single'|'multiple'`,
+`selection` as a two-way `ModelSignal`, and `rowKey` defaulting to `String(row.id)` — which
+`PersistentObject` satisfies. The checkbox column is rendered by the component. This is a
+signal plus two template attributes, not a control to build.
+
+**Security posture.** Selected ids *are* row-checked — `ExecuteCustomAction.cs:125` calls
+`GetPersistentObjectAsync` with the **route's** entity type, and `DatabaseAccess.cs:84/99/106`
+applies type grant, collection guard and row rule, refusing with 404. Two gaps:
+
+- **The row gate is hardcoded to `"Read"`** (`DatabaseAccess.cs:106`) even though
+  `ISparkRowRule<T>.IsAllowedAsync(action, …)` is action-parameterised and the detail path
+  *does* pass `"Edit"`/`"Delete"`. So a row rule cannot express "may `Archive` cars they own,
+  but not cars they can merely see" — every such policy must be hand-rolled inside each
+  action, which is precisely the silent-drift failure `ISparkRowRule`'s own doc comment warns
+  about.
+- ⚠️ **New security finding — unbounded attacker-controlled amplification.**
+  `ExecuteCustomAction.cs:93-94` computes `estimatedRequests` from `SelectedItems.Length` and
+  passes it to `IgnoreMaxRequests`, which reads like a budget but is not:
+  `SessionExtensions.cs:73` sets `MaxNumberOfRequestsPerSession = int.MaxValue` and uses the
+  parameter **only as a log threshold**. `SelectedItems.Length` is unbounded client input, each
+  entry costing a load, a collection-guard check, a row-rule evaluation, breadcrumb resolution
+  and redaction. No cap, no rate limit on `ActionsGroup`, ~30 MB default body limit. The
+  ceiling *scales with the attacker's input*, so the warning fires later the worse the abuse.
+  Predates this work; fixed here.
+
+**`selectionRule` is a UX affordance and an input-validation contract. It is not an
+authorization boundary** — the grant at `ExecuteCustomAction.cs:52` and the per-item row gate
+are. Enforcing it server-side buys integrity and DoS containment, not access control.
+
+### F14 — M-3 can be completed, and the audit contradicts its own reference implementation
+
+`docs/prd/PRD-SecurityAudit.md:210-224` requires uniform 404 **for authenticated-but-not-
+authorized**, byte-identical bodies, explicitly *"keep 401 for unauthenticated"*. Status is
+PARTIAL (`:1136`).
+
+**The anonymous-401 is not an oracle.** Authorization is evaluated against the principal alone
+and *before* any load (`DatabaseAccess.cs:84` precedes `:91`), so for a denied type the
+response is constant across every id. A 401 tells an anonymous prober only that they are
+anonymous.
+
+**But `Queries/Get.cs` — the file the audit calls fixed — returns 404 to anonymous callers**,
+with no 401 branch, because `PermissionService` has no notion of authenticated-ness. So two
+contracts already ship. The resolution:
+
+> A **catalogue** endpoint (`/spark/types`, `/spark/queries`, `/spark/aliases`,
+> `/spark/program-units`) is loaded by the shell on boot for every visitor; a 401 there would
+> bounce every anonymous visitor to `/sign-in` merely for loading a page. It answers **404**.
+> An **access** endpoint (`/spark/po/*`, `/spark/actions/*`, `/spark/lookupref/*`) is the
+> caller *doing* something; **401** is the correct answer to "you are not signed in".
+
+**Offenders the audit does not list**, found by sweeping every endpoint:
+
+- `Queries/Execute.cs:31-79` parses `?sortColumns=` **before** authorizing, so an unauthorized
+  caller enumerates the entity's attribute names via 400-vs-403. Same file, same fix.
+- `ListCustomActions.cs:22-25` and `Permissions/GetPermissions.cs:20-23` return 404 for an
+  unknown type but 200 for a known-but-denied one.
+- `StreamExecuteQuery.cs:77-80` accepts the socket and then closes it with `"Access denied"`.
+
+**Row-level security is already fully compliant** and is *more* correct than the type level:
+row-denied → `null` → 404 everywhere (`DatabaseAccess.cs:106-107`, `Update.cs:93-100`,
+`Delete.cs:73-78`, `Execute.cs:102-108`, `ExecuteCustomAction.cs:111-129`). Today a caller with
+no `Read/Car` at all gets a *different* code from one refused a single row — backwards.
+
+**Client impact is nil.** Nothing in `ng-spark`, `ng-spark-auth` or the demos branches on 403;
+the only status branches are two `=== 400`. The one consequence is `SparkClient`, where an
+authenticated-denied call stops throwing and returns `null` — a widening of a contract
+`SparkClientException.cs:9` already documents as "missing **or row-level-denied**".
+
+**Tests:** neither protected file needs an edit. `NotFoundVsForbiddenTests` is deliberately
+shape-agnostic (`:56` asserts `forbidden == nonExistent`, true whether both are 403 or both
+404); `MetadataEndpointAuthTests` asserts content, not status. Exactly one assertion changes —
+`ExecuteCustomActionTests.cs:84-98`, which pins the 403 M-3 says must become 404. Every 401
+assertion is an *anonymous* caller and must be preserved;
+`AnonymousPersistentObjectAccessTests.cs:41-43` says so in the code.
+
 ## Requirements
 
 | # | Requirement | Source |
@@ -256,6 +366,11 @@ No demo declares an ng-spark range. `package-lock.json` records a stale `22.0.8`
 | R10 | The first-column link is absent when the query's rows are not documents | #309(4) |
 | R11 | No user-visible drift bug (F5) survives in a path this PR touches | F5 |
 | R12 | The 404-on-denied contract is preserved exactly | F8 |
+| R13 | A grid supports row selection, and `selectedItems` reaches the server | F13 |
+| R14 | `selectionRule` is evaluated — client for affordance, **server for enforcement** | F13, M3 |
+| R15 | A selection payload cannot be used to amplify server work without bound | F13 |
+| R16 | An authenticated caller denied a type, query or action is indistinguishable from not-found | F14 |
+| R17 | Anonymous callers still receive 401 from access endpoints, so the login redirect works | F14 |
 
 ## Design
 
@@ -396,6 +511,87 @@ maps `@mintplayer/ng-spark/*` by wildcard, so a new `grid/` folder needs **zero 
 shared code must **not** live in `query-list` — that would create `po-detail → query-list` and
 drag the websocket graph along with it.
 
+### D10 — `selectionRule`: Vidyano's grammar, evaluated on both sides
+
+**Semantics, resolving the contradiction in favour of the guide:** `null`/`""` → **always
+true** (no requirement). That is what `guide-custom-actions.md:126` says, what Vidyano does,
+and the only non-breaking choice — `WebhooksDemo`'s action omits the field.
+`docs/prd/custom-actions-prd.md:134`'s *"defaults to `=0`"* is **wrong and corrected here**,
+along with its "(none)" gloss: `"=0"` means the predicate `count == 0`, i.e. the action is
+disabled the moment anything is selected.
+
+**Grammar:** port `Vidyano.Core/Common/ExpressionParser.cs` to
+`Services/SelectionRuleParser.cs` returning `Func<int,bool>` — `X` placeholder, split and
+AND-combine (`1<X<5` is a range), operators `<= >= < > != =` in that order, number-first
+mirrored. A Vidyano-literate author's rules then mean what they expect. **Two deliberate
+deviations:**
+
+1. **Fail closed, at load time.** Vidyano falls back to *always true* on unparseable input,
+   which is wrong for a server-enforced gate — `"1-5"` would silently permit everything.
+   `CustomActionsConfigurationLoader` rejects a malformed rule when the file loads, matching
+   the repo's loud-config-error posture. This also removes Vidyano's own C#-throws /
+   JS-passes port divergence.
+2. **Thread-safe cache** — Vidyano mutates a plain `Dictionary` without a lock.
+
+Mirrored in TS as `models/src/selection-rule.ts`. **Both ports are generated against one
+committed fixture table**, or they will drift exactly as Vidyano's two did.
+
+**Client:** `selection` signal on `SparkGridState` (D9), cleared by `resetForNewSource()` —
+otherwise it is drift bug D-4's exact shape, with route A's selection POSTed as ids of route
+B's type. `[selectionMode]` computed to `'none'` unless a visible action is gated, so grids
+without gated actions are pixel-identical; `'single'` when every gated action satisfies
+`rule(1) && !rule(2)`, else `'multiple'`. Buttons are **disabled, not hidden** — hiding makes
+the affordance undiscoverable and would reflow the priority-nav on every selection change.
+
+**Server:** enforced between the action-existence gate and the reload loop, so a violation
+costs zero database work. **400**, not 403 — malformed input, not an authorization decision;
+the caller already proved they hold the grant. Plus an **unconditional ceiling** on
+`SelectedItems.Length` (default 200) that applies even when the rule is null, because F13's
+amplification finding is not fixed by the rule alone.
+
+**Row gate per action:** additionally call
+`rowSecurity.IsAllowedAsync(entityType, actionName, entity)` per item when the type has a row
+rule, refusing with the same 404. One in-memory hook call per item; makes
+`ISparkRowRule.IsAllowedAsync(action, …)` finally mean what its signature promises. Called out
+in the release notes, since a consumer whose override returns `false` for unknown action names
+would start refusing actions that work today.
+
+**`selectionRule` is not an authorization boundary** — say so in a comment at the enforcement
+site, not only here.
+
+### D11 — M-3 completed, including type existence
+
+Status is a function of the **principal and the endpoint's role — never of the resource's
+existence**, at any granularity.
+
+| endpoint class | anonymous | authenticated, denied | not found | row-denied |
+|---|---|---|---|---|
+| **Access** (`/spark/po/*`, `/spark/actions/*`, `/spark/lookupref/*`) | **401** | **404**, byte-identical to not-found | **404** | 404 ✅ already |
+| **Catalogue** (`/spark/types`, `/spark/queries`, `/spark/aliases`, `/spark/program-units`) | 404 ✅ already | 404 ✅ already | 404 | n/a |
+| **Query execute** (`/spark/queries/{id}/execute`, `/stream`) | 404 — follows its metadata sibling | 404 | 404 | 404 ✅ already |
+
+**Unknown entity types adopt the denied shape** (owner decision, 2026-08-21, reversing an
+earlier call). Otherwise the status discloses *which model JSON files exist and are
+queryable* — a map of the application's data surface, recoverable one probe at a time from
+the very endpoint `/spark/types` filters. That outweighs the cost, which is real and
+accepted: `GET /spark/po/Bogus` answers **401** to an anonymous caller, which is a lie about a
+type that will never exist and is hostile to debug against. `EntityTypes/Get.cs:23-25` is the
+precedent. Affects `Get.cs:22-25`, `List.cs:21-24`, `Create.cs:33-36`, `Update.cs:34-37`,
+`Delete.cs:32-36`, `ExecuteCustomAction.cs:43-46`, `ListCustomActions.cs:22-25`, and perturbs
+six unknown-type unit tests that must be reviewed rather than assumed.
+
+`Permissions/GetPermissions.cs` is the one carve-out: it is deliberately anonymous-callable
+(audit M-1), so it closes its leak the other way — an **unknown type returns the same
+200-all-false** as a denied one, rather than 404.
+
+**Also fixed, since it is the same file:** `Queries/Execute.cs` authorizes **before** parsing
+`?sortColumns=`, so an unauthorized caller can no longer enumerate attribute names via
+400-vs-403. And `StreamExecuteQuery.cs` refuses at the handshake rather than accepting the
+socket and closing it with `"Access denied"`.
+
+**Byte-identity is not free:** `Get.cs:34`, `Update.cs:46` and `Delete.cs:57` interpolate the
+requested id into the not-found body, so the denial body must interpolate it too.
+
 ## Decisions
 
 | Decision | Why |
@@ -413,6 +609,13 @@ drag the websocket graph along with it.
 | Fix #309(3) purely client-side | F8 — the 404 is a named remediation with tests pinning it |
 | **Grid-core unification ships here, not in a follow-up** | Owner: one PR. Every extra PR is another full round of workflow runs, and waiting on CI is the bottleneck. Size is not a reason to split |
 | Two shells over one headless core, not one merged component | D9 — merging drags route-coupling, streaming and websockets into every detail page |
+| `selectionRule` enforced **server-side**, not client-only like Vidyano | F13 — Spark's own audit already decided this (`issue_236_security_sweep_plan.md:62`); it is a half-delivered remediation, not a new feature |
+| `null` selection rule means "no requirement", not `"=0"` | F13 — the two Spark specs contradict each other; this is the non-breaking reading and matches the guide and Vidyano |
+| Malformed rule = loud config error at load, not fail-open at execute | F13 — Vidyano's always-true fallback would make `"1-5"` silently permit everything |
+| Selection violation returns **400**, not 403 | Malformed input, not an authorization decision — the caller already holds the grant |
+| Unconditional selection ceiling even with no rule | F13 — `IgnoreMaxRequests` sets `int.MaxValue`; `estimatedRequests` is log-only and scales with attacker input |
+| **Unknown entity types adopt the denied shape** | D11 — otherwise the status maps which model files exist and are queryable. Reverses an earlier call; the `401`-on-typo cost is accepted |
+| `GetPermissions` closes its leak with 200-all-false, not 401 | It is deliberately anonymous-callable (audit M-1) |
 
 ## Acceptance criteria
 
@@ -447,7 +650,26 @@ drag the websocket graph along with it.
     where a query declares one.
 22. `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` pass **unmodified**.
 23. A double `--spark-synchronize-model` leaves the four new fields byte-identical.
-24. `npm view @mintplayer/ng-spark version` reports `22.3.0`; NuGet reports `preview.61`.
+24. **Fleet's `CarCopy` button in the car list returns 200 instead of today's 500**, with one
+    row selected — and is disabled with zero or two selected.
+25. `CarCopy` from the **detail** page still succeeds with no selection (the rule is scoped to
+    the query path).
+26. The C# and TS selection-rule parsers agree on every row of the shared fixture, including
+    the malformed ones.
+27. A malformed `selectionRule` fails at configuration load with a clear error, not at execute.
+28. Submitting more than the ceiling of `selectedItems` is refused before any document load.
+29. A row rule that denies `{actionName}` for a selected item refuses the action with 404.
+30. **M-3:** authenticated-denied and not-found are **byte-identical** — status and raw body —
+    for PO Get/List/Create/Update/Delete, query execute, and custom-action execute.
+31. **M-3:** an unknown entity type is indistinguishable from a denied one, including
+    `GET /spark/po/Bogus` returning 401 to an anonymous caller.
+32. **M-3:** a denied query execute carrying a bogus `?sortColumns=` does **not** return 400.
+33. **M-3:** anonymous callers still receive 401 from every access endpoint — the negative
+    control that stops a future over-correction from killing the login redirect.
+34. **M-3:** row-denied and type-denied produce the same code.
+35. `NotFoundVsForbiddenTests` and `MetadataEndpointAuthTests` pass **unmodified**; exactly one
+    pre-existing assertion changes (`ExecuteCustomActionTests.cs:84-98`, 403 → 404).
+36. `npm view @mintplayer/ng-spark version` reports `22.3.0`; NuGet reports `preview.61`.
 
 ## Migration
 
@@ -498,9 +720,13 @@ PR costs another full round of workflow runs.
 
 ### Genuinely out of scope
 
-- **`selectionRule` is transported (`custom-action.ts:9`) but never evaluated**, and
-  `selectedItems` is never populated by the query list. That is unimplemented feature work
-  with no caller, not a defect in this path — a query action needs no selection.
-- **M-3 is still PARTIAL** — `PersistentObject/Get.cs:39-49` and `Queries/Execute.cs:128-138`
-  still return 403 where the audit wants 404. A security change to endpoints this PR does not
-  otherwise touch, tracked by its own audit.
+- **`AllSelected` / select-all-across-pages**, and Vidyano's `maxSelectedItems`. Vidyano
+  transports an *exclusion set* re-materialised server-side
+  (`ServiceImplementation.cs:1524-1549`); Spark has no equivalent and no caller asking. The
+  unconditional selection ceiling (D10) covers the safety half.
+- **Reshaping `[SparkAuthorize]`'s 403 on controllers.** ASP.NET's own middleware emits it;
+  changing it needs a custom `IAuthorizationMiddlewareResultHandler`, and a controller route
+  has no framework-level coupling between authorization and resource existence, so there is
+  no oracle to close.
+- **Replication and IdentityProvider status codes.** mTLS machine-to-machine and OAuth2
+  respectively; OAuth2 *mandates* 401 with `WWW-Authenticate`.
