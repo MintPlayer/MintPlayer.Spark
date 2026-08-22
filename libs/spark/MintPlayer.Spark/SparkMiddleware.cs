@@ -500,6 +500,12 @@ public static class SparkExtensions
 
         app.ApplicationServices.GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
             .GetConfiguration();
+
+        // Same trip, different file: force the query alias index to build now. It is lazy, so a
+        // duplicate alias would otherwise surface as a 500 on whichever request first needed a
+        // query — in an unrelated place, long after the mistake. Here it is a startup failure that
+        // names both queries.
+        app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
     }
 
     /// <summary>
