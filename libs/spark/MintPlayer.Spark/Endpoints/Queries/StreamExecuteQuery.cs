@@ -37,8 +37,8 @@ internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesG
         // accepting the socket and closing it with "Access denied" afterwards -- that
         // told the caller the query was real before refusing it.
         if (query is null ||
-            query.EntityType is null ||
-            !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
+            (query.EntityType is not null &&
+             !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted)))
         {
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }

@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints;
 
@@ -62,9 +65,24 @@ internal static class SparkDenial
     /// All three are deliberately indistinguishable.
     /// </summary>
     public static (object Body, int StatusCode) Refuse(HttpContext httpContext)
-        => httpContext.User.Identity?.IsAuthenticated == true
-            ? (new { error = NotFoundMessage }, StatusCodes.Status404NotFound)
-            : (new { error = "Authentication required" }, StatusCodes.Status401Unauthorized);
+    {
+        if (httpContext.User.Identity?.IsAuthenticated == true || !AuthenticatingWouldHelp(httpContext))
+            return (new { error = NotFoundMessage }, StatusCodes.Status404NotFound);
+
+        return (new { error = "Authentication required" }, StatusCodes.Status401Unauthorized);
+    }
+
+    /// <summary>
+    /// Whether telling this caller to authenticate is honest.
+    /// </summary>
+    /// <remarks>
+    /// Under <c>spark.AllowAnonymousAccess()</c> an anonymous caller IS an authorized principal,
+    /// so a 401 would be a lie — signing in changes nothing, and the client would bounce the
+    /// visitor to a sign-in page that cannot help. Such an app answers 404 to everyone, which is
+    /// also the stronger position: with no principal to distinguish, every refusal looks alike.
+    /// </remarks>
+    private static bool AuthenticatingWouldHelp(HttpContext httpContext)
+        => httpContext.RequestServices.GetService<IAccessControl>() is not AllowAllAccessControl;
 
     /// <summary>Shorthand for endpoints returning <see cref="Results"/> directly.</summary>
     public static IResult RefuseJson(HttpContext httpContext)

@@ -34,8 +34,16 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
         // this follows its metadata sibling Queries/Get.cs, which already answers 404 to
         // anonymous callers for the same id. The grid fetches metadata first, so the
         // login redirect was never reachable on this path anyway.
-        if (query is null ||
-            query.EntityType is null ||
+        if (query is null)
+        {
+            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
+        }
+
+        // Only when the query declares its entity type. A query that leaves it unset has its type
+        // inferred downstream, and QueryExecutor authorizes there — refusing here would break
+        // every such query rather than protect it. The catch below gives that path the same
+        // uniform 404, so the oracle stays closed either way.
+        if (query.EntityType is not null &&
             !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
         {
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
