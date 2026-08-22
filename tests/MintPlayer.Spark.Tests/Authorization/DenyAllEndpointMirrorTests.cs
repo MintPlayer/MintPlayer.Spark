@@ -8,6 +8,57 @@ using MintPlayer.Spark.Tests._Infrastructure;
 namespace MintPlayer.Spark.Tests.Authorization;
 
 /// <summary>
+/// Owns the deny-all host for the whole class: one database, one Spark host, one minted
+/// antiforgery token, instead of one of each per test case.
+/// </summary>
+/// <remarks>
+/// Nothing in this class writes a document — every case asks an endpoint what it refuses — so a
+/// shared database costs it nothing and saves 26 create/delete cycles plus 26 host boots.
+/// </remarks>
+public sealed class DenyAllHost : SparkSharedDatabase
+{
+    internal static readonly Guid DocTypeId = Guid.Parse("5a5a0000-1111-2222-3333-444455556666");
+    internal static readonly Guid AllDocsQueryId = Guid.Parse("5a5a1111-1111-2222-3333-444455556666");
+
+    public SparkEndpointFactory<GuardedContext> Factory { get; private set; } = null!;
+    public HttpClient Client { get; private set; } = null!;
+
+    /// <summary>
+    /// Antiforgery runs BEFORE authorization, so an unminted mutating request answers 400 and
+    /// proves nothing about the permission check. Minted once for the class.
+    /// </summary>
+    public string CookieHeader { get; private set; } = null!;
+
+    /// <inheritdoc cref="CookieHeader"/>
+    public string XsrfToken { get; private set; } = null!;
+
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+
+        var docType = GuardedDocModel.For(DocTypeId);
+        docType.Queries =
+        [
+            new SparkQuery { Id = AllDocsQueryId, Name = "AllDocs", Source = "Database.Docs", EntityType = "GuardedDoc" },
+        ];
+
+        Factory = new SparkEndpointFactory<GuardedContext>(
+            Store, [docType], security: SparkTestSecurity.Empty);
+        Client = Factory.CreateClient();
+
+        (CookieHeader, XsrfToken) = await Factory.MintAntiforgeryAsync();
+    }
+
+    public override async Task DisposeAsync()
+    {
+        Client?.Dispose();
+        if (Factory is not null)
+            await Factory.DisposeAsync();
+        await base.DisposeAsync();
+    }
+}
+
+/// <summary>
 /// Every Spark endpoint, against a <c>security.json</c> that grants nothing.
 /// </summary>
 /// <remarks>
@@ -33,42 +84,15 @@ namespace MintPlayer.Spark.Tests.Authorization;
 /// names what must not appear in the body.</item>
 /// </list>
 /// </remarks>
-public class DenyAllEndpointMirrorTests : SparkTestDriver
+public class DenyAllEndpointMirrorTests(DenyAllHost host)
+    : SparkSharedTestDriver(host), IClassFixture<DenyAllHost>
 {
-    private static readonly Guid DocTypeId = Guid.Parse("5a5a0000-1111-2222-3333-444455556666");
-    private static readonly Guid AllDocsQueryId = Guid.Parse("5a5a1111-1111-2222-3333-444455556666");
+    private static readonly Guid DocTypeId = DenyAllHost.DocTypeId;
+    private static readonly Guid AllDocsQueryId = DenyAllHost.AllDocsQueryId;
 
-    private SparkEndpointFactory<GuardedContext> _factory = null!;
-    private HttpClient _client = null!;
-    private string _cookieHeader = null!;
-    private string _xsrfToken = null!;
-
-    public override async Task InitializeAsync()
-    {
-        await base.InitializeAsync();
-
-        var docType = GuardedDocModel.For(DocTypeId);
-        docType.Queries =
-        [
-            new SparkQuery { Id = AllDocsQueryId, Name = "AllDocs", Source = "Database.Docs", EntityType = "GuardedDoc" },
-        ];
-
-        _factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [docType], security: SparkTestSecurity.Empty);
-        _client = _factory.CreateClient();
-
-        // Antiforgery runs before authorization, so an unminted mutating request answers 400 and
-        // proves nothing about the permission check. Mint once here so every row below reaches the
-        // gate it is actually about.
-        (_cookieHeader, _xsrfToken) = await _factory.MintAntiforgeryAsync();
-    }
-
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private HttpClient _client => host.Client;
+    private string _cookieHeader => host.CookieHeader;
+    private string _xsrfToken => host.XsrfToken;
 
     public static TheoryData<string, string> AccessEndpoints => new()
     {
