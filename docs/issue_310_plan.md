@@ -402,4 +402,56 @@ namespaces moved, `DefaultBehavior` dropped.
 
 ## Outcome
 
-_(filled in as milestones land)_
+All thirteen milestones landed, one commit each, on `feat/security-json-in-core`. Released as
+`10.0.0-preview.62` + `@mintplayer/ng-spark@22.3.0`; notes in
+`docs/release-notes-preview-62.md`.
+
+**1697 .NET tests, 1 failure** — `SparkCronSchedulerTests.A_concurrent_job_that_overruns_is_capped_at_the_max_in_flight`,
+which passes in isolation. Timing-sensitive concurrency, untouched by this work.
+**21/21 ng-spark spec files green.**
+
+### Where the plan was wrong, and what happened instead
+
+- **M8 does not exist as a commit.** The plan had the deny-expansion fix as a late milestone, but
+  the index it needs belongs on the loader, which moves in M2 — so the symmetry landed in M2 and
+  the evaluator switched to it in M3. Doing it in the planned order would have meant writing the
+  chain, then deleting it.
+- **`AuthorizationOptions` did not fold into `SparkOptions`.** It was deleted outright. Every
+  field was either dead (`DefaultBehavior`, replaced by the `*/*` wildcard) or a second place to
+  put the file. The loader now follows `CustomActionsConfigurationLoader` exactly: fixed path,
+  fixed cache, no knobs.
+- **M6's two "refusals that name what they refused" were already closed** by M1's sweep.
+  `GetPermissions` answers all-false for an unknown type, and `ExecuteCustomAction`'s action-name
+  404s run after the grant check, so they only ever name an action the caller holds.
+- **Fleet's `Company.json` was not given a sub-query fixture.** The plan asked for one as M9's
+  acceptance test; `SubQueryPruningTests` covers it in-process without touching a demo whose file
+  is load-bearing for 71 E2E tests.
+
+### Three bugs the deny-all mirror suite found on its first run
+
+None were reachable from the 244 permissive factory tests, which is the argument for the suite:
+
+1. `GET /spark/actions/{type}` answered **404** for an unknown type and **200 with an empty list**
+   for a denied one — the M-3 existence oracle, in an endpoint whose own comment asserted the two
+   shapes matched.
+2. `POST /spark/po/{type}` read the request body **before** authorizing the type, so a malformed
+   body got a caller with no rights a 500 on a real type and a refusal on an unknown one. POSTing
+   rubbish enumerated the entity types.
+3. Antiforgery runs before authorization, so an unminted mutating request answers 400 — which had
+   been hiding both of the above from any test that tried.
+
+A fourth, in the client: the cherry-picked sub-query spec left `SparkLanguageService` unmocked, so
+all 21 spec files passed while the nx task exited non-zero on 26 unhandled rejections.
+
+### Left undone, deliberately
+
+- **S7 was not run in a browser.** It needs DemoApp against a live RavenDB. The mechanism is
+  covered by `SubQueryPruningTests` and by the demo's committed `securityPosture.txt`, but "open
+  the Stock grid and see no links" has not been observed. Worth ten minutes before merge.
+- **The E2E suite was not run** (it needs the out-of-process hosts). Fleet and HR keep their files
+  and their posture baselines verify, so nothing points at breakage — but their 71 tests are
+  unverified against this branch.
+- **Open question 1 answered:** `AddAuthorization()` did not survive; everything left folded into
+  `AddAuthentication<TUser>()`. **Question 2:** the hot-reload watcher stays — it complicated the
+  startup gate not at all. **Question 3:** `Machine:` / `Module:` prefixes are untouched and still
+  a bare convention; still worth their own issue.
