@@ -124,6 +124,7 @@
         "nl": "Beurs (Live)"
       },
       "source": "Custom.StreamItems",
+      "rowsNavigable": false,
       "alias": "stocks",
       "sortColumns": [
         {

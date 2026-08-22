@@ -41,10 +41,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return Results.Json(
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                statusCode: isAuthed ? 403 : 401);
+            return SparkDenial.RefuseJson(httpContext);
         }
         catch (InvalidOperationException ex)
         {

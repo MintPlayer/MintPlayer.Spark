@@ -33,7 +33,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         try
@@ -43,7 +43,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
 
             if (existingObj is null)
             {
-                return ClientResult.Envelope(clientAccessor, new { error = $"Object with ID {decodedId} not found" }, 404);
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -95,15 +95,11 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             // R2-H2: row-level denial returns 404 to match the read path —
             // M-3 says authorized-but-forbidden must be indistinguishable from
             // not-found for instance-level checks.
-            return ClientResult.Envelope(clientAccessor,
-                new { error = $"Object with ID {id} not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? 403 : 401);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }

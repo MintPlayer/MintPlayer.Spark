@@ -1,54 +1,142 @@
-@if (query(); as q) {
-  <bs-card style="display: block; margin: 1rem 0;">
-    <bs-card-header>{{ (q.description | resolveTranslation) || q.name }}</bs-card-header>
-    @if (loading()) {
-      <div class="text-center p-3">
-        <bs-spinner />
-      </div>
-    } @else {
-      <div class="p-3">
-        <bs-datatable
-            [virtualScroll]="isVirtualScrolling()"
-            [itemSize]="40"
-            [isResponsive]="isVirtualScrolling()"
-            [fetch]="fetchFn()"
-            [(settings)]="settings">
-          @for (attr of visibleAttributes(); track attr.id) {
-            <div *bsDatatableColumn="attr.name; sortable: true">
-              {{ (attr.label | resolveTranslation) || attr.name }}
-            </div>
-          }
+<!--
+  Three explicit states, in this order, and the order is load-bearing.
 
-          <ng-container *bsRowTemplate="let item">
-            @let row = $any(item);
-            @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-              <td>
-                @if (row) {
-                  @if (first && canRead()) {
-                    <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
-                      <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                    </a>
-                  } @else {
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  }
-                } @else {
-                  &nbsp;
-                }
-              </td>
-            }
-          </ng-container>
-        </bs-datatable>
-      </div>
+  This template used to open with `@if (query(); as q)` wrapping EVERYTHING, and
+  `query()` is only set after loadData's awaits resolve. Three separate bugs fell
+  out of that one line: the spinner was unreachable on a first load (it rendered
+  inside the gate, while `loading` starts true and `query` starts null), a
+  first-load failure rendered ZERO DOM — no card, no message, nothing to see or
+  report — and a failed RELOAD left the previous query's card on screen.
+
+  So: `loading` is checked first and outside any dependency on `query`, and the
+  final `@else` always renders something. Do not fold these back into one gate,
+  and do not move the spinner inside the `query()` branch.
+-->
+<ng-template #content>
+  @if (loading()) {
+    <div class="text-center p-3">
+      <bs-spinner />
+    </div>
+  } @else if (query(); as q) {
+    @if (headerComponent(); as headerType) {
+      <bs-card-header>
+        <ng-container *ngComponentOutlet="headerType; inputs: headerComponentInputs()"></ng-container>
+      </bs-card-header>
+    } @else if (headerTemplate(); as headerTpl) {
+      <bs-card-header>
+        <ng-container *ngTemplateOutlet="headerTpl; context: { $implicit: q }"></ng-container>
+      </bs-card-header>
+    } @else {
+      <bs-card-header>
+        @if (customActions().length) {
+          <!-- Caption and actions share the header. The nav renders only when the query
+               declares actions, so a query without them is pixel-identical to before. -->
+          <div class="d-flex align-items-center gap-2">
+            <span class="me-auto">{{ (q.description | resolveTranslation) || q.name }}</span>
+            <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+              @for (action of customActions(); track action.name) {
+                <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary"
+                        [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
+                  {{ action.displayName | resolveTranslation }}
+                </button>
+              }
+            </bs-priority-nav>
+          </div>
+        } @else {
+          {{ (q.description | resolveTranslation) || q.name }}
+        }
+      </bs-card-header>
     }
+    <div class="p-3">
+      <!-- A page-fetch failure while the grid is already resolved. Without this the
+           catch returns an empty page and a failed query is indistinguishable from
+           one that legitimately has no rows. -->
+      @if (errorMessage(); as err) {
+        <bs-alert [type]="colors.danger" class="mb-3">
+          {{ err }}
+        </bs-alert>
+      }
+      <bs-datatable
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
+          [virtualScroll]="isVirtualScrolling()"
+          [itemSize]="40"
+          [isResponsive]="isVirtualScrolling()"
+          [fetch]="fetchFn()"
+          [(settings)]="settings">
+        @for (attr of visibleAttributes(); track attr.id) {
+          <div *bsDatatableColumn="attr.name; sortable: true">
+            {{ (attr.label | resolveTranslation) || attr.name }}
+          </div>
+        }
+
+        <ng-container *bsRowTemplate="let item">
+          @let row = $any(item);
+          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+            <td>
+              @if (row) {
+                <!-- The first column links to the row's detail page. Two things about
+                     this are routinely misread:
+
+                     1. `cellContent` is projected INSIDE the anchor, so a custom
+                        `renderer` does NOT suppress this link — a renderer that emits
+                        its own <a> produces nested anchors (invalid HTML) rather than
+                        replacing this one. To opt out, use the query's rowsNavigable.
+                     2. `canRead()` answers "may I open it", which is a different
+                        question from "is there anything to open": a Custom.* query can
+                        fabricate rows in memory whose ids resolve to no document. -->
+                @if (first && canRead() && rowsNavigable()) {
+                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]">
+                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                  </a>
+                } @else {
+                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                }
+              } @else {
+                &nbsp;
+              }
+            </td>
+          }
+        </ng-container>
+      </bs-datatable>
+    </div>
+  } @else {
+    <!-- The query could not be resolved. Rendering something keeps the host's layout
+         intact and, crucially, makes the failure visible: this branch used to render
+         nothing at all. -->
+    <div class="p-3">
+      <bs-alert [type]="colors.danger" class="mb-0">
+        {{ errorMessage() || ('spark.query.unavailable' | t) }}
+      </bs-alert>
+    </div>
+  }
+</ng-template>
+
+<!--
+  The card is the component's, unless the host says otherwise. `bs-card-header` is
+  styled by a GLOBAL `.card-header` rule rather than `::slotted`, so the header keeps
+  its appearance with no `bs-card` ancestor — which is what makes the bare branch a
+  wrapper change only, with no duplicated content.
+-->
+@if (showCard()) {
+  <bs-card style="display: block; margin: 1rem 0;">
+    <ng-container *ngTemplateOutlet="content"></ng-container>
   </bs-card>
+} @else {
+  <ng-container *ngTemplateOutlet="content"></ng-container>
 }
 
 <ng-template #cellContent let-item let-attr="attr">
   @if (getColumnRendererComponent(attr); as rendererType) {
     <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
   } @else if (attr.dataType === 'boolean') {
+    @let boolVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+    <!-- [indeterminate] matters: without it a null boolean renders as an unchecked
+         box, which reads as an explicit `false`. spark-query-list has always bound
+         it; this component had drifted. -->
     <input type="checkbox"
-      [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
+      [checked]="boolVal === true"
+      [indeterminate]="boolVal === null || boolVal === undefined"
       disabled
       onclick="return false;">
   } @else if (attr.dataType === 'color') {

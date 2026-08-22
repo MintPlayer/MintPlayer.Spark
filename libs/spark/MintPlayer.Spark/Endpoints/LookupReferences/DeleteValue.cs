@@ -32,10 +32,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint, IMem
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return Results.Json(
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                statusCode: isAuthed ? 403 : 401);
+            return SparkDenial.RefuseJson(httpContext);
         }
         catch (InvalidOperationException ex)
         {

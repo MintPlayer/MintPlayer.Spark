@@ -8,7 +8,10 @@
       }
       @if (showCustomActions()) {
         @for (action of customActions(); track action.name) {
-          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary" (click)="onCustomAction(action)">
+          <!-- Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
+               priority nav on every selection change. The server enforces the same rule. -->
+          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary"
+                  [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
             {{ action.displayName | resolveTranslation }}
           </button>
         }
@@ -73,6 +76,8 @@
 
     @if (isStreaming()) {
       <bs-datatable class="flex-grow-1"
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
           [virtualScroll]="isVirtualScrolling()"
           [itemSize]="40"
           [isResponsive]="isVirtualScrolling()"
@@ -85,26 +90,13 @@
         }
 
         <ng-container *bsRowTemplate="let item">
-          @let row = $any(item);
-          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-            <td>
-              @if (row) {
-                @if (first && canRead()) {
-                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  </a>
-                } @else {
-                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                }
-              } @else {
-                &nbsp;
-              }
-            </td>
-          }
+          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
         </ng-container>
       </bs-datatable>
     } @else {
       <bs-datatable class="flex-grow-1"
+          [selectionMode]="selectionMode()"
+          [(selection)]="selection"
           [virtualScroll]="isVirtualScrolling()"
           [itemSize]="40"
           [isResponsive]="isVirtualScrolling()"
@@ -117,31 +109,51 @@
         }
 
         <ng-container *bsRowTemplate="let item">
-          @let row = $any(item);
-          @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-            <td>
-              @if (row) {
-                @if (first && canRead()) {
-                  <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
-                    <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                  </a>
-                } @else {
-                  <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-                }
-              } @else {
-                &nbsp;
-              }
-            </td>
-          }
+          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
         </ng-container>
       </bs-datatable>
     }
+  } @else if (errorMessage(); as err) {
+    <!-- The metadata load failed. This used to be unreachable: the rejection was
+         swallowed by an async subscribe handler, so the spinner below span forever. -->
+    <bs-alert [type]="colors.danger" class="m-3 d-block">
+      {{ err }}
+    </bs-alert>
   } @else {
     <div class="text-center p-5">
       <bs-spinner />
     </div>
   }
 </div>
+
+<!--
+  One row template for both the streaming and the paged datatable. These were two
+  byte-identical copies in the same file, which is how the first column's link came to
+  need fixing in three places instead of one.
+-->
+<ng-template #rowCells let-item>
+  @let row = $any(item);
+  @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+    <td>
+      @if (row) {
+        <!-- `canRead()` answers "may I open it"; `rowsNavigable()` answers "is there
+             anything to open". A Custom.* query can fabricate rows in memory whose ids
+             resolve to no document, and only the query author knows. Note cellContent
+             renders INSIDE this anchor, so a custom renderer cannot suppress the link --
+             it would nest a second one. -->
+        @if (first && canRead() && rowsNavigable()) {
+          <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
+            <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+          </a>
+        } @else {
+          <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+        }
+      } @else {
+        &nbsp;
+      }
+    </td>
+  }
+</ng-template>
 
 <ng-template #cellContent let-item let-attr="attr">
   @if (getColumnRendererComponent(attr); as rendererType) {

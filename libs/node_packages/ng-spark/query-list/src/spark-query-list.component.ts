@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
@@ -13,6 +13,8 @@ import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
+import { filterQueryActions, parseSelectionRule, selectionModeFor } from '@mintplayer/ng-spark/models';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
@@ -22,7 +24,7 @@ import {
   ReferenceChipsPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SparkGridRenderers, initialGridSettings, isVirtualScrollingQuery, visibleGridAttributes } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
@@ -51,7 +53,7 @@ export class SparkQueryListComponent {
   private readonly sparkService = inject(SparkService);
   private readonly streamingService = inject(SparkStreamingService);
   protected readonly lang = inject(SparkLanguageService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly destroyRef = inject(DestroyRef);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -84,8 +86,23 @@ export class SparkQueryListComponent {
   }));
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+    // The handler is async and this is a subscribe, so a rejection lands nowhere:
+    // the metadata load would reject, entityType() would stay null, and the template
+    // would render a spinner FOREVER -- while this component has had an errorMessage
+    // surface all along that only the fetch path ever reached. Catch it here.
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
+      this.onParamsChange(params).catch((e: unknown) => this.reportLoadFailure(e as HttpErrorResponse));
+    });
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
+
+    // Server-issued refreshQuery. Its own effect, skipping the first run, so it drives the
+    // cheap data refresh and never re-resolves metadata (which would reset page and sort).
+    let firstRefreshTick = true;
+    effect(() => {
+      this.queryRefresh.tokenFor(this.query()?.alias || this.query()?.id);
+      if (firstRefreshTick) { firstRefreshTick = false; return; }
+      untracked(() => this.reload());
+    });
   }
 
   private async onParamsChange(params: any): Promise<void> {
@@ -96,6 +113,15 @@ export class SparkQueryListComponent {
     this.resultCount.set(null);
     this.allItems.set([]);
     this.streamItems.set([]);
+    this.errorMessage.set(null);
+    // Reset the permission-derived state too. Without this, navigating A -> B where
+    // B's load fails leaves A's buttons and A's canRead/canCreate on screen.
+    this.canRead.set(false);
+    this.canCreate.set(false);
+    this.customActions.set([]);
+    // Ids from the previous query are meaningless against the next one, and would be POSTed
+    // as though they belonged to it.
+    this.selection.set([]);
     this.disconnectStreaming();
 
     const queryId = params.get('queryId');
@@ -140,16 +166,7 @@ export class SparkQueryListComponent {
       this.entityType.set(resolvedEntityType);
       this.allEntityTypes.set(resolvedEntityTypes);
 
-      const initialSortColumns: SortColumn[] = (resolvedQuery?.sortColumns || []).map(sc => ({
-        property: sc.property,
-        direction: sc.direction === 'desc' ? 'descending' as const : 'ascending' as const
-      }));
-
-      this.settings.set(new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1], selected: 1 },
-        sortColumns: initialSortColumns
-      }));
+      this.settings.set(initialGridSettings(resolvedQuery));
 
       if (resolvedQuery?.isStreamingQuery) {
         // Streaming: WebSocket feeds allItems; the datatable binds [data]="streamItems()".
@@ -168,8 +185,23 @@ export class SparkQueryListComponent {
       ]);
       this.canRead.set(permissions.canRead);
       this.canCreate.set(permissions.canCreate);
-      this.customActions.set(actions.filter(a => a.showedOn === 'list' || a.showedOn === 'both'));
+      // 'query', not 'list'. The server model and docs/guide-custom-actions.md have
+      // always documented "detail" | "query" | "both"; this filter tested for a value
+      // nothing emits, so an action authored per the documentation rendered NOWHERE.
+      this.customActions.set(filterQueryActions(actions, this.query()));
     }
+  }
+
+  /**
+   * A load failure has to render, not just be swallowed: a denied query answers 404
+   * (audit M-3, so existence is not leaked), which is indistinguishable from a missing
+   * one -- hence a deliberately generic message rather than a guess at which it was.
+   */
+  private reportLoadFailure(err: HttpErrorResponse): void {
+    this.errorMessage.set(
+      err?.status === 404
+        ? (this.lang.t('spark.query.unavailable') || 'This list is not available.')
+        : (err?.error?.error || err?.message || 'An unexpected error occurred'));
   }
 
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
@@ -178,10 +210,10 @@ export class SparkQueryListComponent {
       if (!confirm(message)) return;
     }
     try {
-      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name);
+      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name, undefined, this.selection());
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) {
-        this.refresh();
+        this.reload();
       }
     } catch (e) {
       const err = e as HttpErrorResponse;
@@ -265,8 +297,14 @@ export class SparkQueryListComponent {
     });
   }
 
-  /** Force a refetch (e.g. after a custom action) without changing page/sort. */
-  private refresh(): void {
+  /**
+   * Force a refetch (e.g. after a custom action) without changing page/sort.
+   *
+   * Public so a host can drive it, and named to match
+   * `SparkSubQueryComponent.reload()` — the two grids had drifted into having the
+   * same mechanism under different names, one of them unreachable.
+   */
+  reload(): void {
     if (this.isStreaming()) {
       this.applyFilter();
       return;
@@ -301,41 +339,48 @@ export class SparkQueryListComponent {
     this.onSearchChange();
   }
 
-  isVirtualScrolling = computed(() => this.query()?.renderMode === 'VirtualScrolling');
+  /**
+   * Whether the first column links to a detail page.
+   *
+   * Declared by the query, because the framework cannot derive it: `Database.*` rows
+   * are always real documents, but a `Custom.*` query may return loadable documents
+   * (Fleet's Stolen_Cars) or rows fabricated in memory (StreamItems). Absent means
+   * navigable -- defaulting Custom.* to false would strip the working links off every
+   * custom query that does return documents.
+   */
+  /**
+   * Rows the user has ticked. Lives here rather than in the datatable so the action bar can
+   * read it, and MUST be cleared whenever the source changes — otherwise route A's selection
+   * is POSTed as ids of route B's type.
+   */
+  selection = signal<PersistentObject[]>([]);
 
-  visibleAttributes = computed(() => {
-    return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
-      .sort((a, b) => a.order - b.order) || [];
-  });
+  private readonly queryRefresh = inject(SparkQueryRefreshService);
+
+  /** 'none' unless an action is selection-gated, so unaffected grids gain no checkbox column. */
+  selectionMode = computed(() => selectionModeFor(this.customActions()));
+
+  /** Whether an action's selection rule is satisfied right now. The server checks it again. */
+  isActionEnabled(action: CustomActionDefinition): boolean {
+    return parseSelectionRule(action.selectionRule)(this.selection().length);
+  }
+
+  rowsNavigable = computed(() => this.query()?.rowsNavigable !== false);
+
+  isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
+
+  visibleAttributes = computed(() => visibleGridAttributes(this.entityType()));
 
   getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.columnComponent ?? null;
+    return this.gridRenderers.columnComponentFor(attr);
   }
 
   getColumnRendererInputs(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
-    const itemAttr = item.attributes.find(a => a.name === attr.name);
-    return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
-      item,
-    });
+    return this.gridRenderers.columnInputsFor(component, item, attr);
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
-    if (lookupAttrs.length === 0) return;
-
-    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    const entries = await Promise.all(
-      lookupNames.map(async name => {
-        const result = await this.sparkService.getLookupReference(name);
-        return [name, result] as const;
-      })
-    );
-    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
+    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleAttributes()));
   }
 
   onCreate(): void {

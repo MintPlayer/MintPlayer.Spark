@@ -477,9 +477,12 @@ Detail-type attributes (`dataType == "AsDetail"`) carry nested `PersistentObject
   "sortColumns": SortColumn[],
   "renderMode": string,                   // SparkQueryRenderMode enum
   "indexName": string?,
-  "useProjection": bool,
   "entityType": string?,                  // result entity type name
-  "isStreamingQuery": bool
+  "isStreamingQuery": bool,
+  "actions": string[]?,                   // custom actions to offer; null = all query-side actions
+  "headerRenderer": string?,              // registered SPARK_QUERY_CHROME component name
+  "headerRendererOptions": object?,       // opaque options for that component
+  "rowsNavigable": bool?                  // null = navigable; false suppresses the first-column link
 }
 ```
 

@@ -32,7 +32,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -84,10 +84,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? 403 : 401);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }

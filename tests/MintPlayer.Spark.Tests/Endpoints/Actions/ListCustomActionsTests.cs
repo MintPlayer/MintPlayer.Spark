@@ -160,6 +160,11 @@ public class ListCustomActionsTests
         var context = new DefaultHttpContext
         {
             RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider(),
+            // Authenticated: M-3 makes an unknown entity type answer exactly as a denied one, and
+            // for an anonymous caller that is 401. These tests are about the 404 an authorized
+            // caller sees, which is what makes "no such type" indistinguishable from "not yours".
+            User = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(authenticationType: "Test")),
         };
         foreach (var (k, v) in values) context.Request.RouteValues[k] = v;
         context.Response.Body = new MemoryStream();

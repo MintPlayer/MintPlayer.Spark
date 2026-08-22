@@ -22,10 +22,7 @@ internal sealed partial class ListLookupReferences : IGetEndpoint, IMemberOf<Loo
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return Results.Json(
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                statusCode: isAuthed ? 403 : 401);
+            return SparkDenial.RefuseJson(httpContext);
         }
 
         var lookupReferences = await lookupReferenceService.GetAllAsync();

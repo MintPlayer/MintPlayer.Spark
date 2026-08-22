@@ -59,4 +59,63 @@ public sealed class SparkQuery
     /// and receives snapshot + patch messages instead of a single HTTP response.
     /// </summary>
     public bool IsStreamingQuery { get; set; }
+
+    /// <summary>
+    /// Names of the custom actions to offer on this query, narrowing the entity type's actions
+    /// whose <c>ShowedOn</c> includes the query side. <c>null</c> offers all of them.
+    /// <para>
+    /// This narrows what is DISPLAYED and is not an authorization boundary: the grant is,
+    /// enforced per action in <c>ExecuteCustomAction</c> regardless of which query the caller
+    /// clicked from. A caller can always POST directly.
+    /// </para>
+    /// </summary>
+    public string[]? Actions { get; set; }
+
+    /// <summary>
+    /// Name of a registered query-chrome component to render as this query's header, resolved
+    /// client-side through <c>SPARK_QUERY_CHROME</c> exactly as attribute renderers resolve
+    /// through <c>SPARK_ATTRIBUTE_RENDERERS</c>. When set it replaces the whole header — the
+    /// caption AND the action bar — so the two mechanisms never compete.
+    /// <para>
+    /// Declared on the query rather than passed by the host because a sub-query is rendered
+    /// automatically from <c>EntityTypeDefinition.Queries</c>, where there is no host to ask.
+    /// </para>
+    /// </summary>
+    public string? HeaderRenderer { get; set; }
+
+    /// <summary>
+    /// Opaque options handed to the <see cref="HeaderRenderer"/> component, mirroring
+    /// <c>EntityAttributeDefinition.RendererOptions</c>.
+    /// </summary>
+    public Dictionary<string, object>? HeaderRendererOptions { get; set; }
+
+    /// <summary>
+    /// Whether this query's rows are documents with a detail page, controlling the automatic
+    /// link on the first column.
+    /// <para>
+    /// Only the query author knows: a <c>Custom.*</c> query may return real loadable documents
+    /// (Fleet's <c>Stolen_Cars</c>) or rows fabricated in memory (<c>StreamItems</c>), and the
+    /// framework cannot tell them apart. <c>null</c> resolves to <c>true</c> — including for
+    /// <c>Custom.*</c>, because defaulting those to <c>false</c> would silently strip the
+    /// working links off every custom query that does return documents.
+    /// </para>
+    /// </summary>
+    public bool? RowsNavigable { get; set; }
+
+    /// <summary>
+    /// A copy of this query with different sort columns, for per-request sort overrides.
+    /// </summary>
+    /// <remarks>
+    /// The definition loaded from the model file is cached and shared across requests, so a
+    /// request-scoped override must not mutate it. This exists instead of hand-writing the copy
+    /// at the call site: that version silently dropped every field nobody remembered to add to
+    /// it (<c>Description</c> was already missing), and each new property here would quietly
+    /// vanish from any query that overrode its sort.
+    /// </remarks>
+    public SparkQuery WithSortColumns(SortColumn[] sortColumns)
+    {
+        var copy = (SparkQuery)MemberwiseClone();
+        copy.SortColumns = sortColumns;
+        return copy;
+    }
 }
