@@ -406,7 +406,7 @@ All thirteen milestones landed, one commit each, on `feat/security-json-in-core`
 `10.0.0-preview.62` + `@mintplayer/ng-spark@22.3.0`; notes in
 `docs/release-notes-preview-62.md`.
 
-**1697 .NET tests, 1 failure** — `SparkCronSchedulerTests.A_concurrent_job_that_overruns_is_capped_at_the_max_in_flight`,
+**1702 .NET tests, 1 failure** — `SparkCronSchedulerTests.A_concurrent_job_that_overruns_is_capped_at_the_max_in_flight`,
 which passes in isolation. Timing-sensitive concurrency, untouched by this work.
 **21/21 ng-spark spec files green.**
 
@@ -445,9 +445,12 @@ all 21 spec files passed while the nx task exited non-zero on 26 unhandled rejec
 
 ### Left undone, deliberately
 
-- **S7 was not run in a browser.** It needs DemoApp against a live RavenDB. The mechanism is
-  covered by `SubQueryPruningTests` and by the demo's committed `securityPosture.txt`, but "open
-  the Stock grid and see no links" has not been observed. Worth ten minutes before merge.
+- ~~S7 in a browser~~ — **replaced by a driver test**, which is the better instrument.
+  `QueryWithoutReadTests` runs the whole thing against a real store: `Query` alone lists the rows
+  and reports `canRead: false`, the by-id load is refused, adding `Read` flips both, and the
+  reverse pair (`Read` without `Query`) is pinned too. A browser could only have shown the
+  missing anchor; it could not have shown that `Read` is **enforced** — a client that ignored
+  `canRead` and built the URL itself would look identical.
 - **The E2E suite was not run** (it needs the out-of-process hosts). Fleet and HR keep their files
   and their posture baselines verify, so nothing points at breakage — but their 71 tests are
   unverified against this branch.
