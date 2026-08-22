@@ -1,9 +1,12 @@
-using MintPlayer.Spark.Abstractions;
-
-namespace MintPlayer.Spark.Authorization.Models;
+namespace MintPlayer.Spark.Abstractions.Authorization;
 
 /// <summary>
-/// Root model for the security.json configuration file.
+/// Root model for the <c>App_Data/security.json</c> configuration file.
+/// <para>
+/// Every Spark application has one. It is not optional and there is no code-level way to opt out:
+/// a missing or malformed file refuses startup, in the same shape as the model-hash gate, rather
+/// than degrading into a permissive default that looks like it is working.
+/// </para>
 /// </summary>
 public class SecurityConfiguration
 {
@@ -21,8 +24,8 @@ public class SecurityConfiguration
 
     /// <summary>
     /// Declares which group id plays each of Spark's well-known roles. The only recognised keys are
-    /// <c>anonymous</c> — every caller, signed in or not — and <c>authenticated</c>, every caller who
-    /// has signed in, whatever claims they carry.
+    /// <c>anonymous</c> — a caller who has not signed in — and <c>authenticated</c>, every caller
+    /// who has, whatever claims they carry. See <see cref="SparkWellKnownGroups"/>.
     /// <code>
     /// "wellKnown": {
     ///   "anonymous":     "00000000-0000-0000-0000-000000000000",
@@ -45,7 +48,8 @@ public class SecurityConfiguration
     /// naming it.
     /// </para>
     /// <para>
-    /// Optional: an application declaring neither simply has neither, exactly as before.
+    /// Optional: an application declaring neither simply has neither, and then grants only ever
+    /// reach callers whose claims resolve to a declared group.
     /// </para>
     /// </summary>
     public Dictionary<string, string>? WellKnown { get; set; }
