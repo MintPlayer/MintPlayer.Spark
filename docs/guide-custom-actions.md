@@ -182,7 +182,7 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
 In this example, both Administrators and Fleet managers can execute the `CarCopy` action on `Car` entities. Other groups are denied by default.
 
 If no authorization is configured, the default is **deny**, not allow — `PermissionService` refuses
-everything until `spark.AddAuthorization()` grants it or `spark.AllowAnonymousAccess()` opts out.
+everything until `security.json` grants it. A custom action's resource is `{ActionName}/{Type}`.
 
 **A custom action that names rows also requires `Read/{Type}`.** Every parent and selected item is
 re-loaded through the row-gated read path before the action runs, and that load applies the

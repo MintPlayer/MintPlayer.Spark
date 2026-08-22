@@ -185,7 +185,15 @@ public class CarEndpointTests : SparkTestDriver
 }
 ```
 
-> By default the factory opts into `AllowAnonymousAccess()` so endpoint logic can be tested under an "everyone-can" baseline (the framework default is deny-all). Tests that exercise authorization should register their own `IAccessControl` via `configureServices`.
+> By default the factory writes a permissive `App_Data/security.json` — a `*/*` grant to both
+> well-known roles — so endpoint logic can be tested under an "everyone-can" baseline. It is a real
+> file rather than a switch, so the default exercises the same evaluation path production does, and
+> after `Start()` the factory asserts the host loaded it.
+>
+> A test that IS about authorization passes `security:` — `SparkTestSecurity.Empty`,
+> `.Permissive.Without("Secret")`, `.Granting(…)`, `.FromFile(…)`. For the two things a grant list
+> cannot express — recording what was asked, and deciding by predicate — swap the service instead
+> with `services.UseSparkTestAccessControl(SparkTestAccessControl.DenyAll())`.
 
 `TestServer`'s `HttpClient` does not manage cookies automatically, which is why mutating requests need the antiforgery cookie + token threaded through explicitly. `SparkTestClient` (via `CreateAuthorizedClientAsync`) does this for you; if you need the raw values, call `factory.MintAntiforgeryAsync()`.
 
