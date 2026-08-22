@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "The single source of truth for selection-rule semantics. Both parsers -- C# in",
+    "MintPlayer.Spark/Services/SelectionRuleParser.cs and TypeScript in selection-rule.ts --",
+    "are tested against this file, because Vidyano's two ports of the same algorithm have",
+    "already drifted from each other and nothing caught it.",
+    "",
+    "'expected' lists the result for each of the counts in 'counts'. 'valid: false' marks a",
+    "rule the SERVER must reject at configuration load; the client disables the button",
+    "instead, since it cannot refuse to start."
+  ],
+  "counts": [0, 1, 2, 5, 10],
+  "cases": [
+    { "rule": null,      "valid": true,  "expected": [true,  true,  true,  true,  true ], "why": "no rule means no requirement -- the guide's reading, not the old PRD's '=0'" },
+    { "rule": "",        "valid": true,  "expected": [true,  true,  true,  true,  true ] },
+    { "rule": "   ",     "valid": true,  "expected": [true,  true,  true,  true,  true ] },
+    { "rule": "=0",      "valid": true,  "expected": [true,  false, false, false, false], "why": "a predicate on the count, so it DISABLES once anything is selected" },
+    { "rule": "=1",      "valid": true,  "expected": [false, true,  false, false, false], "why": "Fleet's CarCopy" },
+    { "rule": ">0",      "valid": true,  "expected": [false, true,  true,  true,  true ] },
+    { "rule": ">=1",     "valid": true,  "expected": [false, true,  true,  true,  true ] },
+    { "rule": "<=5",     "valid": true,  "expected": [true,  true,  true,  true,  false] },
+    { "rule": "!=0",     "valid": true,  "expected": [false, true,  true,  true,  true ] },
+    { "rule": "0<X",     "valid": true,  "expected": [false, true,  true,  true,  true ], "why": "number-first is mirrored" },
+    { "rule": "1<X<5",   "valid": true,  "expected": [false, false, true,  false, false], "why": "terms AND-combine into a range" },
+    { "rule": ">= 1",    "valid": true,  "expected": [false, true,  true,  true,  true ], "why": "whitespace is insignificant" },
+    { "rule": "1",       "valid": false, "why": "no operator. Vidyano permits everything here; Spark refuses to start" },
+    { "rule": "1-5",     "valid": false, "why": "the trap: a plausible range syntax that Vidyano would silently read as 'always true'" },
+    { "rule": "*",       "valid": false },
+    { "rule": "=abc",    "valid": false, "why": "the exact case where Vidyano's C# throws and its JS returns always-true" },
+    { "rule": "=1.5",    "valid": false, "why": "a count is an integer" }
+  ]
+}

@@ -21,7 +21,10 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
+            // Same shape as a denied type. A known-but-denied type answers 200 with an
+            // empty list (the per-action filter below), so a 404 here would have said
+            // "this type does not exist" and made type existence probeable.
+            return SparkDenial.RefuseJson(httpContext);
         }
 
         var config = configLoader.GetConfiguration();

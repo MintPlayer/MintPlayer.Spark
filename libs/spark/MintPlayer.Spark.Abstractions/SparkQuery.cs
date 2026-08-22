@@ -59,4 +59,21 @@ public sealed class SparkQuery
     /// and receives snapshot + patch messages instead of a single HTTP response.
     /// </summary>
     public bool IsStreamingQuery { get; set; }
+
+    /// <summary>
+    /// A copy of this query with different sort columns, for per-request sort overrides.
+    /// </summary>
+    /// <remarks>
+    /// The definition loaded from the model file is cached and shared across requests, so a
+    /// request-scoped override must not mutate it. This exists instead of hand-writing the copy
+    /// at the call site: that version silently dropped every field nobody remembered to add to
+    /// it (<c>Description</c> was already missing), and each new property here would quietly
+    /// vanish from any query that overrode its sort.
+    /// </remarks>
+    public SparkQuery WithSortColumns(SortColumn[] sortColumns)
+    {
+        var copy = (SparkQuery)MemberwiseClone();
+        copy.SortColumns = sortColumns;
+        return copy;
+    }
 }

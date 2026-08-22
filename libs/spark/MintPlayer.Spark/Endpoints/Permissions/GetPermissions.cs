@@ -19,7 +19,11 @@ internal sealed partial class GetPermissions : IGetEndpoint, IMemberOf<SparkGrou
         var entityType = modelLoader.ResolveEntityType(entityTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{entityTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
+            // This endpoint is deliberately anonymous-callable (audit M-1), so it closes
+            // its half of the existence oracle the other way: an unknown type answers
+            // exactly what a fully denied one answers -- every right false -- rather than
+            // 404. A 401 here would break the boot path for anonymous visitors.
+            return Results.Json(new { canQuery = false, canRead = false, canCreate = false, canEdit = false, canDelete = false });
         }
 
         var target = entityType.Name;

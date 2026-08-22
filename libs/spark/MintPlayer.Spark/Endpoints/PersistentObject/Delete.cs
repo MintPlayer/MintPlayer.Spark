@@ -32,7 +32,7 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         // Read retry state from body if present (DELETE may carry JSON on retry resubmission).
@@ -54,7 +54,7 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
 
             if (obj is null)
             {
-                return ClientResult.Envelope(clientAccessor, new { error = $"Object with ID {decodedId} not found" }, 404);
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
             await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
@@ -73,15 +73,11 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
         catch (SparkRowLevelAccessDeniedException)
         {
             // R2-H2: row-level Delete denial returns 404 (M-3 uniformity).
-            return ClientResult.Envelope(clientAccessor,
-                new { error = $"Object with ID {id} not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? 403 : 401);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }
