@@ -131,6 +131,12 @@ if (builder.SynchronizeSparkModelsIfRequested(args))
 if (builder.InitializeSparkSecurityIfRequested(args))
     return;
 
+// --spark-verify-security fails the build when the set of rights reachable WITHOUT signing in
+// has changed. security.json is a data file: widening it is a one-line diff that reads no
+// differently from narrowing it, so the baseline is what makes the change reviewable.
+if (builder.VerifySparkSecurityIfRequested(args))
+    return;
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();
