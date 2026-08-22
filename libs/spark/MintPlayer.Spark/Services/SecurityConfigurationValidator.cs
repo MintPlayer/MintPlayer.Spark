@@ -1,6 +1,6 @@
-using MintPlayer.Spark.Authorization.Models;
+using MintPlayer.Spark.Abstractions.Authorization;
 
-namespace MintPlayer.Spark.Authorization.Services;
+namespace MintPlayer.Spark.Services;
 
 /// <summary>
 /// Refuses a <c>security.json</c> whose meaning cannot be trusted, at load time rather than at the
@@ -14,19 +14,8 @@ namespace MintPlayer.Spark.Authorization.Services;
 /// </summary>
 internal static class SecurityConfigurationValidator
 {
-    internal const string Anonymous = "anonymous";
-    internal const string Authenticated = "authenticated";
-
-    private static readonly string[] RecognisedWellKnownKeys = [Anonymous, Authenticated];
-
     /// <summary>The token deleted in preview.60, kept here only so its use can be diagnosed.</summary>
     private const string RemovedEveryoneName = "Everyone";
-
-    /// <summary>
-    /// Read from <see cref="AccessControlService"/> rather than restated here, so the set the loader
-    /// judges is provably the set the evaluator expands.
-    /// </summary>
-    private static IReadOnlyCollection<string> CombinedActionNames => AccessControlService.CombinedActionNames;
 
     public static void Validate(SecurityConfiguration config)
     {
@@ -38,6 +27,12 @@ internal static class SecurityConfigurationValidator
     /// <summary>
     /// Two rules about the rights list, both about a file meaning something other than it looks like.
     /// </summary>
+    /// <remarks>
+    /// There used to be a third, rejecting a combined action in a denial, because expansion ran on
+    /// the grant side only and such a denial denied nothing. Expansion is symmetric now — see
+    /// <see cref="SparkCombinedActions"/> — so the shape it refused is the shape that works, and
+    /// keeping the rule would refuse valid files.
+    /// </remarks>
     private static void ValidateRights(SecurityConfiguration config)
     {
         var seenIds = new HashSet<Guid>();
@@ -47,37 +42,21 @@ internal static class SecurityConfigurationValidator
             var slash = right.Resource?.IndexOf('/') ?? -1;
             if (right.Resource is null || slash <= 0 || slash == right.Resource.Length - 1)
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json declares a right with resource '{right.Resource}', which is not in "
-                    + "the form '<action>/<target>' (for example 'QueryRead/Person'). It would match "
-                    + "nothing.");
-            }
-
-            // Combined actions expand on the GRANT side only: IsAllowedAsync filters expansion to
-            // non-denied rights, so a denial written 'EditNewDelete/Person' denies the literal string
-            // 'EditNewDelete/Person' and nothing else — it denies nothing. Symmetric syntax,
-            // asymmetric semantics, and the author's intent is unmistakably the opposite.
-            var action = right.Resource[..slash];
-            if (right.IsDenied && CombinedActionNames.Contains(action, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"security.json denies '{right.Resource}', but combined actions expand only when "
-                    + "granting. This denial would match nothing and deny nothing. Write one denial "
-                    + $"per action instead: {string.Join(", ", ExpandForMessage(action, right.Resource[(slash + 1)..]))}.");
+                    + "the form '<action>/<target>' (for example 'QueryRead/Person', or 'Read/*' to "
+                    + "cover every target). It would match nothing.");
             }
 
             if (right.Id != Guid.Empty && !seenIds.Add(right.Id))
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json declares two rights with id '{right.Id}'. Nothing reads the id "
                     + "today, so the duplicate is currently harmless — which is exactly why it should "
                     + "be fixed before something does.");
             }
         }
     }
-
-    private static IEnumerable<string> ExpandForMessage(string action, string target)
-        => AccessControlService.ExpandCombinedAction(action).Select(a => $"{a}/{target}");
 
     /// <summary>
     /// <c>Everyone</c> meant "the public internet", and nothing at the point of writing said so —
@@ -102,7 +81,7 @@ internal static class SecurityConfigurationValidator
         if (string.IsNullOrEmpty(offending.Key))
             return;
 
-        throw new InvalidOperationException(
+        throw new SparkSecurityConfigurationException(
             $"security.json declares a group named '{RemovedEveryoneName}' ({offending.Key}), which no "
             + "longer has any special meaning. Every right granted to it was granted to the public "
             + "internet.\n"
@@ -127,29 +106,29 @@ internal static class SecurityConfigurationValidator
 
         foreach (var (key, value) in wellKnown)
         {
-            if (!RecognisedWellKnownKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            if (!SparkWellKnownGroups.All.Contains(key, StringComparer.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json declares an unknown well-known group '{key}'. The recognised keys "
-                    + $"are {string.Join(" and ", RecognisedWellKnownKeys)}.");
+                    + $"are {string.Join(" and ", SparkWellKnownGroups.All)}.");
             }
 
             if (!Guid.TryParse(value, out var id))
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json maps well-known group '{key}' to '{value}', which is not a group id.");
             }
 
             if (!config.Groups.Keys.Any(k => Guid.TryParse(k, out var g) && g == id))
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json maps well-known group '{key}' to '{value}', but no group with that "
                     + "id is declared. A role pointing at nothing grants nothing, silently.");
             }
 
             if (seen.TryGetValue(id, out var other))
             {
-                throw new InvalidOperationException(
+                throw new SparkSecurityConfigurationException(
                     $"security.json maps both '{other}' and '{key}' to group '{value}'. They mean "
                     + "different sets of callers — anonymous includes everyone, authenticated only "
                     + "those who signed in — so one group cannot be both.");

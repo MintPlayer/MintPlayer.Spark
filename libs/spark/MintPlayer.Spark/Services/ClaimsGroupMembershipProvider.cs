@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 
-namespace MintPlayer.Spark.Authorization.Services;
+namespace MintPlayer.Spark.Services;
 
 /// <summary>
 /// Default implementation that reads groups from "group" or "groups" claims.

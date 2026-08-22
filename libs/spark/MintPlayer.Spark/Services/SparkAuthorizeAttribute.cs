@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using MintPlayer.Spark.Abstractions.Authorization;
 
-namespace MintPlayer.Spark.Authorization.Services;
+namespace MintPlayer.Spark.Services;
 
 /// <summary>
 /// Authorizes an MVC action or minimal-API endpoint against the same <c>security.json</c> right the
