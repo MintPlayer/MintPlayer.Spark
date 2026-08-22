@@ -48,6 +48,10 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 if (builder.SynchronizeSparkModelsIfRequested(args))
     return;
 
+// Writes a starting App_Data/security.json for an application that has none. Never overwrites.
+if (builder.InitializeSparkSecurityIfRequested(args))
+    return;
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();

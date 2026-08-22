@@ -3,6 +3,7 @@ using Fleet;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
@@ -124,6 +125,10 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 // Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
 // entity classes and needs no database, so it runs here and the process returns before Build().
 if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
+// Writes a starting App_Data/security.json for an application that has none. Never overwrites.
+if (builder.InitializeSparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();

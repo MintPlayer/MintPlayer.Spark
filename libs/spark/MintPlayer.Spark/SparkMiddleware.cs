@@ -289,6 +289,8 @@ public static class SparkExtensions
         // rather than a configuration mistake.
         VerifySparkModelHash(app);
 
+        VerifySparkSecurityConfiguration(app);
+
         ReportSecurityPosture(app);
 
         // Run module-specific middleware/startup tasks
@@ -468,6 +470,36 @@ public static class SparkExtensions
             hostEnvironment.ContentRootPath,
             hostEnvironment.IsDevelopment(),
             Console.WriteLine);
+    }
+
+    /// <summary>
+    /// Refuses to start when <c>App_Data/security.json</c> is missing or means something other than
+    /// it looks like.
+    /// <para>
+    /// The same shape as <see cref="VerifySparkModelHash"/> and for the same reason: serving
+    /// requests against an authorization model that could not be loaded is worse than not starting,
+    /// because it surfaces as an application that denies everything with no visible cause — which
+    /// is indistinguishable from an application that means to.
+    /// </para>
+    /// <para>
+    /// Explicit rather than left to the posture reporter below, which would load the file anyway.
+    /// A gate that happens as a side effect of a logging call is one refactor away from being
+    /// removed by someone who does not know it was load-bearing.
+    /// </para>
+    /// <para>
+    /// Unlike the model hash there is no Development exemption. A missing model file is the normal
+    /// state while a developer adds a property; a missing security file is never the normal state,
+    /// and the generator that fixes it takes one command.
+    /// </para>
+    /// </summary>
+    private static void VerifySparkSecurityConfiguration(IApplicationBuilder app)
+    {
+        // The command that writes the file must not be blocked by the check that requires it.
+        if (Environment.GetCommandLineArgs().Contains(Extensions.SparkSecurityInitExtensions.InitFlag))
+            return;
+
+        app.ApplicationServices.GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
+            .GetConfiguration();
     }
 
     /// <summary>
