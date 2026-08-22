@@ -11,6 +11,8 @@ internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityType
 
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly ILogger<GetEntityType> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -24,6 +26,7 @@ internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityType
         if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
             return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
 
-        return Results.Json(entityType);
+        return Results.Json(await SubQueryPruner.PruneAsync(
+            entityType, queryLoader, permissionService, logger, httpContext.RequestAborted));
     }
 }

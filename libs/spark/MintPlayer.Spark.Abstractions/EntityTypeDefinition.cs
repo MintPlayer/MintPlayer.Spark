@@ -49,6 +49,23 @@ public sealed class EntityTypeDefinition
     /// Each entry references a SparkQuery that accepts parent context.
     /// </summary>
     public string[] Queries { get; set; } = [];
+
+    /// <summary>
+    /// A shallow copy, for a request that must present this definition differently without
+    /// changing it for everyone.
+    /// </summary>
+    /// <remarks>
+    /// <c>ModelLoader</c> is a singleton and hands every request references into one mutable
+    /// graph, so mutating a definition in place is a permanent, process-wide,
+    /// first-caller-wins change. This exists so a per-request projection is one obvious call
+    /// rather than a hand-written field-by-field copy that silently drops the next property
+    /// somebody adds.
+    /// <para>
+    /// Shallow: <c>Attributes</c>, <c>Tabs</c> and <c>Groups</c> are shared with the original.
+    /// Replace an array wholesale on the copy; never mutate one through it.
+    /// </para>
+    /// </remarks>
+    public EntityTypeDefinition ShallowCopy() => (EntityTypeDefinition)MemberwiseClone();
 }
 
 public sealed class EntityAttributeDefinition
