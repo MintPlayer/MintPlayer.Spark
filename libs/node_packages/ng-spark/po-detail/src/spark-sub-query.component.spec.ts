@@ -5,7 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkSubQueryComponent } from './spark-sub-query.component';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
   EntityType,
@@ -81,6 +81,11 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       provideRouter([]),
       { provide: SparkService, useValue: service },
+      // The component resolves its own labels now (the priority-nav action bar), and the real
+      // SparkLanguageService fetches /spark/culture and /spark/translations on construction.
+      // Unmocked those reject into nothing and vitest reports unhandled errors while every
+      // assertion still passes -- same stub as spark-po-detail.component.spec.ts.
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });
