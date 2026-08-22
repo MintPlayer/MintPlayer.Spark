@@ -119,7 +119,6 @@ public class SparkFullGenerator : IncrementalGenerator
             {
                 HasSpark = compilation.GetTypeByMetadataName("MintPlayer.Spark.SparkContext") != null,
                 HasSparkUser = compilation.GetTypeByMetadataName("MintPlayer.Spark.Authorization.Identity.SparkUser") != null,
-                HasAuthorization = compilation.GetTypeByMetadataName("MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions") != null,
                 HasMessaging = compilation.GetTypeByMetadataName("MintPlayer.Spark.Messaging.SparkBuilderMessagingExtensions") != null,
                 HasReplication = compilation.GetTypeByMetadataName("MintPlayer.Spark.Replication.SparkBuilderReplicationExtensions") != null,
             });

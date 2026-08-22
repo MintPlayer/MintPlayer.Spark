@@ -1,6 +1,6 @@
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Authorization.Models;
-using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Tests.Authorization;
 

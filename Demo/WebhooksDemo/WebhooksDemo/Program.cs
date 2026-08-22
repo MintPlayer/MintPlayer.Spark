@@ -45,7 +45,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
     spark.UseContext<WebhooksDemoSparkContext>();
     spark.AddActions();
-    spark.AddAuthorization(options => options.DefaultBehavior = MintPlayer.Spark.Authorization.Configuration.DefaultAccessBehavior.AllowAll);
     // GitHub is the only way in, so the local email/password surface is not mapped at all —
     // register, login, refresh, confirmEmail, resendConfirmationEmail, forgotPassword,
     // resetPassword and POST manage/info are absent from the route table.

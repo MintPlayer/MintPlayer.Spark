@@ -70,15 +70,16 @@ public static class SparkExtensions
         if (GetRegistrationTimeEnvironment(services)?.IsDevelopment() == true)
             services.AddSingleton<IModelSynchronizer, ModelSynchronizer>();
 
-        // Default IAccessControl is fail-closed (deny everything). Apps opt into a
-        // real authorization model via spark.AddAuthorization() (from the Spark
-        // Authorization package) or into "no authorization" mode via
-        // spark.AllowAnonymousAccess(). Either opt-in registers an IAccessControl
-        // *after* this one, and DI resolves the last registration, so the deny-all
-        // default only applies when neither opt-in was called. Per R2-H1: this
-        // closes the silent fail-open path where AddSpark without AddAuthorization
-        // accepted every request.
-        services.AddScoped<IAccessControl, DenyAllAccessControl>();
+        // IAccessControl, its loader, the claims-based group provider and the posture reporter all
+        // come from AddSparkServices() above, because they are ordinary [Register]ed core services
+        // now. There is no three-way default any more: authorization is not opt-in, so there is no
+        // "neither opt-in was called" state to have a fallback for.
+        //
+        // [SparkAuthorize] on a controller action or minimal-API endpoint is wired here rather than
+        // by the Controllers module, because the attribute belongs to whoever owns security.json and
+        // it applies equally to a RequireAuthorization(). Singleton is ASP.NET Core's convention for
+        // authorization handlers; the handler resolves the scoped IAccessControl per evaluation.
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Services.SparkAuthorizeHandler>();
 
         services.AddSingleton<IDocumentStore>(sp =>
         {

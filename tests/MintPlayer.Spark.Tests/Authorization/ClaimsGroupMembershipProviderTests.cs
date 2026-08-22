@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
-using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Services;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Authorization;

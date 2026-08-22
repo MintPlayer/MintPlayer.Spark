@@ -46,6 +46,36 @@ public sealed class RightsDecision(IReadOnlyList<GroupRights> groups)
     public static readonly RightsDecision None = new([]);
 
     /// <summary>
+    /// What <paramref name="groupIds"/> may do under <paramref name="config"/>.
+    /// </summary>
+    /// <remarks>
+    /// The pure function behind <see cref="ISecurityConfigurationLoader.GetResolvedRights"/>; the
+    /// loader adds only memoisation. Separated so the expansion can be exercised — and reasoned
+    /// about — without a file, a cache or a host.
+    /// </remarks>
+    public static RightsDecision For(SecurityConfiguration config, IReadOnlySet<Guid> groupIds)
+        => Over(GroupRights.Index(config), groupIds);
+
+    /// <summary>
+    /// As <see cref="For"/>, over an index already built. This is what the loader calls, so a
+    /// request costs one dictionary lookup per group rather than a re-expansion of the file.
+    /// </summary>
+    public static RightsDecision Over(IReadOnlyDictionary<Guid, GroupRights> index, IReadOnlySet<Guid> groupIds)
+    {
+        if (groupIds.Count == 0)
+            return None;
+
+        var groups = new List<GroupRights>(groupIds.Count);
+        foreach (var groupId in groupIds)
+        {
+            if (index.TryGetValue(groupId, out var rights))
+                groups.Add(rights);
+        }
+
+        return groups.Count == 0 ? None : new RightsDecision(groups);
+    }
+
+    /// <summary>
     /// Whether <paramref name="resource"/> — <c>{action}/{target}</c> — is allowed.
     /// <para>
     /// Four tiers, in this order, each evaluated across <em>all</em> of the caller's groups before
@@ -111,7 +141,66 @@ public sealed record GroupRights(
     IReadOnlySet<ResourcePattern> ImportantDenied,
     IReadOnlySet<ResourcePattern> ImportantAllowed,
     IReadOnlySet<ResourcePattern> Denied,
-    IReadOnlySet<ResourcePattern> Allowed);
+    IReadOnlySet<ResourcePattern> Allowed)
+{
+    /// <summary>
+    /// Expands every right in <paramref name="config"/> into the four tiers, per group.
+    /// </summary>
+    /// <remarks>
+    /// A denial expands exactly as a grant does. That symmetry is the whole reason this is an
+    /// index rather than a chain: the previous evaluator expanded combined actions only while
+    /// looking for a grant, and every attempt to fix that by appending another step reintroduced
+    /// the ordering bug, because an exact grant was still consulted before an expanded denial.
+    /// </remarks>
+    public static IReadOnlyDictionary<Guid, GroupRights> Index(SecurityConfiguration config)
+    {
+        var builders = new Dictionary<Guid, (HashSet<ResourcePattern> ImpDeny, HashSet<ResourcePattern> ImpAllow, HashSet<ResourcePattern> Deny, HashSet<ResourcePattern> Allow)>();
+
+        foreach (var right in config.Rights)
+        {
+            if (string.IsNullOrEmpty(right.Resource))
+                continue;
+
+            if (!builders.TryGetValue(right.GroupId, out var sets))
+                builders[right.GroupId] = sets = ([], [], [], []);
+
+            var tier = (right.IsImportant, right.IsDenied) switch
+            {
+                (true, true) => sets.ImpDeny,
+                (true, false) => sets.ImpAllow,
+                (false, true) => sets.Deny,
+                _ => sets.Allow,
+            };
+
+            foreach (var pattern in Expand(right.Resource))
+                tier.Add(pattern);
+        }
+
+        return builders.ToDictionary(
+            kv => kv.Key,
+            kv => new GroupRights(kv.Value.ImpDeny, kv.Value.ImpAllow, kv.Value.Deny, kv.Value.Allow));
+    }
+
+    /// <summary>
+    /// Every concrete <c>{action}/{target}</c> a written resource stands for. A wildcard action is
+    /// left alone — <c>*</c> already covers everything the table would expand it into.
+    /// </summary>
+    private static IEnumerable<ResourcePattern> Expand(string resource)
+    {
+        var written = ResourcePattern.Parse(resource);
+
+        if (written.Action == ResourcePattern.Wildcard)
+        {
+            yield return written;
+            yield break;
+        }
+
+        // Parse upper-cased the action; the combined-action table is case-insensitive, so it
+        // still resolves.
+        foreach (var action in SparkCombinedActions.Expand(written.Action))
+            yield return written with { Action = action.ToUpperInvariant() };
+    }
+}
 
 /// <summary>
 /// A parsed <c>{action}/{target}</c> resource, with <c>*</c> allowed on either half.

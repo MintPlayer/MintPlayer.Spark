@@ -2,40 +2,40 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using MintPlayer.Spark.Authorization.Configuration;
-using MintPlayer.Spark.Authorization.Models;
-using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Services;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Authorization;
 
-public class AccessControlServiceTests
+public class SecurityFileAccessControlTests
 {
     private readonly ISecurityConfigurationLoader _configLoader = Substitute.For<ISecurityConfigurationLoader>();
     private readonly IGroupMembershipProvider _groupMembership = Substitute.For<IGroupMembershipProvider>();
-    private readonly ILogger<AccessControlService> _logger = NullLogger<AccessControlService>.Instance;
+    private readonly ILogger<SecurityFileAccessControl> _logger = NullLogger<SecurityFileAccessControl>.Instance;
 
     private static readonly Guid AdminsId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid EditorsId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid AnonymousId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static readonly Guid AuthenticatedId = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
-    private AccessControlService CreateService(
+    private SecurityFileAccessControl CreateService(
         SecurityConfiguration config,
         IEnumerable<string> userGroups,
-        DefaultAccessBehavior defaultBehavior = DefaultAccessBehavior.DenyAll,
         bool? authenticated = null)
     {
         _configLoader.GetConfiguration().Returns(config);
         _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(userGroups));
 
-        var options = Options.Create(new AuthorizationOptions { DefaultBehavior = defaultBehavior });
+        // The real expansion, not a stub of it. Faking GetResolvedRights would remove the only
+        // logic these tests are about — which right covers which resource — and leave them
+        // asserting that a substitute returns what it was told to.
+        _configLoader.GetResolvedRights(Arg.Any<IReadOnlySet<Guid>>())
+            .Returns(ci => RightsDecision.For(config, ci.Arg<IReadOnlySet<Guid>>()));
 
-        return new AccessControlService(_configLoader, _groupMembership, options, _logger,
+        return new SecurityFileAccessControl(_configLoader, _groupMembership, _logger,
             authenticated is null ? null : HttpContextFor(authenticated.Value));
     }
 
@@ -81,19 +81,66 @@ public class AccessControlServiceTests
     private static TranslatedString En(string value) => TranslatedString.Create(value);
 
     [Fact]
-    public async Task IsAllowedAsync_NoUserGroups_NoAnonymousGroup_DenyAllDefault_ReturnsFalse()
+    public async Task IsAllowedAsync_NoUserGroups_NoAnonymousGroup_ReturnsFalse()
     {
         var service = CreateService(ConfigWith(), userGroups: []);
 
         (await service.IsAllowedAsync("Read/Person")).Should().BeFalse();
     }
 
+    /// <summary>
+    /// There is no DefaultBehavior switch any more: permissiveness is expressed as data, by
+    /// granting the wildcard. One way to be permissive, and it is visible in the file rather than
+    /// in a line of startup code nobody reads next to the rights it silently overrides.
+    /// </summary>
     [Fact]
-    public async Task IsAllowedAsync_NoUserGroups_NoAnonymousGroup_AllowAllDefault_ReturnsTrue()
+    public async Task A_wildcard_grant_covers_a_resource_no_right_names()
     {
-        var service = CreateService(ConfigWith(), userGroups: [], DefaultAccessBehavior.AllowAll);
+        var config = ConfigWith(
+            groups: new() { [AdminsId] = En("Admins") },
+            new Right { GroupId = AdminsId, Resource = "*/*" });
+
+        var service = CreateService(config, ["Admins"]);
 
         (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
+        (await service.IsAllowedAsync("AnythingAtAll/Whatever")).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The half-wildcards, which are what an application reaching for "*/*" usually wanted.
+    /// </summary>
+    [Theory]
+    [InlineData("Read/*", "Read/Car", true)]
+    [InlineData("Read/*", "Edit/Car", false)]
+    [InlineData("*/Person", "Delete/Person", true)]
+    [InlineData("*/Person", "Delete/Car", false)]
+    public async Task A_wildcard_binds_only_the_half_it_appears_in(string granted, string requested, bool expected)
+    {
+        var config = ConfigWith(
+            groups: new() { [AdminsId] = En("Admins") },
+            new Right { GroupId = AdminsId, Resource = granted });
+
+        var service = CreateService(config, ["Admins"]);
+
+        (await service.IsAllowedAsync(requested)).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// S8: the wildcard composes with denial-first precedence rather than needing a tier of its
+    /// own. A blanket grant does not outrun a specific denial.
+    /// </summary>
+    [Fact]
+    public async Task A_denial_survives_a_wildcard_grant()
+    {
+        var config = ConfigWith(
+            groups: new() { [AdminsId] = En("Admins") },
+            new Right { GroupId = AdminsId, Resource = "*/*" },
+            new Right { GroupId = AdminsId, Resource = "Delete/Car", IsDenied = true });
+
+        var service = CreateService(config, ["Admins"]);
+
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeTrue();
+        (await service.IsAllowedAsync("Delete/Car")).Should().BeFalse();
     }
 
     [Fact]
@@ -163,7 +210,7 @@ public class AccessControlServiceTests
     }
 
     [Fact]
-    public async Task IsAllowedAsync_CombinedAction_TargetMismatch_FallsToDefault()
+    public async Task IsAllowedAsync_CombinedAction_TargetMismatch_IsRefused()
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
@@ -171,7 +218,6 @@ public class AccessControlServiceTests
 
         var service = CreateService(config, ["Admins"]);
 
-        // Request target "Car" doesn't match right target "Person" — no match, default DenyAll
         (await service.IsAllowedAsync("Edit/Car")).Should().BeFalse();
     }
 
@@ -204,7 +250,7 @@ public class AccessControlServiceTests
     }
 
     [Fact]
-    public async Task IsAllowedAsync_NoMatchingRight_FallsToDefault_DenyAll()
+    public async Task IsAllowedAsync_NoMatchingRight_IsRefused()
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
@@ -215,20 +261,91 @@ public class AccessControlServiceTests
         (await service.IsAllowedAsync("Read/Car")).Should().BeFalse();
     }
 
+    /// <summary>
+    /// The ordering trap, pinned. A per-right chain answers TRUE here: the exact grant matches at
+    /// step 2 and the combined denial is never expanded. All denial matching must precede all
+    /// grant matching, over the whole group set.
+    /// </summary>
     [Fact]
-    public async Task IsAllowedAsync_NoMatchingRight_FallsToDefault_AllowAll()
+    public async Task A_combined_denial_beats_an_exact_grant_of_one_of_its_parts()
+    {
+        var config = ConfigWith(
+            groups: new()
+            {
+                [AdminsId] = En("Admins"),
+                [EditorsId] = En("Editors"),
+            },
+            new Right { GroupId = AdminsId, Resource = "Read/Car" },
+            new Right { GroupId = EditorsId, Resource = "QueryReadEditNewDelete/Car", IsDenied = true });
+
+        var service = CreateService(config, ["Admins", "Editors"]);
+
+        (await service.IsAllowedAsync("Read/Car")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The other half of symmetry: a combined denial denies every action it names, not the literal
+    /// string. Until this change it denied nothing at all, and the loader refused to accept the
+    /// shape rather than making it work.
+    /// </summary>
+    [Theory]
+    [InlineData("Edit/Car")]
+    [InlineData("New/Car")]
+    [InlineData("Delete/Car")]
+    public async Task A_combined_denial_expands(string resource)
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
-            new Right { GroupId = AdminsId, Resource = "Read/Person" });
+            new Right { GroupId = AdminsId, Resource = "QueryReadEditNewDelete/Car" },
+            new Right { GroupId = AdminsId, Resource = "EditNewDelete/Car", IsDenied = true });
 
-        var service = CreateService(config, ["Admins"], DefaultAccessBehavior.AllowAll);
+        var service = CreateService(config, ["Admins"]);
 
-        (await service.IsAllowedAsync("Read/Car")).Should().BeTrue();
+        (await service.IsAllowedAsync(resource)).Should().BeFalse();
+        (await service.IsAllowedAsync("Query/Car")).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// IsImportant is a precedence tier, not an audit marker (D8). An important grant survives an
+    /// ordinary denial; an important denial survives everything.
+    /// </summary>
+    [Fact]
+    public async Task An_important_grant_overrides_an_ordinary_denial()
+    {
+        var config = ConfigWith(
+            groups: new()
+            {
+                [AdminsId] = En("Admins"),
+                [EditorsId] = En("Editors"),
+            },
+            new Right { GroupId = AdminsId, Resource = "Read/Person", IsImportant = true },
+            new Right { GroupId = EditorsId, Resource = "Read/Person", IsDenied = true });
+
+        var service = CreateService(config, ["Admins", "Editors"]);
+
+        (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
     }
 
     [Fact]
-    public async Task IsAllowedAsync_EmptyRightsList_FallsToDefault()
+    public async Task An_important_denial_overrides_an_important_grant()
+    {
+        var config = ConfigWith(
+            groups: new()
+            {
+                [AdminsId] = En("Admins"),
+                [EditorsId] = En("Editors"),
+            },
+            new Right { GroupId = AdminsId, Resource = "Read/Person", IsImportant = true },
+            new Right { GroupId = EditorsId, Resource = "Read/Person", IsImportant = true, IsDenied = true });
+
+        var service = CreateService(config, ["Admins", "Editors"]);
+
+        (await service.IsAllowedAsync("Read/Person")).Should()
+            .BeFalse("within the important tier the safer answer wins, so the outcome cannot depend on file order");
+    }
+
+    [Fact]
+    public async Task IsAllowedAsync_EmptyRightsList_IsRefused()
     {
         var config = ConfigWith(groups: new() { [AdminsId] = En("Admins") });
 
@@ -253,7 +370,7 @@ public class AccessControlServiceTests
     }
 
     [Fact]
-    public async Task IsAllowedAsync_UserGroupNotInConfig_NoAnonymousGroup_ReturnsDefault()
+    public async Task IsAllowedAsync_UserGroupNotInConfig_NoAnonymousGroup_IsRefused()
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },

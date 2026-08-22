@@ -32,7 +32,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddActions();
     spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
 
-    spark.AddAuthorization();
     // Explicit since preview.60: the default is now Disabled, matching the client's opt-in
     // routes. HR mounts the full password family, so it says so.
     spark.AddAuthentication<SparkUser>(
