@@ -29,6 +29,14 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+
+    <!--
+      AGENTS.md is the testing spec, and the .targets copies it into each consuming test project
+      on build. Both must be IN the package: the targets file under build/ so NuGet auto-imports
+      it, and the guide beside it because that is where the target looks for it.
+    -->
+    <None Include="AGENTS.md" Pack="true" PackagePath="\" />
+    <None Include="Targets\spark-testing.targets" Pack="true" PackagePath="build\MintPlayer.Spark.Testing.targets" />
   </ItemGroup>
 
   <ItemGroup>
