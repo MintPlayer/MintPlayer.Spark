@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Abstractions.Authorization;
-using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Builder;
 
 namespace MintPlayer.Spark.Endpoints;
 
@@ -76,13 +75,35 @@ internal static class SparkDenial
     /// Whether telling this caller to authenticate is honest.
     /// </summary>
     /// <remarks>
-    /// Under <c>spark.AllowAnonymousAccess()</c> an anonymous caller IS an authorized principal,
-    /// so a 401 would be a lie — signing in changes nothing, and the client would bounce the
-    /// visitor to a sign-in page that cannot help. Such an app answers 404 to everyone, which is
-    /// also the stronger position: with no principal to distinguish, every refusal looks alike.
+    /// An application with no way to sign in cannot be helped by a 401: there is no login for the
+    /// client to redirect to, and the visitor is bounced to a page that cannot exist. Such an app
+    /// answers 404 to everyone, which is also the stronger position — with no principal to
+    /// distinguish, every refusal looks alike.
+    /// <para>
+    /// The predicate is deliberately <em>the same one</em> <c>UseSpark</c> uses to decide whether
+    /// <c>UseAuthentication()</c> runs, so the two cannot disagree: if nothing in the pipeline can
+    /// turn a credential into a principal, promising that authenticating would help is false.
+    /// </para>
+    /// <para>
+    /// <b>Not</b> "does the anonymous group hold any grant", which was the obvious-looking answer
+    /// and is wrong. Fleet and HR each grant anonymous exactly one right, so that predicate turns
+    /// <em>everything</em> into <em>something</em>: both would flip from 401 to 404 and silently
+    /// lose the sign-in redirect, since <c>ng-spark-auth</c>'s interceptor reacts to 401 alone.
+    /// </para>
+    /// <para>
+    /// Fails toward 401 when the registry cannot be resolved — outside a Spark-configured host
+    /// there is nothing to be discreet about, and 401 is the answer that keeps a login flow
+    /// working.
+    /// </para>
     /// </remarks>
     private static bool AuthenticatingWouldHelp(HttpContext httpContext)
-        => httpContext.RequestServices.GetService<IAccessControl>() is not AllowAllAccessControl;
+    {
+        var registry = httpContext.RequestServices.GetService<SparkModuleRegistry>();
+        if (registry is null)
+            return true;
+
+        return registry.IdentityUserType != null || registry.CredentialSchemes.Count > 0;
+    }
 
     /// <summary>Shorthand for endpoints returning <see cref="Results"/> directly.</summary>
     public static IResult RefuseJson(HttpContext httpContext)

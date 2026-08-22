@@ -6,10 +6,9 @@ namespace MintPlayer.Spark.Services;
 [Register(typeof(IPermissionService), ServiceLifetime.Scoped)]
 internal partial class PermissionService : IPermissionService
 {
-    // accessControl is always non-null: AddSpark registers a deny-all default;
-    // spark.AddAuthorization() or spark.AllowAnonymousAccess() replaces it.
-    // Per R2-H1, removing the previous "null => allow" branch was the fix —
-    // forgotten-AddAuthorization no longer silently opens every endpoint.
+    // Always non-null: AddSpark registers the security.json evaluator unconditionally, and
+    // authorization is no longer something an application can forget to switch on. The
+    // "null => allow" branch this replaced was the original fail-open path.
     [Inject] private readonly IAccessControl accessControl;
 
     public async Task EnsureAuthorizedAsync(string action, string target, CancellationToken cancellationToken = default)

@@ -14,9 +14,8 @@ namespace HR;
 /// screens for them like any other type. Nothing else in this app knows they came from a package.
 /// <para>
 /// See <c>App_Data/security.json</c> for the other half — these screens decide who may obtain
-/// tokens, so they are granted to Administrators alone. HR is the demo host for this because it
-/// runs deny-by-default authorization; wiring them into an app with
-/// <c>AllowAnonymousAccess()</c> would publish a client-registration endpoint to the internet.
+/// tokens, so they are granted to Administrators alone. Granting them to the <c>anonymous</c>
+/// group — or to a wildcard — would publish a client-registration endpoint to the internet.
 /// </para>
 /// </summary>
 public class HRContext : SparkContext, IOidcApplicationContext

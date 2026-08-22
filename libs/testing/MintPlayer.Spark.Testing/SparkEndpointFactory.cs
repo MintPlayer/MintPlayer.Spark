@@ -90,14 +90,6 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.AddSpark(spark =>
                         {
                             spark.UseContext<TContext>();
-                            // R2-H1 default is deny-all; endpoint tests aren't
-                            // exercising auth, so opt into permissive mode so the
-                            // endpoint logic itself can be tested under the
-                            // "everyone-can" baseline. Tests that DO want to
-                            // exercise authz override IAccessControl in
-                            // configureServices.
-                            spark.AllowAnonymousAccess();
-
                             configureSpark?.Invoke(spark);
                         });
 

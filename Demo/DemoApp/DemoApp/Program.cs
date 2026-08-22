@@ -31,10 +31,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddMessaging();
     spark.AddRecipients();
     spark.AddCronJobs();
-    // DemoApp has no authorization model — opt into the permissive
-    // IAccessControl explicitly. Removing this line falls back to the
-    // deny-all default and every Spark request is refused.
-    spark.AllowAnonymousAccess();
 });
 
 // Configure SPA static files
