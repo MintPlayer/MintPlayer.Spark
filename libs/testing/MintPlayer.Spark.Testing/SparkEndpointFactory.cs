@@ -46,6 +46,18 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// <paramref name="configureServices"/>. Endpoints and middleware a module registers on the
     /// builder's registry flow into the pipeline automatically.
     /// </param>
+    /// <param name="security">
+    /// The <c>security.json</c> the host boots with. Defaults to
+    /// <see cref="SparkTestSecurity.Permissive"/> — a wildcard grant to both well-known roles — so
+    /// an endpoint test that is not about authorization exercises the endpoint under an
+    /// "everyone can" baseline, as it always has.
+    /// <para>
+    /// This is the normal seam for a test that IS about authorization: state the rights the way an
+    /// application states them. <c>configureServices</c> still runs last, so a test needing a
+    /// predicate or a record of what was asked can additionally swap <c>IAccessControl</c> — see
+    /// <see cref="SparkTestAccessControl"/>.
+    /// </para>
+    /// </param>
     /// <param name="configureIndexCatalog">
     /// Optional hook to register fixture indexes/projections into the <see cref="IIndexCatalog"/>.
     /// Runs before <c>UseSpark()</c> freezes the catalog — fixture indexes are nested test classes
@@ -58,7 +70,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         Action<IServiceCollection>? configureServices = null,
         Action<ISparkBuilder>? configureSpark = null,
         string environment = "Testing",
-        Action<MintPlayer.Spark.Services.IIndexCatalog>? configureIndexCatalog = null)
+        Action<MintPlayer.Spark.Services.IIndexCatalog>? configureIndexCatalog = null,
+        SparkTestSecurity? security = null)
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -72,6 +85,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             var path = Path.Combine(modelDir, model.PersistentObject.Name + ".json");
             File.WriteAllText(path, JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true }));
         }
+
+        // In the constructor, beside the model files, and NOT deferred like the hash file below:
+        // unlike the hash this depends on nothing AddSpark registered, and it has to be on disk
+        // before _host.Start() reaches the startup gate.
+        SparkTestSecurityFile.Write(_contentRoot, security);
 
         _host = new HostBuilder()
             .ConfigureWebHost(webHost =>
@@ -123,6 +141,37 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             .Build();
 
         _host.Start();
+
+        AssertSecurityFileWasLoaded(security);
+    }
+
+    /// <summary>
+    /// Confirms the host actually read the file this factory wrote.
+    /// </summary>
+    /// <remarks>
+    /// Without this the override is unfalsifiable: a host that silently ignored the file would
+    /// make every authorization test vacuously green, and a deny-all test would pass for the wrong
+    /// reason. Compares the rights count rather than the bytes, because the loader parses and the
+    /// serializer round-trip need not be byte-identical.
+    /// </remarks>
+    private void AssertSecurityFileWasLoaded(SparkTestSecurity? security)
+    {
+        var expected = JsonSerializer.Deserialize<Abstractions.Authorization.SecurityConfiguration>(
+            (security ?? SparkTestSecurity.Permissive).Build(),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        var loaded = _host.Services
+            .GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
+            .GetConfiguration();
+
+        if (loaded.Rights.Count != expected.Rights.Count || loaded.Groups.Count != expected.Groups.Count)
+        {
+            throw new InvalidOperationException(
+                "SparkEndpointFactory wrote a security.json the host did not load "
+                + $"(expected {expected.Rights.Count} rights in {expected.Groups.Count} groups, "
+                + $"loaded {loaded.Rights.Count} in {loaded.Groups.Count}). Every authorization "
+                + "assertion in this fixture would be meaningless.");
+        }
     }
 
     public HttpClient CreateClient() => _host.GetTestClient();

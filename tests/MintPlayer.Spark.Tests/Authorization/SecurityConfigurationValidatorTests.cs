@@ -49,7 +49,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>()
+        act.Should().Throw<SparkSecurityConfigurationException>()
             .WithMessage("*wellKnown*")
             // The instruction that prevents the obvious wrong migration: a deleted grant denies
             // signed-in users too, because type-level rights gate row rules.
@@ -79,7 +79,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*unknown well-known group*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*unknown well-known group*");
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*no group with that id is declared*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*no group with that id is declared*");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*not a group id*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*not a group id*");
     }
 
     [Fact]
@@ -121,15 +121,17 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*cannot be both*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*cannot be both*");
     }
 
+    /// <summary>
+    /// This used to be rejected, because expansion was grant-only and such a denial matched the
+    /// literal string and therefore denied nothing. Expansion is symmetric now, so the shape the
+    /// rule refused is the shape that works — keeping the rule would refuse valid files.
+    /// </summary>
     [Fact]
-    public void A_combined_action_in_a_denial_is_rejected()
+    public void A_combined_action_in_a_denial_is_accepted()
     {
-        // Expansion is grant-only, so this denial matches the literal string "EditNewDelete/Person"
-        // and denies nothing at all. Symmetric syntax, asymmetric semantics — and the author's
-        // intent is unmistakably the opposite of the effect.
         var config = Config(
             groups: MigratedGroups(),
             wellKnown: Migrated(),
@@ -137,8 +139,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>()
-            .And.Message.Should().Contain("Edit/Person, New/Person, Delete/Person");
+        act.Should().NotThrow();
     }
 
     [Fact]
@@ -167,7 +168,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*action*/*target*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*action*/*target*");
     }
 
     [Fact]
@@ -184,7 +185,7 @@ public class SecurityConfigurationValidatorTests
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*two rights with id*");
+        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*two rights with id*");
     }
 
     [Fact]
