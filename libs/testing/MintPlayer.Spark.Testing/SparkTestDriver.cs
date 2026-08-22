@@ -26,9 +26,13 @@ namespace MintPlayer.Spark.Testing;
 ///   2. <c>raven-license.log</c> at the repository root (local development)
 ///
 /// If neither is present, tests that derive from this class fail at
-/// <see cref="InitializeAsync"/> with a clear message — see <see cref="LicenseHelper"/>. A suite that
-/// needs to tolerate that (fork pull requests get no organization secrets) overrides
+/// <see cref="InitializeAsync"/> with a message naming both sources. A suite that needs to
+/// tolerate that (fork pull requests get no organization secrets) overrides
 /// <see cref="RequireLicense"/>.
+/// <para>
+/// The loader itself is internal — this is deliberately not an extension point, and a consumer
+/// following a reference to it would find nothing.
+/// </para>
 /// </summary>
 public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 {
