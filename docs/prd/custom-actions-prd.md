@@ -131,7 +131,7 @@ This file defines **metadata** for custom actions — display names, icons, sele
 | `icon` | `string` | No | Icon identifier for the frontend |
 | `description` | `string` | No | Human-readable description |
 | `showedOn` | `string` | Yes | `"detail"`, `"query"`, or `"both"` |
-| `selectionRule` | `string` | No | `"=0"` (none), `"=1"` (exactly one), `">0"` (one or more). Only relevant when `showedOn` includes `"query"`. Defaults to `"=0"`. |
+| `selectionRule` | `string` | No | Cardinality expression over the selected-row count — `"=1"`, `">0"`, `"<=5"`, `"1<X<5"`. Only relevant when `showedOn` includes `"query"`. **Omitting it means NO requirement, not `"=0"`** (an earlier revision of this table said `"=0"`, which is the opposite: as a predicate `"=0"` disables the action the moment anything is selected). See `docs/guide-custom-actions.md` for the full grammar — that guide is normative. |
 | `refreshOnCompleted` | `bool` | No | Whether the frontend should refresh after execution. Defaults to `false`. |
 | `confirmationMessageKey` | `string` | No | Translation key for a confirmation dialog before execution. If set, frontend shows confirmation first. |
 | `offset` | `int` | No | Display order (lower = first). Defaults to `0`. |

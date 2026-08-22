@@ -157,7 +157,8 @@ MintPlayer.Spark/
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
-| [Authorization](libs/authorization/MintPlayer.Spark.Authorization/README.md) | Optional security package, `security.json`, groups, permissions, XSRF |
+| [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
+| [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions, wildcards, the four precedence tiers, and what `Query` without `Read` does to a grid |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |

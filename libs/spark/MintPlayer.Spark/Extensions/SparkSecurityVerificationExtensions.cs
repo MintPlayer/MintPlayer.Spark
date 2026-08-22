@@ -62,9 +62,12 @@ public static class SparkSecurityVerificationExtensions
 
         if (reporter is null)
         {
+            // Unreachable in an application that called AddSpark, which registers the reporter
+            // unconditionally. Kept because reaching it means the container was built without
+            // Spark at all, and exiting 2 says so rather than throwing a null reference.
             Console.Error.WriteLine(
-                "Spark: no security posture to report — this application registers no authorization "
-                + "model. Call spark.AddAuthorization() if it should have one.");
+                "Spark: no security posture to report — AddSpark has not run, so there is no "
+                + "authorization model in the container.");
             Environment.ExitCode = ExitMisconfigured;
             return true;
         }

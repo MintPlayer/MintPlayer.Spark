@@ -99,8 +99,7 @@ public class SparkRowRuleTests : SparkTestDriver
             new RowRuleLedger { Id = "ledgers/a", Owner = RowRuleLedgerActions.CurrentOwner, Amount = 1 },
             new RowRuleLedger { Id = "ledgers/b", Owner = "someone-else", Amount = 2 });
 
-        var rql = new List<string>();
-        Store.OnBeforeQuery += (_, e) => rql.Add(e.QueryCustomization.ToString()!);
+        using var rql = RqlRecorder.Attach(Store);
 
         var rule = _factory.GetService<ISparkRowRule<RowRuleLedger>>();
         var session = _factory.GetService<IAsyncDocumentSession>();

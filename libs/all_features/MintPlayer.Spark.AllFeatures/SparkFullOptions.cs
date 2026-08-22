@@ -9,12 +9,6 @@ namespace MintPlayer.Spark.AllFeatures;
 public class SparkFullOptions
 {
     /// <summary>
-    /// Configures Spark group-based authorization.
-    /// When null, default authorization settings are used.
-    /// </summary>
-    public Action<AuthorizationOptions>? Authorization { get; set; }
-
-    /// <summary>
     /// Configures Spark's authentication surface — notably
     /// <see cref="SparkAuthenticationOptions.LocalCredentials"/>, which chooses how much of the
     /// email/password endpoint family to mount. When null, the full local-credential surface is

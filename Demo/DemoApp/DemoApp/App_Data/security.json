@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "DemoApp has no sign-in, so everything is granted to the anonymous group.",
+    "Every anonymous grant is mirrored on authenticated: anonymous is NOT a floor, so the day",
+    "this demo gains a login, an unmirrored file would 404 the whole application.",
+    "",
+    "Stock and Address are the showcase: Query WITHOUT Read. The grid lists the rows and the",
+    "first column is not a link. That is correct rather than merely illustrative -- StockActions",
+    "fabricates 300 rows in memory and nothing writes a Stocks collection, and Address is an",
+    "embedded value object, so in both cases a detail page could never load anything."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "d1b2c3d4-0000-0000-0000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "fr": "Visiteurs anonymes", "nl": "Anonieme bezoekers" },
+    "d1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users", "fr": "Utilisateurs connectés", "nl": "Aangemelde gebruikers" }
+  },
+  "rights": [
+    { "id": "d0000001-0000-0000-0000-000000000001", "resource": "QueryReadEditNewDelete/Person",  "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000002", "resource": "QueryReadEditNewDelete/Company", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000003", "resource": "QueryReadEditNewDelete/Car",     "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000004", "resource": "Query/Stock",                    "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000005", "resource": "Query/Address",                  "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000006", "resource": "ReadEdit/LookupReferences",      "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+
+    { "id": "d000000f-0000-0000-0000-000000000001", "resource": "QueryReadEditNewDelete/Person",  "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000002", "resource": "QueryReadEditNewDelete/Company", "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000003", "resource": "QueryReadEditNewDelete/Car",     "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000004", "resource": "Query/Stock",                    "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000005", "resource": "Query/Address",                  "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000006", "resource": "ReadEdit/LookupReferences",      "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false }
+  ]
+}

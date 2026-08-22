@@ -105,15 +105,65 @@ public class QueryLoaderTests
         loader.GetQueryByAlias("cars").Should().BeNull();
     }
 
+    /// <summary>
+    /// One query per URL. A duplicate alias throws.
+    /// </summary>
+    /// <remarks>
+    /// It used to keep the first and write a warning to the console — and a test pinned that as
+    /// intended behaviour, which is how it survived. The losing query had no reachable alias at
+    /// all, and nothing said so at the point of use.
+    /// </remarks>
     [Fact]
-    public void Duplicate_aliases_keep_the_first_query_first_wins()
+    public void Duplicate_aliases_are_refused()
     {
-        var first = Q(CarsId, "GetCars", alias: "duplicate");
-        var second = Q(PeopleId, "GetPeople", alias: "duplicate");
-        var loader = CreateLoader(first, second);
+        var loader = CreateLoader(
+            Q(CarsId, "GetCars", alias: "duplicate"),
+            Q(PeopleId, "GetPeople", alias: "duplicate"));
 
-        // No throw — the loader logs a warning and keeps the first entry.
-        loader.GetQueryByAlias("duplicate").Should().BeSameAs(first);
+        var act = () => loader.GetQueryByAlias("duplicate");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*GetCars*").And.Message.Should().Contain("GetPeople");
+    }
+
+    /// <summary>
+    /// The shape that actually shipped, and the reason the message says which side was derived:
+    /// only ONE of the two aliases is written down. DemoApp declared <c>"stocks"</c> on its live
+    /// streaming query, and <c>GetStocks</c> silently derived the same alias — so
+    /// <c>/query/stocks</c> rendered the always-empty <c>Database.Stocks</c> grid and the
+    /// streaming query was unreachable.
+    /// </summary>
+    [Fact]
+    public void A_derived_alias_colliding_with_a_declared_one_is_refused()
+    {
+        var loader = CreateLoader(
+            Q(CarsId, "GetStocks"),                          // derives "stocks"
+            Q(PeopleId, "StreamStocks", alias: "stocks"));   // declares "stocks"
+
+        var act = () => loader.GetQueryByAlias("stocks");
+
+        act.Should().Throw<InvalidOperationException>()
+            .And.Message.Should().Contain("derived from its name",
+                "the author of the colliding query does not know they chose an alias at all");
+    }
+
+    /// <summary>
+    /// A streaming and a non-streaming query do NOT get to share one. It was considered — the
+    /// transport would pick, since /execute and /stream are already separate paths — and rejected
+    /// as too complicated for what it buys: it needs the metadata endpoint to answer two queries
+    /// at once, or a capability-flags negotiation in the model file. One query per URL instead.
+    /// </summary>
+    [Fact]
+    public void A_streaming_and_a_non_streaming_query_may_not_share_an_alias()
+    {
+        var streaming = Q(PeopleId, "StreamStocks", alias: "stocks");
+        streaming.IsStreamingQuery = true;
+
+        var loader = CreateLoader(Q(CarsId, "GetStocks"), streaming);
+
+        var act = () => loader.GetQueryByAlias("stocks");
+
+        act.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]

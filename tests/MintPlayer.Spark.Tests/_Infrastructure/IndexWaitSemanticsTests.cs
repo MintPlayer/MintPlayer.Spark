@@ -33,14 +33,19 @@ public class IndexWaitSemanticsTests : SparkTestDriver
 
         await SeedAsync(session => session.StoreAsync(new Thing { Name = "alpha" }));
 
-        var sw = Stopwatch.StartNew();
-        await Store.WaitForIndexingAsync();
-        sw.Stop();
-
         // All() over an empty sequence is true, so there is nothing to block on. Correct, but not
         // the guarantee the name suggests — which is exactly why expectedIndexes exists.
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1),
-            "with no indexes the staleness condition is vacuously satisfied");
+        //
+        // Asserted as "settles on the first check" rather than "returned within a second". The
+        // wall-clock form was flaky under the full suite for a reason that had nothing to do with
+        // the behaviour: the wait makes one HTTP round-trip to fetch statistics, and hundreds of
+        // per-test databases contending for the same RavenDB can push a single round-trip past any
+        // fixed budget. A timeout far too short to permit a second poll (they are 100ms apart)
+        // distinguishes vacuous from blocking without measuring anything.
+        var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(1));
+
+        await act.Should().NotThrowAsync(
+            "with no indexes the staleness condition is vacuously satisfied, so the first check settles");
 
         (await Store.Maintenance.SendAsync(new GetStatisticsOperation())).Indexes
             .Should().BeEmpty("neither the seed nor the wait creates an index");

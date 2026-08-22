@@ -26,6 +26,21 @@ internal static class ClientResult
     /// fields when not — covers user code that throws <see cref="SparkRetryActionException"/>
     /// directly without going through <c>IRetryAccessor</c>.
     /// </summary>
+    /// <summary>
+    /// Refuse the request in the envelope shape, using the uniform denial contract.
+    /// </summary>
+    /// <remarks>
+    /// See <c>SparkDenial</c> for why denied, unknown-type and not-found are deliberately
+    /// indistinguishable (security-audit M-3). Every envelope endpoint must refuse through
+    /// here rather than hand-rolling a status, or the shapes drift apart and the oracle
+    /// comes back.
+    /// </remarks>
+    public static IResult EnvelopeRefusal(IClientAccessor client, HttpContext httpContext)
+    {
+        var (body, statusCode) = Endpoints.SparkDenial.Refuse(httpContext);
+        return Envelope(client, body, statusCode);
+    }
+
     public static IResult Retry(IClientAccessor client, SparkRetryActionException ex)
     {
         if (!client.Operations.Any(o => o is RetryOperation))

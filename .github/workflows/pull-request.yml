@@ -109,6 +109,20 @@ jobs:
           echo "::endgroup::"
         done
 
+    # The same idea one layer up: security.json is a data file, and widening the set of rights
+    # reachable WITHOUT signing in is a one-line diff that reads no differently from narrowing it.
+    # The committed App_Data/securityPosture.txt turns that into something a reviewer sees change.
+    #
+    # Needs no database either -- the posture is computed from configuration alone. Exit 3 means
+    # the anonymous surface moved; run --spark-synchronize-security and commit the baseline.
+    - name: Verify the anonymous surface has not widened
+      run: |
+        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+          echo "::group::$project"
+          dotnet run --project "$project" --no-build -c Debug -- --spark-verify-security
+          echo "::endgroup::"
+        done
+
     - name: Run affected tests (.NET + Angular via Nx)
       # Step-level so the known hang (E2E suite wedging with no output) fails
       # here and the `if: always()` coverage upload below still runs with

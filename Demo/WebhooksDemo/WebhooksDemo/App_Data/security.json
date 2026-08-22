@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "GitHub OAuth is the only way in and the UI hides everything until you sign in, so the",
+    "anonymous group is declared and granted NOTHING. That is the honest statement of this",
+    "application, and it is worth writing rather than omitting: a declared-and-empty role reads",
+    "as a decision, an absent one reads as an oversight.",
+    "",
+    "Webhook ingestion needs no grant. The recipients inject IAsyncDocumentSession and query",
+    "Raven directly; nothing under libs/webhooks touches IPermissionService, and /api/github/* is",
+    "gated by MVC [Authorize] plus an org-access service rather than by rights.",
+    "",
+    "ProjectColumn and EventColumnMapping are the Query-without-Read showcase, and here it is",
+    "forced by the model rather than chosen: both are embedded value objects reached through a",
+    "Custom.* query, with no collection registered, so a detail load could never resolve."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "e1b2c3d4-0000-0000-0000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "fr": "Visiteurs anonymes", "nl": "Anonieme bezoekers" },
+    "e1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users", "fr": "Utilisateurs connectés", "nl": "Aangemelde gebruikers" }
+  },
+  "rights": [
+    { "id": "e000000f-0000-0000-0000-000000000001", "resource": "QueryReadEditNewDelete/GitHubProject", "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "e000000f-0000-0000-0000-000000000002", "resource": "SyncColumns/GitHubProject",            "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "e000000f-0000-0000-0000-000000000003", "resource": "Query/ProjectColumn",                  "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "e000000f-0000-0000-0000-000000000004", "resource": "Query/EventColumnMapping",             "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "e000000f-0000-0000-0000-000000000005", "resource": "NewDelete/EventColumnMapping",         "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "e000000f-0000-0000-0000-000000000006", "resource": "Read/LookupReferences",                "groupId": "e1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false }
+  ]
+}

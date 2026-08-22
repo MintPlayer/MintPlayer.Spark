@@ -3,6 +3,7 @@ using HR;
 using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -32,7 +33,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddActions();
     spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
 
-    spark.AddAuthorization();
     // Explicit since preview.60: the default is now Disabled, matching the client's opt-in
     // routes. HR mounts the full password family, so it says so.
     spark.AddAuthentication<SparkUser>(
@@ -68,6 +68,16 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 // Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
 // entity classes and needs no database, so it runs here and the process returns before Build().
 if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
+// Writes a starting App_Data/security.json for an application that has none. Never overwrites.
+if (builder.InitializeSparkSecurityIfRequested(args))
+    return;
+
+// --spark-verify-security fails the build when the set of rights reachable WITHOUT signing in
+// has changed. security.json is a data file: widening it is a one-line diff that reads no
+// differently from narrowing it, so the baseline is what makes the change reviewable.
+if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();

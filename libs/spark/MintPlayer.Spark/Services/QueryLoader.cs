@@ -28,36 +28,17 @@ internal partial class QueryLoader : IQueryLoader
         }
     }
 
-    private static string GenerateQueryAlias(string name)
-    {
-        // Strip "Get" prefix and lowercase: "GetCars" -> "cars"
-        var alias = name;
-        if (alias.StartsWith("Get", StringComparison.OrdinalIgnoreCase) && alias.Length > 3)
-            alias = alias[3..];
-        return alias.ToLowerInvariant();
-    }
-
     private (Dictionary<Guid, SparkQuery>, Dictionary<string, SparkQuery>) LoadQueries()
     {
+        var queries = modelLoader.GetQueries().ToList();
+
+        // Alias derivation and the one-query-per-URL rule both live in SparkQueryAliases, shared
+        // with the --spark-verify-model gate so CI cannot accept a model the runtime refuses.
+        var byAlias = SparkQueryAliases.Index(queries);
+
         var byId = new Dictionary<Guid, SparkQuery>();
-        var byAlias = new Dictionary<string, SparkQuery>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var query in modelLoader.GetQueries())
-        {
-            // Auto-generate alias from Name if not explicitly set
-            query.Alias ??= GenerateQueryAlias(query.Name);
-
+        foreach (var query in queries)
             byId[query.Id] = query;
-
-            if (byAlias.ContainsKey(query.Alias))
-            {
-                Console.WriteLine($"Warning: Duplicate query alias '{query.Alias}'. Alias must be unique.");
-            }
-            else
-            {
-                byAlias[query.Alias] = query;
-            }
-        }
 
         return (byId, byAlias);
     }

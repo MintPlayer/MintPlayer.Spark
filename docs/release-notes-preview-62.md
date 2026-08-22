@@ -1,0 +1,129 @@
+# 10.0.0-preview.62 — `security.json` moves into Spark core
+
+`@mintplayer/ng-spark` 22.3.0 · [#310](https://github.com/MintPlayer/MintPlayer.Spark/issues/310)
+
+Authorization stops being optional. `App_Data/security.json` is read by Spark core, every
+application has one, and a missing or malformed file refuses startup.
+
+The reason is that the previous design gave every application a state — *the developer has not
+wired authorization up yet* — that had to be given a meaning, and neither meaning was any good.
+Deny-everything reads as a broken app; allow-everything is a fail-open path nobody notices until
+production. There is now nothing to choose, and an application that means to be open says so by
+granting `*/*`, where the decision is visible in the file, printed at startup, and moved in a
+committed baseline that code review sees.
+
+---
+
+## Breaking changes
+
+| Gone | Do this instead |
+|---|---|
+| `spark.AddAuthorization()` | nothing — `AddSpark` registers it |
+| `spark.AllowAnonymousAccess()` | grant `*/*` in `security.json` |
+| `AuthorizationOptions`, including `DefaultBehavior` | the file is the configuration |
+| `SparkFullOptions.Authorization` | — |
+| `MintPlayer.Spark.Authorization.{Models,Services}` namespaces | `MintPlayer.Spark.Abstractions.Authorization` and `MintPlayer.Spark.Services` |
+| `spark.UseGroupMembershipProvider<T>()` from the package | the same method, from `MintPlayer.Spark.Extensions` |
+
+**Every application must ship `App_Data/security.json`.** Generate a starting point with:
+
+```bash
+dotnet run -- --spark-init-security
+```
+
+It grants nothing, refuses to overwrite an existing file, and carries the whole grammar in
+comments — this is the only authoring support that exists.
+
+There is **no compatibility shim**. Deleted means deleted; these packages are in preview.
+
+`SparkFullGenerator` changes in the same release, because it emitted the `AddAuthorization(...)`
+call literally and every `AddSparkFull` application would otherwise stop compiling.
+
+---
+
+## Behaviour changes
+
+**Combined actions expand symmetrically.** `deny EditNewDelete/Car` now denies Edit, New and
+Delete. It used to deny the literal string and therefore nothing at all, and the loader refused
+that shape rather than fixing it — so a file that previously failed validation may now load and
+deny more than it did.
+
+**Denials are evaluated before grants, across the caller's whole group set.** `grant Read/Car` in
+one group plus `deny QueryReadEditNewDelete/Car` in another now resolves to **denied**. The old
+per-right chain answered *allowed*, because the exact grant fired before the combined denial was
+ever expanded. This is a set-based index on the loader rather than a fourth step in a chain,
+specifically so the ordering cannot be re-broken.
+
+**`Right.isImportant` does something.** It is a precedence tier that wins over everything,
+denials included — not the audit marker its comment described and nothing implemented. Two
+contradicting important rights resolve to the denial.
+
+**Wildcards.** `*` on either half of a resource: `Read/*`, `*/Person`, `*/*`. The startup posture
+report warns when the anonymous group holds one.
+
+**The 401-vs-404 predicate** now asks whether the application has any way to sign in — the same
+condition `UseSpark` uses to decide whether `UseAuthentication()` runs, so the two cannot
+disagree.
+
+**The posture report expands.** `QueryRead/Company` prints as two lines. Existing
+`securityPosture.txt` baselines must be regenerated with `--spark-synchronize-security`.
+
+---
+
+## New
+
+- **`docs/guide-authorization.md`** — the rights model, the four precedence tiers, group
+  semantics, and what **`Query` without `Read`** does to a grid. That pair is the mechanism this
+  release exists to make visible: the grid lists the rows and the first column is not a link,
+  which is the correct model whenever a row cannot be loaded by id.
+- **`--spark-init-security`**, and `--spark-verify-security` wired into all four demos with
+  committed baselines. The posture gate had existed since preview.5x and no host called it.
+- **Sub-query pruning** — a sub-query the caller cannot run is absent from the entity type rather
+  than rendering a card that then 404s. A UX fix; `getQuery` already refused.
+- **A request-scoped permission memo**, so `EntityTypes/List`, `GetAliases`, `ProgramUnits/Get`
+  and `GetPermissions` stop asking the same question in a loop.
+- **`SparkTestSecurity`** on `SparkEndpointFactory` — `Permissive` (default), `Empty`,
+  `Granting`, `Denying`, `Without`, `FromFile`, `FromJson` — plus `SparkTestAccessControl` for
+  the two cases a grant list cannot express. The factory asserts the host loaded the file it
+  wrote.
+- **A deny-all mirror suite** covering every Spark endpoint. It is the only thing that turns a
+  deleted permission check into a red build, and it found three real bugs on its first run:
+  `GET /spark/actions/{type}` answered 404 for an unknown type and 200 for a denied one (an
+  existence oracle whose own comment claimed the opposite); `POST /spark/po/{type}` read the body
+  before authorizing, so POSTing rubbish enumerated the entity types; and antiforgery ran first,
+  which had been hiding both.
+
+---
+
+## Client — `@mintplayer/ng-spark` 22.3.0
+
+Carried over from the withdrawn #308 branch, minus everything authorization-shaped:
+
+- The sub-query template is three explicit states. The spinner was unreachable on a first load, a
+  first-load failure rendered **zero DOM**, and a failed reload left stale chrome behind.
+- The unguarded `async` subscribe in both grids turned the deliberate 404 on a denied query into
+  a **permanent spinner** that never reached the error surface the component already had.
+- `showedOn: 'query'` is honoured. Both grids tested for `'list'`, a value nothing emits, so an
+  action authored per the documentation rendered nowhere.
+- Selection rules — one fixture drives the server and client parsers, because Vidyano's own two
+  ports have drifted.
+- A shared grid core, so the two grids cannot drift apart again.
+- `reload()` / `reloadToken`, `[indeterminate]` booleans, permission-state reset, `[object
+  Object]` fixes.
+
+`rowsNavigable` was **dropped before shipping**: `Query`-without-`Read` already suppresses the row
+link end to end, so the field was redundant. `SparkQuery.actions` and `headerRenderer` are held
+back pending the #309 header-slot redesign.
+
+---
+
+## Upgrading
+
+1. `dotnet run -- --spark-init-security`, then grant what the application needs. Remember that
+   `anonymous` is not a floor: a right both an anonymous visitor and a signed-in user should have
+   is two grants.
+2. Delete `spark.AddAuthorization()` / `spark.AllowAnonymousAccess()`.
+3. Re-namespace any direct use of `SecurityConfiguration`, `Right` or `IAccessControl`.
+4. `dotnet run -- --spark-synchronize-security` and commit `App_Data/securityPosture.txt`.
+5. Boot once and read the startup posture summary. It prints what an anonymous caller can reach,
+   including when that is nothing.

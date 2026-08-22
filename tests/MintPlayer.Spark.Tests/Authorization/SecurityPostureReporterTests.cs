@@ -1,8 +1,6 @@
-using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Authorization.Configuration;
-using MintPlayer.Spark.Authorization.Models;
-using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Services;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Authorization;
@@ -22,15 +20,12 @@ public class SecurityPostureReporterTests
     private static readonly Guid AnonymousId = Guid.Parse("00000000-0000-0000-0000-000000000000");
     private static readonly Guid AdminsId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
-    private static SecurityPostureReporter Reporter(
-        SecurityConfiguration config,
-        DefaultAccessBehavior behavior = DefaultAccessBehavior.DenyAll)
+    private static SecurityPostureReporter Reporter(SecurityConfiguration config)
     {
         var loader = Substitute.For<ISecurityConfigurationLoader>();
         loader.GetConfiguration().Returns(config);
 
-        return new SecurityPostureReporter(
-            loader, Options.Create(new AuthorizationOptions { DefaultBehavior = behavior }));
+        return new SecurityPostureReporter(loader);
     }
 
     private static SecurityConfiguration ConfigWithAnonymousGrants(params string[] resources)
@@ -54,8 +49,11 @@ public class SecurityPostureReporterTests
     {
         var posture = Reporter(ConfigWithAnonymousGrants("QueryRead/Company", "Query/CarBrand")).Describe();
 
-        posture.AnonymouslyReachable.Should().BeEquivalentTo(["Query/CarBrand", "QueryRead/Company"]);
-        posture.AnonymouslyReachable.Should().NotContain("QueryReadEditNewDelete/Secret");
+        // Expanded, not literal. Printing "QueryRead/Company" would be one line standing for two
+        // rights, and — worse — would leave a right listed that a combined denial takes away.
+        posture.AnonymouslyReachable.Should().BeEquivalentTo(
+            ["Query/CarBrand", "Query/Company", "Read/Company"]);
+        posture.AnonymouslyReachable.Should().NotContain(r => r.EndsWith("/Secret"));
     }
 
     [Fact]
@@ -102,14 +100,39 @@ public class SecurityPostureReporterTests
             IsDenied = true,
         });
 
-        Reporter(config).Describe().AnonymouslyReachable.Should().BeEquivalentTo(["QueryRead/Company"]);
+        Reporter(config).Describe().AnonymouslyReachable.Should()
+            .BeEquivalentTo(["Query/Company", "Read/Company"]);
     }
 
+    /// <summary>
+    /// The reason the reporter expands rather than listing literals: a combined denial takes away
+    /// what a combined grant gave, and a literal listing would still show it as reachable.
+    /// </summary>
     [Fact]
-    public void AllowAll_is_reported_because_the_listing_becomes_a_floor_rather_than_a_ceiling()
+    public void A_combined_denial_removes_every_action_it_names()
     {
-        var posture = Reporter(ConfigWithAnonymousGrants(), DefaultAccessBehavior.AllowAll).Describe();
+        var config = ConfigWithAnonymousGrants("QueryReadEditNewDelete/Company");
+        config.Rights.Add(new Right
+        {
+            Id = Guid.NewGuid(),
+            GroupId = AnonymousId,
+            Resource = "EditNewDelete/Company",
+            IsDenied = true,
+        });
 
-        posture.Warnings.Should().ContainSingle().Which.Should().Contain("AllowAll");
+        Reporter(config).Describe().AnonymouslyReachable.Should()
+            .BeEquivalentTo(["Query/Company", "Read/Company"]);
+    }
+
+    /// <summary>
+    /// Replaces the DefaultBehavior=AllowAll warning. Permissiveness is data now, so the thing to
+    /// warn about is a wildcard grant — which covers resources that do not exist yet.
+    /// </summary>
+    [Fact]
+    public void A_wildcard_granted_to_anonymous_is_reported_as_a_floor_rather_than_a_ceiling()
+    {
+        var posture = Reporter(ConfigWithAnonymousGrants("*/*")).Describe();
+
+        posture.Warnings.Should().ContainSingle().Which.Should().Contain("*/*");
     }
 }

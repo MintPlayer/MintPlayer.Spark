@@ -105,6 +105,7 @@
       "id": "1a4b36c5-1fc4-417d-9c24-b78b63cdf305",
       "name": "GetStocks",
       "source": "Database.Stocks",
+      "alias": "all-stocks",
       "sortColumns": [
         {
           "property": "Symbol",

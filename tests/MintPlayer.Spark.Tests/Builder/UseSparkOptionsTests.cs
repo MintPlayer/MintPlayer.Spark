@@ -31,6 +31,10 @@ public class UseSparkOptionsTests : SparkTestDriver
         Directory.CreateDirectory(contentRoot);
         SparkDevelopmentExtensions.WriteSparkModelHashes(typeof(TestSparkContext), contentRoot);
 
+        // Same reason as the line above: this host is assembled by hand rather than by
+        // SparkEndpointFactory, so it has to satisfy the security gate itself.
+        SparkTestSecurityFile.Write(contentRoot);
+
         using var host = await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()

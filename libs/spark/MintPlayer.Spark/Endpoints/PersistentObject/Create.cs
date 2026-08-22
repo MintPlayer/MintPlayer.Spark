@@ -24,6 +24,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly IPermissionService permissionService;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -32,7 +33,21 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return ClientResult.Envelope(clientAccessor, new { error = $"Entity type '{objectTypeId}' not found" }, 404);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
+
+        // Type-level "New" BEFORE the body is read, and deliberately in addition to the check
+        // EnsureSaveAuthorizedAsync makes below. Reading first meant a caller with no right to
+        // create this type got a 500 out of the two throws under it for a malformed body, while an
+        // unknown type got a refusal — so POSTing rubbish told them which entity types exist. The
+        // duplicate check costs nothing: the permission service memoises per request.
+        try
+        {
+            await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType.Split('.').Last());
+        }
+        catch (SparkAccessDeniedException)
+        {
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
@@ -84,10 +99,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         }
         catch (SparkAccessDeniedException)
         {
-            var isAuthed = httpContext.User.Identity?.IsAuthenticated == true;
-            return ClientResult.Envelope(clientAccessor,
-                new { error = isAuthed ? "Access denied" : "Authentication required" },
-                isAuthed ? 403 : 401);
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }

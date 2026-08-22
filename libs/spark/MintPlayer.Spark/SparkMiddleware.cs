@@ -70,15 +70,16 @@ public static class SparkExtensions
         if (GetRegistrationTimeEnvironment(services)?.IsDevelopment() == true)
             services.AddSingleton<IModelSynchronizer, ModelSynchronizer>();
 
-        // Default IAccessControl is fail-closed (deny everything). Apps opt into a
-        // real authorization model via spark.AddAuthorization() (from the Spark
-        // Authorization package) or into "no authorization" mode via
-        // spark.AllowAnonymousAccess(). Either opt-in registers an IAccessControl
-        // *after* this one, and DI resolves the last registration, so the deny-all
-        // default only applies when neither opt-in was called. Per R2-H1: this
-        // closes the silent fail-open path where AddSpark without AddAuthorization
-        // accepted every request.
-        services.AddScoped<IAccessControl, DenyAllAccessControl>();
+        // IAccessControl, its loader, the claims-based group provider and the posture reporter all
+        // come from AddSparkServices() above, because they are ordinary [Register]ed core services
+        // now. There is no three-way default any more: authorization is not opt-in, so there is no
+        // "neither opt-in was called" state to have a fallback for.
+        //
+        // [SparkAuthorize] on a controller action or minimal-API endpoint is wired here rather than
+        // by the Controllers module, because the attribute belongs to whoever owns security.json and
+        // it applies equally to a RequireAuthorization(). Singleton is ASP.NET Core's convention for
+        // authorization handlers; the handler resolves the scoped IAccessControl per evaluation.
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Services.SparkAuthorizeHandler>();
 
         services.AddSingleton<IDocumentStore>(sp =>
         {
@@ -288,6 +289,8 @@ public static class SparkExtensions
         // rather than a configuration mistake.
         VerifySparkModelHash(app);
 
+        VerifySparkSecurityConfiguration(app);
+
         ReportSecurityPosture(app);
 
         // Run module-specific middleware/startup tasks
@@ -467,6 +470,42 @@ public static class SparkExtensions
             hostEnvironment.ContentRootPath,
             hostEnvironment.IsDevelopment(),
             Console.WriteLine);
+    }
+
+    /// <summary>
+    /// Refuses to start when <c>App_Data/security.json</c> is missing or means something other than
+    /// it looks like.
+    /// <para>
+    /// The same shape as <see cref="VerifySparkModelHash"/> and for the same reason: serving
+    /// requests against an authorization model that could not be loaded is worse than not starting,
+    /// because it surfaces as an application that denies everything with no visible cause — which
+    /// is indistinguishable from an application that means to.
+    /// </para>
+    /// <para>
+    /// Explicit rather than left to the posture reporter below, which would load the file anyway.
+    /// A gate that happens as a side effect of a logging call is one refactor away from being
+    /// removed by someone who does not know it was load-bearing.
+    /// </para>
+    /// <para>
+    /// Unlike the model hash there is no Development exemption. A missing model file is the normal
+    /// state while a developer adds a property; a missing security file is never the normal state,
+    /// and the generator that fixes it takes one command.
+    /// </para>
+    /// </summary>
+    private static void VerifySparkSecurityConfiguration(IApplicationBuilder app)
+    {
+        // The command that writes the file must not be blocked by the check that requires it.
+        if (Environment.GetCommandLineArgs().Contains(Extensions.SparkSecurityInitExtensions.InitFlag))
+            return;
+
+        app.ApplicationServices.GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
+            .GetConfiguration();
+
+        // Same trip, different file: force the query alias index to build now. It is lazy, so a
+        // duplicate alias would otherwise surface as a 500 on whichever request first needed a
+        // query — in an unrelated place, long after the mistake. Here it is a startup failure that
+        // names both queries.
+        app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
     }
 
     /// <summary>

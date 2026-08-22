@@ -90,7 +90,13 @@ public static class RavenIndexingExtensions
         var sp = Stopwatch.StartNew();
         DatabaseStatistics? statistics = null;
 
-        while (sp.Elapsed < effectiveTimeout)
+        // Always check at least once, however small the timeout — hence the loop tests the deadline
+        // at the BOTTOM. Testing it at the top let a caller time out having never looked: the
+        // stopwatch starts, the thread is descheduled (a full suite runs hundreds of databases at
+        // once), and the body never runs. `statistics` stays null, and MissingIndexes(null, …) then
+        // reports every expected index as missing — so the failure said "this index was never
+        // deployed" about a database nobody had queried. A misdiagnosis is worse than a slow test.
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             statistics = await admin.SendAsync(new GetStatisticsOperation(), cancellationToken);
@@ -101,6 +107,9 @@ public static class RavenIndexingExtensions
             // A faulted index will never become non-stale, so waiting out the full timeout only
             // delays the report. Break and describe it.
             if (statistics.Indexes.Any(x => x.State == IndexState.Error))
+                break;
+
+            if (sp.Elapsed >= effectiveTimeout)
                 break;
 
             await Task.Delay(100, cancellationToken);

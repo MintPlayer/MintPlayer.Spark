@@ -26,8 +26,13 @@ public class ListCustomActionsTests
         ClrType = "Fleet.Entities.Car",
     };
 
+    /// <summary>
+    /// The empty list, not a refusal. This is a catalogue endpoint and a known-but-denied type
+    /// gets 200 with an empty list from the per-action filter, so answering 404 here would tell a
+    /// caller which entity types exist — the M-3 oracle in a listing rather than in a load.
+    /// </summary>
     [Fact]
-    public async Task Returns_404_when_entity_type_cannot_be_resolved()
+    public async Task Returns_an_empty_list_when_entity_type_cannot_be_resolved()
     {
         _modelLoader.ResolveEntityType("unknown").Returns((EntityTypeDefinition?)null);
         var endpoint = NewEndpoint();
@@ -35,7 +40,7 @@ public class ListCustomActionsTests
 
         var result = await endpoint.HandleAsync(context);
 
-        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -160,6 +165,11 @@ public class ListCustomActionsTests
         var context = new DefaultHttpContext
         {
             RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider(),
+            // Authenticated: M-3 makes an unknown entity type answer exactly as a denied one, and
+            // for an anonymous caller that is 401. These tests are about the 404 an authorized
+            // caller sees, which is what makes "no such type" indistinguishable from "not yours".
+            User = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(authenticationType: "Test")),
         };
         foreach (var (k, v) in values) context.Request.RouteValues[k] = v;
         context.Response.Body = new MemoryStream();

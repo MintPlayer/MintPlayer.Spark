@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
@@ -182,6 +183,7 @@ public static class SparkDevelopmentExtensions
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
             Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
+            VerifyQueryAliasesAreUnique(contentRoot);
             return;
         }
 
@@ -206,6 +208,62 @@ public static class SparkDevelopmentExtensions
         Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
 
         Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Refuses a model whose query aliases collide, from the files on disk.
+    /// </summary>
+    /// <remarks>
+    /// Part of <c>--spark-verify-model</c> rather than a check of its own, because it is the same
+    /// question that command already answers — <em>is the committed model usable?</em> — and one
+    /// more CI step is one more thing to forget to wire up.
+    /// <para>
+    /// It has to be checked here at all because the model commands return before
+    /// <c>builder.Build()</c>, so <c>UseSpark</c>'s startup gate never runs in CI. A collision
+    /// would otherwise only ever surface by running the application, which is exactly how DemoApp
+    /// shipped one.
+    /// </para>
+    /// <para>
+    /// Reads the files directly rather than resolving <c>IQueryLoader</c>: there is no service
+    /// provider in the builder phase, and building one would need a document store. The rule
+    /// itself is shared (<see cref="SparkQueryAliases.Index"/>), so only the reading differs.
+    /// </para>
+    /// </remarks>
+    private static void VerifyQueryAliasesAreUnique(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var queries = new List<SparkQuery>();
+
+        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        {
+            try
+            {
+                var entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file), jsonOptions);
+
+                if (entityTypeFile?.Queries is { Length: > 0 } fileQueries)
+                    queries.AddRange(fileQueries);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A malformed model file is the hash check's problem, not this one. Reporting it
+                // twice, differently, helps nobody.
+            }
+        }
+
+        try
+        {
+            SparkQueryAliases.Index(queries);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Environment.ExitCode = ExitDrift;
+        }
     }
 
     private static void Synchronize(WebApplicationBuilder builder, Type contextType)

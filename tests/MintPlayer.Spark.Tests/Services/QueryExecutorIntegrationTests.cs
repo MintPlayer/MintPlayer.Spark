@@ -190,20 +190,19 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
     public async Task Search_is_pushed_into_the_database()
     {
         await SeedPeopleAsync(("people/1", "Alice", "Smith"), ("people/2", "Bob", "Jones"));
-        // Subscribed before the executor opens its session: RavenDB copies the store's handlers into a
+        // Attached before the executor opens its session: RavenDB copies the store's handlers into a
         // session at construction time, so a later subscription would never fire.
-        var queries = new List<string>();
-        Store.OnBeforeQuery += (_, e) => queries.Add(e.QueryCustomization.ToString()!);
+        using var recorder = RqlRecorder.Attach(Store);
 
         var executor = CreateExecutor();
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), search: "alice");
 
         result.TotalRecords.Should().Be(1);
-        queries.Should().NotBeEmpty("the query must have gone to the server");
+        recorder.Should().NotBeEmpty("the query must have gone to the server");
         // The term itself is parameterized ($p0), so the shape is what there is to assert: one clause per
         // searchable field, OR-ed inside a group, with SearchOperator.And applied within each clause.
-        queries.Should().ContainSingle().Which.Should().Be(
+        recorder.Should().ContainSingle().Which.Should().Be(
             "from 'People' where (search(FirstName, $p0, and) or search(LastName, $p1, and))");
     }
 

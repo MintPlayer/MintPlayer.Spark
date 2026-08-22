@@ -20,7 +20,7 @@ internal sealed partial class ListPersistentObjects : IGetEndpoint, IMemberOf<Pe
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: 404);
+            return SparkDenial.RefuseJson(httpContext);
         }
 
         try
@@ -30,14 +30,7 @@ internal sealed partial class ListPersistentObjects : IGetEndpoint, IMemberOf<Pe
         }
         catch (SparkAccessDeniedException)
         {
-            if (httpContext.User.Identity?.IsAuthenticated != true)
-            {
-                return Results.Json(new { error = "Authentication required" }, statusCode: 401);
-            }
-            else
-            {
-                return Results.Json(new { error = "Access denied" }, statusCode: 403);
-            }
+            return SparkDenial.RefuseJson(httpContext);
         }
     }
 }

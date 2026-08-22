@@ -381,16 +381,13 @@ should, and then the write is governed.
 
 ### Why gating framework bookkeeping would break working applications
 
-This was checked against the four configurations rather than argued:
+This was checked rather than argued. Under the configurations that existed at the time:
 
 | Configuration | Framework write today | If routed through the chokepoint |
 |---|---|---|
-| Neither opt-in (`DenyAllAccessControl`) | Works | **Breaks unconditionally** — at startup and on every background tick |
-| `AllowAnonymousAccess()` | Works | Works, because authorization is already a no-op |
 | `security.json` | Works | **Breaks silently** unless the operator grants rights on framework resource names they do not know exist |
-| `AllowAll` default, no `security.json` | Works | "Works" only by falling through to allow-anyone — no safer than not gating |
 
-So one configuration is unaffected, two break, and the fourth gains nothing. A background worker has
+The `security.json` row is the only one left today, and it is the one that breaks. A background worker has
 no `HttpContext`, and `ClaimsGroupMembershipProvider` returns an empty group list rather than
 throwing — so calling `IPermissionService` there would evaluate the worker **as an anonymous
 caller**, not as a trusted system. That is a footgun rather than a control.
@@ -414,36 +411,35 @@ anonymous, because that is who caused it. The control sits at the data, not at t
   provider's own internals. The exemption above therefore keys on the **write path**, not on the
   collection.
 
-## 6. The four authorization configurations
+## 6. There is only one authorization configuration
 
-Which `IAccessControl` is registered last wins.
+Since preview.62 there is nothing to choose. `AddSpark` registers the `security.json` evaluator
+unconditionally, every application has a file, and a missing or malformed one **refuses startup**.
+`spark.AddAuthorization()`, `spark.AllowAnonymousAccess()` and `AuthorizationOptions.DefaultBehavior`
+are deleted.
 
-| Configuration | Behaviour | Where |
-|---|---|---|
-| Neither opt-in called | **Denies everything**, unconditionally | `DenyAllAccessControl`, the DI default (`SparkMiddleware.cs:65`) |
-| `spark.AddAuthorization()` | `security.json` groups + rights, plus the `anonymous`/`authenticated` well-known group | `AccessControlService` |
-| `spark.AllowAnonymousAccess()` | **Allows everything.** `security.json` and groups are never consulted at all | `AllowAllAccessControl` |
-| `AddAuthorization(o => o.DefaultBehavior = AllowAll)` | `security.json` as above, but an unmatched resource is *allowed* instead of denied | `AccessControlService`, both the empty-groups branch and the final fallthrough |
+The four configurations this section used to enumerate were four answers to a question that should
+not have existed — *what does the framework do before the developer has said anything?* Two of them
+denied everything (which reads as a broken application), and two allowed everything (one of them
+only when `security.json` was also absent, which is a pairing nobody chooses deliberately).
 
-Spark's real fail-closed guarantee lives in the first row — the deny-all DI default (R2-H1) — not in
-any authentication check. The other three are deliberate ways to waive it, and all of them waive it
-for unauthenticated callers too.
+An application that genuinely wants to be open now grants `*/*` in its file, where the decision is
+visible next to the rights it overrides, is printed by the startup posture report, and moves the
+committed `securityPosture.txt` baseline in code review.
 
-**A missing `security.json` is not a locked door.** The loader logs a warning and returns an empty
-configuration (`SecurityConfigurationLoader.cs:57-61`). With no groups and no well-known role, every
-request falls to `DefaultBehavior` — so an app that set `AllowAll` for convenience and has no
-`security.json` allows everything to everyone. That is exactly WebhooksDemo's configuration
-(`Demo/WebhooksDemo/WebhooksDemo/Program.cs:29`, no `App_Data/security.json`); it is a demo, but do
-not copy the pairing into an app that matters.
+See **[the authorization guide](guide-authorization.md)** for the rights model, precedence, and
+what `Query` without `Read` does to a grid.
 
 ### What each demo actually ships
 
 | Demo | Wiring | Effective posture |
 |---|---|---|
-| **Fleet** | `AddSparkFull` → `AddAuthorization()` + `AddAuthentication<SparkUser>` | `security.json`; anonymous gets `QueryRead/Company` |
-| **HR** | `AddSpark` + `AddAuthorization()` (`Program.cs:28`) — also hosts the **OIDC identity provider** (`spark.AddIdentityProvider`, `:35-39`) | same |
-| **DemoApp** | `AllowAnonymousAccess()` (`Program.cs:30`) | **everything allowed, no authorization at all** |
-| **WebhooksDemo** | `AddAuthorization(DefaultBehavior = AllowAll)`, no `security.json` | **everything allowed** |
+| **Fleet** | `AddSparkFull` + `AddAuthentication<SparkUser>` | anonymous gets `QueryRead/Company` |
+| **HR** | `AddSpark` + `AddAuthentication<SparkUser>`, and hosts the **OIDC identity provider** | same |
+| **DemoApp** | `AddSpark`, no sign-in at all | everything granted to `anonymous`, mirrored on `authenticated`; `Stock` and `Address` are `Query` without `Read` |
+| **WebhooksDemo** | `AddSpark` + GitHub OAuth, local credentials disabled | `anonymous` declared and granted **nothing** |
+
+Each demo's `App_Data/securityPosture.txt` states its anonymous surface in one committed file.
 
 ---
 

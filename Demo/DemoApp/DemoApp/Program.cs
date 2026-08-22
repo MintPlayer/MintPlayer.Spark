@@ -31,10 +31,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddMessaging();
     spark.AddRecipients();
     spark.AddCronJobs();
-    // DemoApp has no authorization model — opt into the permissive
-    // IAccessControl explicitly. Removing this line falls back to the
-    // deny-all default and every Spark request is refused.
-    spark.AllowAnonymousAccess();
 });
 
 // Configure SPA static files
@@ -46,6 +42,16 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 // Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
 // entity classes and needs no database, so it runs here and the process returns before Build().
 if (builder.SynchronizeSparkModelsIfRequested(args))
+    return;
+
+// Writes a starting App_Data/security.json for an application that has none. Never overwrites.
+if (builder.InitializeSparkSecurityIfRequested(args))
+    return;
+
+// --spark-verify-security fails the build when the set of rights reachable WITHOUT signing in
+// has changed. security.json is a data file: widening it is a one-line diff that reads no
+// differently from narrowing it, so the baseline is what makes the change reviewable.
+if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();

@@ -1,19 +1,31 @@
 # MintPlayer.Spark.Authorization
 
-Optional authorization package for MintPlayer.Spark. Adds permission-based access control via `security.json`, ASP.NET Core Identity backed by RavenDB, and automatic Angular frontend integration.
+Identity for MintPlayer.Spark: ASP.NET Core Identity backed by RavenDB, external login providers,
+and automatic Angular frontend integration.
 
 ## Overview
 
-Without this package, Spark **denies everything**. `AddSpark` registers a deny-all `IAccessControl` as its default, so an app that adds neither this package nor `spark.AllowAnonymousAccess()` refuses every request rather than accepting every request (R2-H1 — an earlier version of this README described the opposite, which was the fail-open behaviour that finding closed).
+**This package no longer owns authorization.** As of preview.62, `App_Data/security.json` is read
+by Spark core, every application has one, and a missing or malformed file refuses startup. See
+**[the authorization guide](../../../docs/guide-authorization.md)** for the rights model, group
+semantics, precedence, and the `--spark-init-security` starter.
 
-When you add `MintPlayer.Spark.Authorization`, the framework checks every request against the `security.json` configuration before allowing any CRUD operation on entities and queries. If no matching permission is found, access is denied (by default).
+What moved into core: `SecurityConfiguration`, `Right`, `ISecurityConfigurationLoader`, the
+evaluator, the validator, the claims-based group provider, the posture reporter and
+`[SparkAuthorize]`. `spark.AddAuthorization()`, `AuthorizationOptions` (including
+`DefaultBehavior`) and `spark.AllowAnonymousAccess()` are **deleted**, not deprecated. An
+application that wants to be open grants `*/*` in its file, where the decision is visible.
 
-The authorization model is based on:
-- **Groups** -- named sets of users (e.g. "Administrators", "Viewers", "Everyone")
-- **Rights** -- permission assignments linking a group to a resource (e.g. "Administrators can Read/Edit/New/Delete Person")
-- **Resources** -- action/entity pairs (e.g. `Query/Person`, `Edit/Car`, `New/Company`)
+What this package still gives you:
 
-> **`Everyone` applies to every caller, including unauthenticated ones**, and is added on top of whatever groups a signed-in user belongs to. A right granted to `Everyone` is granted to the public internet. See **[Authentication Schemes & `Everyone`](../../../docs/guide-authentication-schemes.md)** for the full picture: which schemes exist, what each authentication outcome yields, and why a *rejected* credential is treated identically to no credential at all.
+- **Identity** — `SparkUser`, `SparkRole`, RavenDB user/role stores, the `/spark/auth/*`
+  endpoint family, and how much of it to mount (`SparkLocalCredentials`)
+- **External login** — GitHub and any other OAuth/OIDC provider
+- **JWT bearer** — for machine callers
+- **The Angular half** — `@mintplayer/ng-spark-auth`, installed and scaffolded by MSBuild
+
+Custom group membership is a core concern now: use `spark.UseGroupMembershipProvider<T>()` from
+`MintPlayer.Spark.Extensions`, with or without this package.
 
 ## Installation
 
@@ -23,173 +35,7 @@ dotnet add package MintPlayer.Spark.Authorization
 
 ## Backend Setup
 
-### Step 1: Register Authorization Services
-
-In `Program.cs`, add the authorization services:
-
-Everything is configured through the `ISparkBuilder` that `AddSpark` hands you:
-
-```csharp
-using MintPlayer.Spark.Authorization.Extensions;
-
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddSpark(builder.Configuration, spark =>
-{
-    spark.UseContext<MySparkContext>();
-    spark.AddActions();
-    spark.AddAuthorization();
-});
-```
-
-`AddAuthorization()` accepts optional configuration:
-
-```csharp
-spark.AddAuthorization(options =>
-{
-    options.SecurityFilePath = "App_Data/security.json";   // default
-    options.DefaultBehavior = DefaultAccessBehavior.DenyAll; // default
-    options.CacheRights = true;                             // default
-    options.CacheExpirationMinutes = 5;                     // default
-    options.EnableHotReload = true;                         // default
-});
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `SecurityFilePath` | `App_Data/security.json` | Path to the security configuration file (relative to content root) |
-| `DefaultBehavior` | `DenyAll` | What happens when no explicit permission matches. `AllowAll` is useful during development |
-| `CacheRights` | `true` | Cache parsed rights in memory |
-| `CacheExpirationMinutes` | `5` | How long cached rights remain valid |
-| `EnableHotReload` | `true` | Watch `security.json` for changes and auto-reload |
-
-### Step 2: Create security.json
-
-Create `App_Data/security.json` in your project. This file defines groups and their permissions:
-
-```json
-{
-  "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Everyone", "fr": "Tout le monde", "nl": "Iedereen" },
-    "a1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" },
-    "a1b2c3d4-0000-0000-0000-000000000002": { "en": "Managers" },
-    "a1b2c3d4-0000-0000-0000-000000000003": { "en": "Viewers" }
-  },
-  "rights": [
-    {
-      "id": "00000000-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Company",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "id": "f0000001-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNewDelete/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "id": "f0000002-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNew/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
-      "isDenied": false
-    },
-    {
-      "id": "f0000003-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
-      "isDenied": false
-    }
-  ]
-}
-```
-
-#### Groups
-
-Groups are keyed by GUID. The group name is a `TranslatedString` (supports multiple languages). You assign users to groups through the `IGroupMembershipProvider` interface.
-
-#### The Everyone Group
-
-The group with the name `"Everyone"` (case-insensitive, matches any translation) is automatically applied to **all requests**, including unauthenticated users. Use it to grant public/anonymous access to specific resources:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000001",
-  "resource": "QueryRead/Company",
-  "groupId": "00000000-0000-0000-0000-000000000000",
-  "isDenied": false
-}
-```
-
-This grants all users (including anonymous) the ability to list and view Company entities.
-
-#### Rights
-
-Each right has:
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | GUID | Unique identifier for this permission |
-| `resource` | string | Action/target pair (e.g. `"Read/Person"`) |
-| `groupId` | GUID | References a group key from the `groups` section |
-| `isDenied` | boolean | When `true`, explicitly denies this permission (denials take precedence) |
-
-#### Resource Format
-
-Resources follow the pattern `{Action}/{EntityName}`:
-
-| Action | Description | HTTP Method |
-|---|---|---|
-| `Query` | List entities via query | GET `/spark/query/{id}` |
-| `Read` | View a single entity | GET `/spark/po/{typeId}/{id}` |
-| `Edit` | Update an entity | PUT `/spark/po/{typeId}/{id}` |
-| `New` | Create a new entity | POST `/spark/po/{typeId}` |
-| `Delete` | Delete an entity | DELETE `/spark/po/{typeId}/{id}` |
-
-The entity name in the resource matches the entity type's `Name` field in the model JSON (e.g. `Person`, `Car`, `Company`).
-
-#### Combined Actions
-
-To avoid repeating individual permissions, use combined action patterns:
-
-| Combined Pattern | Includes |
-|---|---|
-| `QueryRead` | Query, Read |
-| `QueryReadEdit` | Query, Read, Edit |
-| `QueryReadEditNew` | Query, Read, Edit, New |
-| `QueryReadEditNewDelete` | Query, Read, Edit, New, Delete |
-| `EditNew` | Edit, New |
-| `EditNewDelete` | Edit, New, Delete |
-| `NewDelete` | New, Delete |
-| `ReadEdit` | Read, Edit |
-| `ReadEditNew` | Read, Edit, New |
-| `ReadEditNewDelete` | Read, Edit, New, Delete |
-
-For example, `"QueryReadEditNewDelete/Car"` grants full CRUD access to the Car entity.
-
-#### Custom Action Permissions
-
-Custom actions (defined in Actions classes) can also be controlled through `security.json`. The resource format is `{ActionName}/{EntityName}`:
-
-```json
-{
-  "id": "ca000001-0000-0000-0000-000000000001",
-  "resource": "CarCopy/Car",
-  "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
-  "isDenied": false
-}
-```
-
-#### Permission Evaluation Order
-
-When checking a request:
-
-1. Explicit **denials** are checked first (denials always take precedence)
-2. **Exact match** against the resource string
-3. **Combined action match** (e.g. `QueryReadEditNewDelete/Car` matches a `Read/Car` request)
-4. **Default behavior** (`DenyAll` or `AllowAll` from options)
-
-### Step 3: Add Authentication (Optional)
+### Add Authentication
 
 The authorization package includes built-in ASP.NET Core Identity support with RavenDB-backed user and role stores. To enable authentication:
 
@@ -203,7 +49,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
     spark.AddActions();
-    spark.AddAuthorization();
     spark.AddAuthentication<SparkUser>();
 });
 
@@ -231,7 +76,7 @@ app.UseEndpoints(endpoints =>
 ```
 
 `UseSpark()` owns the whole pipeline — it calls `UseAuthentication()` / `UseAuthorization()` in the
-right order and wires antiforgery. There is no `UseSparkAntiforgery()`; see Step 4.
+right order and wires antiforgery. There is no `UseSparkAntiforgery()`; see below.
 
 #### Identity Endpoints
 
@@ -268,20 +113,26 @@ public class MyGroupProvider : IGroupMembershipProvider
 }
 ```
 
-Register it alongside `AddAuthorization()`:
+Register it:
 
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
-    spark.AddAuthorization();
     spark.UseGroupMembershipProvider<MyGroupProvider>();
 });
 ```
 
+`UseGroupMembershipProvider` lives in `MintPlayer.Spark.Extensions` — it is a core concern, so an
+application can say where groups come from without depending on this package.
+
+⚠️ A provider cannot hand a caller `anonymous` or `authenticated`. Those are decided from
+authentication state and their ids are excluded from claim-derived membership, so returning
+"Signed-in users" resolves nothing.
+
 `UseGroupMembershipProvider` removes the default registration rather than adding a second one, so
 which provider runs does not depend on registration order.
 
-### Step 4: XSRF/Antiforgery Protection
+### XSRF/Antiforgery Protection
 
 When using cookie-based authentication, mutation endpoints (POST, PUT, DELETE) are protected with
 XSRF tokens. **You do not wire this up** — `UseSpark()` does all of it: it generates the
@@ -302,23 +153,25 @@ cookie would only make legitimate calls impossible. See
 
 ## How Authorization Integrates with Spark
 
-Spark's core `PermissionService` delegates every check to the registered `IAccessControl`. There
-is always one: `AddSpark` registers a **deny-all** default, so an app that forgets
-`spark.AddAuthorization()` refuses requests rather than serving them.
+Spark core's `PermissionService` delegates every check to `IAccessControl`, which `AddSpark`
+registers unconditionally as the `security.json` evaluator. There is no state in which
+authorization is absent, and therefore no default to choose:
 
 ```csharp
 // From MintPlayer.Spark/Services/PermissionService.cs
 public async Task EnsureAuthorizedAsync(string action, string target, ...)
 {
     var resource = $"{action}/{target}";
-    if (!await accessControl.IsAllowedAsync(resource, cancellationToken))
+    if (!await DecideAsync(resource, cancellationToken))
         throw new SparkAccessDeniedException(resource);
 }
 ```
 
-Earlier versions returned early when no `IAccessControl` was registered, which meant a missing
-package silently opened every endpoint. That branch was removed (R2-H1). If you genuinely want an
-open app, say so explicitly with `spark.AllowAnonymousAccess()`.
+Two earlier shapes are gone. The original returned early when no `IAccessControl` was registered,
+so a missing package silently opened every endpoint. Its replacement — a deny-all default plus
+`AddAuthorization()` / `AllowAnonymousAccess()` opt-ins — was safe but still left "nobody wired
+it up" as a state with a made-up meaning. Now the file decides, and an open application says so
+by granting `*/*`.
 
 ## Angular Frontend Setup
 
@@ -489,14 +342,19 @@ A typical setup with three roles:
 | Administrators | Full CRUD | Full CRUD | Full CRUD |
 | Managers | Read | Create/Edit (no delete) | Create/Edit (no delete) |
 | Viewers | Read | Read | Read |
-| Everyone (anonymous) | Read | -- | -- |
+| Anonymous visitors | Read | -- | -- |
 
 The corresponding `security.json`:
 
 ```json
 {
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
+  },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Everyone" },
+    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
+    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users" },
     "a1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" },
     "a1b2c3d4-0000-0000-0000-000000000002": { "en": "Managers" },
     "a1b2c3d4-0000-0000-0000-000000000003": { "en": "Viewers" }
@@ -519,15 +377,19 @@ The corresponding `security.json`:
 }
 ```
 
+⚠️ The anonymous grant is the ONLY one an unauthenticated visitor gets — `anonymous` is not a
+floor under the other groups. A Manager who is also meant to read Companies needs their own
+grant, which is why one appears on every role above.
+
 ## Complete Example
 
 See the demo apps for working authorization setups:
-- `../Demo/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthorization(…)` + `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
+- `../Demo/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
 - `../Demo/Fleet/Fleet/Program.cs` -- the same thing through `AddSparkFull` / `UseSparkFull`, which bundle the common packages
 - `../Demo/Fleet/Fleet/App_Data/security.json` -- role-based permissions including custom action permissions
 - `../Demo/HR/HR/App_Data/security.json` -- role-based permissions for HR entities
-- `Services/AccessControlService.cs` -- permission evaluation logic
-- `Configuration/AuthorizationOptions.cs` -- configuration options
+- `../Demo/DemoApp/DemoApp/App_Data/security.json` -- a fully public app, and the `Query`-without-`Read` showcase
+- `../../spark/MintPlayer.Spark/Services/SecurityFileAccessControl.cs` -- permission evaluation, in core
 
 ## Requirements
 
