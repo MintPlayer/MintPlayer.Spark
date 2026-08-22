@@ -29,10 +29,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.100
         # Authenticates packages to push to GPR
@@ -41,7 +41,7 @@ jobs:
         NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: 22
 
@@ -93,7 +93,7 @@ jobs:
         echo "version=${version}" >> "$GITHUB_OUTPUT"
 
     - name: Cache Playwright browsers
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
