@@ -194,11 +194,10 @@ public class AsyncCustomQueryTests : SparkTestDriver
     /// Subscribes before the executor is resolved — RavenDB copies the store's handlers into a session
     /// at construction time, so a later subscription never fires.
     /// </summary>
-    private (IQueryExecutor Executor, List<string> Rql) Capture()
+    private (IQueryExecutor Executor, RqlRecorder Rql) Capture()
     {
-        var rql = new List<string>();
-        Store.OnBeforeQuery += (_, e) => rql.Add(e.QueryCustomization.ToString()!);
-        return (_factory.GetService<IQueryExecutor>(), rql);
+        var recorder = RqlRecorder.Attach(Store);
+        return (_factory.GetService<IQueryExecutor>(), recorder);
     }
 
     [Fact]
@@ -208,6 +207,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         // anywhere, so the declared column is simply discarded.
         await SeedAsync();
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncRaven), [new SortColumn { Property = "LastName", Direction = "asc" }]));
@@ -234,6 +234,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
     {
         await SeedAsync();
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncRaven)), search: "grace");
 
@@ -265,6 +266,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         // search pushdown and still materialize through the blocking path.
         await SeedAsync();
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncDeclaredQueryable)), search: "grace");
@@ -279,6 +281,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         // The same gap, without async. Pre-existing, and closed by the same change.
         await SeedAsync();
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.SyncDeclaredQueryable)), search: "grace");
@@ -294,6 +297,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         // handed to the Raven path, and a declared sort must not silently appear to work.
         await SeedAsync();
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncEnumerable), [new SortColumn { Property = "LastName", Direction = "asc" }]));

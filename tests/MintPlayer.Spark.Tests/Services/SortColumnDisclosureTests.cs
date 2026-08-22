@@ -115,11 +115,10 @@ public class SortColumnDisclosureTests : SparkTestDriver
         SortColumns = sortColumns,
     };
 
-    private (IQueryExecutor Executor, List<string> Rql) Capture()
+    private (IQueryExecutor Executor, RqlRecorder Rql) Capture()
     {
-        var rql = new List<string>();
-        Store.OnBeforeQuery += (_, e) => rql.Add(e.QueryCustomization.ToString()!);
-        return (_factory.GetService<IQueryExecutor>(), rql);
+        var recorder = RqlRecorder.Attach(Store);
+        return (_factory.GetService<IQueryExecutor>(), recorder);
     }
 
     [Fact]
@@ -128,6 +127,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
         // RED before the fix: ApplySorting resolved SecretToken by reflection and emitted
         // `order by SecretToken`, ordering rows by a value the grid never shows.
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(new SortColumn { Property = "SecretToken", Direction = "asc" }));
@@ -141,6 +141,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
     {
         // InternalRank exists on the CLR type and in the index, but is not a modelled attribute.
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(new SortColumn { Property = "InternalRank", Direction = "asc" }));
@@ -154,6 +155,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
     {
         // The floor: the gate must not break ordinary sorting.
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         var result = await executor.ExecuteQueryAsync(
             Query(new SortColumn { Property = "Label", Direction = "asc" }));
@@ -170,6 +172,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
         // A rejected column is dropped, not fatal, and must not take its neighbours with it —
         // otherwise a client persisting a stale sort state loses ordering entirely.
         var (executor, rql) = Capture();
+        using var _rql = rql;
 
         await executor.ExecuteQueryAsync(Query(
             new SortColumn { Property = "SecretToken", Direction = "asc" },
