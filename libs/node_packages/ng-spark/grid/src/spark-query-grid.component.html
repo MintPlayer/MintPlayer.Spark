@@ -1,0 +1,112 @@
+<!--
+  Three explicit states, in this order, and the order is load-bearing.
+
+  This template used to open with `@if (query(); as q)` wrapping EVERYTHING, and `query()` is only
+  set after loadData's awaits resolve. Three separate bugs fell out of that one line: the spinner
+  was unreachable on a first load (it rendered inside the gate, while `loading` starts true and
+  `query` starts null), a first-load failure rendered ZERO DOM — no card, no message, nothing to
+  see or report — and a failed RELOAD left the previous query's rows on screen.
+
+  So: `loading` is checked first and outside any dependency on `query`, and the final `@else`
+  always renders something. Do not fold these back into one gate, and do not move the spinner
+  inside the `query()` branch.
+-->
+@if (loading()) {
+  <div class="text-center p-3">
+    <bs-spinner />
+  </div>
+} @else if (query()) {
+  <!-- A page-fetch failure while the grid is already resolved. Without this the catch returns an
+       empty page and a failed query is indistinguishable from one that legitimately has no rows. -->
+  @if (errorMessage(); as err) {
+    <bs-alert [type]="colors.danger" class="mb-3">
+      {{ err }}
+    </bs-alert>
+  }
+
+  <!--
+    One datatable, two row sources. `[data]` and `[fetch]` are mutually exclusive in
+    ng-bootstrap — binding both makes `[fetch]` win silently — so exactly one is ever non-null
+    here: `fetchFn` is left null whenever `data` is bound. See the class comment for why rows can
+    arrive from outside at all (streaming must not put a websocket in every detail page's bundle).
+  -->
+  <bs-datatable
+      [selectionMode]="selectionMode()"
+      [(selection)]="selection"
+      [virtualScroll]="isVirtualScrolling()"
+      [itemSize]="40"
+      [isResponsive]="isVirtualScrolling()"
+      [data]="data()"
+      [fetch]="fetchFn()"
+      [(settings)]="settings">
+    @for (attr of visibleAttributes(); track attr.id) {
+      <div *bsDatatableColumn="attr.name; sortable: true">
+        {{ (attr.label | resolveTranslation) || attr.name }}
+      </div>
+    }
+
+    <ng-container *bsRowTemplate="let item">
+      @let row = $any(item);
+      @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+        <td>
+          @if (row) {
+            <!-- The first column links to the row's detail page. Two things about this are
+                 routinely misread:
+
+                 1. `cellContent` is projected INSIDE the anchor, so a custom `renderer` does NOT
+                    suppress this link — a renderer that emits its own <a> produces nested anchors
+                    (invalid HTML) rather than replacing this one.
+                 2. `canRead()` is the whole gate, and it is the rights model: `Query` without
+                    `Read` lists the rows and withholds the link. Withhold `Read` for a query
+                    whose rows no detail page can load — a Custom.* query that fabricates rows in
+                    memory, say. -->
+            @if (first && canRead()) {
+              <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]"
+                 (click)="rowClicked.emit(row)">
+                <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+              </a>
+            } @else {
+              <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+            }
+          } @else {
+            &nbsp;
+          }
+        </td>
+      }
+    </ng-container>
+  </bs-datatable>
+} @else {
+  <!-- The query could not be resolved. Rendering something keeps the host's layout intact and,
+       crucially, makes the failure visible: this branch used to render nothing at all. -->
+  <bs-alert [type]="colors.danger" class="mb-0">
+    {{ errorMessage() || ('spark.query.unavailable' | t) }}
+  </bs-alert>
+}
+
+<ng-template #cellContent let-item let-attr="attr">
+  @if (getColumnRendererComponent(attr); as rendererType) {
+    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
+  } @else if (attr.dataType === 'boolean') {
+    @let boolVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+    <!-- [indeterminate] matters: without it a null boolean renders as an unchecked box, which
+         reads as an explicit `false`. One of the two grids bound it and the other had drifted. -->
+    <input type="checkbox"
+      [checked]="boolVal === true"
+      [indeterminate]="boolVal === null || boolVal === undefined"
+      disabled
+      onclick="return false;">
+  } @else if (attr.dataType === 'color') {
+    @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
+    @if (colorVal) {
+      <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+    }
+  } @else if (attr.dataType === 'Reference' && attr.isArray) {
+    <span class="d-inline-flex flex-wrap gap-1">
+      @for (chip of (attr.name | referenceChips:item); track chip.id) {
+        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
+      }
+    </span>
+  } @else {
+    {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
+  }
+</ng-template>

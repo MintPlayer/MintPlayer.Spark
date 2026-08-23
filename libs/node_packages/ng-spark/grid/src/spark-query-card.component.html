@@ -1,0 +1,52 @@
+<!--
+  The card is always rendered. A host that wants no card uses <spark-query-grid> directly — which
+  is what the old `showCard="false"` meant, expressed as a component choice rather than a flag.
+-->
+<bs-card style="display: block; margin: 1rem 0;">
+  <bs-card-header>
+    <div class="d-flex align-items-center gap-2">
+      @if (iconTpl(); as tpl) {
+        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: query() }"></ng-container>
+      }
+
+      <span class="me-auto">
+        @if (captionTpl(); as tpl) {
+          <ng-container *ngTemplateOutlet="tpl; context: { $implicit: caption(), query: query() }"></ng-container>
+        } @else {
+          {{ caption() }}
+        }
+      </span>
+
+      @if (actionsTpl(); as tpl) {
+        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: customActions(), selection: selection(), query: query() }"></ng-container>
+      } @else if (customActions().length) {
+        <!-- The default: the actions the server declares for this type. The nav renders only when
+             there are any, so a query without actions is pixel-identical to a plain caption.
+
+             Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
+             priority nav on every selection change. The server enforces the same rule. -->
+        <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+          @for (action of customActions(); track action.name) {
+            <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary"
+                    [disabled]="!grid()?.isActionEnabled(action)" (click)="grid()?.onCustomAction(action)">
+              {{ action.displayName | resolveTranslation }}
+            </button>
+          }
+        </bs-priority-nav>
+      }
+    </div>
+  </bs-card-header>
+
+  <div class="p-3">
+    <spark-query-grid
+        [queryId]="queryId()"
+        [parentId]="parentId()"
+        [parentType]="parentType()"
+        [reloadToken]="reloadToken()"
+        [data]="data()"
+        [search]="search()"
+        (error)="error.emit($event)"
+        (rowClicked)="rowClicked.emit($event)"
+        (customActionExecuted)="customActionExecuted.emit($event)" />
+  </div>
+</bs-card>
