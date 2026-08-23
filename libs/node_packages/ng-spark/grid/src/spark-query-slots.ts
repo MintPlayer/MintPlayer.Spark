@@ -1,5 +1,5 @@
-import { Directive, inject, TemplateRef } from '@angular/core';
-import { CustomActionDefinition } from '@mintplayer/ng-spark/models';
+import { Directive, inject, input, TemplateRef } from '@angular/core';
+import { CustomActionDefinition, PersistentObject, SparkQuery } from '@mintplayer/ng-spark/models';
 
 /**
  * Header slots for `<spark-query-card>`.
@@ -21,8 +21,42 @@ import { CustomActionDefinition } from '@mintplayer/ng-spark/models';
  * the real answer and the slot is a rare override.
  *
  * Naming follows ng-bootstrap's `*bsDatatableColumn` convention — prefix, component, slot —
- * with `spark`, since these are ng-spark directives and `bs` is taken.
+ * with `spark`, since these are ng-spark directives and `bs` is another package's prefix. These
+ * are the first attribute directives in ng-spark; every existing selector is an element.
+ *
+ * ## Targeting one query
+ *
+ * Each slot takes an optional query alias or id as its value. A detail page renders one card per
+ * entry in `EntityTypeDefinition.Queries`, so a host that supplies a bare slot would decorate
+ * every one of them identically — rarely what is wanted. A targeted slot applies to that query;
+ * an untargeted one is the fallback for the rest.
+ *
+ * ```html
+ * <span *sparkQueryIcon="'cars'"><spark-icon name="car-front" /></span>
+ * <span *sparkQueryIcon><spark-icon name="table" /></span>
+ * ```
+ *
+ * Matching is case-insensitive, against the query's alias and then its id. This is the
+ * `bsPriorityNavItem` shape: a value input aliased to the selector, collected with
+ * `contentChildren`.
  */
+
+/** Resolves a slot list to the one that applies to a query: targeted first, then untargeted. */
+export function slotFor<T extends { forQuery: () => string }>(
+  slots: readonly T[],
+  query: SparkQuery | null,
+): T | null {
+  if (!slots.length) return null;
+
+  const matches = (target: string) =>
+    !!target && (
+      target.localeCompare(query?.alias ?? '', undefined, { sensitivity: 'accent' }) === 0 ||
+      target.localeCompare(query?.id ?? '', undefined, { sensitivity: 'accent' }) === 0);
+
+  // A targeted slot wins over the catch-all even when it is declared later: "this one query"
+  // is the more specific statement, and declaration order in a template is not a priority.
+  return slots.find(s => matches(s.forQuery())) ?? slots.find(s => !s.forQuery()) ?? null;
+}
 
 /**
  * The icon at the header's leading edge. No default: nothing in the model describes one.
@@ -35,18 +69,30 @@ import { CustomActionDefinition } from '@mintplayer/ng-spark/models';
  */
 @Directive({ selector: '[sparkQueryIcon]' })
 export class SparkQueryIconDirective {
-  readonly templateRef = inject<TemplateRef<unknown>>(TemplateRef);
+  readonly templateRef = inject<TemplateRef<SparkQuerySlotContext>>(TemplateRef);
+
+  /** Query alias or id this slot applies to. Empty targets every query on the page. */
+  readonly forQuery = input('', { alias: 'sparkQueryIcon' });
+
+  static ngTemplateContextGuard(
+    _dir: SparkQueryIconDirective,
+    ctx: unknown,
+  ): ctx is SparkQuerySlotContext {
+    return true;
+  }
 }
 
 /**
  * The header caption. Defaults to the query's translated description, falling back to its name.
  *
- * The template's `$implicit` is that resolved default, so a host can decorate it — add a count,
- * a badge — without re-resolving the translation itself.
+ * The context carries that resolved default as `$implicit`, so a host can decorate it — add a
+ * count, a badge — without re-resolving the translation itself.
  */
 @Directive({ selector: '[sparkQueryCaption]' })
 export class SparkQueryCaptionDirective {
   readonly templateRef = inject<TemplateRef<SparkQueryCaptionContext>>(TemplateRef);
+
+  readonly forQuery = input('', { alias: 'sparkQueryCaption' });
 
   static ngTemplateContextGuard(
     _dir: SparkQueryCaptionDirective,
@@ -54,11 +100,6 @@ export class SparkQueryCaptionDirective {
   ): ctx is SparkQueryCaptionContext {
     return true;
   }
-}
-
-export class SparkQueryCaptionContext {
-  /** The caption the card would have rendered: description, or the query name. */
-  $implicit = '';
 }
 
 /**
@@ -79,6 +120,8 @@ export class SparkQueryCaptionContext {
 export class SparkQueryActionsDirective {
   readonly templateRef = inject<TemplateRef<SparkQueryActionsContext>>(TemplateRef);
 
+  readonly forQuery = input('', { alias: 'sparkQueryActions' });
+
   static ngTemplateContextGuard(
     _dir: SparkQueryActionsDirective,
     ctx: unknown,
@@ -87,9 +130,21 @@ export class SparkQueryActionsDirective {
   }
 }
 
+/** Context for the icon slot: the query whose card is being rendered. */
+export class SparkQuerySlotContext {
+  $implicit: SparkQuery | null = null;
+}
+
+export class SparkQueryCaptionContext {
+  /** The caption the card would have rendered: description, or the query name. */
+  $implicit = '';
+  query: SparkQuery | null = null;
+}
+
 export class SparkQueryActionsContext {
   /** The custom actions the card would have rendered, already filtered for this query. */
   $implicit: CustomActionDefinition[] = [];
   /** Rows currently ticked. Empty unless an action is selection-gated. */
-  selection: unknown[] = [];
+  selection: PersistentObject[] = [];
+  query: SparkQuery | null = null;
 }

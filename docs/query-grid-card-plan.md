@@ -47,14 +47,23 @@ header. Keep every comment: they document bugs (the three-state ordering, the
 `[indeterminate]` null case, the nested-anchor trap, the 404-is-deliberately-vague rule). They
 are the most valuable thing in the file.
 
-Then port `spark-query-list`'s two additions:
-- **streaming** — `SparkStreamingService`, `isStreaming`, `connectStreaming` /
-  `disconnectStreaming`, `handleStreamingMessage`, and the `[data]`-bound datatable branch;
-  disconnect on `destroyRef.onDestroy` and on every query change.
-- **search** — as an `input`, so the page owns the box and the grid owns the request.
+Then add what the page needs, **without** taking streaming (PRD §3 — the WebSocket must not
+reach every detail page's bundle):
+- **`data`** — optional external rows. Bound, the grid renders them and runs no fetch. This is
+  how the page's streaming rows get in.
+- **`settings`** as a two-way `model`, so the page's client-side sort sees the clicked sort.
+- **`search`** as an input, so the page owns the box and the grid owns the request.
+- **`rowClicked`** and **`customActionExecuted`** outputs, which query-list has and sub-query
+  does not.
 
-Expose `query`, `entityType`, `customActions`, `selection` and `isStreaming` as readonly
-signals; the card and the page both read them.
+Take **query-list's** entity-type resolution (source name + `singularize` fallback), not
+sub-query's `query.entityType`-only version — PRD §7.2. Use `SPARK_GRID_PAGE_SIZES` — §7.3.
+
+Expose `query`, `entityType`, `customActions`, `selection`, `canRead`, `canCreate` and
+`resultCount` as readable signals. The card and the page read them through a template reference
+variable (`<spark-query-grid #grid>` … `grid.query()`), not `viewChild`: hosts wrap grids in
+`@if`, where a `viewChild` is intermittently undefined, and the house style is already to avoid
+it (`spark-sub-query.component.ts:74-81`).
 
 Keep the three-state template ordering exactly as documented in
 `spark-sub-query.component.html:1-14`. Folding it back into one `@if (query())` gate is the
@@ -78,11 +87,18 @@ The default action bar is the existing `bs-priority-nav` block from
 ## M4 — rewire the two call sites
 
 - `spark-po-detail.component.html:176` → `<spark-query-card>`; swap the import at
-  `spark-po-detail.component.ts:29,45`.
-- `spark-query-list` keeps its selector, route and page chrome (action bar, `<h2>`, LIVE badge,
-  search box); its two datatable branches and all grid state are replaced by one
-  `<spark-query-grid>`. The LIVE badge and `showCustomActions`/`canCreate` read the grid's
-  exposed signals.
+  `spark-po-detail.component.ts:29,45`. Add the three forwarded `TemplateRef` inputs (PRD §4)
+  alongside the existing `extraActionsTemplate`/`extraContentTemplate`, and pass them to each
+  card.
+- `spark-query-list` keeps its selector, **both** routes and its page chrome (action bar, `<h2>`,
+  LIVE badge, search box, New button). It keeps `paramMap`, the `po/:type` type-to-query
+  resolution and `singularize`, and it keeps streaming: `SparkStreamingService`,
+  `connectStreaming`/`disconnectStreaming`, `handleStreamingMessage` and `applyFilter`, whose
+  output it now feeds to the grid as `[data]`. Its **two** datatable branches and all cell
+  markup are replaced by one `<spark-query-grid>`.
+- Move the `::ng-deep bs-datatable` virtual-height fix (`spark-query-list.component.scss:9-29`)
+  to travel with the datatable, or it silently stops applying — `::ng-deep` is scoped to the
+  component that declares it, and the datatable will no longer be in this one.
 - Delete `spark-sub-query.component.{ts,html,spec.ts}` and its `po-detail/src/index.ts` export.
 - Update the entry-point comment at `src/public-api.ts:11`.
 

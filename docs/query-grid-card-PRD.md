@@ -49,14 +49,27 @@ re-implementing the caption and the action bar too.
 ### `spark-query-grid` — the grid, and nothing else
 
 A `<bs-datatable>` that renders a query or a sub-query. No card, no caption, no action bar.
-It owns: query and entity-type resolution, permissions, lookup options, paging/sorting,
-**streaming**, the fetch closure, the error alert, the row link gate, and selection state.
+It owns: query and entity-type resolution, permissions, lookup options, paging/sorting, the
+fetch closure, the error alert, the row link gate, selection state, and custom-action execution.
 
-Inputs: `queryId` (required), `parentId`, `parentType`, `reloadToken`, `search`.
-Outputs: `error`, and a `query`/`entityType`/`customActions`/`selection` surface the card reads.
+Inputs: `queryId` (required), `parentId`, `parentType`, `reloadToken`, `search`, `data`,
+and `settings` as a two-way `model`. Outputs: `error`, `rowClicked`, `customActionExecuted`.
 
-Streaming is included deliberately. Leaving it in `spark-query-list` would mean the shared
-component cannot serve the page, and the duplication survives under a new name.
+**It does not own streaming, and that is deliberate.** `spark-grid-renderers.ts:20-24` already
+records the decision, from when the shared helpers were extracted: merging the two components
+outright "would drag [streaming, search, a websocket dependency graph] into every detail page's
+bundle." That reasoning still holds, and a design that quietly reverses it would put a WebSocket
+client in the bundle of every PO detail page, none of which stream.
+
+Instead the grid takes an optional **`data`** input of externally-supplied rows. Bound, it
+renders those and runs no fetch; unbound, it fetches for itself. `bs-datatable` already draws
+this exact line — `[data]` and `[fetch]` are mutually exclusive (`datatable.component.ts:240-246`)
+— so the grid is expressing the datatable's own contract rather than inventing one.
+
+`spark-query-list` keeps `SparkStreamingService`, the snapshot/patch handling and the
+client-side filter-and-sort, and feeds the result in as `[data]`. The socket stays in the page
+bundle; the **three** duplicated `<bs-datatable>` blocks still collapse to one. `settings` is a
+`model` so the page can run its client-side sort against the sort the user actually clicked.
 
 ### `spark-query-card` — chrome around it
 
@@ -72,6 +85,12 @@ Three structural directives, projected by the host, each collected with `content
 | `*sparkQueryIcon` | header, left | nothing |
 | `*sparkQueryCaption` | header, centre | `query.description \| resolveTranslation` &#124;&#124; `query.name` |
 | `*sparkQueryActions` | header, right | the `bs-priority-nav` of server-declared custom actions |
+
+Each takes an **optional query alias or id as its value** — `*sparkQueryIcon="'cars'"`. A detail
+page renders one card per entry in `EntityTypeDefinition.Queries`, so a bare slot would decorate
+all of them identically, which is rarely the intent. A targeted slot wins over an untargeted one,
+which is the catch-all. This is `bsPriorityNavItem`'s shape: a value input aliased to the
+selector, collected with `contentChildren`.
 
 Named after ng-bootstrap's `*bsDatatableColumn` convention — `{prefix}{Component}{Slot}` —
 with the `spark` prefix, since these are ng-spark directives. The `*bs…` prefix in the
@@ -110,15 +129,39 @@ This is also why `SparkQuery.actions`, `headerRenderer`, `headerRendererOptions`
 `SPARK_QUERY_CHROME` registry from #308 are not revived: they existed to let the server supply
 chrome a host could not. The host can now supply it directly.
 
+### Customising an auto-rendered sub-query
+
+The above keeps the auto-rendered path *working*. Making it *customisable* needs one more step,
+because `contentChild` genuinely cannot reach that call site: `spark-po-detail` is instantiated
+by the router (`spark-routes.ts:26`), so in a default app there is no `<spark-po-detail>` tag
+anywhere to project content into.
+
+The route out already exists and is already used. `SparkRouteConfig.poDetail` lets an app
+substitute its own component, and the Fleet demo does exactly that for two routes with one-line
+wrapper shells. So `spark-po-detail` gains three forwarded `TemplateRef` inputs, which it passes
+to each card. A structural directive cannot cross a component boundary, but its `TemplateRef`
+can — and this is already the house idiom in that very component: `extraActionsTemplate` and
+`extraContentTemplate` are forwarded `TemplateRef` inputs consumed with `*ngTemplateOutlet`.
+
+So the card accepts a slot from either direction — `contentChild` for hand-written markup, a
+forwarded input for the auto-rendered path — and the directives are sugar that populate the
+same three template references. Targeting (§3) is what makes one forwarded set serve a page
+rendering several sub-queries.
+
 ## 5. What happens to the existing components
 
 - **`spark-sub-query` is deleted.** It becomes `spark-query-card` with a `parentId`/`parentType`.
   The single call site (`spark-po-detail.component.html:176`) is updated. Its `showCard` input
   disappears — a host that wants no card uses `spark-query-grid` directly, which is what
   `showCard="false"` meant. `headerTemplate` disappears, replaced by the three slots.
-- **`spark-query-list` keeps its name, selector and route**, and loses its grid: it becomes the
-  page chrome (action bar, caption, LIVE badge, search) hosting one `spark-query-grid`. The
-  route in `spark-routes.ts:14,30` is untouched.
+- **`spark-query-list` keeps its name, selector and both routes**, and loses its grid: it becomes
+  page chrome (action bar, caption, LIVE badge, search, New button) hosting one
+  `spark-query-grid`. `spark-routes.ts:14,30` is untouched.
+
+  It stays **route-param driven and keeps its resolution logic**. It has no `queryId` input at
+  all — it reads `paramMap` — and it serves *two* routes: `query/:queryId`, and `po/:type`,
+  which resolves a type to a query through a hand-rolled `singularize` table. That is
+  type-to-query resolution, not query rendering, and it does not belong in a grid.
 - Both new pieces live in the existing **`@mintplayer/ng-spark/grid`** entry point, which already
   holds the shared grid core. `po-detail` re-exports nothing grid-shaped any more.
 
@@ -147,9 +190,17 @@ Both found while verifying the above. Neither is large, and the one-PR rule appl
    the only callers are tests, and a malformed rule instead throws `FormatException` out of
    `ExecuteCustomAction.cs:125` as a **500 at execute time**. Wire it into the custom-actions
    configuration load so the documented contract holds.
-2. **`docs/Spark-API-Specification.md`** must not describe `actions` / `headerRenderer` /
+2. **A sub-query resolves its entity type differently from the page.** `spark-sub-query`
+   matches on `query.entityType` only; `spark-query-list` falls back to source name and
+   `singularize`. So a `Database.*` query with no explicit `entityType` renders as a page and
+   is **blank as a sub-query** — no columns, no rows, no error. Unifying the grid fixes this by
+   construction, which is the whole argument for doing it: this is the fourth instance of
+   exactly the drift the shared helpers were extracted to stop.
+3. **`SPARK_GRID_PAGE_SIZES` has one consumer.** `spark-query-list` hard-codes `[10, 25, 50]`
+   instead. The constant was created so the two could not disagree, and one of them ignores it.
+4. **`docs/Spark-API-Specification.md`** must not describe `actions` / `headerRenderer` /
    `headerRendererOptions` / `rowsNavigable`; and `guide-custom-actions.md` must keep master's
-   post-#310 wording. Verify, don't assume.
+   post-#310 wording. Verified: neither currently does — hold the line, don't reintroduce.
 
 ## 8. Out of scope — genuinely not being done
 
