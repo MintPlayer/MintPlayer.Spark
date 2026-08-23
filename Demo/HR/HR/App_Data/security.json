@@ -189,6 +189,18 @@
       "resource": "Replicate/Companies",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "e0000009-0000-0000-0000-000000000001",
+      "resource": "Read/LookupReferences",
+      "groupId": "b1b2c3d4-0000-0000-0000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "e0000009-0000-0000-0000-000000000002",
+      "resource": "Edit/LookupReferences",
+      "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
     }
   ]
 }

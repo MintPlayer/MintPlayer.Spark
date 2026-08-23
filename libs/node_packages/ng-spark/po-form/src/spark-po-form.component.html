@@ -66,6 +66,7 @@
               </spark-lookup-picker>
             } @else {
               <bs-select
+                class="w-100"
                 [ngModel]="formData()[attr.name]"
                 (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)"
                 [id]="attr.name"
@@ -135,8 +136,9 @@
                     </spark-reference-picker>
                   } @else {
                     <bs-select
+                      class="w-100"
                       [(ngModel)]="row[col.name]"
-                      (ngModelChange)="onFieldChange()"
+                      (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                       [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
                       <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                       @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
@@ -157,8 +159,9 @@
                     </spark-lookup-picker>
                   } @else {
                     <bs-select
+                      class="w-100"
                       [(ngModel)]="row[col.name]"
-                      (ngModelChange)="onFieldChange()"
+                      (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                       [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
                       <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                       @for (option of getLookupOptions(col); track option.key) {

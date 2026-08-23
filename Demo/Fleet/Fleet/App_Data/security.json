@@ -150,6 +150,18 @@
       "resource": "ReadEditNew/Car",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "f0000009-0000-0000-0000-000000000001",
+      "resource": "Read/LookupReferences",
+      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "f0000009-0000-0000-0000-000000000002",
+      "resource": "Edit/LookupReferences",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
     }
   ]
 }
