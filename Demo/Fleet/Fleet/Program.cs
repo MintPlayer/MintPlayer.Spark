@@ -24,11 +24,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // client certificate is not the same as requiring one: AllowCertificate keeps every ordinary
 // browser and anonymous request working exactly as before, and simply makes the certificate
 // available on the connections that do present one.
+//
+// ⚠️ Asking is still visible to the user: a browser hitting an endpoint that requests a certificate
+// shows the Windows certificate / smartcard picker, even though not presenting one is fine. That is
+// noise for anyone just clicking through the demo, so it is switchable — `Spark:ClientCertificates`
+// defaults to on, and appsettings.Development.json turns it off.
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
     kestrel.ConfigureHttpsDefaults(https =>
     {
-        https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+        https.ClientCertificateMode = builder.Configuration.GetValue("Spark:ClientCertificates", true)
+            ? ClientCertificateMode.AllowCertificate
+            : ClientCertificateMode.NoCertificate;
 
         // Kestrel validates the client certificate's chain during the TLS handshake, before any
         // authentication handler runs. Module certificates come from an operator-created CA that no
