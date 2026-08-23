@@ -479,8 +479,26 @@ that includes a camelCase producer, because missing any one of them fails silent
 | 7. A24 inline focus | Rows are never rebuilt; the overlay does not replace the array |
 | 8. M10 gate | **Demonstrated exit 3** by removing the override from `CarActions`, then restored |
 
-**Full suite:** `MintPlayer.Spark.Tests` **1745 passed**, `MintPlayer.Spark.Client.Tests` **38
-passed**, vitest **309 passed** (25 files). Whole solution builds clean.
+**Full suite:** `MintPlayer.Spark.Tests` **1745**, `MintPlayer.Spark.Client.Tests` **38**,
+`MintPlayer.Spark.E2E.Tests` **82**, vitest **312** (25 files). Whole solution builds clean.
+
+⚠️ `ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` failed once in a
+full-suite run and passed in isolation — the repo's known load flakiness, unrelated to this change.
+
+### R21 and A24 were found unimplemented during a late audit
+
+Both were in the requirements and neither had been built; the milestone table said "done" because
+the milestones they belonged to had shipped everything else.
+
+- **R21** — the RavenDB session cap was never lifted. The rate-limiter half was covered for free
+  (the endpoint is under `/spark`, already in `PathPrefixes`), which is what made the gap easy to
+  miss. Refresh runs on every field blur and the save path runs the hook once per trigger, so both
+  now open an `IgnoreMaxRequests` scope; without it, declaring a trigger quietly reduced how much an
+  entity's save path was allowed to do.
+- **A24** — inline AsDetail triggers were implemented in M6 and never tested. The tests found a real
+  edge: the server echoes a row array as a *new* array after its JSON round-trip, so under reference
+  equality the merge would replace it and rebuild every row, taking focus with it. The structural
+  comparison in `valuesEqual` is what prevents that, and it is now pinned rather than incidental.
 
 `MintPlayer.Spark.E2E.Tests` **82 passed** (78 existing + 4 new), after fixing a pre-existing harness
 bug described below. **A26 is closed.**

@@ -38,6 +38,7 @@ const carType: EntityType = {
     attr({ id: 'a-promo', name: 'PromoUrl', order: 3 }),
     attr({ id: 'a-plate', name: 'LicensePlate', order: 4, triggersRefresh: true }),
     attr({ id: 'a-notes', name: 'Notes', order: 5 }),
+    attr({ id: 'a-jobs', name: 'Jobs', order: 6, dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Job', editMode: 'inline' }),
   ],
   tabs: [],
   groups: [],
@@ -338,6 +339,57 @@ describe('spark-po-form — TriggersRefresh', () => {
       await component.onSave();
 
       expect(saved).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('AsDetail row triggers', () => {
+    const col = attr({ id: 'c-kind', name: 'Kind', dataType: 'LookupReference', lookupReferenceType: 'CarStatus', triggersRefresh: true });
+
+    it('addresses the trigger with the same path the inline validation errors use', async () => {
+      // Reusing `{attr}[{index}].{col}` rather than inventing a second addressing scheme is the
+      // whole reason R20 was cheap. If these diverge, a server-side handler cannot tell which row
+      // asked without parsing two formats.
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Jobs: [{ Kind: 'InUse' }, { Kind: 'Stolen' }] });
+
+      component.onInlineCellChange(carType.attributes.find(a => a.name === 'Jobs')!, 1, col);
+      await flush();
+
+      expect(service.refresh).toHaveBeenCalledTimes(1);
+      expect(service.refresh.mock.calls[0][2]).toBe('Jobs[1].Kind');
+    });
+
+    it('does not refresh for an inline column without the flag', async () => {
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Jobs: [{ Kind: 'InUse' }] });
+
+      component.onInlineCellChange(
+        carType.attributes.find(a => a.name === 'Jobs')!,
+        0,
+        attr({ id: 'c-plain', name: 'Plain' }));
+      await flush();
+
+      expect(service.refresh).not.toHaveBeenCalled();
+    });
+
+    it('leaves the row array identity intact, so rows are not rebuilt', async () => {
+      // Rows are tracked by index. Replacing the array would destroy and recreate every row's DOM
+      // and take focus with it — the failure mode that would make an inline trigger worse than no
+      // trigger at all.
+      const rows = [{ Kind: 'InUse' }];
+
+      // The server echoes the rows it was given, but as a NEW array — it went through JSON. Under
+      // reference equality that reads as "the server changed this" and the array is replaced,
+      // rebuilding every row. Structural comparison is what makes the identity survive.
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue(response({ Jobs: { value: [{ Kind: 'InUse' }] } })),
+      } as any);
+      await mount(fixture, { Jobs: rows });
+
+      component.onInlineCellChange(carType.attributes.find(a => a.name === 'Jobs')!, 0, col);
+      await flush();
+
+      expect(component.formData()['Jobs']).toBe(rows);
     });
   });
 

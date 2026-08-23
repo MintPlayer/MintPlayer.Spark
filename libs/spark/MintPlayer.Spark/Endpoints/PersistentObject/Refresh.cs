@@ -24,6 +24,13 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 {
     public static string Path => "/{objectTypeId}/refresh";
 
+    /// <summary>
+    /// Advisory ceiling for one refresh: the row-gated load, plus room for a handler that looks a
+    /// few things up. Exceeding it logs a warning rather than failing — the point is to make a
+    /// runaway hook visible, not to guess a limit for application code.
+    /// </summary>
+    private const int RefreshRequestBudget = 20;
+
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
@@ -37,6 +44,10 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
     [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
     [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    // The request-scoped session — the same instance IDatabaseAccess uses, so a scope opened here
+    // covers the row-gated load below as well as anything the hook does.
+    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly ILogger<RefreshPersistentObject> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -75,6 +86,13 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
             var accessor = (RetryAccessor)retryAccessor;
             accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
         }
+
+        // Refresh handlers are chatty by nature — they answer "what should this form look like
+        // now", which usually means looking something up — and unlike load or save this runs on
+        // every field blur. Fleet hit RavenDB's 30-request session cap inside a single Vidyano
+        // OnRefresh for exactly this reason. The scope is restored on dispose, so a chatty hook
+        // cannot silently elevate the budget for the rest of the request.
+        using var _ = session.IgnoreMaxRequests(RefreshRequestBudget, logger);
 
         Po? existing = null;
         if (!isNew)

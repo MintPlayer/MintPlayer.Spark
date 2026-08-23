@@ -70,6 +70,15 @@ internal partial class RefreshInvoker : IRefreshInvoker
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly ILogger<RefreshInvoker> logger;
+
+    /// <summary>
+    /// Advisory ceiling for the save-time re-derivation. Deliberately per-save rather than per
+    /// trigger: a type with several triggers runs the hook several times, and the budget that
+    /// matters is the one the whole save spends.
+    /// </summary>
+    private const int SaveRefreshRequestBudget = 30;
 
     public async Task<PersistentObject> BuildEffectiveAsync(
         EntityTypeDefinition entityType,
@@ -85,6 +94,13 @@ internal partial class RefreshInvoker : IRefreshInvoker
         var clrType = typeResolver.Resolve(entityType.ClrType);
         if (clrType is null || !HasRefreshHook(clrType))
             return effective;
+
+        // The hook runs once per trigger here, so a save costs several times what one refresh does
+        // — on top of everything the save itself spends. Without this a type with a handful of
+        // triggers and a hook that looks anything up can exhaust the session budget and fail the
+        // save, which would make declaring a trigger quietly reduce how much an entity's save path
+        // is allowed to do.
+        using var _ = session.IgnoreMaxRequests(SaveRefreshRequestBudget, logger);
 
         var isNew = string.IsNullOrEmpty(submitted.Id);
         foreach (var trigger in triggers)
