@@ -6,16 +6,16 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Tests.Actions;
 
 /// <summary>
-/// A source-compatibility fixture, not a behaviour test. It exists to fail the <em>build</em> if
-/// <c>OnRefreshAsync</c> is ever moved onto <see cref="IPersistentObjectActions{T}"/>.
+/// A contract fixture, not a behaviour test: it implements
+/// <see cref="IPersistentObjectActions{T}"/> by hand, inheriting nothing, so the build fails if the
+/// interface ever grows a member that cannot reasonably be implemented from outside the framework.
 ///
 /// <para>
-/// #301 already paid that cost once, deliberately, and left a note in the interface saying so:
-/// declaring the row-security hooks there broke every hand-written implementer, and was worth it
-/// because <c>ISparkRowRule&lt;T&gt;</c> needed reflection-free access from outside the framework.
-/// Nothing outside the framework dispatches a refresh, so the same trade would be all cost. The
-/// class below implements the interface by hand, exactly as an application written before this
-/// feature would have; if it stops compiling, the trade has been made by accident.
+/// <c>OnRefreshAsync</c> is on the interface because it is a lifecycle hook and that is where
+/// lifecycle hooks live. It was briefly placed off the interface to spare hand-written implementers
+/// a breaking change — the cost #301 paid deliberately for the row-security hooks — but the packages
+/// are in preview and the owner does not want backward compatibility bought at the price of the
+/// contract being less honest than the implementation.
 /// </para>
 /// </summary>
 public class HandWrittenActionsCompatibilityTests
@@ -26,10 +26,7 @@ public class HandWrittenActionsCompatibilityTests
         public string? Name { get; set; }
     }
 
-    /// <summary>
-    /// Implements every interface member and inherits nothing. Note the absence of
-    /// <c>OnRefreshAsync</c> — that absence is the whole point of the fixture.
-    /// </summary>
+    /// <summary>Implements every interface member and inherits nothing.</summary>
     private sealed class LegacyHandWrittenActions : IPersistentObjectActions<LegacyEntity>
     {
         public Task<LegacyEntity?> OnLoadAsync(IAsyncDocumentSession session, string id)
@@ -46,6 +43,8 @@ public class HandWrittenActionsCompatibilityTests
 
         public Task OnBeforeDeleteAsync(LegacyEntity entity) => Task.CompletedTask;
 
+        public Task OnRefreshAsync(SparkRefreshArgs<LegacyEntity> args) => Task.CompletedTask;
+
         public Task<bool> IsAllowedAsync(string action, LegacyEntity entity) => Task.FromResult(true);
 
         public Task<Expression<Func<LegacyEntity, bool>>?> GetRowFilterAsync(string action)
@@ -56,7 +55,7 @@ public class HandWrittenActionsCompatibilityTests
     }
 
     [Fact]
-    public void A_hand_written_implementer_without_a_refresh_hook_still_satisfies_the_interface()
+    public void The_interface_is_implementable_by_hand()
     {
         IPersistentObjectActions<LegacyEntity> actions = new LegacyHandWrittenActions();
 

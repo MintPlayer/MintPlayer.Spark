@@ -308,7 +308,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// database access here as a cost, not a convenience.
     /// </para>
     /// </summary>
-    [NoInterfaceMember]
     public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
 
     /// <summary>

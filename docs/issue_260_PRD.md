@@ -365,7 +365,7 @@ edit renderers. `CarActions` is already the demonstration of the write pipeline.
 |---|---|
 | **R1** | `EntityAttributeDefinition` gains `bool? TriggersRefresh`, authored in `App_Data/Model/*.json` as `"triggersRefresh": true` and omitted when false. |
 | **R2** | The flag survives `--spark-synchronize-model` unchanged, including on an attribute the synchronizer otherwise updates. |
-| **R3** | `DefaultPersistentObjectActions<T>` gains `virtual Task OnRefreshAsync(SparkRefreshArgs<T> args)`, defaulting to a completed task. Adding it must **not** break hand-written `IPersistentObjectActions<T>` implementers. |
+| **R3** | `IPersistentObjectActions<T>` gains `Task OnRefreshAsync(SparkRefreshArgs<T> args)`, with `DefaultPersistentObjectActions<T>` supplying a completed-task default. |
 | **R4** | `SparkRefreshArgs<T>` exposes the in-progress `PersistentObject`, the triggering `PersistentObjectAttribute`, whether the object is new, and a `CancellationToken`. |
 | **R5** | A hook may set `IsRequired`, `IsReadOnly`, `IsVisible` and `Rules` on any attribute of the object, and set any attribute's `Value`. |
 | **R6** | A hook may replace an attribute's selectable options — for a `LookupReference` by supplying an explicit option list, for a `Reference` by reassigning `Query`. |
@@ -545,11 +545,15 @@ A `SparkRefreshCoordinator` owned by `po-form`:
 
 ## Decisions
 
-**D1 — the hook goes on the base class with `[NoInterfaceMember]`, not on `IPersistentObjectActions<T>`.**
-The interface comment left by #301 records the cost of the opposite choice, and it was paid there for a
-reason that does not apply here: `ISparkRowRule<T>` needed reflection-free access from outside the
-framework. Nothing outside the framework dispatches a refresh. `GetDefaultIncludes` and `StreamItems` are
-the precedent. *Rejected: adding it to the interface — it breaks hand-written implementers for no benefit.*
+**D1 — the hook goes on `IPersistentObjectActions<T>`.** ~~Originally decided the other way~~ — placed
+on the base class under `[NoInterfaceMember]`, to spare hand-written implementers the breaking change #301
+paid deliberately for the row-security hooks. **Revised mid-implementation on the owner's instruction that
+the packages are in preview and backward compatibility is not wanted.** With that constraint gone the
+argument inverts: `OnRefreshAsync` is a lifecycle hook, lifecycle hooks live on the interface, and
+`GetDefaultIncludes` / `StreamItems` are off it because they are opt-in *capabilities*, not lifecycle.
+Note this does **not** remove the reflection in `RefreshInvoker` — the entity type is only known at
+runtime, so dispatch goes through `Type` either way, exactly as `RowSecurity` does for `IsAllowedAsync`,
+which is on the interface. What it buys is an honest contract, not simpler code.
 
 **D2 — schema-only flag; the wire attribute is not extended.** Consistent with `editMode` /
 `referenceDisplayType` / `isSortable`, avoids three silently-failing converter edits (F20), and makes the
