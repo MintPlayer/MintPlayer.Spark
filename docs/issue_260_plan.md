@@ -252,7 +252,7 @@ hook, validate against the result); `Services/RefreshInvoker.cs` (reused).
 | `Save_enforces_it_for_a_client_that_never_called_refresh` | A13 — the actual discriminator; the previous test passes even in a broken design |
 | `Save_accepts_a_value_violating_a_model_rule_the_hook_removed` | A14 |
 | `Validation_is_unchanged_for_a_type_with_no_triggering_attributes` | A15 |
-| `Omitted_attributes_are_validated_as_absent` | A15 — the deliberate behaviour change, pinned so it is not mistaken for a regression later |
+| ~~`Omitted_attributes_are_validated_as_absent`~~ | Dropped: the behaviour change it was written for does not exist. The old path already read `Attributes.FirstOrDefault(...)?.Value`, so an omitted attribute already validated as null — scaffolding yields the identical null. See the PRD's retracted Migration item 1. |
 
 ## M6 — client: overlay, merge, coordinator
 

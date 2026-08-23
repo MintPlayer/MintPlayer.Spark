@@ -7,8 +7,35 @@ namespace MintPlayer.Spark.Services;
 
 public interface IValidationService
 {
+    /// <summary>
+    /// Validates <paramref name="persistentObject"/>'s values against the rules the model declares.
+    /// </summary>
     ValidationResult Validate(PersistentObject persistentObject);
+
+    /// <summary>
+    /// Validates an object against the rules <em>it carries</em>, rather than the ones the model
+    /// declares.
+    /// <para>
+    /// This is what a refresh hook's reshaping is worth: a hook that makes a field required, or
+    /// lifts a rule from one, has changed the effective contract, and only an object-driven pass
+    /// enforces it. The caller is responsible for building that object from the model and running
+    /// the hook — trusting rules straight off the wire would let a client declare itself valid.
+    /// </para>
+    /// </summary>
+    ValidationResult ValidateEffective(PersistentObject effective);
 }
+
+/// <summary>
+/// What the rule engine needs to know about one attribute. Exists so the same rules can be driven
+/// by a model definition or by a reshaped wire attribute, which are different types carrying the
+/// same four facts.
+/// </summary>
+internal readonly record struct ValidationTarget(
+    string Name,
+    TranslatedString? Label,
+    bool IsRequired,
+    ValidationRule[] Rules,
+    object? Value);
 
 [Register(typeof(IValidationService), ServiceLifetime.Scoped)]
 internal partial class ValidationService : IValidationService
@@ -24,18 +51,35 @@ internal partial class ValidationService : IValidationService
 
     public ValidationResult Validate(PersistentObject persistentObject)
     {
-        var result = new ValidationResult();
-
         var entityType = modelLoader.GetEntityType(persistentObject.ObjectTypeId);
         if (entityType == null)
         {
-            return result;
+            return new ValidationResult();
         }
 
-        foreach (var attrDef in entityType.Attributes)
+        return Run(entityType.Attributes.Select(attrDef => new ValidationTarget(
+            attrDef.Name,
+            attrDef.Label,
+            attrDef.IsRequired,
+            attrDef.Rules ?? [],
+            persistentObject.Attributes.FirstOrDefault(a => a.Name == attrDef.Name)?.Value)));
+    }
+
+    public ValidationResult ValidateEffective(PersistentObject effective) =>
+        Run(effective.Attributes.Select(attribute => new ValidationTarget(
+            attribute.Name,
+            attribute.Label,
+            attribute.IsRequired,
+            attribute.Rules ?? [],
+            attribute.Value)));
+
+    private ValidationResult Run(IEnumerable<ValidationTarget> targets)
+    {
+        var result = new ValidationResult();
+
+        foreach (var attrDef in targets)
         {
-            var attribute = persistentObject.Attributes.FirstOrDefault(a => a.Name == attrDef.Name);
-            var value = attribute?.Value;
+            var value = attrDef.Value;
 
             // Check required
             if (attrDef.IsRequired && IsEmpty(value))
@@ -56,7 +100,7 @@ internal partial class ValidationService : IValidationService
             }
 
             // Apply validation rules
-            foreach (var rule in attrDef.Rules ?? [])
+            foreach (var rule in attrDef.Rules)
             {
                 var error = ValidateRule(attrDef, value, rule);
                 if (error != null)
@@ -69,7 +113,7 @@ internal partial class ValidationService : IValidationService
         return result;
     }
 
-    private ValidationError? ValidateRule(EntityAttributeDefinition attrDef, object? value, ValidationRule rule)
+    private ValidationError? ValidateRule(in ValidationTarget attrDef, object? value, ValidationRule rule)
     {
         var stringValue = value?.ToString() ?? string.Empty;
 
@@ -85,7 +129,7 @@ internal partial class ValidationService : IValidationService
         };
     }
 
-    private ValidationError? ValidateMaxLength(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
+    private ValidationError? ValidateMaxLength(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
         if (!TryGetIntValue(rule.Value, out var maxLength))
             return null;
@@ -102,7 +146,7 @@ internal partial class ValidationService : IValidationService
         return null;
     }
 
-    private ValidationError? ValidateMinLength(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
+    private ValidationError? ValidateMinLength(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
         if (!TryGetIntValue(rule.Value, out var minLength))
             return null;
@@ -119,7 +163,7 @@ internal partial class ValidationService : IValidationService
         return null;
     }
 
-    private ValidationError? ValidateRange(EntityAttributeDefinition attrDef, object? value, ValidationRule rule)
+    private ValidationError? ValidateRange(in ValidationTarget attrDef, object? value, ValidationRule rule)
     {
         if (!TryConvertToDecimal(value, out var numericValue))
         {
@@ -149,7 +193,7 @@ internal partial class ValidationService : IValidationService
         return null;
     }
 
-    private ValidationError? ValidateRegex(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
+    private ValidationError? ValidateRegex(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
         var pattern = rule.Value?.ToString();
         if (string.IsNullOrEmpty(pattern))
@@ -169,7 +213,7 @@ internal partial class ValidationService : IValidationService
         return null;
     }
 
-    private ValidationError? ValidateEmail(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
+    private ValidationError? ValidateEmail(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
         if (!EmailRegex().IsMatch(value))
         {
@@ -183,7 +227,7 @@ internal partial class ValidationService : IValidationService
         return null;
     }
 
-    private ValidationError? ValidateUrl(EntityAttributeDefinition attrDef, string value, ValidationRule rule)
+    private ValidationError? ValidateUrl(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
         if (!UrlRegex().IsMatch(value))
         {

@@ -69,8 +69,13 @@ public class RefreshInvokerTests
         services.AddSingleton(actions);
         var provider = services.BuildServiceProvider();
 
-        return (new RefreshInvoker(new ActionsResolver(provider)), actions);
+        return (Invoker(provider), actions);
     }
+
+    private static RefreshInvoker Invoker(IServiceProvider provider) =>
+        new(new ActionsResolver(provider),
+            new EffectiveObjectFactory(provider.GetRequiredService<IEntityMapper>()),
+            new SparkTypeResolver());
 
     private static PersistentObject Object(string? id = null)
     {
@@ -144,7 +149,7 @@ public class RefreshInvokerTests
         var services = new ServiceCollection();
         services.AddSingleton(Substitute.For<IEntityMapper>());
         var provider = services.BuildServiceProvider();
-        var invoker = new RefreshInvoker(new ActionsResolver(provider));
+        var invoker = Invoker(provider);
 
         invoker.HasRefreshHook(typeof(PlainRefreshFixtureEntity)).Should().BeFalse();
         invoker.HasRefreshHook(typeof(RefreshFixtureEntity)).Should().BeTrue();
@@ -156,7 +161,7 @@ public class RefreshInvokerTests
         var services = new ServiceCollection();
         services.AddSingleton(Substitute.For<IEntityMapper>());
         var provider = services.BuildServiceProvider();
-        var invoker = new RefreshInvoker(new ActionsResolver(provider));
+        var invoker = Invoker(provider);
 
         var po = new PersistentObject
         {

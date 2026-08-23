@@ -617,7 +617,7 @@ not in the compilation. It rides `--spark-verify-model`, which already exits 3 o
 | **A12** | A refresh request without an antiforgery token is rejected. | integration test |
 | **A13** | Save enforces a rule that only the refresh hook imposes, **for a client that never called `/refresh`**. | integration test — **the discriminator for D5; this is the criterion the feature lives or dies on** |
 | **A14** | Save accepts a value that violates a model rule the refresh hook removed. | integration test — the relaxing direction of F6 |
-| **A15** | Validation behaviour is unchanged for a type with no triggering attributes, except that client-omitted attributes are now validated as absent. | existing suite green + one new test pinning the change |
+| **A15** | Validation behaviour is unchanged for a type with no triggering attributes. | existing suite green |
 | **A16** | Applying a refresh response issues **zero** additional `/spark/queries`, `/spark/lookupref`, `/spark/types` or `/spark/permissions` requests. | vitest with a mocked service — **the discriminator for D4/F10** |
 | **A17** | A value typed into field B during an in-flight refresh for field A survives, when the hook did not change B. | vitest |
 | **A18** | A value the hook *did* change is applied even if the user edited it during the round-trip. | vitest |
@@ -637,12 +637,15 @@ not in the compilation. It rides `--spark-verify-model`, which already exits 3 o
 ## Migration
 
 **No breaking API changes.** The hook is `[NoInterfaceMember]` on the base class (D1), the flag is additive
-and optional (D-A), and the endpoint is new. Two behaviour changes ride along:
+and optional (D-A), and the endpoint is new. One behaviour change rides along:
 
-1. **`ValidationService` now validates a model-scaffolded object.** Attributes a client omitted from the
-   payload are validated as absent rather than skipped. Any client that relied on partial payloads to dodge
-   a required-field check will now be rejected — correctly. This affects every type, not only those with
-   triggering attributes.
+1. ~~**`ValidationService` now validates a model-scaffolded object.** Attributes a client omitted from the
+   payload are validated as absent rather than skipped.~~ **Retracted during M5 — there is no such change.**
+   The original `Validate` already looked each model attribute up in the submitted object with
+   `persistentObject.Attributes.FirstOrDefault(...)?.Value`, so an omitted attribute already validated as a
+   null value. Scaffolding produces exactly the same null. For a type with no triggering attributes the two
+   paths are point-for-point identical, which is why A15 passes unchanged rather than needing the new
+   pinning test the plan budgeted for.
 2. ⚠️ **Save now runs `OnRefreshAsync` for types that declare a trigger.** A hook with side effects — a
    write, a notification, an external call — will therefore run on Save as well as on refresh. The
    idempotency contract (D-F) already forbids side effects, but it is newly load-bearing and must be stated
@@ -661,8 +664,6 @@ Release-note prose:
 > scaffolded object each time, never the result of the previous call — and it must be free of side effects,
 > because Spark also runs it while validating a Save.
 >
-> Note that validation now runs against a model-scaffolded object: attributes omitted from a request payload
-> are validated as absent rather than skipped.
 
 ---
 

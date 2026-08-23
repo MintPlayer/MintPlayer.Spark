@@ -42,12 +42,56 @@ public interface IRefreshInvoker
     /// path — and lets the model-verify gate report a declared trigger nothing implements.
     /// </summary>
     bool HasRefreshHook(Type entityType);
+
+    /// <summary>
+    /// Builds the object a save must actually be judged against: scaffolded from the model, carrying
+    /// the client's values, with every declared refresh trigger applied.
+    /// <para>
+    /// This is what makes the feature enforceable rather than decorative. Validation reads
+    /// <c>IsRequired</c> and <c>Rules</c> off the object, so if the server did not re-derive them it
+    /// would be enforcing the model's rules while the user was shown the hook's — and any client
+    /// that simply never called <c>/refresh</c> would escape the hook entirely.
+    /// </para>
+    /// <para>
+    /// The hook runs once per triggering attribute, in model order, against the same accumulating
+    /// object. Running it once with no attribute would be cheaper and wrong: handlers branch on
+    /// <c>args.Attribute</c>, so a single null-attribute pass executes none of their branches.
+    /// </para>
+    /// </summary>
+    Task<PersistentObject> BuildEffectiveAsync(
+        EntityTypeDefinition entityType,
+        PersistentObject submitted,
+        CancellationToken cancellationToken);
 }
 
 [Register(typeof(IRefreshInvoker), ServiceLifetime.Scoped)]
 internal partial class RefreshInvoker : IRefreshInvoker
 {
     [Inject] private readonly IActionsResolver actionsResolver;
+    [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
+    [Inject] private readonly ISparkTypeResolver typeResolver;
+
+    public async Task<PersistentObject> BuildEffectiveAsync(
+        EntityTypeDefinition entityType,
+        PersistentObject submitted,
+        CancellationToken cancellationToken)
+    {
+        var effective = effectiveObjectFactory.Build(entityType, submitted);
+
+        var triggers = effectiveObjectFactory.TriggeringAttributeNames(entityType);
+        if (triggers.Count == 0)
+            return effective;
+
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        if (clrType is null || !HasRefreshHook(clrType))
+            return effective;
+
+        var isNew = string.IsNullOrEmpty(submitted.Id);
+        foreach (var trigger in triggers)
+            await InvokeAsync(clrType, effective, trigger, isNew, cancellationToken);
+
+        return effective;
+    }
 
     public bool HasRefreshHook(Type entityType) => ResolveHook(entityType) is not null;
 

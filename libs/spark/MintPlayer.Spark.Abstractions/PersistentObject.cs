@@ -136,6 +136,21 @@ public class PersistentObjectAttribute
     public Dictionary<string, object>? RendererOptions { get; set; }
 
     /// <summary>
+    /// The selectable values for this attribute, when a refresh hook has replaced them.
+    /// <see langword="null"/> — the normal case — means "unchanged": the client keeps whatever the
+    /// attribute's own source gave it, a query for a Reference or <c>/spark/lookupref</c> for a
+    /// LookupReference.
+    /// <para>
+    /// This is the one piece of option data that travels on the wire, and it exists because
+    /// narrowing a dropdown in response to another field is otherwise inexpressible: the attribute
+    /// carries only <see cref="Query"/>, the <em>name</em> of a query, and re-pointing that name
+    /// does not tell the client anything changed. An empty (non-null) list means "no options",
+    /// which is a legitimate outcome and distinct from null.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PersistentObjectAttributeOption>? Options { get; set; }
+
+    /// <summary>
     /// The PersistentObject that owns this attribute. Set by
     /// <see cref="PersistentObject.AddAttribute"/>; never null once an attribute
     /// has been added to a PO. Not serialized (would create a JSON cycle).
