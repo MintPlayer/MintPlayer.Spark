@@ -282,6 +282,36 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
 
     /// <summary>
+    /// Called when the value of an attribute declaring <c>"triggersRefresh": true</c> changes, so the
+    /// form can be reshaped in response. Mutate <c>args.PersistentObject</c>: toggle
+    /// <see cref="PersistentObjectAttribute.IsRequired"/>, <see cref="PersistentObjectAttribute.IsReadOnly"/>
+    /// and <see cref="PersistentObjectAttribute.IsVisible"/>, rewrite
+    /// <see cref="PersistentObjectAttribute.Rules"/>, replace an attribute's selectable options, or set a
+    /// dependent value. Does nothing by default.
+    ///
+    /// <para>
+    /// ⚠️ <b>Establish the complete presentation state on every call, and make no assumptions about the
+    /// previous one.</b> Each invocation is handed a freshly scaffolded object, never the result of the
+    /// last refresh, so a handler that only applies the delta it cares about will silently lose every
+    /// rule and flag it set previously. Share one helper between this hook and any load-time shaping
+    /// rather than patching incrementally.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>No side effects.</b> Spark also runs this hook while validating a save, so that the rules
+    /// it establishes are enforced whether or not the client ever asked for a refresh. A hook that
+    /// writes, notifies or calls out will do so on save as well.
+    /// </para>
+    ///
+    /// <para>
+    /// It is called far more often than load or save — potentially on every field blur — so treat
+    /// database access here as a cost, not a convenience.
+    /// </para>
+    /// </summary>
+    [NoInterfaceMember]
+    public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
+
+    /// <summary>
     /// Override to stream a collection of entities via WebSocket.
     /// Each yielded batch is diffed against the previous one; only changed attribute values are sent as patches.
     /// </summary>
