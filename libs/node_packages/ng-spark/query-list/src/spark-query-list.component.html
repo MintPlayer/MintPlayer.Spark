@@ -42,7 +42,7 @@
       <bs-form>
         <bs-grid>
           <div bsRow class="mb-3">
-            <div [md]="4">
+            <div [md]="12">
               <bs-input-group>
                 <span class="addon">
                   <spark-icon name="search" />
@@ -62,13 +62,16 @@
                 }
               </bs-input-group>
             </div>
-            <div [md]="8" class="text-end">
-              @if (searchTerm() && resultCount() !== null) {
+            <!-- Its own full-width row rather than a column beside the box: the count is
+                 occasional, and reserving 8 columns for it shrank the search permanently. The
+                 @if moved out of the column so nothing reserves vertical space when absent. -->
+            @if (searchTerm() && resultCount() !== null) {
+              <div [md]="12" class="text-end mt-1">
                 <span class="text-muted">
                   {{ resultCount() }} {{ resultCount() === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
                 </span>
-              }
-            </div>
+              </div>
+            }
           </div>
         </bs-grid>
       </bs-form>
