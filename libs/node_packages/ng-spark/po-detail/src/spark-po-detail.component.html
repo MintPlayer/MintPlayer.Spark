@@ -51,7 +51,7 @@
         @if (tab.id === '__default__') {
           @let ungroupedAttrs = ungroupedAttributes();
           @if (ungroupedAttrs.length > 0) {
-            <bs-card style="display: block; margin: 1rem;">
+            <bs-card class="d-block m-3">
               <div class="p-3">
                 <dl bsRow>
                   @for (attr of ungroupedAttrs; track attr.id) {
@@ -65,7 +65,7 @@
         @for (group of groupsForTab(tab); track group.id) {
           @if (attrsForGroup(group); as groupAttrs) {
             @if (groupAttrs.length > 0) {
-              <bs-card style="display: block; margin: 1rem;">
+              <bs-card class="d-block m-3">
                 @if (group.label) {
                   <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
                 }
@@ -138,11 +138,11 @@
                   [indeterminate]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) == null"
                   disabled
                   onclick="return false;"
-                  style="opacity: 1;">
+                  class="opacity-100">
               } @else if (attr.dataType === 'color') {
                 @let colorVal = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
                 @if (colorVal) {
-                  <span class="d-inline-block align-middle border rounded me-2" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+                  <span class="spark-color-swatch d-inline-block align-middle border rounded me-2" [style.background-color]="colorVal"></span>
                   {{ colorVal }}
                 } @else {
                   -
@@ -171,7 +171,7 @@
                   {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
                 }
               } @else if (attr.dataType === 'MultiLineString') {
-                <div style="white-space: pre-wrap;">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
+                <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
               } @else {
                 {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               }

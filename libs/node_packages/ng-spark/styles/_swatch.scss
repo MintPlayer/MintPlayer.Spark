@@ -1,0 +1,8 @@
+// The square of colour shown for a `color` attribute, in a grid cell and on a detail page.
+//
+// Sized in em so it tracks the surrounding font-size, which is why no Bootstrap sizing utility
+// fits: `w-*`/`h-*` are percentages. It lived inline in both call sites with identical values.
+.spark-color-swatch {
+  width: 1.5em;
+  height: 1.5em;
+}

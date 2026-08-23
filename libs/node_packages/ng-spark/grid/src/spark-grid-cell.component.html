@@ -11,6 +11,10 @@
     onclick="return false;">
 } @else if (column().dataType === 'color') {
   @if (display(); as colorVal) {
+    <!-- Inline on purpose, and it is not a style-guide slip. In a query grid this cell is
+         rendered INSIDE <mp-datatable>'s shadow root, which does not see document
+         stylesheets: neither this component's scoped rules nor Bootstrap utilities apply
+         there. Inline styles do. Measured 2026-08-23 -- see the comment in the .scss. -->
     <span class="d-inline-block align-middle border rounded"
           [style.background-color]="colorVal"
           style="width: 1.5em; height: 1.5em;"></span>

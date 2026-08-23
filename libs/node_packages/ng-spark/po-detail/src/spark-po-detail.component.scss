@@ -1,2 +1,9 @@
 @use '../../styles/actionbar';
 @use '../../styles/chip';
+@use '../../styles/swatch';
+
+// A multiline text attribute keeps the line breaks it was saved with. Bootstrap's text
+// utilities only offer wrap/nowrap, neither of which preserves them.
+.spark-multiline-value {
+  white-space: pre-wrap;
+}
