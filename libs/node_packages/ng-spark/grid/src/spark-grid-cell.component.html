@@ -18,7 +18,7 @@
 } @else if (chips().length) {
   <span class="d-inline-flex flex-wrap gap-1">
     @for (chip of chips(); track chip.id) {
-      <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
+      <span class="spark-chip">{{ chip.label }}</span>
     }
   </span>
 } @else if (link(); as route) {

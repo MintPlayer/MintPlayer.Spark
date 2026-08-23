@@ -627,7 +627,7 @@ Three structural directives override one region each, leaving the others at thei
   </ng-template>
 
   <ng-template sparkQueryCaption>
-    Fleet <span class="badge">{{ count }}</span>
+    Fleet <bs-badge [type]="colors.secondary">{{ count }}</bs-badge>
   </ng-template>
 
   <ng-template sparkQueryActions let-actions>

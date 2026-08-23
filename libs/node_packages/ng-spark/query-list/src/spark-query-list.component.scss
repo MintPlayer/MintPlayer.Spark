@@ -47,3 +47,9 @@ td input[type="checkbox"]:disabled {
   pointer-events: none;
 }
 
+// The LIVE marker sits inside the page <h2>, so bs-badge's 0.75em would render it at heading
+// size. The old markup reached for an inline style; this scales the host instead, which the
+// badge's own em-relative font-size then follows.
+.spark-live-badge {
+  font-size: 0.6em;
+}

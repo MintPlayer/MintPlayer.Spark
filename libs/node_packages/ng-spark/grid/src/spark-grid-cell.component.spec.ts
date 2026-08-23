@@ -126,7 +126,7 @@ describe('SparkGridCellComponent', () => {
         chips: [{ id: '1', label: 'Alpha' }, { id: '2', label: 'Beta' }],
       });
 
-      const badges = [...html(f).querySelectorAll('.badge')].map(b => b.textContent?.trim());
+      const badges = [...html(f).querySelectorAll('.spark-chip')].map(b => b.textContent?.trim());
       expect(badges).toEqual(['Alpha', 'Beta']);
     });
 
@@ -137,7 +137,7 @@ describe('SparkGridCellComponent', () => {
     it('falls through to text when no chips are supplied', () => {
       const f = setup({ column: col({ dataType: 'Reference', isArray: true }), display: 'a, b' });
 
-      expect(html(f).querySelector('.badge')).toBeNull();
+      expect(html(f).querySelector('.spark-chip')).toBeNull();
       expect(html(f).textContent).toContain('a, b');
     });
   });

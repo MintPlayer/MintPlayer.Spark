@@ -37,6 +37,7 @@ import { SparkGridRenderers } from './spark-grid-renderers';
   selector: 'spark-grid-cell',
   imports: [CommonModule, NgComponentOutlet, RouterModule],
   templateUrl: './spark-grid-cell.component.html',
+  styleUrl: './spark-grid-cell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SparkGridCellComponent {

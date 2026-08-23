@@ -5,6 +5,7 @@ import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
@@ -41,7 +42,7 @@ import {
  */
 @Component({
   selector: 'spark-query-list',
-  imports: [CommonModule, NgTemplateOutlet, FormsModule, BsAlertComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, FormsModule, BsAlertComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
