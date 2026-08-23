@@ -1,0 +1,28 @@
+@if (rendererComponent(); as rendererType) {
+  <ng-container *ngComponentOutlet="rendererType; inputs: rendererInputs()"></ng-container>
+} @else if (column().dataType === 'boolean') {
+  <!-- [indeterminate] matters: without it a null boolean renders as an unchecked box, which reads
+       as an explicit `false`. One of the three copies of this cell bound it and the others had
+       drifted, so the same column said different things on a detail page and in a grid. -->
+  <input type="checkbox"
+    [checked]="display() === true"
+    [indeterminate]="isUnsetBoolean()"
+    disabled
+    onclick="return false;">
+} @else if (column().dataType === 'color') {
+  @if (display(); as colorVal) {
+    <span class="d-inline-block align-middle border rounded"
+          [style.background-color]="colorVal"
+          style="width: 1.5em; height: 1.5em;"></span>
+  }
+} @else if (chips().length) {
+  <span class="d-inline-flex flex-wrap gap-1">
+    @for (chip of chips(); track chip.id) {
+      <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
+    }
+  </span>
+} @else if (link(); as route) {
+  <a [routerLink]="route">{{ display() }}</a>
+} @else {
+  {{ display() }}
+}

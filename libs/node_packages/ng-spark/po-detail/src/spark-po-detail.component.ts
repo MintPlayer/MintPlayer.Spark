@@ -26,7 +26,7 @@ import {
   ReferenceChipsPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
+import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   CustomActionDefinition,

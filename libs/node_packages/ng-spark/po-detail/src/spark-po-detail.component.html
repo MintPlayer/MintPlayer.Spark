@@ -101,18 +101,25 @@
                       <tr>
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
-                            @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
-                            } @else if (col.dataType === 'Reference' && col.referenceType) {
-                              @let route = (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes());
-                              @if (route) {
-                                <a [routerLink]="route">{{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}</a>
-                              } @else {
-                                {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
-                              }
-                            } @else {
-                              {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
-                            }
+                            <!--
+                              Shared with the query grid. This cell used to hand-roll the renderer
+                              dispatch and print everything else as text, so a `boolean` column read
+                              "true" here and rendered a checkbox in a grid, and a `color` showed its
+                              hex. Only the VALUE is resolved locally: these rows are plain
+                              dictionaries, not PersistentObjects.
+
+                              `chips` is left unset for a reference array on purpose — an AsDetail
+                              row's `__sparkBreadcrumbs` is keyed by column, not by id, so there are
+                              no labels for the members. Text beats a row of raw ids.
+                            -->
+                            <spark-grid-cell
+                                [column]="col"
+                                [display]="(row | asDetailCellValue:attr:col:asDetailReferenceOptions())"
+                                [rendererValue]="row[col.name]"
+                                [item]="row"
+                                [link]="col.dataType === 'Reference' && col.referenceType
+                                          ? (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes())
+                                          : null" />
                           </td>
                         }
                       </tr>

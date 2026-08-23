@@ -42,10 +42,22 @@ export class SparkGridRenderers {
    */
   columnInputsFor(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
+    return this.cellInputsFor(component, rendererValue(itemAttr), attr, item);
+  }
+
+  /**
+   * The same contract for a row that is not a <see cref="PersistentObject"/>.
+   *
+   * An AsDetail row is a plain dictionary — embedded values with no id and no attribute list — so
+   * its value cannot be read the way {@link columnInputsFor} reads one. Only the extraction
+   * differs; the renderer contract is identical, and stating it once is what stops the two from
+   * drifting the way the cell markup already had.
+   */
+  cellInputsFor(component: Type<any>, value: unknown, column: EntityAttributeDefinition, item: unknown): Record<string, any> {
     return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
+      value,
+      attribute: column,
+      options: column.rendererOptions,
       item,
     });
   }

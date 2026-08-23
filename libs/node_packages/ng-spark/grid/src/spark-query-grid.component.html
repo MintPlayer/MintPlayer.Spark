@@ -84,29 +84,18 @@
 }
 
 <ng-template #cellContent let-item let-attr="attr">
-  @if (getColumnRendererComponent(attr); as rendererType) {
-    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
-  } @else if (attr.dataType === 'boolean') {
-    @let boolVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
-    <!-- [indeterminate] matters: without it a null boolean renders as an unchecked box, which
-         reads as an explicit `false`. One of the two grids bound it and the other had drifted. -->
-    <input type="checkbox"
-      [checked]="boolVal === true"
-      [indeterminate]="boolVal === null || boolVal === undefined"
-      disabled
-      onclick="return false;">
-  } @else if (attr.dataType === 'color') {
-    @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
-    @if (colorVal) {
-      <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
-    }
-  } @else if (attr.dataType === 'Reference' && attr.isArray) {
-    <span class="d-inline-flex flex-wrap gap-1">
-      @for (chip of (attr.name | referenceChips:item); track chip.id) {
-        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
-      }
-    </span>
-  } @else {
-    {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
-  }
+  <!--
+    Presentation lives in <spark-grid-cell>, shared with the AsDetail table on the PO detail page.
+    Value resolution stays here: a query row is a PersistentObject with an attribute list, and the
+    AsDetail table's rows are plain dictionaries, so only the rendering is common.
+
+    `link` is deliberately not passed. The first-column link is the grid's own rule and wraps this
+    template from outside; setting both would nest anchors.
+  -->
+  <spark-grid-cell
+      [column]="attr"
+      [display]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes())"
+      [rendererValue]="rendererValueFor(item, attr)"
+      [item]="item"
+      [chips]="(attr.name | referenceChips:item)" />
 </ng-template>

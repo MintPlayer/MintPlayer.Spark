@@ -7,6 +7,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { rendererValue } from '@mintplayer/ng-spark/renderers';
 import { AttributeValuePipe, ReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
 import {
@@ -22,6 +23,7 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery, visibleGridAttributes } from './spark-grid-columns';
 import { SparkGridRenderers } from './spark-grid-renderers';
+import { SparkGridCellComponent } from './spark-grid-cell.component';
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
@@ -54,7 +56,7 @@ import { SparkGridRenderers } from './spark-grid-renderers';
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -385,6 +387,16 @@ export class SparkQueryGridComponent {
 
   private async loadLookupReferenceOptions(): Promise<void> {
     this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleAttributes()));
+  }
+
+  /**
+   * The underlying value a custom renderer receives, which is not the printable one.
+   *
+   * `rendererValue` unwraps an AsDetail attribute to the nested object (or objects) rather than
+   * flattening it to text — a renderer for a nested type needs the object, not a summary of it.
+   */
+  rendererValueFor(item: PersistentObject, attr: EntityAttributeDefinition): unknown {
+    return rendererValue(item.attributes.find(a => a.name === attr.name));
   }
 
   getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
