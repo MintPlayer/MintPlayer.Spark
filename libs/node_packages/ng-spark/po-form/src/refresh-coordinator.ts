@@ -87,12 +87,31 @@ export class RefreshCoordinator {
   }
 }
 
+/** The subset of an attribute definition that decides how its editor behaves. */
+export interface RefreshTriggerShape {
+  dataType?: string;
+  lookupReferenceType?: string;
+  isArray?: boolean;
+}
+
 /**
  * Editors where every change is a deliberate, committed one, so a refresh fires immediately.
- * Everything else is free text, where it would fire per keystroke and must wait for blur.
+ * Everything else is free text, where firing per keystroke would be unacceptable and the refresh
+ * waits for blur.
+ *
+ * ⚠️ This asks how the attribute is **rendered**, not what its `dataType` says, and the difference
+ * is not academic. A lookup attribute carries the data type of its *key* — Fleet's `Car.Status` is
+ * `dataType: "string"` with `lookupReferenceType: "CarStatus"` — so keying on `dataType` alone
+ * classifies a `<bs-select>` as free text. It then waits for a blur that a select never emits, and
+ * the refresh simply never fires: no request, no error, nothing to see.
  */
-export function triggersImmediately(dataType: string | undefined): boolean {
-  switch ((dataType ?? '').toLowerCase()) {
+export function triggersImmediately(attr: RefreshTriggerShape | undefined): boolean {
+  if (!attr) return false;
+
+  // A lookup renders as a select (or a modal picker) whatever its key's type is.
+  if (attr.lookupReferenceType) return true;
+
+  switch ((attr.dataType ?? '').toLowerCase()) {
     case 'reference':
     case 'lookupreference':
     case 'boolean':
@@ -101,6 +120,7 @@ export function triggersImmediately(dataType: string | undefined): boolean {
     case 'datetime':
     case 'dateonly':
     case 'enum':
+    case 'color':
       return true;
     default:
       return false;

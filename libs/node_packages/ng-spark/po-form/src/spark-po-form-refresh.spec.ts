@@ -33,7 +33,7 @@ const carType: EntityType = {
   name: 'Car',
   clrType: 'Test.Car',
   attributes: [
-    attr({ id: 'a-status', name: 'Status', order: 1, dataType: 'LookupReference', lookupReferenceType: 'CarStatus', triggersRefresh: true }),
+    attr({ id: 'a-status', name: 'Status', order: 1, dataType: 'string', lookupReferenceType: 'CarStatus', triggersRefresh: true }),
     attr({ id: 'a-report', name: 'PoliceReport', order: 2, isVisible: false }),
     attr({ id: 'a-promo', name: 'PromoUrl', order: 3 }),
     attr({ id: 'a-plate', name: 'LicensePlate', order: 4, triggersRefresh: true }),
@@ -245,6 +245,23 @@ describe('spark-po-form — TriggersRefresh', () => {
       await flush();
 
       expect(service.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes immediately for a lookup whose dataType is its key type', async () => {
+      // ★ The regression this suite missed the first time. Fleet's Car.Status is
+      // `dataType: "string"` with `lookupReferenceType: "CarStatus"` — it renders as a <bs-select>,
+      // but a check keyed on dataType alone reads "string" and treats it as free text. It then
+      // waits for a blur that a select never emits, so the refresh never fires at all: no request,
+      // no error, nothing to see. The original fixture used dataType 'LookupReference', which no
+      // real model produces, and so passed against the broken code.
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Status: 'InUse' });
+
+      component.onFieldChange(carType.attributes.find(a => a.name === 'Status')!);
+      await flush();
+
+      expect(service.refresh).toHaveBeenCalledTimes(1);
+      expect(service.refresh.mock.calls[0][2]).toBe('Status');
     });
 
     it('refreshes immediately for a discrete trigger', async () => {

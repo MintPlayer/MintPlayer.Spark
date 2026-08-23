@@ -459,7 +459,7 @@ export class SparkPoFormComponent {
     if (col.triggersRefresh !== true || !this.objectTypeId()) return;
 
     const path = this.inlineErrorPath(attr, rowIndex, col);
-    if (triggersImmediately(col.dataType)) {
+    if (triggersImmediately(col)) {
       void this.refreshCoordinator.trigger(path);
     } else {
       this.refreshCoordinator.markPending(path);
@@ -480,7 +480,7 @@ export class SparkPoFormComponent {
   private noteChange(attr: EntityAttributeDefinition): void {
     if (!this.canRefresh(attr)) return;
 
-    if (triggersImmediately(attr.dataType)) {
+    if (triggersImmediately(attr)) {
       void this.refreshCoordinator.trigger(attr.name);
     } else {
       // Free text: marking is all a keystroke earns. The request goes on blur, or on save.
