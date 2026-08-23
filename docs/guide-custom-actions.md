@@ -135,8 +135,9 @@ is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 
 Operators are `<=`, `>=`, `<`, `>`, `!=`, `=`.
 
-**A malformed rule is a startup error, not a silent permit.** `"1-5"`, `"*"` and `"=abc"` are all
-rejected when the configuration loads. (Vidyano, where this syntax comes from, treats anything
+**A malformed rule is refused when the configuration loads, not silently permitted.** `"1-5"`,
+`"*"` and `"=abc"` are all rejected, and every offender in the file is named at once. The load is
+lazy, so this surfaces the first time custom actions are read rather than at process start. (Vidyano, where this syntax comes from, treats anything
 unparseable as "always true" — safe for a greyed-out button, wrong for a server-side gate, where it
 would let any selection through.)
 
