@@ -139,13 +139,19 @@ not found`, and **a plain rebuild does not restore it**, because the copy is inc
 via `FileWrites`; `obj/` must be deleted too. **Never clean `RavenDBServer`; clean only the
 `RavenDB` data directory and the `.raven-cluster-topology` files.**
 
-### Still unexplained
+### Still unexplained — and the degraded-directory theory is ALSO disproven
 
-Why the embedded server hangs. It prints its banner and then emits nothing for 60s. The same
-binary, launched by hand with `--RunInMemory --Setup.Mode=None`, starts in seconds — with or without
-the licence. A single test class did once pass in **2m25s**, so the server *can* start, just far too
-slowly for the 60s limit. Most likely wedged OS state from the mid-run process kill; a reboot is the
-cheapest thing to try before investigating further.
+Do not read the table above as "the directory was the cause". **A completely clean directory still
+failed, 692 of 1704.** The root cause was never established.
+
+What is known: the server prints its banner and then emits nothing for 60s under `EmbeddedServer`,
+while the same binary launched by hand (`--RunInMemory --Setup.Mode=None`) starts in seconds, with
+or without the licence. One class did once pass in **2m25s**, so the server *can* start — just far
+too slowly for the 60s limit, especially under parallel load. `Lazy` then caches that first failure
+for the rest of the process, which is why one transient fault presents as suite-wide breakage.
+
+Most likely wedged OS state from the mid-run process kill. **A reboot was never tried** and is the
+cheapest next step.
 
 ### Recovering a directory Windows will not let you rebuild
 
