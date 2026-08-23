@@ -5,7 +5,9 @@ import { PersistentObjectAttribute } from './persistent-object-attribute';
 
 /**
  * Resolves an `EntityType` by its CLR type name (e.g. `"HR.Entities.Address"`).
- * Callers typically close over `sparkService.getEntityTypes()`'s cached list.
+ * Callers typically close over a list they already hold. `getEntityTypes()` is NOT cached --
+ * it issues a request per call -- so resolve against a list you fetched once rather than
+ * calling it inside the resolver.
  */
 export type EntityTypeResolver = (clrTypeName: string) => EntityType | undefined;
 
