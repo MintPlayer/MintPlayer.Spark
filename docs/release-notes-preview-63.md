@@ -157,3 +157,27 @@ Nothing to change in an app. Two details worth knowing:
 
 The same fix landed one level down on the detail page, where a **nested** AsDetail column
 stringified its inner dict to `[object Object]`.
+
+## Streaming queries could not connect from a browser
+
+A streaming query's WebSocket failed its handshake with **405 Method Not Allowed**, retrying in a
+loop. The page rendered — grid, columns, `LIVE` badge — and then sat at "No data" forever. Both
+demo streaming queries were affected, in every browser.
+
+Kestrel advertises `SETTINGS_ENABLE_CONNECT_PROTOCOL`, so on an HTTP/2 origin a browser opens a
+WebSocket the RFC 8441 way — `:method = CONNECT` with `:protocol = websocket` — and never attempts
+the HTTP/1.1 `GET` + `Upgrade` handshake. `/spark/queries/{id}/stream` allowed only `GET`, so
+endpoint routing refused the request before the handler ran.
+
+What made this survive so long is that **nothing except a browser could see it**. Over HTTP/1.1 the
+handshake succeeds — `curl` gets `101 Switching Protocols`, and the endpoint's own tests connect
+through `TestServer`, which is HTTP/1.1. Every automated check passed against an endpoint no browser
+could reach.
+
+The endpoint now accepts `CONNECT` as well. This is not a widening: a `CONNECT` that is not a valid
+WebSocket upgrade leaves `WebSockets.IsWebSocketRequest` false and is refused with `400` exactly as
+before, and the same-origin (CSWSH) guard keys off that same flag, so it covers both protocols
+identically.
+
+No app or client change is needed. If you have worked around this by forcing HTTP/1.1 on a Spark
+host, that workaround can be removed.
