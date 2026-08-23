@@ -459,11 +459,57 @@ export class SparkPoFormComponent {
     if (col.triggersRefresh !== true || !this.objectTypeId()) return;
 
     const path = this.inlineErrorPath(attr, rowIndex, col);
+    this.pendingNestedTrigger = { attribute: attr.name, rowIndex };
+
     if (triggersImmediately(col)) {
       void this.refreshCoordinator.trigger(path);
     } else {
       this.refreshCoordinator.markPending(path);
     }
+  }
+
+  /** Which detail row the in-flight refresh belongs to, if any. */
+  private pendingNestedTrigger: { attribute: string; rowIndex: number } | null = null;
+
+  /**
+   * Applies a refresh that ran against a detail row: the row's own values, and the column metadata
+   * for the grid it lives in.
+   *
+   * The column metadata comes from `asDetailTypes` — a different signal from `entityType` — which is
+   * why a nested response cannot go through the top-level overlay.
+   *
+   * ⚠️ The row array is mutated in place rather than replaced. Rows are tracked by index, so handing
+   * the template a new array destroys and rebuilds every row's DOM and takes focus with it, mid-edit.
+   */
+  private applyNestedResponse(
+    nested: { attribute: string; rowIndex: number },
+    response: PersistentObject,
+  ): void {
+    this.pendingNestedTrigger = null;
+
+    const rows = this.formData()[nested.attribute];
+    const row = Array.isArray(rows) ? rows[nested.rowIndex] : undefined;
+    if (row) {
+      for (const attribute of response.attributes ?? []) {
+        row[attribute.name] = attribute.value ?? null;
+      }
+      // The array identity is unchanged; this only tells the signal graph the contents moved.
+      this.formData.set({ ...this.formData() });
+    }
+
+    const overlay = overlayFromResponse(response);
+    this.asDetailTypes.update(prev => {
+      const type = prev[nested.attribute];
+      if (!type) return prev;
+
+      return {
+        ...prev,
+        [nested.attribute]: {
+          ...type,
+          attributes: type.attributes.map(a => applyOverlay(a, overlay[a.name])),
+        },
+      };
+    });
   }
 
   onInlineCellBlur(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): void {
@@ -502,6 +548,14 @@ export class SparkPoFormComponent {
       this.objectTypeId()!, this.buildRefreshPayload(), triggeredBy),
     currentValues: () => this.formData(),
     apply: (response, sent) => {
+      // A nested response describes a detail ROW, not this form. Applying it to the top-level
+      // overlay would hide every attribute the row does not happen to have.
+      const nested = this.pendingNestedTrigger;
+      if (nested) {
+        this.applyNestedResponse(nested, response);
+        return;
+      }
+
       this.refreshOverlay.set(overlayFromResponse(response));
       this.formData.set(mergeRefreshValues(sent, this.formData(), response));
       this.applyRefreshedOptions(response);

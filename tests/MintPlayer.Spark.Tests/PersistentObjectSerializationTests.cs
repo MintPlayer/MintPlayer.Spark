@@ -67,6 +67,30 @@ public class PersistentObjectSerializationTests
     }
 
     [Fact]
+    public void Serialize_EmitsParent_OnlyWhenNested()
+    {
+        // PersistentObject.Parent exists for one case: a detail row being refreshed, which runs
+        // against the row's own type and needs its owner for context. Emitting it unconditionally
+        // would hang a null field off every object on every response — which is what the test above
+        // caught when it was first added.
+        var parent = new PersistentObject { Name = "Person", ObjectTypeId = Guid.NewGuid(), Attributes = [] };
+        var row = new PersistentObject
+        {
+            Name = "CarreerJob",
+            ObjectTypeId = Guid.NewGuid(),
+            Attributes = [],
+            Parent = parent,
+        };
+
+        var json = JsonSerializer.Serialize(row);
+
+        json.Should().Contain("\"Parent\"");
+        json.Should().Contain("\"Person\"");
+
+        JsonSerializer.Deserialize<PersistentObject>(json)!.Parent!.Name.Should().Be("Person");
+    }
+
+    [Fact]
     public void Deserialize_EmptyAttributes_YieldsEmptyReadOnlyList()
     {
         var json = """

@@ -446,11 +446,29 @@ client-omitted attributes as absent rather than skipped. There is no such change
 attribute, and scaffolding yields the identical null. For a type with no triggers the two paths are
 point-for-point identical. The test M5 budgeted for it was dropped.
 
-### M8 did not need to be its own milestone
+### M8 was rebuilt after the owner reviewed the dispatch
 
-Inline AsDetail triggers came out of M6 almost free, because `inlineErrorPath` already had the
-`{attr}[{index}].{col}` convention and reusing it meant no second addressing scheme. S5's focus
-hazard did not materialise: the overlay never replaces the row array, so rows are not rebuilt.
+The first implementation dispatched a nested trigger to the **parent's** hook with a path-addressed
+`triggeredBy`. That was wrong in three visible ways: `args.Attribute` arrived null (the path matches
+no top-level attribute name), the response could only reshape top-level attributes because the
+overlay never touches `asDetailTypes`, and the verify gate rejected the model because the trigger is
+declared on `CarreerJob` while only `PersonActions` could serve it.
+
+The owner proposed what Vidyano actually does, and what the PRD's own F-4 note 13 had recorded and
+then failed to follow: a refresh from inside a detail row runs against the **row's** type, with the
+owner supplied as `args.PersistentObject.Parent`. All three symptoms disappear, and the verify gate
+turns out to have been right all along.
+
+Authorization deliberately does **not** follow the dispatch. Nested AsDetail types are not in
+`security.json` — nobody grants rights on `CarreerJob` — so the route still names the owning type and
+the right that governs editing a row remains the one governing the object that owns it.
+
+S5's focus hazard did not materialise: the row array is mutated in place, never replaced.
+
+⚠️ One property surfaced by driving it: a nested refresh reshapes the **column**, not the row, so
+locking `ContractEnd` for one row locks it for every row. That is inherent to the inline grid
+rendering from one shared column definition; values stay correctly per-row. Recorded in the PRD's
+out-of-scope table.
 
 ### `onSave()` became async
 

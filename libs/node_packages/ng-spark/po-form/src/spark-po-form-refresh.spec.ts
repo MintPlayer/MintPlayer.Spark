@@ -409,6 +409,57 @@ describe('spark-po-form — TriggersRefresh', () => {
       expect(service.refresh).not.toHaveBeenCalled();
     });
 
+    it('applies the response to the row and to the column metadata', async () => {
+      // A nested refresh runs against the ROW's type, so the response describes a CarreerJob-shaped
+      // object, not this form. Its values belong to the row; its metadata belongs to the column
+      // definition in asDetailTypes — a different signal from entityType, which is why a nested
+      // response cannot go through the top-level overlay.
+      const rows = [{ Kind: 'InUse', End: '2010-12-31' }];
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue({
+          id: null,
+          name: 'Job',
+          objectTypeId: 't-job',
+          attributes: [
+            { name: 'Kind', value: 'Stolen', isVisible: true, isRequired: false, isReadOnly: false, rules: [] },
+            { name: 'End', value: null, isVisible: true, isRequired: false, isReadOnly: true, rules: [] },
+          ],
+        }),
+      } as any);
+      await mount(fixture, { Jobs: rows });
+
+      (component as any).asDetailTypes.set({
+        Jobs: { id: 't-job', name: 'Job', clrType: 'Test.Job', tabs: [], groups: [], queries: [],
+                attributes: [attr({ id: 'c-kind', name: 'Kind' }), attr({ id: 'c-end', name: 'End' })] },
+      });
+
+      component.onInlineCellChange(carType.attributes.find(a => a.name === 'Jobs')!, 0, col);
+      await flush();
+
+      expect(rows[0].End).toBeNull();
+      expect(rows[0].Kind).toBe('Stolen');
+      expect(component.asDetailTypes()['Jobs'].attributes.find(a => a.name === 'End')!.isReadOnly).toBe(true);
+    });
+
+    it('does not apply a nested response to the top-level overlay', async () => {
+      // The bug this guards: routing a CarreerJob-shaped response through the top-level overlay
+      // hides every attribute the row does not happen to have — which is most of the form.
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue({
+          id: null, name: 'Job', objectTypeId: 't-job',
+          attributes: [{ name: 'Kind', value: 'x', isVisible: true, isRequired: false, isReadOnly: false, rules: [] }],
+        }),
+      } as any);
+      await mount(fixture, { Jobs: [{ Kind: 'InUse' }], Status: 'InUse' });
+
+      component.onInlineCellChange(carType.attributes.find(a => a.name === 'Jobs')!, 0, col);
+      await flush();
+      fixture.detectChanges();
+
+      expect(named(component, 'Status')).toBeDefined();
+      expect(named(component, 'Notes')).toBeDefined();
+    });
+
     it('leaves the row array identity intact, so rows are not rebuilt', async () => {
       // Rows are tracked by index. Replacing the array would destroy and recreate every row's DOM
       // and take focus with it — the failure mode that would make an inline trigger worse than no

@@ -13,6 +13,25 @@ public sealed class PersistentObject
     public string? Breadcrumb { get; set; }
 
     /// <summary>
+    /// The object this one is nested inside, for an AsDetail row being refreshed.
+    /// <see langword="null"/> for a top-level object, which is the usual case.
+    /// <para>
+    /// A refresh triggered from inside a detail grid runs against the <em>row's</em> type — a change
+    /// to <c>CarreerJob.ProfessionId</c> reaches <c>CarreerJobActions.OnRefreshAsync</c>, not the
+    /// owning <c>PersonActions</c> — because the hook that owns a type's shape is that type's own.
+    /// The row rarely has enough context to decide anything on its own, though, so it is handed its
+    /// parent here.
+    /// </para>
+    /// <para>
+    /// Read-only context: nothing the handler does to the parent is applied. The parent is scaffolded
+    /// from the model like everything else, so the values on it are the caller's and the metadata is
+    /// the server's.
+    /// </para>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PersistentObject? Parent { get; set; }
+
+    /// <summary>
     /// Per-row action affordances (#236 G5), computed only when the type has a row rule. Lets the
     /// generic UI avoid rendering an Edit/Delete button for a row the caller may read but not
     /// mutate (which would 404). Null means "no per-row information" — clients fall back to the

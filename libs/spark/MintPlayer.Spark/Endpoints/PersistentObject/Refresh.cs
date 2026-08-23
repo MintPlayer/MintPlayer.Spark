@@ -6,6 +6,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
+using System.Text.Json;
 using MintPlayer.Spark.Services;
 using Po = MintPlayer.Spark.Abstractions.PersistentObject;
 
@@ -115,12 +116,22 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 
         var effective = effectiveObjectFactory.Build(entityType, submitted);
 
-        var clrType = typeResolver.Resolve(entityType.ClrType);
-        if (clrType is not null)
+        // A trigger inside a detail grid is addressed by path — "Jobs[1].ProfessionId" — and belongs
+        // to the ROW's type, not this one. CarreerJob.ProfessionId reaches CarreerJobActions, because
+        // the hook that owns a type's shape is that type's own; the row is handed its Parent for the
+        // context it cannot have alone.
+        //
+        // Authorization stays on the type in the ROUTE regardless. Nested AsDetail types are not in
+        // security.json — nobody grants rights on CarreerJob — so the right that governs editing a
+        // row is the one governing the object that owns it.
+        if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
+            && BuildNestedRow(entityType, effective, nested) is { } row)
         {
-            await refreshInvoker.InvokeAsync(
-                clrType, effective, request.TriggeredBy, isNew, httpContext.RequestAborted);
+            await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
+            return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
         }
+
+        await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
 
         if (existing is not null)
         {
@@ -128,6 +139,76 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         }
 
         return ClientResult.Envelope(clientAccessor, effective, StatusCodes.Status200OK);
+    }
+
+    private async Task InvokeFor(
+        EntityTypeDefinition entityType, Po obj, string? triggeredBy, bool isNew, HttpContext httpContext)
+    {
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        if (clrType is null)
+            return;
+
+        await refreshInvoker.InvokeAsync(clrType, obj, triggeredBy, isNew, httpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// Scaffolds the addressed detail row from its own model, carrying the submitted row's values,
+    /// and links it to <paramref name="parent"/>. Null when the path does not resolve — an unknown
+    /// attribute, one that is not an AsDetail, or a row index nobody sent.
+    /// </summary>
+    private (EntityTypeDefinition EntityType, Po Object)? BuildNestedRow(
+        EntityTypeDefinition parentType, Po parent, NestedTrigger nested)
+    {
+        var attribute = parentType.Attributes
+            .FirstOrDefault(a => string.Equals(a.Name, nested.Attribute, StringComparison.Ordinal));
+
+        if (attribute?.AsDetailType is null)
+            return null;
+
+        var nestedType = modelLoader.GetEntityTypeByClrType(attribute.AsDetailType);
+        if (nestedType is null)
+            return null;
+
+        var rows = parent.Attributes
+            .FirstOrDefault(a => string.Equals(a.Name, nested.Attribute, StringComparison.Ordinal))
+            ?.Value;
+
+        var submittedRow = RowAt(rows, nested.Index);
+
+        var row = effectiveObjectFactory.Build(nestedType, submittedRow);
+        row.Parent = parent;
+
+        return (nestedType, row);
+    }
+
+    /// <summary>
+    /// Reads one row out of an AsDetail attribute's value. Rows arrive as JSON, so this reaches into
+    /// a <see cref="JsonElement"/> rather than a typed collection.
+    /// </summary>
+    private static Po? RowAt(object? rows, int index)
+    {
+        if (rows is not JsonElement { ValueKind: JsonValueKind.Array } array)
+            return null;
+
+        if (index < 0 || index >= array.GetArrayLength())
+            return null;
+
+        var element = array[index];
+        if (element.ValueKind != JsonValueKind.Object)
+            return null;
+
+        // A row is a flat dictionary of values, not a PersistentObject — that is the shape the form
+        // holds and the shape it posts. Lift it into the attribute list Build expects.
+        var attributes = element.EnumerateObject()
+            .Select(property => new PersistentObjectAttribute
+            {
+                Name = property.Name,
+                Value = property.Value.Clone(),
+                IsValueChanged = true,
+            })
+            .ToArray();
+
+        return new Po { Name = string.Empty, ObjectTypeId = Guid.Empty, Attributes = attributes };
     }
 
     /// <summary>
@@ -181,6 +262,32 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 /// sides always have. For a trigger inside an AsDetail row it is the path form the inline validation
 /// errors already use — <c>Jobs[2].ProfessionId</c>.
 /// </summary>
+/// <summary>
+/// A trigger addressed inside a detail grid: <c>Jobs[1].ProfessionId</c>. The same path form the
+/// inline validation errors already use, so there is one addressing scheme rather than two.
+/// </summary>
+internal readonly record struct NestedTrigger(string Attribute, int Index, string Column)
+{
+    public static NestedTrigger? TryParse(string? triggeredBy)
+    {
+        if (string.IsNullOrEmpty(triggeredBy))
+            return null;
+
+        var open = triggeredBy.IndexOf('[');
+        if (open <= 0)
+            return null;
+
+        var close = triggeredBy.IndexOf(']', open);
+        if (close < 0 || close + 2 >= triggeredBy.Length || triggeredBy[close + 1] != '.')
+            return null;
+
+        if (!int.TryParse(triggeredBy[(open + 1)..close], out var index))
+            return null;
+
+        return new NestedTrigger(triggeredBy[..open], index, triggeredBy[(close + 2)..]);
+    }
+}
+
 internal sealed class RefreshPersistentObjectRequest
 {
     public Po? PersistentObject { get; set; }
