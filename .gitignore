@@ -387,3 +387,10 @@ Demo/*/*/appsettings.json.e2e-backup
 
 # Playwright MCP session artifacts (snapshots, console logs, screenshots)
 .playwright-mcp/
+
+# Synced into each consuming project by the Spark build targets (CopySparkAgentsGuide /
+# CopySparkTestingAgentsGuide). The source of truth lives in this same repo -- committing the
+# copies would duplicate it and put a diff in every demo on every edit of the guide. A DOWNSTREAM
+# consumer should still commit its copy, which is what the file's own front-matter says: there the
+# source is in a NuGet package, so an agent cloning that repo would otherwise see nothing.
+Demo/*/*/AGENTS.md
