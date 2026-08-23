@@ -15,6 +15,15 @@
     // of the datatable's. Let the datatable fill the flex space so its own
     // virtual viewport is the only scrollbar. (`--mp-datatable-virtual-max-height`
     // inherits into the web component's shadow scroll viewport.)
+    // The datatable now lives inside <spark-query-grid>, so the flex chain needs that element
+    // too or the height never reaches the viewport. `::ng-deep` still matches it: it disables
+    // encapsulation for DOM descendants, and the grid is one.
+    spark-query-grid {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
     ::ng-deep bs-datatable {
       display: flex;
       flex-direction: column;

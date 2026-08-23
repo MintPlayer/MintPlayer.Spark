@@ -160,8 +160,17 @@ export class SparkQueryGridComponent {
 
   visibleAttributes = computed(() => visibleGridAttributes(this.entityType()));
 
-  /** True when rows come from the host, so the fetch path is inert. */
-  hasExternalData = computed(() => this.data() !== null);
+  /**
+   * True when rows do not come from this component's own fetch.
+   *
+   * Either because the host bound `data`, or because the query streams — a streaming query's rows
+   * arrive over a socket and `/execute` is not a way to get them. The grid recognises the second
+   * case itself rather than waiting to be told, because it resolves the query before the host can
+   * see it: left to `data` alone, every streaming grid would fire one pointless fetch on mount,
+   * before the host had anything to bind.
+   */
+  hasExternalData = computed(() =>
+    this.data() !== null || this.query()?.isStreamingQuery === true);
 
   /** Whether an action's selection rule is satisfied right now. The server checks it again. */
   isActionEnabled(action: CustomActionDefinition): boolean {
@@ -310,7 +319,10 @@ export class SparkQueryGridComponent {
       this.settings.set(initialGridSettings(resolvedQuery));
       // The datatable drives paging/sorting via [(settings)] and calls fetchFn per page. Virtual
       // scrolling is just the [virtualScroll] template flag.
-      if (!this.hasExternalData()) {
+      // `resolvedQuery`, not `hasExternalData()`: the query signal is set above, but reading the
+      // computed here would depend on signal-read ordering inside an async method. Ask the value
+      // directly.
+      if (this.data() === null && !resolvedQuery?.isStreamingQuery) {
         this.fetchFn.set(this.makeFetch(resolvedQuery, parentId, parentType));
       }
 

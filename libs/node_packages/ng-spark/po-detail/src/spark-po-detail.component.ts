@@ -26,7 +26,7 @@ import {
   ReferenceChipsPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkSubQueryComponent } from './spark-sub-query.component';
+import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   CustomActionDefinition,
@@ -42,7 +42,7 @@ import {
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkSubQueryComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -58,6 +58,22 @@ export class SparkPoDetailComponent {
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   extraContentTemplate = input<TemplateRef<{ $implicit: PersistentObject; entityType: EntityType }> | null>(null);
+
+  /**
+   * Header slots forwarded to every sub-query card on this page.
+   *
+   * A structural directive cannot cross a component boundary, and this component is created by
+   * the router — in a default app there is no `<spark-po-detail>` tag to project content into.
+   * So an app that wants slotted chrome on its sub-queries substitutes its own route component
+   * via `SparkRouteConfig.poDetail` and forwards the templates through here. Forwarding a
+   * `TemplateRef` as an input is already this component's idiom; see the two above.
+   *
+   * Each slot may target one query by alias, so a single forwarded set serves a page rendering
+   * several sub-queries.
+   */
+  queryIconTemplate = input<TemplateRef<any> | null>(null);
+  queryCaptionTemplate = input<TemplateRef<any> | null>(null);
+  queryActionsTemplate = input<TemplateRef<any> | null>(null);
 
   edited = output<void>();
   deleted = output<void>();

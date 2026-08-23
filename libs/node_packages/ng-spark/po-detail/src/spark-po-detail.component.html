@@ -173,7 +173,9 @@
     </bs-grid>
     @if (et.queries?.length) {
       @for (queryAlias of et.queries; track queryAlias) {
-        <spark-sub-query [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name" />
+        <spark-query-card [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name"
+                          [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"
+                          [actionsTemplate]="queryActionsTemplate()" />
       }
     }
     @if (extraContentTemplate(); as extraContentTpl) {
