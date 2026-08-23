@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, model, output, signal, untracked, Type } from '@angular/core';
-import { CommonModule, NgComponentOutlet } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -56,7 +56,7 @@ import { SparkGridCellComponent } from './spark-grid-cell.component';
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, NgComponentOutlet, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
