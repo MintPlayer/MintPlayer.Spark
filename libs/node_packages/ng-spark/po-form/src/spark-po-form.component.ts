@@ -515,7 +515,11 @@ export class SparkPoFormComponent {
     return {
       id: this.objectId(),
       name: et?.name ?? '',
-      objectTypeId: this.objectTypeId()!,
+      // The EntityType's id, never `objectTypeId()` — that is the ROUTE segment, which is an alias
+      // ("car") as often as a guid. The server types this field as a Guid, so an alias fails
+      // deserialization and the request 500s before the handler is reached: no hook, no error the
+      // client can act on. The route segment still carries the alias, which the server resolves.
+      objectTypeId: et?.id ?? this.objectTypeId()!,
       attributes: (et?.attributes ?? []).map(a => ({
         name: a.name,
         value: values[a.name] ?? null,

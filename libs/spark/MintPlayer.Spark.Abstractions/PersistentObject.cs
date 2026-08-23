@@ -8,6 +8,7 @@ public sealed class PersistentObject
 
     public string? Id { get; set; }
     public required string Name { get; set; }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ObjectTypeIdJsonConverter))]
     public required Guid ObjectTypeId { get; set; }
     public string? Breadcrumb { get; set; }
 

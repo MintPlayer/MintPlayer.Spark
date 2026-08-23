@@ -264,6 +264,26 @@ describe('spark-po-form — TriggersRefresh', () => {
       expect(service.refresh.mock.calls[0][2]).toBe('Status');
     });
 
+    it('sends the entity type id, not the route alias', async () => {
+      // ★ Regression. The route segment is an alias ("car") as often as a guid, and the server types
+      // persistentObject.objectTypeId as a Guid — so sending the alias fails deserialization and the
+      // request 500s before the handler runs. No hook, no usable error, and every assertion in this
+      // suite still passes, because they all mock the service and never look at what was sent.
+      const { fixture, component, service } = createComponent();
+      fixture.componentRef.setInput('entityType', carType);
+      fixture.componentRef.setInput('objectTypeId', 'car');   // the alias, as po-create passes it
+      fixture.componentRef.setInput('formData', { Status: 'InUse' });
+      fixture.detectChanges();
+      await flush();
+
+      component.onFieldChange(carType.attributes.find(a => a.name === 'Status')!);
+      await flush();
+
+      expect(service.refresh).toHaveBeenCalledTimes(1);
+      expect(service.refresh.mock.calls[0][0]).toBe('car');            // route segment: the alias
+      expect(service.refresh.mock.calls[0][1].objectTypeId).toBe('t-car'); // payload: the real id
+    });
+
     it('refreshes immediately for a discrete trigger', async () => {
       const { fixture, component, service } = createComponent();
       await mount(fixture, { Status: 'Stolen' });
