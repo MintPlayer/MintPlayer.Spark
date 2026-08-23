@@ -1,18 +1,25 @@
-import { Component, input } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { Subject } from 'rxjs';
 
 import { SparkQueryListComponent } from './spark-query-list.component';
-import { SparkService, SparkStreamingService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, PersistentObject, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { EntityType, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { StubComponent } from '../../src/test-utils';
+
+/**
+ * What remains page-shaped after the grid moved out: route resolution, and streaming.
+ *
+ * Columns, cells, paging, permissions and the row link are the grid's, and are asserted in
+ * `spark-query-grid.component.spec.ts`. Duplicating them here would recreate exactly the
+ * two-copies-that-drift problem the components were merged to end.
+ */
 
 const personType: EntityType = {
   id: 't-person',
@@ -25,16 +32,6 @@ const personType: EntityType = {
       isVisible: true, isReadOnly: false, isRequired: false,
       order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
     } as any,
-    {
-      id: 'a-internal', name: 'Internal', dataType: 'string',
-      isVisible: false, isReadOnly: false, isRequired: false,
-      order: 2, showedOn: ShowedOn.Query,
-    } as any,
-    {
-      id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
-      isVisible: true, isReadOnly: false, isRequired: false,
-      order: 3, showedOn: ShowedOn.PersistentObject,
-    } as any,
   ],
 } as any;
 
@@ -43,6 +40,7 @@ const allPeopleQuery: SparkQuery = {
   name: 'AllPeople',
   source: 'Database.People',
   alias: 'allpeople',
+  entityType: 'Person',
   sortColumns: [],
   renderMode: 'Standard',
   isStreamingQuery: false,
@@ -54,29 +52,31 @@ const routes: Routes = [
   { path: 'po/:type/new', component: StubComponent },
 ];
 
-const samplePage = {
-  data: [
-    { id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [] } as any,
-  ],
-  totalRecords: 1,
-};
+const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
 
-async function setup(serviceOverrides: Partial<SparkService> = {}) {
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 6; i++) {
+    await fixture.whenStable();
+    await Promise.resolve();
+    fixture.detectChanges();
+  }
+  await fixture.whenStable();
+}
+
+async function setup(serviceOverrides: Record<string, unknown> = {}) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     getQueries: vi.fn().mockResolvedValue([allPeopleQuery]),
     getQuery: vi.fn().mockResolvedValue(allPeopleQuery),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue([]),
-    executeQuery: vi.fn().mockResolvedValue(samplePage),
+    executeQuery: vi.fn().mockResolvedValue({ data: [], totalRecords: 0 }),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,
   };
   const streamSubject = new Subject<any>();
-  const streaming: any = {
-    connectToStreamingQuery: vi.fn(() => streamSubject.asObservable()),
-  };
+  const streaming: any = { connectToStreamingQuery: vi.fn(() => streamSubject.asObservable()) };
   TestBed.configureTestingModule({
     providers: [
       provideNoopAnimations(),
@@ -85,202 +85,163 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
       { provide: SparkStreamingService, useValue: streaming },
+      { provide: SparkLanguageService, useValue: langStub },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });
   const harness = await RouterTestingHarness.create();
-  return { harness, service, streamSubject };
+  return { harness, service, streaming, streamSubject };
+}
+
+async function navigate(harness: RouterTestingHarness, url: string) {
+  const c = await harness.navigateByUrl(url, SparkQueryListComponent);
+  await settle(harness.fixture);
+  return c as any;
 }
 
 describe('SparkQueryListComponent', () => {
-  it('loads query by queryId route param and resolves matching entity type', async () => {
-    const { harness, service } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
+  beforeEach(() => TestBed.resetTestingModule());
 
-    expect(service.getQuery).toHaveBeenCalledWith('q-all');
-    expect(c.query()?.id).toBe('q-all');
-    expect(c.entityType()?.name).toBe('Person');
-  });
+  describe('route resolution', () => {
+    it('takes the query id straight from query/:queryId', async () => {
+      const { harness } = await setup();
+      const c = await navigate(harness, '/query/q-all');
 
-  it('loads query by entity type alias and finds the matching query for it', async () => {
-    const { harness, service } = await setup();
-    const c = await harness.navigateByUrl('/po/person', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-
-    expect(service.getEntityTypes).toHaveBeenCalled();
-    expect(service.getQueries).toHaveBeenCalled();
-    expect(c.entityType()?.name).toBe('Person');
-    expect(c.query()?.id).toBe('q-all');
-  });
-
-  it('hydrates canRead/canCreate from getPermissions', async () => {
-    const { harness } = await setup({
-      getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: false, canEdit: false, canDelete: false }),
+      expect(c.queryId()).toBe('q-all');
     });
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
 
-    expect(c.canRead()).toBe(true);
-    expect(c.canCreate()).toBe(false);
-  });
+    /**
+     * `po/:type` names an entity type, not a query, and the translation between them is the only
+     * reason this component still exists rather than the route pointing at the grid.
+     */
+    it('resolves po/:type to the query that lists that type', async () => {
+      const { harness, service } = await setup();
+      const c = await navigate(harness, '/po/person');
 
-  it('executes the query on initial load (via the datatable fetch) and exposes the result count', async () => {
-    const { harness, service } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-
-    expect(service.executeQuery).toHaveBeenCalledOnce();
-    const opts = (service.executeQuery as any).mock.calls[0][1];
-    expect(opts.skip).toBe(0);
-    expect(c.resultCount()).toBe(1);
-  });
-
-  it('visibleAttributes filters out non-visible and detail-only attributes', async () => {
-    const { harness } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-
-    const visible = c.visibleAttributes();
-    expect(visible.map((a: any) => a.name)).toEqual(['FirstName']);
-  });
-
-  it('isVirtualScrolling reflects query renderMode', async () => {
-    const virtualQuery = { ...allPeopleQuery, id: 'q-virt', renderMode: 'VirtualScrolling' } as any;
-    const { harness } = await setup({
-      getQuery: vi.fn().mockResolvedValue(virtualQuery),
+      expect(service.getQueries).toHaveBeenCalled();
+      expect(c.queryId()).toBe('allpeople');
     });
-    const c = await harness.navigateByUrl('/query/q-virt', SparkQueryListComponent);
-    await harness.fixture.whenStable();
 
-    expect(c.isVirtualScrolling()).toBe(true);
+    it('reports a type that resolves to no query, rather than spinning', async () => {
+      const { harness } = await setup({ getQueries: vi.fn().mockResolvedValue([]) });
+      const c = await navigate(harness, '/po/person');
+
+      expect(c.queryId()).toBeNull();
+      expect(c.errorMessage()).toBeTruthy();
+    });
+
+    /**
+     * A denied query answers 404 with the same body as a missing one (audit M-3), so the message
+     * must not claim to know which it was.
+     */
+    it('reports an unknown type without disclosing whether it exists', async () => {
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([]) });
+      const c = await navigate(harness, '/po/nope');
+
+      expect(c.errorMessage()).toBe('spark.query.unavailable');
+    });
   });
 
-  it('onSearchChange refetches with the current searchTerm', async () => {
-    const { harness, service } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-    (service.executeQuery as any).mockClear();
-
-    c.searchTerm = 'alice';
-    c.onSearchChange();
-    await new Promise<void>((r) => setTimeout(r, 0));
-
-    expect(service.executeQuery).toHaveBeenCalledOnce();
-    const opts = (service.executeQuery as any).mock.calls[0][1];
-    expect(opts.search).toBe('alice');
-  });
-
-  it('clearSearch resets searchTerm and triggers a reload', async () => {
-    const { harness, service } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-    c.searchTerm = 'alice';
-    (service.executeQuery as any).mockClear();
-
-    c.clearSearch();
-    await new Promise<void>((r) => setTimeout(r, 0));
-
-    expect(c.searchTerm).toBe('');
-    expect(service.executeQuery).toHaveBeenCalledOnce();
-    const opts = (service.executeQuery as any).mock.calls[0][1];
-    expect(opts.search).toBeUndefined();
-  });
-
-  it('rowClicked output emits when a row is clicked', async () => {
-    const { harness } = await setup();
-    const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-    await harness.fixture.whenStable();
-
-    const handler = vi.fn();
-    c.rowClicked.subscribe(handler);
-
-    const item: PersistentObject = { id: 'people/1', name: 'A', objectTypeId: 't-person', attributes: [] } as any;
-    c.rowClicked.emit(item);
-
-    expect(handler).toHaveBeenCalledWith(item);
-  });
-
-  it('streaming: snapshot populates streamItems, patch updates a value, search filters', async () => {
+  describe('streaming', () => {
     const streamingQuery = { ...allPeopleQuery, id: 'q-live', isStreamingQuery: true } as any;
-    const { harness, streamSubject } = await setup({
-      getQuery: vi.fn().mockResolvedValue(streamingQuery),
+
+    async function live() {
+      const s = await setup({ getQuery: vi.fn().mockResolvedValue(streamingQuery) });
+      const c = await navigate(s.harness, '/query/q-live');
+      return { ...s, c };
+    }
+
+    it('connects when the grid resolves a streaming query', async () => {
+      const { c, streaming } = await live();
+
+      expect(streaming.connectToStreamingQuery).toHaveBeenCalledWith('q-live');
+      expect(c.isStreaming()).toBe(true);
     });
-    const c = await harness.navigateByUrl('/query/q-live', SparkQueryListComponent);
-    await harness.fixture.whenStable();
 
-    expect(c.isStreaming()).toBe(true);
+    /**
+     * The grid must not also fetch. It recognises a streaming query itself for this reason —
+     * waiting to be handed `data` would still have fired one /execute before the socket connected.
+     */
+    it('does not also execute the query over http', async () => {
+      const { service } = await live();
 
-    // snapshot -> streamItems populated, resultCount reflects it
-    streamSubject.next({
-      type: 'snapshot',
-      data: [
-        { id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Alice' }] },
-        { id: 'people/2', name: 'Bob', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Bob' }] },
-      ],
+      expect(service.executeQuery).not.toHaveBeenCalled();
     });
-    expect(c.streamItems()).toHaveLength(2);
-    expect(c.resultCount()).toBe(2);
 
-    // patch -> the matching row's attribute value is updated in place
-    streamSubject.next({
-      type: 'patch',
-      updated: [{ id: 'people/1', attributes: { FirstName: 'Alicia' } }],
+    it('feeds the snapshot to the grid and applies a patch in place', async () => {
+      const { c, harness, streamSubject } = await live();
+
+      streamSubject.next({
+        type: 'snapshot',
+        data: [
+          { id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Alice' }] },
+          { id: 'people/2', name: 'Bob', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Bob' }] },
+        ],
+      });
+      await settle(harness.fixture);
+      expect(c.gridData()).toHaveLength(2);
+
+      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', attributes: { FirstName: 'Alicia' } }] });
+      await settle(harness.fixture);
+
+      const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
+      expect(alice.attributes.find((a: any) => a.name === 'FirstName')?.value).toBe('Alicia');
     });
-    const alice = c.streamItems().find(i => i.id === 'people/1')!;
-    expect(alice.attributes.find((a: any) => a.name === 'FirstName')?.value).toBe('Alicia');
 
-    // search -> streamItems filtered client-side
-    c.searchTerm = 'bob';
-    c.onSearchChange();
-    expect(c.streamItems()).toHaveLength(1);
-    expect(c.streamItems()[0].id).toBe('people/2');
+    it('filters the snapshot client-side — there is no request to attach a search to', async () => {
+      const { c, harness, streamSubject } = await live();
+      streamSubject.next({
+        type: 'snapshot',
+        data: [
+          { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] },
+          { id: 'people/2', attributes: [{ name: 'FirstName', value: 'Bob' }] },
+        ],
+      });
+      await settle(harness.fixture);
+
+      c.searchTerm.set('bob');
+      await settle(harness.fixture);
+
+      expect(c.gridData()).toHaveLength(1);
+      expect(c.gridData()![0].id).toBe('people/2');
+    });
+
+    it('surfaces a stream error', async () => {
+      const { c, harness, streamSubject } = await live();
+
+      streamSubject.error(new Error('socket died'));
+      await settle(harness.fixture);
+
+      expect(c.isStreaming()).toBe(false);
+      expect(c.errorMessage()).toContain('socket died');
+    });
+
+    it('hands the grid null for a non-streaming query, so it fetches for itself', async () => {
+      const { harness, service } = await setup();
+      const c = await navigate(harness, '/query/q-all');
+
+      expect(c.gridData()).toBeNull();
+      expect(service.executeQuery).toHaveBeenCalled();
+    });
   });
 
-  describe('column renderer inputs (#241/#245)', () => {
-    @Component({ selector: 'spec-full-column-renderer', standalone: true, template: '' })
-    class FullColumnRenderer {
-      value = input<any>();
-      attribute = input<any>();
-      options = input<Record<string, any>>();
-      item = input<any>();
-    }
-    @Component({ selector: 'spec-value-only-renderer', standalone: true, template: '' })
-    class ValueOnlyRenderer {
-      value = input<any>();
-    }
+  describe('page chrome', () => {
+    it('reads canCreate from the grid so the New button reflects the real permission', async () => {
+      const { harness } = await setup({
+        getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: false, canEdit: false, canDelete: false }),
+      });
+      const c = await navigate(harness, '/query/q-all');
 
-    const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
-    const asDetailAttr = { name: 'Coverage', dataType: 'AsDetail', rendererOptions: { bar: true } } as any;
-
-    it('AsDetail attribute: renderer receives the nested PO as value and the row as item', async () => {
-      const { harness } = await setup();
-      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: nested }] } as PersistentObject;
-
-      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
-      expect(inputs['value']).toBe(nested);
-      expect(inputs['item']).toBe(row);
-      expect(inputs['options']).toEqual({ bar: true });
+      expect(c.canCreate()).toBe(false);
     });
 
-    it('AsDetail array attribute: renderer receives the nested PO array as value', async () => {
-      const { harness } = await setup();
-      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: null, objects: [nested] }] } as PersistentObject;
+    it('shows the caption from the resolved query', async () => {
+      const { harness } = await setup({
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, description: { en: 'Everyone' } }),
+      });
+      await navigate(harness, '/query/q-all');
 
-      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
-      expect(inputs['value']).toEqual([nested]);
-    });
-
-    it('renderer declaring only value gets a filtered bag (pins the NgComponentOutlet undeclared-input throw)', async () => {
-      const { harness } = await setup();
-      const c = await harness.navigateByUrl('/query/q-all', SparkQueryListComponent);
-      const row = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
-
-      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, personType.attributes[0]);
-      expect(Object.keys(inputs)).toEqual(['value']);
-      expect(inputs['value']).toBe('Alice');
+      expect(harness.fixture.nativeElement.textContent).toContain('Everyone');
     });
   });
 });
