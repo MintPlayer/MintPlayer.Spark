@@ -65,3 +65,41 @@ objection to a host-side mechanism.
 - Which parts of #308's client work are still wanted (the three-state template, the permanent-spinner
   fix, `reloadToken`, `[indeterminate]`, the `showedOn: 'query'` filter) versus already shipped in
   #311's M1?
+
+---
+
+## Verified findings — appended after investigation (2026-08-23)
+
+The captured text above is left exactly as given. This section records where the tree
+disagreed with it. Design consequences live in
+[`query-grid-card-PRD.md`](./query-grid-card-PRD.md).
+
+**Comment (2) is already satisfied. `selectionRule` came across in #311 in full.** Server
+(`SelectionRuleParser`, `ExecuteCustomAction` enforcement, the 200-item ceiling,
+`ListCustomActions` projection, `CustomActionDefinition.SelectionRule`) and client
+(`selection-rule.ts`, the shared `selection-rule.fixture.json`, `selection-mode.ts`,
+`selection-rule.spec.ts`, and the wiring in **both** grids) are byte-identical to
+`fix/parentless-sub-query`, and `release-notes-preview-62.md:147` documents the release.
+Nothing to ship. There is nothing to recover from that branch at all.
+
+**Comment (1) is correct and already actioned.** `rowsNavigable` appears nowhere in `libs/`
+or `Demo/`.
+
+**Comment (3) needs no change.** The #308 branch's edits to `guide-custom-actions.md` are all
+on master via #311's M1. The single branch-unique line documents `spark.AddAuthorization()`
+and `spark.AllowAnonymousAccess()` — both **deleted by #310**. It must not be carried over.
+
+**Comment (4) is the whole of the remaining work**, and is what the PRD covers.
+
+### Answers to the open questions above
+
+- **The auto-render case is served because slots override defaults rather than replacing
+  them.** An absent slot renders the built-in default, so the auto-rendered call site is
+  unchanged. See PRD §4.
+- **The `*bs` prefix was confirmed to be ng-bootstrap's**, as suspected. The directives are
+  `*sparkQueryIcon`, `*sparkQueryCaption`, `*sparkQueryActions`.
+- **The two components replace both existing ones.** `spark-sub-query` is deleted;
+  `spark-query-list` keeps its name and route and becomes page chrome over the shared grid.
+- **Every M1 item listed as possibly-outstanding is already on master** — the three-state
+  template, the permanent-spinner fix, `reloadToken`, `[indeterminate]`, the `showedOn: 'query'`
+  filter.
