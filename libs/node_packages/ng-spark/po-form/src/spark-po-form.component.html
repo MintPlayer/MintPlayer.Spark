@@ -52,7 +52,7 @@
           @if (attr.dataType === 'boolean') {
             <bs-checkbox
               [ngModel]="formData()[attr.name]"
-              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()">
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)">
             </bs-checkbox>
           } @else if (attr.lookupReferenceType) {
             @if ((attr | lookupDisplayType:lookupReferenceOptions()) === ELookupDisplayType.Modal) {
@@ -67,7 +67,7 @@
             } @else {
               <bs-select
                 [ngModel]="formData()[attr.name]"
-                (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+                (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)"
                 [id]="attr.name"
                 [class.is-invalid]="hasError(attr.name)">
                 <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
@@ -121,7 +121,7 @@
                 } @else if (col.dataType === 'boolean') {
                   <bs-checkbox
                     [(ngModel)]="row[col.name]"
-                    (ngModelChange)="onFieldChange()">
+                    (ngModelChange)="onInlineCellChange(attr, rowIndex, col)">
                   </bs-checkbox>
                 } @else if (col.dataType === 'Reference' && col.query) {
                   @if (col.referenceDisplayType === EReferenceDisplayType.Modal) {
@@ -131,7 +131,7 @@
                       [referenceType]="col.referenceType"
                       [title]="col.label | resolveTranslation:col.name"
                       [isInvalid]="hasInlineError(attr, rowIndex, col)"
-                      (valueChange)="row[col.name] = $event; onFieldChange()">
+                      (valueChange)="row[col.name] = $event; onInlineCellChange(attr, rowIndex, col)">
                     </spark-reference-picker>
                   } @else {
                     <bs-select
@@ -153,7 +153,7 @@
                       [options]="getLookupOptions(col)"
                       [title]="col.label | resolveTranslation:col.name"
                       [isInvalid]="hasInlineError(attr, rowIndex, col)"
-                      (valueChange)="row[col.name] = $event; onFieldChange()">
+                      (valueChange)="row[col.name] = $event; onInlineCellChange(attr, rowIndex, col)">
                     </spark-lookup-picker>
                   } @else {
                     <bs-select
@@ -174,7 +174,8 @@
                     [required]="col.isRequired"
                     rows="3"
                     [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
-                    (ngModelChange)="onFieldChange()"></textarea>
+                    (ngModelChange)="onFieldChange()"
+                    (blur)="onInlineCellBlur(attr, rowIndex, col)"></textarea>
                 } @else {
                   <input
                     [type]="col.dataType | inputType"
@@ -182,7 +183,8 @@
                     [required]="col.isRequired"
                     [step]="col.dataType === 'decimal' ? '0.01' : '1'"
                     [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
-                    (ngModelChange)="onFieldChange()">
+                    (ngModelChange)="onFieldChange()"
+                    (blur)="onInlineCellBlur(attr, rowIndex, col)">
                 }
                 @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
                   <div class="invalid-feedback d-block">{{ errorMsg }}</div>
@@ -331,7 +333,8 @@
             <textarea
               [id]="attr.name"
               [ngModel]="formData()[attr.name]"
-              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)"
+              (blur)="onFieldBlur(attr)"
               [name]="attr.name"
               [required]="attr.isRequired"
               rows="6"
@@ -341,7 +344,8 @@
               [type]="attr.dataType | inputType"
               [id]="attr.name"
               [ngModel]="formData()[attr.name]"
-              (ngModelChange)="formData()[attr.name] = $event; onFieldChange()"
+              (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)"
+              (blur)="onFieldBlur(attr)"
               [name]="attr.name"
               [required]="attr.isRequired"
               [step]="attr.dataType === 'decimal' ? '0.01' : '1'"
