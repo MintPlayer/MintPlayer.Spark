@@ -61,4 +61,46 @@
 
 	</Target>
 
+	<!--
+	  Target: CopySparkAgentsGuide
+
+	  Copies the package's AGENTS.md into the consuming project on every build, so a coding agent
+	  working in that repo reads the same specification the package ships — without anyone having
+	  to remember to sync it by hand.
+
+	  Why a build target rather than documentation on a website: the guide is only useful at the
+	  moment someone is writing code against the framework, and an agent reads the files in front
+	  of it. A copy that drifts is worse than no copy, so it is refreshed on every build.
+
+	  ⚠️ Lives in THIS file rather than its own. NuGet auto-imports exactly one
+	  buildTransitive/$(PackageId).targets per package, so a second targets file would simply be
+	  ignored.
+
+	  ⚠️ MintPlayer.Spark.Testing ships its own AGENTS.md by the same mechanism, aimed at test
+	  projects. If one project ever references both packages they would fight over the same file
+	  name — set $(SparkAgentsGuideTarget) or $(SparkTestingAgentsGuideTarget) to disambiguate.
+
+	  SkipUnchangedFiles plus the Inputs/Outputs pair keep this off the incremental-build critical
+	  path: after the first build it is a timestamp comparison and nothing else.
+	-->
+	<PropertyGroup>
+		<EnableSparkAgentsGuide Condition=" '$(EnableSparkAgentsGuide)' == '' ">true</EnableSparkAgentsGuide>
+		<SparkAgentsGuideSource Condition=" '$(SparkAgentsGuideSource)' == '' ">$(MSBuildThisFileDirectory)..\AGENTS.md</SparkAgentsGuideSource>
+		<SparkAgentsGuideTarget Condition=" '$(SparkAgentsGuideTarget)' == '' ">$(MSBuildProjectDirectory)\AGENTS.md</SparkAgentsGuideTarget>
+	</PropertyGroup>
+
+	<Target Name="CopySparkAgentsGuide"
+	        BeforeTargets="BeforeBuild"
+	        Inputs="$(SparkAgentsGuideSource)"
+	        Outputs="$(SparkAgentsGuideTarget)"
+	        Condition=" '$(EnableSparkAgentsGuide)' == 'true' And Exists('$(SparkAgentsGuideSource)') ">
+
+		<Copy SourceFiles="$(SparkAgentsGuideSource)"
+		      DestinationFiles="$(SparkAgentsGuideTarget)"
+		      SkipUnchangedFiles="true" />
+
+		<Message Importance="low"
+		         Text="[MintPlayer.Spark] Synced AGENTS.md into $(MSBuildProjectName)." />
+	</Target>
+
 </Project>

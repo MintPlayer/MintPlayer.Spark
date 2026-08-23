@@ -50,4 +50,11 @@
 		</ItemGroup>
 	</Target> -->
 
+  <!--
+    Imported explicitly because this repo consumes the package by ProjectReference, where
+    NuGet's automatic buildTransitive import does not apply. A downstream consumer using a
+    PackageReference gets this for free.
+  -->
+  <Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.targets" />
+
 </Project>
