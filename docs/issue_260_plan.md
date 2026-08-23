@@ -20,23 +20,23 @@ is also the only place the whole path is exercised end to end.
 
 | | Milestone | Requirements | State |
 |---|---|---|---|
-| **S1** | Overlay reactivity without re-running the option effect | D-C, F10 | pending — **gate** |
-| **S2** | `[NoInterfaceMember]` + reflection dispatch on a generic hook | D1, R3 | pending |
-| **S3** | Cost of re-running the hook during Save | D5, R13 | pending — **gate** |
-| **S4** | Value-merge semantics against a real form | D-D, R15 | pending |
-| **S5** | A trigger inside an AsDetail row | R20 | pending — **gate** |
-| **S6** | Option replacement for a `LookupReference` | R6, D8 | pending |
-| **M1** | `triggersRefresh` on the schema, preserved by synchronize | R1, R2 | pending |
-| **M2** | `OnRefreshAsync` + `SparkRefreshArgs<T>` + dispatch | R3, R4, R5 | pending |
-| **M3** | `POST /spark/po/{objectTypeId}/refresh` | R7, R11 | pending |
-| **M4** | Authorization, row security, redaction, rate limiting | R8, R9, R10, R21 | pending |
-| **M5** | Effective-rule enforcement on Save | R12, R13 | pending |
-| **M6** | Client: overlay, merge, coordinator | R14, R15, R16, R17, R18 | pending |
-| **M7** | Client: option replacement + rule evaluation | R6, R19 | pending |
-| **M8** | Client: AsDetail triggers | R20 | pending — gated on S5 |
-| **M9** | Fleet sample | R23 | pending |
-| **M10** | `--spark-verify-model` gate | R24 | pending |
-| **M11** | Docs, AGENTS.md, versions, sweep | R22 | pending |
+| **S1** | Overlay reactivity without re-running the option effect | D-C, F10 | done |
+| **S2** | `[NoInterfaceMember]` + reflection dispatch on a generic hook | D1, R3 | done |
+| **S3** | Cost of re-running the hook during Save | D5, R13 | done |
+| **S4** | Value-merge semantics against a real form | D-D, R15 | done |
+| **S5** | A trigger inside an AsDetail row | R20 | done |
+| **S6** | Option replacement for a `LookupReference` | R6, D8 | done |
+| **M1** | `triggersRefresh` on the schema, preserved by synchronize | R1, R2 | done |
+| **M2** | `OnRefreshAsync` + `SparkRefreshArgs<T>` + dispatch | R3, R4, R5 | done |
+| **M3** | `POST /spark/po/{objectTypeId}/refresh` | R7, R11 | done |
+| **M4** | Authorization, row security, redaction, rate limiting | R8, R9, R10, R21 | done |
+| **M5** | Effective-rule enforcement on Save | R12, R13 | done |
+| **M6** | Client: overlay, merge, coordinator | R14, R15, R16, R17, R18 | done |
+| **M7** | Client: option replacement + rule evaluation | R6, R19 | done |
+| **M8** | Client: AsDetail triggers | R20 | done |
+| **M9** | Fleet sample | R23 | done |
+| **M10** | `--spark-verify-model` gate | R24 | done |
+| **M11** | Docs, AGENTS.md, versions, sweep | R22 | done |
 
 ---
 
@@ -402,4 +402,95 @@ The last two PRs both shipped with a browser check deferred and unperformed; thi
 
 ## Outcome
 
-_(written after implementation)_
+**Every milestone shipped.** Deviations from the plan, and why:
+
+### D1 was reversed mid-implementation, on owner instruction
+
+The hook was built off the interface under `[NoInterfaceMember]`, exactly as D1 specified, with a
+compile-only fixture pinning that hand-written implementers still worked. The owner then said the
+packages are in preview and backward compatibility is not wanted, which removed the decision's whole
+justification. `OnRefreshAsync` moved onto `IPersistentObjectActions<T>` and the fixture was inverted
+to prove the contract is implementable by hand instead.
+
+Worth recording because it is easy to overstate: this bought **nothing in code**. The reflection in
+`RefreshInvoker` stays either way, because the entity type is only known at runtime — `RowSecurity`
+reflects on `IsAllowedAsync` for that same reason, and `IsAllowedAsync` is on the interface. What
+changed is that the contract now says what the implementation does.
+
+### S1's negative branch is the one that applied
+
+The spike's premise was that an overlay signal folded into `editableAttributes` would leave the
+option-loading effect alone. It would not: the loaders read `editableAttributes()` **synchronously**
+before their first `await`, so Angular tracks it, and every refresh would have re-issued every
+reference query and lookup fetch. The fallback the spike had already written down — split the
+computed — is what shipped, as `optionSourceAttributes` (loaders) and `editableAttributes`
+(rendering).
+
+One thing the fallback did not anticipate: `optionSourceAttributes` deliberately does **not** filter
+on `isVisible`/`isReadOnly`, because a hook may reveal an attribute whose options were never loaded.
+That costs a few more requests at init and is the only shape that is correct.
+
+### S3 was answered by reasoning, and the plan's fallback was wrong
+
+The plan's negative branch offered "run the hook once per Save with a `null` `Attribute`" as the
+cheaper option. It is not merely cheaper — it is wrong. Handlers branch on `args.Attribute`, so a
+single null-attribute pass executes none of their branches and enforces nothing. The hook runs once
+per triggering attribute, in model order, against the same accumulating object. No measurement was
+taken, because the design question was settled before cost mattered.
+
+### Migration item 1 was retracted
+
+The PRD claimed `ValidationService` would start validating a model-scaffolded object and so treat
+client-omitted attributes as absent rather than skipped. There is no such change: the original
+`Validate` already read `Attributes.FirstOrDefault(...)?.Value`, which is null for an omitted
+attribute, and scaffolding yields the identical null. For a type with no triggers the two paths are
+point-for-point identical. The test M5 budgeted for it was dropped.
+
+### M8 did not need to be its own milestone
+
+Inline AsDetail triggers came out of M6 almost free, because `inlineErrorPath` already had the
+`{attr}[{index}].{col}` convention and reusing it meant no second addressing scheme. S5's focus
+hazard did not materialise: the overlay never replaces the row array, so rows are not rebuilt.
+
+### `onSave()` became async
+
+It must flush a pending refresh before emitting, or a user tabbing from a field straight to Save has
+the server enforce rules they were never shown. This changed one existing spec, which now awaits it.
+
+### Options had to go on the wire after all
+
+D-A kept `triggersRefresh` off `PersistentObjectAttribute`, and that held. But R6 could not be served
+without an `Options` payload, so the attribute grew one — including the three easy-to-miss edits in
+`PersistentObjectAttributeJsonConverter` that F20 warned about. They are pinned by a round-trip suite
+that includes a camelCase producer, because missing any one of them fails silently.
+
+---
+
+## Verification, as run
+
+| Check | Result |
+|---|---|
+| 1. A13 without M5 | **Demonstrated RED**, then restored. `Save_enforces_a_hook_imposed_rule_for_a_client_that_never_refreshed` |
+| 2. A11 metadata from the wire | GREEN — `Refresh_ignores_metadata_submitted_by_the_client` |
+| 3. A10 redaction | Carried as the model-vs-load delta; covered by `ApplyRedactionOf` |
+| 4. A16 no extra requests | GREEN — `issues no additional service requests` |
+| 5. A17/A18 both green together | GREEN — both merge directions pinned |
+| 6. A1 with a rewritten `dataType` | GREEN, with the rewrite asserted as a precondition |
+| 7. A24 inline focus | Rows are never rebuilt; the overlay does not replace the array |
+| 8. M10 gate | **Demonstrated exit 3** by removing the override from `CarActions`, then restored |
+
+**Full suite:** `MintPlayer.Spark.Tests` **1745 passed**, `MintPlayer.Spark.Client.Tests` **38
+passed**, vitest **309 passed** (25 files). Whole solution builds clean.
+
+⚠️ **`MintPlayer.Spark.E2E.Tests` could not be run** — all 78 fail in ~1s inside fixture startup,
+before any test body, on `npm run build`. Cause is a stray
+`Demo/Fleet/Fleet/ClientApp/node_modules` (and one under `Demo/HR/HR/ClientApp/`) dated
+**2026-06-07**, the Angular 22 upgrade session: it contains only `@angular` and `@mintplayer`, has no
+`npm`, and shadows the root `node_modules` the workspace convention requires. Pre-existing and
+unrelated to this change — nothing in this diff touches `node_modules` — but it means **A26 is not
+closed**.
+
+**Not closed by this PR:** A26's browser run of the Fleet sample. Fleet is served through
+`UseAngularCliServer`, so it needs `dotnet run` on the host and a manual drive; it is also what the
+E2E suite would have automated. This is the second PR in a row where a browser check is outstanding,
+and it should be done before merge rather than deferred again.
