@@ -394,3 +394,4 @@ Demo/*/*/appsettings.json.e2e-backup
 # consumer should still commit its copy, which is what the file's own front-matter says: there the
 # source is in a NuGet package, so an agent cloning that repo would otherwise see nothing.
 Demo/*/*/AGENTS.md
+tests/*/AGENTS.md
