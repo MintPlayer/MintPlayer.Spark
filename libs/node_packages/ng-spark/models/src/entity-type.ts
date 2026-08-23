@@ -38,6 +38,13 @@ export interface EntityAttributeDefinition {
   referenceDisplayType?: EReferenceDisplayType;
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
+  /**
+   * When true, changing this attribute's value posts the in-progress object to
+   * `/spark/po/{objectTypeId}/refresh` and applies the reshaped result as an overlay.
+   * Schema-only by design — it never travels on a PersistentObjectAttribute, so a client
+   * cannot claim a trigger the model did not declare.
+   */
+  triggersRefresh?: boolean;
   /** For LookupReference attributes, specifies the lookup reference type name */
   lookupReferenceType?: string;
   /**

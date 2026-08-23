@@ -113,6 +113,20 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public bool? IsSortable { get; set; }
     /// <summary>
+    /// When true, changing this attribute's value asks the server to reshape the object: the client
+    /// posts the in-progress object to <c>/spark/po/{objectTypeId}/refresh</c> and the entity's
+    /// actions class receives <c>OnRefreshAsync</c>, which may toggle <see cref="IsRequired"/>,
+    /// <see cref="IsReadOnly"/> and <see cref="IsVisible"/>, rewrite <see cref="Rules"/>, replace an
+    /// attribute's selectable options, or set dependent values.
+    /// <para>
+    /// Hand-set in the model JSON and preserved across synchronize (like <see cref="EditMode"/> and
+    /// <see cref="ReferenceDisplayType"/>). Deliberately absent from
+    /// <see cref="PersistentObjectAttribute"/>: the flag never travels on the wire object, so a
+    /// client cannot claim a trigger the model did not declare.
+    /// </para>
+    /// </summary>
+    public bool? TriggersRefresh { get; set; }
+    /// <summary>
     /// For LookupReference attributes, specifies the lookup reference type name.
     /// Example: "CarStatus", "CarBrand"
     /// </summary>
