@@ -4,3 +4,4 @@ export * from './src/handlers.token';
 export * from './src/notification.service';
 export * from './src/toast-container.component';
 export * from './src/provide';
+export * from './src/query-refresh.service';

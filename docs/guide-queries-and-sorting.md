@@ -13,6 +13,11 @@ There are two types of queries:
 
 Collection queries return the full entity. Index-based queries return a projection type with only the columns needed for the list view.
 
+**Every query owns its URL.** An alias resolves to exactly one query, and a collision is a startup
+failure — including between a streaming and a non-streaming query, which are not allowed to share
+one. See [one query per URL](guide-aliases.md#one-query-per-url) for why, and for the
+transport-negotiation design that was rejected.
+
 ## Collection Queries
 
 A collection query is the simplest form. It queries all documents of a type directly from the RavenDB collection.

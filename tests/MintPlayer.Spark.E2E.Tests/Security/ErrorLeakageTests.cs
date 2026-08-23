@@ -41,17 +41,22 @@ public class ErrorLeakageTests
     {
         using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
-        // Client returns null on 404 — which is what the server returns for an unknown type —
-        // and we WANT null here, but we also want to assert the body isn't leaky. Use the
-        // alias overload with a bogus name so we can then inspect the 404 body by hitting the
-        // endpoint directly via the client's internal handling.
-        var po = await client.GetPersistentObjectAsync("this-is-not-a-real-type", "some-id");
-        po.Should().BeNull("unknown entity type must surface as 404 → null on the client side");
-        // The 404 body itself is consumed by the client and not re-exposed; instead we prove
-        // the secure shape by negative: if the server had leaked tokens, an ExecuteQueryAsync
-        // against an unknown id (which DOES throw on 404) would surface them via the exception.
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.ExecuteQueryAsync(Guid.NewGuid()));
-        AssertNoLeakyTokens(ex.ResponseBody, "ExecuteQuery on unknown id");
+        // This client is ANONYMOUS, and Fleet can authenticate — so an access endpoint answers
+        // 401, not 404. That is deliberate (#310): the status is a function of the CALLER, never
+        // of whether the resource exists, and 401 is what lets the client redirect to sign-in.
+        // A host with no way to sign in answers 404 to everyone instead; both are pinned by
+        // SparkDenialPredicateTests.
+        //
+        // The subject here is leakage, not the status: whichever refusal shape applies, the body
+        // must carry nothing internal. A bogus type name and a bogus query id exercise the two
+        // paths that could interpolate something they should not.
+        var unknownType = await Assert.ThrowsAsync<SparkClientException>(
+            () => client.GetPersistentObjectAsync("this-is-not-a-real-type", "some-id"));
+        AssertNoLeakyTokens(unknownType.ResponseBody, "Get with unknown entity type");
+
+        var unknownQuery = await Assert.ThrowsAsync<SparkClientException>(
+            () => client.ExecuteQueryAsync(Guid.NewGuid()));
+        AssertNoLeakyTokens(unknownQuery.ResponseBody, "ExecuteQuery on unknown id");
     }
 
     [Fact]

@@ -12,6 +12,8 @@ internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTy
 
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly ILogger<ListEntityTypes> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -19,8 +21,13 @@ internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTy
         var visible = new List<EntityTypeDefinition>(entityTypes.Count());
         foreach (var entityType in entityTypes)
         {
-            if (await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
-                visible.Add(entityType);
+            if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
+                continue;
+
+            // This is the load-bearing one for sub-query pruning: spark-po-detail reads the array
+            // from here and never calls getEntityType(id).
+            visible.Add(await SubQueryPruner.PruneAsync(
+                entityType, queryLoader, permissionService, logger, httpContext.RequestAborted));
         }
         return Results.Json(visible);
     }

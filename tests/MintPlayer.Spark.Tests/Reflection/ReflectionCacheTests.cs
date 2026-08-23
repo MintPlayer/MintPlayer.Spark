@@ -73,28 +73,65 @@ public class ReflectionCacheTests
     private sealed class GetOrAddTypeKeyedFixture;
 
     [Fact]
-    public async Task GetOrAdd_factory_runs_exactly_once_under_concurrent_access()
+    public void GetOrAdd_factory_runs_exactly_once_under_concurrent_access()
     {
         // The Lazy<T>+ExecutionAndPublication contract is the foundation of the cache's
-        // promise. Verify directly: 64 threads racing to read the same key, factory body
+        // promise. Verify directly: N threads racing to read the same key, factory body
         // counts its invocations, must be exactly 1.
+        //
+        // ⚠️ DEDICATED THREADS, NOT Task.Run. A Barrier only releases once every participant is
+        // blocked inside SignalAndWait, so this needs `Racers` threads alive AT THE SAME TIME.
+        // Task.Run puts them on the thread pool, which starts near the core count and injects
+        // further threads at roughly one or two per second — so 64 pool-bound participants spent
+        // ~47 SECONDS waiting for thread injection in order to exercise a 20ms sleep. That was the
+        // single slowest test in the suite, 11% of its total CPU time, and none of it was
+        // measuring the cache. `new Thread` is created on demand and is not subject to that
+        // heuristic.
+        const int Racers = 32;
+
         var key = $"concurrency:{Guid.NewGuid()}";
         var factoryRuns = 0;
-        var barrier = new Barrier(64);
+        using var barrier = new Barrier(Racers);
+        var results = new int[Racers];
+        var failures = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
 
-        var tasks = Enumerable.Range(0, 64).Select(_ => Task.Run(() =>
+        var threads = Enumerable.Range(0, Racers).Select(i => new Thread(() =>
         {
-            barrier.SignalAndWait();
-            return ReflectionCache.GetOrAdd<OwnerConcurrency, int>(key, () =>
+            try
             {
-                Interlocked.Increment(ref factoryRuns);
-                Thread.Sleep(20); // widen the race window
-                return 7;
-            });
-        })).ToArray();
+                barrier.SignalAndWait();
+                results[i] = ReflectionCache.GetOrAdd<OwnerConcurrency, int>(key, () =>
+                {
+                    Interlocked.Increment(ref factoryRuns);
+                    Thread.Sleep(20); // widen the race window
+                    return 7;
+                });
+            }
+            catch (Exception ex)
+            {
+                // A racer that throws must fail the test, not vanish. Rethrowing here would kill
+                // the process, and an unobserved exception on a dedicated thread has no Task to
+                // surface it.
+                failures.Enqueue(ex);
+            }
+        })
+        {
+            IsBackground = true,   // a wedged racer must not keep the test host alive
+            Name = $"reflection-cache-racer-{i}",
+        }).ToArray();
 
-        var results = await Task.WhenAll(tasks);
+        foreach (var thread in threads)
+            thread.Start();
 
+        foreach (var thread in threads)
+        {
+            // Bounded join: if the contract were broken such that a racer blocked forever, this
+            // fails with a diagnosis instead of hanging the run until the CI job times out.
+            thread.Join(TimeSpan.FromSeconds(30)).Should().BeTrue(
+                "every racer must complete — a thread still blocked here means GetOrAdd deadlocked");
+        }
+
+        failures.Should().BeEmpty("no racer may fault");
         factoryRuns.Should().Be(1, "Lazy<T>(ExecutionAndPublication) guarantees single execution");
         results.Should().AllBeEquivalentTo(7);
     }

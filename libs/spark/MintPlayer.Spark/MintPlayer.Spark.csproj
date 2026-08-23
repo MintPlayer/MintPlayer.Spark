@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>10.0.0-preview.60</Version>
+		<Version>10.0.0-preview.62</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -31,6 +31,9 @@
 		buildTransitive/ makes this flow to transitive consumers as well.
 		-->
 		<None Include="Targets\spark.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+
+		<!-- The framework specification. spark.targets copies it into each consuming project on build. -->
+		<None Include="AGENTS.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>

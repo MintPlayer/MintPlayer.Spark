@@ -26,44 +26,19 @@ namespace MintPlayer.Spark.Testing;
 ///   2. <c>raven-license.log</c> at the repository root (local development)
 ///
 /// If neither is present, tests that derive from this class fail at
-/// <see cref="InitializeAsync"/> with a clear message — see <see cref="LicenseHelper"/>. A suite that
-/// needs to tolerate that (fork pull requests get no organization secrets) overrides
+/// <see cref="InitializeAsync"/> with a message naming both sources. A suite that needs to
+/// tolerate that (fork pull requests get no organization secrets) overrides
 /// <see cref="RequireLicense"/>.
+/// <para>
+/// The loader itself is internal — this is deliberately not an extension point, and a consumer
+/// following a reference to it would find nothing.
+/// </para>
 /// </summary>
 public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
 {
-    static SparkTestDriver()
-    {
-        // Loud on an invalid licence, tolerant of an absent one — the two halves are separable
-        // because they are triggered by different conditions.
-        //
-        // With a licence present the server validates it and refuses to start on a bad one, which is
-        // what we want: ThrowOnInvalidOrMissingLicense is not consulted at all in that case. Setting
-        // the flag unconditionally instead would turn an *invalid* licence from a startup error into
-        // a silent downgrade to restricted mode, surfacing much later as an obscure "feature not
-        // available in this licence" inside whichever test first touches ETL, encryption or
-        // compression.
-        //
-        // With no licence at all there is nothing to validate, so refusing to start buys no
-        // diagnostic — it just makes every RavenDB test fail for a contributor who cannot have one.
-        // Whether that is tolerable is the fixture's call, not the server's: RequireLicense decides,
-        // at InitializeAsync. This has to be split that way because ConfigureServer is static and
-        // runs once per process before any instance exists, so an instance member cannot reach it.
-        var license = LicenseHelper.LoadOrNull();
-        ConfigureServer(new TestServerOptions
-        {
-            Licensing = license is not null
-                ? new ServerOptions.LicensingOptions
-                {
-                    License = license,
-                    EulaAccepted = true,
-                }
-                : new ServerOptions.LicensingOptions
-                {
-                    ThrowOnInvalidOrMissingLicense = false,
-                },
-        });
-    }
+    // Configuring the embedded server is shared with SparkSharedDatabase and must happen exactly
+    // once per process, so it lives in SparkEmbeddedServer's type initialiser rather than here.
+    static SparkTestDriver() => SparkEmbeddedServer.EnsureConfigured();
 
     /// <summary>
     /// Whether a missing RavenDB licence fails the fixture. Defaults to <see langword="true"/>.

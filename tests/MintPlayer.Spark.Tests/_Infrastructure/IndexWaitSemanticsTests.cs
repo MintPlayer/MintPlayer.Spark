@@ -33,14 +33,19 @@ public class IndexWaitSemanticsTests : SparkTestDriver
 
         await SeedAsync(session => session.StoreAsync(new Thing { Name = "alpha" }));
 
-        var sw = Stopwatch.StartNew();
-        await Store.WaitForIndexingAsync();
-        sw.Stop();
-
         // All() over an empty sequence is true, so there is nothing to block on. Correct, but not
         // the guarantee the name suggests — which is exactly why expectedIndexes exists.
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1),
-            "with no indexes the staleness condition is vacuously satisfied");
+        //
+        // Asserted as "settles on the first check" rather than "returned within a second". The
+        // wall-clock form was flaky under the full suite for a reason that had nothing to do with
+        // the behaviour: the wait makes one HTTP round-trip to fetch statistics, and hundreds of
+        // per-test databases contending for the same RavenDB can push a single round-trip past any
+        // fixed budget. A timeout far too short to permit a second poll (they are 100ms apart)
+        // distinguishes vacuous from blocking without measuring anything.
+        var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(1));
+
+        await act.Should().NotThrowAsync(
+            "with no indexes the staleness condition is vacuously satisfied, so the first check settles");
 
         (await Store.Maintenance.SendAsync(new GetStatisticsOperation())).Indexes
             .Should().BeEmpty("neither the seed nor the wait creates an index");
@@ -93,9 +98,13 @@ public class IndexWaitSemanticsTests : SparkTestDriver
 
             var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(300));
 
-            var thrown = await act.Should().ThrowAsync<TimeoutException>()
-                .Where(e => !(e is RavenIndexDeploymentException),
-                    "a healthy-but-stale index is a timeout, not a deployment failure");
+            // TimeoutException is the whole assertion: RavenIndexDeploymentException derives from
+            // Exception, not from TimeoutException, so asserting the type already excludes it.
+            // An earlier `.Where(e => !(e is RavenIndexDeploymentException))` said the same thing
+            // a second time and could never be false — the compiler flagged it (CS0184), which is
+            // the tell for an assertion that cannot fail.
+            var thrown = await act.Should().ThrowAsync<TimeoutException>(
+                "a healthy-but-stale index is a timeout, not a deployment failure");
 
             thrown.Which.Message.Should().Contain("Auto/Things",
                 "auto-indexes are held to the same staleness bar as declared ones — a stale "

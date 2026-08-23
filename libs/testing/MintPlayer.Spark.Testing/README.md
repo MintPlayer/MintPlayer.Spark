@@ -162,12 +162,16 @@ Boots a real Spark middleware pipeline over `TestServer`, against a store you su
 ```csharp
 public class CarEndpointTests : SparkTestDriver
 {
+    // The route takes the entity type's ID, not its name — so the fixture declares the id and
+    // builds its model from it.
+    private static readonly Guid CarTypeId = Guid.Parse("11111111-2222-3333-4444-555555555555");
+
     [Fact]
     public async Task Create_then_get_round_trips()
     {
         await using var factory = new SparkEndpointFactory<FleetContext>(
             testStore: Store,
-            models: FleetModels.All,
+            models: [FleetModels.Car(CarTypeId)],
             configureServices: services =>
             {
                 // Optional: register custom Actions, swap IAccessControl for authz tests, etc.
@@ -176,16 +180,38 @@ public class CarEndpointTests : SparkTestDriver
         // Antiforgery-aware client: warms up to mint the XSRF token, then attaches it to writes.
         using var client = await factory.CreateAuthorizedClientAsync();
 
-        var create = await client.PostJsonAsync("/spark/po/Car", new { Brand = "Tesla" });
+        // Note the envelope. The endpoint reads a PersistentObjectRequest, so the entity goes
+        // under `persistentObject` with its attributes as name/value pairs — posting a bare
+        // `new { Brand = "Tesla" }` deserializes to a request with no persistent object and fails.
+        var create = await client.PostJsonAsync($"/spark/po/{CarTypeId}", new
+        {
+            persistentObject = new
+            {
+                name = "Car",
+                objectTypeId = CarTypeId,
+                attributes = new[]
+                {
+                    new { name = "Brand", value = (object)"Tesla" },
+                },
+            },
+        });
         create.EnsureSuccessStatusCode();
 
-        var list = await client.GetAsync("/spark/po/Car");
+        var list = await client.GetAsync($"/spark/po/{CarTypeId}");
         list.EnsureSuccessStatusCode();
     }
 }
 ```
 
-> By default the factory opts into `AllowAnonymousAccess()` so endpoint logic can be tested under an "everyone-can" baseline (the framework default is deny-all). Tests that exercise authorization should register their own `IAccessControl` via `configureServices`.
+> By default the factory writes a permissive `App_Data/security.json` — a `*/*` grant to both
+> well-known roles — so endpoint logic can be tested under an "everyone-can" baseline. It is a real
+> file rather than a switch, so the default exercises the same evaluation path production does, and
+> after `Start()` the factory asserts the host loaded it.
+>
+> A test that IS about authorization passes `security:` — `SparkTestSecurity.Empty`,
+> `.Permissive.Without("Secret")`, `.Granting(…)`, `.FromFile(…)`. For the two things a grant list
+> cannot express — recording what was asked, and deciding by predicate — swap the service instead
+> with `services.UseSparkTestAccessControl(SparkTestAccessControl.DenyAll())`.
 
 `TestServer`'s `HttpClient` does not manage cookies automatically, which is why mutating requests need the antiforgery cookie + token threaded through explicitly. `SparkTestClient` (via `CreateAuthorizedClientAsync`) does this for you; if you need the raw values, call `factory.MintAntiforgeryAsync()`.
 

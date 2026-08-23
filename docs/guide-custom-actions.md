@@ -116,15 +116,37 @@ Create `App_Data/customActions.json` in your application. Each key is the action
 
 ### Selection Rules
 
-The `selectionRule` controls when the action button is enabled in query list views:
+`selectionRule` is a **cardinality expression over the number of selected rows**. It disables the
+action's button while unsatisfied, and — since `10.0.0-preview.61` — is **enforced on the server**,
+which answers `400` to a request that violates it.
+
+`X` is the count. Whitespace is insignificant, terms split on `X` are combined with AND (so a range
+is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 
 | Rule | Meaning |
 |---|---|
-| `"=0"` | No selection required (action applies to the entire list) |
-| `"=1"` | Exactly one item must be selected |
-| `">0"` | One or more items must be selected |
+| omitted / `""` | No requirement |
+| `"=0"` | Exactly zero — the action is **disabled once anything is selected** |
+| `"=1"` | Exactly one |
+| `">0"` / `">=1"` | One or more |
+| `"<=5"` | At most five |
+| `"!=0"` | Any non-empty selection |
+| `"1<X<5"` | Between two and four |
 
-When omitted, the action has no selection requirement.
+Operators are `<=`, `>=`, `<`, `>`, `!=`, `=`.
+
+**A malformed rule is a startup error, not a silent permit.** `"1-5"`, `"*"` and `"=abc"` are all
+rejected when the configuration loads. (Vidyano, where this syntax comes from, treats anything
+unparseable as "always true" — safe for a greyed-out button, wrong for a server-side gate, where it
+would let any selection through.)
+
+**The rule applies to the query path only.** An action invoked from a detail page names a parent
+rather than a selection, so its count is zero by definition; enforcing there would break every
+`showedOn: "both"` action. `Demo/Fleet`'s `CarCopy` is exactly that shape.
+
+⚠️ **`selectionRule` is not an authorization boundary.** It is input validation and a UI affordance.
+The gate is the action's grant, enforced regardless of which query the caller clicked from — a
+caller can always POST directly.
 
 ### File Watching
 
@@ -159,7 +181,14 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
 
 In this example, both Administrators and Fleet managers can execute the `CarCopy` action on `Car` entities. Other groups are denied by default.
 
-If no authorization is configured (no `security.json` or no matching entries), the action is available to all users.
+If no authorization is configured, the default is **deny**, not allow — `PermissionService` refuses
+everything until `security.json` grants it. A custom action's resource is `{ActionName}/{Type}`.
+
+**A custom action that names rows also requires `Read/{Type}`.** Every parent and selected item is
+re-loaded through the row-gated read path before the action runs, and that load applies the
+type-level `Read` right first. So granting `CarCopy/Car` alone is not sufficient for an action that
+receives a parent or a selection — the caller needs `Read/Car` too. An action that names no rows (a
+pure command) has no such requirement.
 
 ## REST API
 

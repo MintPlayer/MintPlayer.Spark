@@ -99,9 +99,6 @@ public class SparkFullProducer : Producer
                 if (hasMigrations)
                     writer.WriteLine($"global::{RootNamespace}.SparkMigrationsBuilderExtensions.AddMigrations(spark);");
 
-                if (flags.HasAuthorization)
-                    writer.WriteLine("global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthorization(spark, options.Authorization);");
-
                 if (userType != null)
                     writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Authentication, options.Identity, options.IdentityProviders);");
 

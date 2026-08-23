@@ -21,7 +21,16 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)
         {
-            return Results.Json(new { error = $"Entity type '{objectTypeId}' not found" }, statusCode: StatusCodes.Status404NotFound);
+            // The empty list, which is exactly what a known-but-denied type gets from the
+            // per-action filter below. This is a catalogue endpoint — the shell asks it for every
+            // type it renders — so refusing outright would bounce an anonymous visitor to sign-in
+            // merely for opening a page.
+            //
+            // It must be the empty list and NOT SparkDenial: a refusal here answers 404 (or 401)
+            // while a denied type answers 200, and the difference is precisely the existence
+            // oracle M-3 closes. An earlier revision called SparkDenial with a comment claiming
+            // the two shapes matched. They did not.
+            return Results.Json(Array.Empty<object>());
         }
 
         var config = configLoader.GetConfiguration();

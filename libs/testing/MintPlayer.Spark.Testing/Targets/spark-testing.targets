@@ -1,0 +1,43 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  Target: CopySparkTestingAgentsGuide
+
+	  Copies the package's AGENTS.md into the consuming test project on every build, so a coding
+	  agent working in that repo reads the same testing spec the package ships — without anyone
+	  having to remember to sync it by hand.
+
+	  Why a build target rather than documentation on a website: the guide is only useful at the
+	  moment someone is writing a test, and an agent reads the files in front of it. A copy that
+	  drifts is worse than no copy, so it is refreshed from the package on every build.
+
+	  SkipUnchangedFiles keeps this off the incremental-build critical path — after the first
+	  build it is a timestamp comparison and nothing else. The Inputs/Outputs pair lets MSBuild
+	  skip the target entirely when the source has not moved.
+
+	  Condition notes:
+	    - $(EnableSparkTestingAgentsGuide) lets a consumer opt out with a single property.
+	    - The file must exist; when the package is consumed by ProjectReference in this repo the
+	      path resolves into the source tree rather than the NuGet cache, which is fine.
+	-->
+	<PropertyGroup>
+		<EnableSparkTestingAgentsGuide Condition=" '$(EnableSparkTestingAgentsGuide)' == '' ">true</EnableSparkTestingAgentsGuide>
+		<SparkTestingAgentsGuideSource Condition=" '$(SparkTestingAgentsGuideSource)' == '' ">$(MSBuildThisFileDirectory)..\AGENTS.md</SparkTestingAgentsGuideSource>
+		<SparkTestingAgentsGuideTarget Condition=" '$(SparkTestingAgentsGuideTarget)' == '' ">$(MSBuildProjectDirectory)\AGENTS.md</SparkTestingAgentsGuideTarget>
+	</PropertyGroup>
+
+	<Target Name="CopySparkTestingAgentsGuide"
+	        BeforeTargets="BeforeBuild"
+	        Inputs="$(SparkTestingAgentsGuideSource)"
+	        Outputs="$(SparkTestingAgentsGuideTarget)"
+	        Condition=" '$(EnableSparkTestingAgentsGuide)' == 'true' And Exists('$(SparkTestingAgentsGuideSource)') ">
+
+		<Copy SourceFiles="$(SparkTestingAgentsGuideSource)"
+		      DestinationFiles="$(SparkTestingAgentsGuideTarget)"
+		      SkipUnchangedFiles="true" />
+
+		<Message Importance="low"
+		         Text="[MintPlayer.Spark.Testing] Synced AGENTS.md into $(MSBuildProjectName)." />
+	</Target>
+
+</Project>

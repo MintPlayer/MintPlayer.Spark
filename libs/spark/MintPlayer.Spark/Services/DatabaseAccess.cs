@@ -24,6 +24,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly ICollectionGuard collectionGuard;
+    [Inject] private readonly ISparkTypeResolver typeResolver;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -84,7 +85,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
-        var entityType = ResolveType(clrType);
+        var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return null;
 
         // Use actions for loading
@@ -142,7 +143,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
-        var entityType = ResolveType(clrType);
+        var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return [];
 
         // Declared binding (issue #279): the entity file's queryType/indexName — written by the
@@ -154,7 +155,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (!string.IsNullOrEmpty(entityTypeDefinition.IndexName) && !string.IsNullOrEmpty(entityTypeDefinition.QueryType))
         {
-            queryType = ResolveType(entityTypeDefinition.QueryType)
+            queryType = typeResolver.Resolve(entityTypeDefinition.QueryType)
                 ?? throw new InvalidOperationException(
                     $"Entity '{entityTypeDefinition.Name}' declares projection '{entityTypeDefinition.QueryType}' " +
                     $"(index '{entityTypeDefinition.IndexName}'), but the type does not resolve. Re-run " +
@@ -225,7 +226,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var entityType = ResolveType(entityTypeDefinition.ClrType)
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
         // Natural-id create-collision (security sweep H2): for an IHasNaturalId type the document
@@ -318,7 +319,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await permissionService.EnsureAuthorizedAsync("Delete", entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
-        var entityType = ResolveType(clrType);
+        var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return;
 
         // Row-level Delete gate (R2-H2): same shape as the Edit gate in
@@ -362,25 +363,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await task;
 
         return task.GetCompletedTaskResult();
-    }
-
-    private Type? ResolveType(string clrType)
-    {
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"resolveType|{clrType}",
-            () =>
-            {
-                var type = Type.GetType(clrType);
-                if (type != null) return type;
-
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    type = assembly.GetType(clrType);
-                    if (type != null) return type;
-                }
-
-                return null;
-            });
     }
 
     /// <summary>

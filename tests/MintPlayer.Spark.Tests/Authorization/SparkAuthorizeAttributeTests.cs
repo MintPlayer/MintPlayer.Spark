@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
 using MintPlayer.Spark.Abstractions.Authorization;
-using MintPlayer.Spark.Authorization.Services;
+using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Tests.Authorization;
 

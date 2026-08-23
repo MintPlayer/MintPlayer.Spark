@@ -13,6 +13,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
@@ -50,6 +51,7 @@ export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly queryRefresh = inject(SparkQueryRefreshService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
@@ -248,6 +250,13 @@ export class SparkPoDetailComponent {
       if (action.refreshOnCompleted) {
         const item = await this.sparkService.get(this.type, this.id);
         this.item.set(item);
+
+        // The sub-query grids below do not depend on item(), so re-fetching the PO left them
+        // showing pre-action rows -- the action appeared to have done nothing to the very
+        // lists it changed.
+        for (const queryAlias of (this.entityType()?.queries ?? []) as string[]) {
+          this.queryRefresh.request(queryAlias);
+        }
       }
     } catch (e) {
       const err = e as HttpErrorResponse;

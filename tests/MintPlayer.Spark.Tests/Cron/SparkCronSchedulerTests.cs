@@ -230,10 +230,19 @@ public class SparkCronSchedulerTests : SparkTestDriver
         // and then plateaus (further occurrences are shed) rather than growing unbounded.
         try
         {
+            // Deliberately generous. Reaching the cap needs MaxConcurrentRunsPerJob (10) separate
+            // once-per-second occurrences, each claimed through a RavenDB compare-exchange — so
+            // ~10s at best, and longer whenever a claim is slow enough that a second's occurrence
+            // is missed. Under the full suite, which runs hundreds of per-test databases against
+            // one server, 30s was only a 3x margin and the wait timed out.
+            //
+            // UntilAsync polls and returns the instant the condition holds, so the timeout is a
+            // FAILURE bound, not a success bound: raising it costs a passing run nothing and only
+            // changes how long a genuinely broken cap takes to report.
             await AsyncWait.UntilAsync(
                 () => tracker.Max >= SparkCronScheduler.MaxConcurrentRunsPerJob,
                 "concurrent occurrences to accumulate up to the cap",
-                TimeSpan.FromSeconds(30));
+                TimeSpan.FromMinutes(2));
         }
         finally
         {

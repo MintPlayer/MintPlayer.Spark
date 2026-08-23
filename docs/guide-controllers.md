@@ -13,7 +13,6 @@ This guide is about closing that gap. It ships in `MintPlayer.Spark.Controllers`
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MyContext>();
-    spark.AddAuthorization();
 
     spark.AddControllers();     // MVC services
     spark.UseControllers();     // mount them through Spark
@@ -116,7 +115,7 @@ right:
 ### What does *not* work
 
 - `[Authorize(Policy = "…")]` **throws at request time**. `UseSpark()` registers a bare
-  `AddAuthorization()` with no policies.
+  ASP.NET Core's own `AddAuthorization()` with no policies.
 - `[Authorize(Roles = "…")]` reads `ClaimTypes.Role`, i.e. ASP.NET Identity roles — **not** Spark
   groups. A group carried as a `group` claim (what the identity provider, the E2E fixtures and module
   certificates all use) is invisible to it. This is worth stating plainly because it is inconsistent:

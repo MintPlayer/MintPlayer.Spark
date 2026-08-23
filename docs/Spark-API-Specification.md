@@ -477,7 +477,6 @@ Detail-type attributes (`dataType == "AsDetail"`) carry nested `PersistentObject
   "sortColumns": SortColumn[],
   "renderMode": string,                   // SparkQueryRenderMode enum
   "indexName": string?,
-  "useProjection": bool,
   "entityType": string?,                  // result entity type name
   "isStreamingQuery": bool
 }

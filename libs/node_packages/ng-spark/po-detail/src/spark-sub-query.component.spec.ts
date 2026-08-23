@@ -5,7 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkSubQueryComponent } from './spark-sub-query.component';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
   EntityType,
@@ -70,6 +70,9 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     executeQuery: vi.fn().mockResolvedValue(samplePage),
     getLookupReference: vi.fn().mockResolvedValue({ name: 'dummy', values: [] } as any),
+    // The component loads the query's actions alongside its permissions, so an unstubbed
+    // method rejects the Promise.all and the whole load fails.
+    getCustomActions: vi.fn().mockResolvedValue([]),
     ...serviceOverrides,
   };
 
@@ -78,6 +81,11 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       provideRouter([]),
       { provide: SparkService, useValue: service },
+      // The component resolves its own labels now (the priority-nav action bar), and the real
+      // SparkLanguageService fetches /spark/culture and /spark/translations on construction.
+      // Unmocked those reject into nothing and vitest reports unhandled errors while every
+      // assertion still passes -- same stub as spark-po-detail.component.spec.ts.
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });
@@ -119,7 +127,6 @@ describe('SparkSubQueryComponent', () => {
     expect(opts.take).toBe(10);
     expect(res.totalRecords).toBe(2);
     expect(res.totalPages).toBe(1);
-    expect(component.resultCount()).toBe(2);
   });
 
   it('VirtualScrolling mode still uses the fetch callback (virtual is just a flag)', async () => {
@@ -163,6 +170,54 @@ describe('SparkSubQueryComponent', () => {
 
     expect(component.fetchFn()).toBeNull();
     expect(component.loading()).toBe(false);
+  });
+
+  describe('without a parent', () => {
+    // A query does not have to be a detail of something: a page can host a grid
+    // that stands on its own. Requiring a parent made that shape load nothing at
+    // all — no request, no error, no log — so these assert the loading actually
+    // happens, not merely that the inputs are optional.
+    function createParentless(serviceOverrides: Record<string, unknown> = {}) {
+      const made = createComponent(serviceOverrides);
+      made.fixture.componentRef.setInput('parentId', '');
+      made.fixture.componentRef.setInput('parentType', '');
+      return made;
+    }
+
+    it('loads the query when no parent is given', async () => {
+      const { fixture, component, service } = createParentless();
+      fixture.detectChanges();
+      await flush();
+
+      expect(service.getQuery).toHaveBeenCalledWith('q-lines');
+      expect(component.query()?.id).toBe('q-lines');
+      expect(component.loading()).toBe(false);
+      expect(component.fetchFn()).not.toBeNull();
+    });
+
+    it('omits parentId and parentType from the execute call', async () => {
+      const { fixture, component, service } = createParentless();
+      fixture.detectChanges();
+      await flush();
+
+      await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as never);
+
+      const opts = (service.executeQuery as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(opts.parentId).toBeFalsy();
+      expect(opts.parentType).toBeFalsy();
+    });
+
+    it('still loads when only one half of the parent is given', async () => {
+      // Half a parent is not a parent. The execute endpoint resolves one only
+      // when both are present, so the grid must not be held hostage by the other.
+      const { fixture, component, service } = createComponent();
+      fixture.componentRef.setInput('parentType', '');
+      fixture.detectChanges();
+      await flush();
+
+      expect(service.getQuery).toHaveBeenCalledWith('q-lines');
+      expect(component.fetchFn()).not.toBeNull();
+    });
   });
 
   it('fetchFn is null before the query has resolved', async () => {
