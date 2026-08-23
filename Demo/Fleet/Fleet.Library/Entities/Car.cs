@@ -37,6 +37,19 @@ public class Car
     public string? Brand { get; set; }
 
     /// <summary>
+    /// Police report reference, demanded once the vehicle is reported stolen.
+    /// <para>
+    /// Hidden and optional in the model; <c>CarActions.OnRefreshAsync</c> reveals it and makes it
+    /// required when <see cref="Status"/> becomes <c>Stolen</c>. That is the whole point of the
+    /// sample — the model declares the resting shape, the hook declares how the shape responds.
+    /// </para>
+    /// <see cref="IgnoreForIndexAttribute"/> because no grid filters or sorts on it, matching
+    /// <see cref="Manager"/> and <see cref="CreatedBy"/>.
+    /// </summary>
+    [IgnoreForIndex]
+    public string? PoliceReportNumber { get; set; }
+
+    /// <summary>
     /// Id of the Person (replicated from HR) acting as fleet manager for this vehicle.
     /// Demo field — exercises the inverse-path reference round-trip end-to-end: client
     /// sets the id, round-trip re-fetch resolves the breadcrumb via the Person
