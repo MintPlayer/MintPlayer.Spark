@@ -26,6 +26,17 @@
       </bs-accordion-tab>
       }
     </bs-accordion>
+
+    <!-- Hand-written, unlike everything above it: the menu is built from the server's program
+         units, and this page demonstrates a CLIENT-side API (the spark-query-card slots) that
+         nothing in the model describes. -->
+    <a routerLink="/query-slots"
+       routerLinkActive="active"
+       (click)="onMenuItemClick()"
+       class="d-block px-3 py-2 text-light text-decoration-none nav-link border-top mt-2 pt-3">
+      <spark-icon name="palette" />
+      <span class="ms-2">Query card slots</span>
+    </a>
   </nav>
 
   <main class="p-4">

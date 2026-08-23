@@ -1,0 +1,54 @@
+<div class="container py-4">
+  <h2 class="mb-3">Query card slots</h2>
+
+  @if (lastAction(); as action) {
+    <bs-alert [type]="colors.info" class="mb-3">Slot action fired: <strong>{{ action }}</strong></bs-alert>
+  }
+
+  <!-- 1. No slots at all. This is what an auto-rendered sub-query on a PO detail page gets,
+          and the whole point of the design: the card must look right with no host cooperation.
+          Expect the query's own description as the caption and the server's custom actions. -->
+  <h5 class="mt-4">1 — no slots (defaults)</h5>
+  <spark-query-card [queryId]="stocksQuery" />
+
+  <!-- 2. All three slots supplied on one card. -->
+  <h5 class="mt-4">2 — icon, caption and actions overridden</h5>
+  <spark-query-card [queryId]="stocksQuery">
+    <spark-icon *sparkQueryIcon name="graph-up-arrow" />
+
+    <ng-container *sparkQueryCaption>
+      Portfolio <span class="text-muted">— slotted caption</span>
+    </ng-container>
+
+    <!-- The context carries the server's actions, so a host adding a button does not silently
+         drop the ones the type declares (those are what carry selectionRule + the permission
+         filter). Rendering only our own button here is the deliberate "replace" case. -->
+    <ng-container *sparkQueryActions="let actions">
+      <button type="button" class="btn btn-sm btn-outline-primary"
+              (click)="note('custom export — ' + actions.length + ' server action(s) available')">
+        Export
+      </button>
+    </ng-container>
+  </spark-query-card>
+
+  <!-- 3. Targeting. Both cards are inside the same host, and each slot names ONE query, so the
+          untargeted catch-all must not decorate both. `all-stocks` is an alias, `GetCars` is
+          addressed by id — both forms are matched, case-insensitively. -->
+  <h5 class="mt-4">3 — two cards, targeted slots</h5>
+  <bs-grid>
+    <div bsRow>
+      <div [md]="6">
+        <spark-query-card [queryId]="stocksQuery">
+          <spark-icon *sparkQueryIcon="stocksQuery" name="cash-coin" />
+          <ng-container *sparkQueryCaption="stocksQuery">Targeted: stocks</ng-container>
+        </spark-query-card>
+      </div>
+      <div [md]="6">
+        <spark-query-card [queryId]="carsQuery">
+          <spark-icon *sparkQueryIcon="carsQuery" name="car-front" />
+          <ng-container *sparkQueryCaption="carsQuery">Targeted: cars</ng-container>
+        </spark-query-card>
+      </div>
+    </div>
+  </bs-grid>
+</div>

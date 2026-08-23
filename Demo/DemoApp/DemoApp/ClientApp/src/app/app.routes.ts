@@ -9,6 +9,7 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
+      { path: 'query-slots', loadComponent: () => import('./pages/query-slots/query-slots.component') },
       ...sparkRoutes()
     ]
   }
