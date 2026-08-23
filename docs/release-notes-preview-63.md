@@ -181,3 +181,21 @@ identically.
 
 No app or client change is needed. If you have worked around this by forcing HTTP/1.1 on a Spark
 host, that workaround can be removed.
+
+## Requires `@mintplayer/ng-bootstrap` 22.13.0 or newer
+
+`ng-spark`'s peer range moves from `^22.4.0` to `^22.13.0`. The package version itself is a
+minor bump (`22.3.0` -> `22.4.0`) as usual: the major tracks the Angular version, not our API.
+
+`bs-input-group` became a wrapper over the `<mp-input-group>` web component in ng-bootstrap
+22.13.0. Because the group now renders inside a shadow root, an addon is styled through
+`::slotted(.addon)` and Bootstrap's `.input-group-text` no longer reaches it. Spark's search
+boxes and both picker modals use the new contract, so on an older ng-bootstrap their magnifier
+would render as a bare, unstyled span.
+
+The old floor of `^22.4.0` became wrong the moment those templates changed. Nothing in
+type-checking or the test suite can catch a CSS selector that stops matching, so the peer range
+is the only place this constraint can be stated.
+
+`@mintplayer/ng-spark-auth` is unaffected -- it uses neither the input group nor a badge -- and
+keeps both its `^22.2.0` floor and its `22.3.0` version.
