@@ -482,15 +482,30 @@ that includes a camelCase producer, because missing any one of them fails silent
 **Full suite:** `MintPlayer.Spark.Tests` **1745 passed**, `MintPlayer.Spark.Client.Tests` **38
 passed**, vitest **309 passed** (25 files). Whole solution builds clean.
 
-⚠️ **`MintPlayer.Spark.E2E.Tests` could not be run** — all 78 fail in ~1s inside fixture startup,
-before any test body, on `npm run build`. Cause is a stray
-`Demo/Fleet/Fleet/ClientApp/node_modules` (and one under `Demo/HR/HR/ClientApp/`) dated
-**2026-06-07**, the Angular 22 upgrade session: it contains only `@angular` and `@mintplayer`, has no
-`npm`, and shadows the root `node_modules` the workspace convention requires. Pre-existing and
-unrelated to this change — nothing in this diff touches `node_modules` — but it means **A26 is not
-closed**.
+`MintPlayer.Spark.E2E.Tests` **82 passed** (78 existing + 4 new), after fixing a pre-existing harness
+bug described below. **A26 is closed.**
 
-**Not closed by this PR:** A26's browser run of the Fleet sample. Fleet is served through
-`UseAngularCliServer`, so it needs `dotnet run` on the host and a manual drive; it is also what the
-E2E suite would have automated. This is the second PR in a row where a browser check is outstanding,
-and it should be done before merge rather than deferred again.
+### The E2E harness could not launch npm on Windows
+
+All 78 E2E tests failed in ~1s inside fixture startup, before any test body, with a
+`MODULE_NOT_FOUND` for `ClientApp
+ode_modules
+pmin
+pm-prefix.js` — a path that reads like a
+broken npm install and sent the first investigation after two empty stray `ClientApp/node_modules`
+directories left over from the Angular 22 upgrade. Removing them changed nothing.
+
+The actual cause is in Spark's own harness. `FleetTestHost.EnsureAngularBundleAsync` passed the bare
+name `"npm.cmd"` to `ProcessStartInfo` with `WorkingDirectory = ClientApp`; cmd.exe then has a
+relative `%0`, so `%~dp0` resolves to the working directory and npm.cmd hunts for its own internals
+under the ClientApp. Fixed by routing through `cmd /c npm run build`.
+
+Worth recording because the obvious suspect was wrong twice over: it is not the stray directories,
+and it is **not** `MintPlayer.AspNetCore.SpaServices`, which was checked directly and turns out to be
+the reference implementation that gets this right — its `NodeScriptRunner` already uses `cmd /c` and
+carries a comment explaining why. Spark's harness is now consistent with it.
+
+**Not closed by this PR:** a human driving the Fleet form in a browser. The E2E tests exercise the
+endpoint against the real model, the real `CarActions` and the real security stack, but they assert
+over HTTP responses rather than rendered DOM, so the client-side overlay, the blur-vs-immediate
+scheduling and the focus behaviour are covered only by vitest.
