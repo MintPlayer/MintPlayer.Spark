@@ -202,11 +202,65 @@ Both found while verifying the above. Neither is large, and the one-PR rule appl
    `headerRendererOptions` / `rowsNavigable`; and `guide-custom-actions.md` must keep master's
    post-#310 wording. Verified: neither currently does — hold the line, don't reintroduce.
 
+## 7b. Found after the PR opened
+
+Same surface, so it ships here rather than as follow-ups.
+
+### The cell was written three times, not two
+
+`spark-grid-cell` was not in the original plan because the count was wrong. The third copy —
+the AsDetail table on the PO detail page — had already drifted: a `boolean` rendered the text
+`"true"` there and a checkbox in a grid, a `color` rendered its hex rather than a swatch, and a
+custom renderer went through a second hand-copied lookup. The same column said different things
+depending on which table it appeared in. This is the identical failure mode that motivated
+extracting `@mintplayer/ng-spark/grid` in #311, one level further down.
+
+The cell owns **presentation only**. Value resolution stays with the caller because the row
+models are genuinely different — a query row is a `PersistentObject`, an AsDetail row is a plain
+dictionary with no id and no attribute list — and unifying them would put a second row-access
+path inside the cell for no gain.
+
+### A breadcrumb the client cannot resolve, ever
+
+The edit form rendered `(click to edit)` for an address the detail page rendered in full.
+
+HR's `Address` declares `[Breadcrumb, IgnoreProperty] string Crumb`, and the model JSON renders
+that as `"breadcrumb": "{Crumb}"`. The pairing is deliberate and **explicitly sanctioned** —
+`ModelSynchronizer.cs:931` whitelists it by name, and the unsanctioned form (a template naming an
+`[IgnoreProperty]` field that is *not* `[Breadcrumb]`-marked) throws with a message telling the
+author to drop one of the two.
+
+The sanction is sound server-side: `EmbeddedBreadcrumbRenderer` reflects over the CLR property, so
+it never consults the model. What it does not say is that this is a **server-side-only**
+guarantee. The same unresolvable template is shipped to the client verbatim, and `[IgnoreProperty]`
+is precisely the instruction that guarantees the client can never satisfy it — for every row of
+every type shaped this way, permanently.
+
+So the client's only correct move is to prefer what the server already resolved. It was receiving
+that string and discarding it during flattening.
+
+**Decision (owner, this PR): keep the sanctioned shape.** The alternative — dropping
+`[IgnoreProperty]` so `Crumb` becomes an ordinary read-only attribute — would make client-side
+substitution work and this change unnecessary, but it gives a pure display derivation an id, a
+label, rules, a group, wire presence and replication writability. Not worth it.
+
+**Noted, not built:** `EntityTypeDefinition` already computes `BreadcrumbProjectionSatisfiable` —
+"this template cannot be satisfied from the projection". There is no equivalent for "cannot be
+satisfied by a client", which is the same question one audience over. A flag would make the
+constraint explicit in the model instead of implicit in a whitelist. Deliberately deferred; see
+§8.
+
 ## 8. Out of scope — genuinely not being done
 
 - Reviving anything from the #308 chrome design (§4).
 - Changing the query/streaming wire protocol, `security.json` semantics, or the row link rule.
 - A tree/grouping mode for the grid. `bs-datatable` supports it; no query declares it.
+- A `breadcrumbClientSatisfiable` model flag (§7b). Real, but it changes the model wire shape and
+  wants its own issue — not deferred to avoid a large diff.
+- The pre-#185 reference-label sites (`reference-display-value.pipe.ts:15`, `po-form:144`,
+  `po-form:196`, `spark-reference-picker.component.ts:77`), which still resolve a label from a
+  single options page and show a raw id for an off-page target. Same bug class as §7b, but a
+  different mechanism and untouched by this PR's paths.
 
 ## 9. Acceptance
 
@@ -219,3 +273,11 @@ Both found while verifying the above. Neither is large, and the one-PR rule appl
 - A malformed `selectionRule` fails at startup, not on execute.
 - Existing `spark-query-list` and `spark-sub-query` specs are carried over onto whichever
   component now owns the behaviour, not dropped.
+- The cell — renderer dispatch, `boolean`, `color` — exists in **one** file, and the AsDetail
+  table on the PO detail page renders through it.
+- An AsDetail attribute whose breadcrumb template names a property the model does not carry
+  renders the server-resolved label on **both** the detail and the edit page.
+- The mapper's blank-render placeholder (the bare CLR type name) is never shown as a value.
+- The reserved breadcrumb key never appears in a payload sent back to the server.
+- `ngc -p libs/node_packages/ng-spark/tsconfig.lib.json --noEmit` is clean — a bare
+  `ngc --noEmit` is not a substitute and checks no templates at all.

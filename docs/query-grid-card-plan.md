@@ -138,6 +138,87 @@ Full suite in **one** sweep at the end, not per milestone. Then open the PR and 
 
 ---
 
+# Milestones added after the PR opened
+
+Scope found during review and live testing. All of it belongs in this PR — it is the same
+surface, and splitting would buy nothing but a second round of CI.
+
+## M9 — extract `spark-grid-cell`
+
+The plan counted the cell markup twice (M2, "the `#cellContent` template"). There was a **third
+copy**, in the AsDetail table on the PO detail page, and it had already drifted:
+
+| Column type | Query grid | AsDetail table |
+|---|---|---|
+| `boolean` | checkbox, indeterminate when null | the text `"true"` / `"false"` |
+| `color` | swatch | the hex string |
+| custom renderer | registry lookup | a second, hand-copied lookup |
+
+New `grid/src/spark-grid-cell.component.{ts,html}` owns **presentation** — which control a
+`dataType` becomes, plus renderer dispatch. Callers keep **value resolution**, because the row
+models genuinely differ: a query row is a `PersistentObject` with an attribute list and an id, an
+AsDetail row is a plain dictionary with neither. `SparkGridRenderers.columnInputsFor` delegates to
+a new `cellInputsFor` so the renderer contract is stated once.
+
+Two things deliberately not merged: the first-column link (the grid's rule, gated on `Read`, wraps
+the cell from outside — passing `link` too would nest anchors), and chips (an AsDetail row's
+`__sparkBreadcrumbs` is keyed by column, not by id, so it cannot label array members).
+
+**Done when:** the cell exists once and both tables render through it. *(Done — `3adc3af`.)*
+
+## M10 — register the cell in po-detail's `imports:`
+
+M9 added the import statement but not the `imports:` array entry, so five bindings compiled to
+nothing. Caught by CI as 5× NG8002, by nothing local.
+
+The lesson is the check, not the typo: **`npx ngc --noEmit` without `-p` exits 0 while checking no
+templates at all.** The command that reproduces CI is
+
+```
+npx ngc -p libs/node_packages/ng-spark/tsconfig.lib.json --noEmit
+```
+
+which also surfaces NG8113 (a directive in `imports:` the template never uses — `NgComponentOutlet`
+in the grid, now that the cell owns dispatch). Unit tests cannot cover this class of bug here: the
+po-detail specs call the cell-renderer methods directly and never render the AsDetail table.
+
+**Done when:** the ng-packagr build is green. *(Done — `df60d16`.)*
+
+## M11 — carry the server-resolved breadcrumb through the AsDetail flatten
+
+Reported live: the edit form rendered `(click to edit)` where the detail page rendered
+`Abdijsteeg 30, 9700 Oudenaarde`.
+
+Not a data problem and not a regression — structural, and true for every row of every type shaped
+this way. HR's `Address` renders its breadcrumb as `{Crumb}`, and `Crumb` is
+`[Breadcrumb, IgnoreProperty]`. That pairing is **sanctioned by design**: `ModelSynchronizer.cs:931`
+whitelists it by name, because the value is persisted and `EmbeddedBreadcrumbRenderer` resolves it
+by reflecting over the CLR property. What the sanction does not say is that the guarantee is
+server-side only — the same unresolvable template is shipped to the client verbatim, and
+`[IgnoreProperty]` is precisely the instruction that stops the client from ever satisfying it.
+
+The server already sends the resolved string on the nested object. `nestedPoToDict` was discarding
+it — its own docblock said so — so the fix belongs at the **flatten step**, not in the pipe:
+
+- both flatteners keep it under a reserved key (`AS_DETAIL_SELF_BREADCRUMB_KEY`)
+- `AsDetailDisplayValuePipe` prefers it, keeping template substitution as the fallback — still the
+  only strategy on the **create** path, where no server object exists yet
+- `selfBreadcrumb` filters the mapper's blank-render placeholder, which is the bare CLR type name
+  rather than an empty string (`EntityMapper.cs:209-211`); rendering `Address` would be worse than
+  rendering nothing, because it reads as data. It matches on the last dotted segment, since
+  callers hold the type name as either `EntityType.name` or a full `asDetailType` CLR name.
+
+Same mechanism applied to po-detail, which had the identical bug one level down: a nested-AsDetail
+column stringified its inner dict to `[object Object]`.
+
+The reserved key rides in a dict that is posted back on save. Safe because `dictToNestedPo` walks
+the entity type's attributes, never the dict's keys — now pinned by a round-trip test rather than
+left to inspection.
+
+**Done when:** both pages render the address. *(Done — `cec8533`; verified live on HR.)*
+
+---
+
 ## Risks
 
 - **Streaming is the real merge risk.** It exists in one grid only and has a subscription

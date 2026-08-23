@@ -1,7 +1,8 @@
 # Release notes — `10.0.0-preview.63` / `@mintplayer/ng-spark@22.4.0`
 
-Two components replace the two grids, and a documented validation gate that was never wired up
-now runs.
+Two components replace the two grids, a third de-duplicates the cell, a documented validation
+gate that was never wired up now runs, and an AsDetail label that no client could ever resolve
+now comes from the server.
 
 `@mintplayer/ng-spark-auth` is unchanged and stays at `22.3.0`.
 
@@ -108,3 +109,51 @@ per fix-and-retry cycle.
 The guide's wording is corrected with it. Loading is lazy and hot-reloadable, so this surfaces the
 first time custom actions are read, not at process start — the old text promised a gate the code
 could not keep, which is how the gap went unnoticed.
+
+## `spark-grid-cell` — the cell was written three times
+
+The two grids were the visible duplication. The third copy — the AsDetail table on a PO detail
+page — had already drifted, so the same column said different things depending on where it
+appeared:
+
+| Column type | Query grid | AsDetail table |
+|---|---|---|
+| `boolean` | checkbox, indeterminate when null | the text `"true"` / `"false"` |
+| `color` | swatch | the hex string |
+| custom renderer | registry lookup | a second, hand-copied lookup |
+
+`@mintplayer/ng-spark/grid` now exports `SparkGridCellComponent`, which owns **presentation**:
+which control a `dataType` becomes, and dispatching a declared renderer. Callers keep **value
+resolution**, because the row models differ — a query row is a `PersistentObject` with an
+attribute list and an id, an AsDetail row is a plain dictionary with neither.
+
+Custom renderers are unaffected: `SparkGridRenderers.columnInputsFor` still exists and now
+delegates to a new `cellInputsFor`, so the renderer contract is stated once instead of twice.
+
+## An AsDetail label the client could not resolve
+
+Opening a record for edit showed `(click to edit)` where the detail page showed the value — for
+example an address that read correctly at
+`/po/person/{id}` and not at `/po/person/{id}/edit`.
+
+This affected any type whose breadcrumb template names a property excluded from the model with
+`[IgnoreProperty]` — the **sanctioned** shape for a `[Breadcrumb]`-marked computed property
+(`ModelSynchronizer` whitelists exactly this pairing). Server-side it resolves fine, by reflecting
+over the CLR property. Client-side it can never resolve, by construction, for every row: the
+attribute is deliberately absent from the model.
+
+The server was already sending the resolved string on the nested object; the form's flattening
+step discarded it. Both flatteners now carry it, and `AsDetailDisplayValuePipe` prefers it.
+
+Nothing to change in an app. Two details worth knowing:
+
+- **Client-side substitution still works** and remains the fallback. It is the only strategy on
+  the create path, where no server object exists yet, so a template naming real attributes
+  (`"{Street}, {City}"`) behaves exactly as before.
+- **A blank breadcrumb is not shown.** The mapper never emits an empty one — a template that
+  renders blank becomes the bare CLR type name — so an unset `Address` would have displayed the
+  literal word `Address`. That placeholder is filtered back out; the field falls through to
+  `(click to edit)` as it should.
+
+The same fix landed one level down on the detail page, where a **nested** AsDetail column
+stringified its inner dict to `[object Object]`.
