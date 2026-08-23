@@ -130,7 +130,10 @@ Carry both existing specs over rather than writing fresh ones — they encode fi
   `ng-spark-auth` needs a matching bump; it does not depend on these entry points.
 - `docs/release-notes-preview-63.md`: the two components, the three directives, and the two
   removals from PRD §6 called out as breaking.
-- Update `guide-queries-and-sorting.md` and the ng-spark AGENTS.md with the slot pattern.
+- Update `guide-queries-and-sorting.md` with the slot pattern. *(Done late — the guide had no
+  frontend rendering section at all; added one covering the grid, the `data` seam, the `Read`-gated
+  first-column link, the three slots and the cell.)* **There is no ng-spark `AGENTS.md`** — the
+  plan named a file that does not exist; every `AGENTS.md` in the repo is .NET-side.
 
 ## M8 — verify, then PR
 

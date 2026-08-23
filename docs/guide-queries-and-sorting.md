@@ -579,6 +579,84 @@ not an index term — denormalize it into the index, as `OwnerFullName` does abo
 > Full details — wildcard handling, multi-language fields, the composition order with row-level security, the
 > in-memory fallbacks, and why fuzzy matching is not offered — are in **[Full-Text Search](guide-search.md)**.
 
+## Rendering a query in the frontend
+
+Everything above describes what the server sends. `@mintplayer/ng-spark/grid` renders it, and there
+is exactly one grid — `spark-query-grid` — behind both the `/query/:alias` page and every sub-query
+card on a detail page.
+
+```html
+<spark-query-grid queryId="cars" />
+```
+
+It resolves the query, its entity type, the caller's rights, lookup references, paging, sorting,
+search and custom actions. Give it a `queryId` and it does the rest.
+
+### Rows from outside
+
+`data` is optional. Leave it unbound and the grid fetches and pages server-side; bind it and the
+grid renders what it is given and never fetches. That is the seam streaming uses — the WebSocket
+lives in the page component, not the grid, so a detail page's bundle does not carry it. A streaming
+query also suppresses its own fetch, so binding `data` asynchronously does not cost one wasted
+`/execute` on mount.
+
+The split mirrors the one `bs-datatable` already draws between `[data]` and `[fetch]`. Binding both
+is not a supported combination.
+
+### The first-column link is the rights model
+
+The grid links the first column to the row's own detail page, gated on `Read`. A query granting
+`Query` without `Read` therefore lists rows and withholds the link — the intended shape for a
+`Custom.*` query that fabricates rows no detail page could load.
+
+A custom `renderer` does **not** suppress that link: the cell renders inside the anchor, so a
+renderer emitting its own `<a>` produces nested anchors.
+
+### Chrome, and replacing parts of it
+
+`spark-query-card` wraps the grid in a `<bs-card>` with an icon, a caption and an action bar. With
+no template supplied it renders all three itself, so an auto-rendered sub-query needs no host
+markup at all.
+
+Three structural directives override one region each, leaving the others at their defaults:
+
+```html
+<spark-query-card queryId="cars">
+  <ng-template sparkQueryIcon>
+    <spark-icon icon="car" />
+  </ng-template>
+
+  <ng-template sparkQueryCaption>
+    Fleet <span class="badge">{{ count }}</span>
+  </ng-template>
+
+  <ng-template sparkQueryActions let-actions>
+    <button (click)="exportAll()">Export</button>
+    <!-- `actions` is the server's list — render it too, to add rather than replace -->
+  </ng-template>
+</spark-query-card>
+```
+
+Each directive takes an optional query alias, so one host can target a specific card among several:
+`<ng-template sparkQueryIcon="employees">`. An untargeted template is the catch-all, and a targeted
+one wins over it regardless of declaration order.
+
+A sub-query rendered automatically by `spark-po-detail` has no tag to project into, and a structural
+directive cannot cross a component boundary. Pass a `TemplateRef` instead — `spark-po-detail` accepts
+`queryIconTemplate`, `queryCaptionTemplate` and `queryActionsTemplate` and forwards them to every
+card it renders.
+
+### Cells
+
+`spark-grid-cell` decides what a `dataType` looks like — a checkbox for `boolean` (indeterminate
+when null), a swatch for `color`, chips for a reference array — and dispatches a declared custom
+renderer. The same component renders the AsDetail table on a detail page, so a column looks the same
+wherever it appears.
+
+Callers resolve the *value*; the cell only presents it. A label a client cannot compute — a
+breadcrumb template naming a property `[IgnoreProperty]` keeps out of the model — is resolved by the
+server and passed through, never recomputed here.
+
 ## Query Execution Flow
 
 When the frontend requests a query:
