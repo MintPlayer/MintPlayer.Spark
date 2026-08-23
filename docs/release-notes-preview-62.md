@@ -36,6 +36,32 @@ comments — this is the only authoring support that exists.
 
 There is **no compatibility shim**. Deleted means deleted; these packages are in preview.
 
+### One query per URL
+
+**A query alias now identifies exactly one query, and a collision refuses startup**, naming both
+sides. It was previously a `Console.WriteLine` nobody reads: the losing query kept no reachable
+alias, and nothing said so at the point of use.
+
+⚠️ **Usually only one of the two aliases is written down.** An omitted alias is *derived* from the
+query name (`GetStocks` → `stocks`), so it collides with an alias somebody declared on a different
+query. The error message says which side was derived, because that author does not know they chose
+one.
+
+DemoApp is what it cost: `GetStocks` (`Database.Stocks`, a collection nothing ever writes) and
+`StreamStocks` (the live grid its menu points at) both resolved to `stocks`, so `/query/stocks`
+rendered an empty grid and the streaming query could not be reached at all.
+
+Fix a collision by declaring an explicit, distinct `alias`. You cannot fix it by deleting a
+`Database.*` query — those are derived from `SparkContext` properties and
+`--spark-synchronize-model` writes them straight back. `--spark-verify-model` now checks this too,
+because the model commands return before `builder.Build()`, so the startup gate never runs in CI.
+
+Considered and rejected: letting a streaming and a non-streaming query share an alias with the
+request's transport choosing. The client learns whether to open a socket from `isStreamingQuery` in
+`GET /spark/queries/{alias}`, which is itself a plain HTTP request — so metadata would have to
+answer for both variants at once, or the model would need per-query capability flags. Too
+complicated for what it buys, and a URL stops naming one thing.
+
 `SparkFullGenerator` changes in the same release, because it emitted the `AddAuthorization(...)`
 call literally and every `AddSparkFull` application would otherwise stop compiling.
 
@@ -93,6 +119,19 @@ disagree.
   before authorizing, so POSTing rubbish enumerated the entity types; and antiforgery ran first,
   which had been hiding both.
 
+- **`AGENTS.md`, shipped in the packages and synced by MSBuild.** `MintPlayer.Spark` carries the
+  framework specification and `MintPlayer.Spark.Testing` the testing one; each is copied into the
+  consuming project on build, so a coding agent reads the same document the package ships rather
+  than a stale wiki page. Opt out with `$(EnableSparkAgentsGuide)` /
+  `$(EnableSparkTestingAgentsGuide)`.
+- **`SparkSharedDatabase` + `SparkSharedTestDriver`** — an optional second test driver giving one
+  database per test *class* instead of per test *case*, for the many fixtures that never write a
+  document. Both drivers ship; neither replaces the other. The per-case `SparkTestDriver` remains
+  correct for anything asserting on unscoped counts, fixed ids, or database-wide operations.
+- **`RqlRecorder`** — captures emitted RQL and unsubscribes on dispose. The inline form
+  (`Store.OnBeforeQuery += …`) never removes its handler, which is harmless only while the store
+  dies with the test case.
+
 ---
 
 ## Client — `@mintplayer/ng-spark` 22.3.0
@@ -125,5 +164,7 @@ back pending the #309 header-slot redesign.
 2. Delete `spark.AddAuthorization()` / `spark.AllowAnonymousAccess()`.
 3. Re-namespace any direct use of `SecurityConfiguration`, `Right` or `IAccessControl`.
 4. `dotnet run -- --spark-synchronize-security` and commit `App_Data/securityPosture.txt`.
-5. Boot once and read the startup posture summary. It prints what an anonymous caller can reach,
+5. Boot once. A duplicate query alias now refuses startup, naming both queries — declare an
+   explicit `alias` on one of them.
+6. Read the startup posture summary. It prints what an anonymous caller can reach,
    including when that is nothing.

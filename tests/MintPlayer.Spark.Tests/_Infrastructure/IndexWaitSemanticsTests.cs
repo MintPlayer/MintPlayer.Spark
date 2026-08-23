@@ -98,9 +98,13 @@ public class IndexWaitSemanticsTests : SparkTestDriver
 
             var act = async () => await Store.WaitForIndexingAsync(timeout: TimeSpan.FromMilliseconds(300));
 
-            var thrown = await act.Should().ThrowAsync<TimeoutException>()
-                .Where(e => !(e is RavenIndexDeploymentException),
-                    "a healthy-but-stale index is a timeout, not a deployment failure");
+            // TimeoutException is the whole assertion: RavenIndexDeploymentException derives from
+            // Exception, not from TimeoutException, so asserting the type already excludes it.
+            // An earlier `.Where(e => !(e is RavenIndexDeploymentException))` said the same thing
+            // a second time and could never be false — the compiler flagged it (CS0184), which is
+            // the tell for an assertion that cannot fail.
+            var thrown = await act.Should().ThrowAsync<TimeoutException>(
+                "a healthy-but-stale index is a timeout, not a deployment failure");
 
             thrown.Which.Message.Should().Contain("Auto/Things",
                 "auto-indexes are held to the same staleness bar as declared ones — a stale "

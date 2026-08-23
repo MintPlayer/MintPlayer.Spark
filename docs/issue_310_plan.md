@@ -443,6 +443,33 @@ None were reachable from the 244 permissive factory tests, which is the argument
 A fourth, in the client: the cherry-picked sub-query spec left `SparkLanguageService` unmocked, so
 all 21 spec files passed while the nx task exited non-zero on 26 unhandled rejections.
 
+### Landed after this Outcome was first written
+
+The Outcome above was recorded at `81bacff`; eight commits followed. In order:
+
+- **`77d8efc`** — S7 became `QueryWithoutReadTests` rather than a browser check (see above).
+- **`a4bd683` — one query per URL.** Found while checking S7 by hand: `/query/stocks` rendered an
+  empty grid. A duplicate query alias was a `Console.WriteLine` nobody reads, so the losing query
+  had no reachable alias. It now throws, naming both sides and saying which one *derived* its
+  alias. Shared with `--spark-verify-model`, because the model commands return before
+  `builder.Build()` and the startup gate never runs in CI. **This is a breaking behaviour change
+  and is in the release notes.**
+- **`6f797b3`, `53ccdee`** — two flaky tests fixed properly, plus a real defect behind one of them:
+  `WaitForIndexingAsync` tested its deadline at the top of the loop, so it could time out having
+  never looked and then report every expected index as missing — a misdiagnosis pointing at the
+  wrong subsystem. The suite's slowest test (11% of total CPU) was a thread-pool starvation stall:
+  47.5s → 0.09s.
+- **`1177f40`** — the shipped testing README taught a request shape that could never work (type
+  *name* in a route that takes the type *id*; a bare entity where the endpoint reads an envelope).
+- **`365fc40`** — `RqlRecorder`; four tests leaked `Store.OnBeforeQuery` handlers.
+- **`ebf8394`** — `SparkSharedDatabase` / `SparkSharedTestDriver`, the optional per-class driver.
+- **`fa2897d`, `32d9240`, `73c3a0f`** — `AGENTS.md` shipped through both packages and synced by
+  MSBuild; the demo copies untracked as build output.
+
+Test-suite work beyond the driver itself is recorded separately in
+`docs/test-suite-performance-{PRD,plan}.md`, and its unverified remainder is stashed rather than
+shipped.
+
 ### Left undone, deliberately
 
 - ~~S7 in a browser~~ — **replaced by a driver test**, which is the better instrument.
@@ -451,9 +478,12 @@ all 21 spec files passed while the nx task exited non-zero on 26 unhandled rejec
   reverse pair (`Read` without `Query`) is pinned too. A browser could only have shown the
   missing anchor; it could not have shown that `Read` is **enforced** — a client that ignored
   `canRead` and built the URL itself would look identical.
-- **The E2E suite was not run** (it needs the out-of-process hosts). Fleet and HR keep their files
-  and their posture baselines verify, so nothing points at breakage — but their 71 tests are
-  unverified against this branch.
+- ~~The E2E suite was not run~~ — **CI has now run it: 77 pass, 1 failed and is fixed.**
+  `ErrorLeakageTests.Malformed_entityTypeId_does_not_leak_stack_trace_or_internal_types` expected
+  an unknown entity type to surface as 404 → `null`. Fleet can authenticate, so under M6 an
+  anonymous caller correctly gets **401** instead, so the client can redirect to sign-in. The test
+  encoded the old behaviour; it now asserts the leakage property against whichever refusal shape
+  applies, which was always its actual subject.
 - **Open question 1 answered:** `AddAuthorization()` did not survive; everything left folded into
   `AddAuthentication<TUser>()`. **Question 2:** the hot-reload watcher stays — it complicated the
   startup gate not at all. **Question 3:** `Machine:` / `Module:` prefixes are untouched and still
