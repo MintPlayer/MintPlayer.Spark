@@ -25,6 +25,26 @@
         }
       </bs-accordion-tab>
       }
+
+      <!-- Hand-written, unlike the groups above: the menu is built from the server's program
+           units, and this page demonstrates a CLIENT-side API (the spark-query-card slots)
+           that nothing in the model describes. Kept inside the accordion and using the same
+           markup as a generated item so it picks up the sidebar's styling rather than
+           needing its own. -->
+      <bs-accordion-tab>
+        <ng-container *bsAccordionTabHeader>
+          <span class="triangle me-2"></span>
+          <spark-icon name="palette" />
+          <span class="ms-2">Component demos</span>
+        </ng-container>
+        <a routerLink="/query-slots"
+           routerLinkActive="active"
+           (click)="onMenuItemClick()"
+           class="d-block px-3 py-2 text-light text-decoration-none nav-link">
+          <spark-icon name="grid-3x3-gap" />
+          <span class="ms-2">Query card slots</span>
+        </a>
+      </bs-accordion-tab>
     </bs-accordion>
   </nav>
 

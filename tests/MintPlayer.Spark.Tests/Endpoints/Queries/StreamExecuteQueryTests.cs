@@ -191,6 +191,23 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         await ExpectCloseAsync(socket, WebSocketCloseStatus.InternalServerError);
     }
 
+    /// <summary>
+    /// Every other test here connects through TestServer, which speaks HTTP/1.1 and therefore
+    /// opens a WebSocket with GET + Upgrade. A real browser does not: Kestrel advertises
+    /// SETTINGS_ENABLE_CONNECT_PROTOCOL, so on an HTTP/2 origin the upgrade arrives as RFC 8441
+    /// extended CONNECT. With GET as the only allowed method, endpoint routing answered
+    /// 405 before the handler ran — streaming was dead in every browser while every test and
+    /// every curl-based check passed.
+    ///
+    /// The method list is asserted directly because no test-host request can reproduce the
+    /// h2 handshake, and because the tests above map their own route rather than the real one.
+    /// </summary>
+    [Fact]
+    public void Allows_both_the_HTTP1_upgrade_and_the_HTTP2_extended_CONNECT()
+    {
+        StreamExecuteQuery.Methods.Should().BeEquivalentTo(["GET", "CONNECT"]);
+    }
+
     private async Task<WebSocket> ConnectAsync(string path)
     {
         var wsClient = _host.GetTestServer().CreateWebSocketClient();

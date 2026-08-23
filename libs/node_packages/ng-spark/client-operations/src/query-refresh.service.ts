@@ -22,7 +22,16 @@ export class SparkQueryRefreshService {
     return this.tokens()[queryId] ?? 0;
   }
 
-  /** Ask every grid showing `queryId` to re-fetch. Matched on id AND alias, since a grid may hold either. */
+  /**
+   * Ask every grid showing `queryId` to re-fetch.
+   *
+   * Matched on the EXACT string a grid passes to {@link tokenFor} -- whichever of id or alias
+   * its `queryId` input holds. A caller that knows only the other form will not reach it.
+   *
+   * Callers bumping several keys for one user action should do so in one synchronous run: the
+   * signal coalesces bumps within a tick into a single effect run, and bumps split across an
+   * await become one re-fetch each.
+   */
   request(queryId: string): void {
     this.tokens.update(current => ({ ...current, [queryId]: (current[queryId] ?? 0) + 1 }));
   }

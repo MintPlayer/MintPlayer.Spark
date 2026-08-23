@@ -75,10 +75,10 @@ These are independently grantable, and the difference is visible in the UI:
 | `Query/Car` | lists rows | **plain text, no link** |
 | `Read/Car` alone | not listed at all | — |
 
-`Query` without `Read` is how you publish a list whose rows have no detail page. Both grids
-(`spark-query-list` and `spark-sub-query`) gate the anchor on `canRead`, which comes from
-`/spark/permissions/{type}`, which comes from this file. Nothing else is involved and there is no
-per-query flag to set.
+`Query` without `Read` is how you publish a list whose rows have no detail page. The grid
+(`spark-query-grid`, which backs both the routed page and the sub-query card) gates the row
+anchor on `canRead`, which comes from `/spark/permissions/{type}`, which comes from this file.
+Nothing else is involved and there is no per-query flag to set.
 
 It is the right model, not a workaround, whenever a row cannot be loaded by id:
 

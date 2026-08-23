@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   AS_DETAIL_BREADCRUMBS_KEY,
+  AS_DETAIL_SELF_BREADCRUMB_KEY,
   dictToNestedPo,
+  selfBreadcrumb,
   nestedPoToDict,
   nestedPoToDisplayRow,
 } from './as-detail-conversions';
@@ -153,5 +155,78 @@ describe('dictToNestedPo', () => {
   it('ignores the reserved breadcrumb key if present on the input dict', () => {
     const result = dictToNestedPo({ Title: 'Song', [AS_DETAIL_BREADCRUMBS_KEY]: { ArtistId: 'Logic' }, Artists: [] }, songType, resolve);
     expect(result.attributes.some(a => a.name === AS_DETAIL_BREADCRUMBS_KEY)).toBe(false);
+  });
+});
+
+/**
+ * The object's OWN breadcrumb, as opposed to the per-reference map above.
+ *
+ * A breadcrumb template can name a property the model does not carry — HR's `Address` renders
+ * `{Crumb}`, and `Crumb` is `[Breadcrumb, IgnoreProperty]`. The server resolves it by reflecting
+ * over the CLR property; the client structurally cannot. Discarding the resolved string while
+ * flattening is what made the edit form show `(click to edit)` where the detail page showed the
+ * address.
+ */
+describe('self breadcrumb', () => {
+  const address = po(
+    [attr({ name: 'Street', value: 'Abdijsteeg 30' }), attr({ name: 'City', value: 'Oudenaarde' })],
+    { id: '', name: 'Address', breadcrumb: 'Abdijsteeg 30, 9700 Oudenaarde' },
+  );
+
+  it('nestedPoToDict carries it through the form flatten', () => {
+    expect(nestedPoToDict(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+  });
+
+  it('nestedPoToDisplayRow carries it through the display flatten', () => {
+    expect(nestedPoToDisplayRow(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+  });
+
+  /** Keeps the common case byte-for-byte identical to the plain flat dict. */
+  it('is absent when the server sent none', () => {
+    const bare = po([attr({ name: 'Street', value: 'Main' })], { breadcrumb: undefined });
+    expect(AS_DETAIL_SELF_BREADCRUMB_KEY in nestedPoToDict(bare)).toBe(false);
+  });
+
+  /**
+   * The whole reason a reserved key is safe on the FORM path: the dict is posted back on save, and
+   * `dictToNestedPo` walks the entity type's attributes rather than the dict's keys.
+   */
+  it('never survives into the payload sent back to the server', () => {
+    const addressType: EntityType = {
+      id: 't', name: 'Address', clrType: 'HR.Entities.Address',
+      attributes: [
+        { id: 'a', name: 'Street', dataType: 'string', isVisible: true, isReadOnly: false, isRequired: false, isArray: false, order: 1 },
+      ],
+    } as any;
+
+    const roundTripped = dictToNestedPo(nestedPoToDict(address), addressType, () => undefined);
+
+    expect(roundTripped.attributes.some(a => a.name === AS_DETAIL_SELF_BREADCRUMB_KEY)).toBe(false);
+    expect(JSON.stringify(roundTripped)).not.toContain(AS_DETAIL_SELF_BREADCRUMB_KEY);
+  });
+
+  describe('selfBreadcrumb', () => {
+    const row = { [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Address' };
+
+    /** EntityMapper.cs:209-211 substitutes the bare type name when the template renders blank. */
+    it('filters the placeholder against a short model name', () => {
+      expect(selfBreadcrumb(row, 'Address')).toBeNull();
+    });
+
+    /** An attribute's `asDetailType` is the full CLR name, so it must match on the last segment. */
+    it('filters the placeholder against a full CLR name too', () => {
+      expect(selfBreadcrumb(row, 'HR.Entities.Address')).toBeNull();
+    });
+
+    it('keeps a real breadcrumb that merely starts with the type name', () => {
+      expect(selfBreadcrumb({ [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Address 12' }, 'Address')).toBe('Address 12');
+    });
+
+    it('returns null for a missing, blank, or non-string value', () => {
+      expect(selfBreadcrumb({}, 'Address')).toBeNull();
+      expect(selfBreadcrumb({ [AS_DETAIL_SELF_BREADCRUMB_KEY]: '   ' }, 'Address')).toBeNull();
+      expect(selfBreadcrumb({ [AS_DETAIL_SELF_BREADCRUMB_KEY]: 42 }, 'Address')).toBeNull();
+      expect(selfBreadcrumb(null)).toBeNull();
+    });
   });
 });

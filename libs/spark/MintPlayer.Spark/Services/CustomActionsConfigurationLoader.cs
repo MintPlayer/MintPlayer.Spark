@@ -71,6 +71,8 @@ internal partial class CustomActionsConfigurationLoader : ICustomActionsConfigur
 
             logger.LogInformation("Loaded custom actions configuration with {ActionCount} actions", config?.Count ?? 0);
 
+            ValidateSelectionRules(config, fullPath);
+
             return config ?? new CustomActionsConfiguration();
         }
         catch (Exception ex)
@@ -78,6 +80,38 @@ internal partial class CustomActionsConfigurationLoader : ICustomActionsConfigur
             logger.LogError(ex, "Failed to load custom actions configuration from {FilePath}", fullPath);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Rejects a malformed <c>selectionRule</c> when the file is read, naming every offender.
+    /// </summary>
+    /// <remarks>
+    /// Without this the typo survives to the moment somebody presses the button: <c>Parse</c>
+    /// throws <see cref="FormatException"/> out of the execute endpoint, so a rule of
+    /// <c>"1-5"</c> is a 500 on a user action rather than a refused configuration. The parser has
+    /// carried an <c>IsValid</c> for exactly this since it was written, documented as "call at
+    /// configuration load", and nothing called it.
+    /// <para>
+    /// All offenders are reported together. Fixing one typo only to be shown the next is the
+    /// worst version of this message.
+    /// </para>
+    /// </remarks>
+    private static void ValidateSelectionRules(CustomActionsConfiguration? config, string fullPath)
+    {
+        if (config == null) return;
+
+        // The configuration IS the dictionary; the action's name is its key, not a property.
+        var invalid = config
+            .Where(entry => !SelectionRuleParser.IsValid(entry.Value.SelectionRule))
+            .Select(entry => $"'{entry.Key}' declares selectionRule '{entry.Value.SelectionRule}'")
+            .ToList();
+
+        if (invalid.Count == 0) return;
+
+        throw new FormatException(
+            $"{fullPath} contains {invalid.Count} malformed selection rule(s): {string.Join("; ", invalid)}. "
+            + "A rule is a cardinality expression over the number of selected rows, such as '=1', "
+            + "'>0', '<=5' or '1<X<5'. Omit the property entirely to require no selection.");
     }
 
     private void SetupFileWatcher()

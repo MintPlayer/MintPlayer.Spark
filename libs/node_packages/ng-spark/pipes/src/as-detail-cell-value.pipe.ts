@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject, selfBreadcrumb } from '@mintplayer/ng-spark/models';
 
 @Pipe({ name: 'asDetailCellValue', standalone: true, pure: true })
 export class AsDetailCellValuePipe implements PipeTransform {
@@ -23,6 +23,12 @@ export class AsDetailCellValuePipe implements PipeTransform {
           if (match) return match.breadcrumb || match.name || String(value);
         }
       }
+    }
+
+    // A nested-AsDetail column's value is an inner dict, so String(value) produced "[object
+    // Object]". The flattener kept that object's server-resolved breadcrumb for exactly this.
+    if (col.dataType === 'AsDetail' && typeof value === 'object') {
+      return selfBreadcrumb(value as Record<string, any>, col.asDetailType) ?? '';
     }
 
     return String(value);

@@ -51,7 +51,7 @@
         @if (tab.id === '__default__') {
           @let ungroupedAttrs = ungroupedAttributes();
           @if (ungroupedAttrs.length > 0) {
-            <bs-card style="display: block; margin: 1rem;">
+            <bs-card class="d-block m-3">
               <div class="p-3">
                 <dl bsRow>
                   @for (attr of ungroupedAttrs; track attr.id) {
@@ -65,7 +65,7 @@
         @for (group of groupsForTab(tab); track group.id) {
           @if (attrsForGroup(group); as groupAttrs) {
             @if (groupAttrs.length > 0) {
-              <bs-card style="display: block; margin: 1rem;">
+              <bs-card class="d-block m-3">
                 @if (group.label) {
                   <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
                 }
@@ -101,18 +101,25 @@
                       <tr>
                         @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
                           <td>
-                            @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                              <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
-                            } @else if (col.dataType === 'Reference' && col.referenceType) {
-                              @let route = (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes());
-                              @if (route) {
-                                <a [routerLink]="route">{{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}</a>
-                              } @else {
-                                {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
-                              }
-                            } @else {
-                              {{ (row | asDetailCellValue:attr:col:asDetailReferenceOptions()) }}
-                            }
+                            <!--
+                              Shared with the query grid. This cell used to hand-roll the renderer
+                              dispatch and print everything else as text, so a `boolean` column read
+                              "true" here and rendered a checkbox in a grid, and a `color` showed its
+                              hex. Only the VALUE is resolved locally: these rows are plain
+                              dictionaries, not PersistentObjects.
+
+                              `chips` is left unset for a reference array on purpose — an AsDetail
+                              row's `__sparkBreadcrumbs` is keyed by column, not by id, so there are
+                              no labels for the members. Text beats a row of raw ids.
+                            -->
+                            <spark-grid-cell
+                                [column]="col"
+                                [display]="(row | asDetailCellValue:attr:col:asDetailReferenceOptions())"
+                                [rendererValue]="row[col.name]"
+                                [item]="row"
+                                [link]="col.dataType === 'Reference' && col.referenceType
+                                          ? (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes())
+                                          : null" />
                           </td>
                         }
                       </tr>
@@ -131,11 +138,11 @@
                   [indeterminate]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) == null"
                   disabled
                   onclick="return false;"
-                  style="opacity: 1;">
+                  class="opacity-100">
               } @else if (attr.dataType === 'color') {
                 @let colorVal = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
                 @if (colorVal) {
-                  <span class="d-inline-block align-middle border rounded me-2" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
+                  <span class="spark-color-swatch d-inline-block align-middle border rounded me-2" [style.background-color]="colorVal"></span>
                   {{ colorVal }}
                 } @else {
                   -
@@ -147,9 +154,9 @@
                     @for (chip of chips; track chip.id) {
                       @let chipRoute = (attr.referenceType ? (attr.referenceType | referenceLinkRoute:chip.id:allEntityTypes()) : null);
                       @if (chipRoute) {
-                        <a class="badge rounded-pill border bg-body-secondary text-body text-decoration-none px-3 py-2" [routerLink]="chipRoute">{{ chip.label }}</a>
+                        <a class="spark-chip" [routerLink]="chipRoute">{{ chip.label }}</a>
                       } @else {
-                        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
+                        <span class="spark-chip">{{ chip.label }}</span>
                       }
                     }
                   </div>
@@ -164,7 +171,7 @@
                   {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
                 }
               } @else if (attr.dataType === 'MultiLineString') {
-                <div style="white-space: pre-wrap;">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
+                <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
               } @else {
                 {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               }
@@ -173,7 +180,9 @@
     </bs-grid>
     @if (et.queries?.length) {
       @for (queryAlias of et.queries; track queryAlias) {
-        <spark-sub-query [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name" />
+        <spark-query-card [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name"
+                          [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"
+                          [actionsTemplate]="queryActionsTemplate()" />
       }
     }
     @if (extraContentTemplate(); as extraContentTpl) {

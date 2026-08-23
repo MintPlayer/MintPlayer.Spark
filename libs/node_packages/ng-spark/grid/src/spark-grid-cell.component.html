@@ -1,0 +1,32 @@
+@if (rendererComponent(); as rendererType) {
+  <ng-container *ngComponentOutlet="rendererType; inputs: rendererInputs()"></ng-container>
+} @else if (column().dataType === 'boolean') {
+  <!-- [indeterminate] matters: without it a null boolean renders as an unchecked box, which reads
+       as an explicit `false`. One of the three copies of this cell bound it and the others had
+       drifted, so the same column said different things on a detail page and in a grid. -->
+  <input type="checkbox"
+    [checked]="display() === true"
+    [indeterminate]="isUnsetBoolean()"
+    disabled
+    onclick="return false;">
+} @else if (column().dataType === 'color') {
+  @if (display(); as colorVal) {
+    <!-- Inline on purpose, and it is not a style-guide slip. In a query grid this cell is
+         rendered INSIDE <mp-datatable>'s shadow root, which does not see document
+         stylesheets: neither this component's scoped rules nor Bootstrap utilities apply
+         there. Inline styles do. Measured 2026-08-23 -- see the comment in the .scss. -->
+    <span class="d-inline-block align-middle border rounded"
+          [style.background-color]="colorVal"
+          style="width: 1.5em; height: 1.5em;"></span>
+  }
+} @else if (chips().length) {
+  <span class="d-inline-flex flex-wrap gap-1">
+    @for (chip of chips(); track chip.id) {
+      <span class="spark-chip">{{ chip.label }}</span>
+    }
+  </span>
+} @else if (link(); as route) {
+  <a [routerLink]="route">{{ display() }}</a>
+} @else {
+  {{ display() }}
+}

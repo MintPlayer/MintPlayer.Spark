@@ -5,7 +5,9 @@ import { PersistentObjectAttribute } from './persistent-object-attribute';
 
 /**
  * Resolves an `EntityType` by its CLR type name (e.g. `"HR.Entities.Address"`).
- * Callers typically close over `sparkService.getEntityTypes()`'s cached list.
+ * Callers typically close over a list they already hold. `getEntityTypes()` is NOT cached --
+ * it issues a request per call -- so resolve against a list you fetched once rather than
+ * calling it inside the resolver.
  */
 export type EntityTypeResolver = (clrTypeName: string) => EntityType | undefined;
 
@@ -24,6 +26,14 @@ export function nestedPoToDict(po: PersistentObject | null | undefined): Record<
   for (const attr of po.attributes ?? []) {
     dict[attr.name] = attributeValueForForm(attr);
   }
+  // The object's own server-resolved breadcrumb, kept under a reserved key so the form can label
+  // it without re-deriving a template it may be structurally unable to resolve. Safe to carry
+  // through save: `dictToNestedPo` walks the entity type's attributes, never the dict's keys, so
+  // a reserved key is never sent to the server. Attached only when it resolved, which keeps the
+  // common case byte-for-byte identical to the plain flat dict.
+  if (typeof po.breadcrumb === 'string' && po.breadcrumb !== '') {
+    dict[AS_DETAIL_SELF_BREADCRUMB_KEY] = po.breadcrumb;
+  }
   return dict;
 }
 
@@ -33,6 +43,42 @@ function attributeValueForForm(attr: PersistentObjectAttribute): any {
     return attr.object ? nestedPoToDict(attr.object) : null;
   }
   return attr.value;
+}
+
+/**
+ * Reserved key under which a flattened nested object keeps the breadcrumb the SERVER resolved for
+ * that object itself (as opposed to {@link AS_DETAIL_BREADCRUMBS_KEY}, which keys the breadcrumbs
+ * of its reference attributes by attribute name).
+ *
+ * This exists because a breadcrumb template can name a property the model does not carry. HR's
+ * `Address` declares `[Breadcrumb, IgnoreProperty] string Crumb`, and `Address.json` renders it as
+ * `"{Crumb}"` — the server resolves that by reflecting over the CLR property, which no client can
+ * do, because `[IgnoreProperty]` is exactly the instruction to keep it out of the model. Flattening
+ * used to discard the resolved string, leaving the form to substitute `{Crumb}` against a dict that
+ * can never contain it.
+ */
+export const AS_DETAIL_SELF_BREADCRUMB_KEY = '__sparkBreadcrumb';
+
+/**
+ * The breadcrumb the server resolved for a flattened object, or null when it resolved to nothing.
+ *
+ * `EntityMapper` never emits an empty breadcrumb: when the template renders blank it substitutes
+ * the CLR type name, so an unset `Address` arrives as the literal string `"Address"`
+ * (EntityMapper.cs:209-211). That is a placeholder, not data, and rendering it would be worse than
+ * rendering nothing — it reads as a real value. `typeName` lets a caller filter it back out.
+ */
+export function selfBreadcrumb(row: Record<string, any> | null | undefined, typeName?: string): string | null {
+  const value = row?.[AS_DETAIL_SELF_BREADCRUMB_KEY];
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  // Callers hold the type name in two shapes — `EntityType.name` is the short model name, while an
+  // attribute's `asDetailType` is the full CLR name — and the server's placeholder is always the
+  // short one. Compare on the last dotted segment so either shape filters it.
+  if (typeName) {
+    const shortName = typeName.slice(typeName.lastIndexOf('.') + 1);
+    if (value === shortName) return null;
+  }
+  return value;
 }
 
 /**
@@ -63,6 +109,11 @@ export function nestedPoToDisplayRow(po: PersistentObject | null | undefined): R
   // Only attach the side channel when something resolved — keeps reference-free rows (the common
   // case) byte-for-byte identical to the plain flat dict.
   if (breadcrumbs) dict[AS_DETAIL_BREADCRUMBS_KEY] = breadcrumbs;
+  // Same self-breadcrumb the form path carries: a nested-AsDetail COLUMN in a detail table has an
+  // inner dict as its value, which used to stringify to "[object Object]".
+  if (typeof po.breadcrumb === 'string' && po.breadcrumb !== '') {
+    dict[AS_DETAIL_SELF_BREADCRUMB_KEY] = po.breadcrumb;
+  }
   return dict;
 }
 

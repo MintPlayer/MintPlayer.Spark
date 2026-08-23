@@ -8,7 +8,7 @@
 //   @mintplayer/ng-spark/po-form            (SparkPoFormComponent)
 //   @mintplayer/ng-spark/po-create          (SparkPoCreateComponent)
 //   @mintplayer/ng-spark/po-edit            (SparkPoEditComponent)
-//   @mintplayer/ng-spark/po-detail          (SparkPoDetailComponent + SparkSubQueryComponent)
+//   @mintplayer/ng-spark/po-detail          (SparkPoDetailComponent)
 //   @mintplayer/ng-spark/query-list         (SparkQueryListComponent)
 //   @mintplayer/ng-spark/retry-action-modal (SparkRetryActionModalComponent)
 //   @mintplayer/ng-spark/icon               (SparkIconComponent)

@@ -1,0 +1,32 @@
+// The pill chips that label reference values, in a grid cell and on a detail page.
+//
+// Deliberately NOT `.badge`. ng-bootstrap imports Bootstrap's badge SCSS inside
+// `:host ::ng-deep` of `BsBadgeComponent`, so `.badge` styles nothing at all outside a
+// `<bs-badge>` element. Utility classes (`bg-*`, `border`, `px-*`, `rounded-pill`) are global
+// and do apply, which is what made the old markup look almost right: the colour landed and the
+// typography did not — measured on a `.badge bg-success` as `display: inline`, `padding: 0`,
+// `font-size: 16px`, `font-weight: 500`, `border-radius: 0`, with only the background arriving.
+//
+// `<bs-badge>` cannot express this design either: it hardcodes `class="badge bg-{color}"` on its
+// inner span, and a class put on the host element never reaches that span. So the chip owns its
+// own appearance, in terms of Bootstrap CSS variables so it still follows the active theme.
+.spark-chip {
+  display: inline-block;
+  padding: 0.35em 0.9em;
+  font-size: 0.8125em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: baseline;
+  color: var(--bs-body-color);
+  background-color: var(--bs-secondary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 50rem;
+  text-decoration: none;
+}
+
+a.spark-chip:hover,
+a.spark-chip:focus-visible {
+  background-color: var(--bs-tertiary-bg);
+}

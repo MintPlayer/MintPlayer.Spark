@@ -17,7 +17,7 @@ import { ReferenceAttrValuePipe } from './reference-attr-value.pipe';
 import { ReferenceLinkRoutePipe } from './reference-link-route.pipe';
 import { ResolveTranslationPipe } from './resolve-translation.pipe';
 import { RouterLinkPipe } from './router-link.pipe';
-import { AS_DETAIL_BREADCRUMBS_KEY, ELookupDisplayType } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_BREADCRUMBS_KEY, ELookupDisplayType, AS_DETAIL_SELF_BREADCRUMB_KEY } from '@mintplayer/ng-spark/models';
 
 // ---------------------------------------------------------------------------
 // arrayValue
@@ -82,6 +82,25 @@ describe('AsDetailCellValuePipe', () => {
 
   it('returns the raw value for non-reference cells', () => {
     expect(pipe.transform({ City: 'Brussels' }, { name: 'addr' } as any, { name: 'City', dataType: 'string' } as any, {})).toBe('Brussels');
+  });
+
+  /**
+   * A nested-AsDetail COLUMN's value is an inner dict, so `String(value)` produced the literal
+   * "[object Object]". Same root cause as the edit-form bug: the label only the server can resolve
+   * was being discarded while flattening.
+   */
+  it('renders a nested AsDetail cell from the server breadcrumb, not [object Object]', () => {
+    const col = { name: 'Address', dataType: 'AsDetail', asDetailType: 'HR.Entities.Address' } as any;
+    const row = { Address: { Street: 'Abdijsteeg 30', [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Abdijsteeg 30, 9700 Oudenaarde' } };
+
+    expect(pipe.transform(row, { name: 'addr' } as any, col, {})).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+  });
+
+  it('renders an empty nested AsDetail cell as blank rather than the type-name placeholder', () => {
+    const col = { name: 'Address', dataType: 'AsDetail', asDetailType: 'HR.Entities.Address' } as any;
+    const row = { Address: { [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Address' } };
+
+    expect(pipe.transform(row, { name: 'addr' } as any, col, {})).toBe('');
   });
 
   it('resolves Reference value via asDetailRefOptions breadcrumb', () => {

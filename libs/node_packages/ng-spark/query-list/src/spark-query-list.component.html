@@ -23,30 +23,36 @@
       }
     </bs-priority-nav>
   </div>
+
   <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isStreaming()) {
-      <span class="badge bg-success ms-2" style="font-size: 0.5em; vertical-align: middle;">LIVE</span>
+      <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
     }
   </h2>
 
-  @if (entityType()) {
-    <!-- Search box -->
+  @if (errorMessage(); as err) {
+    <!-- The route could not be resolved to a query at all. A failure INSIDE the grid renders in
+         the grid; this is the one it cannot report, because it never got a query id. -->
+    <bs-alert [type]="colors.danger" class="m-3 d-block">
+      {{ err }}
+    </bs-alert>
+  } @else if (queryId(); as qId) {
     <div class="flex-shrink-0" [class.px-4]="isVirtualScrolling()">
       <bs-form>
         <bs-grid>
           <div bsRow class="mb-3">
-            <div [md]="4">
+            <div [md]="12">
               <bs-input-group>
-                <span class="input-group-text">
+                <span class="addon">
                   <spark-icon name="search" />
                 </span>
                 <input
                   type="text"
                   [placeholder]="'common.search' | t"
-                  [(ngModel)]="searchTerm"
-                  (ngModelChange)="onSearchChange()">
-                @if (searchTerm) {
+                  [ngModel]="searchTerm()"
+                  (ngModelChange)="searchTerm.set($event)">
+                @if (searchTerm()) {
                   <button
                     type="button"
                     class="btn btn-outline-secondary"
@@ -56,126 +62,35 @@
                 }
               </bs-input-group>
             </div>
-            <div [md]="8" class="text-end">
-              @if (searchTerm && resultCount() !== null) {
+            <!-- Its own full-width row rather than a column beside the box: the count is
+                 occasional, and reserving 8 columns for it shrank the search permanently. The
+                 @if moved out of the column so nothing reserves vertical space when absent. -->
+            @if (searchTerm() && resultCount() !== null) {
+              <div [md]="12" class="text-end mt-1">
                 <span class="text-muted">
                   {{ resultCount() }} {{ resultCount() === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
                 </span>
-              }
-            </div>
+              </div>
+            }
           </div>
         </bs-grid>
       </bs-form>
-
-      @if (errorMessage(); as err) {
-        <bs-alert [type]="colors.danger" class="mb-3">
-          {{ err }}
-        </bs-alert>
-      }
     </div>
 
-    @if (isStreaming()) {
-      <bs-datatable class="flex-grow-1"
-          [selectionMode]="selectionMode()"
-          [(selection)]="selection"
-          [virtualScroll]="isVirtualScrolling()"
-          [itemSize]="40"
-          [isResponsive]="isVirtualScrolling()"
-          [data]="streamItems()"
-          [(settings)]="settings">
-        @for (attr of visibleAttributes(); track attr.id) {
-          <div *bsDatatableColumn="attr.name; sortable: true">
-            {{ (attr.label | resolveTranslation) || attr.name }}
-          </div>
-        }
-
-        <ng-container *bsRowTemplate="let item">
-          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
-        </ng-container>
-      </bs-datatable>
-    } @else {
-      <bs-datatable class="flex-grow-1"
-          [selectionMode]="selectionMode()"
-          [(selection)]="selection"
-          [virtualScroll]="isVirtualScrolling()"
-          [itemSize]="40"
-          [isResponsive]="isVirtualScrolling()"
-          [fetch]="fetchFn()"
-          [(settings)]="settings">
-        @for (attr of visibleAttributes(); track attr.id) {
-          <div *bsDatatableColumn="attr.name; sortable: true">
-            {{ (attr.label | resolveTranslation) || attr.name }}
-          </div>
-        }
-
-        <ng-container *bsRowTemplate="let item">
-          <ng-container *ngTemplateOutlet="rowCells; context: { $implicit: item }"></ng-container>
-        </ng-container>
-      </bs-datatable>
-    }
-  } @else if (errorMessage(); as err) {
-    <!-- The metadata load failed. This used to be unreachable: the rejection was
-         swallowed by an async subscribe handler, so the spinner below span forever. -->
-    <bs-alert [type]="colors.danger" class="m-3 d-block">
-      {{ err }}
-    </bs-alert>
+    <!--
+      One grid, both transports. `data` is null for a normal query, so the grid fetches and pages
+      server-side; for a streaming query this page owns the socket and hands the filtered snapshot
+      in. This used to be two near-identical <bs-datatable> blocks with a shared row template.
+    -->
+    <spark-query-grid class="flex-grow-1"
+        [queryId]="qId"
+        [data]="gridData()"
+        [search]="searchTerm()"
+        (rowClicked)="rowClicked.emit($event)"
+        (customActionExecuted)="customActionExecuted.emit($event)" />
   } @else {
     <div class="text-center p-5">
       <bs-spinner />
     </div>
   }
 </div>
-
-<!--
-  One row template for both the streaming and the paged datatable. These were two
-  byte-identical copies in the same file, which is how the first column's link came to
-  need fixing in three places instead of one.
--->
-<ng-template #rowCells let-item>
-  @let row = $any(item);
-  @for (attr of visibleAttributes(); track attr.id; let first = $first) {
-    <td>
-      @if (row) {
-        <!-- `canRead()` is the whole gate, and it is the rights model: `Query` without
-             `Read` lists the rows and withholds the link. Withhold `Read` for a query
-             whose rows no detail page can load — a Custom.* query that fabricates rows
-             in memory, say. Note cellContent renders INSIDE this anchor, so a custom
-             renderer cannot suppress the link — it would nest a second one. -->
-        @if (first && canRead()) {
-          <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]" (click)="rowClicked.emit(row)">
-            <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-          </a>
-        } @else {
-          <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
-        }
-      } @else {
-        &nbsp;
-      }
-    </td>
-  }
-</ng-template>
-
-<ng-template #cellContent let-item let-attr="attr">
-  @if (getColumnRendererComponent(attr); as rendererType) {
-    <ng-container *ngComponentOutlet="rendererType; inputs: getColumnRendererInputs(rendererType, item, attr)"></ng-container>
-  } @else if (attr.dataType === 'boolean') {
-    <input type="checkbox"
-      [checked]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) === true"
-      [indeterminate]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) == null"
-      disabled
-      onclick="return false;">
-  } @else if (attr.dataType === 'color') {
-    @let colorVal = (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes());
-    @if (colorVal) {
-      <span class="d-inline-block align-middle border rounded" [style.background-color]="colorVal" style="width: 1.5em; height: 1.5em;"></span>
-    }
-  } @else if (attr.dataType === 'Reference' && attr.isArray) {
-    <span class="d-inline-flex flex-wrap gap-1">
-      @for (chip of (attr.name | referenceChips:item); track chip.id) {
-        <span class="badge rounded-pill border bg-body-secondary text-body px-3 py-2">{{ chip.label }}</span>
-      }
-    </span>
-  } @else {
-    {{ (attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes()) }}
-  }
-</ng-template>

@@ -28,9 +28,9 @@
         <!-- Search box -->
         <bs-grid>
           <div bsRow class="mb-3">
-            <div [md]="6">
+            <div [md]="12">
               <bs-input-group>
-                <span class="input-group-text">
+                <span class="addon">
                   <spark-icon name="search" />
                 </span>
                 <input
@@ -48,13 +48,13 @@
                 }
               </bs-input-group>
             </div>
-            <div [md]="6" class="text-end">
-              @if (searchTerm && pagination()) {
+            @if (searchTerm && pagination()) {
+              <div [md]="12" class="text-end mt-1">
                 <span class="text-muted">
                   {{ pagination()!.totalRecords }} {{ pagination()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
                 </span>
-              }
-            </div>
+              </div>
+            }
           </div>
         </bs-grid>
 

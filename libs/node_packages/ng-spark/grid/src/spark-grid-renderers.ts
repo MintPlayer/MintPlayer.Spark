@@ -8,20 +8,21 @@ import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@m
 import { SparkService } from '@mintplayer/ng-spark/services';
 
 /**
- * The parts of a Spark grid that both grid components need and that were, until this existed,
- * written out twice.
+ * Renderer lookup and lookup-reference loading for a Spark grid.
  *
- * `spark-query-list` and `spark-sub-query` had byte-identical copies of the renderer lookup, the
- * renderer input construction and the lookup-reference loading — around 120 lines between them.
- * That duplication is not a tidiness complaint: it is what produced the drift. The two copies
- * disagreed about `[indeterminate]`, about resetting permission state, about whether a fetch
- * failure surfaces or is swallowed, and about virtual-scroll sizing — four user-visible bugs, each
- * fixed on one side and not the other, because nothing made the two files move together.
+ * This was extracted when `spark-query-list` and `spark-sub-query` were two components holding
+ * byte-identical copies of it — around 120 lines between them. That duplication was not a
+ * tidiness complaint: it produced drift. The two copies disagreed about `[indeterminate]`, about
+ * resetting permission state, about whether a fetch failure surfaces or is swallowed, and about
+ * virtual-scroll sizing — four user-visible bugs, each fixed on one side and not the other.
  *
- * Kept deliberately small and stateless. The two components differ in real ways — one is
- * route-coupled and carries streaming, search and a websocket dependency graph — so merging them
- * into a single component would drag all of that into every detail page's bundle. Shared logic
- * belongs here; shared *state* does not.
+ * There is now one grid, {@link SparkQueryGridComponent}, so the drift cannot recur. This stays
+ * separate because it is stateless service-shaped logic rather than view state, and because it is
+ * what a custom grid would need in order to render Spark cells at all.
+ *
+ * The constraint that shaped the split still holds and is why the grid takes rows as an input
+ * rather than owning a socket: streaming's dependency graph must not reach the bundle of every
+ * detail page.
  */
 @Injectable({ providedIn: 'root' })
 export class SparkGridRenderers {
@@ -41,10 +42,22 @@ export class SparkGridRenderers {
    */
   columnInputsFor(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
     const itemAttr = item.attributes.find(a => a.name === attr.name);
+    return this.cellInputsFor(component, rendererValue(itemAttr), attr, item);
+  }
+
+  /**
+   * The same contract for a row that is not a <see cref="PersistentObject"/>.
+   *
+   * An AsDetail row is a plain dictionary — embedded values with no id and no attribute list — so
+   * its value cannot be read the way {@link columnInputsFor} reads one. Only the extraction
+   * differs; the renderer contract is identical, and stating it once is what stops the two from
+   * drifting the way the cell markup already had.
+   */
+  cellInputsFor(component: Type<any>, value: unknown, column: EntityAttributeDefinition, item: unknown): Record<string, any> {
     return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
+      value,
+      attribute: column,
+      options: column.rendererOptions,
       item,
     });
   }

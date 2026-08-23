@@ -12,7 +12,22 @@ namespace MintPlayer.Spark.Endpoints.Queries;
 internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesGroup>
 {
     public static string Path => "/{id}/stream";
-    public static IEnumerable<string> Methods => ["GET"];
+
+    // CONNECT is not optional here, and GET alone is not enough for a browser.
+    //
+    // Kestrel advertises SETTINGS_ENABLE_CONNECT_PROTOCOL (verified: true), so on an HTTP/2
+    // origin a browser opens a WebSocket the RFC 8441 way — `:method = CONNECT` with
+    // `:protocol = websocket` — and never attempts the HTTP/1.1 `GET` + `Upgrade` handshake.
+    // Endpoint routing then rejects the method before the handler runs, and the client sees
+    // `405 Method Not Allowed` at the handshake with no server-side log to explain it. The
+    // handshake succeeds over HTTP/1.1 (curl gets 101), which is what makes this look like a
+    // client bug: every non-browser client works.
+    //
+    // Accepting CONNECT is not a widening. A CONNECT that is not a valid WebSocket upgrade
+    // leaves `WebSockets.IsWebSocketRequest` false and falls out at the 400 below, and the
+    // same-origin guard in SparkMiddleware keys off that same flag, so CSWSH protection covers
+    // both protocols identically.
+    public static IEnumerable<string> Methods => ["GET", "CONNECT"];
 
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;

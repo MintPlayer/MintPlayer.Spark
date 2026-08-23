@@ -98,9 +98,11 @@ export class SparkRetryActionModalComponent {
     // and the lookup-by-id would return null, leaving the form blank. The scaffolded PO
     // already carries full attribute metadata (label / dataType / rules / renderer / etc.),
     // so we synthesize an EntityType from the attributes directly and skip the HTTP
-    // lookup altogether. `getEntityTypes()` is still fetched once (cached on the
-    // component) because the embedded spark-po-form needs the full list to resolve
-    // nested AsDetail / Reference types the retry PO might point at.
+    // lookup altogether. `getEntityTypes()` is still fetched because the embedded
+    // spark-po-form needs the full list to resolve nested AsDetail / Reference types the
+    // retry PO might point at. The guard below is a COMPONENT-local cache and is the only
+    // one there is: the service does not cache, so every caller that skips such a guard
+    // issues another request.
     if (this.allEntityTypes.length === 0) {
       try { this.allEntityTypes = await this.sparkService.getEntityTypes(); }
       catch { this.allEntityTypes = []; }
