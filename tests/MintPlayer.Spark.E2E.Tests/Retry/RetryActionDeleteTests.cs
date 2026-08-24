@@ -108,7 +108,7 @@ public class RetryActionDeleteTests
             DeleteUrl(created.Id!),
             JsonContent.Create(new { retryResults = new[] { new { step, option = "Delete", persistentObject = populated } } }),
             requiresAntiforgery: true);
-        ((int)second.StatusCode).Should().BeGreaterOrEqualTo(400,
+        ((int)second.StatusCode).Should().BeGreaterThanOrEqualTo(400,
             "mismatched confirmation must refuse the delete (500 from InvalidOperationException)");
 
         var refetch = await adminClient.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!);
