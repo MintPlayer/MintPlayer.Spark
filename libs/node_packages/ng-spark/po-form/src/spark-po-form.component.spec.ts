@@ -550,7 +550,9 @@ describe('SparkPoFormComponent', () => {
       component.save.subscribe(saved);
       component.cancel.subscribe(cancelled);
 
-      component.onSave();
+      // onSave is async now: it flushes any pending refresh first, so that a value typed and never
+      // blurred still reshapes the object before it goes to the server.
+      await component.onSave();
       component.onCancel();
 
       expect(saved).toHaveBeenCalled();

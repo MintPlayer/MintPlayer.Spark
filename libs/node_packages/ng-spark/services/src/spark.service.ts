@@ -109,6 +109,22 @@ export class SparkService {
     );
   }
 
+  /**
+   * Asks the server to reshape an in-progress object after `triggeredBy`'s value changed.
+   *
+   * Writes nothing, but goes through the envelope like every other mutating call: a refresh may
+   * legitimately emit notifications, and may open the retry-action prompt.
+   *
+   * `triggeredBy` is the attribute's name. For a trigger inside an AsDetail row it is the same
+   * path form the inline validation errors use — `Jobs[2].ProfessionId`.
+   */
+  async refresh(type: string, data: Partial<PersistentObject>, triggeredBy: string): Promise<PersistentObject> {
+    return this.postWithEnvelope<PersistentObject>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}/refresh`,
+      { persistentObject: data, triggeredBy }
+    );
+  }
+
   async delete(type: string, id: string): Promise<void> {
     return this.deleteWithEnvelope<void>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
@@ -161,7 +177,7 @@ export class SparkService {
   // dispatch any non-retry operations, and translate 449 retry-operations into the existing
   // RetryActionService modal flow.
 
-  private postWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
+  private postWithEnvelope<T>(url: string, body: { persistentObject?: any; triggeredBy?: string; retryResults?: RetryActionResult[] }): Promise<T> {
     return this.sendWithEnvelope<T>(
       () => firstValueFrom(this.http.post<ClientOperationEnvelope<T>>(url, body)),
       body,
@@ -169,7 +185,7 @@ export class SparkService {
     );
   }
 
-  private putWithEnvelope<T>(url: string, body: { persistentObject?: any; retryResults?: RetryActionResult[] }): Promise<T> {
+  private putWithEnvelope<T>(url: string, body: { persistentObject?: any; triggeredBy?: string; retryResults?: RetryActionResult[] }): Promise<T> {
     return this.sendWithEnvelope<T>(
       () => firstValueFrom(this.http.put<ClientOperationEnvelope<T>>(url, body)),
       body,

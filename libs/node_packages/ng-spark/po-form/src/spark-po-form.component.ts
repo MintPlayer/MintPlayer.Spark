@@ -46,11 +46,19 @@ import {
   ShowedOn,
   hasShowedOnFlag,
   resolveTranslation,
+  RefreshOverlay,
+  RefreshedOption,
+  applyOverlay,
+  overlayFromResponse,
+  mergeRefreshValues,
+  evaluateRules,
+  RuleFailure,
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
+import { RefreshCoordinator, triggersImmediately } from './refresh-coordinator';
 
 @Component({
   selector: 'spark-po-form',
@@ -77,6 +85,25 @@ export class SparkPoFormComponent {
 
   save = output<void>();
   cancel = output<void>();
+
+  /**
+   * The type id to refresh against. Absent means refresh is unavailable — the form still renders and
+   * edits normally, so a host that has not opted in loses nothing.
+   */
+  objectTypeId = input<string | undefined>(undefined);
+  /** The id of the object being edited; absent for a create. */
+  objectId = input<string | undefined>(undefined);
+
+  /**
+   * What the last refresh changed about each attribute's presentation, keyed by attribute name.
+   *
+   * Deliberately NOT folded back into `entityType`. All option loading hangs off one effect keyed on
+   * `entityType` identity and `SparkService` caches nothing, so re-setting it would re-issue every
+   * reference query and lookup fetch on every refresh; mutating it in place would not re-render at
+   * all.
+   */
+  refreshOverlay = signal<RefreshOverlay>({});
+  isRefreshing = signal(false);
 
   colors = Color;
   referenceOptions = signal<Record<string, PersistentObject[]>>({});
@@ -108,8 +135,24 @@ export class SparkPoFormComponent {
   ELookupDisplayType = ELookupDisplayType;
   EReferenceDisplayType = EReferenceDisplayType;
 
-  editableAttributes = computed(() => {
+  /**
+   * Every attribute this form could ever need option data for — including ones the model hides,
+   * because a refresh may reveal them.
+   *
+   * Read by the option-loading effect, and deliberately independent of `refreshOverlay`: the loaders
+   * read this synchronously, so an overlay dependency here would make every refresh re-issue every
+   * reference query and lookup fetch. That is the whole reason the overlay is a separate signal.
+   */
+  optionSourceAttributes = computed(() => {
     return this.entityType()?.attributes
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .sort((a, b) => a.order - b.order) || [];
+  });
+
+  editableAttributes = computed(() => {
+    const overlay = this.refreshOverlay();
+    return this.entityType()?.attributes
+      .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
@@ -168,7 +211,7 @@ export class SparkPoFormComponent {
   }
 
   async loadReferenceOptions(): Promise<void> {
-    const refAttrs = this.editableAttributes().filter(a => a.dataType === 'Reference' && a.query);
+    const refAttrs = this.optionSourceAttributes().filter(a => a.dataType === 'Reference' && a.query);
     if (refAttrs.length === 0) return;
 
     const entries = await Promise.all(
@@ -232,7 +275,7 @@ export class SparkPoFormComponent {
   }
 
   async loadAsDetailTypes(): Promise<void> {
-    const asDetailAttrs = this.editableAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType);
+    const asDetailAttrs = this.optionSourceAttributes().filter(a => a.dataType === 'AsDetail' && a.asDetailType);
     if (asDetailAttrs.length === 0) return;
 
     const types = await this.sparkService.getEntityTypes();
@@ -278,7 +321,7 @@ export class SparkPoFormComponent {
   }
 
   async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.editableAttributes().filter(a => a.lookupReferenceType);
+    const lookupAttrs = this.optionSourceAttributes().filter(a => a.lookupReferenceType);
     if (lookupAttrs.length === 0) return;
 
     const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
@@ -363,8 +406,18 @@ export class SparkPoFormComponent {
     });
   }
 
+  /**
+   * Rules evaluated in the browser, against the *effective* metadata — so a rule a refresh hook
+   * imposed is visible before the round-trip rather than only after the server rejects the save.
+   */
+  clientRuleFailures = computed<RuleFailure[]>(() => {
+    const values = this.formData();
+    return this.editableAttributes().flatMap(attr => evaluateRules(attr, values[attr.name]));
+  });
+
   hasError(attrName: string): boolean {
-    return this.validationErrors().some(e => e.attributeName === attrName);
+    return this.clientRuleFailures().some(f => f.attributeName === attrName)
+      || this.validationErrors().some(e => e.attributeName === attrName);
   }
 
   // Per-cell validation for inline AsDetail rows. Server-emitted errors are keyed by the
@@ -384,11 +437,211 @@ export class SparkPoFormComponent {
     return error ? resolveTranslation(error.errorMessage) : null;
   }
 
-  onFieldChange(): void {
+  /**
+   * The single funnel every scalar / boolean / inline-cell edit passes through.
+   *
+   * `attr` is optional only so the AsDetail modal's recursive form, which has no trigger context,
+   * can still call it. A caller that knows which attribute changed should always say so — without it
+   * no refresh can fire.
+   */
+  onFieldChange(attr?: EntityAttributeDefinition): void {
     this.formData.set({ ...this.formData() });
+    if (attr) this.noteChange(attr);
   }
 
-  onSave(): void {
+  /**
+   * A trigger inside an AsDetail row. Addressed by the same `{attr}[{index}].{col}` path the inline
+   * validation errors already use, so the server can tell which row asked without a second
+   * addressing scheme being invented for it.
+   */
+  onInlineCellChange(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): void {
+    this.onFieldChange();
+    if (col.triggersRefresh !== true || !this.objectTypeId()) return;
+
+    const path = this.inlineErrorPath(attr, rowIndex, col);
+    this.pendingNestedTrigger = { attribute: attr.name, rowIndex };
+
+    if (triggersImmediately(col)) {
+      void this.refreshCoordinator.trigger(path);
+    } else {
+      this.refreshCoordinator.markPending(path);
+    }
+  }
+
+  /** Which detail row the in-flight refresh belongs to, if any. */
+  private pendingNestedTrigger: { attribute: string; rowIndex: number } | null = null;
+
+  /**
+   * Applies a refresh that ran against a detail row: the row's own values, and the column metadata
+   * for the grid it lives in.
+   *
+   * The column metadata comes from `asDetailTypes` — a different signal from `entityType` — which is
+   * why a nested response cannot go through the top-level overlay.
+   *
+   * ⚠️ The row array is mutated in place rather than replaced. Rows are tracked by index, so handing
+   * the template a new array destroys and rebuilds every row's DOM and takes focus with it, mid-edit.
+   */
+  private applyNestedResponse(
+    nested: { attribute: string; rowIndex: number },
+    response: PersistentObject,
+  ): void {
+    this.pendingNestedTrigger = null;
+
+    const rows = this.formData()[nested.attribute];
+    const row = Array.isArray(rows) ? rows[nested.rowIndex] : undefined;
+    if (row) {
+      for (const attribute of response.attributes ?? []) {
+        row[attribute.name] = attribute.value ?? null;
+      }
+      // The array identity is unchanged; this only tells the signal graph the contents moved.
+      this.formData.set({ ...this.formData() });
+    }
+
+    const overlay = overlayFromResponse(response);
+    this.asDetailTypes.update(prev => {
+      const type = prev[nested.attribute];
+      if (!type) return prev;
+
+      return {
+        ...prev,
+        [nested.attribute]: {
+          ...type,
+          attributes: type.attributes.map(a => applyOverlay(a, overlay[a.name])),
+        },
+      };
+    });
+  }
+
+  onInlineCellBlur(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): void {
+    if (col.triggersRefresh !== true || !this.objectTypeId()) return;
+    void this.refreshCoordinator.blur(this.inlineErrorPath(attr, rowIndex, col));
+  }
+
+  /** Blur handler for free-text editors — sends the refresh their keystrokes only marked pending. */
+  onFieldBlur(attr: EntityAttributeDefinition): void {
+    if (!this.canRefresh(attr)) return;
+    void this.refreshCoordinator.blur(attr.name);
+  }
+
+  private noteChange(attr: EntityAttributeDefinition): void {
+    if (!this.canRefresh(attr)) return;
+
+    if (triggersImmediately(attr)) {
+      void this.refreshCoordinator.trigger(attr.name);
+    } else {
+      // Free text: marking is all a keystroke earns. The request goes on blur, or on save.
+      this.refreshCoordinator.markPending(attr.name);
+    }
+  }
+
+  private canRefresh(attr: EntityAttributeDefinition): boolean {
+    return attr.triggersRefresh === true && !!this.objectTypeId();
+  }
+
+  /**
+   * Per-instance, never a service: the retry-action modal renders its own `spark-po-form`, and a
+   * refresh may carry a retry operation — so a refresh can open a modal containing a form that
+   * refreshes. A shared coordinator would let the nested form supersede this one's request.
+   */
+  protected readonly refreshCoordinator = new RefreshCoordinator({
+    send: (triggeredBy) => this.sparkService.refresh(
+      this.objectTypeId()!, this.buildRefreshPayload(), triggeredBy),
+    currentValues: () => this.formData(),
+    apply: (response, sent) => {
+      // A nested response describes a detail ROW, not this form. Applying it to the top-level
+      // overlay would hide every attribute the row does not happen to have.
+      const nested = this.pendingNestedTrigger;
+      if (nested) {
+        this.applyNestedResponse(nested, response);
+        return;
+      }
+
+      this.refreshOverlay.set(overlayFromResponse(response));
+      this.formData.set(mergeRefreshValues(sent, this.formData(), response));
+      this.applyRefreshedOptions(response);
+    },
+    setBusy: (busy) => this.isRefreshing.set(busy),
+  });
+
+  private buildRefreshPayload() {
+    const et = this.entityType();
+    const values = this.formData();
+    return {
+      id: this.objectId(),
+      name: et?.name ?? '',
+      // The EntityType's id, never `objectTypeId()` — that is the ROUTE segment, which is an alias
+      // ("car") as often as a guid. The server types this field as a Guid, so an alias fails
+      // deserialization and the request 500s before the handler is reached: no hook, no error the
+      // client can act on. The route segment still carries the alias, which the server resolves.
+      objectTypeId: et?.id ?? this.objectTypeId()!,
+      attributes: (et?.attributes ?? []).map(a => ({
+        name: a.name,
+        value: values[a.name] ?? null,
+        isValueChanged: true,
+      })),
+    } as any;
+  }
+
+  /**
+   * Folds replaced option lists into the signals the editors already read, so a refreshed dropdown
+   * renders through the same path as a loaded one.
+   *
+   * `undefined` means the hook did not touch this attribute's options and the loaded set stands; an
+   * empty array means it deliberately left none. Collapsing the two would blank every dropdown the
+   * hook never mentioned.
+   */
+  private applyRefreshedOptions(response: PersistentObject): void {
+    const replaced = (response.attributes ?? [])
+      .map(a => [a.name, (a as { options?: RefreshedOption[] | null }).options] as const)
+      .filter(([, options]) => options !== undefined && options !== null);
+
+    if (replaced.length === 0) return;
+
+    const byName = new Map(this.optionSourceAttributes().map(a => [a.name, a]));
+
+    this.lookupReferenceOptions.update(prev => {
+      const next = { ...prev };
+      for (const [name, options] of replaced) {
+        const attr = byName.get(name);
+        if (!attr?.lookupReferenceType) continue;
+        next[attr.lookupReferenceType] = {
+          ...(next[attr.lookupReferenceType] ?? { name: attr.lookupReferenceType, isTransient: true, displayType: ELookupDisplayType.Dropdown }),
+          values: (options ?? []).map(o => ({ key: o.key, values: o.label ?? { en: o.key }, isActive: true })),
+        } as LookupReference;
+      }
+      return next;
+    });
+
+    this.referenceOptions.update(prev => {
+      const next = { ...prev };
+      for (const [name, options] of replaced) {
+        const attr = byName.get(name);
+        if (attr?.dataType !== 'Reference') continue;
+        next[name] = (options ?? []).map(o => ({
+          id: o.key,
+          name: attr.referenceType ?? '',
+          objectTypeId: '',
+          breadcrumb: o.label ? resolveTranslation(o.label) : o.key,
+          attributes: [],
+        })) as PersistentObject[];
+      }
+      return next;
+    });
+  }
+
+  /** Sends anything still pending, so a typed-but-never-blurred trigger is reflected before save. */
+  async flushPendingRefresh(): Promise<void> {
+    await this.refreshCoordinator.flush();
+  }
+
+  async onSave(): Promise<void> {
+    // A value typed and never blurred — the user tabbing straight to Save — must still reshape the
+    // object before it goes, or the server enforces rules the user was never shown.
+    await this.flushPendingRefresh();
+
+    // Evaluated AFTER the flush: the refresh may be what imposes the rule being checked.
+    if (this.clientRuleFailures().length > 0) return;
+
     this.save.emit();
   }
 

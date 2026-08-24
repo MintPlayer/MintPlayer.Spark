@@ -244,6 +244,22 @@
         ]
       },
       {
+        "id": "e4e94390-49dd-46aa-ac4a-386e29ca51b8",
+        "name": "PoliceReportNumber",
+        "label": {
+          "en": "Police Report Number"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
         "name": "PromoVideoUrl",
         "label": {
@@ -280,6 +296,7 @@
         "isReadOnly": false,
         "order": 6,
         "isArray": false,
+        "triggersRefresh": true,
         "lookupReferenceType": "CarStatus",
         "showedOn": "Query, PersistentObject",
         "rules": []

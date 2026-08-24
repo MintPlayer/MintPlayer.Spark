@@ -141,6 +141,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
                     case "Group":           attr.Group          = prop.Value.ValueKind == JsonValueKind.Null ? null : Deserialize<Guid?>(prop.Value, options); break;
                     case "Renderer":        attr.Renderer       = ReadNullableString(prop.Value); break;
                     case "RendererOptions": attr.RendererOptions = Deserialize<Dictionary<string, object>>(prop.Value, options); break;
+                    case "Options":         attr.Options        = Deserialize<PersistentObjectAttributeOption[]>(prop.Value, options); break;
                 }
             }
         }
@@ -167,6 +168,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
             if (value.Group is { } g) writer.WriteStringValue(g.ToString()); else writer.WriteNullValue();
             WritePropertyName(writer, "Renderer", options);        writer.WriteStringValue(value.Renderer);
             WritePropertyName(writer, "RendererOptions", options); JsonSerializer.Serialize(writer, value.RendererOptions, options);
+            WritePropertyName(writer, "Options", options);         JsonSerializer.Serialize(writer, value.Options, options);
         }
 
         private static void WritePropertyName(Utf8JsonWriter writer, string clrName, JsonSerializerOptions options)
@@ -205,7 +207,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
         [
             "Id", "Name", "Label", "Value", "DataType", "IsArray", "IsRequired", "IsVisible",
             "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "Breadcrumbs", "ShowedOn",
-            "Rules", "Group", "Renderer", "RendererOptions",
+            "Rules", "Group", "Renderer", "RendererOptions", "Options",
         ];
 
         private static string? ReadNullableString(JsonElement el)

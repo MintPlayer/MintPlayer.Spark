@@ -59,7 +59,8 @@
         "isArray": false,
         "referenceDisplayType": "Modal",
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "triggersRefresh": true
       }
     ],
     "queries": []

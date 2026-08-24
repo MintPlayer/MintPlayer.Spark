@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.IdentityProvider</PackageId>
-		<Version>10.0.0-preview.63</Version>
+		<Version>10.0.0-preview.64</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow with RavenDB storage. No external OIDC framework required.</Description>

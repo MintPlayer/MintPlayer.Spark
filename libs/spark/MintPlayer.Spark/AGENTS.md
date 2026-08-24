@@ -134,6 +134,7 @@ The hooks worth knowing:
 | `IsAllowedAsync(action, entity)` | **per-row** authorization |
 | `GetRowFilterAsync(action)` | row filter pushed **into the query** |
 | `GetProtectedAttributesAsync` | per-row attribute redaction |
+| `OnRefreshAsync` | reshape the form when a `triggersRefresh` attribute changes |
 | `StreamItems` / `StreamItem` | streaming queries over WebSocket |
 
 ⚠️ **`IsAllowedAsync` runs per row; `GetRowFilterAsync` runs in the database.** Prefer the filter
@@ -145,6 +146,51 @@ believing it applied the rule. Use `ISparkRowRule<T>.ApplyAsync`, which applies 
 ⚠️ **Type-level rights gate row rules.** With no grant on the type at all, `GetRowFilterAsync` never
 runs and signed-in callers are denied too. To restrict a type, *move* the grant to a narrower group
 — never delete it.
+
+### `OnRefreshAsync` — forms that reshape themselves
+
+Mark an attribute `"triggersRefresh": true` in the model JSON (hand-set; synchronize preserves it).
+When its value changes the client posts the in-progress object to
+`/spark/po/{objectTypeId}/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
+`IsVisible`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
+
+```csharp
+public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+{
+    var obj = args.PersistentObject;
+    var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
+
+    obj[nameof(Car.PoliceReportNumber)].IsVisible = stolen;
+    obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
+    obj[nameof(Car.PromoVideoUrl)].IsVisible = !stolen;
+    return Task.CompletedTask;
+}
+```
+
+⚠️ **Establish the whole presentation state on every call; never patch the previous one.** Each
+invocation is handed a freshly scaffolded object, so a hook that only turns things *on* leaves a
+form permanently locked after one stray selection. Set both sides of every flag, as above. Share one
+helper between this hook and any load-time shaping.
+
+⚠️ **No side effects — it also runs on save.** Spark re-runs the hook while validating a save, once
+per triggering attribute, so the rules it establishes are enforced whether or not the client ever
+called `/refresh`. That is what makes the feature enforceable rather than decorative, and it means a
+hook that writes, notifies or calls out does so on every save too.
+
+⚠️ **It is called far more often than load or save** — potentially on every field blur. Treat
+database access inside it as a cost.
+
+⚠️ **A trigger inside an inline detail grid runs against the ROW's type.** A flag on
+`CarreerJob.ProfessionId` reaches `CarreerJobActions.OnRefreshAsync`, not the `PersonActions` that
+owns the collection, and the row gets its owner as `args.PersistentObject.Parent` (read-only
+context). Authorization still uses the owning type from the route — nested AsDetail types are not in
+`security.json`. Metadata you change applies to the whole **column**, not one row; values are
+per-row.
+
+⚠️ `args.Attribute` is **nullable**: a stale client can name an attribute the model no longer
+declares. `--spark-verify-model` fails (exit 3) if a model declares `triggersRefresh` on a type whose
+actions class has no override — including a nested AsDetail type, which needs its own actions class.
+That check cannot be an analyzer, because the flag lives in JSON outside the compilation.
 
 ---
 

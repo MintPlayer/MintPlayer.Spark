@@ -8,8 +8,28 @@ public sealed class PersistentObject
 
     public string? Id { get; set; }
     public required string Name { get; set; }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ObjectTypeIdJsonConverter))]
     public required Guid ObjectTypeId { get; set; }
     public string? Breadcrumb { get; set; }
+
+    /// <summary>
+    /// The object this one is nested inside, for an AsDetail row being refreshed.
+    /// <see langword="null"/> for a top-level object, which is the usual case.
+    /// <para>
+    /// A refresh triggered from inside a detail grid runs against the <em>row's</em> type — a change
+    /// to <c>CarreerJob.ProfessionId</c> reaches <c>CarreerJobActions.OnRefreshAsync</c>, not the
+    /// owning <c>PersonActions</c> — because the hook that owns a type's shape is that type's own.
+    /// The row rarely has enough context to decide anything on its own, though, so it is handed its
+    /// parent here.
+    /// </para>
+    /// <para>
+    /// Read-only context: nothing the handler does to the parent is applied. The parent is scaffolded
+    /// from the model like everything else, so the values on it are the caller's and the metadata is
+    /// the server's.
+    /// </para>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PersistentObject? Parent { get; set; }
 
     /// <summary>
     /// Per-row action affordances (#236 G5), computed only when the type has a row rule. Lets the
@@ -134,6 +154,21 @@ public class PersistentObjectAttribute
     public Guid? Group { get; set; }
     public string? Renderer { get; set; }
     public Dictionary<string, object>? RendererOptions { get; set; }
+
+    /// <summary>
+    /// The selectable values for this attribute, when a refresh hook has replaced them.
+    /// <see langword="null"/> — the normal case — means "unchanged": the client keeps whatever the
+    /// attribute's own source gave it, a query for a Reference or <c>/spark/lookupref</c> for a
+    /// LookupReference.
+    /// <para>
+    /// This is the one piece of option data that travels on the wire, and it exists because
+    /// narrowing a dropdown in response to another field is otherwise inexpressible: the attribute
+    /// carries only <see cref="Query"/>, the <em>name</em> of a query, and re-pointing that name
+    /// does not tell the client anything changed. An empty (non-null) list means "no options",
+    /// which is a legitimate outcome and distinct from null.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PersistentObjectAttributeOption>? Options { get; set; }
 
     /// <summary>
     /// The PersistentObject that owns this attribute. Set by

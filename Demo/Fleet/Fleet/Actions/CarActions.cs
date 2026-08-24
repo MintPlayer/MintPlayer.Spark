@@ -53,6 +53,38 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         return Task.FromResult(filter);
     }
 
+    /// <summary>
+    /// Reshapes the form as the vehicle's status changes — the interactive half of the story
+    /// <see cref="OnBeforeSaveAsync"/> tells on save. Its retry prompt already says marking a car
+    /// stolen "will lock the vehicle record"; until this hook existed, that sentence was only a
+    /// message string.
+    ///
+    /// <para>
+    /// Note that every branch sets <em>both</em> sides of every flag. The hook is handed a freshly
+    /// scaffolded object each time, never the result of the previous call, so "only turn things on"
+    /// would leave a form permanently locked after one stray selection — and the rules it
+    /// establishes are re-derived on save, so a form that cannot be un-locked is a record that
+    /// cannot be saved.
+    /// </para>
+    /// </summary>
+    public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+    {
+        var obj = args.PersistentObject;
+        var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
+
+        // A stolen vehicle needs a police report, and the plate and manager are frozen: the record
+        // is evidence now, not fleet data.
+        obj[nameof(Car.PoliceReportNumber)].IsVisible = stolen;
+        obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
+        obj[nameof(Car.LicensePlate)].IsReadOnly = stolen;
+        obj[nameof(Car.Manager)].IsReadOnly = stolen;
+
+        // And you do not advertise a car you no longer have.
+        obj[nameof(Car.PromoVideoUrl)].IsVisible = !stolen;
+
+        return Task.CompletedTask;
+    }
+
     public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
     {
         // Stamp the creator id on first save. Preserve it on subsequent updates so the

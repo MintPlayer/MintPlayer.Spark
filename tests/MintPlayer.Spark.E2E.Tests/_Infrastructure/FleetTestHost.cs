@@ -504,11 +504,19 @@ public sealed class FleetTestHost : IAsyncLifetime
             return;
 
         var clientApp = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "ClientApp");
-        var npm = OperatingSystem.IsWindows() ? "npm.cmd" : "npm";
-        var psi = new ProcessStartInfo(npm, "run build")
-        {
-            WorkingDirectory = clientApp,
-        };
+        // ⚠️ On Windows npm is a .cmd, and handing its bare name to ProcessStartInfo is not the
+        // same as running it from a shell: cmd.exe ends up with a relative %0, so %~dp0 resolves to
+        // the working directory and npm.cmd then hunts for its own internals under
+        // the ClientApp's own node_modules/npm/ — which does not exist. The failure is a
+        // MODULE_NOT_FOUND for npm-prefix.js that reads like a broken install,
+        // and it takes the whole suite down in fixture startup, before a single test body runs.
+        //
+        // Route it through `cmd /c` so cmd does the PATH search and launches npm.cmd by absolute
+        // path. This is what MintPlayer.AspNetCore.SpaServices' own NodeScriptRunner does, for the
+        // same reason and with the same comment.
+        var psi = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo("cmd", "/c npm run build") { WorkingDirectory = clientApp }
+            : new ProcessStartInfo("npm", "run build") { WorkingDirectory = clientApp };
         // `npm run build` delegates to `nx run @spark-demo/fleet-demo:build`. On CI that is a
         // NESTED nx invocation inside the outer `nx affected --target=test` process; sharing the
         // outer run's daemon and remote cache from a test subprocess is a lock-contention hang

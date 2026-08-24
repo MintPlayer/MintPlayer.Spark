@@ -62,6 +62,26 @@ public interface IPersistentObjectActions<T> where T : class
     /// <param name="entity">The entity about to be deleted</param>
     Task OnBeforeDeleteAsync(T entity);
 
+    /// <summary>
+    /// Called when the value of an attribute declaring <c>"triggersRefresh": true</c> changes, so the
+    /// form can be reshaped in response. Mutate <c>args.PersistentObject</c>: toggle
+    /// <see cref="PersistentObjectAttribute.IsRequired"/>,
+    /// <see cref="PersistentObjectAttribute.IsReadOnly"/> and
+    /// <see cref="PersistentObjectAttribute.IsVisible"/>, rewrite
+    /// <see cref="PersistentObjectAttribute.Rules"/>, replace an attribute's selectable options, or
+    /// set a dependent value.
+    /// <para>
+    /// ⚠️ <b>Establish the complete presentation state on every call.</b> Each invocation is handed a
+    /// freshly scaffolded object, never the result of the last one, so a handler that applies only
+    /// the delta it cares about silently loses every rule and flag it set previously.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>No side effects.</b> Spark also runs this while validating a save, so the rules it
+    /// establishes are enforced whether or not the client ever asked for a refresh.
+    /// </para>
+    /// </summary>
+    Task OnRefreshAsync(SparkRefreshArgs<T> args);
+
     // ---- Row-level security ------------------------------------------------------------------
     //
     // These three were deliberately absent from this interface and reached by reflection instead,

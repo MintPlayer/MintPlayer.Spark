@@ -184,6 +184,7 @@ public static class SparkDevelopmentExtensions
         {
             Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
             VerifyQueryAliasesAreUnique(contentRoot);
+            VerifyRefreshTriggersAreImplemented(contentRoot);
             return;
         }
 
@@ -208,6 +209,112 @@ public static class SparkDevelopmentExtensions
         Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
 
         Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Refuses a model declaring <c>triggersRefresh</c> on a type whose actions class has no
+    /// <c>OnRefreshAsync</c> override.
+    /// </summary>
+    /// <remarks>
+    /// The flag is a promise to the user that changing this field does something. Unimplemented, it
+    /// buys them a round trip per edit and no visible effect — a defect that is invisible in review,
+    /// because the declaration and the implementation live in different files and different
+    /// languages.
+    /// <para>
+    /// ⚠️ This cannot be a Roslyn analyzer, which is the obvious place to look for it. The flag
+    /// lives in <c>App_Data/Model/*.json</c>, which is not part of the compilation unless it is
+    /// added as an <c>AdditionalFile</c>; an analyzer would have nothing to read. It rides
+    /// <c>--spark-verify-model</c> instead, which already runs in CI and already exits non-zero.
+    /// </para>
+    /// <para>
+    /// Reads the files directly and resolves the actions type by the same convention
+    /// <c>ActionsResolver</c> uses, because there is no service provider in the builder phase.
+    /// </para>
+    /// </remarks>
+    private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Malformed model files are the hash check's business, not this one's.
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null)
+                continue;
+
+            var triggers = definition.Attributes
+                .Where(a => a.TriggersRefresh == true)
+                .Select(a => a.Name)
+                .ToArray();
+
+            if (triggers.Length == 0)
+                continue;
+
+            var entityName = definition.ClrType.Split('.').Last();
+            if (HasRefreshOverride(entityName))
+                continue;
+
+            offenders.Add($"{definition.Name}: {string.Join(", ", triggers)} " +
+                          $"(no OnRefreshAsync override on {entityName}Actions)");
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model declares refresh triggers that nothing implements:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Override OnRefreshAsync on the entity's actions class, or remove \"triggersRefresh\" from the model.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    private static bool HasRefreshOverride(string entityName)
+    {
+        var actionsTypeName = entityName + "Actions";
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { types = [.. e.Types.Where(t => t is not null)!]; }
+
+            foreach (var type in types)
+            {
+                if (type.IsAbstract || !string.Equals(type.Name, actionsTypeName, StringComparison.Ordinal))
+                    continue;
+
+                var method = type.GetMethod("OnRefreshAsync");
+                var declaring = method?.DeclaringType;
+                if (declaring is null)
+                    continue;
+
+                var isBaseDeclaration = declaring.IsGenericType
+                    && declaring.GetGenericTypeDefinition() == typeof(Actions.DefaultPersistentObjectActions<>);
+
+                if (!isBaseDeclaration)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

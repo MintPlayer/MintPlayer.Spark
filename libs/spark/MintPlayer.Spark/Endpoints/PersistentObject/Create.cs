@@ -21,6 +21,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -80,7 +81,13 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
             // belongs to DatabaseAccess; this only asks it earlier.
             await databaseAccess.EnsureSaveAuthorizedAsync(obj);
 
-            var validationResult = validationService.Validate(obj);
+            // Validate against the object as the refresh hook shapes it, not as the model declares
+            // it. A hook that makes a field required has changed the contract, and validating the
+            // raw model would enforce a different one than the user was shown. Re-deriving here —
+            // rather than trusting what the client posted — is also what stops a client from
+            // escaping the hook by never calling /refresh.
+            var effective = await refreshInvoker.BuildEffectiveAsync(entityType, obj, httpContext.RequestAborted);
+            var validationResult = validationService.ValidateEffective(effective);
             if (!validationResult.IsValid)
             {
                 return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
