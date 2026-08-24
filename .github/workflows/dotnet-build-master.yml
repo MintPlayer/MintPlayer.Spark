@@ -114,6 +114,10 @@ jobs:
       run: npx nx run-many --target=test --output-style=stream
       env:
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+        # Master always has the secret, so insist on it. Without this a rotated or expired licence
+        # would silently downgrade the server to AGPL mode and skip the licensed tests, turning a
+        # coverage hole into a green build. The free developer licence expires every six months.
+        SPARK_REQUIRE_LICENSE: 'true'
 
     # Master runs every test project unconditionally, so this is a whole-
     # workspace upload (no `partial`) — it becomes the baseline the Coverage

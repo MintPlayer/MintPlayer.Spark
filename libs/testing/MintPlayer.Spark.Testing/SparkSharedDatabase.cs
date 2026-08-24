@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.TestDriver;
@@ -81,7 +81,7 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
     public IDocumentStore Store { get; private set; } = null!;
 
     /// <inheritdoc cref="SparkTestDriver.RequireLicense"/>
-    protected virtual bool RequireLicense => true;
+    protected virtual bool RequireLicense => LicenseHelper.RequiredByEnvironment;
 
     /// <inheritdoc cref="SparkTestDriver.IndexAssemblies"/>
     /// <remarks>

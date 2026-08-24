@@ -135,6 +135,11 @@ jobs:
       env:
         # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+        # Insist on the licence only where one can exist. GitHub withholds secrets from runs
+        # triggered by a fork, so on a fork PR this is 'false' and the suite runs against an
+        # unlicensed (AGPL-mode) server, with the licensed tests skipping themselves. On a
+        # same-repo PR the secret is present, so a missing one is a real misconfiguration and fails.
+        SPARK_REQUIRE_LICENSE: ${{ github.event.pull_request.head.repo.fork != true }}
 
     # Upload whatever coverage the affected test projects produced to the
     # self-hosted Coverage server. `partial: true` + the nx base SHA declare

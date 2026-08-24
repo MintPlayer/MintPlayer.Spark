@@ -395,3 +395,9 @@ Demo/*/*/appsettings.json.e2e-backup
 # source is in a NuGet package, so an agent cloning that repo would otherwise see nothing.
 Demo/*/*/AGENTS.md
 tests/*/AGENTS.md
+
+# RavenDB licence for the test suite. Named explicitly rather than left to the generic
+# *.log rule above: this is a credential, the RavenDB EULA forbids providing licence keys to
+# third parties, and secret scanning cannot catch it (RavenDB is not a scanning partner, so no
+# provider pattern matches). Tightening *.log must not silently un-ignore it.
+raven-license.log
