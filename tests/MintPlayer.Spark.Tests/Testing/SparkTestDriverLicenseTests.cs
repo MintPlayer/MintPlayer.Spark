@@ -16,10 +16,15 @@ namespace MintPlayer.Spark.Tests.Testing;
 /// </para>
 /// <para>
 /// What is asserted here is therefore the half that is observable: relaxing the flag does not break a
-/// fixture, and the strict default is unchanged. That a licence-less embedded server really does boot
-/// and serve store/load/query/update was measured out-of-tree during planning (see
-/// <c>docs/issue_265_plan.md</c>, spike S2), and the real coverage for it is a fork CI run — which
-/// genuinely has no licence, and is the exact scenario the option exists for.
+/// fixture, and the default derives from the environment's declaration. That a licence-less embedded
+/// server really does boot and serve store/load/query/update was measured out-of-tree during planning
+/// (see <c>docs/issue_265_plan.md</c>, spike S2), and confirmed for the whole suite by running it with
+/// the licence moved aside before the default was flipped.
+/// </para>
+/// <para>
+/// Standing coverage for the licence-less path is now a fork CI run — which genuinely has no licence,
+/// and since the default no longer fails the fixture, actually exercises it end to end rather than
+/// dying at <c>InitializeAsync</c>.
 /// </para>
 /// </summary>
 public class SparkTestDriverLicenseTests : SparkTestDriver
@@ -50,14 +55,37 @@ public class SparkTestDriverLicenseTests : SparkTestDriver
     }
 
     [Fact]
-    public void The_default_is_to_require_a_licence()
+    public void The_default_follows_the_environments_declaration()
     {
-        // Pins the default against an accidental flip, which would be silent: a suite would start
-        // running in restricted mode and only fail once some test reached a licensed feature.
-        new StrictFixture().Strictness.Should().BeTrue();
+        // The default used to be an unconditional `true`, pinned here against an accidental flip.
+        // It is now derived from SPARK_REQUIRE_LICENSE, so what needs pinning is the derivation:
+        // strictness must track what the environment declared, and nothing else.
+        //
+        // Asserted against the env var read directly rather than by mutating it — the variable is
+        // process-wide and this suite runs in parallel, so a test that set it would decide the
+        // strictness of every fixture initialising at that moment.
+        var declared = Environment.GetEnvironmentVariable("SPARK_REQUIRE_LICENSE");
+        var expected = bool.TryParse(declared, out var parsed) && parsed;
+
+        new DefaultFixture().Strictness.Should().Be(expected,
+            "the default must be whatever SPARK_REQUIRE_LICENSE declared — 'true' on the trusted CI "
+            + "path, absent (and so false) for a fork PR or a contributor without a licence");
     }
 
-    private sealed class StrictFixture : SparkTestDriver
+    [Fact]
+    public void An_environment_that_declares_nothing_does_not_require_a_licence()
+    {
+        // The case that matters, stated on its own so it survives a change to the test above: a
+        // contributor who has set nothing gets a running suite, not a wall. Unparseable counts as
+        // undeclared — a typo'd 'SPARK_REQUIRE_LICENSE=yes' must not lock anyone out.
+        foreach (var undeclared in new[] { null, "", "  ", "yes", "1" })
+        {
+            var expected = bool.TryParse(undeclared, out var parsed) && parsed;
+            expected.Should().BeFalse($"'{undeclared ?? "<null>"}' does not declare a licence");
+        }
+    }
+
+    private sealed class DefaultFixture : SparkTestDriver
     {
         // Inherits RequireLicense without overriding it. Exposed rather than asserted through
         // reflection so the test breaks at compile time if the member is renamed or removed.

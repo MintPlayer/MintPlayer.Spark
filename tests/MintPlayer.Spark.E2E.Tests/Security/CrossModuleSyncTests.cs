@@ -1,7 +1,8 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
@@ -168,7 +169,7 @@ public class CrossModuleSyncTests
             + "known module is not enough");
     }
 
-    [Fact]
+    [RequiresLicensedFeature("RavenDB ETL")]
     public async Task Etl_deployment_is_accepted_for_a_granted_collection()
     {
         await _fixture.Host.SeedModuleAsync(GrantedModule);

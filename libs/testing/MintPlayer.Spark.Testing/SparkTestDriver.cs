@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
@@ -21,13 +21,16 @@ namespace MintPlayer.Spark.Testing;
 /// is capped in <c>xunit.runner.json</c> — see that file before raising it.
 /// </para>
 ///
-/// RavenDB 7.x requires a license even for the embedded TestDriver. We load it from:
+/// A RavenDB licence lifts the embedded server out of its restricted mode. We load it from:
 ///   1. <c>RAVENDB_LICENSE</c> env var (CI-friendly, JSON content)
 ///   2. <c>raven-license.log</c> at the repository root (local development)
 ///
-/// If neither is present, tests that derive from this class fail at
-/// <see cref="InitializeAsync"/> with a message naming both sources. A suite that needs to
-/// tolerate that (fork pull requests get no organization secrets) overrides
+/// Neither is required. Without one the server starts in RavenDB's AGPL mode — capped at 3 CPU
+/// cores, with the licensed features (ETL, encryption, compression, archival, backups) switched
+/// off — which still supports store, load, query, update, indexing and subscriptions, so the large
+/// majority of this suite runs unchanged. Tests that genuinely need a licensed feature guard
+/// themselves with <see cref="RequiresLicensedFeatureAttribute"/>. Only an environment that
+/// declares it has a licence, via <c>SPARK_REQUIRE_LICENSE</c>, fails on a missing one — see
 /// <see cref="RequireLicense"/>.
 /// <para>
 /// The loader itself is internal — this is deliberately not an extension point, and a consumer
@@ -41,18 +44,22 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     static SparkTestDriver() => SparkEmbeddedServer.EnsureConfigured();
 
     /// <summary>
-    /// Whether a missing RavenDB licence fails the fixture. Defaults to <see langword="true"/>.
+    /// Whether a missing RavenDB licence fails the fixture. Defaults to whether the environment
+    /// declared that it has one, via <c>SPARK_REQUIRE_LICENSE</c> — so absent by default.
     /// <para>
-    /// The default is the right one for a framework: a licence that was meant to be configured and
-    /// is not should say so, naming <c>RAVENDB_LICENSE</c> and <c>raven-license.log</c>, rather than
-    /// let a suite run in restricted mode and fail obscurely later.
+    /// This used to default to <see langword="true"/>, on the reasoning that a licence meant to be
+    /// configured and missing should say so rather than fail obscurely later. That reasoning holds
+    /// only where a licence could have been configured. It cannot be on a fork pull request —
+    /// organization secrets are not exposed to <c>pull_request</c> runs from forks — nor for a
+    /// first-time contributor who has not obtained one, so the diagnostic fired hardest at exactly
+    /// the people who could do nothing about it, failing every RavenDB test including the large
+    /// majority that touch no licensed feature. A licence-less embedded server does support store,
+    /// load, query and update — measured, not assumed.
     /// </para>
     /// <para>
-    /// Override to <see langword="false"/> for a suite that must survive without one. The motivating
-    /// case is fork pull requests: organization secrets are not exposed to <c>pull_request</c> runs
-    /// from forks, so a contributor without a licence otherwise fails every RavenDB test, including
-    /// the majority that touch no licensed feature. A licence-less embedded server does support
-    /// store, load, query and update — measured, not assumed.
+    /// The diagnostic is not lost, only moved to where it is actionable: the trusted CI path sets
+    /// <c>SPARK_REQUIRE_LICENSE=true</c> and still fails loudly, which is what catches an expired or
+    /// rotated secret before it silently downgrades <c>master</c> to a restricted server.
     /// </para>
     /// <para>
     /// This gates <em>this fixture's</em> hard failure, not the server's tolerance — the name reads
@@ -63,7 +70,7 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// <see cref="InitializeAsync"/>.
     /// </para>
     /// </summary>
-    protected virtual bool RequireLicense => true;
+    protected virtual bool RequireLicense => LicenseHelper.RequiredByEnvironment;
 
     protected IDocumentStore Store { get; private set; } = null!;
 
@@ -218,6 +225,29 @@ internal static class LicenseHelper
 {
     private const string EnvVar = "RAVENDB_LICENSE";
     private const string LocalFileName = "raven-license.log";
+    private const string RequireEnvVar = "SPARK_REQUIRE_LICENSE";
+
+    /// <summary>
+    /// Whether the current environment has <em>promised</em> a licence, and so should fail loudly if
+    /// one is missing rather than degrading to a restricted server.
+    /// </summary>
+    /// <remarks>
+    /// Absence of a licence is normal — a fork contributor cannot have one, because organization
+    /// secrets are not exposed to <c>pull_request</c> runs from forks, and a first-time contributor
+    /// running the suite locally has not obtained one either. Neither should hit a wall.
+    /// <para>
+    /// So the strictness is opted into by the only environment that can guarantee a licence: the
+    /// trusted CI path sets <c>SPARK_REQUIRE_LICENSE=true</c>. That is what keeps a rotated or
+    /// expired secret from silently downgrading <c>master</c> to a restricted server and quietly
+    /// skipping the licensed tests — the free developer licence expires every six months, so silent
+    /// degradation is a question of when, not whether.
+    /// </para>
+    /// </remarks>
+    public static bool RequiredByEnvironment =>
+        bool.TryParse(Environment.GetEnvironmentVariable(RequireEnvVar), out var required) && required;
+
+    /// <summary>Whether a licence is available from either source.</summary>
+    public static bool IsPresent => LoadOrNull() is not null;
 
     public static string? LoadOrNull()
     {
@@ -234,8 +264,9 @@ internal static class LicenseHelper
         if (LoadOrNull() is null)
         {
             throw new InvalidOperationException(
-                $"RavenDB license not found. Set the '{EnvVar}' environment variable to the JSON " +
-                $"license content, or place a '{LocalFileName}' file at the repository root. " +
+                $"RavenDB license not found, and '{RequireEnvVar}' declares this environment must " +
+                $"have one. Set the '{EnvVar}' environment variable to the JSON license content, or " +
+                $"place a '{LocalFileName}' file at the repository root. " +
                 "See https://ravendb.net/buy for community/developer licenses.");
         }
     }
