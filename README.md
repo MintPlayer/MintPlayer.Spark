@@ -181,6 +181,7 @@ MintPlayer.Spark/
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
 - **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
+- **[Leftovers](docs/leftovers.md)** - What shipped work knowingly did not close: unverified paths, and deferrals with the evidence behind them
 
 ## Contributing
 

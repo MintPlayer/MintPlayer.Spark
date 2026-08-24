@@ -673,6 +673,9 @@ Release-note prose:
 
 ## Out of scope / follow-ups
 
+Also carried, together with the parts that shipped unverified, in
+[leftovers.md](leftovers.md).
+
 | Item | Why |
 |---|---|
 | Dynamic attribute add/remove inside the hook | `AddAttribute` / `RetainAttributes` are `internal` (F22) and making them public is an API commitment worth taking on its own evidence. All five verbs in the brief are served by mutating existing attributes. |

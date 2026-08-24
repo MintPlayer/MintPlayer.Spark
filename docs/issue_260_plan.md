@@ -572,7 +572,9 @@ carries a comment explaining why. Spark's harness is now consistent with it.
 independently verified over HTTP; HR's `CarreerJob` with Playwright, which is what surfaced the
 per-column metadata property recorded in the PRD's out-of-scope table.
 
-**Still not closed:** nothing exercises the *modal* AsDetail path (`editMode: "modal"`), where the
+**Still not closed** — everything in this category, plus every deliberate deferral, is collected in
+[leftovers.md](leftovers.md) so it survives the PR being merged. In short: nothing
+exercises the *modal* AsDetail path (`editMode: "modal"`), where the
 recursive `spark-po-form` renders a nested object rather than an inline grid. It inherits the
 coordinator by construction, and the per-instance coordinator test covers the re-entrancy hazard, but
 no sample declares a trigger there.
