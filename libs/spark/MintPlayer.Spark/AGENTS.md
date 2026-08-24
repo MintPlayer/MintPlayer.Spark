@@ -180,10 +180,17 @@ hook that writes, notifies or calls out does so on every save too.
 ⚠️ **It is called far more often than load or save** — potentially on every field blur. Treat
 database access inside it as a cost.
 
+⚠️ **A trigger inside an inline detail grid runs against the ROW's type.** A flag on
+`CarreerJob.ProfessionId` reaches `CarreerJobActions.OnRefreshAsync`, not the `PersonActions` that
+owns the collection, and the row gets its owner as `args.PersistentObject.Parent` (read-only
+context). Authorization still uses the owning type from the route — nested AsDetail types are not in
+`security.json`. Metadata you change applies to the whole **column**, not one row; values are
+per-row.
+
 ⚠️ `args.Attribute` is **nullable**: a stale client can name an attribute the model no longer
 declares. `--spark-verify-model` fails (exit 3) if a model declares `triggersRefresh` on a type whose
-actions class has no override — that check cannot be an analyzer, because the flag lives in JSON
-outside the compilation.
+actions class has no override — including a nested AsDetail type, which needs its own actions class.
+That check cannot be an analyzer, because the flag lives in JSON outside the compilation.
 
 ---
 

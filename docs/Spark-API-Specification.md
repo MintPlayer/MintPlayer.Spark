@@ -95,6 +95,33 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - `id` and `objectTypeId` forced to URL parameter values.
   - `etag` on the PO body is the optimistic-concurrency token; omit to skip the check.
 
+#### Refresh PersistentObject
+
+**`POST /spark/po/{objectTypeId}/refresh`** — `Endpoints/PersistentObject/Refresh.cs`
+
+- **Route params**: `{objectTypeId}` — the type being edited (guid or alias)
+- **Request body**: `{ persistentObject, triggeredBy, retryResults? }`
+  - `triggeredBy` is the attribute's **name**. For a trigger inside a detail grid it is the path
+    form the inline validation errors use: `Jobs[1].ProfessionId`.
+- **Response shapes**:
+  - `200 OK` — body: the reshaped `PersistentObject`, wrapped in the client-operation envelope
+  - `404 Not Found` — entity type unknown, or a row the caller may not read
+  - `449` on retry
+  - `401` / `403` on auth failure
+- **Auth**: XSRF-TOKEN required; permission check is `New` when the submitted object has no `id`,
+  `Read` when it has one. For an existing row the load applies row security and attribute redaction.
+- **Notes**:
+  - **Writes nothing.** It answers "what should this form look like now", and is called far more
+    often than any other endpoint here — potentially on every field blur.
+  - The server rebuilds the object's metadata from the model and accepts only `value` and
+    `isValueChanged` off the wire, so a client cannot assert that an attribute is optional, visible
+    or writable when the model says otherwise.
+  - A `triggeredBy` naming a detail-grid column dispatches to that **row's** type — a change to
+    `CarreerJob.ProfessionId` reaches `CarreerJobActions.OnRefreshAsync` — and the response is the
+    reshaped row, carrying its owner as `parent`. Authorization still uses the type in the route:
+    nested AsDetail types are not in `security.json`.
+  - See [TriggersRefresh & OnRefreshAsync](./guide-triggers-refresh.md).
+
 #### Delete PersistentObject
 
 **`DELETE /spark/po/{objectTypeId}/{**id}`** — `Endpoints/PersistentObject/Delete.cs`

@@ -36,7 +36,10 @@ public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
 }
 ```
 
-That is the whole feature. The live sample is `Demo/Fleet/Fleet/Actions/CarActions.cs`.
+That is the whole feature. Two live samples:
+
+- `Demo/Fleet/Fleet/Actions/CarActions.cs` — a top-level trigger (`Car.Status`).
+- `Demo/HR/HR/Actions/CarreerJobActions.cs` — a trigger inside an inline detail grid.
 
 ---
 
@@ -94,6 +97,49 @@ drift.
 
 ---
 
+## Triggers inside a detail grid
+
+A trigger can live on a column of an inline AsDetail grid. Declare it in the **nested type's** model
+file, exactly as you would for a top-level attribute:
+
+```json
+// App_Data/Model/CarreerJob.json
+{ "name": "ProfessionId", "dataType": "Reference", "triggersRefresh": true }
+```
+
+The refresh then runs against the **row's own type** — so it is `CarreerJobActions` that implements
+the hook, not the `PersonActions` that owns the collection. The hook that owns a type's shape is that
+type's own; the row is handed its owner for the context it cannot have alone:
+
+```csharp
+public class CarreerJobActions : DefaultPersistentObjectActions<CarreerJob>
+{
+    public override async Task OnRefreshAsync(SparkRefreshArgs<CarreerJob> args)
+    {
+        var obj = args.PersistentObject;      // the row that changed
+        var person = obj.Parent;              // the object it lives in — read-only context
+
+        var isFreelance = /* … */;
+        obj[nameof(CarreerJob.ContractEnd)].IsReadOnly = isFreelance;
+        obj[nameof(CarreerJob.ContractEnd)].IsRequired = !isFreelance;
+    }
+}
+```
+
+⚠️ **`args.PersistentObject.Parent` is context, not a target.** Nothing you change on it is applied —
+the response describes the row.
+
+⚠️ **Metadata changes apply to the whole column, not to one row.** Making `ContractEnd` read-only in
+response to row 1 makes it read-only in every row, because the grid renders from one column
+definition. **Values** are per-row and behave as you would expect. If you need genuinely per-row
+shaping, this is not the mechanism.
+
+⚠️ **Authorization uses the owning type, not the row's.** Nested AsDetail types are not in
+`security.json` — nobody grants rights on `CarreerJob` — so the right that governs editing a row is
+the one governing the object that owns it. Only the *dispatch* follows the row.
+
+---
+
 ## What the framework does with it
 
 - **On refresh** the client POSTs the in-progress object to `/spark/po/{objectTypeId}/refresh`. The
@@ -137,7 +183,8 @@ the entity must check it first.
 claim a trigger the model did not declare.
 
 ⚠️ **`--spark-verify-model` fails (exit 3)** if a model declares `triggersRefresh` on a type whose
-actions class has no `OnRefreshAsync` override. This deliberately is *not* a Roslyn analyzer: the
+actions class has no `OnRefreshAsync` override — including a nested AsDetail type, which needs its
+own actions class. This deliberately is *not* a Roslyn analyzer: the
 flag lives in JSON, outside the compilation, so an analyzer would have nothing to read.
 
 ⚠️ **Redaction still applies.** An attribute hidden by `GetProtectedAttributesAsync` stays hidden and

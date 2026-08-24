@@ -475,6 +475,33 @@ out-of-scope table.
 It must flush a pending refresh before emitting, or a user tabbing from a field straight to Save has
 the server enforce rules they were never shown. This changed one existing spec, which now awaits it.
 
+### Four defects the tests could not have caught, found by running the demo
+
+None of these were failures of the feature's design. All four were invisible to the suite because the
+fixtures used shapes no real model produces and no test asserted what was actually *sent*.
+
+- **`Read/LookupReferences` was missing from Fleet and HR** — pre-existing since preview.44, when
+  #237 gated the endpoint and granted it in DemoApp and WebhooksDemo only. Every lookup dropdown in
+  both demos had been empty ever since, for every user including admins, disguised by a refusal
+  shaped like a 404. Found while trying to pick a `Status` in the browser.
+- **A lookup trigger never fired.** `triggersImmediately()` keyed on `dataType`, and a lookup carries
+  the data type of its *key* — Fleet's `Car.Status` is `"string"` — so a `<bs-select>` was classified
+  as free text and waited for a blur a select never emits. The fixture said
+  `dataType: 'LookupReference'`, which no model emits, so the suite passed against broken code.
+  Corrected to the real shape: reverting the fix now turns six tests red instead of zero.
+- **An alias in `objectTypeId` 500'd the request** inside deserialization, before any handler ran.
+  Never refresh-specific — Create and Update deserialize the same type. Fixed on both sides: the
+  client sends the real id, and the wire binding tolerates a non-guid because no endpoint trusts
+  that field anyway.
+- **`PersistentObject.Parent` hung `"parent": null` off every object** on every response, caught
+  immediately by the pre-existing `Serialize_DoesNotEmitParent`. Its intent was sound; it is now
+  split to assert both directions.
+
+Two smaller things landed alongside: `w-100` on every `<bs-select>`, and Fleet's Kestrel
+client-certificate request became config-driven and off in Development, because asking for a
+certificate makes Windows raise the smartcard picker on every browser visit. The E2E suite runs under
+the `E2E` environment and never reads that file, so `ModuleCertificateCredentialTests` is unaffected.
+
 ### Options had to go on the wire after all
 
 D-A kept `triggersRefresh` off `PersistentObjectAttribute`, and that held. But R6 could not be served
@@ -541,7 +568,11 @@ and it is **not** `MintPlayer.AspNetCore.SpaServices`, which was checked directl
 the reference implementation that gets this right — its `NodeScriptRunner` already uses `cmd /c` and
 carries a comment explaining why. Spark's harness is now consistent with it.
 
-**Not closed by this PR:** a human driving the Fleet form in a browser. The E2E tests exercise the
-endpoint against the real model, the real `CarActions` and the real security stack, but they assert
-over HTTP responses rather than rendered DOM, so the client-side overlay, the blur-vs-immediate
-scheduling and the focus behaviour are covered only by vitest.
+**Closed after the fact:** both samples were driven in a browser. Fleet's `Car` by the owner and
+independently verified over HTTP; HR's `CarreerJob` with Playwright, which is what surfaced the
+per-column metadata property recorded in the PRD's out-of-scope table.
+
+**Still not closed:** nothing exercises the *modal* AsDetail path (`editMode: "modal"`), where the
+recursive `spark-po-form` renders a nested object rather than an inline grid. It inherits the
+coordinator by construction, and the per-instance coordinator test covers the re-entrancy hazard, but
+no sample declares a trigger there.
