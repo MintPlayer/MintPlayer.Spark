@@ -69,15 +69,26 @@ Key points:
 ```csharp
 public class CustomActionArgs
 {
-    /// The parent PersistentObject (when invoked from a detail view).
-    /// Null when invoked from a query with no parent.
+    /// The parent PersistentObject (when invoked from a detail view),
+    /// re-loaded server-side and row-checked. Null when the request named none.
     public PersistentObject? Parent { get; set; }
 
-    /// Selected items from a query (when invoked from a list view).
+    /// Selected rows from a query, each re-loaded server-side and row-checked.
     /// Empty when invoked from a detail view.
     public PersistentObject[] SelectedItems { get; set; } = [];
+
+    /// The parent exactly as the client submitted it -- untrusted, for actions that edit.
+    public PersistentObject? SubmittedParent { get; set; }
+
+    /// The ids the client named, before resolution. Rarely needed -- see below.
+    public string[] SubmittedSelectedItemIds { get; set; } = [];
 }
 ```
+
+`SelectedItems` holds **entities**, not the rows the grid displayed. The client posts
+`selectedItemIds` -- a list of strings -- and the framework loads each one through the row-gated
+read path before your action runs. That is what makes a selection safe to act on: a row is a
+projection the server handed out, never a document a client may hand back.
 
 ### SparkCustomAction vs ICustomAction
 
@@ -301,7 +312,21 @@ See the Fleet demo app for a working example:
 
 - an id the caller may not see (or that does not exist) fails the whole request with **404** -- your action is never invoked, and denial is indistinguishable from not-found;
 - the entities your action receives are the **current server state**, not whatever the client typed;
-- the raw client payload remains available as `SubmittedParent` / `SubmittedSelectedItems` for actions that need the submitted (possibly edited, possibly unsaved) values -- treat those as untrusted input;
+- the submitted parent remains available as `SubmittedParent` for actions that need edited, possibly unsaved values -- treat it as untrusted input;
 - a parent submitted **without an id** (unsaved form state) is not resolved: `Parent` is `null` and the submitted values are in `SubmittedParent`.
 
-**Migration note (breaking):** actions that relied on client-supplied state arriving in `Parent`/`SelectedItems` (for example, reading edited-but-unsaved attribute values) must switch those reads to `SubmittedParent`/`SubmittedSelectedItems`. Actions that only used `Parent`/`SelectedItems` to obtain an id and re-load the entity can now skip the reload -- the entity they receive already passed the row gate.
+**There is no `SubmittedSelectedItems`, by design (#327).** A selected row is named by an **id** and
+nothing else; `SubmittedSelectedItemIds` carries those raw ids, and they are rarely what you want,
+since `SelectedItems` is the same list resolved and row-checked. There is no submitted-object form
+of a selection because a row was never a document: the grid renders a projection with no attribute
+metadata, no `can` block and no etag, so there is nothing meaningful a client could submit back.
+An action that wants edited values wants a *detail form*, which is `SubmittedParent`.
+
+**All or nothing.** If any named id fails to resolve -- missing, foreign collection, or refused by
+the row rule -- the whole request is refused. An action never silently receives 498 of the 500 rows
+the user selected.
+
+**Migration note (breaking):** actions that relied on client-supplied state arriving in
+`Parent`/`SelectedItems` must switch those reads to `SubmittedParent`. Actions that only used
+`Parent`/`SelectedItems` to obtain an id and re-load the entity can skip the reload -- the entity
+they receive already passed the row gate.

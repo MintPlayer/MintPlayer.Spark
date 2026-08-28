@@ -97,9 +97,17 @@ that the flattened `formData` drops).
 
 Implement `SparkAttributeColumnRenderer`. This component is shown in query list table cells. Keep it compact.
 
+> **Breaking change (#327).** A column renderer receives **`column`**, not `attribute`. A query row is
+> now a projection: the server sends the column metadata **once per result** instead of repeating a
+> full attribute definition on every row, so there is no `EntityAttributeDefinition` to hand a cell
+> any more. Detail and edit renderers are unaffected and keep `attribute` — those paths really are
+> attribute-shaped. To migrate a column renderer, rename the input and change its type; the fields a
+> cell actually reads (`name`, `label`, `dataType`, `isArray`, `renderer`, `rendererOptions`,
+> `referenceType`, `lookupReferenceType`, `asDetailType`) are all on `SparkCellColumn`.
+
 ```typescript
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
@@ -114,13 +122,18 @@ import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 })
 export class VideoColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  attribute = input<EntityAttributeDefinition>();
+  column = input<SparkCellColumn>();
   options = input<Record<string, any>>();
 }
 ```
 
 A column renderer may also declare `item` to receive the row it belongs to (see
 [Row context](#row-context-the-item-input) below).
+
+`SparkCellColumn` is a small structural interface, and both `QueryColumn` (from a query result) and
+`EntityAttributeDefinition` (from an AsDetail sub-table) satisfy it. That is what lets one cell
+component serve the query grid and the detail page's nested tables without either side knowing about
+the other's shape.
 
 ### Edit Renderer (optional)
 
@@ -219,7 +232,8 @@ you need.
 | Input | Type | Detail | Column | Edit | Description |
 |---|---|---|---|---|---|
 | `value` | `any` | Yes | Yes | Yes | The current attribute value (see [AsDetail values](#asdetail-values) for AsDetail attributes) |
-| `attribute` | `EntityAttributeDefinition` | Yes | Yes | Yes | Full attribute metadata (name, dataType, label, rules, etc.) |
+| `attribute` | `EntityAttributeDefinition` | Yes | - | Yes | Full attribute metadata (name, dataType, label, rules, etc.). **Not passed to column renderers** -- see `column` |
+| `column` | `SparkCellColumn` | - | Yes | - | The column being rendered: `name`, `label`, `dataType`, `isArray`, `renderer`, `rendererOptions`, `referenceType`, `lookupReferenceType`, `asDetailType` |
 | `options` | `Record<string, any>` | Yes | Yes | Yes | The `rendererOptions` object from the model JSON |
 | `formData` | `Record<string, any>` | Yes | - | - | All attribute values (detail page only, for cross-field logic); AsDetail keys carry the nested PO(s) |
 | `item` | `PersistentObject \| Record<string, any>` | Yes | Yes | AsDetail cells only | The row/object this attribute belongs to (see [Row context](#row-context-the-item-input)) |
@@ -262,18 +276,36 @@ A renderer that needs **other fields of the same row** (a name cell with an inli
 ```typescript
 export class RepoNameColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  item = input<PersistentObject | Record<string, any>>();
+  item = input<QueryResultItem | Record<string, any>>();
 
-  isPrivate = computed(() => toDict(this.item())['IsPrivate'] === true);
+  // valueFor returns the CELL ({ key, value, objectId, breadcrumb }), not the bare value --
+  // a reference cell needs its objectId as much as its text, so the cell is what it hands back.
+  isPrivate = computed(() => {
+    const row = this.item();
+    return isQueryRow(row) ? valueFor(row, 'IsPrivate')?.value === true : row?.['IsPrivate'] === true;
+  });
+}
+
+// A grid row has `values`; an AsDetail row is a flat record.
+function isQueryRow(row: unknown): row is QueryResultItem {
+  return Array.isArray((row as QueryResultItem | undefined)?.values);
 }
 ```
 
 What `item` is depends on the host:
 
-- **query-list / sub-query grids**: the row `PersistentObject`
-- **po-detail field**: the full `PersistentObject` being displayed
+- **query-list / sub-query grids**: the row, a `QueryResultItem` — `{ id, breadcrumb, values }`,
+  where `values` is a list of `{ key, value, objectId, breadcrumb }`. **Changed in #327**: it used
+  to be a `PersistentObject` with an `attributes` array. Reach into it with the `valueFor(item, key)`
+  helper from `@mintplayer/ng-spark/models` rather than by hand — the shape is a wire contract, not
+  a convenience.
+- **po-detail field**: the full `PersistentObject` being displayed (unchanged — a detail page really
+  does load a document)
 - **AsDetail sub-table cells** (detail and form): the flat row record (which may include the
   reserved `__sparkBreadcrumbs` key — ignore it)
+
+A renderer used in **both** a grid and an AsDetail table sees two different shapes, which is why the
+example above narrows through a helper instead of indexing directly.
 
 ## Using `rendererOptions`
 

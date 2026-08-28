@@ -18,6 +18,58 @@ failure — including between a streaming and a non-streaming query, which are n
 one. See [one query per URL](guide-aliases.md#one-query-per-url) for why, and for the
 transport-negotiation design that was rejected.
 
+## What a query returns
+
+A query result is **columns once, then one lightweight row per result**:
+
+```jsonc
+{
+  "columns": [                       // sent ONCE, not per row
+    { "name": "LicensePlate", "label": { "en": "Plate" }, "dataType": "string", "isSortable": true },
+    { "name": "Owner", "dataType": "Reference", "referenceType": "Person" }
+  ],
+  "items": [
+    {
+      "id": "cars/1-A",              // required, and unique within the result
+      "breadcrumb": "1-ABC-123",     // the row's display string, resolved server-side
+      "values": [
+        { "key": "LicensePlate", "value": "1-ABC-123" },
+        { "key": "Owner", "value": "people/7-A", "objectId": "people/7-A", "breadcrumb": "Ada Lovelace" }
+      ]
+    }
+  ],
+  "totalItems": 42,
+  "skip": 0,
+  "take": 50
+}
+```
+
+**Changed in #327.** Rows used to be full `PersistentObject`s, so every row carried a complete copy
+of the attribute metadata — label, dataType, rules, renderer options, and for an AsDetail attribute
+the whole nested object graph — that the client already held from `GET /spark/types` and never read
+off the row. `data` became `items`, and `totalRecords` became `totalItems`.
+
+The saving is real but secondary. The point is that **a row is a projection and a persistent object
+is a document**, and conflating them made a row look like something it never was:
+
+- A row carries **no `can` block and no etag**, because neither can be trusted from a projection —
+  a computed row has no document behind it to re-judge.
+- Nothing treats a posted row id as verified. Every mutating path re-materializes from the id
+  through the same load path a detail page uses and re-applies security there, which is why row ids
+  can be treated as hostile input with no integrity token on the wire.
+
+Two rules the server now enforces rather than tolerating: a row **must** have an id, and two rows
+**may not** share one. Both used to fail silently — a null id collapsed the grid to a single row
+(every null key compares equal), and duplicates rendered the same row repeatedly with a matching
+total.
+
+### Type hints
+
+`columns`, `items` and `values` may each carry a `typeHints` map — an open, string-keyed
+presentation side-channel merged column → item → value, later winning. Keys are lower-cased at the
+boundary, so a client never has to try two spellings. There is no registry and no validation, which
+is the point: an application adds its own keys with no framework change.
+
 ## Collection Queries
 
 A collection query is the simplest form. It queries all documents of a type directly from the RavenDB collection.
@@ -551,12 +603,145 @@ to `IQueryable<T>` is the common idiom, and it still gets the RavenDB path.
 | `IRavenQueryable<T>` / `Task<IRavenQueryable<T>>` | full RavenDB query |
 | `IQueryable<T>` / `Task<IQueryable<T>>` backed by `session.Query<T>()` | full RavenDB query |
 | `IQueryable<T>` over an in-memory source | in-memory queryable — sorting and row filtering only |
-| `IEnumerable<T>` / `Task<IEnumerable<T>>` | already materialized; no pushdown, no declared sorting |
+| `IEnumerable<T>` / `Task<IEnumerable<T>>` | already materialized; sorted in memory by the framework |
+| `SparkQueryPage<T>` / `Task<SparkQueryPage<T>>` | the method's own page — see [taking over paging](#taking-over-paging-sparkquerypaget) |
 | `ValueTask<...>` | **not supported** — use `Task` |
+| `IEnumerable<object>`, `IEnumerable<dynamic>`, `IEnumerable<PersistentObject>` | **refused, loudly** |
 
-Note the last two rows. An already-materialized result cannot be ordered by the database, so a
-declared `sortColumns` on a `Task<IEnumerable<T>>` query does nothing. If you need declared sorting,
-return the queryable and let the framework enumerate it.
+An already-materialized result cannot be ordered by the database, so the framework orders it in
+memory instead. That ordering is deliberately **not** RavenDB's: ordinal case-insensitive for
+strings, nulls last, pinned rather than inherited from the machine's culture. An in-memory result
+has no index terms to order by, and a culture-sensitive default would sort differently per machine.
+
+The last row is a refusal rather than a shape. A row type of `object`/`dynamic` has nothing to
+reflect over, and a `PersistentObject` row is mapped *as* an entity — every declared attribute is
+looked up as a CLR property and none is found. Both used to produce the same silent wrong answer:
+the right number of rows, every cell blank, no error and no log. Return a concrete row type whose
+property names match the attributes on the query's entity type — an anonymous type, a record or an
+ad-hoc class all work.
+
+## Composed queries: rows with no documents behind them
+
+A query whose entity type declares **no `clrType`** is a *composed* query. There is no entity class,
+no collection and no document behind a row — the rows are computed by the type's `{Name}Actions`
+class, found by name, exactly as the virtual-type page path finds it.
+
+The model file is hand-authored (there is nothing for `--spark-synchronize-model` to generate from),
+and the attributes marked `"showedOn": "Query"` are what become the grid's columns:
+
+```jsonc
+// App_Data/Model/StartPage.json  -- note: no "clrType"
+{
+  "persistentObject": {
+    "id": "7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60",
+    "name": "StartPage",
+    "breadcrumb": "{Collection}",
+    "attributes": [
+      { "name": "Collection", "dataType": "string", "showedOn": "Query", "isSortable": true, /* … */ },
+      { "name": "Records",    "dataType": "number", "showedOn": "Query", "isSortable": true, /* … */ }
+    ]
+  },
+  "queries": [
+    { "name": "StartPageCollections", "alias": "collections",
+      "source": "Custom.GetCollections", "entityType": "StartPage",
+      "sortColumns": [{ "property": "Records", "direction": "desc" }] }
+  ]
+}
+```
+
+```csharp
+public partial class StartPageActions
+{
+    [Inject] private readonly IAsyncDocumentSession session;
+
+    public async Task<IEnumerable<CollectionRow>> GetCollections() =>
+    [
+        new CollectionRow("collections/people",    "People",    await session.Query<Person>().CountAsync()),
+        new CollectionRow("collections/companies", "Companies", await session.Query<Company>().CountAsync()),
+    ];
+}
+
+public sealed record CollectionRow(string Id, string Collection, int Records);
+```
+
+The row type is an ordinary record. The mapper reads its properties by the names the model declares,
+and `Id` is the row identity — required, and unique.
+
+### ⚠️ Row-level security does not run, and cannot
+
+This is the one thing to understand before writing a composed query.
+
+`IRowSecurity.FilterAsync` re-reads each row's collection type and evaluates the type's row rule
+against the **stored** entity; `RedactAsync` compares each mapped attribute against the value on
+that document. A composed row is computed, not stored. There is no document to re-judge, no
+collection to resolve a rule from, and no stored value to compare against — so both steps are
+skipped, and no amount of configuration turns them back on.
+
+What still applies:
+
+- the **type-level** `Query` right, which was never a row-shaped question;
+- everything the actions class does itself.
+
+What does not, and is therefore the actions class's job:
+
+- filtering rows to what this caller may see;
+- omitting values this caller may not read;
+- gating anything the rows can be acted upon with.
+
+**Every composed query announces this at startup**, naming the type:
+
+```
+Spark: query 'StartPageCollections' (Custom.GetCollections) is COMPOSED — its rows come from
+StartPageActions, not from a collection. Row filtering, value redaction and per-row permissions do
+not apply and cannot: there is no document behind a row. …
+```
+
+The line exists because a composed grid is **indistinguishable from every other Spark grid** once
+rendered. The risk is not the deliberate landing page someone wrote on purpose; it is the next
+developer who reaches for a composed query because it is easier than writing a row rule, over data
+that does have owners, and gets a grid that looks exactly right.
+
+### What a composed type may not do
+
+Two things are refused at `--spark-verify-model` and again when queries load, rather than when
+someone opens the page:
+
+- **Streaming.** Streaming watches a RavenDB collection for changes, and a composed type has none.
+  This used to die at the first `MoveNext` inside an open websocket as `CLR type '' not found`,
+  wrapped in `{"message":"Stream failed"}`.
+- **A query over a type that shows nothing on it.** If every attribute is `"showedOn":
+  "PersistentObject"` the grid gets rows and no columns — a blank table that reads as an empty
+  result. Both virtual types that existed before this feature were `PersistentObject`-only, and
+  copying one is exactly what an author adding a query will do.
+
+## Taking over paging: `SparkQueryPage<T>`
+
+Some sources cannot be paged by the framework — an external API that takes its own offset, an
+aggregate whose total is a separate query, a log store that only answers in chunks. Such a method
+returns its own page:
+
+```csharp
+public async Task<SparkQueryPage<LogRow>> GetLogs(CustomQueryArgs args)
+{
+    var (rows, total) = await logApi.FetchAsync(args.Skip, args.Take, args.Search);
+    return new SparkQueryPage<LogRow>(rows, total);   // rows = this page, total = the whole result
+}
+```
+
+**The authority rule is binary.** Either the framework owns filtering, search, sorting, counting and
+paging, or the method does — never some of each. Returning a bare sequence keeps all five with the
+framework; returning a `SparkQueryPage<T>` transfers all five, and the request's `Skip`, `Take`,
+`Search` and `Query.SortColumns` reach the method through `CustomQueryArgs` for it to honour.
+
+There is no partial mode because half-delegation fails invisibly. If the method pages and the
+framework sorts, the framework sorts **the current page** and presents it as a global ordering: the
+grid looks sorted, every page is internally ordered, and the sequence across pages is wrong, with
+nothing about the result saying so. The same applies to a framework `.Count()` over an
+already-trimmed sequence — the pager then reports the page size as the total and offers one page.
+
+Row-level security is **not** part of what transfers. Whether this caller may see a row is a
+different question from how rows are presented, and not one a method opts out of by choosing a
+return type.
 
 ## Searching
 
@@ -595,7 +780,11 @@ search and custom actions. Give it a `queryId` and it does the rest.
 ### Rows from outside
 
 `data` is optional. Leave it unbound and the grid fetches and pages server-side; bind it and the
-grid renders what it is given and never fetches. That is the seam streaming uses — the WebSocket
+grid renders what it is given and never fetches.
+
+**A host that binds `data` must also bind `columns`** (#327). A projection cannot describe itself,
+and the old fallback — inferring columns from whichever attributes the first row happened to carry —
+is exactly the per-row metadata this design removes. That is the seam streaming uses — the WebSocket
 lives in the page component, not the grid, so a detail page's bundle does not carry it. A streaming
 query also suppresses its own fetch, so binding `data` asynchronously does not cost one wasted
 `/execute` on mount.
@@ -611,6 +800,21 @@ The grid links the first column to the row's own detail page, gated on `Read`. A
 
 A custom `renderer` does **not** suppress that link: the cell renders inside the anchor, so a
 renderer emitting its own `<a>` produces nested anchors.
+
+`rowRoute` changes **where the link points**, per row, and nothing else:
+
+```html
+<spark-query-grid queryId="collections" [rowRoute]="routeFor" />
+```
+
+```typescript
+routeFor = (row: QueryResultItem) => row.id.startsWith('collections/') ? ['/query', row.id.split('/')[1]] : null;
+```
+
+Returning `null` suppresses the link for that row. It is **not** a permission: `canRead()` still
+decides whether any link renders at all, and `rowRoute` is never consulted when that gate is closed,
+so it cannot reach a row the rights model withheld. It exists for rows whose natural destination is
+not `/po/{type}/{id}` — a composed row that maps to a page of its own, say.
 
 ### Chrome, and replacing parts of it
 
@@ -661,20 +865,40 @@ server and passed through, never recomputed here.
 
 When the frontend requests a query:
 
-1. Backend loads the `SparkQuery` definition from `App_Data/Queries/`
-2. Resolves the SparkContext property (e.g. `People`)
-3. Checks IndexRegistry for a projection type linked via `[FromIndex]`
-4. If an index exists, queries using the index and applies `ProjectInto` for computed fields
-5. Composes the row-level security filter, then the search term, then sorting — in that order, so the security
-   predicate is ANDed with the search group rather than OR-ed into it
-6. Executes the query against RavenDB
-7. Maps results to `PersistentObject` format using the merged entity type definition
-8. Deduplicates results by ID (fan-out maps — `SelectMany` over a collection — emit one index entry per element, so one document can match several times)
+1. The `SparkQuery` definition is loaded — queries live in the `"queries"` array of the entity's
+   `App_Data/Model/*.json` file, not in a directory of their own.
+2. **The caller is authorized**, against the query's declared `entityType`. This happens *before*
+   any resolution work: reflecting over the context, reading a property and matching a CLR type to a
+   model file all used to run for a caller with no `Query` right at all, because the only check sat
+   after the last of them — so a misconfigured query answered a denied caller with an empty grid
+   instead of a denial.
+3. The source resolves: a `Database.*` query to a SparkContext property, a `Custom.*` query to a
+   method on the entity's actions class (found by type, or **by name** for a composed type).
+   Every failure here throws and names the fix — the nine silent "return an empty result" paths are
+   gone, because an empty grid is indistinguishable from a correctly configured query over an empty
+   collection.
+4. The query's `indexName` (or the entity's declared default) resolves through the index catalog;
+   when the index has a `[FromIndex]` projection, `ProjectInto` is applied so computed and stored
+   fields survive.
+5. `.Include()` is chained for `[Reference]` properties and `GetDefaultIncludes()` paths, so
+   referenced documents arrive in the same round trip.
+6. The row-level security filter is composed, then the search term, then sorting — **in that order**,
+   so the security predicate is ANDed with the search group rather than OR-ed into it.
+7. RavenDB executes the query, under the request's `CancellationToken`.
+8. Rows the caller may not see are dropped (`FilterAsync`), breadcrumbs are resolved in batches, the
+   rows are mapped, and values the caller may not read are nulled (`RedactAsync`). **All three are
+   skipped for a composed query** — there is no document to judge, redact or resolve against.
+9. Results are deduplicated by id — **only on the RavenDB path**. A fan-out map (`SelectMany` over a
+   collection) emits one index entry per element, so one document matches several times. Off the
+   index there is no fan-out, and deduplicating there is destructive: every null key compares equal,
+   so a computed row type with no readable id collapses the whole grid to one row.
 
-> An earlier version of this guide attributed the duplicates to `FieldIndexing.Search`. That was measured and
-> is not the case: a single-map index over an analyzed field returns exactly one row per document. The
-> deduplication is still correct, it just guards a different hazard.
-9. Returns the results as JSON
+   > An earlier version of this guide attributed the duplicates to `FieldIndexing.Search`. That was
+   > measured and is not the case: a single-map index over an analyzed field returns exactly one row
+   > per document. The deduplication is still correct, it just guards a different hazard.
+10. The rows are **projected** into `columns` + `items` (see [what a query returns](#what-a-query-returns))
+    and counted, filtered and paged — unless the method returned a `SparkQueryPage<T>`, in which case
+    it already did all of that.
 
 ## Complete Example
 

@@ -41,4 +41,36 @@ public partial class StartPageActions
 
         return obj;
     }
+
+    /// <summary>
+    /// A <b>composed query</b> (#327): one row per collection, with its live count. Nothing backs
+    /// these rows — there is no StartPage document, no StartPage class, and no collection to read
+    /// them from. The framework maps each returned object against the StartPage model's
+    /// <c>ShowedOn.Query</c> attributes, which is where the grid's columns come from.
+    /// <para>
+    /// Because a row is computed rather than stored, <b>row-level security does not run over these
+    /// rows and cannot</b>: there is no document to re-judge and no stored value to redact against.
+    /// This method is therefore the only thing deciding what a caller sees — which is exactly what
+    /// the startup diagnostic for this query says out loud. Here that is trivially safe (three
+    /// counts, no per-caller data); over anything with owners, the filtering would have to be
+    /// written right here.
+    /// </para>
+    /// </summary>
+    public async Task<IEnumerable<CollectionRow>> GetCollections()
+    {
+        // Ids are required and must be unique — a row's id is how selection and custom actions
+        // name it, and the framework refuses a null or repeated one rather than collapsing the grid.
+        return
+        [
+            new CollectionRow("collections/people", "People", await session.Query<Person>().CountAsync()),
+            new CollectionRow("collections/companies", "Companies", await session.Query<Company>().CountAsync()),
+            new CollectionRow("collections/cars", "Cars", await session.Query<Car>().CountAsync()),
+        ];
+    }
 }
+
+/// <summary>
+/// A computed row. An ordinary record: the mapper reads its properties by the names the model
+/// declares (<c>Collection</c>, <c>Records</c>), and <c>Id</c> is the row identity.
+/// </summary>
+public sealed record CollectionRow(string Id, string Collection, int Records);
