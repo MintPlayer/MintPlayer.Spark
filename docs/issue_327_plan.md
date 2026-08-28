@@ -19,9 +19,9 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M5 | `clrType` optional in the query path (composed queries) | ✅ done | `0caa20d0` |
 | M6 | Every silent bail becomes loud | ✅ done | folded into M1/M3/M4/M5 + `be073176` |
 | M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
-| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ⬜ next | — |
-| M9 | The additive asks from issue §9 | ⬜ | — |
-| M10 | Versions + release notes | ⬜ | — |
+| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
+| M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` |
+| M10 | Versions + release notes | ✅ done | this commit |
 
 **Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
 tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
@@ -35,8 +35,10 @@ full 1795-test server suite and the 330-test client suite before commit, because
 smaller safe unit.
 
 **Two CI gates to respect throughout:** `--spark-verify-model` and `--spark-verify-security` run
-against all four demo apps on every PR. M3 forced a hash rebake in all four (done); M8's demo query
-will move DemoApp's `securityPosture.txt`. Both fail the build rather than warn.
+against all four demo apps on every PR. M3 forced a hash rebake in all four (done); M8's demo
+query rebaked DemoApp's model hash again. It did **not** move `securityPosture.txt`, contrary to the
+prediction here — `Read/StartPage` already implies `Query/StartPage`, so the composed query needed no
+new grant. Both gates fail the build rather than warn.
 
 ---
 
