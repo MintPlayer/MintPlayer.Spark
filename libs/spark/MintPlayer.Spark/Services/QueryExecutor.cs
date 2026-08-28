@@ -39,13 +39,14 @@ internal partial class QueryExecutor : IQueryExecutor
 
         IEnumerable<PersistentObject> allResults;
         bool searchPushedDown;
+        EntityTypeDefinition? definition;
         if (isCustom)
         {
-            (allResults, searchPushedDown) = await ExecuteCustomQueryAsync(query, name, parent, searchTerm);
+            (allResults, searchPushedDown, definition) = await ExecuteCustomQueryAsync(query, name, parent, searchTerm);
         }
         else
         {
-            (allResults, searchPushedDown) = await ExecuteDatabaseQueryAsync(query, name, searchTerm);
+            (allResults, searchPushedDown, definition) = await ExecuteDatabaseQueryAsync(query, name, searchTerm);
         }
 
         // Fallback for shapes that cannot push down: a Custom. query returning a non-Raven
@@ -67,16 +68,25 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Counted after filtering and before paging, either way — which is what keeps
-        // TotalRecords search-aware now that the filter may have run in the database.
+        // TotalItems search-aware now that the filter may have run in the database.
         var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
-        var totalRecords = materialized.Count;
+        var totalItems = materialized.Count;
 
         var paged = materialized.Skip(skip).Take(take);
 
+        // Columns ship once per result, not once per row. A definition-less result cannot describe
+        // its own columns, and the client renders from them, so an empty column set is the honest
+        // answer rather than a guess reconstructed from whichever attributes the first row happens
+        // to carry.
+        var columns = definition is not null
+            ? QueryResultProjector.BuildColumns(definition)
+            : [];
+
         return new QueryResult
         {
-            Data = paged,
-            TotalRecords = totalRecords,
+            Columns = columns,
+            Items = QueryResultProjector.ToItems(paged, columns, query.Name),
+            TotalItems = totalItems,
             Skip = skip,
             Take = take,
         };
@@ -99,13 +109,13 @@ internal partial class QueryExecutor : IQueryExecutor
 
     #region Database Queries
 
-    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteDatabaseQueryAsync(
+    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown, EntityTypeDefinition? Definition)> ExecuteDatabaseQueryAsync(
         SparkQuery query, string propertyName, string? searchTerm)
     {
         var sparkContext = sparkContextResolver.ResolveContext(session);
         if (sparkContext == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         var contextType = sparkContext.GetType();
@@ -113,26 +123,26 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (property == null || !property.CanRead)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         var queryable = AccessorCache.GetGetter(property)(sparkContext);
         if (queryable == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         var queryableType = property.PropertyType;
         var entityType = queryableType.GetGenericArguments().FirstOrDefault();
         if (entityType == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
         if (entityTypeDefinition == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
@@ -243,21 +253,21 @@ internal partial class QueryExecutor : IQueryExecutor
         // WHY IT IS NOT ON THE CUSTOM PATH: see the sibling comment at the end of
         // ExecuteCustomQueryAsync. In memory there is no fan-out, and DistinctBy is destructive
         // there — it treats every null Id as equal and collapses the grid to a single row.
-        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
+        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown, entityTypeDefinition);
     }
 
     #endregion
 
     #region Custom Queries
 
-    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteCustomQueryAsync(
+    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown, EntityTypeDefinition? Definition)> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm)
     {
         // Resolve the entity type for this query
         var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
         if (entityTypeDefinition == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
@@ -266,7 +276,7 @@ internal partial class QueryExecutor : IQueryExecutor
         var entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType);
         if (entityType == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         // Resolve the Actions class for this entity type
@@ -309,7 +319,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (result == null)
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         // Capabilities come from the object, not from the signature (#294). A method declared
@@ -384,7 +394,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         // Row-level authorization, as on the database path. A custom query is a developer saying
@@ -435,7 +445,7 @@ internal partial class QueryExecutor : IQueryExecutor
         if (!isQueryable && query.SortColumns.Length > 0)
             rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
 
-        return (rows.ToList(), searchPushedDown);
+        return (rows.ToList(), searchPushedDown, entityTypeDefinition);
     }
 
     /// <summary>

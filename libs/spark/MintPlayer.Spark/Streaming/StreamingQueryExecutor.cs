@@ -24,7 +24,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     /// <summary>How often (in batches) a live stream re-checks its type-level authorization.</summary>
     private const int ReauthorizeEveryNBatches = 10;
 
-    public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
+    public async IAsyncEnumerable<StreamingQueryBatch> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Validate source
@@ -52,6 +52,10 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
         // Check authorization
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDef.Name);
+
+        // Resolved once: a stream is one result whose rows arrive over time, so its shape is fixed
+        // when it opens.
+        var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef);
 
         // Resolve CLR type and Actions class
         var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
@@ -143,7 +147,13 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
                 .ToList();
             await rowSecurity.RedactAsync(batchSession, mapped, entityType, methodInfo.ElementType, "Query");
-            yield return mapped.Select(m => m.Po).ToArray();
+
+            // Same projection as a paged query, so a streamed row and a fetched row are the same
+            // shape on the wire — including the refusal of a row with no id, which on a stream would
+            // otherwise be dropped silently by the diff engine (it keys state on the id).
+            yield return new StreamingQueryBatch(
+                columns,
+                Services.QueryResultProjector.ToItems(mapped.Select(m => m.Po), columns, query.Name));
         }
     }
 

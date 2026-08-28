@@ -76,7 +76,7 @@ public class QueryWithoutReadTests : SparkTestDriver
         permissions.CanRead.Should().BeFalse("and no row may be a link");
 
         var result = await client.ExecuteQueryAsync(AllDocsQueryId);
-        result.Data.Should().HaveCount(2, "withholding Read does not hide the rows");
+        result.Items.Should().HaveCount(2, "withholding Read does not hide the rows");
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public class QueryWithoutReadTests : SparkTestDriver
         permissions.CanQuery.Should().BeTrue("Read implies Query");
 
         (await client.GetPersistentObjectAsync(DocTypeId, "docs/1")).Should().NotBeNull();
-        (await client.ExecuteQueryAsync(AllDocsQueryId)).Data.Should().HaveCount(2);
+        (await client.ExecuteQueryAsync(AllDocsQueryId)).Items.Should().HaveCount(2);
 
         (await client.ListEntityTypesAsync()).Should().ContainSingle(
             "the catalogue is Query-scoped, and Read reaches it through the implication — without "

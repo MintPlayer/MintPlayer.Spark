@@ -199,8 +199,8 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
             SortColumns = [new SortColumn { Property = "Address", Direction = "asc" }],
         });
 
-        var names = result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "Name").Value?.ToString())
+        var names = result.Items
+            .Select(po => po.Values.Single(a => a.Key == "Name").Value?.ToString())
             .ToList();
 
         names.Should().Equal("Bob", "Alice", "Carol");

@@ -69,8 +69,8 @@ public class QueryExecutorUnitTests
 
         var result = await executor.ExecuteQueryAsync(Q("Database.People"));
 
-        result.Data.Should().BeEmpty();
-        result.TotalRecords.Should().Be(0);
+        result.Items.Should().BeEmpty();
+        result.TotalItems.Should().Be(0);
     }
 
     private sealed class EmptyContext : SparkContext { }
@@ -83,7 +83,7 @@ public class QueryExecutorUnitTests
 
         var result = await executor.ExecuteQueryAsync(Q("Database.NoSuchProperty"));
 
-        result.Data.Should().BeEmpty();
+        result.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public class QueryExecutorUnitTests
 
         var result = await executor.ExecuteQueryAsync(Q("Custom.SomeMethod"));
 
-        result.Data.Should().BeEmpty();
-        result.TotalRecords.Should().Be(0);
+        result.Items.Should().BeEmpty();
+        result.TotalItems.Should().Be(0);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class QueryExecutorUnitTests
         // No EntityType → empty data, but the prefix-matching branch was taken without throwing
         var result = await executor.ExecuteQueryAsync(Q("custom.Anything"));
 
-        result.Data.Should().BeEmpty();
+        result.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class QueryExecutorUnitTests
 
         var result = await executor.ExecuteQueryAsync(Q("DATABASE.People"));
 
-        result.Data.Should().BeEmpty();
+        result.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -176,8 +176,8 @@ public class QueryExecutorUnitTests
 
         results.Should().AllSatisfy(r =>
         {
-            r.Data.Should().BeEmpty();
-            r.TotalRecords.Should().Be(0);
+            r.Items.Should().BeEmpty();
+            r.TotalItems.Should().Be(0);
         });
     }
 

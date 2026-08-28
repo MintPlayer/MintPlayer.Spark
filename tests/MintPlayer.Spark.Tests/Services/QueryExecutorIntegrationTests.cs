@@ -121,8 +121,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery());
 
-        result.TotalRecords.Should().Be(3);
-        result.Data.Select(p => p.Id).Should().BeEquivalentTo(["people/1", "people/2", "people/3"]);
+        result.TotalItems.Should().Be(3);
+        result.Items.Select(p => p.Id).Should().BeEquivalentTo(["people/1", "people/2", "people/3"]);
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), search: "alice");
 
-        result.TotalRecords.Should().Be(1);
-        result.Data.Should().ContainSingle().Which.Id.Should().Be("people/1");
+        result.TotalItems.Should().Be(1);
+        result.Items.Should().ContainSingle().Which.Id.Should().Be("people/1");
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), search: "SMITH");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
     }
 
     /// <summary>
@@ -198,7 +198,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), search: "alice");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
         recorder.Should().NotBeEmpty("the query must have gone to the server");
         // The term itself is parameterized ($p0), so the shape is what there is to assert: one clause per
         // searchable field, OR-ed inside a group, with SearchOperator.And applied within each clause.
@@ -218,7 +218,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), search: "people/1");
 
-        result.TotalRecords.Should().Be(0, "the document id is not a searchable field");
+        result.TotalItems.Should().Be(0, "the document id is not a searchable field");
     }
 
     [Fact]
@@ -232,8 +232,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery(), skip: 3, take: 4);
 
-        result.TotalRecords.Should().Be(10);   // unfiltered total
-        result.Data.Count().Should().Be(4);    // only the page
+        result.TotalItems.Should().Be(10);   // unfiltered total
+        result.Items.Count().Should().Be(4);    // only the page
         result.Skip.Should().Be(3);
         result.Take.Should().Be(4);
     }
@@ -245,7 +245,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(DatabasePeopleQuery());
 
-        result.TotalRecords.Should().Be(0);
-        result.Data.Should().BeEmpty();
+        result.TotalItems.Should().Be(0);
+        result.Items.Should().BeEmpty();
     }
 }

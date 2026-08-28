@@ -131,7 +131,7 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         second.RootElement.GetProperty("type").GetString().Should().Be("patch");
         var updated = second.RootElement.GetProperty("updated");
         updated.GetArrayLength().Should().Be(1);
-        updated[0].GetProperty("attributes").GetProperty("FirstName").GetString().Should().Be("Alicia");
+        updated[0].GetProperty("values").GetProperty("FirstName").GetString().Should().Be("Alicia");
 
         await ExpectCloseAsync(socket, WebSocketCloseStatus.NormalClosure);
     }
@@ -241,25 +241,29 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         socket.CloseStatus.Should().Be(expected);
     }
 
-    private static global::MintPlayer.Spark.Abstractions.PersistentObject Po(string id, params (string Name, object? Value)[] attrs) => new()
+    /// <summary>One streamed row: id plus a value per column. Rows carry no metadata (#327 M4).</summary>
+    private static global::MintPlayer.Spark.Abstractions.QueryResultItem Po(string id, params (string Name, object? Value)[] attrs) => new()
     {
         Id = id,
-        Name = id,
-        ObjectTypeId = PersonTypeId,
-        Attributes = attrs.Select(a => new global::MintPlayer.Spark.Abstractions.PersistentObjectAttribute { Name = a.Name, Value = a.Value }).ToArray(),
+        Breadcrumb = id,
+        Values = [.. attrs.Select(a => new global::MintPlayer.Spark.Abstractions.QueryResultItemValue { Key = a.Name, Value = a.Value })],
     };
 
-    private static async IAsyncEnumerable<global::MintPlayer.Spark.Abstractions.PersistentObject[]> Produce(params global::MintPlayer.Spark.Abstractions.PersistentObject[][] batches)
+    /// <summary>The columns are fixed when the stream opens, so every batch carries the same set.</summary>
+    private static readonly IReadOnlyList<global::MintPlayer.Spark.Abstractions.QueryColumn> StreamColumns =
+        [new global::MintPlayer.Spark.Abstractions.QueryColumn { Name = "FirstName", DataType = "string" }];
+
+    private static async IAsyncEnumerable<MintPlayer.Spark.Streaming.StreamingQueryBatch> Produce(params global::MintPlayer.Spark.Abstractions.QueryResultItem[][] batches)
     {
         foreach (var batch in batches)
         {
-            yield return batch;
+            yield return new MintPlayer.Spark.Streaming.StreamingQueryBatch(StreamColumns, batch);
             await Task.Yield();
         }
     }
 
 #pragma warning disable CS1998 // no awaits — the iterator is expected to throw synchronously on MoveNext
-    private static async IAsyncEnumerable<global::MintPlayer.Spark.Abstractions.PersistentObject[]> Throwing(Exception ex)
+    private static async IAsyncEnumerable<MintPlayer.Spark.Streaming.StreamingQueryBatch> Throwing(Exception ex)
     {
         throw ex;
         yield break;

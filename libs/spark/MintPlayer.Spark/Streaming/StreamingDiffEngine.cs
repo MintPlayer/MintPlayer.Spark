@@ -3,89 +3,69 @@ using MintPlayer.Spark.Abstractions;
 namespace MintPlayer.Spark.Streaming;
 
 /// <summary>
-/// Per-connection stateful diff calculator for streaming queries.
-/// Tracks previous PersistentObject state and computes patch messages
-/// containing only changed attribute values.
+/// Per-connection stateful diff calculator for streaming queries: a snapshot first, then only what
+/// changed.
 /// </summary>
+/// <remarks>
+/// Keyed on <see cref="QueryResultItem.Id"/>, which is now guaranteed non-null and unique because
+/// the projection refuses anything else. It used to key on a nullable id and skip rows that had
+/// none — so a row type without a readable id streamed a snapshot and then never updated, silently.
+/// </remarks>
 internal sealed class StreamingDiffEngine
 {
-    private Dictionary<string, PersistentObject>? _previousState;
+    private Dictionary<string, QueryResultItem>? _previousState;
 
     /// <summary>
-    /// Computes a streaming message by comparing current items against previous state.
-    /// First call returns a SnapshotMessage. Subsequent calls return PatchMessage with only changes,
-    /// or null if nothing changed.
+    /// Computes the message for a batch: a <see cref="SnapshotMessage"/> on the first call (columns
+    /// included, once), a <see cref="PatchMessage"/> carrying only changed values afterwards, or
+    /// null when nothing changed.
     /// </summary>
-    public StreamingMessage? ComputeMessage(PersistentObject[] currentItems)
+    public StreamingMessage? ComputeMessage(StreamingQueryBatch batch)
     {
+        var currentItems = batch.Items;
+
         if (_previousState is null)
         {
-            // First call: send full snapshot
-            _previousState = currentItems
-                .Where(po => po.Id is not null)
-                .ToDictionary(po => po.Id!);
-            return new SnapshotMessage { Data = currentItems };
+            _previousState = currentItems.ToDictionary(item => item.Id, StringComparer.Ordinal);
+            return new SnapshotMessage { Columns = batch.Columns, Data = currentItems };
         }
 
-        // Subsequent calls: compute diff
         var patches = new List<PatchItem>();
 
         foreach (var current in currentItems)
         {
-            if (current.Id is null) continue;
-
             if (_previousState.TryGetValue(current.Id, out var previous))
             {
-                var changedAttributes = ComputeAttributeDiff(previous, current);
-                if (changedAttributes.Count > 0)
-                {
-                    patches.Add(new PatchItem
-                    {
-                        Id = current.Id,
-                        Attributes = changedAttributes
-                    });
-                }
+                var changed = ComputeValueDiff(previous, current);
+                if (changed.Count > 0)
+                    patches.Add(new PatchItem { Id = current.Id, Values = changed });
             }
             else
             {
-                // New item — send all attribute values as a patch (not full metadata)
+                // A row the client has not seen: send every value, but still no column metadata —
+                // the shape was fixed by the snapshot.
                 patches.Add(new PatchItem
                 {
                     Id = current.Id,
-                    Attributes = current.Attributes
-                        .ToDictionary(a => a.Name, a => a.Value)
+                    Values = current.Values.ToDictionary(v => v.Key, v => v.Value),
                 });
             }
         }
 
-        // Update stored state
-        _previousState = currentItems
-            .Where(po => po.Id is not null)
-            .ToDictionary(po => po.Id!);
+        _previousState = currentItems.ToDictionary(item => item.Id, StringComparer.Ordinal);
 
-        if (patches.Count == 0)
-            return null;
-
-        return new PatchMessage { Updated = patches.ToArray() };
+        return patches.Count == 0 ? null : new PatchMessage { Updated = [.. patches] };
     }
 
-    private static Dictionary<string, object?> ComputeAttributeDiff(
-        PersistentObject previous, PersistentObject current)
+    private static Dictionary<string, object?> ComputeValueDiff(QueryResultItem previous, QueryResultItem current)
     {
         var changed = new Dictionary<string, object?>();
 
-        foreach (var currentAttr in current.Attributes)
+        foreach (var value in current.Values)
         {
-            var previousAttr = previous.Attributes.FirstOrDefault(a => a.Name == currentAttr.Name);
-            if (previousAttr is null)
-            {
-                // New attribute
-                changed[currentAttr.Name] = currentAttr.Value;
-            }
-            else if (!ValuesEqual(previousAttr.Value, currentAttr.Value))
-            {
-                changed[currentAttr.Name] = currentAttr.Value;
-            }
+            var before = previous.Values.FirstOrDefault(v => v.Key == value.Key);
+            if (before is null || !ValuesEqual(before.Value, value.Value))
+                changed[value.Key] = value.Value;
         }
 
         return changed;

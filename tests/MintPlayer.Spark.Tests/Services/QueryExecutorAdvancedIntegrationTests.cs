@@ -141,9 +141,9 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
-        var first = result.Data.First();
-        var companyAttr = first.Attributes.Single(a => a.Name == "Company");
+        result.TotalItems.Should().Be(3);
+        var first = result.Items.First();
+        var companyAttr = first.Values.Single(a => a.Key == "Company");
         companyAttr.Value.Should().Be(companyId);
         companyAttr.Breadcrumb.Should().Be("Acme",
             "the breadcrumb comes from the cached LoadAsync<Company> dispatch");
@@ -171,8 +171,8 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        var lastNames = result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "LastName").Value?.ToString())
+        var lastNames = result.Items
+            .Select(po => po.Values.Single(a => a.Key == "LastName").Value?.ToString())
             .ToList();
 
         lastNames.Should().Equal("Hopper", "Lovelace", "Torvalds");
@@ -195,8 +195,8 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        var lastNames = result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "LastName").Value?.ToString())
+        var lastNames = result.Items
+            .Select(po => po.Values.Single(a => a.Key == "LastName").Value?.ToString())
             .ToList();
 
         lastNames.Should().Equal("Torvalds", "Lovelace", "Hopper");
@@ -226,9 +226,9 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        var ordered = result.Data
-            .Select(po => (po.Attributes.Single(a => a.Name == "LastName").Value?.ToString(),
-                           po.Attributes.Single(a => a.Name == "FirstName").Value?.ToString()))
+        var ordered = result.Items
+            .Select(po => (po.Values.Single(a => a.Key == "LastName").Value?.ToString(),
+                           po.Values.Single(a => a.Key == "FirstName").Value?.ToString()))
             .ToList();
 
         ordered.Should().Equal(("A", "B"), ("Z", "A"), ("Z", "B"));
@@ -286,7 +286,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -305,7 +305,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -342,8 +342,8 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(1);
-        result.Data.Single().Id.Should().Be("memory/1");
+        result.TotalItems.Should().Be(1);
+        result.Items.Single().Id.Should().Be("memory/1");
     }
 
     [Fact]
@@ -419,7 +419,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -443,8 +443,8 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        var lastNames = result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "LastName").Value?.ToString())
+        var lastNames = result.Items
+            .Select(po => po.Values.Single(a => a.Key == "LastName").Value?.ToString())
             .ToList();
 
         lastNames.Should().Equal("Hopper", "Lovelace", "Torvalds");
@@ -503,6 +503,6 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 }

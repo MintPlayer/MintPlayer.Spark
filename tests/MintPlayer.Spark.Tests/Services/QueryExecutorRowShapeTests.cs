@@ -122,17 +122,34 @@ public class QueryExecutorRowShapeTests
     }
 
     [Fact]
-    public async Task Rows_that_share_a_null_id_are_all_kept()
+    public async Task A_row_with_no_id_is_refused_and_the_message_names_the_query()
     {
-        // DistinctBy uses the default comparer, which treats every null key as equal — so an
-        // in-memory row type with no readable Id collapsed the whole grid to a single row.
+        // Two bugs met here. DistinctBy uses the default comparer, which treats every null key as
+        // equal, so an in-memory row type with no readable Id collapsed the whole grid to a single
+        // row — silently, with a matching count. Dropping the dedup stopped the collapse but left
+        // rows nothing can link to, select or re-load. A row the framework cannot name is not a
+        // row, so it is now an authoring error rather than a rendering one.
         MapRowsByReflection("Label");
         var query = Bind(nameof(RowShapeActions.IdlessRows), Definition("Label"));
 
-        var result = await CreateExecutor().ExecuteQueryAsync(query);
+        var act = () => CreateExecutor().ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
-        result.Data.Should().HaveCount(3);
+        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
+        ex.Which.Message.Should().Contain("RowShapeQuery");
+        ex.Which.Message.Should().Contain("no id");
+    }
+
+    [Fact]
+    public async Task Two_rows_sharing_an_id_are_refused()
+    {
+        // Client-side selection is a dictionary keyed by id, so duplicates collide silently there.
+        MapRowsByReflection("Label");
+        var query = Bind(nameof(RowShapeActions.DuplicateIdRows), Definition("Label"));
+
+        var act = () => CreateExecutor().ExecuteQueryAsync(query);
+
+        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
+        ex.Which.Message.Should().Contain("rows/1");
     }
 
     [Fact]
@@ -148,7 +165,7 @@ public class QueryExecutorRowShapeTests
 
         var result = await CreateExecutor().ExecuteQueryAsync(query);
 
-        result.Data.Select(po => po.Attributes.Single().Value)
+        result.Items.Select(po => po.Values.Single().Value)
             .Should().ContainInOrder("alpha", "beta", "gamma");
     }
 
@@ -163,7 +180,7 @@ public class QueryExecutorRowShapeTests
 
         var result = await CreateExecutor().ExecuteQueryAsync(query);
 
-        result.Data.Select(po => po.Attributes.Single().Value)
+        result.Items.Select(po => po.Values.Single().Value)
             .Should().ContainInOrder("gamma", "beta", "alpha");
     }
 
@@ -183,8 +200,12 @@ public class QueryExecutorRowShapeTests
 
         var result = await CreateExecutor().ExecuteQueryAsync(query);
 
-        result.Data.Select(po => po.Attributes.Single().Value)
-            .Should().ContainInOrder("gamma", "alpha", "beta");
+        // The attribute is no longer on the query surface, so it is not a column either and the
+        // rows carry no values at all — which is exactly the point: a column the caller may not
+        // see cannot be ordered by. Row order is therefore the only observable, and it is the
+        // order the source produced.
+        result.Columns.Should().BeEmpty();
+        result.Items.Select(i => i.Id).Should().ContainInOrder("rows/3", "rows/1", "rows/2");
     }
 }
 
@@ -210,6 +231,13 @@ public class RowShapeActions
         new() { Label = "one" },
         new() { Label = "two" },
         new() { Label = "three" },
+    ];
+
+    /// <summary>Two rows claiming the same identity — an authoring bug, not a fan-out.</summary>
+    public IEnumerable<RowShapeEntity> DuplicateIdRows() =>
+    [
+        new() { Id = "rows/1", Label = "first" },
+        new() { Id = "rows/1", Label = "second" },
     ];
 
     /// <summary>A plain sequence, deliberately out of order and deliberately not an IQueryable.</summary>

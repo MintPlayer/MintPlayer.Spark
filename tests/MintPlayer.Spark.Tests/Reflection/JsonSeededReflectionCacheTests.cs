@@ -72,14 +72,14 @@ public class JsonSeededReflectionCacheTests : SparkTestDriver
 
         var result = await _executor.ExecuteQueryAsync(query);
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
 
-        var rows = result.Data
+        var rows = result.Items
             .Select(po => (
                 Id: po.Id,
-                Name: po.Name, // GetEntityDisplayName(Breadcrumb = "{LastName}") → AccessorCache.GetGetter
-                FirstName: po.Attributes.Single(a => a.Name == "FirstName").Value?.ToString(),
-                LastName: po.Attributes.Single(a => a.Name == "LastName").Value?.ToString()))
+                Name: po.Breadcrumb, // GetEntityDisplayName(Breadcrumb = "{LastName}") → AccessorCache.GetGetter
+                FirstName: po.Values.Single(a => a.Key == "FirstName").Value?.ToString(),
+                LastName: po.Values.Single(a => a.Key == "LastName").Value?.ToString()))
             .ToList();
 
         rows.Should().Equal(
@@ -105,11 +105,11 @@ public class JsonSeededReflectionCacheTests : SparkTestDriver
         var first = await _executor.ExecuteQueryAsync(query);
         var second = await _executor.ExecuteQueryAsync(query);
 
-        var firstShape = first.Data
-            .Select(po => (po.Id, po.Name, po.Attributes.Count))
+        var firstShape = first.Items
+            .Select(po => (po.Id, po.Breadcrumb, po.Values.Count))
             .ToList();
-        var secondShape = second.Data
-            .Select(po => (po.Id, po.Name, po.Attributes.Count))
+        var secondShape = second.Items
+            .Select(po => (po.Id, po.Breadcrumb, po.Values.Count))
             .ToList();
 
         secondShape.Should().Equal(firstShape,

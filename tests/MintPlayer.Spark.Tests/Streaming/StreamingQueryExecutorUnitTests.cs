@@ -41,9 +41,9 @@ public class StreamingQueryExecutorUnitTests
         EntityType = entityType,
     };
 
-    private static async Task<List<PersistentObject[]>> Drain(IAsyncEnumerable<PersistentObject[]> stream)
+    private static async Task<List<StreamingQueryBatch>> Drain(IAsyncEnumerable<StreamingQueryBatch> stream)
     {
-        var batches = new List<PersistentObject[]>();
+        var batches = new List<StreamingQueryBatch>();
         await foreach (var b in stream) batches.Add(b);
         return batches;
     }
@@ -167,8 +167,8 @@ public class StreamingQueryExecutorUnitTests
         var batches = await Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.BatchStream"), CancellationToken.None));
 
         batches.Should().HaveCount(2, "BatchStream yields two batches of two items each");
-        batches[0].Should().HaveCount(2);
-        batches[1].Should().HaveCount(2);
+        batches[0].Items.Should().HaveCount(2);
+        batches[1].Items.Should().HaveCount(2);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class StreamingQueryExecutorUnitTests
 
         // SingleStream yields three TestEntity instances — each wrapped in its own array.
         batches.Should().HaveCount(3);
-        batches.Should().AllSatisfy(b => b.Should().HaveCount(1));
+        batches.Should().AllSatisfy(b => b.Items.Should().HaveCount(1));
     }
 
     [Fact]
@@ -240,13 +240,18 @@ public class StreamingQueryExecutorUnitTests
             .Returns(Task.CompletedTask);
     }
 
+    private int _echoCounter;
+
     private void StubMapperToEcho()
     {
         _entityMapper
             .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>())
+            // Distinct ids per row. A constant would now fail the projection's uniqueness check,
+            // and rightly so — two streamed rows sharing an id collide in the diff engine's state
+            // and in client-side selection alike.
             .Returns(ci => new PersistentObject
             {
-                Id = "echo",
+                Id = $"echo/{Interlocked.Increment(ref _echoCounter)}",
                 Name = "TestEntity",
                 ObjectTypeId = (Guid)ci.Args()[1]!,
                 Attributes = [],

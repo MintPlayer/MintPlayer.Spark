@@ -132,7 +132,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(new SortColumn { Property = "SecretToken", Direction = "asc" }));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
         rql.Should().ContainSingle().Which.Should().NotContain("order by");
     }
 
@@ -146,7 +146,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(new SortColumn { Property = "InternalRank", Direction = "asc" }));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
         rql.Should().ContainSingle().Which.Should().NotContain("order by");
     }
 
@@ -161,8 +161,8 @@ public class SortColumnDisclosureTests : SparkTestDriver
             Query(new SortColumn { Property = "Label", Direction = "asc" }));
 
         rql.Should().ContainSingle().Which.Should().Contain("order by Label");
-        result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "Label").Value?.ToString())
+        result.Items
+            .Select(po => po.Values.Single(a => a.Key == "Label").Value?.ToString())
             .Should().Equal("alpha", "beta", "gamma");
     }
 

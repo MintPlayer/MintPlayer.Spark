@@ -149,7 +149,7 @@ public class RowLevelAuthzTests
         await _fixture.Host.SetUnresolvableClrTypeAsync(created.Id!);
 
         var result = await client.ExecuteQueryAsync(GetCarsQueryId);
-        result.Data.Should().Contain(po => po.Id == created.Id,
+        result.Items.Should().Contain(po => po.Id == created.Id,
             "the row filter is written on Car, so the reload must produce a Car regardless of what "
             + $"the stored metadata claims\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
