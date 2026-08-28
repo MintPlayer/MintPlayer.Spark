@@ -304,6 +304,24 @@ The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
    values, `Can ??=` read-only), with the guard-skipping rationale below unchanged. A
    wrong-shaped `OnLoadAsync` throws loudly (the contract is reflective); no actions class
    means 404.
+3. **`Read` implies `Query`** — found by running the demo, not by reading code: the Start page
+   rendered **blank**. The object loaded fine; `GET /spark/types`, the metadata catalogue every
+   page renders *from*, is `Query`-scoped, so a type granted only `Read` had nothing describing
+   how to draw it. Rather than widen the catalogue's gate (list-scoped for a reason) or patch
+   the client to fall back to `GET /spark/types/{id}`, the rule moved into the rights model:
+   a granted `Read/X` also grants `Query/X`, expanded once while `security.json` is composed
+   into the index (`SparkRightImplications`), so evaluation stays a set lookup. A caller who may
+   open every row individually may list them; Vidyano encodes the same rule by only offering
+   `Query` / `QueryRead` / `QueryReadEdit` … as bundles and never a bare `Read`.
+
+   Two asymmetries on purpose: the inverse does not hold (`Query` without `Read` is unchanged),
+   and it widens **grants** only — a denied `Read` leaves `Query` alone, or "list, but no
+   click-through" would stop being expressible by denial. ⚠️ Two expansions of the rights file
+   exist — the evaluator's `GroupRights.Expand` and `SecurityPostureReporter.Expand` — and both
+   must consult the shared rule, or the committed anonymous-surface baseline under-reports what
+   is actually served. A **full lattice** (`Edit` ⇒ `Read` ⇒ `Query`) was considered and
+   rejected: it breaks the write-only drop box / public submission form, where `New` without
+   `Read` is the point. A startup *warning* for that shape is filed as #326.
 
 The original design (kept for the record of what was considered and rejected):
 
@@ -489,6 +507,15 @@ Preview rules apply (breaks ship as minors; majors stay platform-locked).
    before, visibility for PO units changes for grants that had one right but not the
    other).
 3. `provideSparkAuth()` additionally provides `SPARK_AUTH_STATE` (additive, not breaking).
+4. `IPersistentObjectActions<T>.OnLoadAsync` changes shape to
+   `Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)` — every
+   hand-written implementer and every override breaks (the compatibility fixture in
+   `HandWrittenActionsCompatibilityTests` exists to make that break visible rather than
+   silent). `EntityTypeDefinition.ClrType` becomes nullable.
+5. A granted `Read/X` now also grants `Query/X`. Any group with a bare `Read` gains list
+   access to that type; denials and the reverse direction are unchanged. Regenerate
+   `App_Data/securityPosture.txt` (`--spark-synchronize-security`) — CI gates it, and the
+   baseline is where the widening becomes reviewable.
 
 No shims, no `[Obsolete]` — deleted means deleted, consistent with #310.
 

@@ -14,7 +14,8 @@
 |---|---|---|
 | M0 | Spikes S1–S4 | — |
 | M1 | Server schema: `ObjectId` + `Url`, loader canonicalization + validation, endpoint right-per-type | behaviour |
-| M2 | Composed virtual PO read path: `OnComposeAsync` (+ id-redirect if S1 says it's free) | no |
+| M2 | Virtual PO read path: `OnLoadAsync(id, parent)` reshape + JSON-only types | **yes** |
+| M2b | `Read` implies `Query` (unplanned — found by running the demo; see M2b below) | behaviour |
 | M3 | Client models + `RouterLinkPipe`: `objectId`, exact type matching, `url` units | no |
 | M4 | `spark-shell` (slots) + `spark-program-units` + `spark-language-selector` + `SPARK_AUTH_STATE` token + `provideSparkAuth` wiring | no |
 | M5 | Demos: four shells collapse to `<spark-shell>`; WebhooksDemo `programUnits.json`; DemoApp Start page dogfood | no |
@@ -126,6 +127,25 @@ replaced by owner directive):**
 - Comment discipline: the *why skipping the guards is sound* rationale from the PRD goes on
   the skip site, since the code can't show it.
 
+## M2b — `Read` implies `Query` (unplanned)
+
+Not in the original plan: found by running DemoApp at M5, where the Start page rendered blank
+even though the server returned a complete object. `GET /spark/types` — the metadata catalogue
+every page renders *from* — is `Query`-scoped, so a `Read`-only type had nothing to render with.
+
+- `SparkRightImplications.Implied(action)` in Abstractions: the single rule, `Read` ⇒ `Query`.
+- `GroupRights.Expand(resource, isDenied)` consults it — grants only, so a denied `Read` still
+  leaves `Query` alone and "list, no click-through" stays expressible by denial.
+- `SecurityPostureReporter.Expand(rights, withImplications)` consults the **same** rule. It is a
+  second, independent expansion of the rights file (its comment claimed parity that no longer
+  held); without this the committed baseline under-reports what is served.
+- Regenerate `App_Data/securityPosture.txt` per demo — only DemoApp's actually moves
+  (`Query/StartPage`, `Query/LookupReferences`).
+- Rejected: widening the catalogue's gate to `Read` (it is list-scoped for a reason), a client
+  fallback to `GET /spark/types/{id}` (dead code once the rule exists), and a full lattice
+  (`Edit` ⇒ `Read` ⇒ `Query`, which breaks the write-only drop box). Startup warning for the
+  latter shape filed as #326.
+
 ## M3 — Client models + pipe
 
 - `program-unit.ts`: `objectId?: string`, `url?: string`.
@@ -182,9 +202,14 @@ Single batched run at the end (repo convention):
   granted user, framework-stamped id/template breadcrumb/`can` forced false, 404/refusal
   without `Read`, 404 without an actions class; entity-backed types pinned by the ordinary
   Get tests), DemoApp Start page end-to-end through the test driver.
+- Rights implication (M2b): a bare `Read` grant lists, reads and appears in the catalogue; a
+  denied `Read` leaves `Query` alone; a type with neither right is hidden from both metadata
+  surfaces. Plus the four demo posture gates (`--spark-verify-security`).
 - Client: pipe cases (objectId, exact types, url → null), `spark-program-units` spec
   (sorting, auth-effect re-fetch, reloadToken), `spark-shell` slot specs (default vs
   projected per region).
+- **Browser check, not optional here**: the Start page is the one thing the unit tests cannot
+  prove renders. It was blank at first pass (M2b) with every server test green.
 - Full suite once; flaky-under-load caveat applies — re-run named tests in isolation
   before calling a regression.
 

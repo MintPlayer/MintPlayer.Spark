@@ -242,6 +242,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 **`GET /spark/types/`** — `Endpoints/EntityTypes/List.cs`
 
 - **Response**: `200 OK` — body: `EntityTypeDefinition[]` (filtered by `Query` permission per type)
+- **Note**: this is the metadata clients render *from*, including on detail pages — a type missing here renders blank, not merely unlisted. It stays list-scoped (`Query`); a `Read`-only type reaches it because **`Read` implies `Query`** (see [Authorization](./guide-authorization.md)).
 
 #### Get Entity Type
 
@@ -251,6 +252,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 - **Response shapes**:
   - `200 OK` — body: `EntityTypeDefinition`
   - `404 Not Found` — either not registered, or caller is unauthorized (existence hidden)
+- **Auth**: `Query` permission on the type (a `Read` grant satisfies it through the implication)
 
 ---
 
