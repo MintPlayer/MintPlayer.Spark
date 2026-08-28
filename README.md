@@ -157,7 +157,7 @@ MintPlayer.Spark/
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
 | [TriggersRefresh & OnRefreshAsync](docs/guide-triggers-refresh.md) | Forms that reshape themselves: toggling required/read-only/visible, rewriting rules, replacing dropdown options as the user types — and why the hook must be idempotent |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
-| [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), composed virtual PO pages via `OnComposeAsync`, and the shipped `spark-shell` with its slots |
+| [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), JSON-only composed virtual PO pages, and the shipped `spark-shell` with its slots |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
 | [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions, wildcards, the four precedence tiers, and what `Query` without `Read` does to a grid |

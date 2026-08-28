@@ -71,35 +71,33 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
    `--spark-synchronize-model` afterwards so `modelHashes.json` covers the file; synchronize
    preserves hand-authored files.
 
-2. **The compose hook** — a class named `{Name}Actions` deriving from
-   `SparkVirtualObjectActions`, resolved by name exactly like entity Actions classes. It
-   receives a fully scaffolded `PersistentObject` (all attributes, null values) plus the
-   requested id, fills in values and `Breadcrumb` (the page title), and returns it:
+2. **The load hook** — a plain class named `{Name}Actions`, resolved by name exactly like
+   entity Actions classes; no base class. Because the type has no entity, its `OnLoadAsync` is
+   PO-shaped: it receives the fully scaffolded `PersistentObject` (all attributes, null values,
+   `Id` = the requested id) and fills in values and `Breadcrumb` (the page title) in place:
 
    ```csharp
-   public partial class StartPageActions : SparkVirtualObjectActions
+   public partial class StartPageActions
    {
        [Inject] private readonly IAsyncDocumentSession session;
 
-       public override async Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+       public async Task OnLoadAsync(PersistentObject obj)      // scaffolded, Id = requested id
        {
-           var obj = args.PersistentObject;                      // scaffolded, Id = requested id
            obj["Welcome"].Value = "Hello!";
            obj["PeopleCount"].Value = await session.Query<Person>().CountAsync();
            obj.Breadcrumb = "Start";
-           return obj;                                           // null ⇒ 404
        }
    }
    ```
 
+   The signature is checked reflectively and loudly: a method named `OnLoadAsync` with any other
+   shape throws at first load rather than silently 404ing. A virtual type with no Actions class
+   (or none with the hook) has no page — 404.
+
 3. **A grant** — `Read/StartPage` in `security.json`. No grant, no page and no menu entry.
 
 4. **The unit** — `type: "persistentObject"`, the type's id, and any stable `objectId` string
-   (`"start"`); the hook is free to ignore it.
-
-An **entity-backed** type can compose too — override the same `OnComposeAsync` on its
-`DefaultPersistentObjectActions<T>` class; returning `null` (the default) leaves the entity
-pipeline byte-for-byte unchanged, so the hook also suits types that are *sometimes* composed.
+   (`"start"`); the page is free to ignore it.
 
 The same JSON-only shape serves dialog/popup POs: declare the model file, scaffold with
 `IManager.GetPersistentObject(...)` inside a custom action, and hand it to a retry action —

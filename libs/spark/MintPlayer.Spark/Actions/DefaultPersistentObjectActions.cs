@@ -55,32 +55,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     [NoInterfaceMember]
     public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;
 
-    /// <summary>
-    /// The read path's composition seam: return a non-null <see cref="PersistentObject"/> and the
-    /// framework serves it as this type's page for the requested id — <b>instead of</b> loading an
-    /// entity. The default returns null, which means "not composed": the normal entity pipeline
-    /// (<see cref="OnLoadAsync"/> → collection guard → row security → mapping) runs unchanged.
-    /// <para>
-    /// This override suits an <b>entity-backed</b> type that is sometimes composed. A page that
-    /// is <em>only ever</em> composed needs no CLR entity at all: declare it as a JSON-only
-    /// model file (no <c>clrType</c>) and put the hook on a
-    /// <see cref="SparkVirtualObjectActions"/> subclass instead — the start-page pattern. Either
-    /// way the hook fills <c>args.PersistentObject</c>'s attribute values and
-    /// <see cref="PersistentObject.Breadcrumb"/> (the page title), ignoring
-    /// <see cref="SparkComposeArgs.RequestedId"/> at will, and composition runs under the
-    /// type-level <c>Read</c> right, which <c>security.json</c> must grant explicitly.
-    /// </para>
-    /// <para>
-    /// A composed object is read-only through the generic pipeline: unless this hook sets
-    /// <see cref="PersistentObject.Can"/> itself, the framework forces Edit/Delete to false.
-    /// Anything interactive on the page belongs in a custom action, which carries its own
-    /// authorization.
-    /// </para>
-    /// </summary>
-    [NoInterfaceMember]
-    public virtual Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
-        => Task.FromResult<PersistentObject?>(null);
-
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
     {

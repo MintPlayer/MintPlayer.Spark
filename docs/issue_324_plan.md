@@ -97,17 +97,19 @@ group headers keeps expand/collapse from closing it (deleting `onMenuItemClick`)
 - Update `GetProgramUnitsEndpointTests` + `ProgramUnitsLoaderTests` expectations (written
   now, executed at M6).
 
-## M2 — Composed virtual PO read path
+## M2 — Virtual PO read path
 
-Shape from S1; the contract from PRD D2:
+**As built (see PRD D2's design-revision note — the ComposeArgs/OnComposeAsync sketch was
+replaced by owner directive):**
 
-- `ComposeArgs` in Abstractions; `OnComposeAsync` virtual on
-  `DefaultPersistentObjectActions<T>`, default null.
-- `DatabaseAccess.GetPersistentObjectAsync`: after `EnsureAuthorizedAsync("Read", …)`,
-  scaffold via `IManager`, call `OnComposeAsync`; non-null → force
-  `Can = { Edit: false, Delete: false }` (unless explicitly set by the compose) and return,
-  skipping steps 2–6. Null → existing pipeline byte-for-byte.
-- If S1 blessed it: the id-redirect seam (actions substitutes the id before `OnLoadAsync`).
+- `EntityTypeDefinition.ClrType` becomes nullable; `ISparkTypeResolver.Resolve(null) → null`;
+  the four private clrType-resolution helpers collapse into `SparkTypeResolver.ResolveClrType`.
+- `DatabaseAccess.GetPersistentObjectAsync`: when the type has no CLR type, resolve
+  `{Name}Actions` by name (`IActionsResolver.ResolveByEntityName`) and invoke its PO-shaped
+  `Task OnLoadAsync(PersistentObject obj)` — scaffold in (Id = requested id), mutate in place,
+  force `Can = { Edit: false, Delete: false }` unless set, return. No actions class / no hook →
+  404; a wrong-shaped `OnLoadAsync` throws loudly. Entity-backed types byte-for-byte unchanged.
+- No id-redirect seam shipped (nothing needed it).
 - Comment discipline: the *why skipping the guards is sound* rationale from the PRD goes on
   the skip site, since the code can't show it.
 

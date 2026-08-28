@@ -38,9 +38,10 @@ public sealed class ProgramUnit
 
     /// <summary>
     /// For a <c>persistentObject</c> unit: the id of the specific object to open — the menu entry
-    /// becomes a deep link to one page (<c>/po/{type}/{objectId}</c>). For a composed page the id
-    /// is any stable string the application chooses; the type's Actions class receives it in
-    /// <c>OnComposeAsync</c> and may ignore it. Absent means the type's default list.
+    /// becomes a deep link to one page (<c>/po/{type}/{objectId}</c>). For a virtual type's
+    /// composed page the id is any stable string the application chooses; the type's Actions
+    /// class receives it as the scaffolded object's <c>Id</c> in its <c>OnLoadAsync</c> and may
+    /// ignore it. Absent means the type's default list.
     /// </summary>
     public string? ObjectId { get; set; }
 

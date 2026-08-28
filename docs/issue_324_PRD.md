@@ -277,14 +277,24 @@ Decisions folded in:
 
 The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
 
-**Design revision during implementation (owner directive):** a virtual type needs **no CLR
-class at all** — F3's marker-class shape was itself boilerplate. `EntityTypeDefinition.ClrType`
-became optional; a JSON-only type's actions resolve by *name* (`{Name}Actions` deriving from a
-new non-generic `SparkVirtualObjectActions` base carrying only `OnComposeAsync`), and every
-document-shaped path 404s for it (`ISparkTypeResolver.Resolve(null) → null`, defining the error
-out of existence at each call site). Fleet's `ConfirmDeleteCar` marker class was deleted on the
-same grounds — dialogs scaffold via `IManager.GetPersistentObject` from the JSON alone. The
-entity-backed compose override below still exists for types that are only *sometimes* composed.
+**Design revisions during implementation (owner directives):**
+
+1. A virtual type needs **no CLR class at all** — F3's marker-class shape was itself
+   boilerplate. `EntityTypeDefinition.ClrType` became optional; every document-shaped path 404s
+   for a JSON-only type (`ISparkTypeResolver.Resolve(null) → null`, defining the error out of
+   existence at each call site). Fleet's `ConfirmDeleteCar` marker class was deleted on the same
+   grounds — dialogs scaffold via `IManager.GetPersistentObject` from the JSON alone.
+2. **No compose concept at all** — the `OnComposeAsync` hook sketched below was replaced: a
+   program unit simply triggers the corresponding Actions class's existing hook vocabulary.
+   A JSON-only type's actions resolve by *name* (`{Name}Actions`, a plain class — no base), and
+   its load hook is the PO-shaped `Task OnLoadAsync(PersistentObject obj)`: scaffold in
+   (`obj.Id` = requested id), values and breadcrumb filled in place, served read-only under the
+   type-level `Read` right, with the guard-skipping rationale below unchanged. A wrong-shaped
+   `OnLoadAsync` throws loudly (the contract is reflective); no actions class means 404.
+   Entity-backed types keep their `OnLoadAsync(session, id)` pipeline byte-for-byte — no new
+   hook exists on `DefaultPersistentObjectActions<T>`.
+
+The original design (kept for the record of what was considered and rejected):
 
 New seam on the actions class (final shape decided by spike S1):
 

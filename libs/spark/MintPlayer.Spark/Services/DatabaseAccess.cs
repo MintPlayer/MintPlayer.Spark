@@ -86,22 +86,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
 
-        // Composition seam (#324): an Actions class overriding OnComposeAsync serves this type's
-        // page from code instead of the database — the start-page pattern. Runs under the
-        // type-level "Read" check above and short-circuits everything below it. Skipping the
-        // collection guard and row security here is sound, not a hole: both exist to police
-        // *database documents* (id-to-type confusion, per-row visibility of stored data), and a
-        // composed object corresponds to no document — the Actions class hand-picks every value
-        // it exposes, and it is the same authority those guards defer to. The composed object is
-        // forced read-only (Can = none) unless the hook says otherwise; anything interactive on
-        // such a page is a custom action with its own authorization.
-        var composed = await ComposeViaActionsAsync(entityType, entityTypeDefinition, objectTypeId, id);
-        if (composed is not null)
-            return composed;
-
-        // A JSON-only virtual type (no clrType) has no entity pipeline: not composed means
-        // nothing to serve.
-        if (entityType == null) return null;
+        // JSON-only virtual type (#324): no clrType ⇒ no entity pipeline. Its page is served by
+        // the type's name-resolved Actions class through the same hook vocabulary entity types
+        // use — OnLoadAsync, PO-shaped because there is no entity. Runs under the type-level
+        // "Read" check above. Skipping the collection guard and row security is sound, not a
+        // hole: both police *database documents* (id-to-type confusion, per-row visibility of
+        // stored data), and no document exists — the Actions class hand-picks every value it
+        // exposes, and it is the same authority those guards defer to.
+        if (entityType == null)
+            return await LoadVirtualObjectViaActionsAsync(entityTypeDefinition, objectTypeId, id);
 
         // Use actions for loading
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
@@ -489,53 +482,59 @@ internal partial class DatabaseAccess : IDatabaseAccess
     #region Actions Helper Methods
 
     /// <summary>
-    /// Invokes the Actions class's <c>OnComposeAsync</c> when — and only when — it is overridden.
-    /// For an entity-backed type the actions resolve over the CLR type as usual; for a JSON-only
-    /// virtual type (<paramref name="entityType"/> null) they resolve by the model type's name.
-    /// Returns null (meaning "not composed", proceed with the entity pipeline — or 404 for a
-    /// virtual type) when there is no actions class, the actions type keeps the default, doesn't
-    /// have the hook at all (a hand-written <c>IPersistentObjectActions&lt;T&gt;</c> implementer),
-    /// or the override itself returns null. The override check avoids scaffolding a
-    /// PersistentObject on every read of every type.
+    /// The read path for a JSON-only virtual type: resolve <c>{Name}Actions</c> by the model
+    /// type's name (there is no CLR type to resolve over) and invoke its PO-shaped load hook —
+    /// duck-typed, no base class required:
+    /// <code>public Task OnLoadAsync(PersistentObject obj)</code>
+    /// The framework scaffolds the object from the model (every declared attribute, null values,
+    /// <c>Id</c> = the requested id); the hook fills attribute values and
+    /// <see cref="PersistentObject.Breadcrumb"/> (the page title) in place, free to ignore the id.
+    /// The result is served read-only (<c>Can</c> forced to none unless the hook set it) —
+    /// anything interactive on such a page is a custom action with its own authorization.
+    /// <para>
+    /// No actions class, or no <c>OnLoadAsync(PersistentObject)</c> on it, means the type has no
+    /// page: null → 404. A method named <c>OnLoadAsync</c> whose shape doesn't match throws
+    /// loudly instead of silently 404ing — the contract is reflective, so this is where a typo
+    /// surfaces.
+    /// </para>
     /// </summary>
-    private async Task<PersistentObject?> ComposeViaActionsAsync(
-        Type? entityType, EntityTypeDefinition entityTypeDefinition, Guid objectTypeId, string id)
+    private async Task<PersistentObject?> LoadVirtualObjectViaActionsAsync(
+        EntityTypeDefinition entityTypeDefinition, Guid objectTypeId, string id)
     {
-        var actions = entityType is not null
-            ? actionsResolver.ResolveForType(entityType)
-            : actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
+        var actions = actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
         if (actions is null)
             return null;
 
-        var composeMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
-            ("DatabaseAccess.ComposeMethod", actions.GetType()),
+        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
+            ("DatabaseAccess.VirtualLoadMethod", actions.GetType()),
             static k =>
             {
-                var method = k.Actions.GetMethod("OnComposeAsync");
-                // DeclaringType is the most-derived class providing the body; when that is still
-                // one of the bases, nothing overrode the hook and there is nothing to invoke.
-                if (method is null) return null;
-                var declaring = method.DeclaringType;
-                if (declaring == typeof(Actions.SparkVirtualObjectActions)) return null;
-                if (declaring is { IsGenericType: true }
-                    && declaring.GetGenericTypeDefinition() == typeof(Actions.DefaultPersistentObjectActions<>))
-                    return null;
-                return method;
+                var method = k.Actions.GetMethod("OnLoadAsync", [typeof(PersistentObject)]);
+                if (method is not null)
+                {
+                    if (!typeof(Task).IsAssignableFrom(method.ReturnType))
+                        throw new InvalidOperationException(
+                            $"'{k.Actions.FullName}.OnLoadAsync' must return Task. " +
+                            $"Expected: 'Task OnLoadAsync(PersistentObject obj)'.");
+                    return method;
+                }
+                if (k.Actions.GetMethods().Any(m => m.Name == "OnLoadAsync"))
+                    throw new InvalidOperationException(
+                        $"'{k.Actions.FullName}' has an OnLoadAsync that doesn't match the virtual-type " +
+                        $"load contract. Expected: 'Task OnLoadAsync(PersistentObject obj)' — there is no " +
+                        $"entity to load, so the session/id shape does not apply.");
+                return null;
             });
-        if (composeMethod is null)
+        if (loadMethod is null)
             return null;
 
-        var scaffold = entityMapper.GetPersistentObject(objectTypeId);
-        scaffold.Id = id;
+        var obj = entityMapper.GetPersistentObject(objectTypeId);
+        obj.Id = id;
 
-        var task = (Task)composeMethod.Invoke(actions, [new Actions.SparkComposeArgs(id, scaffold)])!;
-        await task;
-        var composed = (PersistentObject?)task.GetCompletedTaskResult();
-        if (composed is null)
-            return null;
+        await (Task)loadMethod.Invoke(actions, [obj])!;
 
-        composed.Can ??= new PersistentObjectPermissions { Edit = false, Delete = false };
-        return composed;
+        obj.Can ??= new PersistentObjectPermissions { Edit = false, Delete = false };
+        return obj;
     }
 
     private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)

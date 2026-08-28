@@ -21,31 +21,30 @@ The endpoint now filters by the right the unit's click will demand: `Query` for 
 **`Read` for persistentObject units** (previously `Query` — which showed menu entries whose click
 404'd), nothing for `url` units.
 
-## Composed virtual PO pages — `OnComposeAsync`, no CLR class required
+## JSON-only virtual PO pages — served through `OnLoadAsync`, no CLR class required
 
 The start-page pattern: a type that exists **only as a model JSON file** — no `clrType`, no
 entity, no documents — whose page is built in code. `EntityTypeDefinition.ClrType` is now
-optional; a `{Name}Actions` class deriving from the new `SparkVirtualObjectActions` base is
-resolved by name and composes the page:
+optional; a plain `{Name}Actions` class (no base class) is resolved by name, and because the
+type has no entity, its `OnLoadAsync` is PO-shaped — the same hook vocabulary entity types use:
 
 ```csharp
-public partial class StartPageActions : SparkVirtualObjectActions
+public partial class StartPageActions
 {
-    public override async Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+    public async Task OnLoadAsync(PersistentObject obj)   // scaffolded, Id = requested id
     {
-        args.PersistentObject["Welcome"].Value = "Hello!";
-        args.PersistentObject.Breadcrumb = "Start";
-        return args.PersistentObject;   // null ⇒ 404
+        obj["Welcome"].Value = "Hello!";
+        obj.Breadcrumb = "Start";
     }
 }
 ```
 
-A non-null return is served instead of a document load, under the type-level `Read` right, with
-`can.edit`/`can.delete` forced false. Entity-backed types get the same hook as an override on
-`DefaultPersistentObjectActions<T>` (null there ⇒ the entity pipeline, unchanged) for pages that
-are only *sometimes* composed. DemoApp's new **Start** unit is the worked example: greeting +
-live collection counts, nothing behind it. Fleet's `ConfirmDeleteCar` dialog PO also lost its
-marker class — JSON-only + `IManager.GetPersistentObject` covers dialogs too.
+The result is served instead of a document load, under the type-level `Read` right, with
+`can.edit`/`can.delete` forced false. A wrong-shaped `OnLoadAsync` throws loudly at first load;
+a virtual type with no actions class 404s. Everything document-shaped (query, save, delete)
+404s for such a type. DemoApp's new **Start** unit is the worked example: greeting + live
+collection counts, nothing behind it. Fleet's `ConfirmDeleteCar` dialog PO also lost its marker
+class — JSON-only + `IManager.GetPersistentObject` covers dialogs too.
 
 ## `programUnits.json` is validated at load
 
