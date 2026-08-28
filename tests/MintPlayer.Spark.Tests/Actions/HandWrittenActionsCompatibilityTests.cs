@@ -29,8 +29,8 @@ public class HandWrittenActionsCompatibilityTests
     /// <summary>Implements every interface member and inherits nothing.</summary>
     private sealed class LegacyHandWrittenActions : IPersistentObjectActions<LegacyEntity>
     {
-        public Task<LegacyEntity?> OnLoadAsync(IAsyncDocumentSession session, string id)
-            => Task.FromResult<LegacyEntity?>(null);
+        public Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+            => Task.FromResult<PersistentObject?>(null);
 
         public Task<LegacyEntity> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
             => Task.FromResult(new LegacyEntity());

@@ -21,30 +21,54 @@ The endpoint now filters by the right the unit's click will demand: `Query` for 
 **`Read` for persistentObject units** (previously `Query` — which showed menu entries whose click
 404'd), nothing for `url` units.
 
-## JSON-only virtual PO pages — served through `OnLoadAsync`, no CLR class required
+## `OnLoadAsync` is reshaped: id in, page out
+
+The hook every actions class implements is now
+
+```csharp
+public virtual Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+```
+
+replacing `Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)`. The session is
+`[Inject]`ed (it was a pass-through parameter), and **what the method returns is what the page
+renders** — which finally lets an override touch the page: set a breadcrumb, fill a computed
+attribute, tweak visibility, after `await base.OnLoadAsync(id, parent)`. The whole per-row read
+pipeline (document load + declared includes, collection guard, row security, breadcrumbs,
+mapping, redaction, per-row `can`, etag) now lives in
+`DefaultPersistentObjectActions<T>.OnLoadAsync` — the base call carries it, and skipping the
+base takes it over (the read-side twin of `OnSaveAsync`'s WITH CHECK caveat). The type-level
+`Read` right stays framework-owned, checked before the hook runs.
+
+## JSON-only virtual PO pages — no CLR class required
 
 The start-page pattern: a type that exists **only as a model JSON file** — no `clrType`, no
 entity, no documents — whose page is built in code. `EntityTypeDefinition.ClrType` is now
-optional; a plain `{Name}Actions` class (no base class) is resolved by name, and because the
-type has no entity, its `OnLoadAsync` is PO-shaped — the same hook vocabulary entity types use:
+optional; a plain `{Name}Actions` class (no base class) is resolved by name and implements the
+same `OnLoadAsync(id, parent)` — scaffolding its object via `IManager.GetPersistentObject`
+(the dialog-PO idiom) instead of loading a document:
 
 ```csharp
 public partial class StartPageActions
 {
-    public async Task OnLoadAsync(PersistentObject obj)   // scaffolded, Id = requested id
+    [Inject] private readonly IManager manager;
+
+    public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
+        var obj = manager.GetPersistentObject("StartPage");
+        obj.Id = id;
         obj["Welcome"].Value = "Hello!";
         obj.Breadcrumb = "Start";
+        return obj;
     }
 }
 ```
 
-The result is served instead of a document load, under the type-level `Read` right, with
-`can.edit`/`can.delete` forced false. A wrong-shaped `OnLoadAsync` throws loudly at first load;
-a virtual type with no actions class 404s. Everything document-shaped (query, save, delete)
-404s for such a type. DemoApp's new **Start** unit is the worked example: greeting + live
-collection counts, nothing behind it. Fleet's `ConfirmDeleteCar` dialog PO also lost its marker
-class — JSON-only + `IManager.GetPersistentObject` covers dialogs too.
+Served under the type-level `Read` right, with `can.edit`/`can.delete` forced false. A
+wrong-shaped `OnLoadAsync` throws loudly at first load; a virtual type with no actions class
+404s. Everything document-shaped (query, save, delete) 404s for such a type. DemoApp's new
+**Start** unit is the worked example: greeting + live collection counts, nothing behind it.
+Fleet's `ConfirmDeleteCar` dialog PO also lost its marker class — JSON-only +
+`IManager.GetPersistentObject` covers dialogs too.
 
 ## `programUnits.json` is validated at load
 

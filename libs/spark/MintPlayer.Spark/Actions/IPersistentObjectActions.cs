@@ -12,12 +12,16 @@ namespace MintPlayer.Spark.Actions;
 public interface IPersistentObjectActions<T> where T : class
 {
     /// <summary>
-    /// Called when loading a single entity by ID.
+    /// Called when a single object's page is loaded: id in, page out — what this method returns
+    /// is what renders. <see cref="DefaultPersistentObjectActions{T}.OnLoadAsync"/> runs the
+    /// entity pipeline (document load, collection guard, row security, breadcrumbs, mapping,
+    /// redaction, etag); overrides typically call it and decorate the result. Returning null is
+    /// "not found" — a 404 indistinguishable from a missing document.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
-    /// <param name="id">The document ID</param>
-    /// <returns>The entity or null if not found</returns>
-    Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id);
+    /// <param name="id">The requested object id, straight from the URL — untrusted.</param>
+    /// <param name="parent">The object this load is nested under, when the client provided one;
+    /// null for a top-level page load (the usual case).</param>
+    Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent);
 
     /// <summary>
     /// Called when saving (creating or updating) an entity.

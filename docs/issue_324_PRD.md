@@ -284,15 +284,20 @@ The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
    for a JSON-only type (`ISparkTypeResolver.Resolve(null) → null`, defining the error out of
    existence at each call site). Fleet's `ConfirmDeleteCar` marker class was deleted on the same
    grounds — dialogs scaffold via `IManager.GetPersistentObject` from the JSON alone.
-2. **No compose concept at all** — the `OnComposeAsync` hook sketched below was replaced: a
-   program unit simply triggers the corresponding Actions class's existing hook vocabulary.
-   A JSON-only type's actions resolve by *name* (`{Name}Actions`, a plain class — no base), and
-   its load hook is the PO-shaped `Task OnLoadAsync(PersistentObject obj)`: scaffold in
-   (`obj.Id` = requested id), values and breadcrumb filled in place, served read-only under the
-   type-level `Read` right, with the guard-skipping rationale below unchanged. A wrong-shaped
-   `OnLoadAsync` throws loudly (the contract is reflective); no actions class means 404.
-   Entity-backed types keep their `OnLoadAsync(session, id)` pipeline byte-for-byte — no new
-   hook exists on `DefaultPersistentObjectActions<T>`.
+2. **No compose concept at all — `OnLoadAsync` reshaped instead** — the `OnComposeAsync` hook
+   sketched below was replaced: a program unit simply triggers the corresponding Actions
+   class's existing hook, whose signature became `Task<PersistentObject?> OnLoadAsync(string
+   id, PersistentObject? parent)` (id in, page out; the session is `[Inject]`ed — it was a
+   pass-through parameter). The whole per-row read pipeline (load + includes, collection
+   guard, row security, breadcrumbs, mapping, redaction, per-row can, etag) moved from
+   `DatabaseAccess` into `DefaultPersistentObjectActions<T>.OnLoadAsync`, so an override can
+   finally touch the page (`await base.OnLoadAsync(id, parent)` then decorate) — skipping the
+   base takes the pipeline over, the read-side twin of `OnSaveAsync`'s WITH CHECK caveat; the
+   type-level `Read` right stays framework-owned. A JSON-only type's actions resolve by *name*
+   (`{Name}Actions`, a plain class — no base) with the identical signature, scaffolding via
+   `IManager.GetPersistentObject` and served read-only, with the guard-skipping rationale below
+   unchanged. A wrong-shaped `OnLoadAsync` throws loudly (the contract is reflective); no
+   actions class means 404.
 
 The original design (kept for the record of what was considered and rejected):
 

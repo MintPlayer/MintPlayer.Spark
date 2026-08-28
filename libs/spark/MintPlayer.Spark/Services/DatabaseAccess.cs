@@ -84,63 +84,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
 
+        // The load contract (#324): id in, page out — the type's Actions class owns everything
+        // through OnLoadAsync(id, parent). For an entity-backed type the default base runs the
+        // entity pipeline (document load, collection guard, row security, breadcrumbs, mapping,
+        // redaction, etag); a JSON-only virtual type's name-resolved actions scaffold via
+        // IManager and fill the values directly. What comes back is what the page renders; null
+        // is 404.
         var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
-
-        // JSON-only virtual type (#324): no clrType ⇒ no entity pipeline. Its page is served by
-        // the type's name-resolved Actions class through the same hook vocabulary entity types
-        // use — OnLoadAsync, PO-shaped because there is no entity. Runs under the type-level
-        // "Read" check above. Skipping the collection guard and row security is sound, not a
-        // hole: both police *database documents* (id-to-type confusion, per-row visibility of
-        // stored data), and no document exists — the Actions class hand-picks every value it
-        // exposes, and it is the same authority those guards defer to.
         if (entityType == null)
-            return await LoadVirtualObjectViaActionsAsync(entityTypeDefinition, objectTypeId, id);
+            return await LoadVirtualObjectViaActionsAsync(entityTypeDefinition, id);
 
-        // Use actions for loading
-        var entity = await LoadEntityViaActionsAsync(session, entityType, id);
-
-        if (entity == null) return null;
-
-        // Id-to-type binding (security sweep C1): the caller authorized `entityType`, but `id` is
-        // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
-        // the same. A document whose real @collection isn't this type's is not this type's — 404,
-        // indistinguishable from missing (M-3), so it's no oracle for cross-collection existence.
-        if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, entityType))
-            return null;
-
-        // Row-level read gate. Entity-type "Read" passed; now let the Actions class decide
-        // whether this specific instance is visible to the current caller. Returning null
-        // here propagates as 404 through the endpoint — same shape as a genuinely missing
-        // record, per M-3 (authorized-but-forbidden must be indistinguishable from not-found).
-        if (!await rowSecurity.IsAllowedAsync(entityType, "Read", entity))
-            return null;
-
-        // Resolve breadcrumbs (recursive, batched) for this entity and its references.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, [entity], entityTypeDefinition);
-
-        var persistentObject = entityMapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
-        // Per-viewer attribute redaction (#236 G4) — the Actions class may hide specific
-        // attributes of this row from this caller (e.g. a secret only managers may view).
-        await rowSecurity.RedactAsync(session, [(persistentObject, entity)], entityType, entityType, "Read");
-        // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
-        // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404. One
-        // row, negligible cost; absent for types with no row rule (clients fall back to type-level).
-        // Invariant (#243): the block never claims more than GET /spark/permissions/{type} — the
-        // row rule can only narrow the type-level right, never widen it. Type-level first: it's a
-        // cheap in-memory check, and when it already denies, the consumer's row hook isn't invoked.
-        if (rowSecurity.HasRowRule(entityType))
-        {
-            persistentObject.Can = new PersistentObjectPermissions
-            {
-                Edit = await permissionService.IsAllowedAsync("Edit", entityTypeDefinition.Name)
-                    && await rowSecurity.IsAllowedAsync(entityType, "Edit", entity),
-                Delete = await permissionService.IsAllowedAsync("Delete", entityTypeDefinition.Name)
-                    && await rowSecurity.IsAllowedAsync(entityType, "Delete", entity),
-            };
-        }
-        // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
-        persistentObject.Etag = session.Advanced.GetChangeVectorFor(entity);
-        return persistentObject;
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
+        var task = (Task)onLoadMethod.Invoke(actions, [id, null])!;
+        await task;
+        return (PersistentObject?)task.GetCompletedTaskResult();
     }
 
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
@@ -483,23 +441,22 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     /// <summary>
     /// The read path for a JSON-only virtual type: resolve <c>{Name}Actions</c> by the model
-    /// type's name (there is no CLR type to resolve over) and invoke its PO-shaped load hook —
-    /// duck-typed, no base class required:
-    /// <code>public Task OnLoadAsync(PersistentObject obj)</code>
-    /// The framework scaffolds the object from the model (every declared attribute, null values,
-    /// <c>Id</c> = the requested id); the hook fills attribute values and
-    /// <see cref="PersistentObject.Breadcrumb"/> (the page title) in place, free to ignore the id.
-    /// The result is served read-only (<c>Can</c> forced to none unless the hook set it) —
-    /// anything interactive on such a page is a custom action with its own authorization.
+    /// type's name (there is no CLR type to resolve over) and invoke its load hook — duck-typed
+    /// with the exact same signature every actions class has, no base class required:
+    /// <code>public Task&lt;PersistentObject?&gt; OnLoadAsync(string id, PersistentObject? parent)</code>
+    /// The class scaffolds its own object (the <c>IManager.GetPersistentObject</c> idiom dialogs
+    /// already use), fills values and <see cref="PersistentObject.Breadcrumb"/> (the page title),
+    /// and returns it — free to ignore the id. The result is served read-only (<c>Can</c> forced
+    /// to none unless the hook set it) — anything interactive on such a page is a custom action
+    /// with its own authorization.
     /// <para>
-    /// No actions class, or no <c>OnLoadAsync(PersistentObject)</c> on it, means the type has no
-    /// page: null → 404. A method named <c>OnLoadAsync</c> whose shape doesn't match throws
-    /// loudly instead of silently 404ing — the contract is reflective, so this is where a typo
-    /// surfaces.
+    /// No actions class, or no <c>OnLoadAsync</c> on it, means the type has no page: null → 404.
+    /// A method named <c>OnLoadAsync</c> whose shape doesn't match throws loudly instead of
+    /// silently 404ing — the contract is reflective, so this is where a typo surfaces.
     /// </para>
     /// </summary>
     private async Task<PersistentObject?> LoadVirtualObjectViaActionsAsync(
-        EntityTypeDefinition entityTypeDefinition, Guid objectTypeId, string id)
+        EntityTypeDefinition entityTypeDefinition, string id)
     {
         var actions = actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
         if (actions is null)
@@ -509,41 +466,32 @@ internal partial class DatabaseAccess : IDatabaseAccess
             ("DatabaseAccess.VirtualLoadMethod", actions.GetType()),
             static k =>
             {
-                var method = k.Actions.GetMethod("OnLoadAsync", [typeof(PersistentObject)]);
+                var method = k.Actions.GetMethod("OnLoadAsync", [typeof(string), typeof(PersistentObject)]);
                 if (method is not null)
                 {
-                    if (!typeof(Task).IsAssignableFrom(method.ReturnType))
+                    if (method.ReturnType != typeof(Task<PersistentObject?>))
                         throw new InvalidOperationException(
-                            $"'{k.Actions.FullName}.OnLoadAsync' must return Task. " +
-                            $"Expected: 'Task OnLoadAsync(PersistentObject obj)'.");
+                            $"'{k.Actions.FullName}.OnLoadAsync' must return Task<PersistentObject?>. " +
+                            $"Expected: 'Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)'.");
                     return method;
                 }
                 if (k.Actions.GetMethods().Any(m => m.Name == "OnLoadAsync"))
                     throw new InvalidOperationException(
-                        $"'{k.Actions.FullName}' has an OnLoadAsync that doesn't match the virtual-type " +
-                        $"load contract. Expected: 'Task OnLoadAsync(PersistentObject obj)' — there is no " +
-                        $"entity to load, so the session/id shape does not apply.");
+                        $"'{k.Actions.FullName}' has an OnLoadAsync that doesn't match the load contract. " +
+                        $"Expected: 'Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)'.");
                 return null;
             });
         if (loadMethod is null)
             return null;
 
-        var obj = entityMapper.GetPersistentObject(objectTypeId);
-        obj.Id = id;
-
-        await (Task)loadMethod.Invoke(actions, [obj])!;
+        var task = (Task)loadMethod.Invoke(actions, [id, null])!;
+        await task;
+        var obj = (PersistentObject?)task.GetCompletedTaskResult();
+        if (obj is null)
+            return null;
 
         obj.Can ??= new PersistentObjectPermissions { Edit = false, Delete = false };
         return obj;
-    }
-
-    private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
-        var task = (Task)onLoadMethod.Invoke(actions, [session, id])!;
-        await task;
-        return task.GetCompletedTaskResult();
     }
 
     /// <summary>

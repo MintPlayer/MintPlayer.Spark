@@ -14,10 +14,10 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// <summary>
 /// The JSON-only virtual type read path (#324): a type that exists purely as a model file (no
 /// <c>clrType</c>, no CLR class, no documents) is served by its name-resolved
-/// <c>{Name}Actions</c> class through the PO-shaped <c>OnLoadAsync(PersistentObject)</c> hook —
+/// <c>{Name}Actions</c> class through the standard <c>OnLoadAsync(id, parent)</c> hook —
 /// under the type-level "Read" right, read-only, with no collection guard or row security (there
-/// is no document to police). Entity-backed types are untouched: their <c>OnLoadAsync(session,
-/// id)</c> pipeline is pinned down by the ordinary Get tests.
+/// is no document to police). Entity-backed types keep the same signature with the pipeline in
+/// the base — pinned down by the ordinary Get tests.
 /// </summary>
 public class VirtualObjectEndpointTests : SparkTestDriver
 {
@@ -111,14 +111,21 @@ public class VirtualObjectEndpointTests : SparkTestDriver
 }
 
 /// <summary>Found by name; plain class — no base class, no CLR entity anywhere. The framework
-/// routes the virtual type's page load to the PO-shaped OnLoadAsync.</summary>
+/// routes the virtual type's page load to the standard OnLoadAsync(id, parent) signature; the
+/// class scaffolds its own object via IManager, the dialog-PO idiom.</summary>
 public sealed class VirtualStartPageActions
 {
-    public Task OnLoadAsync(Abstractions.PersistentObject obj)
+    private readonly IManager manager;
+
+    public VirtualStartPageActions(IManager manager) => this.manager = manager;
+
+    public Task<Abstractions.PersistentObject?> OnLoadAsync(string id, Abstractions.PersistentObject? parent)
     {
+        var obj = manager.GetPersistentObject("VirtualStartPage");
+        obj.Id = id;
         obj["Title"].Value = "Composed without a class";
         obj["Counter"].Value = 42;
-        obj.Breadcrumb = $"Loaded for {obj.Id}";
-        return Task.CompletedTask;
+        obj.Breadcrumb = $"Loaded for {id}";
+        return Task.FromResult<Abstractions.PersistentObject?>(obj);
     }
 }

@@ -104,12 +104,19 @@ replaced by owner directive):**
 
 - `EntityTypeDefinition.ClrType` becomes nullable; `ISparkTypeResolver.Resolve(null) → null`;
   the four private clrType-resolution helpers collapse into `SparkTypeResolver.ResolveClrType`.
-- `DatabaseAccess.GetPersistentObjectAsync`: when the type has no CLR type, resolve
-  `{Name}Actions` by name (`IActionsResolver.ResolveByEntityName`) and invoke its PO-shaped
-  `Task OnLoadAsync(PersistentObject obj)` — scaffold in (Id = requested id), mutate in place,
-  force `Can = { Edit: false, Delete: false }` unless set, return. No actions class / no hook →
-  404; a wrong-shaped `OnLoadAsync` throws loudly. Entity-backed types byte-for-byte unchanged.
-- No id-redirect seam shipped (nothing needed it).
+- `IPersistentObjectActions<T>.OnLoadAsync` reshaped to
+  `Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)` — id in, page out,
+  session `[Inject]`ed. The per-row read pipeline moved from `DatabaseAccess` into
+  `DefaultPersistentObjectActions<T>.OnLoadAsync` (base call carries it; skipping the base takes
+  it over — read-side WITH CHECK twin). `DatabaseAccess.GetPersistentObjectAsync` thins to
+  authorize → dispatch.
+- A JSON-only virtual type resolves `{Name}Actions` by name
+  (`IActionsResolver.ResolveByEntityName`) with the identical signature; the class scaffolds via
+  `IManager.GetPersistentObject`, and the framework forces
+  `Can = { Edit: false, Delete: false }` unless set. No actions class / no hook → 404; a
+  wrong-shaped `OnLoadAsync` throws loudly.
+- No id-redirect seam shipped (nothing needed it — an override can now redirect by loading a
+  different id through the base).
 - Comment discipline: the *why skipping the guards is sound* rationale from the PRD goes on
   the skip site, since the code can't show it.
 
