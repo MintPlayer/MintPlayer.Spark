@@ -17,9 +17,9 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M3 | Model hash `source` + `entityType`; alias symmetry; verify ordering | ✅ done | `f5585e52` |
 | M4 | Row/entity separation — the wire contract, server + client | ✅ done | `107bf1bd` (server), `7add96b6` (client) |
 | M5 | `clrType` optional in the query path (composed queries) | ✅ done | `0caa20d0` |
-| M6 | Every silent bail becomes loud | ◐ partly, folded into M1/M3/M4/M5 | — |
-| M7 | `CancellationToken` through `IQueryExecutor` | ⬜ next | — |
-| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ⬜ | — |
+| M6 | Every silent bail becomes loud | ✅ done | folded into M1/M3/M4/M5 + `be073176` |
+| M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
+| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ⬜ next | — |
 | M9 | The additive asks from issue §9 | ⬜ | — |
 | M10 | Versions + release notes | ⬜ | — |
 
@@ -47,17 +47,19 @@ will move DemoApp's `securityPosture.txt`. Both fail the build rather than warn.
 is present in the pinned RavenDB.Client 7.2.5 (verified in the shipped XML docs). The repo simply never
 used the combination. M2 uses it directly.
 
-**S2 — renderer compatibility shim** (shapes M4). Reconstruct the `(value, attribute, options, item)` bag
-from `(itemValue, column)` in `spark-grid-renderers.ts`, and prove Fleet's `color-swatch` column renderer
-and DemoApp's `address-card` render unchanged. `withDeclaredInputs` already filters by declared inputs, so
-the bet is that renderers ignoring the new fields need no edit. Pattern to follow:
-`renderers/src/renderer-inputs.spec.ts`.
-**Exit:** both demo renderers render from a `QueryResultItemValue` with no renderer-side change.
+**S2 — renderer compatibility shim. Rejected, not run.** It would have rebuilt the old
+`(value, attribute, options, item)` bag from `(itemValue, column)` so renderers migrated once centrally.
+Once "no backward compatibility" was restated as the governing rule the shim stopped being worth
+de-risking — and it was worse than unnecessary: the bag it reconstructs hands every column renderer an
+`EntityAttributeDefinition` the grid no longer possesses, which is fabricated metadata a projection
+deliberately does not carry. Renderers take `column: SparkCellColumn` instead (PRD D9); the two demo
+column renderers were a two-line change each.
 
-**S3 — composed query end to end** (shapes M5). A JSON-only type with a `Custom.*` query returning
-computed rows, rendered by the real grid. No virtual type has a query today (both carry `"queries": []`),
-which is exactly why the gap went unnoticed.
-**Exit:** rows render, columns come from the result, and the first-column link is withheld (no `Read`).
+**S3 — composed query end to end. Folded into M5 rather than run ahead of it.** M4 landed the contract a
+composed query renders through, so the prototype and the milestone became the same work. What the spike
+was meant to establish is now pinned by `Endpoints/Queries/ComposedQueryTests.cs`. The observation that
+prompted it held: no virtual type had a query (both carried `"queries": []`), which is why the gap went
+unnoticed — and why M5 validates that a composed type carrying a query shows at least one attribute on it.
 
 ---
 

@@ -583,14 +583,21 @@ direction). Marked ✅ where already landed on the branch.
 **Server API**
 
 9. ✅ `IDatabaseAccess` gains `GetPersistentObjectsByIdAsync`.
-10. `IQueryExecutor.ExecuteQueryAsync` gains a `CancellationToken` (M7).
+10. ✅ `IQueryExecutor.ExecuteQueryAsync` gains a `CancellationToken`, and `IRowSecurity`'s
+    `FilterAsync` / `ComposeRowFilterAsync` / `RedactAsync` gain one each (M7).
 11. ✅ Custom queries returning `IEnumerable<PersistentObject>`, `IEnumerable<object>` or `dynamic` now
     throw instead of silently producing blank rows.
 12. ✅ A query producing a row with **no id**, or two rows sharing one, now throws. This landed in M4
     rather than M5: `QueryResultItem.Id` is non-nullable, so the rule arrived with the type.
 13. ✅ Entity-type alias collisions throw instead of warning.
 14. ✅ `source` and `entityType` are structural in the model hash → all four demo apps rebaked.
-15. Streaming on a `clrType`-less type is refused at build/verify time (M5).
+15. ✅ Streaming on a `clrType`-less type is refused at build/verify time, and a composed type
+    carrying a query must show at least one attribute on it (M5).
+16. ✅ Eight silent `([], false)` bails in the query executor now throw, naming the misconfiguration
+    and its fix; `ModelLoader` no longer swallows a model that contradicts itself (M6).
+17. ✅ A custom query method may return `SparkQueryPage<T>`, which transfers filter/search/sort/
+    count/page to the author — all five or none (M5). `CustomQueryArgs` gains `Skip`, `Take`,
+    `Search`.
 
 ## Out of scope (genuinely not being done)
 
