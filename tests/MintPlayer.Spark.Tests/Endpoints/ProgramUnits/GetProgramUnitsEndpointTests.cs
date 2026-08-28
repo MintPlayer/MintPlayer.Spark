@@ -230,8 +230,8 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
             ],
         };
         var perms = Substitute.For<IPermissionService>();
-        perms.IsAllowedAsync("Query", "Company", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
-        perms.IsAllowedAsync("Query", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
+        perms.IsAllowedAsync("Read", "Company", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        perms.IsAllowedAsync("Read", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         await using var factory = CreateFactory(config, permissionService: perms);
 
         var result = await GetConfigAsync(factory);

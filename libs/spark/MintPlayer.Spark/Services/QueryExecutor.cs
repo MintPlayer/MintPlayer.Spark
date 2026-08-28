@@ -239,7 +239,7 @@ internal partial class QueryExecutor : IQueryExecutor
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         // Resolve the entity CLR type
-        var entityType = FindClrType(entityTypeDefinition.ClrType);
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType);
         if (entityType == null)
         {
             return ([], false);
@@ -541,29 +541,6 @@ internal partial class QueryExecutor : IQueryExecutor
         return [];
     }
 
-    private static Type? FindClrType(string? clrTypeName)
-    {
-        if (clrTypeName is null) return null; // JSON-only virtual type: resolves to nothing
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"clrType|{clrTypeName}",
-            () =>
-            {
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        var type = assembly.GetTypes()
-                            .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
-                        if (type != null) return type;
-                    }
-                    catch (ReflectionTypeLoadException)
-                    {
-                        continue;
-                    }
-                }
-                return null;
-            });
-    }
 
     #endregion
 

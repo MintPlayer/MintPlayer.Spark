@@ -125,7 +125,7 @@ internal partial class EntityMapper : IEntityMapper
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var entityType = ResolveType(entityTypeDefinition.ClrType)
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
         var entity = Activator.CreateInstance(entityType)
@@ -1056,26 +1056,4 @@ internal partial class EntityMapper : IEntityMapper
         return type.GetCachedProperties().Length > 0;
     }
 
-    private Type? ResolveType(string? clrType)
-    {
-        if (clrType is null) return null; // JSON-only virtual type: resolves to nothing
-        // Cache positive and negative resolutions: assembly walks are expensive and the
-        // same CLR type names are looked up repeatedly across requests. ReflectionCache
-        // memoizes null results too — so unresolvable names don't re-walk every time.
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"resolveType|{clrType}",
-            () =>
-            {
-                var type = Type.GetType(clrType);
-                if (type != null) return type;
-
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    type = assembly.GetType(clrType);
-                    if (type != null) return type;
-                }
-
-                return null;
-            });
-    }
 }
