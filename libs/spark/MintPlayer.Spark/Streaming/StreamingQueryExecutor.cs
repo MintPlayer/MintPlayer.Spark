@@ -54,7 +54,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDef.Name);
 
         // Resolve CLR type and Actions class
-        var entityType = FindClrType(entityTypeDef.ClrType);
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
         if (entityType is null)
         {
             throw new InvalidOperationException(
@@ -296,28 +296,6 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         }
     }
 
-    private static Type? FindClrType(string clrTypeName)
-    {
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"clrType|{clrTypeName}",
-            () =>
-            {
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        var type = assembly.GetTypes()
-                            .FirstOrDefault(t => (t.FullName == clrTypeName || t.Name == clrTypeName) && !t.IsAbstract && !t.IsInterface);
-                        if (type is not null) return type;
-                    }
-                    catch (ReflectionTypeLoadException)
-                    {
-                        continue;
-                    }
-                }
-                return null;
-            });
-    }
 }
 
 internal sealed class StreamingMethodInfo

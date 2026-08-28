@@ -23,6 +23,15 @@ public interface IActionsResolver
     /// <param name="entityType">The entity type</param>
     /// <returns>The resolved actions instance as an object</returns>
     object ResolveForType(Type entityType);
+
+    /// <summary>
+    /// Resolves an Actions class by the model type's <b>name</b> alone — the path for JSON-only
+    /// virtual types, which have no CLR entity to close <see cref="IPersistentObjectActions{T}"/>
+    /// over. Finds <c>{entityTypeName}Actions</c> the same way the typed path does; returns
+    /// <see langword="null"/> when no such class exists (unlike the typed path, there is no
+    /// default to fall back to — a virtual type without actions has no behavior at all).
+    /// </summary>
+    object? ResolveByEntityName(string entityTypeName);
 }
 
 [Register(typeof(IActionsResolver), ServiceLifetime.Scoped)]
@@ -41,16 +50,36 @@ internal partial class ActionsResolver : IActionsResolver
             var actions = serviceProvider.GetService(actionsType)
                 ?? ActivatorUtilities.CreateInstance(serviceProvider, actionsType);
             if (actions is IPersistentObjectActions<T> typedActions)
-                return typedActions;
+                return Attach(typedActions);
         }
 
         // 2. Try app's registered IPersistentObjectActions<T>
         var appDefault = serviceProvider.GetService<IPersistentObjectActions<T>>();
         if (appDefault != null)
-            return appDefault;
+            return Attach(appDefault);
 
         // 3. Fall back to library's DefaultPersistentObjectActions<T>
-        return ActivatorUtilities.CreateInstance<DefaultPersistentObjectActions<T>>(serviceProvider);
+        return Attach(ActivatorUtilities.CreateInstance<DefaultPersistentObjectActions<T>>(serviceProvider));
+    }
+
+    /// <summary>
+    /// Hands the base class its framework services (the session, row security, the collection
+    /// guard, …) AFTER construction — so a consumer's hand-written constructor never has to
+    /// thread framework plumbing just because the base pipeline needs it.
+    /// </summary>
+    private IPersistentObjectActions<T> Attach<T>(IPersistentObjectActions<T> actions) where T : class
+    {
+        if (actions is DefaultPersistentObjectActions<T> withPipeline)
+            withPipeline.Attach(serviceProvider);
+        return actions;
+    }
+
+    public object? ResolveByEntityName(string entityTypeName)
+    {
+        var actionsType = FindActionsType($"{entityTypeName}Actions");
+        if (actionsType is null) return null;
+        return serviceProvider.GetService(actionsType)
+            ?? ActivatorUtilities.CreateInstance(serviceProvider, actionsType);
     }
 
     public object ResolveForType(Type entityType)

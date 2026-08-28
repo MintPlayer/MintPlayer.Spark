@@ -33,16 +33,17 @@ internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGro
             var filteredUnits = new List<ProgramUnit>();
             foreach (var unit in group.ProgramUnits)
             {
-                var (isTyped, clrType) = ResolveClrType(unit, contextPropertyMap);
+                var (requiredAction, entityTypeName) = ResolveTarget(unit, contextPropertyMap);
 
                 // Security sweep L2: fail CLOSED for typed units. A persistentObject/query unit
                 // names an entity type, so showing it when we can't confirm the caller's rights
                 // leaks that type's existence (and the menu label) to someone who can't reach it.
-                // A unit that is NOT typed (home link, dashboard, external URL — clrType null and
-                // isTyped false) carries no entity name to leak, so it stays visible.
-                bool show = isTyped
-                    ? clrType is not null && await permissionService.IsAllowedAsync("Query", clrType)
-                    : true;
+                // A url unit (requiredAction null) carries no entity name to leak, so it stays
+                // visible. The action mirrors what clicking the unit will demand: a query unit
+                // executes under "Query", a persistentObject unit's page loads under "Read" —
+                // gating both on "Query" showed menu entries whose click 404s.
+                bool show = requiredAction is null
+                    || (entityTypeName is not null && await permissionService.IsAllowedAsync(requiredAction, entityTypeName));
 
                 if (show)
                 {
@@ -109,27 +110,26 @@ internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGro
     }
 
     /// <summary>
-    /// Resolves a program unit to the CLR entity type name it exposes.
+    /// Resolves a program unit to the right it demands and the entity type name it demands it on.
     /// <para>
-    /// <c>IsTyped</c> is true for persistentObject/query units — they name an entity type, so an
-    /// unresolvable one (<c>ClrType == null</c>) must be hidden, not shown (security sweep L2).
-    /// <c>IsTyped</c> is false for units that expose no entity (home links, dashboards, external
-    /// URLs); those carry nothing to leak and stay visible regardless.
+    /// <c>RequiredAction</c> is non-null for persistentObject/query units — they name an entity
+    /// type, so an unresolvable one (<c>EntityTypeName == null</c>) must be hidden, not shown
+    /// (security sweep L2). It is null for <c>url</c> units, which expose no entity and stay
+    /// visible regardless. The loader has already canonicalized <see cref="ProgramUnit.Type"/> and
+    /// validated the target fields, so the comparisons here are exact.
     /// </para>
     /// </summary>
-    private (bool IsTyped, string? ClrType) ResolveClrType(ProgramUnit unit, Dictionary<string, string> contextPropertyMap)
+    private (string? RequiredAction, string? EntityTypeName) ResolveTarget(ProgramUnit unit, Dictionary<string, string> contextPropertyMap)
     {
-        if (string.Equals(unit.Type, "persistentObject", StringComparison.OrdinalIgnoreCase)
-            && unit.PersistentObjectId.HasValue)
+        if (unit.Type == ProgramUnitsLoader.TypePersistentObject && unit.PersistentObjectId.HasValue)
         {
-            return (true, modelLoader.GetEntityType(unit.PersistentObjectId.Value)?.Name);
+            return ("Read", modelLoader.GetEntityType(unit.PersistentObjectId.Value)?.Name);
         }
 
-        if (string.Equals(unit.Type, "query", StringComparison.OrdinalIgnoreCase)
-            && unit.QueryId.HasValue)
+        if (unit.Type == ProgramUnitsLoader.TypeQuery && unit.QueryId.HasValue)
         {
             var query = queryLoader.GetQuery(unit.QueryId.Value);
-            if (query is null) return (true, null);
+            if (query is null) return ("Query", null);
 
             // Extract the property name from the Source field
             var source = query.Source;
@@ -142,19 +142,19 @@ internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGro
             {
                 // For custom queries, use EntityType directly if available
                 if (!string.IsNullOrEmpty(query.EntityType))
-                    return (true, query.EntityType);
-                return (true, null);
+                    return ("Query", query.EntityType);
+                return ("Query", null);
             }
 
             if (propertyName != null)
             {
-                return (true, contextPropertyMap.TryGetValue(propertyName, out var clrType) ? clrType : null);
+                return ("Query", contextPropertyMap.TryGetValue(propertyName, out var clrType) ? clrType : null);
             }
 
-            return (true, null);
+            return ("Query", null);
         }
 
-        // Not a typed unit — nothing to leak, always visible.
-        return (false, null);
+        // A url unit — nothing to leak, always visible.
+        return (null, null);
     }
 }

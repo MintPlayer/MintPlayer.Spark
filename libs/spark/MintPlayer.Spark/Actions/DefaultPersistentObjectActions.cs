@@ -20,23 +20,113 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     // constructions keep compiling. Used only to recognize the system context — module sync and
     // background work — which row rules don't apply to.
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
+    // The load pipeline's dependencies — the session and the framework-internal services (row
+    // security, collection guard, breadcrumbs) — are reached through a provider ATTACHED by
+    // ActionsResolver after construction, not through constructor parameters: threading them
+    // through every subclass's hand-written ctor would leak framework plumbing into consumer
+    // code, and the session is scoped ambient state a pass-through parameter says nothing about.
+    private IServiceProvider? serviceProvider;
 
-    /// <inheritdoc />
-    public virtual async Task<T?> OnLoadAsync(IAsyncDocumentSession session, string id)
+    internal void Attach(IServiceProvider serviceProvider) => this.serviceProvider = serviceProvider;
+
+    private IServiceProvider RequireServices()
+        => serviceProvider ?? throw new InvalidOperationException(
+            $"{GetType().Name} was constructed without the framework attaching its services, which the " +
+            "base OnLoadAsync needs. Resolve the actions class through IActionsResolver, or override " +
+            "OnLoadAsync.");
+
+    /// <summary>
+    /// The entity read pipeline, in the one place overrides live: id in, page out. Loads the
+    /// document (priming <see cref="GetDefaultIncludes"/> so referenced documents arrive in the
+    /// same round-trip, #239), then applies every per-row rule and maps the result: collection
+    /// guard (id-to-type binding, security sweep C1), the row-level Read gate, breadcrumb
+    /// resolution, entity → PersistentObject mapping, per-viewer redaction (#236 G4), the per-row
+    /// <see cref="PersistentObject.Can"/> block (#236 G5/#243), and the optimistic-concurrency
+    /// etag. Null at any gate propagates as 404 — authorized-but-forbidden stays
+    /// indistinguishable from not-found (M-3).
+    /// <para>
+    /// The typical override decorates rather than replaces:
+    /// <code>
+    /// var result = await base.OnLoadAsync(id, parent);
+    /// if (result is null) return null;
+    /// result.Breadcrumb = "…";
+    /// return result;
+    /// </code>
+    /// ⚠️ <b>Not calling the base takes over ALL of the above</b> — including the collection
+    /// guard and row security — the read-side twin of the WITH CHECK caveat on
+    /// <see cref="OnSaveAsync"/>. The type-level <c>Read</c> right is checked by the framework
+    /// before this method runs and cannot be skipped here.
+    /// </para>
+    /// </summary>
+    public virtual async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
+        var services = RequireServices();
+        var session = services.GetRequiredService<IAsyncDocumentSession>();
+
+        if (string.IsNullOrEmpty(id))
+            return null;
+
         // #239: prime the consumer's declared includes so referenced documents arrive in the same
         // round-trip instead of a breadcrumb load each. RavenDB requires the includes on the same
-        // fluent load call (there's no pre-register-on-session), so this is the seam. A consumer
-        // overriding OnLoadAsync takes over include responsibility (same caveat as the WITH CHECK).
+        // fluent load call (there's no pre-register-on-session), so this is the seam.
         var includes = GetDefaultIncludes();
-        if (includes is not { Count: > 0 })
-            return await session.LoadAsync<T>(id);
+        var entity = includes is { Count: > 0 }
+            ? await session.LoadAsync<T>(id, builder =>
+              {
+                  foreach (var path in includes)
+                      builder.IncludeDocuments(path);
+              })
+            : await session.LoadAsync<T>(id);
+        if (entity is null)
+            return null;
 
-        return await session.LoadAsync<T>(id, builder =>
+        // Id-to-type binding (security sweep C1): the caller authorized this type, but the id is
+        // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
+        // the same. A document whose real @collection isn't this type's is not this type's — 404,
+        // indistinguishable from missing, so it's no oracle for cross-collection existence.
+        var collectionGuard = services.GetRequiredService<ICollectionGuard>();
+        if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, typeof(T)))
+            return null;
+
+        // Row-level read gate: entity-type "Read" passed before this method ran; now this type's
+        // own row rule decides whether this specific instance is visible to the current caller.
+        var rowSecurity = services.GetRequiredService<IRowSecurity>();
+        if (!await rowSecurity.IsAllowedAsync(typeof(T), "Read", entity))
+            return null;
+
+        var definition = services.GetRequiredService<IModelLoader>()
+            .GetEntityTypeByClrType(typeof(T).FullName ?? typeof(T).Name);
+
+        // Resolve breadcrumbs (recursive, batched) for this entity and its references.
+        var breadcrumbs = await services.GetRequiredService<Services.Breadcrumb.IBreadcrumbResolver>()
+            .ResolveAsync(session, [entity], definition);
+
+        var obj = entityMapper.ToPersistentObject(entity, breadcrumbs);
+
+        // Per-viewer attribute redaction (#236 G4) — GetProtectedAttributesAsync may hide specific
+        // attributes of this row from this caller (e.g. a secret only managers may view).
+        await rowSecurity.RedactAsync(session, [(obj, (object)entity)], typeof(T), typeof(T), "Read");
+
+        // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
+        // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404.
+        // Invariant (#243): never claims more than GET /spark/permissions/{type} — the row rule
+        // only narrows type-level rights. Type-level first: cheap, and when it already denies,
+        // the row hook isn't invoked.
+        if (rowSecurity.HasRowRule(typeof(T)) && definition is not null)
         {
-            foreach (var path in includes)
-                builder.IncludeDocuments(path);
-        });
+            var permissionService = services.GetRequiredService<Abstractions.Authorization.IPermissionService>();
+            obj.Can = new PersistentObjectPermissions
+            {
+                Edit = await permissionService.IsAllowedAsync("Edit", definition.Name)
+                    && await rowSecurity.IsAllowedAsync(typeof(T), "Edit", entity),
+                Delete = await permissionService.IsAllowedAsync("Delete", definition.Name)
+                    && await rowSecurity.IsAllowedAsync(typeof(T), "Delete", entity),
+            };
+        }
+
+        // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
+        obj.Etag = session.Advanced.GetChangeVectorFor(entity);
+        return obj;
     }
 
     /// <summary>

@@ -67,13 +67,28 @@ anonymous group holds one.
 
 ## `Query` without `Read`: the pair worth knowing
 
-These are independently grantable, and the difference is visible in the UI:
+The difference is visible in the UI:
 
 | Granted | The grid | The first column |
 |---|---|---|
 | `QueryRead/Car` | lists rows | links to `/po/car/{id}` |
 | `Query/Car` | lists rows | **plain text, no link** |
-| `Read/Car` alone | not listed at all | — |
+| `Read/Car` alone | lists rows — **`Read` implies `Query`** | links to `/po/car/{id}` |
+
+**`Read` implies `Query`, one way.** A caller who may open every row individually may list them:
+a grid discloses nothing that reading the rows one by one would not, and withholding the listing
+would only break the pages that render *from* the type catalogue (`GET /spark/types`) — a
+detail page whose metadata never arrives renders blank. So `Read/Car` and `QueryRead/Car` mean
+the same thing, which is also how Vidyano's rights editor models it: it offers `Query`,
+`QueryRead`, `QueryReadEdit` … as bundles and never a bare `Read`.
+
+The implication is applied once, when the file is expanded into the rights index — evaluation
+stays a set lookup — and it has two deliberate asymmetries:
+
+- **The inverse does not hold.** `Query` without `Read` stays exactly what the rest of this
+  section describes.
+- **It widens grants only.** A *denied* `Read` leaves `Query` alone, so "list, but no
+  click-through" remains expressible by denial and not only by omission.
 
 `Query` without `Read` is how you publish a list whose rows have no detail page. The grid
 (`spark-query-grid`, which backs both the routed page and the sub-query card) gates the row

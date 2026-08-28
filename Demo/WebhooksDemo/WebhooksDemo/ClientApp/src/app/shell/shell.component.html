@@ -1,66 +1,32 @@
-<bs-shell [state]="shellState()" [breakpoint]="'md'" (statechange)="onShellToggle($event)">
-  <div *bsShellTopbar class="w-100 bg-dark d-flex align-items-center">
-    <bs-navbar-toggler [state]="isSidebarVisible()"
-                       (stateChange)="toggleSidebar($event)">
-    </bs-navbar-toggler>
-    <div class="ms-auto me-3 d-flex align-items-center gap-2">
-      @if (lang.languages() | keyvalue; as langs) {
-        @if (langs.length > 1) {
-          <bs-select [ngModel]="lang.language()"
-                     (ngModelChange)="lang.setLanguage($event)">
-            @for (l of langs; track l.key) {
-              <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
-            }
-          </bs-select>
-        }
-      }
-      @if (authService.user()?.isAuthenticated) {
-        <span class="text-light">{{ authService.user()?.userName }}</span>
-        <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
-      } @else {
-        <!-- Routes to the sign-in landing page rather than calling loginWithProvider('GitHub')
-             directly. The scheme literal was #303: it silently stops matching the moment the
-             server's provider registration changes, and nothing fails loudly when it does. -->
-        <a routerLink="/sign-in" [queryParams]="{ returnUrl: '/github-projects' }"
-           class="btn btn-outline-light btn-sm">{{ 'auth.login' | t }}</a>
-      }
-    </div>
-  </div>
-  <nav bsShellSidebar data-bs-theme="dark" class="sidebar-inner text-light p-2">
-    <h5 class="p-3 border-bottom">{{ 'app.webhooksDemo' | t }}</h5>
+<spark-shell>
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    @if (authService.user()?.isAuthenticated) {
+      <span class="text-light">{{ authService.user()?.userName }}</span>
+      <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
+    } @else {
+      <!-- Routes to the sign-in landing page rather than calling loginWithProvider('GitHub')
+           directly. The scheme literal was #303: it silently stops matching the moment the
+           server's provider registration changes, and nothing fails loudly when it does. -->
+      <a routerLink="/sign-in" [queryParams]="{ returnUrl: '/github-projects' }"
+         class="btn btn-outline-light btn-sm">{{ 'auth.login' | t }}</a>
+    }
+  </ng-container>
+
+  <h5 *sparkShellSidebarHeader class="p-3 border-bottom">{{ 'app.webhooksDemo' | t }}</h5>
+
+  <!-- App-specific page outside the model (GitHub projects board), so not a program unit. -->
+  <ng-container *sparkShellSidebarTop>
     @if (authService.user()?.isAuthenticated) {
       <a routerLink="/github-projects"
          routerLinkActive="active"
-         (click)="onMenuItemClick()"
-         class="d-block px-3 py-2 text-light text-decoration-none nav-link">
+         class="d-block px-3 py-2 text-decoration-none nav-link">
         <i class="bi bi-kanban"></i>
         <span class="ms-2">{{ 'app.githubProjects' | t }}</span>
       </a>
       <hr class="border-secondary my-1">
     }
-    <bs-accordion class="d-block">
-      @for (group of programUnitGroups(); track group.id) {
-      <bs-accordion-tab>
-        <ng-container *bsAccordionTabHeader>
-          <span class="triangle me-2"></span>
-          <spark-icon [name]="group.icon | iconName:'bi-folder'" />
-          <span class="ms-2">{{ group.name | resolveTranslation }}</span>
-        </ng-container>
-        @for (unit of group.programUnits; track unit.id) {
-        <a [routerLink]="unit | routerLink"
-           routerLinkActive="active"
-           (click)="onMenuItemClick()"
-           class="d-block px-3 py-2 text-light text-decoration-none nav-link">
-          <spark-icon [name]="unit.icon | iconName:'bi-file'" />
-          <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
-        </a>
-        }
-      </bs-accordion-tab>
-      }
-    </bs-accordion>
-  </nav>
+  </ng-container>
 
-  <main class="p-4">
-    <router-outlet />
-  </main>
-</bs-shell>
+  <router-outlet />
+</spark-shell>

@@ -266,7 +266,7 @@ public static class SparkDevelopmentExtensions
             if (triggers.Length == 0)
                 continue;
 
-            var entityName = definition.ClrType.Split('.').Last();
+            var entityName = definition.ClrType?.Split('.').Last() ?? definition.Name;
             if (HasRefreshOverride(entityName))
                 continue;
 

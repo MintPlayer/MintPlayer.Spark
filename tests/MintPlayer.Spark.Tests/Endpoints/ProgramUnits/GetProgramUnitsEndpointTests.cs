@@ -15,9 +15,11 @@ namespace MintPlayer.Spark.Tests.Endpoints.ProgramUnits;
 
 /// <summary>
 /// Endpoint tests for GET /spark/program-units. The endpoint walks the configured
-/// program-unit groups, resolves each unit's CLR type via either the model registry
+/// program-unit groups, resolves each unit's target via either the model registry
 /// (persistentObject id) or the SparkContext property map (Database.* / Custom.*
-/// query source), and filters out any unit the current principal can't Query.
+/// query source), and filters by the right the unit's CLICK will demand: "Query"
+/// for query units, "Read" for persistentObject units (whose target is a detail
+/// page, with or without an objectId). Url units carry no entity and pass through.
 ///
 /// We swap <see cref="IProgramUnitsLoader"/> for an in-memory stub so we don't have to
 /// hand-write programUnits.json into each test's content root, and stub
@@ -100,18 +102,39 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task PersistentObject_unit_is_filtered_out_when_permission_denies_query()
+    public async Task PersistentObject_unit_gates_on_Read_not_Query()
     {
+        // A PO unit's click loads a detail page, which demands "Read" — gating it on "Query"
+        // (the old behavior) showed menu entries whose click 404s.
         var unit = MakePoUnit("People", PersonTypeId);
         var config = OneGroup("People", unit);
         var perms = Substitute.For<IPermissionService>();
-        perms.IsAllowedAsync("Query", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
+        perms.IsAllowedAsync("Query", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        perms.IsAllowedAsync("Read", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         await using var factory = CreateFactory(config, permissionService: perms);
 
         var result = await GetConfigAsync(factory);
 
         result.ProgramUnitGroups.Should().BeEmpty(
-            "the only unit was denied → its group has zero units → group is dropped");
+            "the only unit was denied Read → its group has zero units → group is dropped");
+    }
+
+    [Fact]
+    public async Task PersistentObject_unit_with_Read_but_without_Query_is_visible()
+    {
+        var unit = MakePoUnit("People", PersonTypeId);
+        unit.ObjectId = "start"; // a deep link / composed page: exactly the Read-only shape
+        var perms = Substitute.For<IPermissionService>();
+        perms.IsAllowedAsync("Read", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        perms.IsAllowedAsync("Query", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
+        await using var factory = CreateFactory(OneGroup("People", unit), permissionService: perms);
+
+        var result = await GetConfigAsync(factory);
+
+        var returned = result.ProgramUnitGroups.Should().ContainSingle()
+            .Which.ProgramUnits.Should().ContainSingle().Subject;
+        returned.Id.Should().Be(unit.Id);
+        returned.ObjectId.Should().Be("start", "the deep-link target must survive serialization");
     }
 
     [Fact]
@@ -207,8 +230,8 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
             ],
         };
         var perms = Substitute.For<IPermissionService>();
-        perms.IsAllowedAsync("Query", "Company", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
-        perms.IsAllowedAsync("Query", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
+        perms.IsAllowedAsync("Read", "Company", Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        perms.IsAllowedAsync("Read", "Person", Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         await using var factory = CreateFactory(config, permissionService: perms);
 
         var result = await GetConfigAsync(factory);
@@ -218,22 +241,28 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Unknown_unit_type_is_kept_unrestricted()
+    public async Task Url_unit_is_kept_unrestricted_and_carries_its_url()
     {
-        // Type is neither persistentObject nor query → ResolveClrType returns null → unit kept.
+        // A url unit names no entity type — nothing to leak, always visible, regardless of the
+        // caller's rights (the deny-all matrix would hide everything typed).
         var unit = new ProgramUnit
         {
             Id = Guid.NewGuid(),
-            Name = TranslatedString.Create("UnknownType"),
-            Type = "external-link",
+            Name = TranslatedString.Create("Status"),
+            Type = "url",
+            Url = "https://status.example.com",
         };
-        await using var factory = CreateFactory(OneGroup("g", unit));
+        var denyAll = Substitute.For<IPermissionService>();
+        denyAll.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+        await using var factory = CreateFactory(OneGroup("g", unit), permissionService: denyAll);
 
         var result = await GetConfigAsync(factory);
 
-        result.ProgramUnitGroups.Should().ContainSingle()
-            .Which.ProgramUnits.Should().ContainSingle()
-            .Which.Type.Should().Be("external-link");
+        var returned = result.ProgramUnitGroups.Should().ContainSingle()
+            .Which.ProgramUnits.Should().ContainSingle().Subject;
+        returned.Type.Should().Be("url");
+        returned.Url.Should().Be("https://status.example.com");
     }
 
     // ---- helpers --------------------------------------------------------

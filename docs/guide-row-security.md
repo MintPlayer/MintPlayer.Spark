@@ -136,4 +136,4 @@ public override IReadOnlyCollection<string>? GetDefaultIncludes() => ["Company",
 - They do **not cross a document boundary** — RavenDB has no recursive include, so a chain through a referenced *document* (`Car → Owner → Owner.Company`) can't be expressed here. Use an index that projects the deeper id, or let the breadcrumb resolver's batched load handle it.
 - Applied on detail, list, and query. On a **stream** the framework can't apply them (your `StreamItems` builds its own query) — include what you need in that query yourself.
 - A path whose first segment isn't a property of the type logs a one-time warning and includes nothing.
-- Overriding `OnLoadAsync` yourself takes over include responsibility on the detail path (the framework's default `OnLoadAsync` is what applies these).
+- Overriding `OnLoadAsync` without calling the base takes over the whole detail read pipeline — the includes, but also the collection guard, the row-level Read gate, redaction, the per-row `can` block and the etag all live in the default `OnLoadAsync` (#324). The typical override calls `await base.OnLoadAsync(id, parent)` and decorates the result.

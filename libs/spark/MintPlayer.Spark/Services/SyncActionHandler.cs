@@ -241,7 +241,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         Type? resolved = null;
         foreach (var entityTypeDef in modelLoader.GetEntityTypes())
         {
-            var clrType = ResolveType(entityTypeDef.ClrType);
+            var clrType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
             if (clrType == null) continue;
 
             var collectionName = documentStore.Conventions.FindCollectionName(clrType);
@@ -257,24 +257,6 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return resolved;
     }
 
-    private static Type? ResolveType(string clrType)
-    {
-        return ReflectionCache.GetOrAdd<Type?>(
-            $"resolveType|{clrType}",
-            () =>
-            {
-                var type = Type.GetType(clrType);
-                if (type != null) return type;
-
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    type = assembly.GetType(clrType);
-                    if (type != null) return type;
-                }
-
-                return null;
-            });
-    }
 
     private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
     {

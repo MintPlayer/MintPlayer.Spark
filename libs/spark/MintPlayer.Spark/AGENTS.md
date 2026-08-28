@@ -22,9 +22,11 @@ For writing *tests*, the `MintPlayer.Spark.Testing` package ships its own `AGENT
 - **`App_Data/security.json` is mandatory.** Authorization is not optional and there is no code-level
   way to switch it off — a missing or malformed file refuses startup.
   [Details](#authorization).
-- **`Query` and `Read` are separate rights**, and the difference is visible: `Query` without `Read`
-  lists rows in a grid whose first column is *not* a link. That is the right model whenever a row
-  has no detail page to open.
+- **`Query` and `Read` are separate rights, but `Read` implies `Query`** (one way, grants only).
+  `Query` without `Read` lists rows in a grid whose first column is *not* a link — the right model
+  whenever a row has no detail page to open. A bare `Read` grant means the same as `QueryRead`,
+  because the type catalogue every page renders from is `Query`-scoped. A *denied* `Read` leaves
+  `Query` alone.
 - **A 404 does not mean "not found".** Spark answers 404 for *denied* as well as *absent*, so it is
   not an existence oracle. Never write client code that infers absence from a 404.
 - **`{EntityName}Actions` is discovered by simple type name across every loaded assembly**, and the

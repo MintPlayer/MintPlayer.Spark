@@ -115,25 +115,50 @@ public class QueryWithoutReadTests : SparkTestDriver
     }
 
     /// <summary>
-    /// The reverse pair, which is the other half of "independently grantable" and the one nobody
-    /// writes by accident: <c>Read</c> alone opens a row the caller cannot find by listing.
+    /// The reverse pair does NOT come apart (#324): <b>Read implies Query</b>, expanded at grant
+    /// time. A caller who may open every row individually may list them — a listing discloses
+    /// nothing that reading the rows one by one would not — and Vidyano's rights editor encodes
+    /// the same rule by only ever offering <c>Query</c>, <c>QueryRead</c>, … as a bundle, never a
+    /// bare Read. So a bare <c>Read/X</c> grant is a complete grid grant, and every surface that
+    /// asks for <c>Query</c> — the type catalogue included — answers yes.
     /// </summary>
     [Fact]
-    public async Task Read_without_Query_reads_a_row_but_refuses_to_list()
+    public async Task Read_implies_Query_so_a_bare_Read_grant_lists_and_reads()
     {
         var (factory, client) = await HostAsync("Read/GuardedDoc");
         await using var _ = factory;
         using var __ = client;
 
         var permissions = await client.GetPermissionsAsync(DocTypeId.ToString());
-        permissions!.CanQuery.Should().BeFalse();
-        permissions.CanRead.Should().BeTrue();
+        permissions!.CanRead.Should().BeTrue();
+        permissions.CanQuery.Should().BeTrue("Read implies Query");
 
         (await client.GetPersistentObjectAsync(DocTypeId, "docs/1")).Should().NotBeNull();
+        (await client.ExecuteQueryAsync(AllDocsQueryId)).Data.Should().HaveCount(2);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(AllDocsQueryId));
-        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.ListEntityTypesAsync()).Should().ContainSingle(
+            "the catalogue is Query-scoped, and Read reaches it through the implication — without "
+            + "which a Read-only type's detail page has no metadata to render from");
+    }
+
+    /// <summary>
+    /// The implication widens grants only. A denied <c>Read</c> says nothing about <c>Query</c> —
+    /// otherwise "list but no click-through" could not be expressed by denial, only by omission.
+    /// </summary>
+    [Fact]
+    public async Task Denying_Read_does_not_deny_Query()
+    {
+        var factory = new SparkEndpointFactory<GuardedContext>(
+            Store, [Model()],
+            security: SparkTestSecurity.Empty
+                .Granting("Query/GuardedDoc")
+                .Denying("Read/GuardedDoc"));
+        await using var _ = factory;
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
+
+        var permissions = await client.GetPermissionsAsync(DocTypeId.ToString());
+        permissions!.CanQuery.Should().BeTrue();
+        permissions.CanRead.Should().BeFalse();
     }
 
     /// <summary>
@@ -150,5 +175,23 @@ public class QueryWithoutReadTests : SparkTestDriver
         var types = await client.ListEntityTypesAsync();
 
         types.Should().ContainSingle().Which.Name.Should().Be("GuardedDoc");
+    }
+
+    /// <summary>
+    /// The floor: a right that is neither Query nor Read leaks nothing. Both metadata surfaces
+    /// stay closed, so the implication above widens exactly one edge and no more.
+    /// </summary>
+    [Fact]
+    public async Task A_type_with_neither_right_is_hidden_from_both_metadata_surfaces()
+    {
+        var (factory, client) = await HostAsync("Edit/GuardedDoc");
+        await using var _ = factory;
+        using var __ = client;
+
+        (await client.ListEntityTypesAsync()).Should().BeEmpty();
+
+        using var http = factory.CreateClient();
+        var response = await http.GetAsync($"/spark/types/{DocTypeId}");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, "existence isn't leaked");
     }
 }

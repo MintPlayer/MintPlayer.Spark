@@ -12,7 +12,9 @@
 //   @mintplayer/ng-spark/query-list         (SparkQueryListComponent)
 //   @mintplayer/ng-spark/retry-action-modal (SparkRetryActionModalComponent)
 //   @mintplayer/ng-spark/icon               (SparkIconComponent)
+//   @mintplayer/ng-spark/shell              (SparkShellComponent + slots, SparkProgramUnitsComponent, SparkLanguageSelectorComponent)
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';
+export { SPARK_AUTH_STATE } from './lib/spark-auth-state';
 export { provideSpark } from './lib/provide-spark';

@@ -37,7 +37,7 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
         var registeredActions = actionResolver.GetRegisteredActionNames();
 
         // Get the simple type name (e.g., "Car" from "Fleet.Entities.Car")
-        var typeName = entityType.ClrType.Split('.').Last();
+        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
 
         var result = new List<object>();
 

@@ -1,0 +1,69 @@
+{
+  "persistentObject": {
+    "id": "7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60",
+    "name": "StartPage",
+    "description": {
+      "en": "Composed landing page: the Start program unit opens this type with a fixed objectId, and StartPageActions.OnComposeAsync fills the values — no document backs it.",
+      "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
+      "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
+    },
+    "breadcrumb": "Start",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "5a1c8e42-6b3d-4f7a-9d21-8c4e2f5b7a90",
+        "name": "Welcome",
+        "label": { "en": "Welcome", "fr": "Bienvenue", "nl": "Welkom" },
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6b2d9f53-7c4e-4a8b-ae32-9d5f3a6c8b01",
+        "name": "PeopleCount",
+        "label": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7c3eaf64-8d5f-4b9c-bf43-ae6a4b7d9c12",
+        "name": "CompanyCount",
+        "label": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8d4fba75-9e6a-4cad-ca54-bf7b5c8ead23",
+        "name": "CarCount",
+        "label": { "en": "Cars", "fr": "Voitures", "nl": "Auto's" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

@@ -435,8 +435,23 @@ describe('RouterLinkPipe', () => {
   it('builds /po/{alias} for persistentObject units', () => {
     expect(pipe.transform({ type: 'persistentObject', alias: 'person' } as any)).toEqual(['/po', 'person']);
   });
+  it('builds /po/{alias}/{objectId} for persistentObject units with an objectId', () => {
+    expect(pipe.transform({ type: 'persistentObject', alias: 'start-page', objectId: 'start' } as any))
+      .toEqual(['/po', 'start-page', 'start']);
+  });
+  it('falls back to /po/{persistentObjectId}/{objectId} when alias missing', () => {
+    expect(pipe.transform({ type: 'persistentObject', persistentObjectId: 'po-uuid', objectId: 'home' } as any))
+      .toEqual(['/po', 'po-uuid', 'home']);
+  });
   it('falls back to /query/{queryId} when alias missing', () => {
     expect(pipe.transform({ type: 'query', queryId: 'q-uuid' } as any)).toEqual(['/query', 'q-uuid']);
+  });
+  it('returns null for url units (external anchor, not a router link)', () => {
+    expect(pipe.transform({ type: 'url', url: 'https://status.example.com' } as any)).toBeNull();
+  });
+  it('is exact on type casing: "Query" is not a query unit', () => {
+    // The server's loader canonicalizes casing; tolerating variants here would mask its absence.
+    expect(pipe.transform({ type: 'Query', alias: 'cars' } as any)).toEqual(['/']);
   });
   it('returns / for unknown type', () => {
     expect(pipe.transform({ type: 'unknown' } as any)).toEqual(['/']);

@@ -21,6 +21,10 @@ internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTy
         var visible = new List<EntityTypeDefinition>(entityTypes.Count());
         foreach (var entityType in entityTypes)
         {
+            // The catalogue is list-scoped: Query gates it, deliberately NOT Read. A type the
+            // caller may only Read (a virtual start page, a Read-without-Query grant) is absent
+            // here and resolved individually via GET /spark/types/{id}, which Read unlocks —
+            // single-object metadata belongs to the single-object right.
             if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
                 continue;
 
