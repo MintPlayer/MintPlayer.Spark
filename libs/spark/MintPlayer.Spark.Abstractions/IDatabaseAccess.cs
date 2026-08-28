@@ -31,6 +31,25 @@ public interface IDatabaseAccess
 
     // PersistentObject-specific methods that handle entity mapping
     Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id);
+
+    /// <summary>
+    /// Resolves several objects of one type by id, in the order given, in one batched pass — the
+    /// shape a bulk action needs.
+    /// </summary>
+    /// <remarks>
+    /// Plural rather than a loop over <see cref="GetPersistentObjectAsync(Guid, string)"/> because
+    /// that loop is an N+1 of full row-gated loads: a document load plus its declared includes plus
+    /// breadcrumb resolution, per row. Same principle as <c>IRowSecurity.AreAllowedAsync</c>, and
+    /// for the same reason — so it cannot regress into one.
+    /// <para>
+    /// An id is omitted when it names no document, names a foreign collection, or is refused by the
+    /// row rule, the three deliberately indistinguishable. The result may therefore be shorter than
+    /// the request: <b>a caller that needs every row must compare the counts and refuse</b>, never
+    /// act on the survivors.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<PersistentObject>> GetPersistentObjectsByIdAsync(Guid objectTypeId, IReadOnlyList<string> ids);
+
     Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId);
     /// <summary>
     /// Authorizes a save without performing it, so a caller can be refused before the request is

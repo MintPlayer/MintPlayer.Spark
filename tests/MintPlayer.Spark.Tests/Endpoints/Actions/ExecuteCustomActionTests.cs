@@ -153,7 +153,9 @@ public class ExecuteCustomActionTests
         var serverParent = new MintPlayer.Spark.Abstractions.PersistentObject { Id = "cars/1", Name = "Alice's car (server state)", ObjectTypeId = CarType.Id, Attributes = [] };
         var serverSelected = new MintPlayer.Spark.Abstractions.PersistentObject { Id = "cars/2", Name = "Second car (server state)", ObjectTypeId = CarType.Id, Attributes = [] };
         _databaseAccess.GetPersistentObjectAsync(CarType.Id, "cars/1").Returns(serverParent);
-        _databaseAccess.GetPersistentObjectAsync(CarType.Id, "cars/2").Returns(serverSelected);
+        // The selection is resolved in one batched pass (#327 M2); the parent keeps its own load.
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { serverSelected });
 
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _actionResolver.Resolve("Archive").Returns(action);
@@ -245,10 +247,14 @@ public class ExecuteCustomActionTests
             new() { Id = "cars/2", Name = "Mine", ObjectTypeId = CarType.Id, Attributes = [] },
             new() { Id = "cars/999", Name = "Not mine", ObjectTypeId = CarType.Id, Attributes = [] },
         };
-        _databaseAccess.GetPersistentObjectAsync(CarType.Id, "cars/2")
-            .Returns(new MintPlayer.Spark.Abstractions.PersistentObject { Id = "cars/2", Name = "Mine", ObjectTypeId = CarType.Id, Attributes = [] });
-        _databaseAccess.GetPersistentObjectAsync(CarType.Id, "cars/999")
-            .Returns((MintPlayer.Spark.Abstractions.PersistentObject?)null);
+        // The batch omits a refused id rather than returning null for it — "missing", "foreign
+        // collection" and "not yours" are deliberately indistinguishable. Two ids in, one row out:
+        // the endpoint must refuse the whole request rather than act on the survivor.
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject>
+            {
+                new() { Id = "cars/2", Name = "Mine", ObjectTypeId = CarType.Id, Attributes = [] },
+            });
 
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _actionResolver.Resolve("Archive").Returns(action);
@@ -400,6 +406,138 @@ public class ExecuteCustomActionTests
         var result = await endpoint.HandleAsync(context);
 
         (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // ---- Selection batching (#327 M2) ---------------------------------------------------------
+
+    private static MintPlayer.Spark.Abstractions.PersistentObject Row(string id) =>
+        new() { Id = id, Name = id, ObjectTypeId = CarType.Id, Attributes = [] };
+
+    [Fact]
+    public async Task The_whole_selection_is_resolved_in_one_batched_call()
+    {
+        // The invariant that replaced the N+1: one call carrying every id, in submitted order —
+        // not one call per id behind a lifted request ceiling.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new[] { Row("cars/1"), Row("cars/2"), Row("cars/3") };
+
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject>
+            {
+                Row("cars/1"), Row("cars/2"), Row("cars/3"),
+            });
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItems = selected });
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+        await _databaseAccess.Received(1).GetPersistentObjectsByIdAsync(
+            CarType.Id,
+            Arg.Is<IReadOnlyList<string>>(ids =>
+                ids.Count == 3 && ids[0] == "cars/1" && ids[1] == "cars/2" && ids[2] == "cars/3"));
+        await _databaseAccess.DidNotReceive().GetPersistentObjectAsync(CarType.Id, Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task A_selection_the_batch_shrinks_is_refused_rather_than_partially_applied()
+    {
+        // The improvement over the prior art, which drops unresolvable rows with no exception and
+        // no count check — so a bulk action there can act on 498 of 500 rows and report success.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new[] { Row("cars/1"), Row("cars/2"), Row("cars/3") };
+
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { Row("cars/1"), Row("cars/3") });
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItems = selected }, authenticated: true);
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task A_repeated_id_in_the_selection_is_not_a_refusal()
+    {
+        // The batch collapses duplicates, so the short-result check compares against the DISTINCT
+        // count — otherwise selecting the same row twice would 404 the request.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new[] { Row("cars/1"), Row("cars/1") };
+
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { Row("cars/1") });
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItems = selected });
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.SelectedItems.Length == 1),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task An_id_less_selected_item_refuses_the_whole_request()
+    {
+        // An id-less selected item names no row and cannot be verified. Unlike an id-less PARENT
+        // (which stays available as submitted values), it fails the request — batching must not
+        // quietly turn it into a dropped element.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new[] { Row("cars/1"), new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = null, Name = "unsaved", ObjectTypeId = CarType.Id, Attributes = [],
+        } };
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItems = selected }, authenticated: true);
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData(200, HttpStatusCode.OK)]
+    [InlineData(201, HttpStatusCode.BadRequest)]
+    public async Task The_selection_ceiling_is_enforced_at_two_hundred(int count, HttpStatusCode expected)
+    {
+        // Untested until #327 M2, which is exactly when it became tempting to raise: batching made
+        // the selection one round-trip, but the ceiling bounds materialized WORK, not round-trips.
+        var action = Substitute.For<ICustomAction>();
+        var selected = Enumerable.Range(1, count).Select(i => Row($"cars/{i}")).ToArray();
+
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(call => (IReadOnlyList<MintPlayer.Spark.Abstractions.PersistentObject>)
+                [.. call.ArgAt<IReadOnlyList<string>>(1).Select(Row)]);
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItems = selected });
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(expected);
     }
 
     [Fact]

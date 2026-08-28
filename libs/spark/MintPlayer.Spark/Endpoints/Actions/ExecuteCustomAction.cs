@@ -96,13 +96,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         // A hard ceiling on the selection, whether or not a rule is declared.
         //
         // This is NOT belt-and-braces for the rule below. IgnoreMaxRequests sets
-        // MaxNumberOfRequestsPerSession to int.MaxValue for the whole handler, and the
-        // "estimatedRequests" figure it is handed is only a logging threshold — one that
-        // is itself computed from SelectedItems.Length, so the warning fires later the
-        // larger the abuse. Each selected id then costs a document load, a collection-guard
-        // check, a row-rule evaluation, breadcrumb resolution and redaction. Without this,
-        // any caller holding one action grant can turn a single request into unbounded
-        // server work, and no rate limiter is on this route by default.
+        // MaxNumberOfRequestsPerSession to int.MaxValue for the whole handler, so RavenDB's own
+        // cap is not a backstop here.
+        //
+        // Since #327 M2 the selection costs ONE batched load rather than a round-trip per id, so
+        // this ceiling no longer bounds round-trips. It still bounds work: the batch materializes
+        // every named document at once, and each row then costs a collection-guard check, a
+        // row-rule evaluation, mapping and redaction. Without it, any caller holding one action
+        // grant can turn a single request into an unbounded multi-document read, and no rate
+        // limiter is on this route by default.
         if (selectedCount > MaxSelectedItems)
         {
             return ClientResult.Envelope(clientAccessor,
@@ -137,14 +139,17 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
         try
         {
-            // #239 M5: resolving each selected item is a full row-gated load (load + breadcrumbs)
-            // on the shared request session, so a multi-select action is a per-item N+1 that hit
-            // RavenDB's 30-cap around ~5 items. A user-invoked bulk action legitimately needs the
-            // round-trips, so lift the ceiling for this whole handler — sized to the item count and
-            // logged if the action overruns, so it stays a deliberate, visible budget rather than a
-            // silent one.
-            var estimatedRequests = 30 + (1 + (request?.SelectedItems?.Length ?? 0)) * 6;
-            using var _ = session.IgnoreMaxRequests(estimatedRequests, logger);
+            // The selection is resolved in ONE batched pass (#327 M2), so the request cost is
+            // O(breadcrumb depth), not O(selected rows). This budget used to be sized to the item
+            // count — 30 + (1 + N) * 6 — because resolving each row was a full row-gated load of
+            // its own; at MaxSelectedItems that was a four-figure round-trip count behind a
+            // deliberately lifted ceiling. Lifting the ceiling was documented as the fix; it was
+            // the mitigation. The ceiling is still lifted, because a bulk action legitimately needs
+            // more than RavenDB's stock 30 (the parent load, the batch, breadcrumb levels, and
+            // whatever the action itself does), but it is now a small constant, and an overrun is
+            // a signal worth reading rather than an expected consequence of a large selection.
+            const int ActionRequestBudget = 30;
+            using var _ = session.IgnoreMaxRequests(ActionRequestBudget, logger);
 
             // Row-gated server-side resolution (#236 G3). The wire's Parent/SelectedItems are
             // whatever the caller typed — a caller holding the type-level action right could name
@@ -168,19 +173,29 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 }
             }
 
-            var selectedItems = new List<Po>();
-            foreach (var submitted in request?.SelectedItems ?? [])
+            // Selected items come from this type's list screen; an id-less one names no row and
+            // cannot be verified, so it fails the whole request rather than being skipped.
+            var submittedIds = (request?.SelectedItems ?? []).Select(i => i.Id).ToList();
+            if (submittedIds.Any(string.IsNullOrEmpty))
             {
-                // Selected items come from this type's list screen; an id-less one names no row
-                // and cannot be verified.
-                var loaded = string.IsNullOrEmpty(submitted.Id)
-                    ? null
-                    : await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id);
-                if (loaded is null)
-                {
-                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-                }
-                selectedItems.Add(loaded);
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+            }
+
+            var selectedItems = submittedIds.Count == 0
+                ? []
+                : await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, submittedIds!);
+
+            // Never shrink silently. The batch omits an id that names no document, names a foreign
+            // collection, or is refused by the row rule — all indistinguishable on purpose — and
+            // acting on the survivors would let a bulk action quietly process 498 of 500 rows. A
+            // short result is the same refusal the per-row loop gave, just decided once.
+            //
+            // Compared against the DISTINCT count because the batch collapses duplicate ids, and a
+            // caller selecting the same row twice is not an error.
+            var distinctRequested = submittedIds.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            if (selectedItems.Count != distinctRequested)
+            {
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
             // Ask the row rule about THIS action, not about "Read".

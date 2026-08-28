@@ -21,7 +21,30 @@ public interface IPersistentObjectActions<T> where T : class
     /// <param name="id">The requested object id, straight from the URL — untrusted.</param>
     /// <param name="parent">The object this load is nested under, when the client provided one;
     /// null for a top-level page load (the usual case).</param>
+    /// <remarks>
+    /// ⚠️ For a read-pipeline change that must hold when rows are resolved in bulk — a custom
+    /// action's selection, say — override <see cref="OnLoadManyAsync"/> instead. The default
+    /// implementation of this method is one call to that one, so overriding only this leaves bulk
+    /// paths on the base behaviour and the two silently diverge.
+    /// </remarks>
     Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent);
+
+    /// <summary>
+    /// Called when a SET of objects must be resolved by id — a custom action's selection, most
+    /// often. This is the primitive; <see cref="OnLoadAsync"/> is the degenerate one-id case of it,
+    /// so the two cannot drift.
+    /// </summary>
+    /// <param name="ids">The requested ids, straight off the wire — untrusted, possibly repeating,
+    /// possibly naming nothing.</param>
+    /// <param name="parent">The object this load is nested under, when the client provided one.</param>
+    /// <returns>
+    /// The resolved objects <b>in the order the ids were given</b>. An id is omitted when it names
+    /// no document, names a document in a foreign collection, or is refused by the row rule — the
+    /// three reasons deliberately indistinguishable, so this is no existence oracle. Duplicates
+    /// collapse to one row, so the result may legitimately be shorter than the input; a caller that
+    /// needs every requested row must compare the counts and say so, never shrink silently.
+    /// </returns>
+    Task<IReadOnlyList<PersistentObject>> OnLoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent);
 
     /// <summary>
     /// Called when saving (creating or updating) an entity.

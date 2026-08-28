@@ -32,6 +32,12 @@ public class HandWrittenActionsCompatibilityTests
         public Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
             => Task.FromResult<PersistentObject?>(null);
 
+        // Added by #327 M2. A hand-written implementer owns both halves of the read contract; the
+        // base class expresses the singular in terms of the plural so they cannot drift, and an
+        // implementer that does not inherit it has to keep them consistent itself.
+        public Task<IReadOnlyList<PersistentObject>> OnLoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)
+            => Task.FromResult<IReadOnlyList<PersistentObject>>([]);
+
         public Task<LegacyEntity> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
             => Task.FromResult(new LegacyEntity());
 

@@ -101,6 +101,38 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return (PersistentObject?)task.GetCompletedTaskResult();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PersistentObject>> GetPersistentObjectsByIdAsync(Guid objectTypeId, IReadOnlyList<string> ids)
+    {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return [];
+        if (ids.Count == 0) return [];
+
+        // One type-level decision for the whole set — PermissionService memoizes per request, so
+        // this costs the same as the singular path did for one id.
+        await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
+
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
+        if (entityType == null)
+        {
+            // A JSON-only virtual type has no documents to batch: its rows are composed, one call to
+            // the name-resolved hook per id. Batching would be a lie about where the cost is.
+            var composed = new List<PersistentObject>(ids.Count);
+            foreach (var id in ids)
+            {
+                var obj = await LoadVirtualObjectViaActionsAsync(entityTypeDefinition, id);
+                if (obj is not null) composed.Add(obj);
+            }
+            return composed;
+        }
+
+        var actions = actionsResolver.ResolveForType(entityType);
+        var onLoadManyMethod = GetCachedActionMethod(actions.GetType(), "OnLoadManyAsync");
+        var task = (Task)onLoadManyMethod.Invoke(actions, [ids, null])!;
+        await task;
+        return (IReadOnlyList<PersistentObject>)task.GetCompletedTaskResult()!;
+    }
+
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
     {
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
