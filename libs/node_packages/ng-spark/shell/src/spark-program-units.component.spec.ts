@@ -32,12 +32,15 @@ const config: ProgramUnitsConfiguration = {
   ],
 };
 
+/** Includes a macrotask turn so the accordion's custom-element registration lands while the
+ *  fixture is still alive — see the note on the same helper in spark-shell.component.spec.ts. */
 async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await fixture.whenStable();
     await Promise.resolve();
     fixture.detectChanges();
   }
+  await new Promise(resolve => setTimeout(resolve, 0));
   await fixture.whenStable();
   fixture.detectChanges();
 }

@@ -21,18 +21,31 @@ import { SparkService } from '@mintplayer/ng-spark/services';
  * region and nothing else. The menu is not a slot and always renders.
  */
 
+/**
+ * Settles the fixture, INCLUDING a macrotask turn.
+ *
+ * `bs-shell` registers its `<mp-shell>` custom element from an `afterNextRender`, which lands on
+ * a later task than `whenStable()` resolves on. Ending the test without that turn tears the
+ * fixture down with the registration still in flight; it then upgrades an element whose parent
+ * is already gone and jsdom throws `Cannot read properties of null (reading '_namespaceURI')`
+ * inside a promise — an unhandled rejection that fails the vitest run while every assertion
+ * still passes. It reproduced only on CI's slower runner, so the fix is to keep the async work
+ * inside the fixture's lifetime rather than to chase the timing.
+ */
 async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await fixture.whenStable();
     await Promise.resolve();
     fixture.detectChanges();
   }
+  await new Promise(resolve => setTimeout(resolve, 0));
   await fixture.whenStable();
   fixture.detectChanges();
 }
 
 describe('SparkShellComponent', () => {
   const getProgramUnits = vi.fn(async () => ({ programUnitGroups: [] }));
+  const fixtures: ComponentFixture<unknown>[] = [];
 
   beforeEach(() => {
     getProgramUnits.mockClear();
@@ -44,6 +57,15 @@ describe('SparkShellComponent', () => {
         { provide: SparkService, useValue: { getProgramUnits } },
       ],
     });
+  });
+
+  // Destroy while the DOM is still intact, and give anything the teardown itself schedules a
+  // turn to finish — the other half of the note on settle().
+  afterEach(async () => {
+    for (const fixture of fixtures.splice(0)) {
+      fixture.destroy();
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
   });
 
   async function render(template: string) {
@@ -60,6 +82,7 @@ describe('SparkShellComponent', () => {
     class Host {}
 
     const fixture = TestBed.createComponent(Host);
+    fixtures.push(fixture);
     fixture.detectChanges();
     await settle(fixture);
     return fixture;
