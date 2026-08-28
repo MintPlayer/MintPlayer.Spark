@@ -127,10 +127,25 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         var actions = actionsResolver.ResolveForType(entityType);
-        var onLoadManyMethod = GetCachedActionMethod(actions.GetType(), "OnLoadManyAsync");
-        var task = (Task)onLoadManyMethod.Invoke(actions, [ids, null])!;
-        await task;
-        return (IReadOnlyList<PersistentObject>)task.GetCompletedTaskResult()!;
+
+        // Batching is an optimization over the BASE pipeline, so it applies only where it is
+        // invisible. An actions class that overrides OnLoadAsync decorates the page, and taking the
+        // batched path would skip that decoration — making a row's content depend on how many rows
+        // were asked for. SupportsBatchedLoad is false for exactly those, and they fall through to
+        // the per-id loop below: slower, and correct.
+        if (actions is Actions.IBatchedLoadActions { SupportsBatchedLoad: true } batched)
+            return await batched.LoadManyAsync(ids, null);
+
+        var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
+        var resolved = new List<PersistentObject>(ids.Count);
+        foreach (var id in ids.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var task = (Task)onLoadMethod.Invoke(actions, [id, null])!;
+            await task;
+            if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
+                resolved.Add(obj);
+        }
+        return resolved;
     }
 
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)

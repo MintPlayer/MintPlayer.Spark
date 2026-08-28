@@ -219,6 +219,30 @@ internal partial class QueryExecutor : IQueryExecutor
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
         await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
+
+        // ⚠️ DO NOT REMOVE THIS DistinctBy. It is not defensive, and it is not about the analyzer.
+        //
+        // WHY IT IS HERE: this path queries a RavenDB *index*, and a fan-out index emits one entry
+        // per element of a collection the map projects over. Given
+        //
+        //     from car in cars from tag in car.Tags select new { car.Id, tag }
+        //
+        // a car with three tags produces THREE index entries, all pointing at the same document.
+        // The query returns three results, they map to three PersistentObjects with the same Id,
+        // and the grid shows the same row three times with a TotalRecords to match. Deduping by Id
+        // is what makes one document one row.
+        //
+        // WHY IT LOOKS UNNECESSARY: nothing here says "fan-out" — whether the bound index fans out
+        // is a property of the index definition, which lives in the consuming application, so no
+        // amount of reading this file reveals a duplicate-producing case. The repo's own docs once
+        // attributed this call to the search analyzer, which was wrong and was corrected in place
+        // (issue_210_PRD.md); the guard is still correct, it just guards a different hazard than
+        // that note claimed. If you are here because it "seems redundant", it is not: write a
+        // fan-out index over a collection property and watch the row count multiply.
+        //
+        // WHY IT IS NOT ON THE CUSTOM PATH: see the sibling comment at the end of
+        // ExecuteCustomQueryAsync. In memory there is no fan-out, and DistinctBy is destructive
+        // there — it treats every null Id as equal and collapses the grid to a single row.
         return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
     }
 
@@ -380,12 +404,25 @@ internal partial class QueryExecutor : IQueryExecutor
             .ToList();
         await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
 
-        // Dedup belongs to the Raven path ONLY. A fan-out index emits one entry per array element, so
-        // the same document legitimately arrives several times and collapsing is correct. Off the index
-        // there is no fan-out, and DistinctBy is actively destructive there: Enumerable.DistinctBy uses
-        // the default comparer, which treats every null key as equal, so a row type with no readable Id
-        // collapses the whole grid to one row. This return is shared by all three custom shapes, so the
-        // Raven case keeps dedup explicitly rather than the other two inheriting it by accident.
+        // ⚠️ DO NOT REMOVE THIS DistinctBy, and do not make it unconditional. Both halves matter.
+        //
+        // WHY IT IS HERE (the isRavenQueryable case): a custom query may hand back a Raven queryable
+        // over a *fan-out index* — one that projects over a collection and therefore emits one entry
+        // per element. Three tags on one car means three index entries naming the same document,
+        // which map to three PersistentObjects with the same Id and render as the same row three
+        // times. Deduping by Id makes one document one row. Whether the bound index fans out is a
+        // property of the index definition in the consuming application, so nothing in this file
+        // will ever look like it needs this — that is exactly why it is spelled out here. (The
+        // repo's docs once attributed this to the search analyzer; that was wrong and was corrected
+        // in issue_210_PRD.md. The guard is right, the old explanation was not.)
+        //
+        // WHY IT IS CONDITIONAL: this single return is shared by all three custom shapes — Raven
+        // queryable, in-memory IQueryable, and plain IEnumerable. Off the index there is no fan-out,
+        // and DistinctBy is actively DESTRUCTIVE there: Enumerable.DistinctBy uses the default
+        // comparer, which treats every null key as equal, so a computed row type with no readable
+        // Id collapses the entire grid to one row — silently, with a matching TotalRecords. That
+        // was S1 in #327. A duplicate id on a composed path is an authoring bug and will be made to
+        // throw (M5); it is never something to quietly collapse.
         IEnumerable<PersistentObject> rows = mapped.Select(m => m.Po);
         if (isRavenQueryable)
             rows = rows.DistinctBy(po => po.Id);

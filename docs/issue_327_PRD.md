@@ -371,15 +371,25 @@ Three deliberate divergences from the prior art, each recorded because a future 
 for reference option lists. Without a display string on the row, those three surfaces would each need a
 second fetch. This is the one field that keeps `executeQuery` usable as an option-list source.
 
-### D2 — One read pipeline, plural at the primitive (M2)
+### D2 — One read pipeline, batched internally (M2)
 
-`IPersistentObjectActions<T>` gains
+**There is exactly one load hook, and it stays `OnLoadAsync`.** An earlier draft added a plural
+`OnLoadManyAsync` to `IPersistentObjectActions<T>`; the maintainer rejected it, and the reference
+framework has no such hook either. Batching is an **optimization the framework applies**, not a seam
+an actions class implements:
 
-```csharp
-Task<IReadOnlyList<PersistentObject>> OnLoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent);
-```
+- `DefaultPersistentObjectActions<T>` implements the batched pipeline as `LoadManyAsync`, reached
+  through an internal, non-generic `IBatchedLoadActions` — non-generic so `DatabaseAccess` can use
+  it without reflection, internal so it is not public surface.
+- `OnLoadAsync` is `(await LoadManyAsync([id], parent)).FirstOrDefault()`, so the two cannot drift.
+- `SupportsBatchedLoad` is **false as soon as a subclass overrides `OnLoadAsync`**. An override
+  decorates the page; taking the batched route would skip that decoration and make a row content
+  depend on how many rows were selected. The optimization applies exactly where it is invisible, and
+  a decorating actions class falls back to the per-id loop — slower, and correct.
+- `IPersistentObjectActions<T>` is therefore **unchanged**, and the `LegacyHandWrittenActions`
+  tripwire never fires.
 
-and `DefaultPersistentObjectActions<T>` implements the whole pipeline there, batched:
+The batched pipeline does:
 
 - one `session.LoadAsync<T>(ids, includes, ct)` — **the overload exists in RavenDB.Client 7.2.5** (F11)
 - one `breadcrumbResolver.ResolveAsync(session, entities, definition)` — already plural, O(depth)
@@ -522,8 +532,7 @@ All intentional; preview, so no shims (per the governing direction).
 
 1. `QueryResult` changes shape entirely: `Data: PersistentObject[]` → `Items: QueryResultItem[]` +
    `Columns`, and `TotalRecords` → `TotalItems`.
-2. `IPersistentObjectActions<T>` gains `OnLoadManyAsync` — breaks hand-written implementers (the tripwire).
-3. `IDatabaseAccess` gains a batch member.
+2. `IDatabaseAccess` gains a batch member (`GetPersistentObjectsByIdAsync`).
 4. `IQueryExecutor.ExecuteQueryAsync` gains a `CancellationToken`.
 5. Custom queries returning `IEnumerable<PersistentObject>`, `IEnumerable<object>` or `dynamic` now throw
    instead of silently producing blank rows.

@@ -80,12 +80,15 @@ Independent of everything else; each closes a silent failure.
 
 The live N+1, on entity-backed grids, independent of composed queries.
 
-1. `IPersistentObjectActions<T>` gains
-   `Task<IReadOnlyList<PersistentObject>> OnLoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)`.
-2. `DefaultPersistentObjectActions<T>` implements the whole pipeline there, batched — one
+1. **No new hook.** `IPersistentObjectActions<T>` is unchanged -- batching is an optimization, not a
+   seam (owner decision; the reference framework has no plural hook either). The batched pipeline lives
+   on `DefaultPersistentObjectActions<T>` as `LoadManyAsync`, reached through an internal non-generic
+   `IBatchedLoadActions`, and `SupportsBatchedLoad` turns it off for any subclass that overrides
+   `OnLoadAsync` so a decorated page can never be skipped by a bulk path.
+2. `DefaultPersistentObjectActions<T>` implements the whole pipeline there, batched -- one
    `LoadAsync<T>(ids, includes)`, one `breadcrumbResolver.ResolveAsync(session, entities, def)`, one
-   `RedactAsync(session, pairs, …)`; guard/`Read`/mapping/`Can`/etag stay per-row and cost no I/O.
-   `OnLoadAsync` becomes `(await OnLoadManyAsync([id], parent)).FirstOrDefault()` — **one pipeline, so
+   `RedactAsync(session, pairs, ...)`; guard/`Read`/mapping/`Can`/etag stay per-row and cost no I/O.
+   `OnLoadAsync` becomes `(await LoadManyAsync([id], parent)).FirstOrDefault()` -- **one pipeline, so
    single and batch cannot drift.**
 3. `IDatabaseAccess` gains the batch sibling, keeping the `Read` type gate (memoized: N ids, one decision)
    and the virtual-type fork (`clrType == null` falls back to the per-id compose path).
@@ -94,10 +97,9 @@ The live N+1, on entity-backed grids, independent of composed queries.
 5. `estimatedRequests` becomes a small constant; the `#239 M5` comment is rewritten (it currently
    documents lifting the ceiling *as the fix*).
 
-⚠ **Expected breakage, by design:** `LegacyHandWrittenActions`
-(`Actions/HandWrittenActionsCompatibilityTests.cs:32`) implements every interface member and inherits
-nothing, and the interface carries a standing warning that adding a member breaks it. That tripwire firing
-is the correct outcome; its implementation is updated in the same commit.
+✅ **No interface breakage.** Because the batch form is internal rather than a new interface member,
+`LegacyHandWrittenActions` (`Actions/HandWrittenActionsCompatibilityTests.cs:32`) is untouched and its
+tripwire never fires -- which is the point of keeping batching off the public surface.
 
 **Tests.** Five existing tests in `Endpoints/Actions/ExecuteCustomActionTests.cs` assert
 `GetPersistentObjectAsync` per id (`:143`, `:180`, `:203`, `:240`, `:267`) and must be restubbed onto the

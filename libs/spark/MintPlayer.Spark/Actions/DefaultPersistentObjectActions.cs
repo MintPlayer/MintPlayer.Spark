@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -13,7 +14,7 @@ namespace MintPlayer.Spark.Actions;
 /// Entity mapping from PersistentObject to T happens inside OnSaveAsync.
 /// </summary>
 /// <typeparam name="T">The entity type</typeparam>
-public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
+public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T>, IBatchedLoadActions where T : class
 {
     [Inject] private readonly IEntityMapper entityMapper;
     // Optional (nullable [Inject] fields get a `= null` ctor default) so existing manual
@@ -59,13 +60,35 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </para>
     /// </summary>
     public virtual async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
-        => (await OnLoadManyAsync([id], parent)).FirstOrDefault();
+        => (await LoadManyAsync([id], parent)).FirstOrDefault();
 
     /// <summary>
-    /// The entity read pipeline for a SET of ids — the primitive
-    /// <see cref="OnLoadAsync(string, PersistentObject?)"/> is one call to. Everything expensive
-    /// happens once for the whole set: one document load carrying
-    /// <see cref="GetDefaultIncludes"/>, one breadcrumb resolution, one redaction pass.
+    /// Whether the framework may resolve a set of ids through <see cref="LoadManyAsync"/> instead
+    /// of calling <see cref="OnLoadAsync"/> once per id.
+    /// </summary>
+    /// <remarks>
+    /// False as soon as a subclass overrides <c>OnLoadAsync</c>. Batching is an optimization over
+    /// the base pipeline, and the base pipeline is the only thing it is equivalent to — an override
+    /// decorates the page, and skipping it because several rows were asked for at once would make
+    /// a row's content depend on how many rows were requested. So the optimization applies exactly
+    /// where it is invisible.
+    /// </remarks>
+    public bool SupportsBatchedLoad => ReflectionCache.GetOrAdd<(string Op, Type Type), bool>(
+        ("DefaultPersistentObjectActions.BatchedLoad", GetType()),
+        static k =>
+        {
+            var declaring = k.Type
+                .GetMethod(nameof(OnLoadAsync), [typeof(string), typeof(PersistentObject)])
+                ?.DeclaringType;
+
+            return declaring is { IsGenericType: true }
+                && declaring.GetGenericTypeDefinition() == typeof(DefaultPersistentObjectActions<>);
+        });
+
+    /// <summary>
+    /// The entity read pipeline for a SET of ids. Everything expensive happens once for the whole
+    /// set: one document load carrying <see cref="GetDefaultIncludes"/>, one breadcrumb
+    /// resolution, one redaction pass. <see cref="OnLoadAsync"/> is one call to this.
     /// <para>
     /// Rows come back <b>in the order the ids were given</b>. An id is omitted when it names no
     /// document, names a document in a foreign collection, or is refused by the type's row rule —
@@ -73,13 +96,14 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// existence oracle. Duplicate ids collapse to one row; empty ids are ignored.
     /// </para>
     /// <para>
-    /// ⚠️ <b>This, not <c>OnLoadAsync</c>, is the override point</b> for a read-pipeline change
-    /// that must also hold when rows are resolved in bulk — a custom action's selection, say.
-    /// Overriding only the singular leaves bulk paths on the base behaviour, and the two would
-    /// silently diverge; the singular is expressed in terms of this one precisely so they cannot.
+    /// Deliberately <b>not</b> a hook. There is one load seam — <c>OnLoadAsync</c> — and this is
+    /// how the framework implements it efficiently when it is asked for several ids at once. A
+    /// second overridable entry point would be a second thing to keep consistent, and the case for
+    /// it (an author wanting to batch their own decoration) has never come up in the framework this
+    /// design is drawn from.
     /// </para>
     /// </summary>
-    public virtual async Task<IReadOnlyList<PersistentObject>> OnLoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)
+    public async Task<IReadOnlyList<PersistentObject>> LoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)
     {
         var services = RequireServices();
         var session = services.GetRequiredService<IAsyncDocumentSession>();
