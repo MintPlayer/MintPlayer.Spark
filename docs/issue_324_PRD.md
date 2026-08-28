@@ -293,11 +293,17 @@ The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
    `DatabaseAccess` into `DefaultPersistentObjectActions<T>.OnLoadAsync`, so an override can
    finally touch the page (`await base.OnLoadAsync(id, parent)` then decorate) — skipping the
    base takes the pipeline over, the read-side twin of `OnSaveAsync`'s WITH CHECK caveat; the
-   type-level `Read` right stays framework-owned. A JSON-only type's actions resolve by *name*
-   (`{Name}Actions`, a plain class — no base) with the identical signature, scaffolding via
-   `IManager.GetPersistentObject` and served read-only, with the guard-skipping rationale below
-   unchanged. A wrong-shaped `OnLoadAsync` throws loudly (the contract is reflective); no
-   actions class means 404.
+   type-level `Read` right stays framework-owned. The base gets its pipeline services via an
+   internal `Attach(IServiceProvider)` called by `ActionsResolver` after construction, never
+   through constructor parameters (hand-written subclass ctors like `: base(mapper)` must keep
+   compiling, and the internal service interfaces can't appear in the public generated ctor).
+   A JSON-only type's actions resolve by *name* (`{Name}Actions`, a plain class — no base) with
+   the identical signature, scaffolding via `IManager.GetPersistentObject` and filling only
+   attribute values — the framework squares the envelope where the hook stayed silent
+   (`Id ??=` requested id, `Breadcrumb ??=` the model's template rendered over the filled
+   values, `Can ??=` read-only), with the guard-skipping rationale below unchanged. A
+   wrong-shaped `OnLoadAsync` throws loudly (the contract is reflective); no actions class
+   means 404.
 
 The original design (kept for the record of what was considered and rejected):
 

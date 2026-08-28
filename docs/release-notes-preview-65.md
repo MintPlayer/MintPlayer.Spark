@@ -37,7 +37,9 @@ pipeline (document load + declared includes, collection guard, row security, bre
 mapping, redaction, per-row `can`, etag) now lives in
 `DefaultPersistentObjectActions<T>.OnLoadAsync` — the base call carries it, and skipping the
 base takes it over (the read-side twin of `OnSaveAsync`'s WITH CHECK caveat). The type-level
-`Read` right stays framework-owned, checked before the hook runs.
+`Read` right stays framework-owned, checked before the hook runs. The base receives its
+framework services via an internal `Attach(IServiceProvider)` that `ActionsResolver` calls
+after construction — a subclass's hand-written constructor never threads framework plumbing.
 
 ## JSON-only virtual PO pages — no CLR class required
 
@@ -55,15 +57,16 @@ public partial class StartPageActions
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
         var obj = manager.GetPersistentObject("StartPage");
-        obj.Id = id;
         obj["Welcome"].Value = "Hello!";
-        obj.Breadcrumb = "Start";
         return obj;
     }
 }
 ```
 
-Served under the type-level `Read` right, with `can.edit`/`can.delete` forced false. A
+The hook fills only attribute values; the framework squares the envelope, each piece only when
+the hook left it unset: `Id` defaults to the requested id, `Breadcrumb` (the page title)
+renders from the model file's `breadcrumb` template over the values just filled, and
+`can.edit`/`can.delete` are forced false. Served under the type-level `Read` right. A
 wrong-shaped `OnLoadAsync` throws loudly at first load; a virtual type with no actions class
 404s. Everything document-shaped (query, save, delete) 404s for such a type. DemoApp's new
 **Start** unit is the worked example: greeting + live collection counts, nothing behind it.

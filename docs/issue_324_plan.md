@@ -110,11 +110,17 @@ replaced by owner directive):**
   `DefaultPersistentObjectActions<T>.OnLoadAsync` (base call carries it; skipping the base takes
   it over — read-side WITH CHECK twin). `DatabaseAccess.GetPersistentObjectAsync` thins to
   authorize → dispatch.
+- The base gets its pipeline services via an internal `Attach(IServiceProvider)` called by
+  `ActionsResolver` after construction — NOT constructor parameters: ~20 hand-written test
+  actions ctors do `: base(mapper)`, the generator's derived chaining ctor mirrors base params
+  without defaults, and the internal service interfaces can't appear in the public generated
+  ctor anyway.
 - A JSON-only virtual type resolves `{Name}Actions` by name
   (`IActionsResolver.ResolveByEntityName`) with the identical signature; the class scaffolds via
-  `IManager.GetPersistentObject`, and the framework forces
-  `Can = { Edit: false, Delete: false }` unless set. No actions class / no hook → 404; a
-  wrong-shaped `OnLoadAsync` throws loudly.
+  `IManager.GetPersistentObject` and fills only attribute values — the framework squares the
+  envelope (`Id ??=` requested id, `Breadcrumb ??=` the model's template rendered over the
+  filled values, `Can ??=` read-only). No actions class / no hook → 404; a wrong-shaped
+  `OnLoadAsync` throws loudly.
 - No id-redirect seam shipped (nothing needed it — an override can now redirect by loading a
   different id through the base).
 - Comment discipline: the *why skipping the guards is sound* rationale from the PRD goes on
@@ -158,12 +164,13 @@ replaced by owner directive):**
   copies, and the per-app shell SCSS that S4 moved into the library.
 - WebhooksDemo: author `programUnits.json` covering its existing queries; verify against
   its `security.json`.
-- DemoApp Start page: `StartPage` marker class (Library project, mirroring
-  `ConfirmDeleteCar`'s placement), model JSON (read-only, greeting/text + one or two value
-  attributes per S2's renderer verdict), `StartPageActions.OnComposeAsync` (greeting +
-  live entity counts via session), `programUnits.json` unit
+- DemoApp Start page (as built — no marker class; the JSON-only shape): hand-authored model
+  JSON without `clrType` (read-only, greeting/text + count attributes per S2's renderer
+  verdict), `StartPageActions.OnLoadAsync(id, parent)` scaffolding via `IManager` (greeting +
+  live entity counts via session, dynamic breadcrumb), `programUnits.json` unit
   (`persistentObject` + `objectId: "start"`), `Read/StartPage` grant in `security.json`,
   run `--spark-synchronize-model` / update `modelHashes.json` as the lifecycle requires.
+  Fleet's `ConfirmDeleteCar` marker class deleted on the same grounds.
 
 ## M6 — Test sweep
 
@@ -171,9 +178,10 @@ Single batched run at the end (repo convention):
 
 - Server: loader validation cases (canonicalization, each invalid combination), endpoint
   rights-per-type (PO unit visible with `Read` only; query unit with `Query` only; `url`
-  always; empty group dropped), compose path (200 with composed values for granted user,
-  404/refusal without `Read`, `can` forced false, `OnLoadAsync` path untouched for
-  non-virtual types), DemoApp Start page end-to-end through the test driver.
+  always; empty group dropped), virtual-type load path (200 with hook-filled values for a
+  granted user, framework-stamped id/template breadcrumb/`can` forced false, 404/refusal
+  without `Read`, 404 without an actions class; entity-backed types pinned by the ordinary
+  Get tests), DemoApp Start page end-to-end through the test driver.
 - Client: pipe cases (objectId, exact types, url → null), `spark-program-units` spec
   (sorting, auth-effect re-fetch, reloadToken), `spark-shell` slot specs (default vs
   projected per region).
