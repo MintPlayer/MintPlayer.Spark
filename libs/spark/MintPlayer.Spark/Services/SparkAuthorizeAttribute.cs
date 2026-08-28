@@ -87,6 +87,16 @@ public sealed class SparkAuthorizeAttribute : AuthorizeAttribute, IAuthorization
 /// holding one: the handler is registered as a singleton (ASP.NET Core's convention for
 /// authorization handlers) while <c>IAccessControl</c> is scoped, and capturing a scoped service in
 /// a singleton is how a decision starts being made against the wrong request's principal.
+/// <para>
+/// ⚠️ <b>The scope comes from <c>context.Resource as HttpContext</c>, which is an HTTP assumption</b>
+/// (#327 §9.9). On a <b>SignalR hub</b> the resource is a <c>HubInvocationContext</c>, not an
+/// <c>HttpContext</c>, so the fallback fires and the handler resolves <c>IAccessControl</c> from the
+/// <em>root</em> provider — where a scoped service cannot be resolved at all, and the invocation
+/// throws rather than denying. Latent today: Spark ships no hubs and nothing in the repo puts
+/// <c>[SparkAuthorize]</c> on one. Recorded here rather than fixed speculatively, because the fix
+/// depends on how hubs would be hosted; the shape of it is to prefer
+/// <c>HubInvocationContext.Context.GetHttpContext()?.RequestServices</c> before falling back.
+/// </para>
 /// </remarks>
 internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
     : AuthorizationHandler<SparkAuthorizeAttribute>
@@ -105,6 +115,8 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
 
         if (requirement.Group is { } group)
         {
+            RefuseWellKnownGroup(scoped, group);
+
             var membership = scoped.GetService<IGroupMembershipProvider>();
             if (membership is null)
                 return;
@@ -115,5 +127,51 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
         }
 
         context.Succeed(requirement);
+    }
+
+    /// <summary>
+    /// Refuses <c>[SparkAuthorize(Group = …)]</c> naming a group that <c>security.json</c> declared
+    /// as <c>anonymous</c> or <c>authenticated</c>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Such an attribute cannot work, and — this is why it throws rather than denying — it does
+    /// not look broken. Well-known ids are deliberately excluded from claim-derived membership
+    /// (<c>anonymous</c> and <c>authenticated</c> are decided from authentication state, never from
+    /// a claim), so this comparison can never match and the endpoint denies <em>everyone, forever</em>,
+    /// with a 403 that is indistinguishable from a correctly configured refusal. An author reading
+    /// the attribute sees "signed-in users may do this" and reads the 403 as their own account
+    /// lacking something.
+    /// <para>
+    /// Throwing on the first evaluation turns a permanent silent lockout into one loud startup-shaped
+    /// error naming the right fix — which is the right form of the attribute, not a different group.
+    /// </para>
+    /// </remarks>
+    private static void RefuseWellKnownGroup(IServiceProvider scoped, string group)
+    {
+        var loader = scoped.GetService<ISecurityConfigurationLoader>();
+        if (loader is null) return;
+
+        var config = loader.GetConfiguration();
+        if (config.WellKnown is not { Count: > 0 } wellKnown) return;
+
+        foreach (var (role, groupId) in wellKnown)
+        {
+            // Match the declared id directly, and the display name it resolves to — an author is
+            // far likelier to write the readable name than the GUID.
+            var matchesId = string.Equals(groupId, group, StringComparison.OrdinalIgnoreCase);
+            var matchesName = config.Groups.TryGetValue(groupId, out var name)
+                && name.Translations.Values.Any(v => string.Equals(v, group, StringComparison.OrdinalIgnoreCase));
+
+            if (!matchesId && !matchesName) continue;
+
+            throw new InvalidOperationException(
+                $"[SparkAuthorize(Group = \"{group}\")] names the group security.json declares as " +
+                $"'{role}'. Well-known groups are decided from authentication state, not from group " +
+                $"membership, so they are excluded from the membership this attribute checks — the " +
+                $"requirement could never be satisfied and the endpoint would deny every caller with " +
+                $"a 403 that looks like an ordinary refusal. Use the right form instead: " +
+                $"[SparkAuthorize(\"<action>\", \"<target>\")], and grant that right to the " +
+                $"'{role}' group in security.json.");
+        }
     }
 }

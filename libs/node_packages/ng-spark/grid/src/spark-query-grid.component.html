@@ -59,9 +59,12 @@
                  2. `canRead()` is the whole gate, and it is the rights model: `Query` without
                     `Read` lists the rows and withholds the link. Withhold `Read` for a query
                     whose rows no detail page can load — a Custom.* query that fabricates rows in
-                    memory, say. -->
-            @if (first && canRead()) {
-              <a [routerLink]="['/po', entityType()?.alias || entityType()?.id, row.id]"
+                    memory, say.
+                 3. `rowRoute` replaces the DESTINATION only, never the gate: returning a route
+                    from it cannot make a row clickable that `canRead()` withheld, and returning
+                    null from it suppresses the link for that one row. -->
+            @if (first && canRead() && rowRouteFor(row); as route) {
+              <a [routerLink]="route"
                  (click)="rowClicked.emit(row)">
                 <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
               </a>

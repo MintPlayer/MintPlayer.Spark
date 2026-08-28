@@ -45,6 +45,33 @@ export class SparkShellTopbarEndDirective {
   readonly templateRef = inject<TemplateRef<unknown>>(TemplateRef);
 }
 
+/**
+ * Topbar, trailing edge, **beside** the default chrome rather than instead of it — rendered before
+ * the language selector, which stays.
+ *
+ * ## Why this is not just `*sparkShellTopbarEnd`
+ *
+ * That slot REPLACES the region, which is right for an auth bar (a host taking over the trailing
+ * edge wholesale) and wrong for a page-level action button. A host that only wanted to add a
+ * button had to re-render the language selector itself to keep it — which means importing it,
+ * knowing it hides itself in a single-language app, and keeping that copy in step with the shell.
+ * Every host that did this got it slightly differently.
+ *
+ * Pairs with `SparkQueryActionsService`: that service resolves a query's custom actions without the
+ * grid, and this is where a page-level one goes.
+ *
+ * ```html
+ * <button *sparkShellTopbarActions class="btn btn-primary" (click)="publish()">Publish</button>
+ * ```
+ *
+ * Supplying both slots is allowed and does what it says: `topbarEnd` replaces the default chrome,
+ * and these actions still render ahead of whatever it put there.
+ */
+@Directive({ selector: '[sparkShellTopbarActions]' })
+export class SparkShellTopbarActionsDirective {
+  readonly templateRef = inject<TemplateRef<unknown>>(TemplateRef);
+}
+
 /** Sidebar, above everything. Default: `<h5>{{ title }}</h5>`. */
 @Directive({ selector: '[sparkShellSidebarHeader]' })
 export class SparkShellSidebarHeaderDirective {

@@ -135,12 +135,41 @@ export class SparkQueryGridComponent {
   /** Rows the user has ticked. Two-way so chrome outside the grid can read and clear them. */
   selection = model<QueryResultItem[]>([]);
 
+  /**
+   * Replaces where the first column's link points, per row.
+   *
+   * Return `null` to suppress the link for that row — useful when a grid mixes rows that have a
+   * detail page with rows that do not.
+   *
+   * ⚠️ **It changes the destination, not the permission.** `canRead()` still gates whether any
+   * link is rendered at all, and this function is never consulted when that gate is closed. It
+   * cannot be used to reach a row the rights model withheld; it exists for the case where the
+   * row's natural destination is not `/po/{type}/{id}` — a composed row that maps to a page of
+   * its own, or a grid embedded in a route that owns its own child paths.
+   */
+  rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
+
   /** Emitted whenever a load or a page fetch fails, for a host in bespoke chrome. */
   error = output<HttpErrorResponse>();
   rowClicked = output<QueryResultItem>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
 
   colors = Color;
+
+  /**
+   * Where the first column's link points for this row: the host's `rowRoute` when it supplied one,
+   * otherwise the row's own detail page.
+   *
+   * A method rather than a computed because the answer is per row, and the template already
+   * iterates rows — a computed would have to be a map keyed by id, rebuilt on every page.
+   */
+  protected rowRouteFor(row: QueryResultItem): unknown[] | null {
+    const custom = this.rowRoute();
+    if (custom) return custom(row);
+
+    const type = this.entityType();
+    return ['/po', type?.alias || type?.id, row.id];
+  }
 
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);

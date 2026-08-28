@@ -19,6 +19,21 @@
           [style.background-color]="colorVal"
           style="width: 1.5em; height: 1.5em;"></span>
   }
+} @else if (column().dataType === 'image') {
+  @if (display(); as src) {
+    <!-- Inline sizing for the same reason the colour swatch above uses it: in a query grid this
+         renders inside <mp-datatable>'s shadow root, which sees neither this component's scoped
+         rules nor Bootstrap's. `alt` is empty on purpose — the cell is decorative next to the
+         row's own labelled columns, and a filename read aloud is worse than nothing. -->
+    <img [src]="src" alt="" loading="lazy" class="align-middle rounded"
+         style="max-height: 2.5em; max-width: 100%; object-fit: contain;">
+  }
+} @else if (column().dataType === 'url') {
+  @if (display(); as href) {
+    <!-- rel is not optional with target=_blank: without noopener the opened page gets a handle on
+         this one through window.opener, and these hrefs are data. -->
+    <a [href]="href" target="_blank" rel="noopener noreferrer">{{ href }}</a>
+  }
 } @else if (chips().length) {
   <span class="d-inline-flex flex-wrap gap-1">
     @for (chip of chips(); track chip.id) {
