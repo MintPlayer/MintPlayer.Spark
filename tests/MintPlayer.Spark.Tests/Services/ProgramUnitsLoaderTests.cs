@@ -5,9 +5,12 @@ using NSubstitute;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// ProgramUnitsLoader is a thin file → object loader for <c>App_Data/programUnits.json</c>.
-/// Same shape as CultureLoader: missing file → empty default, malformed → empty default
-/// (silent fallback so a bad config doesn't crash app startup), result is cached.
+/// ProgramUnitsLoader reads <c>App_Data/programUnits.json</c>, canonicalizes each unit's
+/// <c>type</c> casing and validates that the field the type requires is present. A missing file
+/// stays fail-soft (no menu is a valid choice); a file that exists but cannot be trusted —
+/// malformed JSON, an unknown type, a missing target field — throws
+/// <see cref="SparkProgramUnitsConfigurationException"/>, because the silent alternative is a
+/// menu that drops entries and reads exactly like an authorization problem. Result is cached.
 /// </summary>
 public sealed class ProgramUnitsLoaderTests : IDisposable
 {
@@ -31,6 +34,27 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
     private void WriteUnits(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "programUnits.json"), json);
 
+    private static string UnitJson(string typeAndTarget) => $$"""
+        {
+          "programUnitGroups": [
+            {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": { "en": "Fleet" },
+              "icon": "car",
+              "order": 1,
+              "programUnits": [
+                {
+                  "id": "22222222-2222-2222-2222-222222222222",
+                  "name": { "en": "Cars" },
+                  {{typeAndTarget}},
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
     [Fact]
     public void Returns_empty_configuration_when_file_does_not_exist()
     {
@@ -43,48 +67,77 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Parses_program_unit_groups_from_a_valid_file()
+    public void Parses_a_valid_file_and_canonicalizes_type_casing()
     {
-        WriteUnits("""
-            {
-              "programUnitGroups": [
-                {
-                  "id": "11111111-1111-1111-1111-111111111111",
-                  "name": { "en": "Fleet" },
-                  "icon": "car",
-                  "order": 1,
-                  "programUnits": [
-                    {
-                      "id": "22222222-2222-2222-2222-222222222222",
-                      "name": { "en": "Cars" },
-                      "type": "Query",
-                      "queryId": "33333333-3333-3333-3333-333333333333",
-                      "order": 1
-                    }
-                  ]
-                }
-              ]
-            }
-            """);
+        // "Query" (wrong case) is tolerated HERE and only here: the loader is the single place
+        // that normalizes, so the endpoint and the client pipe can compare exact strings.
+        WriteUnits(UnitJson("""
+            "type": "Query",
+            "queryId": "33333333-3333-3333-3333-333333333333"
+            """));
         var loader = CreateLoader();
 
         var config = loader.GetProgramUnits();
 
-        config.ProgramUnitGroups.Should().ContainSingle();
-        var group = config.ProgramUnitGroups[0];
+        var group = config.ProgramUnitGroups.Should().ContainSingle().Subject;
         group.Icon.Should().Be("car");
-        group.ProgramUnits.Should().ContainSingle().Which.Type.Should().Be("Query");
+        group.ProgramUnits.Should().ContainSingle().Which.Type.Should().Be("query");
     }
 
     [Fact]
-    public void Falls_back_to_empty_configuration_on_malformed_json()
+    public void Parses_objectId_and_url_fields()
+    {
+        WriteUnits(UnitJson("""
+            "type": "persistentObject",
+            "persistentObjectId": "44444444-4444-4444-4444-444444444444",
+            "objectId": "start"
+            """));
+
+        var unit = CreateLoader().GetProgramUnits().ProgramUnitGroups[0].ProgramUnits[0];
+
+        unit.Type.Should().Be("persistentObject");
+        unit.ObjectId.Should().Be("start");
+    }
+
+    [Fact]
+    public void Throws_on_malformed_json()
     {
         WriteUnits("{ not valid");
         var loader = CreateLoader();
 
-        var config = loader.GetProgramUnits();
+        var act = () => loader.GetProgramUnits();
 
-        config.ProgramUnitGroups.Should().BeEmpty();
+        act.Should().Throw<SparkProgramUnitsConfigurationException>()
+            .WithMessage("*not valid JSON*");
+    }
+
+    [Fact]
+    public void Throws_on_unknown_unit_type()
+    {
+        WriteUnits(UnitJson("""
+            "type": "dashboard"
+            """));
+        var loader = CreateLoader();
+
+        var act = () => loader.GetProgramUnits();
+
+        act.Should().Throw<SparkProgramUnitsConfigurationException>()
+            .WithMessage("*unknown type 'dashboard'*");
+    }
+
+    [Theory]
+    [InlineData(""" "type": "query" """, "queryId")]
+    [InlineData(""" "type": "persistentObject" """, "persistentObjectId")]
+    [InlineData(""" "type": "url" """, "url")]
+    public void Throws_when_the_field_the_type_requires_is_missing(string type, string missingField)
+    {
+        WriteUnits(UnitJson(type.Trim()));
+        var loader = CreateLoader();
+
+        var act = () => loader.GetProgramUnits();
+
+        act.Should().Throw<SparkProgramUnitsConfigurationException>()
+            .WithMessage($"*no '{missingField}'*");
     }
 
     [Fact]
