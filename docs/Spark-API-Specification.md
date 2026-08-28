@@ -343,7 +343,9 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`GET /spark/program-units`** — `Endpoints/ProgramUnits/Get.cs`
 
-- **Response**: `200 OK` — body: `ProgramUnitsConfiguration` (navigation tree of Program Unit Groups and their Program Units, filtered by permission).
+- **Response**: `200 OK` — body: `ProgramUnitsConfiguration` (navigation tree of Program Unit Groups and their Program Units, filtered per caller).
+- **Filtering** — by the right the unit's click will demand: `query` units require the `Query` right on the target's entity type, `persistentObject` units require `Read`, `url` units are always visible. Groups whose units all filtered away are dropped. Fail-closed: a typed unit whose target can't be resolved is hidden.
+- **Unit shape** — `type` is canonicalized by the loader to exactly `query` / `persistentObject` / `url`; a `persistentObject` unit may carry `objectId` (deep link to one object — for a model-only type, the composed page served by `OnComposeAsync`; see `guide-program-units.md`); a `url` unit carries `url`.
 
 ---
 

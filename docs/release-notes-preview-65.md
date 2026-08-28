@@ -1,0 +1,82 @@
+# Release notes — `10.0.0-preview.65` / `@mintplayer/ng-spark@22.6.0` / `@mintplayer/ng-spark-auth@22.6.0`
+
+Program units grow up (#324): a menu entry can now open a *page* — a specific object, a composed
+start page, an external URL — and ng-spark ships the whole application shell instead of every app
+copy-pasting it. The two npm packages move to the same version and stay in lockstep from here.
+
+Full guide: `docs/guide-program-units.md`.
+
+---
+
+## A program unit can open a PersistentObject page
+
+`ProgramUnit` gains two fields:
+
+- **`objectId`** — on a `persistentObject` unit: the menu entry deep-links to
+  `/po/{type}/{objectId}` instead of the type's list.
+- **`url`** (with `type: "url"`) — an external link, rendered as a plain anchor. Deliberately
+  its own field, not an overload of `objectId`.
+
+The endpoint now filters by the right the unit's click will demand: `Query` for query units,
+**`Read` for persistentObject units** (previously `Query` — which showed menu entries whose click
+404'd), nothing for `url` units.
+
+## Composed virtual PO pages — `OnComposeAsync`
+
+The start-page pattern: a model-declared type with a CLR marker class and no context root, whose
+page is built in code. New hook on `DefaultPersistentObjectActions<T>`:
+
+```csharp
+public override async Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+{
+    args.PersistentObject["Welcome"].Value = "Hello!";
+    args.PersistentObject.Breadcrumb = "Start";
+    return args.PersistentObject;   // null (the default) ⇒ the entity pipeline, unchanged
+}
+```
+
+A non-null return is served instead of a document load, under the type-level `Read` right, with
+`can.edit`/`can.delete` forced false. DemoApp's new **Start** unit is the worked example:
+greeting + live collection counts, no document behind it.
+
+## `programUnits.json` is validated at load
+
+The loader canonicalizes `type` casing (`"Query"` → `"query"`) and throws
+`SparkProgramUnitsConfigurationException` on an unknown type, a missing required field, or
+malformed JSON — a silently dropped menu entry reads exactly like a rights problem. A missing
+file stays fail-soft. This closed a real defect: the server matched `type` case-insensitively
+while the client matched exactly, so a `"Query"` unit passed the filter and routed to `/`.
+
+## `@mintplayer/ng-spark/shell` — the shipped application frame
+
+New entry point with three components:
+
+- **`spark-shell`** — topbar + sidebar + main over `bs-shell`, with slot structural directives
+  (`*sparkShellTopbarStart/End`, `*sparkShellSidebarHeader/Top/Tabs/Footer`,
+  `*sparkShellMainHeader`; default content = main). An omitted slot renders its default. Deletes
+  from every host: the hand-rolled `shellState`/resize/768px block (the web component owns
+  responsive behavior), the collapse-on-navigate handler (`dismissOnNavigate`), the
+  `bsShellTopbar` workaround directive, and ~80 lines of shadow-DOM-seam SCSS. Theme via
+  `--spark-shell-*` custom properties and `sidebarTheme`.
+- **`spark-program-units`** — the server-driven menu, also usable standalone. Sorts groups AND
+  units by `order`; renders `url` units as external anchors. **Consumers write zero router links
+  for navigation.**
+- **`spark-language-selector`** — the culture switcher every app had hand-rolled; hides itself
+  with ≤ 1 language.
+
+Auth re-fetch without a package dependency: new `SPARK_AUTH_STATE` token in `@mintplayer/ng-spark`
+(root), supplied automatically by `provideSparkAuth()` — the menu re-fetches on sign-in/out.
+`@mintplayer/ng-spark-auth` now peer-depends on `@mintplayer/ng-spark` for that token; the reverse
+direction still doesn't exist and must not.
+
+All four demo shells collapsed to `<spark-shell>` + slots. WebhooksDemo, whose sidebar had been
+silently empty (no `programUnits.json`), gets a menu that appears on sign-in.
+
+## Breaking / behavioral
+
+- `RouterLinkPipe.transform` returns `string[] | null` (null for `url` units) and compares unit
+  types exactly.
+- A `programUnits.json` with an unknown unit type or missing required fields now fails loudly at
+  first load instead of passing through.
+- PersistentObject units are visible under `Read` instead of `Query` — grants that had one right
+  but not the other will see menu visibility change (to match what the click always did).

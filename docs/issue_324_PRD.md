@@ -1,11 +1,11 @@
 # PRD — Program units: PersistentObject page targets, composed virtual PO pages, and a shipped shell with slots
 
-**Status:** Planned
+**Status:** Implemented (M0–M8; consumer-app adoption M9 pending publish)
 **Issue:** [#324](https://github.com/MintPlayer/MintPlayer.Spark/issues/324)
 **Branch:** `feat/issue-324-program-units`
 **Plan:** `docs/issue_324_plan.md`
 **Base:** `master` @ `7d8e0a68`
-**Release:** next `10.0.0-preview.*` (server) + `@mintplayer/ng-spark` minor + `@mintplayer/ng-spark-auth` minor
+**Release:** `10.0.0-preview.65` + `@mintplayer/ng-spark@22.6.0` + `@mintplayer/ng-spark-auth@22.6.0` (npm packages in lockstep from here)
 **Breaking changes:** allowed — the libraries are in preview (majors stay locked to the platform)
 
 ---
