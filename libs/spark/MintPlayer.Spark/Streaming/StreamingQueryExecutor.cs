@@ -296,8 +296,9 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         }
     }
 
-    private static Type? FindClrType(string clrTypeName)
+    private static Type? FindClrType(string? clrTypeName)
     {
+        if (clrTypeName is null) return null; // JSON-only virtual type: resolves to nothing
         return ReflectionCache.GetOrAdd<Type?>(
             $"clrType|{clrTypeName}",
             () =>

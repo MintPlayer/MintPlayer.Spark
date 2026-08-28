@@ -44,7 +44,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         // duplicate check costs nothing: the permission service memoises per request.
         try
         {
-            await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType.Split('.').Last());
+            await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType?.Split('.').Last() ?? entityType.Name);
         }
         catch (SparkAccessDeniedException)
         {

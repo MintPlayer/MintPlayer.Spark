@@ -84,9 +84,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
 
-        var clrType = entityTypeDefinition.ClrType;
-        var entityType = typeResolver.Resolve(clrType);
-        if (entityType == null) return null;
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
 
         // Composition seam (#324): an Actions class overriding OnComposeAsync serves this type's
         // page from code instead of the database — the start-page pattern. Runs under the
@@ -97,9 +95,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // it exposes, and it is the same authority those guards defer to. The composed object is
         // forced read-only (Can = none) unless the hook says otherwise; anything interactive on
         // such a page is a custom action with its own authorization.
-        var composed = await ComposeViaActionsAsync(entityType, objectTypeId, id);
+        var composed = await ComposeViaActionsAsync(entityType, entityTypeDefinition, objectTypeId, id);
         if (composed is not null)
             return composed;
+
+        // A JSON-only virtual type (no clrType) has no entity pipeline: not composed means
+        // nothing to serve.
+        if (entityType == null) return null;
 
         // Use actions for loading
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
@@ -488,23 +490,33 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     /// <summary>
     /// Invokes the Actions class's <c>OnComposeAsync</c> when — and only when — it is overridden.
-    /// Returns null (meaning "not composed", proceed with the entity pipeline) when the actions
-    /// type keeps the default, doesn't have the hook at all (a hand-written
-    /// <c>IPersistentObjectActions&lt;T&gt;</c> implementer), or the override itself returns null.
-    /// The override check avoids scaffolding a PersistentObject on every read of every type.
+    /// For an entity-backed type the actions resolve over the CLR type as usual; for a JSON-only
+    /// virtual type (<paramref name="entityType"/> null) they resolve by the model type's name.
+    /// Returns null (meaning "not composed", proceed with the entity pipeline — or 404 for a
+    /// virtual type) when there is no actions class, the actions type keeps the default, doesn't
+    /// have the hook at all (a hand-written <c>IPersistentObjectActions&lt;T&gt;</c> implementer),
+    /// or the override itself returns null. The override check avoids scaffolding a
+    /// PersistentObject on every read of every type.
     /// </summary>
-    private async Task<PersistentObject?> ComposeViaActionsAsync(Type entityType, Guid objectTypeId, string id)
+    private async Task<PersistentObject?> ComposeViaActionsAsync(
+        Type? entityType, EntityTypeDefinition entityTypeDefinition, Guid objectTypeId, string id)
     {
-        var actions = actionsResolver.ResolveForType(entityType);
+        var actions = entityType is not null
+            ? actionsResolver.ResolveForType(entityType)
+            : actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
+        if (actions is null)
+            return null;
+
         var composeMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
             ("DatabaseAccess.ComposeMethod", actions.GetType()),
             static k =>
             {
                 var method = k.Actions.GetMethod("OnComposeAsync");
                 // DeclaringType is the most-derived class providing the body; when that is still
-                // the open Default base, nothing overrode the hook and there is nothing to invoke.
+                // one of the bases, nothing overrode the hook and there is nothing to invoke.
                 if (method is null) return null;
                 var declaring = method.DeclaringType;
+                if (declaring == typeof(Actions.SparkVirtualObjectActions)) return null;
                 if (declaring is { IsGenericType: true }
                     && declaring.GetGenericTypeDefinition() == typeof(Actions.DefaultPersistentObjectActions<>))
                     return null;

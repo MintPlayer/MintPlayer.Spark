@@ -14,15 +14,19 @@ namespace MintPlayer.Spark.Services;
 /// </remarks>
 internal interface ISparkTypeResolver
 {
-    /// <returns>The type, or <c>null</c> when no loaded assembly declares it.</returns>
-    Type? Resolve(string clrType);
+    /// <returns>The type; <c>null</c> when no loaded assembly declares it, or when
+    /// <paramref name="clrType"/> itself is null — a JSON-only virtual type, which by definition
+    /// resolves to nothing.</returns>
+    Type? Resolve(string? clrType);
 }
 
 [Register(typeof(ISparkTypeResolver), ServiceLifetime.Singleton)]
 internal partial class SparkTypeResolver : ISparkTypeResolver
 {
-    public Type? Resolve(string clrType)
+    public Type? Resolve(string? clrType)
     {
+        if (clrType is null) return null;
+
         // Cached because the miss path walks every loaded assembly, and a miss is the common
         // case for the first lookup of each type in an app with many assemblies.
         return ReflectionCache.GetOrAdd<Type?>(

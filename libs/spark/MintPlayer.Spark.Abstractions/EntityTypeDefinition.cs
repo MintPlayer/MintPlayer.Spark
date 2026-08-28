@@ -5,7 +5,14 @@ public sealed class EntityTypeDefinition
     public required Guid Id { get; set; }
     public required string Name { get; set; }
     public TranslatedString? Description { get; set; }
-    public required string ClrType { get; set; }
+    /// <summary>
+    /// The CLR type this definition maps to — the anchor of the entity pipeline (load, query,
+    /// save, row security). <see langword="null"/> for a JSON-only virtual type: a page that
+    /// exists in the model but not in the database, served exclusively through
+    /// <c>OnComposeAsync</c> on a <c>{Name}Actions</c> class (resolved by name) or scaffolded via
+    /// <c>IManager.GetPersistentObject</c>. Everything document-shaped 404s for such a type.
+    /// </summary>
+    public string? ClrType { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this entity type.
     /// Used as an alternative to the GUID in URLs (e.g., /po/car instead of /po/{guid}).

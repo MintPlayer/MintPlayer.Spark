@@ -60,7 +60,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var typeName = entityType.ClrType.Split('.').Last();
+        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
 
         try
         {

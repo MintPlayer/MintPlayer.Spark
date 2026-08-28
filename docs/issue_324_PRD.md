@@ -275,8 +275,16 @@ Decisions folded in:
 
 ### D2 — The composed virtual PO read path
 
-The Vidyano start-page pattern, adapted to Spark's entity-first pipeline. A **virtual
-type** is what F3 already defines: model JSON + CLR marker class + no context root.
+The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
+
+**Design revision during implementation (owner directive):** a virtual type needs **no CLR
+class at all** — F3's marker-class shape was itself boilerplate. `EntityTypeDefinition.ClrType`
+became optional; a JSON-only type's actions resolve by *name* (`{Name}Actions` deriving from a
+new non-generic `SparkVirtualObjectActions` base carrying only `OnComposeAsync`), and every
+document-shaped path 404s for it (`ISparkTypeResolver.Resolve(null) → null`, defining the error
+out of existence at each call site). Fleet's `ConfirmDeleteCar` marker class was deleted on the
+same grounds — dialogs scaffold via `IManager.GetPersistentObject` from the JSON alone. The
+entity-backed compose override below still exists for types that are only *sometimes* composed.
 
 New seam on the actions class (final shape decided by spike S1):
 

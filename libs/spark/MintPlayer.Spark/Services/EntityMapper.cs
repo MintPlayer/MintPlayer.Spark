@@ -1056,8 +1056,9 @@ internal partial class EntityMapper : IEntityMapper
         return type.GetCachedProperties().Length > 0;
     }
 
-    private Type? ResolveType(string clrType)
+    private Type? ResolveType(string? clrType)
     {
+        if (clrType is null) return null; // JSON-only virtual type: resolves to nothing
         // Cache positive and negative resolutions: assembly walks are expensive and the
         // same CLR type names are looked up repeatedly across requests. ReflectionCache
         // memoizes null results too — so unresolvable names don't re-walk every time.

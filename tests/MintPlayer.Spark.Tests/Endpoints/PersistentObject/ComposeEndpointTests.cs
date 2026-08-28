@@ -39,6 +39,24 @@ public class ComposeEndpointTests : SparkTestDriver
         }
     };
 
+    private static readonly Guid JsonOnlyTypeId = Guid.Parse("44444444-dddd-dddd-dddd-444444444444");
+
+    // The JSON-only shape: no clrType at all — the type exists purely in the model, and its
+    // actions are resolved by NAME (JsonOnlyPage + "Actions").
+    private static EntityTypeFile JsonOnlyModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = JsonOnlyTypeId,
+            Name = "JsonOnlyPage",
+            Breadcrumb = "{Title}",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+            ],
+        }
+    };
+
     private static EntityTypeFile NullComposeModel() => new()
     {
         PersistentObject = new EntityTypeDefinition
@@ -110,6 +128,34 @@ public class ComposeEndpointTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task JsonOnly_type_without_clrType_is_composed_via_name_resolved_actions()
+    {
+        await using var factory = new SparkEndpointFactory(Store, [JsonOnlyModel()]);
+
+        var po = await GetPoAsync(factory, JsonOnlyTypeId, "the-page");
+
+        po.Should().NotBeNull("no CLR class exists anywhere for this type — JSON + a named Actions class suffice");
+        po!.Id.Should().Be("the-page");
+        po.Attributes.Should().Contain(a => a.Name == "Title" && a.Value!.ToString() == "Composed without a class");
+        po.Can!.Edit.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task JsonOnly_type_without_an_actions_class_returns_404()
+    {
+        // Same model, different name: nothing named OrphanPageActions exists, so the type has no
+        // behavior at all — 404, not a blank page.
+        var model = JsonOnlyModel();
+        model.PersistentObject!.Id = Guid.Parse("55555555-eeee-eeee-eeee-555555555555");
+        model.PersistentObject.Name = "OrphanPage";
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+
+        var po = await GetPoAsync(factory, model.PersistentObject.Id, "anything");
+
+        po.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Override_returning_null_falls_through_to_the_entity_pipeline()
     {
         await using var factory = new SparkEndpointFactory(Store, [NullComposeModel()]);
@@ -120,7 +166,18 @@ public class ComposeEndpointTests : SparkTestDriver
     }
 }
 
-/// <summary>Virtual-PO marker: no context root, never stored; see the model file in the test above.</summary>
+/// <summary>The JSON-only virtual actions: found by name, no CLR entity anywhere.</summary>
+public sealed class JsonOnlyPageActions : SparkVirtualObjectActions
+{
+    public override Task<Abstractions.PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+    {
+        args.PersistentObject["Title"].Value = "Composed without a class";
+        return Task.FromResult<Abstractions.PersistentObject?>(args.PersistentObject);
+    }
+}
+
+/// <summary>An entity-backed type whose page is (always, here) composed — the
+/// <see cref="DefaultPersistentObjectActions{T}"/> override flavor of the hook.</summary>
 public sealed class ComposedStart
 {
     public string? Welcome { get; set; }

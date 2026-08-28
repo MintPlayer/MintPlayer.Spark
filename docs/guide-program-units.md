@@ -61,29 +61,23 @@ it on sign-in/out.
 
 ## Composed pages: a menu entry that opens code, not a document
 
-A `persistentObject` unit with an `objectId` can target a type that has **no documents at all** —
-a start page, a dashboard, a per-user landing page. The recipe (DemoApp's `StartPage` is the
-worked example):
+A `persistentObject` unit with an `objectId` can target a type that has **no documents and no
+CLR class at all** — a start page, a dashboard, a per-user landing page. The recipe (DemoApp's
+`StartPage` is the worked example):
 
-1. **A marker class** — `EntityTypeDefinition.ClrType` must resolve, nothing else is used:
+1. **A hand-authored model file** — `App_Data/Model/StartPage.json` declaring the attributes
+   (read-only), tabs/groups, breadcrumb — and **no `clrType`**. That absence is what makes the
+   type virtual: everything document-shaped (load, query, save) 404s for it. Run
+   `--spark-synchronize-model` afterwards so `modelHashes.json` covers the file; synchronize
+   preserves hand-authored files.
 
-   ```csharp
-   // DemoApp.Library/VirtualObjects/StartPage.cs
-   public sealed class StartPage { public string? Welcome { get; set; } /* … */ }
-   ```
-
-   No context root: the type is not queryable and nothing persists it.
-
-2. **A hand-authored model file** — `App_Data/Model/StartPage.json` declaring the attributes
-   (read-only), tabs/groups, and `clrType`. Run `--spark-synchronize-model` afterwards so
-   `modelHashes.json` covers it; synchronize preserves hand-authored files.
-
-3. **The compose hook** — override `OnComposeAsync` on the type's Actions class. It receives a
-   fully scaffolded `PersistentObject` (all attributes, null values) plus the requested id, fills
-   in values and `Breadcrumb` (the page title), and returns it:
+2. **The compose hook** — a class named `{Name}Actions` deriving from
+   `SparkVirtualObjectActions`, resolved by name exactly like entity Actions classes. It
+   receives a fully scaffolded `PersistentObject` (all attributes, null values) plus the
+   requested id, fills in values and `Breadcrumb` (the page title), and returns it:
 
    ```csharp
-   public partial class StartPageActions : DefaultPersistentObjectActions<StartPage>
+   public partial class StartPageActions : SparkVirtualObjectActions
    {
        [Inject] private readonly IAsyncDocumentSession session;
 
@@ -93,15 +87,23 @@ worked example):
            obj["Welcome"].Value = "Hello!";
            obj["PeopleCount"].Value = await session.Query<Person>().CountAsync();
            obj.Breadcrumb = "Start";
-           return obj;                                           // null ⇒ normal entity pipeline
+           return obj;                                           // null ⇒ 404
        }
    }
    ```
 
-4. **A grant** — `Read/StartPage` in `security.json`. No grant, no page and no menu entry.
+3. **A grant** — `Read/StartPage` in `security.json`. No grant, no page and no menu entry.
 
-5. **The unit** — `type: "persistentObject"`, the type's id, and any stable `objectId` string
+4. **The unit** — `type: "persistentObject"`, the type's id, and any stable `objectId` string
    (`"start"`); the hook is free to ignore it.
+
+An **entity-backed** type can compose too — override the same `OnComposeAsync` on its
+`DefaultPersistentObjectActions<T>` class; returning `null` (the default) leaves the entity
+pipeline byte-for-byte unchanged, so the hook also suits types that are *sometimes* composed.
+
+The same JSON-only shape serves dialog/popup POs: declare the model file, scaffold with
+`IManager.GetPersistentObject(...)` inside a custom action, and hand it to a retry action —
+no class needed there either (Fleet's `ConfirmDeleteCar` is the worked example).
 
 What the framework does with a composed object: it is served after the type-level `Read` check
 and **instead of** the entity pipeline — no document load, no collection guard, no row security
@@ -109,9 +111,6 @@ and **instead of** the entity pipeline — no document load, no collection guard
 no Etag. `can.edit`/`can.delete` are forced false unless the hook sets them, so the generic
 detail page renders it read-only with the breadcrumb as heading. Anything interactive on such a
 page is a custom action, which carries its own authorization.
-
-Returning `null` (the default) leaves the read path byte-for-byte unchanged — so the hook also
-suits types that are *sometimes* composed.
 
 ## `spark-shell` — the application frame
 

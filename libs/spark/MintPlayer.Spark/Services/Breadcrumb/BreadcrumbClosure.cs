@@ -45,7 +45,11 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
     private IReadOnlyList<IReadOnlyList<string>>? _cycles;
 
     public IReadOnlyList<BreadcrumbReference> GetReferences(EntityTypeDefinition def)
-        => _refsByClrType.GetOrAdd(def.ClrType, _ => ComputeReferences(def));
+        => _refsByClrType.GetOrAdd(KeyOf(def), _ => ComputeReferences(def));
+
+    /// <summary>Closure identity for a definition. A JSON-only virtual type has no ClrType, but
+    /// its Name is unique within the model, so it keys just as well.</summary>
+    private static string KeyOf(EntityTypeDefinition def) => def.ClrType ?? def.Name;
 
     private static IReadOnlyList<BreadcrumbReference> ComputeReferences(EntityTypeDefinition def)
     {
@@ -73,7 +77,7 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
 
     private int ComputeDepth(EntityTypeDefinition def, HashSet<string> path)
     {
-        if (!path.Add(def.ClrType))
+        if (!path.Add(KeyOf(def)))
             return 0; // cycle — stop descending, the cyclic edge adds no further depth
 
         var maxChild = 0;
@@ -85,7 +89,7 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
             maxChild = Math.Max(maxChild, ComputeDepth(target, path));
         }
 
-        path.Remove(def.ClrType);
+        path.Remove(KeyOf(def));
         return 1 + maxChild;
     }
 
@@ -115,10 +119,10 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
         List<IReadOnlyList<string>> cycles,
         HashSet<string> seen)
     {
-        if (inPath.Contains(def.ClrType))
+        if (inPath.Contains(KeyOf(def)))
         {
-            var start = path.IndexOf(def.ClrType);
-            var cycle = path.Skip(start).Append(def.ClrType).ToList();
+            var start = path.IndexOf(KeyOf(def));
+            var cycle = path.Skip(start).Append(KeyOf(def)).ToList();
             // Dedupe rotations/re-discoveries: key by the unordered set of nodes in the loop.
             var key = string.Join("|", cycle.Take(cycle.Count - 1).OrderBy(x => x, StringComparer.Ordinal));
             if (seen.Add(key))
@@ -126,8 +130,8 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
             return;
         }
 
-        path.Add(def.ClrType);
-        inPath.Add(def.ClrType);
+        path.Add(KeyOf(def));
+        inPath.Add(KeyOf(def));
 
         foreach (var reference in GetReferences(def))
         {
@@ -137,6 +141,6 @@ internal partial class BreadcrumbClosure : IBreadcrumbClosure
         }
 
         path.RemoveAt(path.Count - 1);
-        inPath.Remove(def.ClrType);
+        inPath.Remove(KeyOf(def));
     }
 }

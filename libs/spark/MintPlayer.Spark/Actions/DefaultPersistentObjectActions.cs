@@ -61,12 +61,14 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// entity. The default returns null, which means "not composed": the normal entity pipeline
     /// (<see cref="OnLoadAsync"/> → collection guard → row security → mapping) runs unchanged.
     /// <para>
-    /// This is how a menu entry opens a page that exists in the model but not in the database —
-    /// the start-page pattern: a model-declared type with a CLR marker class and no context root,
-    /// whose Actions class fills <c>args.PersistentObject</c>'s attribute values and
-    /// <see cref="PersistentObject.Breadcrumb"/> (the page title) here, ignoring
-    /// <see cref="SparkComposeArgs.RequestedId"/>. Composition runs under the type-level
-    /// <c>Read</c> right, which <c>security.json</c> must grant explicitly.
+    /// This override suits an <b>entity-backed</b> type that is sometimes composed. A page that
+    /// is <em>only ever</em> composed needs no CLR entity at all: declare it as a JSON-only
+    /// model file (no <c>clrType</c>) and put the hook on a
+    /// <see cref="SparkVirtualObjectActions"/> subclass instead — the start-page pattern. Either
+    /// way the hook fills <c>args.PersistentObject</c>'s attribute values and
+    /// <see cref="PersistentObject.Breadcrumb"/> (the page title), ignoring
+    /// <see cref="SparkComposeArgs.RequestedId"/> at will, and composition runs under the
+    /// type-level <c>Read</c> right, which <c>security.json</c> must grant explicitly.
     /// </para>
     /// <para>
     /// A composed object is read-only through the generic pipeline: unless this hook sets

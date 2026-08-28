@@ -7,7 +7,6 @@
       "fr": "Confirmer la suppression",
       "nl": "Verwijdering bevestigen"
     },
-    "clrType": "Fleet.VirtualObjects.ConfirmDeleteCar",
     "breadcrumb": "{Confirmation}",
     "tabs": [],
     "groups": [],

@@ -7,7 +7,6 @@
       "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
       "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
     },
-    "clrType": "DemoApp.Library.VirtualObjects.StartPage",
     "breadcrumb": "Start",
     "tabs": [],
     "groups": [],

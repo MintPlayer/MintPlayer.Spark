@@ -257,8 +257,9 @@ internal partial class SyncActionHandler : ISyncActionHandler
         return resolved;
     }
 
-    private static Type? ResolveType(string clrType)
+    private static Type? ResolveType(string? clrType)
     {
+        if (clrType is null) return null; // JSON-only virtual type: resolves to nothing
         return ReflectionCache.GetOrAdd<Type?>(
             $"resolveType|{clrType}",
             () =>

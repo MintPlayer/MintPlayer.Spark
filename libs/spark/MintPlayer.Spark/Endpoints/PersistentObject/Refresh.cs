@@ -67,7 +67,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
             ?? throw new InvalidOperationException("PersistentObject is required.");
 
         var isNew = string.IsNullOrEmpty(submitted.Id);
-        var typeName = entityType.ClrType.Split('.').Last();
+        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
 
         // Vidyano maps a refresh onto New for a new object and Read for an existing one, and that is
         // the right vocabulary: a refresh reveals what the form would look like, which is a read of

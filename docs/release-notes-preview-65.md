@@ -21,23 +21,31 @@ The endpoint now filters by the right the unit's click will demand: `Query` for 
 **`Read` for persistentObject units** (previously `Query` — which showed menu entries whose click
 404'd), nothing for `url` units.
 
-## Composed virtual PO pages — `OnComposeAsync`
+## Composed virtual PO pages — `OnComposeAsync`, no CLR class required
 
-The start-page pattern: a model-declared type with a CLR marker class and no context root, whose
-page is built in code. New hook on `DefaultPersistentObjectActions<T>`:
+The start-page pattern: a type that exists **only as a model JSON file** — no `clrType`, no
+entity, no documents — whose page is built in code. `EntityTypeDefinition.ClrType` is now
+optional; a `{Name}Actions` class deriving from the new `SparkVirtualObjectActions` base is
+resolved by name and composes the page:
 
 ```csharp
-public override async Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+public partial class StartPageActions : SparkVirtualObjectActions
 {
-    args.PersistentObject["Welcome"].Value = "Hello!";
-    args.PersistentObject.Breadcrumb = "Start";
-    return args.PersistentObject;   // null (the default) ⇒ the entity pipeline, unchanged
+    public override async Task<PersistentObject?> OnComposeAsync(SparkComposeArgs args)
+    {
+        args.PersistentObject["Welcome"].Value = "Hello!";
+        args.PersistentObject.Breadcrumb = "Start";
+        return args.PersistentObject;   // null ⇒ 404
+    }
 }
 ```
 
 A non-null return is served instead of a document load, under the type-level `Read` right, with
-`can.edit`/`can.delete` forced false. DemoApp's new **Start** unit is the worked example:
-greeting + live collection counts, no document behind it.
+`can.edit`/`can.delete` forced false. Entity-backed types get the same hook as an override on
+`DefaultPersistentObjectActions<T>` (null there ⇒ the entity pipeline, unchanged) for pages that
+are only *sometimes* composed. DemoApp's new **Start** unit is the worked example: greeting +
+live collection counts, nothing behind it. Fleet's `ConfirmDeleteCar` dialog PO also lost its
+marker class — JSON-only + `IManager.GetPersistentObject` covers dialogs too.
 
 ## `programUnits.json` is validated at load
 
