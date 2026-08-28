@@ -114,19 +114,34 @@ public sealed class ModelLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Duplicate_aliases_keep_the_first_first_wins()
+    public void Duplicate_aliases_are_refused_rather_than_resolved_to_one_of_them()
     {
-        // Both files claim alias "x" — the first file's entity wins; the second logs a warning.
+        // This test used to pin first-wins as though it were the design (#327 M3 overturned that:
+        // a URL identifies exactly one type, and the loser was silently unroutable). M3 raised the
+        // throw but a catch-all around the file loop swallowed it back into a console line, so the
+        // old behaviour survived and this test kept passing. Both are fixed together — the catch is
+        // narrowed to genuine read/parse failures, so a model that contradicts itself stops the
+        // process instead of starting half-bound.
         WriteModel("A.json", ModelJson("11111111-1111-1111-1111-111111111111", "AlphaA", "Demo.A", alias: "x"));
         WriteModel("B.json", ModelJson("22222222-2222-2222-2222-222222222222", "BetaB", "Demo.B", alias: "x"));
         var loader = CreateLoader();
 
-        var resolved = loader.GetEntityTypeByAlias("x");
+        var act = () => loader.GetEntityTypeByAlias("x");
 
-        resolved.Should().NotBeNull();
-        // We don't pin which file wins (depends on Directory.GetFiles ordering) — just that
-        // exactly one of them is bound to the alias.
-        resolved!.Name.Should().BeOneOf("AlphaA", "BetaB");
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*resolve to the alias 'x'*");
+    }
+
+    [Fact]
+    public void An_unreadable_model_file_still_degrades_to_a_message()
+    {
+        // The other half of narrowing the catch: a file that cannot be parsed is not a
+        // self-contradictory model, and must not take the application down with it.
+        WriteModel("Broken.json", "{ this is not json");
+        WriteModel("Car.json", ModelJson("11111111-1111-1111-1111-111111111111", "Car", "Demo.Car"));
+        var loader = CreateLoader();
+
+        loader.GetEntityTypeByName("Car").Should().NotBeNull();
     }
 
     [Fact]

@@ -57,13 +57,24 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // when it opens.
         var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef);
 
-        // Resolve CLR type and Actions class
-        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
-        if (entityType is null)
+        // Resolve CLR type and Actions class. Both failures are refused at --spark-verify-model and
+        // at query-load time (SparkComposedQueries); reaching either here means the model changed
+        // under a running process, so the message still has to stand on its own inside a websocket
+        // frame that the client renders as one line.
+        if (SparkComposedQueries.IsComposed(entityTypeDef))
         {
             throw new InvalidOperationException(
-                $"CLR type '{entityTypeDef.ClrType}' not found for streaming query '{query.Name}'.");
+                $"Streaming query '{query.Name}' streams over '{entityTypeDef.Name}', which declares no " +
+                $"clrType. Streaming watches a RavenDB collection for changes, and a composed type has no " +
+                $"collection to watch — its rows are computed by {entityTypeDef.Name}Actions. Serve it as a " +
+                $"non-streaming query instead.");
         }
+
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType)
+            ?? throw new InvalidOperationException(
+                $"Streaming query '{query.Name}' maps rows to '{entityTypeDef.Name}', whose clrType " +
+                $"'{entityTypeDef.ClrType}' is not declared by any loaded assembly. Re-run " +
+                $"'--spark-synchronize-model' if the class was renamed, or reference the assembly declaring it.");
 
         var actionsInstance = actionsResolver.ResolveForType(entityType);
 

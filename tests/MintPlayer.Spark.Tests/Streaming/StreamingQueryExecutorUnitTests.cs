@@ -100,7 +100,30 @@ public class StreamingQueryExecutorUnitTests
         var act = () => Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.Foo"), CancellationToken.None));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(e => e.Message.Contains("CLR type") && e.Message.Contains("GhostType"));
+            .Where(e => e.Message.Contains("GhostType") && e.Message.Contains("synchronize-model"));
+    }
+
+    [Fact]
+    public async Task Streaming_over_a_composed_type_is_refused_by_name_not_by_a_failed_type_lookup()
+    {
+        // #327 M5. A type with no clrType is composed — its rows are computed, so there is no
+        // collection for a change stream to watch. This used to fall into the CLR-type lookup and
+        // die as `CLR type '' not found`, which named neither the query nor the actual reason.
+        // Refused at --spark-verify-model and at query load too; this is the last line of defence,
+        // for a model that changed under a running process.
+        var composed = new EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "Dashboard",
+            ClrType = null,
+        };
+        _modelLoader.GetEntityTypeByName("TestEntity").Returns(composed);
+        var executor = CreateExecutor();
+
+        var act = () => Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.Foo"), CancellationToken.None));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("no collection to watch") && e.Message.Contains("Dashboard"));
     }
 
     [Fact]

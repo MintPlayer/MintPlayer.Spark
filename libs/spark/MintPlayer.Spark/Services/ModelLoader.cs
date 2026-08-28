@@ -84,8 +84,14 @@ internal partial class ModelLoader : IModelLoader
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
+                // Narrow on purpose. This used to catch everything, which quietly defeated the
+                // alias-collision throw above (#327 M3): the exception was raised, printed as
+                // "Error loading model file …", and swallowed — so the colliding type was skipped
+                // and the application started anyway, with one of two types unroutable. A file that
+                // cannot be read or parsed is a different kind of problem and still degrades to a
+                // message; a model that parses but contradicts itself must stop the process.
                 Console.WriteLine($"Error loading model file {file}: {ex.Message}");
             }
         }
