@@ -1,6 +1,32 @@
 {
   "programUnitGroups": [
     {
+      "id": "990e8400-e29b-41d4-a716-446655440100",
+      "name": {"en": "Getting started", "fr": "Premiers pas", "nl": "Aan de slag"},
+      "icon": "bi-house",
+      "order": 0,
+      "programUnits": [
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440101",
+          "name": {"en": "Start", "fr": "Accueil", "nl": "Start"},
+          "icon": "bi-house-door",
+          "type": "persistentObject",
+          "persistentObjectId": "7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60",
+          "alias": "startpage",
+          "objectId": "start",
+          "order": 1
+        },
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440102",
+          "name": {"en": "Spark on GitHub", "fr": "Spark sur GitHub", "nl": "Spark op GitHub"},
+          "icon": "bi-github",
+          "type": "url",
+          "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+          "order": 2
+        }
+      ]
+    },
+    {
       "id": "990e8400-e29b-41d4-a716-446655440000",
       "name": {"en": "Master Data", "fr": "Données de base", "nl": "Stamgegevens"},
       "icon": "bi-database",

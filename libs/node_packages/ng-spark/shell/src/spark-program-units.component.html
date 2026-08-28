@@ -1,0 +1,27 @@
+<bs-accordion class="d-block">
+  @for (group of groups(); track group.id) {
+    <bs-accordion-tab>
+      <ng-container *bsAccordionTabHeader>
+        <spark-icon [name]="group.icon | iconName:'bi-folder'" />
+        <span class="ms-2">{{ group.name | resolveTranslation }}</span>
+      </ng-container>
+      @for (unit of group.programUnits; track unit.id) {
+        @if (unit | routerLink; as link) {
+          <a [routerLink]="link"
+             routerLinkActive="active"
+             class="d-block px-3 py-2 text-decoration-none nav-link">
+            <spark-icon [name]="unit.icon | iconName:'bi-file'" />
+            <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
+          </a>
+        } @else {
+          <!-- A url unit is an external address: a plain anchor, never a router link. -->
+          <a [href]="unit.url" target="_blank" rel="noopener"
+             class="d-block px-3 py-2 text-decoration-none nav-link">
+            <spark-icon [name]="unit.icon | iconName:'bi-box-arrow-up-right'" />
+            <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
+          </a>
+        }
+      }
+    </bs-accordion-tab>
+  }
+</bs-accordion>

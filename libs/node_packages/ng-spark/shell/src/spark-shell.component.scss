@@ -1,0 +1,77 @@
+// The shell's chrome palette, overridable per app on the <spark-shell> element:
+//   spark-shell { --spark-shell-sidebar-bg: #1a1a2e; --spark-shell-main-bg: #fff; }
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+bs-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.spark-topbar {
+  background-color: var(--spark-shell-topbar-bg, var(--bs-dark, #212529));
+}
+
+// We project our own <bs-navbar-toggler> into the topbar, so hide the web component's built-in
+// hamburger to avoid showing two togglers. (::part is only reachable unscoped; this is the same
+// rule every app previously carried itself.)
+::ng-deep spark-shell mp-shell::part(hamburger) {
+  display: none;
+}
+
+// The navbar-toggler's bars use --bs-secondary-color (dark by default); lighten it so the
+// toggler is visible against the dark topbar.
+bs-navbar-toggler {
+  --bs-secondary-color: rgba(255, 255, 255, 0.85);
+}
+
+main {
+  height: 100%;
+  background-color: var(--spark-shell-main-bg, #f8f9fa);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+// ng-bootstrap 22's <mp-shell> projects the sidebar into a shadow-DOM `.sidebar` slot, which
+// scoped styles can't reach from outside. Color the slotted <nav> directly and let it fill the
+// full-height sidebar column.
+nav.spark-sidebar {
+  min-height: 100%;
+  background: var(--spark-shell-sidebar-bg, #f8f9fa);
+}
+
+nav.spark-sidebar.spark-sidebar-dark {
+  background: var(--spark-shell-sidebar-bg, #333);
+  color: #fff;
+}
+
+// Slot content (SidebarTop/Tabs/Footer) is instantiated from the HOST's template, so it carries
+// the host's style scope — neither this component's scoped rules nor spark-program-units' reach
+// it. These ::ng-deep rules make host-slotted links and accordions match the menu's styling
+// (twin of the rules in spark-program-units.component.scss, which cover the menu itself).
+:host ::ng-deep nav.spark-sidebar {
+  // The accordion seams for a host-declared <bs-accordion> in *sparkShellSidebarTabs; custom
+  // properties inherit across the shadow boundary, ::part reaches the one exposed box.
+  --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
+  --bs-border-color: transparent;
+
+  mp-accordion::part(content) {
+    padding: 0;
+  }
+
+  .nav-link {
+    color: inherit;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &.active {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+}

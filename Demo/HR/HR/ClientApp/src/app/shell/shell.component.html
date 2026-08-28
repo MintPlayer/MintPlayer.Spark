@@ -1,47 +1,9 @@
-<bs-shell [state]="shellState()" [breakpoint]="'md'" (statechange)="onShellToggle($event)">
-  <div *bsShellTopbar class="w-100 bg-dark d-flex align-items-center">
-    <bs-navbar-toggler [state]="isSidebarVisible()"
-                       (stateChange)="toggleSidebar($event)">
-    </bs-navbar-toggler>
-    <div class="ms-auto me-3 d-flex align-items-center gap-2">
-      @if (lang.languages() | keyvalue; as langs) {
-        @if (langs.length > 1) {
-          <bs-select [ngModel]="lang.language()"
-                     (ngModelChange)="lang.setLanguage($event)">
-            @for (l of langs; track l.key) {
-              <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
-            }
-          </bs-select>
-        }
-      }
-      <spark-auth-bar />
-    </div>
-  </div>
-  <nav bsShellSidebar data-bs-theme="dark" class="sidebar-inner text-light p-2">
-    <h5 class="p-3 border-bottom">Spark Demo</h5>
-    <bs-accordion class="d-block">
-      @for (group of programUnitGroups(); track group.id) {
-      <bs-accordion-tab>
-        <ng-container *bsAccordionTabHeader>
-          <span class="triangle me-2"></span>
-          <spark-icon [name]="group.icon | iconName:'bi-folder'" />
-          <span class="ms-2">{{ group.name | resolveTranslation }}</span>
-        </ng-container>
-        @for (unit of group.programUnits; track unit.id) {
-        <a [routerLink]="unit | routerLink"
-           routerLinkActive="active"
-           (click)="onMenuItemClick()"
-           class="d-block px-3 py-2 text-light text-decoration-none nav-link">
-          <spark-icon [name]="unit.icon | iconName:'bi-file'" />
-          <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
-        </a>
-        }
-      </bs-accordion-tab>
-      }
-    </bs-accordion>
-  </nav>
-
-  <main class="p-4">
-    <router-outlet />
-  </main>
-</bs-shell>
+<spark-shell title="Spark Demo">
+  <!-- Replaces the topbar's trailing default (the bare language selector) to put the auth bar
+       next to it. The menu itself is fully server-driven — see programUnits.json. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    <spark-auth-bar />
+  </ng-container>
+  <router-outlet />
+</spark-shell>

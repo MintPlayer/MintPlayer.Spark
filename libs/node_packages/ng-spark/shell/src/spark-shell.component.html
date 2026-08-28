@@ -1,0 +1,44 @@
+<bs-shell [state]="shellState()" [breakpoint]="breakpoint()" [dismissOnNavigate]="true"
+          (statechange)="onShellToggle($event)">
+  <div slot="topbar" class="spark-topbar w-100 d-flex align-items-center">
+    @if (topbarStartTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    } @else {
+      <bs-navbar-toggler [state]="isSidebarVisible()" (stateChange)="toggleSidebar($event)" />
+    }
+    <div class="ms-auto me-3 d-flex align-items-center gap-2">
+      @if (topbarEndTpl(); as tpl) {
+        <ng-container *ngTemplateOutlet="tpl" />
+      } @else {
+        <spark-language-selector />
+      }
+    </div>
+  </div>
+
+  <nav bsShellSidebar class="spark-sidebar p-2"
+       [class.spark-sidebar-dark]="sidebarTheme() === 'dark'"
+       [attr.data-bs-theme]="sidebarTheme()">
+    @if (sidebarHeaderTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    } @else {
+      <h5 class="p-3 border-bottom">{{ title() }}</h5>
+    }
+    @if (sidebarTopTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    }
+    <spark-program-units [reloadToken]="reloadToken()" />
+    @if (sidebarTabsTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    }
+    @if (sidebarFooterTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    }
+  </nav>
+
+  <main class="p-4">
+    @if (mainHeaderTpl(); as tpl) {
+      <ng-container *ngTemplateOutlet="tpl" />
+    }
+    <ng-content />
+  </main>
+</bs-shell>

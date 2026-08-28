@@ -1,0 +1,33 @@
+// ng-bootstrap ≥22.13 renders the accordion's internals inside a Lit web component's shadow
+// DOM, so the Bootstrap classes (.accordion-item, .accordion-button, .accordion-body) are
+// unreachable from any host stylesheet. The two seams that DO cross the boundary:
+//   1. --bs-* custom properties — they inherit into the shadow tree. Declared on :host so they
+//      scope to this menu and not to every accordion on the page. Note --bs-accordion-* would
+//      NOT work: the component re-declares those from the --bs-body-* globals in its own :host
+//      block, which beats an inherited value. The dark/light flip itself comes from
+//      data-bs-theme on an ancestor (spark-shell's sidebar <nav> sets it).
+//   2. ::part() — for the one box the component exposes as a part.
+:host {
+  display: block;
+  // The header tint while a tab is open; the component maps its active background here.
+  --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
+  // Restores the borderless look; the accordion derives its border from --bs-border-color.
+  --bs-border-color: transparent;
+}
+
+// Nav links run edge to edge — the component's own body padding would inset them.
+:host ::ng-deep mp-accordion::part(content) {
+  padding: 0;
+}
+
+.nav-link {
+  color: inherit;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  &.active {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+}

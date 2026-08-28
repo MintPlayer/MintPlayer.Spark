@@ -24,12 +24,14 @@
     { "id": "d0000001-0000-0000-0000-000000000004", "resource": "Query/Stock",                    "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
     { "id": "d0000001-0000-0000-0000-000000000005", "resource": "Query/Address",                  "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
     { "id": "d0000001-0000-0000-0000-000000000006", "resource": "ReadEdit/LookupReferences",      "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "d0000001-0000-0000-0000-000000000007", "resource": "Read/StartPage",                 "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
 
     { "id": "d000000f-0000-0000-0000-000000000001", "resource": "QueryReadEditNewDelete/Person",  "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
     { "id": "d000000f-0000-0000-0000-000000000002", "resource": "QueryReadEditNewDelete/Company", "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
     { "id": "d000000f-0000-0000-0000-000000000003", "resource": "QueryReadEditNewDelete/Car",     "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
     { "id": "d000000f-0000-0000-0000-000000000004", "resource": "Query/Stock",                    "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
     { "id": "d000000f-0000-0000-0000-000000000005", "resource": "Query/Address",                  "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
-    { "id": "d000000f-0000-0000-0000-000000000006", "resource": "ReadEdit/LookupReferences",      "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false }
+    { "id": "d000000f-0000-0000-0000-000000000006", "resource": "ReadEdit/LookupReferences",      "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false },
+    { "id": "d000000f-0000-0000-0000-000000000007", "resource": "Read/StartPage",                 "groupId": "d1b2c3d4-0000-0000-0000-00000000000f", "isDenied": false }
   ]
 }
