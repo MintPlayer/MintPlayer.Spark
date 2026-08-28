@@ -1,9 +1,9 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject, selfBreadcrumb } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject, QueryResultItem, selfBreadcrumb } from '@mintplayer/ng-spark/models';
 
 @Pipe({ name: 'asDetailCellValue', standalone: true, pure: true })
 export class AsDetailCellValuePipe implements PipeTransform {
-  transform(row: Record<string, any>, parentAttr: EntityAttributeDefinition, col: EntityAttributeDefinition, asDetailRefOptions: Record<string, Record<string, PersistentObject[]>>): string {
+  transform(row: Record<string, any>, parentAttr: EntityAttributeDefinition, col: EntityAttributeDefinition, asDetailRefOptions: Record<string, Record<string, QueryResultItem[]>>): string {
     const value = row[col.name];
     if (value == null) return '';
 
@@ -20,7 +20,7 @@ export class AsDetailCellValuePipe implements PipeTransform {
         const options = parentOptions[col.name];
         if (options) {
           const match = options.find(o => o.id === value);
-          if (match) return match.breadcrumb || match.name || String(value);
+          if (match) return match.breadcrumb || String(value);
         }
       }
     }

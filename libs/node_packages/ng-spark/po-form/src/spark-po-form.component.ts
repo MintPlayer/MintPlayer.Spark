@@ -32,27 +32,28 @@ import {
   ErrorForAttributePipe,
 } from '@mintplayer/ng-spark/pipes';
 import {
+  AttributeGroup,
+  AttributeTab,
   ELookupDisplayType,
   EReferenceDisplayType,
+  EntityAttributeDefinition,
   EntityPermissions,
   EntityType,
-  EntityAttributeDefinition,
-  AttributeTab,
-  AttributeGroup,
   LookupReference,
   LookupReferenceValue,
   PersistentObject,
-  ValidationError,
-  ShowedOn,
-  hasShowedOnFlag,
-  resolveTranslation,
+  QueryResultItem,
   RefreshOverlay,
   RefreshedOption,
-  applyOverlay,
-  overlayFromResponse,
-  mergeRefreshValues,
-  evaluateRules,
   RuleFailure,
+  ShowedOn,
+  ValidationError,
+  applyOverlay,
+  evaluateRules,
+  hasShowedOnFlag,
+  mergeRefreshValues,
+  overlayFromResponse,
+  resolveTranslation,
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
@@ -106,7 +107,7 @@ export class SparkPoFormComponent {
   isRefreshing = signal(false);
 
   colors = Color;
-  referenceOptions = signal<Record<string, PersistentObject[]>>({});
+  referenceOptions = signal<Record<string, QueryResultItem[]>>({});
 
   // Multi-reference (Reference && isArray) editor state. Built from the same query
   // results as referenceOptions: a flat TreeNode list per attribute drives an
@@ -127,7 +128,7 @@ export class SparkPoFormComponent {
   asDetailPermissions = signal<Record<string, EntityPermissions>>({});
 
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
-  asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
+  asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
 
   // Reference/Lookup picking is owned by the standalone spark-reference-picker /
   // spark-lookup-picker components (per-instance modal state); the form just feeds them
@@ -220,7 +221,7 @@ export class SparkPoFormComponent {
           parentId: this.parentId(),
           parentType: this.parentType(),
         });
-        return [attr.name, result.data] as [string, PersistentObject[]];
+        return [attr.name, result.items] as [string, QueryResultItem[]];
       })
     );
     const optionsByAttr = this.toRecord(entries);
@@ -236,7 +237,7 @@ export class SparkPoFormComponent {
       const pos = optionsByAttr[attr.name] || [];
       const nodes: TreeNode[] = pos
         .filter(po => !!po.id)
-        .map(po => ({ id: po.id!, label: po.breadcrumb || po.name || po.id! }));
+        .map(po => ({ id: po.id!, label: po.breadcrumb || po.id! }));
       providers[attr.name] = new InMemoryTreeSelectProvider(nodes);
       nodesByAttr[attr.name] = this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode]));
     }
@@ -298,7 +299,7 @@ export class SparkPoFormComponent {
                   parentId: this.parentId(),
                   parentType: this.parentType(),
                 });
-                return [col.name, result.data] as [string, PersistentObject[]];
+                return [col.name, result.items] as [string, QueryResultItem[]];
               })
             );
             this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries) }));
@@ -617,13 +618,13 @@ export class SparkPoFormComponent {
       for (const [name, options] of replaced) {
         const attr = byName.get(name);
         if (attr?.dataType !== 'Reference') continue;
+        // A refresh hook replaced this attribute's options, so synthesise the same row shape the
+        // query path produces: an id and a display string, which is all an option list ever needed.
         next[name] = (options ?? []).map(o => ({
           id: o.key,
-          name: attr.referenceType ?? '',
-          objectTypeId: '',
           breadcrumb: o.label ? resolveTranslation(o.label) : o.key,
-          attributes: [],
-        })) as PersistentObject[];
+          values: [],
+        })) as QueryResultItem[];
       }
       return next;
     });

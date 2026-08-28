@@ -371,10 +371,10 @@ public class SparkClient : IDisposable
         Guid objectTypeId,
         string actionName,
         PersistentObject? parent = null,
-        IReadOnlyList<PersistentObject>? selectedItems = null,
+        IReadOnlyList<string>? selectedItemIds = null,
         CancellationToken cancellationToken = default)
     {
-        var content = JsonContent.Create(new { parent, selectedItems }, options: JsonOptions);
+        var content = JsonContent.Create(new { parent, selectedItemIds }, options: JsonOptions);
         using var response = await SendAsync(
             HttpMethod.Post,
             $"/spark/actions/{objectTypeId}/{Uri.EscapeDataString(actionName)}",

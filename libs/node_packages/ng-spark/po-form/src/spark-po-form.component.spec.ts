@@ -71,7 +71,7 @@ const rolesLookup: LookupReference = {
 
 function createComponent(serviceOverrides: Partial<SparkService> = {}, rendererRegistry: any[] = []) {
   const service: any = {
-    executeQueryByName: vi.fn().mockResolvedValue({ data: allCompanies, totalRecords: 1 }),
+    executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: allCompanies, totalItems: 1 }),
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getLookupReference: vi.fn().mockResolvedValue(rolesLookup),

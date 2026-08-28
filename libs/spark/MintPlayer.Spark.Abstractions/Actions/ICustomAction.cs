@@ -10,6 +10,12 @@ namespace MintPlayer.Spark.Abstractions.Actions;
 /// <see cref="SubmittedParent"/>/<see cref="SubmittedSelectedItems"/> for actions that need the
 /// submitted (possibly edited, possibly unsaved) values.
 /// </para>
+/// <para>
+/// There is no submitted counterpart for the SELECTION, and that is the row/entity separation
+/// showing through: a selected row is named by an id, not submitted as an object. A grid row is a
+/// projection the client was handed, never a document it may hand back, so the only thing worth
+/// carrying across the wire is which rows were picked.
+/// </para>
 /// </summary>
 public class CustomActionArgs
 {
@@ -29,8 +35,13 @@ public class CustomActionArgs
     /// <summary>The parent exactly as the client submitted it — untrusted values, for actions that edit.</summary>
     public PersistentObject? SubmittedParent { get; set; }
 
-    /// <summary>The selected items exactly as the client submitted them — untrusted values.</summary>
-    public PersistentObject[] SubmittedSelectedItems { get; set; } = [];
+    /// <summary>The ids the client named, in submitted order — untrusted input, before resolution.</summary>
+    /// <remarks>
+    /// Rarely needed: <see cref="SelectedItems"/> is these ids resolved and row-checked, and the
+    /// endpoint refuses the whole request if any of them did not resolve, so this cannot be a
+    /// shorter list dressed up as a complete one.
+    /// </remarks>
+    public string[] SubmittedSelectedItemIds { get; set; } = [];
 }
 
 /// <summary>

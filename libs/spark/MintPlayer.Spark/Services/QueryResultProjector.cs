@@ -104,6 +104,21 @@ internal static class QueryResultProjector
         if (attribute is null)
             return new QueryResultItemValue { Key = column.Name };
 
+        // An AsDetail column has no flat value by construction — the mapper nulls it and puts the
+        // nested object graph on Object/Objects, which a projection deliberately does not carry.
+        // Rather than render an empty cell where a count used to be, project the two facts a grid
+        // can actually use: how many children (data, so the client owns the wording and its
+        // pluralisation) and, for a single child, the breadcrumb the server already resolved.
+        if (attribute is PersistentObjectAttributeAsDetail asDetail)
+        {
+            return new QueryResultItemValue
+            {
+                Key = column.Name,
+                Value = column.IsArray ? asDetail.Objects?.Count ?? 0 : null,
+                Breadcrumb = asDetail.Object?.Breadcrumb ?? asDetail.Breadcrumb,
+            };
+        }
+
         return new QueryResultItemValue
         {
             Key = column.Name,

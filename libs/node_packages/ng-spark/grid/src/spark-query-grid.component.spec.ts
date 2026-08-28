@@ -9,7 +9,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, PersistentObject, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 
 /**
  * These carry over from the two components this one replaces. They are not fresh coverage: each
@@ -26,7 +26,7 @@ const personType: EntityType = {
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
+      order: 1, showedOn: ShowedOn.Query | ShowedOn.QueryResultItem,
     } as any,
     {
       id: 'a-internal', name: 'Internal', dataType: 'string',
@@ -36,7 +36,7 @@ const personType: EntityType = {
     {
       id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 3, showedOn: ShowedOn.PersistentObject,
+      order: 3, showedOn: ShowedOn.QueryResultItem,
     } as any,
   ],
 } as any;
@@ -52,9 +52,15 @@ const allPeopleQuery: SparkQuery = {
   isStreamingQuery: false,
 } as any;
 
+// The shape the server sends: columns once, then id + values per row (#327 M4).
+const sampleColumns = [
+  { name: 'FirstName', dataType: 'string', order: 1 } as any,
+];
+
 const samplePage = {
-  data: [{ id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [] } as any],
-  totalRecords: 1,
+  columns: sampleColumns,
+  items: [{ id: 'people/1', breadcrumb: 'Alice', values: [{ key: 'FirstName', value: 'Alice' }] } as any],
+  totalItems: 1,
 };
 
 /**
@@ -155,10 +161,12 @@ describe('SparkQueryGridComponent', () => {
     expect(c.resultCount()).toBe(1);
   });
 
-  it('shows only attributes that are visible and flagged for the query view', async () => {
+  it(`renders the columns the result declares, not the entity type's attributes`, async () => {
+    // The visible-column rule (isVisible && ShowedOn.Query) moved to the server, which is also
+    // where the sort-column allow-list is checked — so both now derive from one place.
     const { c } = await setup();
 
-    expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    expect(c.visibleColumns().map(col => col.name)).toEqual(['FirstName']);
   });
 
   it('isVirtualScrolling reflects the query renderMode', async () => {
@@ -274,31 +282,32 @@ describe('SparkQueryGridComponent', () => {
       value = input<any>();
     }
 
-    const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
-    const asDetailAttr = { name: 'Coverage', dataType: 'AsDetail', rendererOptions: { bar: true } } as any;
+    const asDetailColumn = { name: 'Coverage', dataType: 'AsDetail', isArray: true, order: 1, rendererOptions: { bar: true } } as any;
 
-    it('AsDetail attribute: renderer receives the nested PO as value and the row as item', async () => {
+    it(`a renderer receives the cell value, the row and the column's options`, async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: nested }] } as PersistentObject;
+      // A projection is flat: an AsDetail cell carries the child COUNT, not the children, because
+      // a row deliberately drags no nested object graph across the wire.
+      const row = { id: 'people/1', values: [{ key: 'Coverage', value: 3 }] } as QueryResultItem;
 
-      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
-      expect(inputs['value']).toBe(nested);
+      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailColumn);
+      expect(inputs['value']).toBe(3);
       expect(inputs['item']).toBe(row);
       expect(inputs['options']).toEqual({ bar: true });
     });
 
-    it('AsDetail array attribute: renderer receives the nested PO array as value', async () => {
+    it('a cell the row does not carry yields undefined rather than throwing', async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: null, objects: [nested] }] } as PersistentObject;
+      const row = { id: 'people/1', values: [] } as QueryResultItem;
 
-      expect(c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr)['value']).toEqual([nested]);
+      expect(c.getColumnRendererInputs(FullColumnRenderer, row, asDetailColumn)['value']).toBeUndefined();
     });
 
     it('renderer declaring only value gets a filtered bag (pins the NgComponentOutlet undeclared-input throw)', async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
+      const row = { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] } as QueryResultItem;
 
-      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, personType.attributes[0]);
+      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, sampleColumns[0]);
       expect(Object.keys(inputs)).toEqual(['value']);
       expect(inputs['value']).toBe('Alice');
     });

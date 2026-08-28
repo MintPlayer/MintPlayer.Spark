@@ -10,7 +10,7 @@ import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirectiv
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
@@ -37,7 +37,7 @@ export class SparkReferencePickerComponent {
   /** Currently selected referenced id (or null when unset). */
   value = input<string | null>(null);
   /** Candidate items to pick from (the full query result, pre-loaded by the parent). */
-  options = input<PersistentObject[]>([]);
+  options = input<QueryResultItem[]>([]);
   /** Target entity type's CLR type name; used to load the grid's column headers. */
   referenceType = input<string | undefined>(undefined);
   /** Renders the field with the Bootstrap is-invalid state. */
@@ -53,7 +53,7 @@ export class SparkReferencePickerComponent {
 
   showModal = signal(false);
   entityType = signal<EntityType | null>(null);
-  pagination = signal<PaginationResponse<PersistentObject> | undefined>(undefined);
+  pagination = signal<PaginationResponse<QueryResultItem> | undefined>(undefined);
   settings = signal(new DatatableSettings({
     perPage: { values: [10, 25, 50], selected: 10 },
     page: { values: [1], selected: 1 },
@@ -67,14 +67,14 @@ export class SparkReferencePickerComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  // Typed rows so the datatable generic infers PersistentObject.
-  rows = computed<PersistentObject[]>(() => this.pagination()?.data ?? []);
+  // Typed rows so the datatable generic infers the row type.
+  rows = computed<QueryResultItem[]>(() => this.pagination()?.data ?? []);
 
   displayValue = computed(() => {
     const id = this.value();
     if (!id) return this.lang.t('notSelected');
     const selected = this.options().find(o => o.id === id);
-    return selected?.breadcrumb || selected?.name || id;
+    return selected?.breadcrumb || id;
   });
 
   async open(): Promise<void> {
@@ -107,10 +107,9 @@ export class SparkReferencePickerComponent {
     if (this.searchTerm.trim()) {
       const term = this.searchTerm.toLowerCase().trim();
       filteredItems = this.options().filter(item => {
-        if (item.name?.toLowerCase().includes(term)) return true;
         if (item.breadcrumb?.toLowerCase().includes(term)) return true;
-        return item.attributes.some(attr => {
-          const value = attr.breadcrumb || attr.value;
+        return item.values.some(v => {
+          const value = v.breadcrumb ?? v.value;
           if (value == null) return false;
           return String(value).toLowerCase().includes(term);
         });
@@ -138,7 +137,7 @@ export class SparkReferencePickerComponent {
     this.onSearchChange();
   }
 
-  select(item: PersistentObject): void {
+  select(item: QueryResultItem): void {
     this.valueChange.emit(item.id ?? null);
     this.close();
   }

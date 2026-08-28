@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
@@ -18,7 +18,7 @@ import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 })
 export class VideoPlayerColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  attribute = input<EntityAttributeDefinition>();
+  column = input<SparkCellColumn>();
   options = input<Record<string, any>>();
 
   private static readonly YT_REGEX = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/;

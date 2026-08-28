@@ -21,3 +21,4 @@ export * from './inline-ref-options.pipe';
 export * from './error-for-attribute.pipe';
 export * from './icon-name.pipe';
 export * from './array-value.pipe';
+export * from './query-cell.pipe';

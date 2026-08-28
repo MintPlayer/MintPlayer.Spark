@@ -1,5 +1,5 @@
 import { InputSignal } from '@angular/core';
-import { EntityAttributeDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, PersistentObject, QueryResultItem, SparkCellColumn } from '@mintplayer/ng-spark/models';
 
 // All contract members are optional: the hosts filter the input bag down to what
 // the component actually declares (withDeclaredInputs), so a renderer opts in to
@@ -31,21 +31,28 @@ export interface SparkAttributeDetailRenderer {
  */
 export interface SparkAttributeColumnRenderer {
   /**
-   * The current attribute value. For an AsDetail attribute this is the nested
-   * PersistentObject (single) / PersistentObject[] (array) in query-list and
-   * sub-query grids, and the flattened value in AsDetail sub-table cells.
+   * The cell value. For an AsDetail column this is the nested PersistentObject (single) /
+   * PersistentObject[] (array) in an AsDetail sub-table, and the projected value in a query grid.
    */
   value?: InputSignal<any>;
-  /** The attribute definition metadata */
-  attribute?: InputSignal<EntityAttributeDefinition | undefined>;
+  /**
+   * The column being rendered.
+   *
+   * A query grid supplies a {@link SparkCellColumn} from the result own column metadata; an
+   * AsDetail sub-table supplies its attribute definition, which satisfies the same shape. This
+   * replaced an `attribute` input typed as the definition: a query result no longer carries
+   * attribute metadata per row, so naming it `attribute` would promise something the grid cannot
+   * deliver.
+   */
+  column?: InputSignal<SparkCellColumn | undefined>;
   /** Renderer-specific options from rendererOptions */
   options?: InputSignal<Record<string, any> | undefined>;
   /**
-   * The row this cell belongs to: a PersistentObject in query-list/sub-query
-   * grids, a plain record (possibly including the reserved '__sparkBreadcrumbs'
-   * key) in AsDetail sub-tables. Passed only when declared.
+   * The row this cell belongs to: a {@link QueryResultItem} in a query grid, a plain record
+   * (possibly including the reserved '__sparkBreadcrumbs' key) in AsDetail sub-tables. Passed
+   * only when declared.
    */
-  item?: InputSignal<PersistentObject | Record<string, any> | undefined>;
+  item?: InputSignal<QueryResultItem | Record<string, any> | undefined>;
 }
 
 /**

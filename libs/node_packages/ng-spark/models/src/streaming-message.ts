@@ -1,13 +1,21 @@
-import { PersistentObject } from './persistent-object';
+import { QueryColumn, QueryResultItem } from './query-result';
 
+/**
+ * The opening message of a stream: the column metadata plus the rows so far.
+ *
+ * Columns arrive once, here. A stream is one result whose rows arrive over time, so its shape is
+ * fixed when it opens — patches carry values only.
+ */
 export interface StreamingSnapshotMessage {
   type: 'snapshot';
-  data: PersistentObject[];
+  columns: QueryColumn[];
+  data: QueryResultItem[];
 }
 
 export interface StreamingPatchItem {
   id: string;
-  attributes: Record<string, any>;
+  /** Changed cell values, keyed by column name. Never metadata — the snapshot fixed that. */
+  values: Record<string, any>;
 }
 
 export interface StreamingPatchMessage {

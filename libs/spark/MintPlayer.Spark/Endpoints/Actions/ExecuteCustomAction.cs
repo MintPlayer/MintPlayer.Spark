@@ -91,7 +91,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
         var request = await httpContext.Request.ReadFromJsonAsync<CustomActionRequest>();
 
-        var selectedCount = request?.SelectedItems?.Length ?? 0;
+        var selectedCount = request?.SelectedItemIds?.Length ?? 0;
 
         // A hard ceiling on the selection, whether or not a rule is declared.
         //
@@ -151,7 +151,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             const int ActionRequestBudget = 30;
             using var _ = session.IgnoreMaxRequests(ActionRequestBudget, logger);
 
-            // Row-gated server-side resolution (#236 G3). The wire's Parent/SelectedItems are
+            // Row-gated server-side resolution (#236 G3). The wire's Parent and selected ids are
             // whatever the caller typed — a caller holding the type-level action right could name
             // any id of any type and the action received it as fact. The action now gets entities
             // re-loaded through the same row-gated path as every read; a denied or missing id is
@@ -162,7 +162,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // submittedParent.ObjectTypeId. The type gate above authorized THIS action on THIS
             // type; loading the parent under a client-chosen type would gate it against the wrong
             // rule (and, pre-CollectionGuard, smuggle a foreign-collection id past every row rule).
-            // SelectedItems already does this correctly below.
+            // The selection already does this correctly below.
             Po? parent = null;
             if (request?.Parent is { } submittedParent && !string.IsNullOrEmpty(submittedParent.Id))
             {
@@ -175,7 +175,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
             // Selected items come from this type's list screen; an id-less one names no row and
             // cannot be verified, so it fails the whole request rather than being skipped.
-            var submittedIds = (request?.SelectedItems ?? []).Select(i => i.Id).ToList();
+            var submittedIds = (request?.SelectedItemIds ?? []).ToList();
             if (submittedIds.Any(string.IsNullOrEmpty))
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
@@ -229,7 +229,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 Parent = parent,
                 SelectedItems = [.. selectedItems],
                 SubmittedParent = request?.Parent,
-                SubmittedSelectedItems = request?.SelectedItems ?? [],
+                SubmittedSelectedItemIds = [.. submittedIds],
             };
 
             await action.ExecuteAsync(args, httpContext.RequestAborted);

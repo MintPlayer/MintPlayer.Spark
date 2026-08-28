@@ -6,7 +6,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { CustomActionDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { inject } from '@angular/core';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import {
@@ -51,7 +51,7 @@ export class SparkQueryCardComponent {
   parentId = input<string>('');
   parentType = input<string>('');
   reloadToken = input<unknown>(null);
-  data = input<PersistentObject[] | null>(null);
+  data = input<QueryResultItem[] | null>(null);
   search = input<string>('');
 
   /**
@@ -63,7 +63,7 @@ export class SparkQueryCardComponent {
   actionsTemplate = input<TemplateRef<any> | null>(null);
 
   error = output<HttpErrorResponse>();
-  rowClicked = output<PersistentObject>();
+  rowClicked = output<QueryResultItem>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
 
   colors = Color;

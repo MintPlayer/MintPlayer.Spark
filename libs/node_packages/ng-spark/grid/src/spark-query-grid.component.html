@@ -39,15 +39,15 @@
       [data]="data()"
       [fetch]="fetchFn()"
       [(settings)]="settings">
-    @for (attr of visibleAttributes(); track attr.id) {
-      <div *bsDatatableColumn="attr.name; sortable: true">
-        {{ (attr.label | resolveTranslation) || attr.name }}
+    @for (col of visibleColumns(); track col.name) {
+      <div *bsDatatableColumn="col.name; sortable: true">
+        {{ (col.label | resolveTranslation) || col.name }}
       </div>
     }
 
     <ng-container *bsRowTemplate="let item">
       @let row = $any(item);
-      @for (attr of visibleAttributes(); track attr.id; let first = $first) {
+      @for (col of visibleColumns(); track col.name; let first = $first) {
         <td>
           @if (row) {
             <!-- The first column links to the row's detail page. Two things about this are
@@ -61,12 +61,12 @@
                     whose rows no detail page can load — a Custom.* query that fabricates rows in
                     memory, say. -->
             @if (first && canRead()) {
-              <a [routerLink]="['/po', entityType()!.alias || entityType()!.id, row.id]"
+              <a [routerLink]="['/po', entityType()?.alias || entityType()?.id, row.id]"
                  (click)="rowClicked.emit(row)">
-                <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+                <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
               </a>
             } @else {
-              <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, attr: attr }"></ng-container>
+              <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
             }
           } @else {
             &nbsp;
@@ -83,7 +83,7 @@
   </bs-alert>
 }
 
-<ng-template #cellContent let-item let-attr="attr">
+<ng-template #cellContent let-item let-col="col">
   <!--
     Presentation lives in <spark-grid-cell>, shared with the AsDetail table on the PO detail page.
     Value resolution stays here: a query row is a PersistentObject with an attribute list, and the
@@ -93,9 +93,9 @@
     template from outside; setting both would nest anchors.
   -->
   <spark-grid-cell
-      [column]="attr"
-      [display]="(attr.name | attributeValue:item:entityType():lookupReferenceOptions():allEntityTypes())"
-      [rendererValue]="rendererValueFor(item, attr)"
+      [column]="col"
+      [display]="(col | queryCellValue:item:lookupReferenceOptions())"
+      [rendererValue]="rendererValueFor(item, col)"
       [item]="item"
-      [chips]="(attr.name | referenceChips:item)" />
+      [chips]="(col | queryReferenceChips:item)" />
 </ng-template>

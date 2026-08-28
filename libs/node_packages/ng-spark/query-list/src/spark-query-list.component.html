@@ -85,6 +85,7 @@
     <spark-query-grid class="flex-grow-1"
         [queryId]="qId"
         [data]="gridData()"
+        [columns]="gridData() ? streamColumns() : null"
         [search]="searchTerm()"
         (rowClicked)="rowClicked.emit($event)"
         (customActionExecuted)="customActionExecuted.emit($event)" />

@@ -134,10 +134,12 @@ describe('ReferenceDisplayValuePipe', () => {
     expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/1' }, opts)).toBe('Alice');
   });
 
-  it('falls back to name when no breadcrumb', () => {
+  it('falls back to the raw id when an option carries no breadcrumb', () => {
+    // A row carries a server-resolved `breadcrumb` and nothing else to display by; the old
+    // `name` fallback went with the persistent-object row shape (#327 M4).
     const pipe = createPipe(ReferenceDisplayValuePipe);
-    const opts = { Owner: [{ id: 'p/1', name: 'Alice' } as any] };
-    expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/1' }, opts)).toBe('Alice');
+    const opts = { Owner: [{ id: 'p/1', values: [] } as any] };
+    expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/1' }, opts)).toBe('p/1');
   });
 
   it('returns the raw id when no matching option', () => {

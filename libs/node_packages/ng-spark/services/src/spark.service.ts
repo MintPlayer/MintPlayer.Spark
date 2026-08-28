@@ -78,7 +78,7 @@ export class SparkService {
     parentType?: string;
   }): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
-    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { data: [], totalRecords: 0, skip: 0, take: 50 };
+    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { columns: [], items: [], totalItems: 0, skip: 0, take: 50 };
   }
 
   // Program Units
@@ -137,8 +137,8 @@ export class SparkService {
     return firstValueFrom(this.http.get<CustomActionDefinition[]>(`${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}`));
   }
 
-  async executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItems?: PersistentObject[]): Promise<void> {
-    const body: { parent?: PersistentObject; selectedItems?: PersistentObject[]; retryResults?: RetryActionResult[] } = { parent, selectedItems };
+  async executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItemIds?: string[]): Promise<void> {
+    const body: { parent?: PersistentObject; selectedItemIds?: string[]; retryResults?: RetryActionResult[] } = { parent, selectedItemIds };
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
       body as any
