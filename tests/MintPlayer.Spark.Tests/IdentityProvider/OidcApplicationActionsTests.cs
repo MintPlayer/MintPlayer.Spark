@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    private static OidcApplicationActions Actions() => new(Substitute.For<IEntityMapper>(), null!, null!, null!);
+    private static OidcApplicationActions Actions() => new(Substitute.For<IEntityMapper>(), null!);
 
     private static OidcApplication Valid() => new()
     {
@@ -202,7 +202,7 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the scope screen — the half that decides what a token carries.</summary>
 public class OidcScopeActionsTests
 {
-    private static OidcScopeActions Actions() => new(Substitute.For<IEntityMapper>(), null!, null!, null!);
+    private static OidcScopeActions Actions() => new(Substitute.For<IEntityMapper>(), null!);
 
     private static async Task<Exception?> SaveAsync(OidcScope scope)
     {

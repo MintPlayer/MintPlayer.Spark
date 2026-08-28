@@ -20,14 +20,20 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     // constructions keep compiling. Used only to recognize the system context — module sync and
     // background work — which row rules don't apply to.
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
-    // The load pipeline's dependencies. The session is injected rather than passed to OnLoadAsync
-    // (it is scoped ambient state, and a pass-through parameter said nothing the container
-    // doesn't); the framework-internal services (row security, collection guard, breadcrumbs) are
-    // reached through the provider because their interfaces are internal and this class's
-    // generated constructor is public. Both nullable so manual constructions keep compiling —
-    // the base OnLoadAsync throws if invoked without them.
-    [Inject] private readonly IAsyncDocumentSession? session;
-    [Inject] private readonly IServiceProvider? serviceProvider;
+    // The load pipeline's dependencies — the session and the framework-internal services (row
+    // security, collection guard, breadcrumbs) — are reached through a provider ATTACHED by
+    // ActionsResolver after construction, not through constructor parameters: threading them
+    // through every subclass's hand-written ctor would leak framework plumbing into consumer
+    // code, and the session is scoped ambient state a pass-through parameter says nothing about.
+    private IServiceProvider? serviceProvider;
+
+    internal void Attach(IServiceProvider serviceProvider) => this.serviceProvider = serviceProvider;
+
+    private IServiceProvider RequireServices()
+        => serviceProvider ?? throw new InvalidOperationException(
+            $"{GetType().Name} was constructed without the framework attaching its services, which the " +
+            "base OnLoadAsync needs. Resolve the actions class through IActionsResolver, or override " +
+            "OnLoadAsync.");
 
     /// <summary>
     /// The entity read pipeline, in the one place overrides live: id in, page out. Loads the
@@ -54,10 +60,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     public virtual async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
-        if (session is null || serviceProvider is null)
-            throw new InvalidOperationException(
-                $"{GetType().Name} was constructed without a session/service provider, which the base " +
-                "OnLoadAsync needs. Resolve the actions class through DI, or override OnLoadAsync.");
+        var services = RequireServices();
+        var session = services.GetRequiredService<IAsyncDocumentSession>();
 
         if (string.IsNullOrEmpty(id))
             return null;
@@ -80,21 +84,21 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
         // the same. A document whose real @collection isn't this type's is not this type's — 404,
         // indistinguishable from missing, so it's no oracle for cross-collection existence.
-        var collectionGuard = serviceProvider.GetRequiredService<ICollectionGuard>();
+        var collectionGuard = services.GetRequiredService<ICollectionGuard>();
         if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, typeof(T)))
             return null;
 
         // Row-level read gate: entity-type "Read" passed before this method ran; now this type's
         // own row rule decides whether this specific instance is visible to the current caller.
-        var rowSecurity = serviceProvider.GetRequiredService<IRowSecurity>();
+        var rowSecurity = services.GetRequiredService<IRowSecurity>();
         if (!await rowSecurity.IsAllowedAsync(typeof(T), "Read", entity))
             return null;
 
-        var definition = serviceProvider.GetRequiredService<IModelLoader>()
+        var definition = services.GetRequiredService<IModelLoader>()
             .GetEntityTypeByClrType(typeof(T).FullName ?? typeof(T).Name);
 
         // Resolve breadcrumbs (recursive, batched) for this entity and its references.
-        var breadcrumbs = await serviceProvider.GetRequiredService<Services.Breadcrumb.IBreadcrumbResolver>()
+        var breadcrumbs = await services.GetRequiredService<Services.Breadcrumb.IBreadcrumbResolver>()
             .ResolveAsync(session, [entity], definition);
 
         var obj = entityMapper.ToPersistentObject(entity, breadcrumbs);
@@ -110,7 +114,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         // the row hook isn't invoked.
         if (rowSecurity.HasRowRule(typeof(T)) && definition is not null)
         {
-            var permissionService = serviceProvider.GetRequiredService<Abstractions.Authorization.IPermissionService>();
+            var permissionService = services.GetRequiredService<Abstractions.Authorization.IPermissionService>();
             obj.Can = new PersistentObjectPermissions
             {
                 Edit = await permissionService.IsAllowedAsync("Edit", definition.Name)
