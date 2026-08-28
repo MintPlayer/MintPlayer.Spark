@@ -497,21 +497,48 @@ The surface is small because the row shape has few consumers:
 
 | Seam | File |
 |---|---|
-| the one fetch | `services/src/spark.service.ts:51-82` |
-| row → value | `pipes/src/attribute-value.pipe.ts`, `reference-chips.pipe.ts`, `renderers/src/renderer-inputs.ts` |
-| renderer bag | `grid/src/spark-grid-renderers.ts:43-63` + two hand-copied twins in po-detail/po-form |
-| row route | `grid/src/spark-query-grid.component.html:64` |
+| the one fetch | `services/src/spark.service.ts` |
+| row → value | `pipes/src/query-cell.pipe.ts` (new), `renderers/src/renderer-inputs.ts::cellValue` |
+| renderer bag | `grid/src/spark-grid-renderers.ts` |
+| row route | `grid/src/spark-query-grid.component.html` |
 | column source | flips from `EntityType.attributes` to per-result `columns` |
 
-A **compatibility shim** reconstructs the `(value, attribute, options, item)` bag from
-`(itemValue, column)` in `cellInputsFor`/`columnInputsFor`, so every existing custom renderer migrates
-once, centrally, rather than N times by hand. `withDeclaredInputs` already filters the bag against the
-component's declared inputs, so renderers that ignore the new fields keep working untouched.
+**No compatibility shim** (S2, rejected). Renderers receive **`column`** rather than `attribute`,
+typed `SparkCellColumn` — a small interface carrying only what a cell needs (`name`, `label`,
+`dataType`, `isArray`, `renderer`, `rendererOptions`, `referenceType`, `lookupReferenceType`,
+`asDetailType`). Both `QueryColumn` and `EntityAttributeDefinition` satisfy it structurally, which is
+what lets **one** cell component serve the query grid and the AsDetail sub-table without either side
+knowing the other's shape. Detail and edit renderers keep `attribute`: those paths really are
+attribute-shaped, and renaming them would be churn for its own sake.
 
-R3 is fixed in the same pass: `clrType?: string` on the TS model and `t.clrType?.endsWith(...)` at
-`spark-query-grid.component.ts:359`, plus the unguarded `entityType()!` on `:64`.
+A host that binds `data` itself must also bind `columns`. That is not an oversight to paper over: a
+projection cannot describe itself, and the old fallback — inferring columns from whichever attributes
+the first row happened to carry — is exactly the per-row metadata this work removes.
 
-### D10 — `image` / `url` data types, and `rowRoute`
+**Two client fallbacks disappear**, and both were reading a `name` that no longer exists: the
+reference picker's display value and the AsDetail cell's option lookup now go from `breadcrumb`
+straight to the id. Not a regression — `breadcrumb` *is* the server-resolved display string, and an id
+beats an empty cell.
+
+R3 is fixed in the same pass: `clrType?: string` on the TS model and a guarded `?.endsWith(...)`.
+
+### D10 — Projection, not a second mapper
+
+The mapping pipeline still builds a `PersistentObject` per row internally; `QueryResultProjector`
+projects it at the boundary. **Deliberate, not transitional.** Redaction
+(`IRowSecurity.RedactAsync`), breadcrumb resolution and reference display all operate on
+attribute-shaped rows, and re-expressing them over a second row type would mean two implementations
+of the same security-relevant logic — the kind of duplication that stays identical right up until it
+doesn't. Projecting keeps one, and the saving that actually mattered (the wire) is realised either
+way. The internal allocation is a later optimization behind an unchanged contract.
+
+One consequence worth stating: an **AsDetail** column has no flat value by construction — the mapper
+nulls it and puts the children on `Object`/`Objects`, which a projection does not carry. Rather than
+render an empty cell where a count used to be, the projector emits the two facts a grid can use: the
+child **count** (data, so the client owns the wording and its pluralisation) and, for a single child,
+the breadcrumb the server already resolved.
+
+### D11 — `image` / `url` data types, and `rowRoute`
 
 `GetDataType` gains `"image"` and `"url"`. On the client both need branches in
 `spark-grid-cell.component.html` **before** the chips/link/text fallthrough, styled with inline
@@ -528,17 +555,42 @@ anchors are invalid HTML (confirmed verbatim in the template comment).
 
 ## Breaking changes
 
-All intentional; preview, so no shims (per the governing direction).
+All intentional; preview, so no shims, no `[Obsolete]`, no migration window (per the governing
+direction). Marked ✅ where already landed on the branch.
 
-1. `QueryResult` changes shape entirely: `Data: PersistentObject[]` → `Items: QueryResultItem[]` +
-   `Columns`, and `TotalRecords` → `TotalItems`.
-2. `IDatabaseAccess` gains a batch member (`GetPersistentObjectsByIdAsync`).
-4. `IQueryExecutor.ExecuteQueryAsync` gains a `CancellationToken`.
-5. Custom queries returning `IEnumerable<PersistentObject>`, `IEnumerable<object>` or `dynamic` now throw
-   instead of silently producing blank rows.
-6. Entity-type alias collisions now throw instead of warning.
-7. `source` and `entityType` become structural in the model hash → all four demo apps rebake.
-8. Streaming on a `clrType`-less type is refused at build/verify time.
+**Wire**
+
+1. ✅ `QueryResult` changes shape entirely: `Data: PersistentObject[]` → `Items: QueryResultItem[]`
+   plus `Columns`, and `TotalRecords` → `TotalItems`.
+2. ✅ The streaming protocol follows: the snapshot carries `columns` once, and a patch carries
+   `values` keyed by column name rather than `attributes`.
+3. ✅ A custom action's selection is **ids**: `CustomActionRequest.SelectedItems`
+   (`PersistentObject[]`) → `SelectedItemIds` (`string[]`), and
+   `CustomActionArgs.SubmittedSelectedItems` is **removed** — a selected row is named by an id, never
+   submitted as an object. `SubmittedParent` stays; an unsaved detail form really does submit state.
+4. ✅ `SparkClient.ExecuteActionAsync` takes `selectedItemIds`.
+
+**Client API**
+
+5. ✅ A column renderer receives `column` (typed `SparkCellColumn`) instead of `attribute`. Detail and
+   edit renderers keep `attribute` — those paths really are attribute-shaped.
+6. ✅ `visibleGridAttributes` is gone; columns come from the result. A host binding `data` itself must
+   also bind `columns`.
+7. ✅ `EntityType.clrType` is optional, matching the null the server sends for a virtual type (R3).
+8. ✅ The reference picker and the AsDetail option lookup fall back from `breadcrumb` straight to the
+   id — the `name` they used to try went with the persistent-object row shape.
+
+**Server API**
+
+9. ✅ `IDatabaseAccess` gains `GetPersistentObjectsByIdAsync`.
+10. `IQueryExecutor.ExecuteQueryAsync` gains a `CancellationToken` (M7).
+11. ✅ Custom queries returning `IEnumerable<PersistentObject>`, `IEnumerable<object>` or `dynamic` now
+    throw instead of silently producing blank rows.
+12. ✅ A query producing a row with **no id**, or two rows sharing one, now throws. This landed in M4
+    rather than M5: `QueryResultItem.Id` is non-nullable, so the rule arrived with the type.
+13. ✅ Entity-type alias collisions throw instead of warning.
+14. ✅ `source` and `entityType` are structural in the model hash → all four demo apps rebaked.
+15. Streaming on a `clrType`-less type is refused at build/verify time (M5).
 
 ## Out of scope (genuinely not being done)
 
@@ -556,8 +608,13 @@ All intentional; preview, so no shims (per the governing direction).
 - **S1 — batch load with includes.** ~~Prototype~~ **resolved during investigation**: the overload
   `LoadAsync<T>(IEnumerable<string>, Action<IIncludeBuilder<T>>, CancellationToken)` is present in
   RavenDB.Client 7.2.5 (verified in the shipped XML docs). No spike needed; M2 uses it directly.
-- **S2 — renderer compatibility shim.** Confirm a demo renderer (`color-swatch`, `address-card`) works
-  unchanged through the reconstructed input bag before migrating the grid. Cheap, and it de-risks the
-  largest client change.
-- **S3 — composed query end to end.** A JSON-only type with a `Custom.*` query, rendered by the real grid,
-  before the rest of M4 lands — the shape no virtual type has today, which is why the gap went unnoticed.
+- **S2 — renderer compatibility shim.** ~~Prototype~~ **rejected, not run.** It would have
+  reconstructed the old `(value, attribute)` bag from `(itemValue, column)` so renderers migrated once
+  centrally. Once "no backward compatibility" was restated as the governing rule, the shim stopped
+  being worth de-risking — and it was worse than unnecessary: the bag it rebuilds hands every column
+  renderer an `EntityAttributeDefinition` the grid no longer possesses, i.e. fabricated metadata a
+  projection deliberately does not carry. Renderers take `column` instead (D9); the two demo column
+  renderers were updated by hand, which was a two-line change each.
+- **S3 — composed query end to end.** Still wanted, and now the substance of M5 rather than a spike
+  ahead of it: M4 landed the contract a composed query renders through, so the prototype and the
+  milestone are the same work.

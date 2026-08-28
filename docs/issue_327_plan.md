@@ -7,34 +7,40 @@
 
 ## Milestones
 
-| # | Milestone | Independent? | Risk |
+Status as of the latest commit on `feat/issue-327-query-result-item`.
+
+| # | Milestone | Status | Commit |
 |---|---|---|---|
-| M0 | Spikes (S2 renderer shim, S3 composed query end-to-end) | — | — |
-| M1 | Free fixes: `DistinctBy`, in-memory sort, reject `PersistentObject`/`object` rows | yes | low |
-| M2 | Batch the selection load (the live N+1) | yes | medium |
-| M3 | Model hash `source` + `entityType`; alias symmetry; verify ordering | yes | low |
-| M4 | Row/entity separation — the wire contract, server + client | no (the rewrite) | **high** |
-| M5 | `clrType` optional in the query path (composed queries) | after M4 | medium |
-| M6 | Every silent bail becomes loud | spans M1–M5 | medium |
-| M7 | `CancellationToken` through `IQueryExecutor` | after M4 | low |
-| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | last | low |
-| M9 | The additive asks from issue §9 | yes | low |
-| M10 | Versions + release notes | last | low |
+| M0 | Spikes | ✅ S1 resolved without prototyping, S2 rejected, S3 folded into M5 | — |
+| M1 | Free fixes: `DistinctBy`, in-memory sort, reject `PersistentObject`/`object` rows | ✅ done | `361aaeb8` |
+| M2 | Batch the selection load (the live N+1) | ✅ done | `22e1f533`, reworked `161e107d` |
+| M3 | Model hash `source` + `entityType`; alias symmetry; verify ordering | ✅ done | `f5585e52` |
+| M4 | Row/entity separation — the wire contract, server + client | ✅ done | `107bf1bd` (server), `7add96b6` (client) |
+| M5 | `clrType` optional in the query path (composed queries) | ⬜ next | — |
+| M6 | Every silent bail becomes loud | ◐ partly, folded into M1/M3/M4 | — |
+| M7 | `CancellationToken` through `IQueryExecutor` | ⬜ | — |
+| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ⬜ | — |
+| M9 | The additive asks from issue §9 | ⬜ | — |
+| M10 | Versions + release notes | ⬜ | — |
 
-**Sequencing intent:** M1–M3 are correct and shippable on their own and land first, so the tree is green
-before the rewrite starts. M4 is the only milestone that cannot be split — the wire contract changes on
-both sides at once, and a half-migrated client is not a testable state. M5 rides on M4's seams. M6 is
-folded into whichever milestone owns each site rather than being a separate sweep, except for the
-startup/verify diagnostics, which land with M5. Commit per milestone; **run the full test suite once, at
-the end** (repo convention), with type-checks and targeted tests in between.
+**Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
+tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
+sides at once, and a half-migrated client is not a testable state — so it landed as two commits that
+are only green together. M5 rides on M4's seams. M6 is folded into whichever milestone owns each
+site rather than being a separate sweep, except the startup/verify diagnostics, which land with M5.
 
-**Two CI gates to respect throughout:** `--spark-verify-model` and `--spark-verify-security` run against
-all four demo apps on every PR. M3 forces a hash rebake in all four; M8's demo query moves DemoApp's
-`securityPosture.txt`. Both fail the build rather than warn.
+**Test discipline:** the full suite runs once at the end (repo convention), with type-checks,
+targeted suites and the AOT library build in between. Both halves of M4 were verified against the
+full 1795-test server suite and the 330-test client suite before commit, because a wire change has no
+smaller safe unit.
+
+**Two CI gates to respect throughout:** `--spark-verify-model` and `--spark-verify-security` run
+against all four demo apps on every PR. M3 forced a hash rebake in all four (done); M8's demo query
+will move DemoApp's `securityPosture.txt`. Both fail the build rather than warn.
 
 ---
 
-## M0 — Spikes
+## M0 — Spikes ✅
 
 **S1 — batch load with includes.** **Resolved during investigation, no spike needed.**
 `IAsyncDocumentSession.LoadAsync<T>(IEnumerable<string>, Action<IIncludeBuilder<T>>, CancellationToken)`
@@ -55,7 +61,7 @@ which is exactly why the gap went unnoticed.
 
 ---
 
-## M1 — Free fixes
+## M1 — Free fixes ✅
 
 Independent of everything else; each closes a silent failure.
 
@@ -76,7 +82,7 @@ Independent of everything else; each closes a silent failure.
 
 ---
 
-## M2 — Batch the selection load
+## M2 — Batch the selection load ✅
 
 The live N+1, on entity-backed grids, independent of composed queries.
 
@@ -118,7 +124,7 @@ batch member — keeping the behavioural invariants they pin: all-or-nothing ref
 
 ---
 
-## M3 — Model hashing, alias symmetry, verify ordering
+## M3 — Model hashing, alias symmetry, verify ordering ✅
 
 Before composed queries ship, not after — under M5 a query's `source` names an arbitrary method that skips
 row security, and `entityType` chooses the right that gates it.
@@ -138,39 +144,47 @@ row security, and `entityType` chooses the right that gates it.
 
 ---
 
-## M4 — The row/entity separation
+## M4 — The row/entity separation ✅
 
-The rewrite. Server and client change together; a half-migrated client is not a testable state.
+The rewrite. Server and client changed together; a half-migrated client is not a testable state.
+Landed as `107bf1bd` (server) and `7add96b6` (client).
 
-**Server.** New `QueryResultItem`, `QueryResultItemValue`, `QueryColumn` in `Abstractions`; `QueryResult`
-reshaped (`Columns` + `Items` + `TotalItems`). `EntityMapper` gains a row-producing sibling to
-`ToPersistentObject`, reusing `PopulateAttributeValues`/`ConvertValueForWire`. `RowSecurity.RedactAsync`
-re-expressed over rows. `Execute.cs` resolves columns once and ships them. Streaming follows:
-`StreamingQueryExecutor`, `IStreamingQueryExecutor`, `StreamingDiffEngine` (keys on `po.Id`, diffs
-attributes by name), `StreamingMessage` (`SnapshotMessage.Data`, `PatchItem.Attributes` → positional
-values), `StreamExecuteQuery`.
+**Server.** New `QueryResultItem`, `QueryResultItemValue`, `QueryColumn` in `Abstractions`;
+`QueryResult` reshaped (`Columns` + `Items` + `TotalItems`). `QueryResultProjector` builds the
+columns from `ShowedOn.Query` and projects each mapped row — see PRD D10 for why the pipeline still
+builds a `PersistentObject` internally rather than growing a second mapper. Streaming follows the
+same contract: `StreamingQueryBatch` carries columns (sent once, with the snapshot),
+`StreamingDiffEngine` keys on a now-guaranteed id and diffs `Values` by key, `PatchItem.Attributes`
+becomes `Values`.
 
-**Client.** `models/src/query-result.ts` + new column/item/value types; `spark.service.ts:51-82` (the one
-fetch, and `executeQueryByName`'s hardcoded empty fallback); `attribute-value.pipe.ts`,
-`reference-chips.pipe.ts`, `renderer-inputs.ts` (row → value); `spark-grid-renderers.ts:43-63` plus the two
-hand-copied twins in po-detail (`:198-210`) and po-form (`:378`) — the **compatibility shim** lands here,
-so renderers migrate once centrally; `spark-grid-columns.ts` flips its column source from
-`EntityType.attributes` to per-result `columns`; `spark-query-grid.component.ts/.html`;
-`query-list` (streaming patch merge, client search/sort); `spark-query-card` (passthrough).
+**Client.** New wire models; `spark.service.ts` (the one fetch, and `executeQueryByName`'s empty
+fallback); a new `queryCellValue` / `queryReferenceChips` pipe pair for the projected row shape,
+deliberately separate from the attribute-shaped `attributeValue` (the fallbacks that make sense there
+— reaching into `attr.object`, recomputing a breadcrumb template — are unreachable for a projection,
+so sharing the code would carry branches that can never fire and invite feeding one shape into the
+other); `spark-grid-renderers.ts`; the grid component and template; `query-list` (streaming merge,
+client search/sort); `spark-query-card` passthrough; the reference picker and the po-form/po-detail
+option lists.
 
-⚠ **`executeQuery` is also the reference-option-list source** for po-form, po-detail and
-`spark-reference-picker`, which display `breadcrumb || name || id`. That is why `QueryResultItem` carries
-`Breadcrumb` (D1) — without it those three surfaces each need a second fetch. `executeCustomAction` posts
-whole `PersistentObject`s as `selectedItems`; with row-shaped selection it posts ids, which M2 already made
-the server's primitive.
+**Decisions taken during implementation, recorded in the PRD:**
 
-**Also in this pass (R3):** `clrType?: string` on the TS model, `t.clrType?.endsWith(...)` at
-`spark-query-grid.component.ts:359`, and the unguarded `entityType()!` at `.html:64`.
+- **No renderer shim** (S2 rejected). Renderers take `column: SparkCellColumn`; see D9.
+- **Selection is ids.** `SelectedItems` → `SelectedItemIds`, `SubmittedSelectedItems` deleted. Nothing
+  in `libs/`, `Demo/` or `tests/` read it except one assertion on its length.
+- **Row identity is enforced here, not in M5.** `QueryResultItem.Id` is non-nullable, so "no id" and
+  "duplicate id" became loud errors as soon as the type existed. M5 keeps the composed-query
+  diagnostics that surround it.
+- **AsDetail columns project a child count** plus, for a single child, the resolved breadcrumb —
+  otherwise a grid cell that used to read "3 items" would render empty.
 
-**Tests:** `Endpoints/Queries/ExecuteQueryEndpointTests.cs` (result shape), `Streaming/*`,
-`Services/QueryExecutor*`, `Mapper/*`; client `grid/src/*.spec.ts` (3),
-`renderers/src/renderer-inputs.spec.ts`, `query-list/src/*.spec.ts`, `services/src/spark.service.spec.ts`,
-`pipes/src/*.spec.ts`, `po-form/src/spark-po-form.component.spec.ts:418` (registry literal).
+**Also in this pass (R3):** `clrType?: string` on the TS model, guarded `?.endsWith(...)`, and the
+unguarded `entityType()!` in the row link.
+
+**Tests migrated, not weakened.** Two server tests inverted into their new truth (a streaming mapper
+stub that gave every row the id `"echo"` now trips the uniqueness check; the M1 null-id test became
+"a row with no id is refused"). Twelve client specs moved to the new fixtures; the reference-picker
+and `ReferenceDisplayValuePipe` cases that asserted a `name` fallback now assert the id fallback,
+with a comment saying why the middle rung is gone.
 
 ---
 
@@ -182,7 +196,8 @@ the server's primitive.
 - A **loud startup diagnostic per composed query**, naming the type and stating that row filtering,
   redaction and per-row permissions are the actions class's responsibility. This is the containment for the
   risk in §12 of the issue.
-- Row identity required: null or duplicate id ⇒ throw, never a collapsed grid.
+- ~~Row identity required~~ **landed in M4**: `QueryResultItem.Id` is non-nullable, so the rule
+  arrived with the type rather than waiting for this milestone.
 - Per-row envelope squared closed (`Can = { Edit = false, Delete = false }`).
 - `SparkQueryPage<T>` for author-owned paging, with the **binary** authority rule (R6): the framework owns
   filter/search/sort/count/page, or the author does. No partial delegation.
