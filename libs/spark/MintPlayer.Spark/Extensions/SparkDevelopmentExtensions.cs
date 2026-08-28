@@ -180,11 +180,16 @@ public static class SparkDevelopmentExtensions
         var expected = ModelHashFile.Read(contentRoot);
         var actual = ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRoot);
 
+        // These two are independent of the hash and run either way (#327 M3). They used to sit
+        // inside the in-sync branch below, so a change that both drifted the hash AND collided an
+        // alias reported only the drift — and the collision stayed invisible until the drift was
+        // fixed and CI was run again. Two round trips for one commit's worth of problems.
+        VerifyQueryAliasesAreUnique(contentRoot);
+        VerifyRefreshTriggersAreImplemented(contentRoot);
+
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
             Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
-            VerifyQueryAliasesAreUnique(contentRoot);
-            VerifyRefreshTriggersAreImplemented(contentRoot);
             return;
         }
 
@@ -207,6 +212,13 @@ public static class SparkDevelopmentExtensions
 
         Console.Error.WriteLine();
         Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
+        // A JSON-only virtual type (no clrType) has no CLR class to regenerate from, so synchronize
+        // only re-stamps its hash. Same command, but "regenerated" would send the author looking for
+        // a class that does not exist — which is the whole point of the type.
+        Console.Error.WriteLine(
+            $"  For a hand-authored model file (a JSON-only type with no clrType), nothing is regenerated — " +
+            $"{SynchronizeFlag} just re-stamps {ModelHashFile.FileName} with what is on disk. Review the drift " +
+            $"above first; that file is the source of truth for its own shape.");
 
         Environment.ExitCode = ExitDrift;
     }
