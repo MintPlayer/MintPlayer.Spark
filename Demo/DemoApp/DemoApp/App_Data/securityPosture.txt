@@ -11,9 +11,12 @@ New/Person
 Query/Address
 Query/Car
 Query/Company
+Query/LookupReferences
 Query/Person
+Query/StartPage
 Query/Stock
 Read/Car
 Read/Company
 Read/LookupReferences
 Read/Person
+Read/StartPage

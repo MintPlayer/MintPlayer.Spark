@@ -23,6 +23,7 @@ internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityType
             return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
 
         // 404 rather than 403 — so existence isn't leaked to callers without Query rights.
+        // (A Read grant passes too: Read implies Query at rights-expansion time, #324.)
         if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
             return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
 

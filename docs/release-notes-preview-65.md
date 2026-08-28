@@ -106,10 +106,25 @@ direction still doesn't exist and must not.
 All four demo shells collapsed to `<spark-shell>` + slots. WebhooksDemo, whose sidebar had been
 silently empty (no `programUnits.json`), gets a menu that appears on sign-in.
 
+## `Read` implies `Query`
+
+A bare `Read/X` grant now also grants `Query/X`, expanded once when `security.json` is composed
+into the rights index (evaluation stays a set lookup). A caller who may open every row
+individually may list them, and the type catalogue — which every page renders *from* — is
+`Query`-scoped, so withholding the listing left a legitimately readable type's detail page
+blank. Vidyano models the same rule by offering `Query`, `QueryRead`, `QueryReadEdit` … as
+bundles and never a bare `Read`.
+
+Two deliberate asymmetries: the inverse does not hold (`Query` without `Read` is still "rows
+list, no row is a link"), and the implication widens **grants** only — a denied `Read` leaves
+`Query` alone, so that grant stays expressible by denial.
+
 ## Breaking / behavioral
 
 - `RouterLinkPipe.transform` returns `string[] | null` (null for `url` units) and compares unit
   types exactly.
+- `Read/X` now implies `Query/X` (above). A group granted a bare `Read` gains list access to
+  that type; the reverse and all denials are unchanged.
 - A `programUnits.json` with an unknown unit type or missing required fields now fails loudly at
   first load instead of passing through.
 - PersistentObject units are visible under `Read` instead of `Query` — grants that had one right

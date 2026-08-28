@@ -147,10 +147,12 @@ public sealed record GroupRights(
     /// Expands every right in <paramref name="config"/> into the four tiers, per group.
     /// </summary>
     /// <remarks>
-    /// A denial expands exactly as a grant does. That symmetry is the whole reason this is an
-    /// index rather than a chain: the previous evaluator expanded combined actions only while
-    /// looking for a grant, and every attempt to fix that by appending another step reintroduced
-    /// the ordering bug, because an exact grant was still consulted before an expanded denial.
+    /// A denial expands its <em>combined actions</em> exactly as a grant does. That symmetry is
+    /// the whole reason this is an index rather than a chain: the previous evaluator expanded
+    /// combined actions only while looking for a grant, and every attempt to fix that by
+    /// appending another step reintroduced the ordering bug, because an exact grant was still
+    /// consulted before an expanded denial. The one deliberate asymmetry is the <c>Read</c> ⇒
+    /// <c>Query</c> implication, which applies to grants only — see <see cref="Expand"/>.
     /// </remarks>
     public static IReadOnlyDictionary<Guid, GroupRights> Index(SecurityConfiguration config)
     {
@@ -172,7 +174,7 @@ public sealed record GroupRights(
                 _ => sets.Allow,
             };
 
-            foreach (var pattern in Expand(right.Resource))
+            foreach (var pattern in Expand(right.Resource, right.IsDenied))
                 tier.Add(pattern);
         }
 
@@ -182,10 +184,15 @@ public sealed record GroupRights(
     }
 
     /// <summary>
-    /// Every concrete <c>{action}/{target}</c> a written resource stands for. A wildcard action is
-    /// left alone — <c>*</c> already covers everything the table would expand it into.
+    /// Every concrete <c>{action}/{target}</c> a written resource stands for — the whole
+    /// composition, so that evaluation is a set lookup and never a rule engine. A wildcard action
+    /// is left alone: <c>*</c> already covers everything the table would expand it into.
     /// </summary>
-    private static IEnumerable<ResourcePattern> Expand(string resource)
+    /// <param name="isDenied">
+    /// Which tier the caller is filling. Combined actions expand identically either way; the
+    /// <c>Read</c> ⇒ <c>Query</c> implication applies to grants only (see below).
+    /// </param>
+    private static IEnumerable<ResourcePattern> Expand(string resource, bool isDenied)
     {
         var written = ResourcePattern.Parse(resource);
 
@@ -198,7 +205,18 @@ public sealed record GroupRights(
         // Parse upper-cased the action; the combined-action table is case-insensitive, so it
         // still resolves.
         foreach (var action in SparkCombinedActions.Expand(written.Action))
+        {
             yield return written with { Action = action.ToUpperInvariant() };
+
+            // What the action entails — Read ⇒ Query (see SparkRightImplications). Grants only:
+            // a denial that took Query away with Read would make "list, but no click-through"
+            // inexpressible by denial.
+            if (isDenied)
+                continue;
+
+            foreach (var implied in SparkRightImplications.Implied(action))
+                yield return written with { Action = implied.ToUpperInvariant() };
+        }
     }
 }
 

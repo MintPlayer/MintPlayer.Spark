@@ -31,18 +31,23 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         // membership otherwise comes from claims, and an unauthenticated principal carries none that
         // resolve. So the anonymous surface is exactly that group's rights.
         //
-        // Expanded on both sides through the same table the evaluator uses. Reporting the literal
-        // strings would print one line for QueryReadEditNewDelete/Person where five rights are
-        // granted, and — worse — would leave a right visible that a combined denial takes away.
+        // Expanded on both sides through the same table and implications the evaluator uses.
+        // Reporting the literal strings would print one line for QueryReadEditNewDelete/Person
+        // where five rights are granted, and — worse — would leave a right visible that a
+        // combined denial takes away.
         var rights = config.Rights.Where(r => r.GroupId == anonymousGroupId).ToList();
 
-        var denied = Expand(rights.Where(r => r.IsDenied && !r.IsImportant));
-        var importantDenied = Expand(rights.Where(r => r.IsDenied && r.IsImportant));
-        var granted = Expand(rights.Where(r => !r.IsDenied));
+        // Grants also carry what they entail (Read ⇒ Query), through the same
+        // SparkRightImplications the evaluator's index consults; denials never do. A report that
+        // expanded grants more narrowly than the evaluator would understate the anonymous
+        // surface, which is the one way this baseline can lie.
+        var denied = Expand(rights.Where(r => r.IsDenied && !r.IsImportant), withImplications: false);
+        var importantDenied = Expand(rights.Where(r => r.IsDenied && r.IsImportant), withImplications: false);
+        var granted = Expand(rights.Where(r => !r.IsDenied), withImplications: true);
 
         // Mirrors RightsDecision.Allows: an important grant survives an ordinary denial, an
         // important denial survives everything.
-        var importantGranted = Expand(rights.Where(r => !r.IsDenied && r.IsImportant));
+        var importantGranted = Expand(rights.Where(r => !r.IsDenied && r.IsImportant), withImplications: true);
         granted.ExceptWith(denied);
         granted.UnionWith(importantGranted);
         granted.ExceptWith(importantDenied);
@@ -60,7 +65,7 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
             warnings);
     }
 
-    private static HashSet<string> Expand(IEnumerable<Right> rights)
+    private static HashSet<string> Expand(IEnumerable<Right> rights, bool withImplications)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -80,7 +85,15 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
             }
 
             foreach (var expanded in SparkCombinedActions.Expand(action))
+            {
                 result.Add($"{expanded}/{target}");
+
+                if (!withImplications)
+                    continue;
+
+                foreach (var implied in SparkRightImplications.Implied(expanded))
+                    result.Add($"{implied}/{target}");
+            }
         }
 
         return result;
