@@ -490,8 +490,34 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (obj is null)
             return null;
 
+        // The hook only fills values; the framework squares the envelope: the page answers to
+        // the id it was requested as (unless the hook chose another), titles itself from the
+        // model's breadcrumb template over the values the hook just filled (unless the hook set
+        // one), and is read-only unless the hook said otherwise.
+        obj.Id ??= id;
+        obj.Breadcrumb ??= RenderVirtualBreadcrumb(entityTypeDefinition.Breadcrumb, obj);
         obj.Can ??= new PersistentObjectPermissions { Edit = false, Delete = false };
         return obj;
+    }
+
+    /// <summary>
+    /// The virtual-type counterpart of breadcrumb resolution: no entity exists, so the model's
+    /// template renders over the returned object's attribute values. Reference placeholders
+    /// can't resolve here (nothing to follow) and render as empty.
+    /// </summary>
+    private static string? RenderVirtualBreadcrumb(string? template, PersistentObject obj)
+    {
+        if (string.IsNullOrEmpty(template))
+            return null;
+
+        var rendered = string.Concat(Breadcrumb.BreadcrumbTemplate.Parse(template).Select(token => token switch
+        {
+            Breadcrumb.LiteralToken literal => literal.Text,
+            Breadcrumb.FieldToken field =>
+                obj.Attributes.FirstOrDefault(a => a.Name == field.AttributeName)?.Value?.ToString() ?? string.Empty,
+            _ => string.Empty,
+        }));
+        return string.IsNullOrWhiteSpace(rendered) ? null : rendered;
     }
 
     /// <summary>

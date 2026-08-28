@@ -58,8 +58,9 @@ public class VirtualObjectEndpointTests : SparkTestDriver
         var po = await GetPoAsync(factory, PageTypeId, "the-page");
 
         po.Should().NotBeNull("no CLR class exists anywhere for this type — JSON + a named Actions class suffice");
-        po!.Id.Should().Be("the-page", "the scaffold's id is pre-set to the requested id");
-        po.Breadcrumb.Should().Be("Loaded for the-page");
+        po!.Id.Should().Be("the-page", "the framework stamps the requested id when the hook leaves it null");
+        po.Breadcrumb.Should().Be("Composed without a class",
+            "the hook set no breadcrumb, so the model's Title template renders over the values it filled");
         po.Attributes.Should().Contain(a => a.Name == "Title" && a.Value!.ToString() == "Composed without a class");
         po.Attributes.Should().Contain(a => a.Name == "Counter" && a.Value!.ToString() == "42");
         po.Etag.Should().BeNull("there is no document, so there is no change vector");
@@ -121,11 +122,11 @@ public sealed class VirtualStartPageActions
 
     public Task<Abstractions.PersistentObject?> OnLoadAsync(string id, Abstractions.PersistentObject? parent)
     {
+        // Only the attribute values — Id, Breadcrumb (from the model's template) and Can are the
+        // framework's job.
         var obj = manager.GetPersistentObject("VirtualStartPage");
-        obj.Id = id;
         obj["Title"].Value = "Composed without a class";
         obj["Counter"].Value = 42;
-        obj.Breadcrumb = $"Loaded for {id}";
         return Task.FromResult<Abstractions.PersistentObject?>(obj);
     }
 }

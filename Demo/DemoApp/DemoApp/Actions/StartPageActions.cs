@@ -24,7 +24,6 @@ public partial class StartPageActions
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
         var obj = manager.GetPersistentObject("StartPage");
-        obj.Id = id;
 
         var peopleCount = await session.Query<Person>().CountAsync();
         var companyCount = await session.Query<Company>().CountAsync();

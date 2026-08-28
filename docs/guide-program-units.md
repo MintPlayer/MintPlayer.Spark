@@ -74,8 +74,11 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
 2. **The load hook** — a plain class named `{Name}Actions`, resolved by name exactly like
    entity Actions classes; no base class. The hook has the one signature every actions class
    has — id in, page out — and, since there is no document, the class scaffolds its object from
-   the model via `IManager` (the same idiom dialog POs use), fills values and `Breadcrumb`
-   (the page title), and returns it:
+   the model via `IManager` (the same idiom dialog POs use), fills **only the attribute
+   values**, and returns it. The framework squares the envelope — each only when the hook didn't
+   set it itself: `Id` defaults to the requested id, `Breadcrumb` (the page title) renders from
+   the model file's `breadcrumb` template over the values just filled, and `can` is forced
+   read-only:
 
    ```csharp
    public partial class StartPageActions
@@ -86,10 +89,8 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
        public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
        {
            var obj = manager.GetPersistentObject("StartPage");   // scaffold: all attributes, null values
-           obj.Id = id;                                          // free to ignore or reinterpret
            obj["Welcome"].Value = "Hello!";
            obj["PeopleCount"].Value = await session.Query<Person>().CountAsync();
-           obj.Breadcrumb = "Start";
            return obj;                                           // null ⇒ 404
        }
    }
