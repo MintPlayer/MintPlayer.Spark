@@ -86,7 +86,7 @@ while the client matched exactly, so a `"Query"` unit passed the filter and rout
 New entry point with three components:
 
 - **`spark-shell`** — topbar + sidebar + main over `bs-shell`, with slot structural directives
-  (`*sparkShellTopbarStart/End`, `*sparkShellSidebarHeader/Top/Tabs/Footer`,
+  (`*sparkShellTopbarStart/End`, `*sparkShellSidebarHeader/Top/Footer`,
   `*sparkShellMainHeader`; default content = main). An omitted slot renders its default. Deletes
   from every host: the hand-rolled `shellState`/resize/768px block (the web component owns
   responsive behavior), the collapse-on-navigate handler (`dismissOnNavigate`), the
@@ -95,6 +95,11 @@ New entry point with three components:
 - **`spark-program-units`** — the server-driven menu, also usable standalone. Sorts groups AND
   units by `order`; renders `url` units as external anchors. **Consumers write zero router links
   for navigation.**
+- **`*sparkShellTab`** — an extra accordion tab for a page the model cannot describe. It
+  contributes a header and a body, and the menu builds the tab: a host-declared `<bs-accordion>`
+  would be a second accordion, and single-open is enforced per accordion element (and by
+  `<details name>`, which cannot group across a shadow root), so its tab would stay open while a
+  generated group opened.
 - **`spark-language-selector`** — the culture switcher every app had hand-rolled; hides itself
   with ≤ 1 language.
 

@@ -26,10 +26,7 @@
     @if (sidebarTopTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     }
-    <spark-program-units [reloadToken]="reloadToken()" />
-    @if (sidebarTabsTpl(); as tpl) {
-      <ng-container *ngTemplateOutlet="tpl" />
-    }
+    <spark-program-units [reloadToken]="reloadToken()" [extraTabs]="tabs()" />
     @if (sidebarFooterTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     }

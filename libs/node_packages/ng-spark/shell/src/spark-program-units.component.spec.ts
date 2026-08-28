@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal, TemplateRef, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +83,36 @@ describe('SparkProgramUnitsComponent', () => {
     expect(external).toBeTruthy();
     expect(external.getAttribute('target')).toBe('_blank');
     expect(external.getAttribute('rel')).toBe('noopener');
+  });
+
+  it('renders extraTabs after the generated groups, inside the one accordion', async () => {
+    @Component({
+      standalone: true,
+      imports: [SparkProgramUnitsComponent],
+      template: `
+        <ng-template #extra><a class="extra-link">Query card slots</a></ng-template>
+        <spark-program-units [extraTabs]="tabs()" />`,
+    })
+    class Host {
+      readonly extra = viewChild<TemplateRef<unknown>>('extra');
+      readonly tabs = computed(() => {
+        const content = this.extra();
+        return content ? [{ header: 'Component demos', content }] : [];
+      });
+    }
+
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const el: HTMLElement = fixture.nativeElement;
+    const accordions = el.querySelectorAll('bs-accordion');
+    expect(accordions.length).toBe(1);
+
+    const tabs = accordions[0].querySelectorAll('bs-accordion-tab');
+    expect(tabs.length).toBe(3);                              // two server groups, then the extra
+    expect(tabs[2].querySelector('.extra-link')).toBeTruthy();
+    expect(el.textContent).toContain('Component demos');
   });
 
   it('re-fetches when the SPARK_AUTH_STATE signal changes (sign-in/out)', async () => {

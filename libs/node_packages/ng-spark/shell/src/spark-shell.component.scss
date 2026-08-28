@@ -49,13 +49,14 @@ nav.spark-sidebar.spark-sidebar-dark {
   color: #fff;
 }
 
-// Slot content (SidebarTop/Tabs/Footer) is instantiated from the HOST's template, so it carries
-// the host's style scope — neither this component's scoped rules nor spark-program-units' reach
-// it. These ::ng-deep rules make host-slotted links and accordions match the menu's styling
-// (twin of the rules in spark-program-units.component.scss, which cover the menu itself).
+// Slot content (SidebarTop/Footer, and a *sparkShellTab body) is instantiated from the HOST's
+// template, so it carries the host's style scope — neither this component's scoped rules nor
+// spark-program-units' reach it, even where the markup ends up inside the menu's accordion.
+// These ::ng-deep rules make host-supplied links match the menu's styling (twin of the rules in
+// spark-program-units.component.scss, which cover the generated units).
 :host ::ng-deep nav.spark-sidebar {
-  // The accordion seams for a host-declared <bs-accordion> in *sparkShellSidebarTabs; custom
-  // properties inherit across the shadow boundary, ::part reaches the one exposed box.
+  // Accordion seams: custom properties inherit across the shadow boundary, ::part reaches the
+  // one exposed box.
   --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
   --bs-border-color: transparent;
 

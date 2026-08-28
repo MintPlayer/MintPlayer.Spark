@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal, untracked } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective } from '@mintplayer/ng-bootstrap/accordion';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
@@ -6,6 +7,7 @@ import { ProgramUnitGroup } from '@mintplayer/ng-spark/models';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { IconNamePipe, ResolveTranslationPipe, RouterLinkPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { SparkSidebarTab } from './spark-shell-slots';
 
 /**
  * The server-driven navigation menu: an accordion of program-unit groups fetched from
@@ -28,6 +30,7 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     RouterLink, RouterLinkActive,
     BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective,
     SparkIconComponent, ResolveTranslationPipe, IconNamePipe, RouterLinkPipe,
@@ -41,6 +44,13 @@ export class SparkProgramUnitsComponent {
 
   /** Any changed value triggers a reload — for apps whose auth state isn't a provided signal. */
   readonly reloadToken = input<unknown>(null);
+
+  /**
+   * Extra tabs to render after the generated groups, normally forwarded by `<spark-shell>` from
+   * its `*sparkShellTab` directives. They must be rendered by THIS template — see
+   * `SparkShellTabDirective` for why a host-declared `<bs-accordion-tab>` cannot work.
+   */
+  readonly extraTabs = input<readonly SparkSidebarTab[]>([]);
 
   protected readonly groups = signal<ProgramUnitGroup[]>([]);
 

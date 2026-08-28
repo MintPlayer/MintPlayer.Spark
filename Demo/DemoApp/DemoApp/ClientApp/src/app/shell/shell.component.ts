@@ -1,15 +1,13 @@
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective } from '@mintplayer/ng-bootstrap/accordion';
-import { SparkShellComponent, SparkShellSidebarTabsDirective } from '@mintplayer/ng-spark/shell';
+import { SparkShellComponent, SparkShellTabDirective } from '@mintplayer/ng-spark/shell';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
 @Component({
   selector: 'app-shell',
   imports: [
     RouterOutlet, RouterLink, RouterLinkActive,
-    SparkShellComponent, SparkShellSidebarTabsDirective,
-    BsAccordionComponent, BsAccordionTabComponent, BsAccordionTabHeaderDirective,
+    SparkShellComponent, SparkShellTabDirective,
     SparkIconComponent,
   ],
   templateUrl: './shell.component.html',

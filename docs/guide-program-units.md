@@ -137,7 +137,6 @@ omitted slot renders its default:
 | `*sparkShellTopbarEnd` | topbar, right | `<spark-language-selector />` |
 | `*sparkShellSidebarHeader` | sidebar, top | `<h5>{{ title }}</h5>` |
 | `*sparkShellSidebarTop` | between header and menu | — |
-| `*sparkShellSidebarTabs` | directly below the menu | — |
 | `*sparkShellSidebarFooter` | sidebar, bottom | — |
 | `*sparkShellMainHeader` | main, above the content | — |
 
@@ -160,8 +159,22 @@ omitted slot renders its default:
 Notes:
 
 - **The menu is not a slot.** If you're writing unit anchors in a slot, add units to
-  `programUnits.json` instead. Extra accordion tabs go in `*sparkShellSidebarTabs` — declare a
-  complete `<bs-accordion>` with your tabs inside the template.
+  `programUnits.json` instead.
+- **Extra accordion tabs** — for a page the model cannot describe — use `*sparkShellTab`, which
+  contributes a header and a body and lets the menu build the tab:
+
+  ```html
+  <ng-container *sparkShellTab="'Component demos'; icon: 'palette'">
+    <a routerLink="/query-slots" routerLinkActive="active" class="d-block px-3 py-2 nav-link">Query card slots</a>
+  </ng-container>
+  ```
+
+  Don't declare your own `<bs-accordion>` in a sidebar slot: single-open is enforced *per
+  accordion element* — over the children it owns and over `<details name>`, whose grouping cannot
+  cross a shadow root — so a second accordion is a second exclusivity group, and its tab would
+  stay open while a generated group opens. `*sparkShellTab` exists so the tab element is created
+  by the menu, inside the one accordion. (`sparkShellTabHeader` takes a `TemplateRef` if the
+  header needs its own markup; `sidebarTabs` is the same thing as a data input.)
 - Every slot also exists as a `TemplateRef` input (`topbarEndTemplate`, …) for hosts that can't
   use content projection.
 - Inputs: `title`, `breakpoint` (default `md`), `sidebarTheme` (`'dark' | 'light' | null`,

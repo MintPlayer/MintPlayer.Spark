@@ -24,4 +24,19 @@
       }
     </bs-accordion-tab>
   }
+  <!-- Host-contributed tabs are rendered HERE, by this template, so that the accordion's content
+       query registers them and they join the generated groups' single-open group. -->
+  @for (tab of extraTabs(); track tab.content) {
+    <bs-accordion-tab>
+      <ng-container *bsAccordionTabHeader>
+        @if (tab.headerTemplate; as tpl) {
+          <ng-container *ngTemplateOutlet="tpl" />
+        } @else {
+          <spark-icon [name]="tab.icon | iconName:'bi-folder'" />
+          <span class="ms-2">{{ tab.header }}</span>
+        }
+      </ng-container>
+      <ng-container *ngTemplateOutlet="tab.content" />
+    </bs-accordion-tab>
+  }
 </bs-accordion>

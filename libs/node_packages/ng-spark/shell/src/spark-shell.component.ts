@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, contentChild, input, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
@@ -10,10 +10,11 @@ import {
   SparkShellMainHeaderDirective,
   SparkShellSidebarFooterDirective,
   SparkShellSidebarHeaderDirective,
-  SparkShellSidebarTabsDirective,
   SparkShellSidebarTopDirective,
+  SparkShellTabDirective,
   SparkShellTopbarEndDirective,
   SparkShellTopbarStartDirective,
+  SparkSidebarTab,
 } from './spark-shell-slots';
 
 /**
@@ -69,13 +70,15 @@ export class SparkShellComponent {
   /** Forwarded to the menu: any changed value re-fetches the program units. */
   readonly reloadToken = input<unknown>(null);
 
+  /** Extra sidebar tabs as data, for hosts that compute them; `*sparkShellTab` is the usual way. */
+  readonly sidebarTabs = input<readonly SparkSidebarTab[]>([]);
+
   // One TemplateRef input per slot, for hosts that cannot use content projection
   // (the spark-query-card precedent). The projected directive wins when both are present.
   readonly topbarStartTemplate = input<TemplateRef<unknown> | null>(null);
   readonly topbarEndTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarHeaderTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarTopTemplate = input<TemplateRef<unknown> | null>(null);
-  readonly sidebarTabsTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarFooterTemplate = input<TemplateRef<unknown> | null>(null);
   readonly mainHeaderTemplate = input<TemplateRef<unknown> | null>(null);
 
@@ -83,7 +86,6 @@ export class SparkShellComponent {
   private readonly topbarEndSlot = contentChild(SparkShellTopbarEndDirective);
   private readonly sidebarHeaderSlot = contentChild(SparkShellSidebarHeaderDirective);
   private readonly sidebarTopSlot = contentChild(SparkShellSidebarTopDirective);
-  private readonly sidebarTabsSlot = contentChild(SparkShellSidebarTabsDirective);
   private readonly sidebarFooterSlot = contentChild(SparkShellSidebarFooterDirective);
   private readonly mainHeaderSlot = contentChild(SparkShellMainHeaderDirective);
 
@@ -91,9 +93,26 @@ export class SparkShellComponent {
   protected readonly topbarEndTpl = computed(() => this.topbarEndSlot()?.templateRef ?? this.topbarEndTemplate());
   protected readonly sidebarHeaderTpl = computed(() => this.sidebarHeaderSlot()?.templateRef ?? this.sidebarHeaderTemplate());
   protected readonly sidebarTopTpl = computed(() => this.sidebarTopSlot()?.templateRef ?? this.sidebarTopTemplate());
-  protected readonly sidebarTabsTpl = computed(() => this.sidebarTabsSlot()?.templateRef ?? this.sidebarTabsTemplate());
   protected readonly sidebarFooterTpl = computed(() => this.sidebarFooterSlot()?.templateRef ?? this.sidebarFooterTemplate());
   protected readonly mainHeaderTpl = computed(() => this.mainHeaderSlot()?.templateRef ?? this.mainHeaderTemplate());
+
+  /**
+   * Extra accordion tabs, forwarded to the menu so IT creates the `<bs-accordion-tab>` elements —
+   * the only way they share the generated groups' single-open behavior (see
+   * `SparkShellTabDirective`). Data-supplied tabs come first, then projected ones in declaration
+   * order.
+   */
+  private readonly tabSlots = contentChildren(SparkShellTabDirective);
+
+  protected readonly tabs = computed<readonly SparkSidebarTab[]>(() => [
+    ...this.sidebarTabs(),
+    ...this.tabSlots().map(slot => ({
+      header: slot.header(),
+      icon: slot.icon(),
+      headerTemplate: slot.headerTemplate(),
+      content: slot.templateRef,
+    })),
+  ]);
 
   protected readonly shellState = signal<BsShellState>('auto');
   protected readonly isSidebarVisible = signal(false);

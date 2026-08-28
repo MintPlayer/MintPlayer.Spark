@@ -10,6 +10,7 @@ import {
   SparkShellMainHeaderDirective,
   SparkShellSidebarHeaderDirective,
   SparkShellSidebarTopDirective,
+  SparkShellTabDirective,
   SparkShellTopbarEndDirective,
   SparkShellTopbarStartDirective,
 } from './spark-shell-slots';
@@ -75,7 +76,7 @@ describe('SparkShellComponent', () => {
         SparkShellComponent,
         SparkShellTopbarStartDirective, SparkShellTopbarEndDirective,
         SparkShellSidebarHeaderDirective, SparkShellSidebarTopDirective,
-        SparkShellMainHeaderDirective,
+        SparkShellMainHeaderDirective, SparkShellTabDirective,
       ],
       template,
     })
@@ -130,6 +131,29 @@ describe('SparkShellComponent', () => {
     const el: HTMLElement = withSlots.nativeElement;
     expect(el.querySelector('nav .extra-link')).toBeTruthy();
     expect(el.querySelector('main .main-alert')).toBeTruthy();
+  });
+
+  // The regression this guards: a host that declared its own <bs-accordion> got a SECOND
+  // accordion in the sidebar, and single-open is enforced per accordion element (over its own
+  // children and over `<details name>`, which cannot group across a shadow root) — so a host tab
+  // and a generated group could be open at the same time. The tab must be created by the menu.
+  it('a *sparkShellTab tab joins the menu accordion rather than starting a second one', async () => {
+    const fixture = await render(`
+      <spark-shell>
+        <ng-container *sparkShellTab="'Component demos'; icon: 'palette'">
+          <a class="demo-link">Query card slots</a>
+        </ng-container>
+        <div class="routed"></div>
+      </spark-shell>`);
+    const el: HTMLElement = fixture.nativeElement;
+
+    const accordions = el.querySelectorAll('nav bs-accordion');
+    expect(accordions.length).toBe(1);
+
+    const link = el.querySelector('.demo-link');
+    expect(link).toBeTruthy();
+    expect(accordions[0].contains(link!)).toBe(true);
+    expect(el.textContent).toContain('Component demos');
   });
 
   it('sidebarTheme drives data-bs-theme on the sidebar nav', async () => {

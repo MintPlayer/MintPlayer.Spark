@@ -322,6 +322,29 @@ The Vidyano start-page pattern, adapted to Spark's entity-first pipeline.
    is actually served. A **full lattice** (`Edit` ⇒ `Read` ⇒ `Query`) was considered and
    rejected: it breaks the write-only drop box / public submission form, where `New` without
    `Read` is the point. A startup *warning* for that shape is filed as #326.
+4. **An extra sidebar tab is data, not a template slot** — also found by running the demo: the
+   app's "Component demos" tab and a generated group could be expanded at the same time. The
+   original `*sparkShellSidebarTabs` slot rendered its template as a *sibling* of
+   `<spark-program-units>`, and its doc told hosts to declare a complete `<bs-accordion>` inside
+   it — so the app got a second accordion, and `mp-accordion` enforces single-open **per
+   element**: over the children it collects itself, and over `<details name>`, whose grouping is
+   scoped to one shadow root by the HTML spec. Two accordions are two exclusivity groups, by
+   construction.
+
+   Rendering the host's template *inside* the library's accordion does not fix it either:
+   `BsAccordionComponent` discovers tabs with an Angular content query, which matches by
+   declaration view, so a `<bs-accordion-tab>` written in a host template and inserted through
+   `ngTemplateOutlet` is never registered — index `-1`, `slot="c-1"` matching no slot, no hoisted
+   header. The tab element must be created by the component that owns the accordion. Hence
+   `*sparkShellTab`, carrying a header (label + icon, or a `TemplateRef`) and a body template
+   that `spark-program-units` renders into a `<bs-accordion-tab>` of its own making, after the
+   generated groups; `spark-shell` collects the directives with `contentChildren` and forwards
+   them as its `extraTabs` input. `*sparkShellSidebarTabs` is deleted — non-accordion sidebar
+   content already had `*sparkShellSidebarTop` / `*sparkShellSidebarFooter`. Rejected
+   alternatives: coordinating two accordions by hand through the public `closeAll()` /
+   `setActive()` (puts library-internal state management in every host), and adding a
+   cross-accordion group name upstream (needs a shared registry in the web component, since
+   `<details name>` fundamentally cannot cross shadow roots).
 
 The original design (kept for the record of what was considered and rejected):
 
@@ -404,10 +427,14 @@ omitted slot renders the default, and a parallel `TemplateRef` input per slot):
 | `*sparkShellTopbarEnd` | topbar, right | the language selector (self-hides when ≤ 1 language) |
 | `*sparkShellSidebarHeader` | sidebar, above everything | `<h5>{{ title }}</h5>` |
 | `*sparkShellSidebarTop` | sidebar, between header and accordion | nothing |
-| `*sparkShellSidebarTabs` | inside the accordion, after the generated groups | nothing |
 | `*sparkShellSidebarFooter` | sidebar, below the accordion | nothing |
 | `*sparkShellMainHeader` | main, above the projected content | nothing |
 | *(default `<ng-content>`)* | main | — (the host's `<router-outlet>` goes here) |
+
+An extra accordion tab is **not** in that set, because it cannot be a template slot at all —
+see *Design revision 4*. It is contributed as data with `*sparkShellTab`
+(`header` + `icon` + body template, plus an optional `sparkShellTabHeader` `TemplateRef`), and
+the menu builds the `<bs-accordion-tab>` itself.
 
 The auth region is **deliberately slot-only** (`*sparkShellTopbarEnd`): two apps use
 `spark-auth-bar` (ng-spark-auth, which ng-spark must not reference) and two hand-roll
@@ -464,7 +491,7 @@ five existing shells demonstrably need; the next real consumer tells us which kn
 - All four shells collapse to `<spark-shell>` + slots: Fleet/HR put `spark-auth-bar` in
   `*sparkShellTopbarEnd`; WebhooksDemo puts its hand-rolled auth there and its
   auth-gated `/github-projects` link in `*sparkShellSidebarTop`; DemoApp puts its
-  hand-written "Component demos" tab in `*sparkShellSidebarTabs`. The copied
+  hand-written "Component demos" tab in `*sparkShellTab`. The copied
   `shellState`/resize logic, the four `bs-shell-topbar.directive.ts` copies, and the
   duplicated shell SCSS are **deleted**.
 - WebhooksDemo gets a real `programUnits.json` (F5).
