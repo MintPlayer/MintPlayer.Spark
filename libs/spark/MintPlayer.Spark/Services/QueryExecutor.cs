@@ -379,8 +379,76 @@ internal partial class QueryExecutor : IQueryExecutor
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
         await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
-        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
+
+        // Dedup belongs to the Raven path ONLY. A fan-out index emits one entry per array element, so
+        // the same document legitimately arrives several times and collapsing is correct. Off the index
+        // there is no fan-out, and DistinctBy is actively destructive there: Enumerable.DistinctBy uses
+        // the default comparer, which treats every null key as equal, so a row type with no readable Id
+        // collapses the whole grid to one row. This return is shared by all three custom shapes, so the
+        // Raven case keeps dedup explicitly rather than the other two inheriting it by accident.
+        IEnumerable<PersistentObject> rows = mapped.Select(m => m.Po);
+        if (isRavenQueryable)
+            rows = rows.DistinctBy(po => po.Id);
+
+        // Sorting has to happen somewhere. ApplySorting above runs only when the result is IQueryable,
+        // so a method returning a plain IEnumerable silently ignored both the query's declared sort
+        // columns and the caller's ?sortColumns= override. Sort the mapped rows instead — and do it
+        // AFTER redaction, because ordering by a value the caller may not read is the same comparison
+        // oracle ApplySorting's ShowedOn gate exists to close, and by now a protected value is null.
+        if (!isQueryable && query.SortColumns.Length > 0)
+            rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
+
+        return (rows.ToList(), searchPushedDown);
     }
+
+    /// <summary>
+    /// Orders already-mapped rows by their attribute values, for a result that never was an
+    /// <see cref="IQueryable"/> and so could not be ordered by a provider.
+    /// </summary>
+    /// <remarks>
+    /// The comparer is pinned rather than inherited from the machine: ordinal case-insensitive for
+    /// strings, nulls after values. This does NOT match RavenDB's index-term ordering, and the
+    /// divergence is deliberate — an in-memory result has no index terms to order by, and a
+    /// culture-sensitive default would sort differently per machine. Documented in the query guide.
+    /// <para>
+    /// The same <c>IsSortableAttribute</c> gate as <c>ApplySorting</c> applies, for the same reason:
+    /// a sort column is a comparison oracle over a value the caller may never read.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<PersistentObject> SortMappedRows(
+        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition)
+    {
+        IOrderedEnumerable<PersistentObject>? ordered = null;
+
+        foreach (var col in sortColumns)
+        {
+            if (!IsSortableAttribute(definition, col.Property))
+            {
+                Console.WriteLine(
+                    $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
+                    $"surface; the column is refused and rows keep their index order.");
+                continue;
+            }
+
+            var property = col.Property;
+            var descending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
+
+            ordered = ordered is null
+                ? descending
+                    ? rows.OrderByDescending(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                    : rows.OrderBy(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                : descending
+                    ? ordered.ThenByDescending(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                    : ordered.ThenBy(po => SortKeyFor(po, property), RowSortComparer.Instance);
+        }
+
+        return ordered ?? rows;
+    }
+
+    private static object? SortKeyFor(PersistentObject po, string attributeName)
+        => po.Attributes
+            .FirstOrDefault(a => string.Equals(a.Name, attributeName, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
 
     private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)
     {
@@ -424,6 +492,27 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' takes parameters " +
                    $"the executor cannot supply: {signature}. {expected}";
+        }
+
+        // A usable shape carrying an unusable ROW type needs the opposite fix from a wrong shape, and
+        // saying "returns a shape the executor cannot use" about IEnumerable<PersistentObject> sends the
+        // author to rewrite a signature that was already right.
+        var returnType = method.ReturnType;
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            returnType = returnType.GetGenericArguments()[0];
+
+        var elementType = ExtractQueryableElementType(returnType);
+        if (elementType is not null && IsUnusableRowType(elementType))
+        {
+            var why = elementType == typeof(PersistentObject)
+                ? "a PersistentObject is mapped AS an entity — every declared attribute is looked up as a CLR " +
+                  "property, none is found, and the grid renders the right number of rows with every cell blank"
+                : "an object/dynamic row has nothing to reflect, so every cell renders blank";
+
+            return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' returns rows of type " +
+                   $"'{elementType.Name}', which cannot be mapped: {why}. Return a sequence of a concrete row type " +
+                   $"whose property names match the attributes declared on the query's entity type — an anonymous " +
+                   $"type, a record or an ad-hoc class all work.";
         }
 
         return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' returns a shape the " +
@@ -474,7 +563,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
             // Extract the element type from IQueryable<T> or IRavenQueryable<T>
             var elementType = ExtractQueryableElementType(returnType);
-            if (elementType == null)
+            if (elementType == null || IsUnusableRowType(elementType))
                 return null;
 
             return new CustomQueryMethodInfo
@@ -513,16 +602,31 @@ internal partial class QueryExecutor : IQueryExecutor
                 foreach (var iface in t.GetInterfaces())
                 {
                     if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                    {
-                        var elementType = iface.GetGenericArguments()[0];
-                        if (elementType != typeof(object))
-                            return elementType;
-                    }
+                        return iface.GetGenericArguments()[0];
                 }
 
                 return null;
             });
     }
+
+    /// <summary>
+    /// Whether an element type names rows the mapper cannot populate, and which are therefore refused
+    /// rather than mapped into a grid of blanks.
+    /// </summary>
+    /// <remarks>
+    /// Both cases used to produce the same silent wrong answer: the right number of rows, every cell
+    /// empty, no error and no log.
+    /// <list type="bullet">
+    /// <item><description><c>PersistentObject</c> — the mapper treats each row AS an entity, reflecting a
+    /// CLR property per declared attribute and finding none, so it skips them all.</description></item>
+    /// <item><description><c>object</c>/<c>dynamic</c> — nothing to reflect at all. The old guard lived only
+    /// in the interface-scan branch, so a method DECLARED <c>IEnumerable&lt;object&gt;</c> matched the
+    /// generic-definition branch first and slipped past it entirely.</description></item>
+    /// </list>
+    /// The check is one method so the rejection and the message that explains it cannot disagree.
+    /// </remarks>
+    private static bool IsUnusableRowType(Type elementType)
+        => elementType == typeof(object) || elementType == typeof(PersistentObject);
 
     private static IEnumerable<object> MaterializeQueryable(object queryable, Type elementType)
     {
@@ -956,4 +1060,37 @@ internal sealed class CustomQueryMethodInfo
     public required bool AcceptsArgs { get; init; }
     public required Type ResultElementType { get; init; }
     public required bool IsAsync { get; init; }
+}
+
+/// <summary>
+/// The ordering rule for rows sorted in memory: nulls after values, strings ordinal case-insensitive,
+/// everything else by its own <see cref="IComparable"/>.
+/// </summary>
+/// <remarks>
+/// Mixed or non-comparable values compare EQUAL rather than throwing. A grid that cannot order one
+/// column is a smaller failure than a request that 500s, and the alternative — letting
+/// <c>Comparer&lt;object&gt;.Default</c> throw <c>InvalidOperationException</c> mid-enumeration — would
+/// surface as an unexplained error on a query that renders fine unsorted.
+/// <para>
+/// Nulls-after-values is expressed in the comparer, so a descending sort reverses it and nulls lead.
+/// That is the same asymmetry a database gives you without an explicit NULLS LAST.
+/// </para>
+/// </remarks>
+internal sealed class RowSortComparer : IComparer<object?>
+{
+    public static readonly RowSortComparer Instance = new();
+
+    public int Compare(object? x, object? y)
+    {
+        if (x is null) return y is null ? 0 : 1;
+        if (y is null) return -1;
+
+        if (x is string sx && y is string sy)
+            return string.Compare(sx, sy, StringComparison.OrdinalIgnoreCase);
+
+        if (x is IComparable comparable && x.GetType() == y.GetType())
+            return comparable.CompareTo(y);
+
+        return 0;
+    }
 }
