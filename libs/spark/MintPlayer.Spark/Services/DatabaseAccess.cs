@@ -88,6 +88,19 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return null;
 
+        // Composition seam (#324): an Actions class overriding OnComposeAsync serves this type's
+        // page from code instead of the database — the start-page pattern. Runs under the
+        // type-level "Read" check above and short-circuits everything below it. Skipping the
+        // collection guard and row security here is sound, not a hole: both exist to police
+        // *database documents* (id-to-type confusion, per-row visibility of stored data), and a
+        // composed object corresponds to no document — the Actions class hand-picks every value
+        // it exposes, and it is the same authority those guards defer to. The composed object is
+        // forced read-only (Can = none) unless the hook says otherwise; anything interactive on
+        // such a page is a custom action with its own authorization.
+        var composed = await ComposeViaActionsAsync(entityType, objectTypeId, id);
+        if (composed is not null)
+            return composed;
+
         // Use actions for loading
         var entity = await LoadEntityViaActionsAsync(session, entityType, id);
 
@@ -472,6 +485,46 @@ internal partial class DatabaseAccess : IDatabaseAccess
     }
 
     #region Actions Helper Methods
+
+    /// <summary>
+    /// Invokes the Actions class's <c>OnComposeAsync</c> when — and only when — it is overridden.
+    /// Returns null (meaning "not composed", proceed with the entity pipeline) when the actions
+    /// type keeps the default, doesn't have the hook at all (a hand-written
+    /// <c>IPersistentObjectActions&lt;T&gt;</c> implementer), or the override itself returns null.
+    /// The override check avoids scaffolding a PersistentObject on every read of every type.
+    /// </summary>
+    private async Task<PersistentObject?> ComposeViaActionsAsync(Type entityType, Guid objectTypeId, string id)
+    {
+        var actions = actionsResolver.ResolveForType(entityType);
+        var composeMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
+            ("DatabaseAccess.ComposeMethod", actions.GetType()),
+            static k =>
+            {
+                var method = k.Actions.GetMethod("OnComposeAsync");
+                // DeclaringType is the most-derived class providing the body; when that is still
+                // the open Default base, nothing overrode the hook and there is nothing to invoke.
+                if (method is null) return null;
+                var declaring = method.DeclaringType;
+                if (declaring is { IsGenericType: true }
+                    && declaring.GetGenericTypeDefinition() == typeof(Actions.DefaultPersistentObjectActions<>))
+                    return null;
+                return method;
+            });
+        if (composeMethod is null)
+            return null;
+
+        var scaffold = entityMapper.GetPersistentObject(objectTypeId);
+        scaffold.Id = id;
+
+        var task = (Task)composeMethod.Invoke(actions, [new Actions.SparkComposeArgs(id, scaffold)])!;
+        await task;
+        var composed = (PersistentObject?)task.GetCompletedTaskResult();
+        if (composed is null)
+            return null;
+
+        composed.Can ??= new PersistentObjectPermissions { Edit = false, Delete = false };
+        return composed;
+    }
 
     private async Task<object?> LoadEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
     {
