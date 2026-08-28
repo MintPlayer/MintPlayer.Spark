@@ -47,13 +47,15 @@ internal partial class SparkTypeResolver : ISparkTypeResolver
                 var type = Type.GetType(clrType);
                 if (type != null) return type;
 
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+                foreach (var assembly in assemblies)
                 {
                     type = assembly.GetType(clrType);
                     if (type != null) return type;
                 }
 
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                foreach (var assembly in assemblies)
                 {
                     try
                     {
