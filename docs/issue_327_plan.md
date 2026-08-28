@@ -16,9 +16,9 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M2 | Batch the selection load (the live N+1) | ✅ done | `22e1f533`, reworked `161e107d` |
 | M3 | Model hash `source` + `entityType`; alias symmetry; verify ordering | ✅ done | `f5585e52` |
 | M4 | Row/entity separation — the wire contract, server + client | ✅ done | `107bf1bd` (server), `7add96b6` (client) |
-| M5 | `clrType` optional in the query path (composed queries) | ⬜ next | — |
-| M6 | Every silent bail becomes loud | ◐ partly, folded into M1/M3/M4 | — |
-| M7 | `CancellationToken` through `IQueryExecutor` | ⬜ | — |
+| M5 | `clrType` optional in the query path (composed queries) | ✅ done | `0caa20d0` |
+| M6 | Every silent bail becomes loud | ◐ partly, folded into M1/M3/M4/M5 | — |
+| M7 | `CancellationToken` through `IQueryExecutor` | ⬜ next | — |
 | M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ⬜ | — |
 | M9 | The additive asks from issue §9 | ⬜ | — |
 | M10 | Versions + release notes | ⬜ | — |
@@ -188,28 +188,43 @@ with a comment saying why the middle rung is gone.
 
 ---
 
-## M5 — Composed queries (`clrType` optional in the query path)
+## M5 — Composed queries (`clrType` optional in the query path) ✅
 
-- `ResolveByEntityName(def.Name)` replaces `ResolveForType`; the CLR bail at `:242-246` goes.
-- Row security skipped **because there is nothing to evaluate** — the rule written into the doc comment of
-  the enforcing hook (improvement #8; the prior art documents this nowhere).
-- A **loud startup diagnostic per composed query**, naming the type and stating that row filtering,
-  redaction and per-row permissions are the actions class's responsibility. This is the containment for the
-  risk in §12 of the issue.
-- ~~Row identity required~~ **landed in M4**: `QueryResultItem.Id` is non-nullable, so the rule
-  arrived with the type rather than waiting for this milestone.
-- Per-row envelope squared closed (`Can = { Edit = false, Delete = false }`).
-- `SparkQueryPage<T>` for author-owned paging, with the **binary** authority rule (R6): the framework owns
-  filter/search/sort/count/page, or the author does. No partial delegation.
-- Streaming refused for a `clrType`-less type at `--spark-verify-model` and `QueryLoader` index-build time
-  (F16), not at first `MoveNext` inside a websocket.
-- Validate at startup that a `clrType`-null type carrying queries has at least one `ShowedOn.Query`
-  attribute (R8) — both existing virtual types are `PersistentObject`-only on every attribute, and copying
-  one is what authors will do.
+Landed as `0caa20d0`. What shipped, and the two places it diverged from the plan above.
 
-**Tests:** a new `Endpoints/Queries/ComposedQueryTests.cs` following `VirtualObjectEndpointTests` (the #324
-sibling): a JSON-only type with a `Custom.*` query, rows rendered, `Query` right enforced, duplicate/null id
-throwing, `SparkQueryPage` honoured, streaming refused.
+- `ResolveByEntityName(def.Name)` where there is no CLR type, `ResolveForType` where there is; the
+  silent CLR bail is gone. A `clrType` that *is* declared but resolves to nothing stays a loud
+  error — that is a broken binding, not a composed type, and the two need opposite fixes.
+- **Row security skipped, because there is nothing to evaluate.** Written into the enforcing hook,
+  at the `FilterAsync` call, at the length it deserves: what is skipped, why it cannot be otherwise,
+  and what the actions class is therefore responsible for.
+- **Every composed query announces itself at startup** (`SparkComposedQueries.Announce`, called from
+  `QueryLoader`), naming the type and what does not apply.
+- ~~Row identity required~~ **landed in M4** — `QueryResultItem.Id` is non-nullable.
+- ~~Per-row envelope squared closed~~ **needed no code.** M4 removed `can` from the row shape
+  altogether, so there is nothing to force to false on this path or any other. Pinned as a
+  type-shape test (`A_row_carries_no_affordance_to_close`) rather than re-asserted per path — the
+  executor edit that did it was written, found to be dead, and removed.
+- `SparkQueryPage<T>` with the binary authority rule (R6). `CustomQueryArgs` gains `Skip`, `Take`
+  and `Search`, without which the escape hatch is unusable.
+- Streaming refused for a `clrType`-less type, and a composed type carrying a query required to show
+  at least one attribute on it (R8) — both in `SparkComposedQueries.Validate`, shared by
+  `QueryLoader` and `--spark-verify-model` exactly as `SparkQueryAliases` is, so CI cannot accept a
+  model the runtime refuses. The streaming executor keeps a third copy of the refusal for the model
+  that changes under a running process.
+
+**Also fixed here, because M5 is where it surfaced:** `ModelLoader`'s per-file `catch (Exception)`
+swallowed the entity alias-collision throw that M3 had just added — the exception was raised, printed
+as `Error loading model file …`, and discarded, so the application started with one of two types
+unroutable. Narrowed to `JsonException`/`IOException`/`UnauthorizedAccessException`. The test that
+pinned first-wins as intended behaviour is inverted, and a companion test pins that an unparseable
+file still degrades to a message.
+
+**Tests:** `Endpoints/Queries/ComposedQueryTests.cs` (15) — rows rendered from a name-resolved
+actions class, breadcrumb template over a computed row, `Query` right enforced, missing actions class
+and duplicate ids both loud, sort honoured, and five on `SparkQueryPage` (author's total, no second
+paging, ordering kept under `?sortColumns=`, result kept under `?search=`). Plus the streaming
+refusal in `StreamingQueryExecutorUnitTests`.
 
 ---
 

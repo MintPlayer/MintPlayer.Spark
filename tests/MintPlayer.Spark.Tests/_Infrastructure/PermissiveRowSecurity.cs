@@ -31,9 +31,10 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
-        string action) => Task.FromResult(entities);
+        string action,
+        CancellationToken cancellationToken = default) => Task.FromResult(entities);
 
-    public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action)
+    public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
         => Task.FromResult(queryable);
 
     public void ResetRequestFilterCache() { }
@@ -46,5 +47,6 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
         IReadOnlyList<(MintPlayer.Spark.Abstractions.PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,
-        string action) => Task.CompletedTask;
+        string action,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

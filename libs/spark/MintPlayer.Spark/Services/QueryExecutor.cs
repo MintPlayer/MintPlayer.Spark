@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
 {
-    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null);
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, CancellationToken cancellationToken = default);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -30,7 +30,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
 
-    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, CancellationToken cancellationToken = default)
     {
         var (isCustom, name) = ResolveSource(query);
 
@@ -40,11 +40,11 @@ internal partial class QueryExecutor : IQueryExecutor
         QuerySourceResult source;
         if (isCustom)
         {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search);
+            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, cancellationToken);
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm);
+            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, cancellationToken);
         }
 
         var (allResults, definition, searchPushedDown, authorTotalItems) = source;
@@ -125,9 +125,7 @@ internal partial class QueryExecutor : IQueryExecutor
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
         int? AuthorTotalItems = null)
-    {
-        public static readonly QuerySourceResult Empty = new([], null, false);
-    }
+;
 
     private static (bool IsCustom, string Name) ResolveSource(SparkQuery query)
     {
@@ -147,40 +145,58 @@ internal partial class QueryExecutor : IQueryExecutor
     #region Database Queries
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, string? searchTerm)
+        SparkQuery query, string propertyName, string? searchTerm, CancellationToken cancellationToken)
     {
-        var sparkContext = sparkContextResolver.ResolveContext(session);
-        if (sparkContext == null)
-        {
-            return QuerySourceResult.Empty;
-        }
+        // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
+        // is resolution work — reflecting over the context, reading a property, matching a CLR type
+        // to a model file — and every step of it used to run for a caller with no Query right at
+        // all, because the only check sat after the last of them. That is backwards on its own, and
+        // it also meant a misconfigured query answered a denied caller with an empty grid instead
+        // of a denial. The check below on the resolved definition stays and remains authoritative;
+        // permission decisions memoize per request, so asking twice costs nothing.
+        if (!string.IsNullOrEmpty(query.EntityType))
+            await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
+
+        var sparkContext = sparkContextResolver.ResolveContext(session)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' reads 'Database.{propertyName}', but this application registers no " +
+                $"SparkContext. A Database.* query resolves its rows from a context property; without a " +
+                $"context there is nothing to resolve against. Register one, or give the query a Custom.* " +
+                $"source served by an actions class.");
 
         var contextType = sparkContext.GetType();
         var property = contextType.GetCachedProperty(propertyName);
 
         if (property == null || !property.CanRead)
         {
-            return QuerySourceResult.Empty;
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' reads 'Database.{propertyName}', but '{contextType.Name}' has no " +
+                $"readable property named '{propertyName}'. Check the query's source in its model file " +
+                $"against the context's properties — the name is matched exactly, and a mismatch used to " +
+                $"render as an empty grid.");
         }
 
-        var queryable = AccessorCache.GetGetter(property)(sparkContext);
-        if (queryable == null)
-        {
-            return QuerySourceResult.Empty;
-        }
+        var queryable = AccessorCache.GetGetter(property)(sparkContext)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' reads '{contextType.Name}.{propertyName}', which returned null. A " +
+                $"context property is expected to hand back a queryable over its collection; a null one " +
+                $"cannot be distinguished from an empty collection at the grid.");
 
         var queryableType = property.PropertyType;
         var entityType = queryableType.GetGenericArguments().FirstOrDefault();
         if (entityType == null)
         {
-            return QuerySourceResult.Empty;
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' reads '{contextType.Name}.{propertyName}', typed " +
+                $"'{queryableType.Name}', which names no element type. A context property must be an " +
+                $"IRavenQueryable<T> so the framework knows what a row is.");
         }
 
-        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-        if (entityTypeDefinition == null)
-        {
-            return QuerySourceResult.Empty;
-        }
+        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' returns rows of '{entityType.Name}', which has no model file in " +
+                $"App_Data/Model. Run '--spark-synchronize-model' and commit the result — without a " +
+                $"definition there are no columns to render and no attributes to map into.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
@@ -230,7 +246,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query");
+        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
 
@@ -249,23 +265,23 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
         }
 
-        var materialized = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+        var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
 
         // Row-level authorization. The type-level check above answers "may this principal query
         // this type at all"; it says nothing about which rows. Without this, an entity whose
         // Actions class scopes rows to their owner was filtered correctly when opened and listed
         // in full here — and the list screen is the one that shows every row at once.
         var entities = (await rowSecurity.FilterAsync(
-            session, materialized, entityType, resultType, "Query")).ToList();
+            session, materialized, entityType, resultType, "Query", cancellationToken)).ToList();
 
         // Referenced docs were primed into the session cache by .Include() above; the resolver's
         // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition, cancellationToken);
 
         var mapped = entities
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
+        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query", cancellationToken);
 
         // ⚠️ DO NOT REMOVE THIS DistinctBy. It is not defensive, and it is not about the analyzer.
         //
@@ -300,14 +316,19 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
-        int skip, int take, string? search)
+        int skip, int take, string? search, CancellationToken cancellationToken)
     {
         // Resolve the entity type for this query
-        var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
-        if (entityTypeDefinition == null)
-        {
-            return QuerySourceResult.Empty;
-        }
+        var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName)
+            ?? throw new InvalidOperationException(
+                string.IsNullOrEmpty(query.EntityType)
+                    ? $"Query '{query.Name}' has source 'Custom.{methodName}' but names no entityType. A "
+                      + $"custom query's rows are mapped against a declared type — that is where the columns "
+                      + $"come from — so the executor cannot infer one from the method's return type. Set "
+                      + $"\"entityType\" in the query's model file."
+                    : $"Query '{query.Name}' names entityType '{query.EntityType}', which has no model file in "
+                      + $"App_Data/Model. Check the spelling against the type's \"name\", or run "
+                      + $"'--spark-synchronize-model' if the type is new.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
@@ -379,7 +400,10 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (result == null)
         {
-            return QuerySourceResult.Empty;
+            throw new InvalidOperationException(
+                $"Custom query method '{methodName}' on '{actionsInstance.GetType().Name}' returned null. " +
+                $"Return an empty sequence to say there are no rows — a null one is indistinguishable from " +
+                $"that at the grid, and hides a method that fell through without returning.");
         }
 
         // The author's own page. Everything below that would filter, search, sort or trim is
@@ -427,7 +451,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // from, not which of them this caller may see. No-op when the method yields projections.
         if (isQueryable && entityType is not null)
         {
-            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
+            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
         }
 
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
@@ -452,7 +476,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // is what made Task<IRavenQueryable<T>> throw before #294 — a blocking ToList() over an
             // async session, which RavenDB rejects. Both branches now ask the object the same
             // question, so they can no longer disagree.
-            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType);
+            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType, cancellationToken);
         }
         else if (isQueryable)
         {
@@ -465,7 +489,10 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            return QuerySourceResult.Empty;
+            throw new InvalidOperationException(
+                $"Custom query method '{methodName}' on '{actionsInstance.GetType().Name}' returned a " +
+                $"'{result.GetType().Name}', which is not a sequence. It must return IQueryable<T>, " +
+                $"IRavenQueryable<T>, IEnumerable<T> or SparkQueryPage<T> (or a Task<> of one of those).");
         }
 
         // Row-level authorization, as on the database path. A custom query is a developer saying
@@ -488,11 +515,11 @@ internal partial class QueryExecutor : IQueryExecutor
         // at startup for exactly that reason (see QueryLoader).
         var rawRows = entities as IReadOnlyList<object> ?? entities.ToList();
         var entityList = entityType is not null
-            ? await rowSecurity.FilterAsync(session, rawRows, entityType, methodInfo.ResultElementType, "Query")
+            ? await rowSecurity.FilterAsync(session, rawRows, entityType, methodInfo.ResultElementType, "Query", cancellationToken)
             : rawRows;
 
         // Resolve breadcrumbs (recursive, batched) for the custom query's results.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition, cancellationToken);
 
         var mapped = entityList
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
@@ -501,7 +528,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // compares a mapped attribute against the value on the stored document, and a composed row
         // has none.
         if (entityType is not null)
-            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
+            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
 
         // Nothing here squares the per-row envelope closed, and nothing needs to: M4 made a row a
         // projection, and QueryResultItem carries no `can` block at all — for exactly this reason.
@@ -1149,7 +1176,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <param name="queryable"></param>
     /// <param name="entityType"></param>
     /// <returns></returns>
-    private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
+    private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType, CancellationToken cancellationToken)
     {
         var genericToListMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
             ("QueryExecutor.LinqToListAsync", entityType),
@@ -1167,7 +1194,9 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        var task = genericToListMethod.Invoke(null, [queryable, CancellationToken.None]) as Task;
+        // Was hardcoded to CancellationToken.None, which is where a cancelled request stopped
+        // mattering: the socket was gone, and the database kept materializing the result anyway.
+        var task = genericToListMethod.Invoke(null, [queryable, cancellationToken]) as Task;
 
         if (task == null)
         {

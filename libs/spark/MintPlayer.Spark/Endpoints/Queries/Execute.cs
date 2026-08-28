@@ -135,7 +135,7 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
             // Copy only when the request overrides the sort; the cached definition is shared.
             var effectiveQuery = sortOverrides is null ? query : query.WithSortColumns(sortOverrides);
 
-            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search);
+            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search, httpContext.RequestAborted);
             return Results.Json(results);
         }
         catch (SparkAccessDeniedException)

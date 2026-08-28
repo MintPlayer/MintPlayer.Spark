@@ -93,7 +93,8 @@ internal interface IRowSecurity
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
-        string action);
+        string action,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Pushes the type's row filter into the query itself, when there is one and the shapes allow
@@ -102,7 +103,7 @@ internal interface IRowSecurity
     /// <see cref="FilterAsync"/> remains the enforcement point (batched reload) — the pushdown is
     /// an optimization, never the only gate.
     /// </summary>
-    Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action);
+    Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Drops the per-request filter memo (#239 M3). Called on a streaming connection's periodic
@@ -130,7 +131,8 @@ internal interface IRowSecurity
         IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,
-        string action);
+        string action,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The type's filter expression for this caller and action, straight from the hook, or null when
@@ -214,7 +216,8 @@ internal partial class RowSecurity : IRowSecurity
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
-        string action)
+        string action,
+        CancellationToken cancellationToken = default)
     {
         if (entities.Count == 0)
             return entities;
@@ -252,7 +255,7 @@ internal partial class RowSecurity : IRowSecurity
                 .Cast<string>()
                 .ToList();
 
-            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids);
+            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids, cancellationToken);
         }
 
         var visible = new List<object>(entities.Count);
@@ -281,7 +284,7 @@ internal partial class RowSecurity : IRowSecurity
         return visible;
     }
 
-    public async Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action)
+    public async Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
     {
         // Same exemption as ResolveEffectiveRuleAsync: the system is not a viewer to scope rows for.
         if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
@@ -337,7 +340,8 @@ internal partial class RowSecurity : IRowSecurity
         IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,
-        string action)
+        string action,
+        CancellationToken cancellationToken = default)
     {
         if (items.Count == 0)
             return;
@@ -372,7 +376,7 @@ internal partial class RowSecurity : IRowSecurity
 
             // On the query paths FilterAsync already pulled these into the session, so this is
             // served from the identity map rather than costing a request.
-            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids);
+            baseDocuments = await LoadBaseDocumentsAsync(session, entityType, ids, cancellationToken);
         }
 
         foreach (var (po, row) in items)
@@ -431,7 +435,8 @@ internal partial class RowSecurity : IRowSecurity
     /// </para>
     /// </summary>
     private static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
-        IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids)
+        IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids,
+        CancellationToken cancellationToken = default)
     {
         // Same comparer RavenDB builds its own result with: document ids are case-insensitive, and
         // an index-projected Id can differ in case from the stored one.
@@ -446,7 +451,7 @@ internal partial class RowSecurity : IRowSecurity
                 ?.MakeGenericMethod(k.Entity));
 
         // Reflection applies no default arguments, so the token is passed explicitly.
-        if (loadMethod?.Invoke(session, [ids, CancellationToken.None]) is not Task task)
+        if (loadMethod?.Invoke(session, [ids, cancellationToken]) is not Task task)
             return baseDocuments;
 
         await task;
