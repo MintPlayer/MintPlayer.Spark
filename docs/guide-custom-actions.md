@@ -322,6 +322,39 @@ of a selection because a row was never a document: the grid renders a projection
 metadata, no `can` block and no etag, so there is nothing meaningful a client could submit back.
 An action that wants edited values wants a *detail form*, which is `SubmittedParent`.
 
+### A sub-query's container: `QueryParent`
+
+A grid rendered on another object's detail page — a company's Cars tab — invokes its actions with
+**two** pieces of context, and they are deliberately different things:
+
+| | What it is | When it is set |
+|---|---|---|
+| `SelectedItems` | The ticked rows, re-loaded and row-checked | Any query invocation |
+| `QueryParent` | The object whose page the grid was on | Sub-query only |
+| `Parent` | An object **of this action's own type** | Detail-page invocation only |
+
+```csharp
+public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken ct)
+{
+    var cars    = args.SelectedItems;      // the rows the user ticked
+    var company = args.QueryParent;        // the Company whose page they were on
+}
+```
+
+⚠️ **`QueryParent` is not `Parent`, and putting the container in `Parent` does not work.** `Parent`
+means an object of the action's own type, and the server loads it under the *route's* type on
+purpose (a caller must not be able to name a foreign type and have it accepted as fact). The cars
+listed on a company's page are Cars; the container is a Company. Asking the server to load a Company
+id as a Car is refused by the collection guard — correctly.
+
+So the container travels as **id + type**, exactly as `GET …/execute` names it, and is resolved
+under **its own** type with that type's own `Read` gate and row rule. A container the caller may not
+see refuses the whole request rather than arriving as a fact.
+
+`QueryParent` is null on a top-level query page, so an action offered in both places should treat it
+as optional — see DemoApp's `CopyCarsToCompany`, which assigns the copies to the container when
+there is one and keeps each car's existing owner when there is not.
+
 **All or nothing.** If any named id fails to resolve -- missing, foreign collection, or refused by
 the row rule -- the whole request is refused. An action never silently receives 498 of the 500 rows
 the user selected.

@@ -54,6 +54,14 @@ public class ExecuteCustomActionTests
         ClrType = "Fleet.Entities.Car",
     };
 
+    /// <summary>The container of a sub-query - a DIFFERENT type from the one the action runs on.</summary>
+    private static readonly EntityTypeDefinition CompanyType = new()
+    {
+        Id = Guid.NewGuid(),
+        Name = "Company",
+        ClrType = "Fleet.Replicated.Company",
+    };
+
     [Fact]
     public async Task Returns_404_when_entity_type_cannot_be_resolved()
     {
@@ -618,4 +626,151 @@ public class ExecuteCustomActionTests
         context.Response.Body.Position = 0;
         return await new StreamReader(context.Response.Body).ReadToEndAsync();
     }
+    // ----------------------------------------------------------------------------------
+    // #327 - the sub-query's container travels with the action
+    // ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Arranges the two-type world a sub-query lives in: the action runs on Car, and the grid was
+    /// rendered on a Company's detail page.
+    /// </summary>
+    private void ArrangeSubQuery(MintPlayer.Spark.Abstractions.PersistentObject? company)
+    {
+        _modelLoader.ResolveEntityType(CarType.Id.ToString()).Returns(CarType);
+        _modelLoader.ResolveEntityType("Company").Returns(CompanyType);
+        _databaseAccess.GetPersistentObjectAsync(CompanyType.Id, "companies/1").Returns(company);
+    }
+
+    [Fact]
+    public async Task A_sub_querys_container_reaches_the_action_as_QueryParent()
+    {
+        var action = Substitute.For<ICustomAction>();
+        var company = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "companies/1", Name = "Contoso", ObjectTypeId = CompanyType.Id, Attributes = [] };
+        var selected = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "cars/2", Name = "A car", ObjectTypeId = CarType.Id, Attributes = [] };
+
+        ArrangeSubQuery(company);
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { selected });
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(),
+            "Archive",
+            body: new CustomActionRequest
+            {
+                SelectedItemIds = ["cars/2"],
+                ParentId = "companies/1",
+                ParentType = "Company",
+            });
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a =>
+                a.QueryParent != null && a.QueryParent.Name == "Contoso" &&
+                a.QueryParentType == "Company" &&
+                // Parent stays null: it names an object of THIS action's type, and a sub-query has
+                // none. Expecting the company there is the confusion the separation prevents.
+                a.Parent == null &&
+                a.SelectedItems.Length == 1 && a.SelectedItems[0].Id == "cars/2"),
+            Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task The_container_is_loaded_under_its_own_type_not_the_route_type()
+    {
+        // The whole reason this is not just Parent. Loading a Company id under the Car type is what
+        // the collection guard refuses - correctly - so the container resolves against the type the
+        // request names, and safety comes from that type's own Read gate instead.
+        var action = Substitute.For<ICustomAction>();
+        var company = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "companies/1", Name = "Contoso", ObjectTypeId = CompanyType.Id, Attributes = [] };
+
+        ArrangeSubQuery(company);
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject>());
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        await endpoint.HandleAsync(NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { ParentId = "companies/1", ParentType = "Company" }));
+
+        await _databaseAccess.Received(1).GetPersistentObjectAsync(CompanyType.Id, "companies/1");
+        await _databaseAccess.DidNotReceive().GetPersistentObjectAsync(CarType.Id, "companies/1");
+    }
+
+    [Fact]
+    public async Task A_container_the_caller_may_not_read_refuses_the_request()
+    {
+        // GetPersistentObjectAsync applies the container type's own Read gate and row rule, so a
+        // null here means "denied or absent" - indistinguishable on purpose. The action must not
+        // run: it would otherwise act on rows in the context of a page the caller cannot open.
+        var action = Substitute.For<ICustomAction>();
+        ArrangeSubQuery(company: null);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/2"], ParentId = "companies/1", ParentType = "Company" },
+            authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task An_unknown_container_type_refuses_rather_than_being_ignored()
+    {
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(CarType.Id.ToString()).Returns(CarType);
+        _modelLoader.ResolveEntityType("Nonexistent").Returns((EntityTypeDefinition?)null);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/2"], ParentId = "companies/1", ParentType = "Nonexistent" },
+            authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_top_level_query_carries_no_container_and_that_is_not_an_error()
+    {
+        var action = Substitute.For<ICustomAction>();
+        var selected = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "cars/2", Name = "A car", ObjectTypeId = CarType.Id, Attributes = [] };
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { selected });
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItemIds = ["cars/2"] });
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.QueryParent == null && a.QueryParentType == null),
+            Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+    }
+
 }

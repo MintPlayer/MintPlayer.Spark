@@ -391,4 +391,109 @@ describe('SparkQueryGridComponent', () => {
       expect(asked).toContain('people/1');
     });
   });
+  describe('selection -> custom action (#327)', () => {
+    const rows: QueryResultItem[] = [
+      { id: 'cars/1', values: [{ key: 'LicensePlate', value: '1-ABC' }] },
+      { id: 'cars/2', values: [{ key: 'LicensePlate', value: '2-DEF' }] },
+      { id: 'cars/3', values: [{ key: 'LicensePlate', value: '3-GHI' }] },
+    ];
+
+    const copyAction = {
+      name: 'CopyCarsToCompany',
+      displayName: { en: 'Copy' },
+      showedOn: 'both',
+      selectionRule: '>=1',
+      refreshOnCompleted: false,
+    } as any;
+
+    async function grid(inputs: Record<string, unknown> = {}) {
+      return await setup(
+        { getCustomActions: vi.fn().mockResolvedValue([copyAction]) },
+        { data: rows, columns: sampleColumns, ...inputs });
+    }
+
+    it('posts exactly the selected ids, in selection order', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[2], rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
+      const [, actionName, , ids] = service.executeCustomAction.mock.calls[0];
+      expect(actionName).toBe('CopyCarsToCompany');
+      expect(ids).toEqual(['cars/3', 'cars/1']);
+    });
+
+    it('posts ids, never the row objects', async () => {
+      // The wire contract: a row is a projection the server handed out, not a document the client
+      // may hand back. Posting rows is what #327 removed.
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , ids] = service.executeCustomAction.mock.calls[0];
+      expect(ids).toEqual(['cars/1']);
+      expect(ids.every((v: unknown) => typeof v === 'string')).toBe(true);
+    });
+
+    it('sends the sub-query container as parentId/parentType', async () => {
+      // The flow this whole thing exists for: a grid on a Company detail page. Without it the
+      // action cannot tell which company it was invoked from - the grid knew (it filters the rows
+      // by that parent) and used to drop the fact on the way out.
+      const { c, service } = await grid({ parentId: 'companies/1', parentType: 'Company' });
+      c.selection.set([rows[0], rows[1]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [typeId, , parent, ids, queryParent] = service.executeCustomAction.mock.calls[0];
+      expect(typeId).toBe(c.entityType()!.id);
+      expect(ids).toEqual(['cars/1', 'cars/2']);
+      expect(queryParent).toEqual({ id: 'companies/1', type: 'Company' });
+      // NOT the `parent` argument: that means an object of the action's own type, and the server
+      // loads it under that type - so a Company id there would refuse.
+      expect(parent).toBeUndefined();
+    });
+
+    it('sends no container from a top-level query page', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , queryParent] = service.executeCustomAction.mock.calls[0];
+      expect(queryParent).toBeUndefined();
+    });
+
+    it('sends no container when only one half of the parent is bound', async () => {
+      // Matches executeQuery and the execute endpoint, both of which resolve a parent only when
+      // id and type are both present. Half a parent is not a parent.
+      const { c, service } = await grid({ parentId: 'companies/1' });
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , queryParent] = service.executeCustomAction.mock.calls[0];
+      expect(queryParent).toBeUndefined();
+    });
+
+    it('surfaces a failure instead of silently doing nothing', async () => {
+      const { c, service } = await grid();
+      service.executeCustomAction.mockRejectedValue({ error: { error: 'Not found' } });
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      expect(c.errorMessage()).toBe('Not found');
+    });
+
+    it('enables the action only once its selection rule is satisfied', async () => {
+      const { c } = await grid();
+
+      expect(c.isActionEnabled(copyAction)).toBe(false);
+      c.selection.set([rows[0]]);
+      expect(c.isActionEnabled(copyAction)).toBe(true);
+    });
+  });
+
 });

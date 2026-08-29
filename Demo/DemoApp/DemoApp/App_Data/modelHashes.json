@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "modelHash": "654a8a286e9c425c7b3758bcace91894e5485e31063108b26e4abcc507c9596e",
+  "modelHash": "7daef2d976669e52c1108ce2d484be8ffd0af2b4582cccb2f152ab3e33df250a",
   "contextRoots": "69a7d18ccbd2883346e610e284c3bf485547edd95d1a02fb5583a30b938faa6b",
-  "modelFiles": "9e3caa5de921cae095a8beef9bbca059c2e0c26563b61bf78c987f8925801afd",
+  "modelFiles": "b98b7e47674fa3c1fcdd4ce5b6bbe915a823880c55ddda2df1616dcfd314693c",
   "files": {
     "Address.json": "23217de2b81a99a45613f2462b655a9c20dfd081911103cfc5b74c3d39aa142b",
-    "Car.json": "784802bc96579d9123471570a7321e0a58a871d1bf24e265f311525b07a101e8",
+    "Car.json": "64ca055219bea079781178a306aa4bbb567c21d08e6f9df6be744826d89383d2",
     "Company.json": "7a5374e050903ec10f4b02a81b0dcaee8bb01f41e50817f8b4e520d5ad1683d2",
     "Person.json": "25b690e4a87d33e1ab6d7672d5b989452cb0227c57a71ae73b3c77ff01fd33ec",
     "StartPage.json": "67e8fd663cfc711e4a5bacc740d3bb5a9c41fc06ca8372d44a27e1aae48e31a3",

@@ -54,7 +54,12 @@ export class SparkQueryActionsService {
   async execute(
     queryIdOrAlias: string,
     actionName: string,
-    options?: { parent?: PersistentObject; selectedItemIds?: string[] },
+    options?: {
+      parent?: PersistentObject;
+      selectedItemIds?: string[];
+      /** For a sub-query: the object whose detail page it was rendered on. See SparkService. */
+      queryParent?: { id: string; type: string };
+    },
   ): Promise<void> {
     const context = await this.contextFor(queryIdOrAlias);
     if (!context) {
@@ -64,7 +69,7 @@ export class SparkQueryActionsService {
     }
 
     await this.sparkService.executeCustomAction(
-      context.entityType.id, actionName, options?.parent, options?.selectedItemIds);
+      context.entityType.id, actionName, options?.parent, options?.selectedItemIds, options?.queryParent);
   }
 
   /**

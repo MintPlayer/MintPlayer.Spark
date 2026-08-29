@@ -173,6 +173,32 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 }
             }
 
+            // The sub-query's container, when there is one. Resolved under ITS OWN type, which is
+            // the one place that is correct rather than a C3 violation: the container is a
+            // different type from the action's by construction (Cars listed on a Company page), so
+            // loading it under the route type would hand a Company id to the Car collection guard
+            // and refuse every time. Safety comes from GetPersistentObjectAsync applying that
+            // type's own Read gate and row rule — a container the caller may not see refuses the
+            // request rather than arriving as a fact.
+            Po? queryParent = null;
+            string? queryParentTypeName = null;
+            if (!string.IsNullOrEmpty(request?.ParentId) && !string.IsNullOrEmpty(request?.ParentType))
+            {
+                var parentTypeDefinition = modelLoader.ResolveEntityType(request.ParentType);
+                if (parentTypeDefinition is null)
+                {
+                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+                }
+
+                queryParent = await databaseAccess.GetPersistentObjectAsync(parentTypeDefinition.Id, request.ParentId);
+                if (queryParent is null)
+                {
+                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+                }
+
+                queryParentTypeName = parentTypeDefinition.Name;
+            }
+
             // Selected items come from this type's list screen; an id-less one names no row and
             // cannot be verified, so it fails the whole request rather than being skipped.
             var submittedIds = (request?.SelectedItemIds ?? []).ToList();
@@ -227,6 +253,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             var args = new CustomActionArgs
             {
                 Parent = parent,
+                QueryParent = queryParent,
+                QueryParentType = queryParentTypeName,
                 SelectedItems = [.. selectedItems],
                 SubmittedParent = request?.Parent,
                 SubmittedSelectedItemIds = [.. submittedIds],

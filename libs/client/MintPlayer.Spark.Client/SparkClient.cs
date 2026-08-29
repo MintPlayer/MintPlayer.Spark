@@ -372,9 +372,15 @@ public class SparkClient : IDisposable
         string actionName,
         PersistentObject? parent = null,
         IReadOnlyList<string>? selectedItemIds = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? parentId = null,
+        string? parentType = null)
     {
-        var content = JsonContent.Create(new { parent, selectedItemIds }, options: JsonOptions);
+        // parentId/parentType name a SUB-QUERY's container — a different type from this action's,
+        // resolved server-side under its own Read gate. Distinct from `parent`, which is an object
+        // of this action's own type. Appended after the token so existing positional calls keep
+        // compiling; every caller in the repo passes by name anyway.
+        var content = JsonContent.Create(new { parent, selectedItemIds, parentId, parentType }, options: JsonOptions);
         using var response = await SendAsync(
             HttpMethod.Post,
             $"/spark/actions/{objectTypeId}/{Uri.EscapeDataString(actionName)}",

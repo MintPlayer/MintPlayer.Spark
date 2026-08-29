@@ -120,7 +120,7 @@ describe('SparkQueryActionsService', () => {
       await sut.execute('cars', 'Export', { selectedItemIds: ['cars/1', 'cars/2'] });
 
       expect(service.executeCustomAction).toHaveBeenCalledWith(
-        'type-car', 'Export', undefined, ['cars/1', 'cars/2']);
+        'type-car', 'Export', undefined, ['cars/1', 'cars/2'], undefined);
     });
 
     it('passes the parent through when one is given', async () => {
@@ -129,7 +129,21 @@ describe('SparkQueryActionsService', () => {
 
       await sut.execute('cars', 'Export', { parent });
 
-      expect(service.executeCustomAction).toHaveBeenCalledWith('type-car', 'Export', parent, undefined);
+      expect(service.executeCustomAction).toHaveBeenCalledWith('type-car', 'Export', parent, undefined, undefined);
+    });
+
+    it('forwards a sub-query container when one is given', async () => {
+      // Same distinction the grid draws: the container is a DIFFERENT type from the action's, so
+      // it travels as id + type rather than in the `parent` slot.
+      const { sut, service } = setup();
+
+      await sut.execute('cars', 'Export', {
+        selectedItemIds: ['cars/1'],
+        queryParent: { id: 'companies/1', type: 'Company' },
+      });
+
+      expect(service.executeCustomAction).toHaveBeenCalledWith(
+        'type-car', 'Export', undefined, ['cars/1'], { id: 'companies/1', type: 'Company' });
     });
 
     it('throws — rather than silently doing nothing — when there is nothing to execute against', async () => {

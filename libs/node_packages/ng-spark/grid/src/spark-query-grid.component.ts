@@ -294,7 +294,21 @@ export class SparkQueryGridComponent {
       if (!confirm(message)) return;
     }
     try {
-      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name, undefined, this.selection().map(r => r.id));
+      // The sub-query's container travels with the action (#327). Without it an action invoked
+      // from a company's Cars tab could not tell it was on a company's page at all — the grid knew
+      // (it filters the rows by that parent) and simply dropped the fact on the way out.
+      //
+      // Sent as parentId/parentType, NOT as the `parent` argument: that one means an object of this
+      // action's OWN type and is loaded under it server-side, so handing it a Company id for a Car
+      // action refuses — correctly, and confusingly.
+      const pId = this.parentId();
+      const pType = this.parentType();
+      await this.sparkService.executeCustomAction(
+        this.entityType()!.id,
+        action.name,
+        undefined,
+        this.selection().map(r => r.id),
+        pId && pType ? { id: pId, type: pType } : undefined);
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) this.reload();
     } catch (e) {

@@ -1,0 +1,14 @@
+{
+  "CopyCarsToCompany": {
+    "displayName": {
+      "en": "Copy to this company",
+      "fr": "Copier vers cette entreprise",
+      "nl": "Kopiëren naar dit bedrijf"
+    },
+    "icon": "Copy",
+    "description": "Duplicates the selected cars. Invoked from a company's Cars tab, the copies are assigned to that company.",
+    "showedOn": "both",
+    "selectionRule": ">=1",
+    "refreshOnCompleted": true
+  }
+}

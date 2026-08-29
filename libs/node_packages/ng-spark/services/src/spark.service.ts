@@ -137,8 +137,25 @@ export class SparkService {
     return firstValueFrom(this.http.get<CustomActionDefinition[]>(`${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}`));
   }
 
-  async executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItemIds?: string[]): Promise<void> {
-    const body: { parent?: PersistentObject; selectedItemIds?: string[]; retryResults?: RetryActionResult[] } = { parent, selectedItemIds };
+  /**
+   * @param parent The object of THIS type the action is operating on — the detail-page invocation.
+   * @param selectedItemIds Row ids from a query. Ids, never row objects: a row is a projection.
+   * @param queryParent When invoked from a sub-query, the object whose detail page it was rendered
+   *   on — a DIFFERENT type (the cars listed on a company's page are Cars, the page is a Company).
+   *   Sent as id + type, exactly as the query endpoint names it, and resolved server-side under its
+   *   own type with its own Read gate.
+   */
+  async executeCustomAction(
+    objectTypeId: string,
+    actionName: string,
+    parent?: PersistentObject,
+    selectedItemIds?: string[],
+    queryParent?: { id: string; type: string },
+  ): Promise<void> {
+    const body: {
+      parent?: PersistentObject; selectedItemIds?: string[];
+      parentId?: string; parentType?: string; retryResults?: RetryActionResult[];
+    } = { parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type };
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
       body as any

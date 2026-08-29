@@ -129,6 +129,23 @@ never be skipped by a bulk path.
 
 `ExecuteCustomAction` **refuses a short result** rather than acting on 498 of 500 selected rows.
 
+## A sub-query's action knows which page it was on
+
+A grid rendered on another object's detail page now passes that object to its custom actions, as
+`CustomActionArgs.QueryParent`. It could not before: the grid knew its parent (it filters the rows by
+it) and dropped the fact on the way out, so an action invoked from a company's Cars tab could not
+tell it was on a company's page at all.
+
+⚠️ It is **not** `Parent`, and that separation is load-bearing. `Parent` means an object of the
+action's own type, and the server loads it under the route's type on purpose. A sub-query's container
+is a *different* type by construction — the cars listed on a company's page are Cars, the page is a
+Company — so it travels as `parentId` + `parentType` and resolves under its own type, with that
+type's own `Read` gate. A container the caller may not see refuses the request.
+
+`SparkClient.ExecuteActionAsync` and `SparkService.executeCustomAction` gain the corresponding
+optional arguments. Try it in DemoApp: open a company, use the **Cars** tab, tick rows, and click
+**Copy to this company** — the copies are assigned to that company.
+
 ## Cancellation
 
 `IQueryExecutor.ExecuteQueryAsync` takes a `CancellationToken`, wired from

@@ -35,6 +35,30 @@ public class CustomActionArgs
     /// <summary>The parent exactly as the client submitted it — untrusted values, for actions that edit.</summary>
     public PersistentObject? SubmittedParent { get; set; }
 
+    /// <summary>
+    /// The object whose detail page this query was rendered on, when the action was invoked from a
+    /// <b>sub-query</b>. Null on a top-level query page and on a detail-page invocation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ Not the same thing as <see cref="Parent"/>, and the distinction is the whole reason this
+    /// exists. <see cref="Parent"/> is an object <em>of this action's own type</em> — the car whose
+    /// detail page you clicked from — and is resolved under the route's type on purpose. This is the
+    /// <em>container</em>, which is a different type entirely: the cars listed on a company's page
+    /// are Cars, the page is a Company.
+    /// </para>
+    /// <para>
+    /// Resolved through the same row-gated read path as any other load, under <b>its own</b> type,
+    /// so the caller must be allowed to read it — a container they may not see refuses the request
+    /// rather than arriving as a fact. It mirrors <c>CustomQueryArgs.Parent</c>, which is how the
+    /// query that produced these rows was filtered in the first place.
+    /// </para>
+    /// </remarks>
+    public PersistentObject? QueryParent { get; set; }
+
+    /// <summary>The entity type name of <see cref="QueryParent"/>, e.g. <c>"Company"</c>.</summary>
+    public string? QueryParentType { get; set; }
+
     /// <summary>The ids the client named, in submitted order — untrusted input, before resolution.</summary>
     /// <remarks>
     /// Rarely needed: <see cref="SelectedItems"/> is these ids resolved and row-checked, and the
