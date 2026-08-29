@@ -1,4 +1,4 @@
-# Release notes — `10.0.0-preview.66` / `@mintplayer/ng-spark@22.7.0` / `@mintplayer/ng-spark-auth@22.7.0`
+# Release notes — `10.0.0-preview.67` / `@mintplayer/ng-spark@22.8.0` / `@mintplayer/ng-spark-auth@22.8.0`
 
 A **query row is a projection, and a persistent object is a document** (#327). Separating the two
 shrinks the wire, makes composed queries safe to offer, and turns a long list of silent wrong
@@ -193,6 +193,40 @@ request kept materializing its result after the socket was gone. `IRowSecurity.F
 
 ---
 
+## A custom action receives the rows the grid had
+
+`CustomActionArgs.SelectedItems` is now `QueryResultItem[]` — an id, a display string and a value per
+query column — instead of `PersistentObject[]`.
+
+They are **re-materialized by re-running the query the selection came from**, narrowed to the posted
+ids. Not echoed from the browser, so the values are server truth; and not re-derived from documents,
+so they stay faithful to what the user was looking at. Three things made the document load wrong:
+
+- A column computed inside an index and stored there is on no document, so it came back **null** —
+  silently, because the mapper skips a property it cannot find.
+- Loading by id can only use the type's **default** index, so a query naming its own silently
+  produced a different row shape than the grid rendered.
+- A **composed** query has no documents at all. Its selection previously fell into a per-id loop over
+  the page-compose hook and handed the action *N copies of the page object wearing row ids*.
+
+The client now posts the query id alongside the selection. It is narrowing-only: the `Query` right is
+enforced on it independently, and its entity type must match the action's type or the request is
+refused. Every id still resolves or the whole request is refused — an action never receives a subset.
+
+**Two new hooks on `{Type}Actions`:**
+
+```csharp
+// Rows -> entities. One batched load, never one per row.
+public virtual Task<IDictionary<string, T>> MaterializeAsync(IReadOnlyList<string> ids)
+
+// Only when a row's Id is not a document id — a composed query minting "collections/people",
+// or a composite "{a}|{b}" key. Without it such a query throws, naming this hook.
+public object RestrictToIds(object source, IReadOnlyCollection<string> ids)
+```
+
+**Three shapes still materialize by id** and therefore lose index-computed values: a query owning its
+own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no query.
+
 ## Migration checklist
 
 | If you… | Do this |
@@ -206,3 +240,6 @@ request kept materializing its result after the socket was gone. `IRowSecurity.F
 | implement `IQueryExecutor` or `IRowSecurity` | add the `CancellationToken` parameters |
 | have a custom query returning `IEnumerable<object>` | return a concrete row type |
 | have a query whose rows share an id, or have none | fix the row identity — it now throws |
+| wrote `args.Parent ?? args.SelectedItems.FirstOrDefault()` | coalesce on ids: `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id` |
+| read attributes off `args.SelectedItems` | read the column value, or materialize the entity via `MaterializeAsync` |
+| have a query whose rows carry synthetic or composite ids | declare `RestrictToIds` on its actions class |

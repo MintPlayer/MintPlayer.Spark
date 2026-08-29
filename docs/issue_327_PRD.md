@@ -195,7 +195,7 @@ design lever for M2 — see D2.
 
 ### F13 — Row ids fed back into the by-id read path compose the page N times
 
-⚠️ **Still live after M2. Fixed by D12 (M11), not before.**
+✅ **Fixed by D12 (M11).** Still live after M2, which batched the entity case and left this one.
 
 `ExecuteCustomAction`'s loop calls `GetPersistentObjectAsync`, which for a virtual type lands in
 `LoadVirtualObjectViaActionsAsync` → **the page-compose hook**, once per selected row, with `obj.Id ??= id`
@@ -773,11 +773,11 @@ direction). Marked ✅ where already landed on the branch.
     count/page to the author — all five or none (M5). `CustomQueryArgs` gains `Skip`, `Take`,
     `Search`.
 
-18. `CustomActionArgs.SelectedItems` becomes `QueryResultItem[]` (M11). Every consumer using
+18. ✅ `CustomActionArgs.SelectedItems` becomes `QueryResultItem[]` (M11). Every consumer using
     `args.Parent ?? args.SelectedItems.FirstOrDefault()` stops compiling — `Parent` stays a
     `PersistentObject`, so the two no longer unify; coalesce on ids instead. Rows carry the query
     surface, not the full attribute set: an action needing more materializes through the hook.
-19. `CustomActionRequest` gains the query the selection came from (M11), so it can be re-executed.
+19. ✅ `CustomActionRequest` gains the query the selection came from (M11), so it can be re-executed.
     Client-supplied and therefore narrowing-only: the `Query` right is enforced on it independently,
     and its entity type must match the action's route type.
 

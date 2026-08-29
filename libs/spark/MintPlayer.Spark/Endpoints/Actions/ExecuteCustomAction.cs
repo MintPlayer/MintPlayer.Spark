@@ -45,6 +45,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     // scope opened here covers the row-gated loads below.
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IQueryExecutor queryExecutor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -207,17 +209,33 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
+            // Re-materialize the selection by RE-RUNNING THE QUERY it came from, narrowed to these
+            // ids — so the action receives the rows the grid actually had, with the query's own
+            // projection. Loading the documents instead would re-derive something adjacent: an
+            // index-computed column would come back null, a query bound to a non-default index would
+            // yield the wrong shape, and a composed query (no clrType, no documents) could not be
+            // materialized at all — it would loop the page-compose hook and hand the action N copies
+            // of the page object wearing row ids.
+            //
+            // Falls back to the document load for the three shapes that cannot be re-run: a query
+            // owning its own paging, a streaming query, and a request naming no query.
             var selectedItems = submittedIds.Count == 0
                 ? []
-                : await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, submittedIds!);
+                : await MaterializeSelectionAsync(request, entityType, submittedIds!, httpContext);
 
-            // Never shrink silently. The batch omits an id that names no document, names a foreign
+            if (selectedItems is null)
+            {
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+            }
+
+            // Never shrink silently. A row is missing when it names nothing, names a foreign
             // collection, or is refused by the row rule — all indistinguishable on purpose — and
-            // acting on the survivors would let a bulk action quietly process 498 of 500 rows. A
-            // short result is the same refusal the per-row loop gave, just decided once.
+            // acting on the survivors would let a bulk action quietly process 498 of 500 rows.
             //
-            // Compared against the DISTINCT count because the batch collapses duplicate ids, and a
-            // caller selecting the same row twice is not an error.
+            // ⚠️ Compared against what the SOURCE yielded, never against the submitted list. Zip the
+            // two, or pad the result with id-only stubs, and this check degrades to `n == n`.
+            //
+            // Distinct because duplicates collapse, and selecting the same row twice is not an error.
             var distinctRequested = submittedIds.Distinct(StringComparer.OrdinalIgnoreCase).Count();
             if (selectedItems.Count != distinctRequested)
             {
@@ -238,7 +256,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // assume all of it happened. Reporting WHICH rows were dropped is itself disclosure,
             // so silent filtering is the only M-3-compatible filtering — and it is worse than a
             // refusal.
-            var rowIds = selectedItems.Select(i => i.Id!)
+            var rowIds = selectedItems.Select(i => i.Id)
                 .Concat(parent?.Id is { Length: > 0 } parentId ? [parentId] : Array.Empty<string>())
                 .Where(rowId => !string.IsNullOrEmpty(rowId))
                 .ToArray();
@@ -278,4 +296,67 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             return ClientResult.Envelope(clientAccessor, new { error = "Operation failed" }, StatusCodes.Status500InternalServerError);
         }
     }
+    /// <summary>
+    /// The selected rows, re-materialized server-side. <see langword="null"/> means refuse.
+    /// </summary>
+    /// <remarks>
+    /// Two paths, and the choice is made from the query's shape <em>before</em> anything runs, not by
+    /// trying and failing:
+    /// <list type="number">
+    /// <item><description><b>Re-run the query</b> narrowed to these ids. The rows then carry the
+    /// query's own projection — index-computed columns included — and a composed query works at all.
+    /// The executor enforces the <c>Query</c> right independently, so the client-supplied query id is
+    /// narrowing-only, and the entity-type check below stops it naming another type's rows.</description></item>
+    /// <item><description><b>Load the documents</b> and project them, for a query that owns its own
+    /// paging, a streaming query, or a request naming no query. These lose index-computed values —
+    /// stated in the guide rather than papered over.</description></item>
+    /// </list>
+    /// </remarks>
+    private async Task<IReadOnlyList<QueryResultItem>?> MaterializeSelectionAsync(
+        CustomActionRequest? request,
+        EntityTypeDefinition entityType,
+        IReadOnlyList<string> submittedIds,
+        HttpContext httpContext)
+    {
+        if (!string.IsNullOrEmpty(request?.QueryId) && queryLoader.ResolveQuery(request.QueryId) is { } query)
+        {
+            // The query must produce rows of the type this action is authorized on. Without this the
+            // client could name a query over another type and have its rows handed to an action
+            // gated on a different grant.
+            if (!string.Equals(query.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (IsReExecutable(query))
+            {
+                var restricted = await queryExecutor.ExecuteQueryAsync(
+                    query,
+                    parent: request.Parent,
+                    skip: 0,
+                    take: submittedIds.Count,
+                    search: null,
+                    restrictToIds: submittedIds,
+                    cancellationToken: httpContext.RequestAborted);
+
+                return restricted.Items;
+            }
+        }
+
+        // Fallback: the batched row-gated load, projected onto the same shape.
+        var loaded = await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, submittedIds);
+        var columns = QueryResultProjector.BuildColumns(entityType);
+        return QueryResultProjector.ToItems(loaded, columns, $"Action '{entityType.Name}'");
+    }
+
+    /// <summary>
+    /// Whether a query can be re-run narrowed to a set of ids.
+    /// </summary>
+    /// <remarks>
+    /// A streaming query's method takes <c>(StreamingQueryArgs, CancellationToken)</c> and is not
+    /// resolvable as a custom query at all. A query returning <c>SparkQueryPage&lt;T&gt;</c> owns its
+    /// own filtering and paging, and there is no way to ask it for "the page containing these ids".
+    /// Both are properties of the declaration, so this is a branch rather than a failed attempt.
+    /// </remarks>
+    private bool IsReExecutable(SparkQuery query)
+        => !query.IsStreamingQuery && !queryExecutor.OwnsItsOwnPaging(query);
+
 }

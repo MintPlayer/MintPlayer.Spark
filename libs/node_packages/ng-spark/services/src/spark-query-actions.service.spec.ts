@@ -120,7 +120,7 @@ describe('SparkQueryActionsService', () => {
       await sut.execute('cars', 'Export', { selectedItemIds: ['cars/1', 'cars/2'] });
 
       expect(service.executeCustomAction).toHaveBeenCalledWith(
-        'type-car', 'Export', undefined, ['cars/1', 'cars/2'], undefined);
+        'type-car', 'Export', undefined, ['cars/1', 'cars/2'], undefined, 'q-cars');
     });
 
     it('passes the parent through when one is given', async () => {
@@ -129,7 +129,7 @@ describe('SparkQueryActionsService', () => {
 
       await sut.execute('cars', 'Export', { parent });
 
-      expect(service.executeCustomAction).toHaveBeenCalledWith('type-car', 'Export', parent, undefined, undefined);
+      expect(service.executeCustomAction).toHaveBeenCalledWith('type-car', 'Export', parent, undefined, undefined, 'q-cars');
     });
 
     it('forwards a sub-query container when one is given', async () => {
@@ -143,7 +143,7 @@ describe('SparkQueryActionsService', () => {
       });
 
       expect(service.executeCustomAction).toHaveBeenCalledWith(
-        'type-car', 'Export', undefined, ['cars/1'], { id: 'companies/1', type: 'Company' });
+        'type-car', 'Export', undefined, ['cars/1'], { id: 'companies/1', type: 'Company' }, 'q-cars');
     });
 
     it('throws — rather than silently doing nothing — when there is nothing to execute against', async () => {

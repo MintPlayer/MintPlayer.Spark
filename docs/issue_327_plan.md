@@ -21,8 +21,8 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
 | M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
 | M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` + tests |
-| M10 | Versions + release notes | ✅ done | `c1f47463` |
-| M11 | `SelectedItems` becomes `QueryResultItem[]`, re-materialized by re-running the query | ⬜ next | — |
+| M10 | Versions + release notes | ✅ done | `c1f47463`, re-cut for M11 |
+| M11 | `SelectedItems` becomes `QueryResultItem[]`, re-materialized by re-running the query | ✅ done | this commit |
 
 **Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
 tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
@@ -294,112 +294,47 @@ Independently shippable, and in this PR because the repo's rule is one PR.
   stays 10).
 - npm `@mintplayer/ng-spark` and `@mintplayer/ng-spark-auth` `22.6.0` → `22.7.0`, **in lockstep** (Angular
   22 → major stays 22). A breaking API change is a minor here; the major tracks the platform.
-- `docs/release-notes-preview-66.md`.
+- `docs/release-notes-preview-67.md`.
 - Final full sweep: `nx run-many -t test`, both `--spark-verify-model` and `--spark-verify-security` across
   all four demo apps, then the PR.
 
 ---
 
-## M11 — `SelectedItems` becomes `QueryResultItem[]`
+## M11 — `SelectedItems` becomes `QueryResultItem[]` ✅
 
-The half of the issue's title M2/M4 did not land. Design and rationale in PRD **D12**; this is the
-work.
+Design and rationale in PRD **D12**. What shipped, and the two places it differed from the plan.
 
-**A selection is re-materialized by re-running the query it came from, restricted to the selected
-ids** — not by loading documents. The rows an action receives are then the rows the caller was
-looking at, index-computed columns included.
+**A selection is re-materialized by re-running the query it came from**, narrowed to the selected ids.
+`IQueryExecutor.ExecuteQueryAsync` gains `restrictToIds`; paging is ignored when it is set, because
+the caller asked for those rows and not for a page of them.
 
-**Not a performance milestone.** M2 already made the selection one round trip, and re-execution
-replaces that trip rather than adding one. What changes is which rows an author gets and what they
-contain.
+- `CustomActionArgs.SelectedItems` : `PersistentObject[]` → `QueryResultItem[]`.
+- `CustomActionRequest.QueryId`, sent by the grid and by `SparkQueryActionsService`. Narrowing-only:
+  the executor enforces `Query` on it, and its entity type must match the route type or the request
+  is refused.
+- `IQueryExecutor.OwnsItsOwnPaging` answers from the declared return type, so the endpoint branches
+  on shape rather than trying and failing.
+- Fallback to the batched load for the three shapes that cannot be re-run: `SparkQueryPage<T>`,
+  streaming queries, and a request naming no query.
+- `DefaultPersistentObjectActions<T>.MaterializeAsync` — rows → entities, one batched load, holding
+  the `[Reference]` includes that must ride the same fluent call.
+- `RestrictToIds` — duck-typed on the actions class, like the virtual-type load hook. Required
+  wherever a row's identity is not a document id; **throws naming itself** otherwise, rather than
+  returning nothing and letting the all-or-nothing rule report a refusal that reads like a
+  permission problem.
 
-### It fixes F13, which is still live
+**Differed from the plan, both for the better:**
 
-A composed type (`clrType: null`) has no documents, so the selection path loops the **page-compose**
-hook once per id and hands an action *N copies of the page object wearing row ids* — silently,
-feeding something that writes data. M2 batched the entity case and left this untouched. Re-execution
-is the only thing that produces real rows for a composed type; on its own it decides the design.
+1. ~~A superset column set for the action path~~ — dropped. Re-execution returns the query's own
+   columns, and a richer fallback would make an action's data depend on which shape its query
+   happened to be. The hook covers anything more.
+2. ~~Replace `IDatabaseAccess.GetPersistentObjectsByIdAsync`~~ — kept. It is no longer the *primary*
+   path but it is exactly what the three fallbacks need, so removing it would mean writing it again.
 
-### The work
-
-1. `CustomActionArgs.SelectedItems` : `PersistentObject[]` → `QueryResultItem[]`. `Parent`,
-   `SubmittedParent`, `QueryParent` and `SubmittedSelectedItemIds` unchanged.
-2. `CustomActionRequest` gains the query id/alias; the grid sends it (it already holds `query()`).
-3. `IQueryExecutor` gains a way to restrict a run to a set of ids — composed onto the queryable for
-   a Raven-backed query, applied after materialization for an in-memory one.
-4. `ExecuteCustomAction` resolves the query, **verifies its entity type is the route type**, and
-   re-executes. The existing gates stay upstream and unchanged.
-5. Fallback to the batched load, projected, for the three shapes that cannot be re-executed:
-   `SparkQueryPage<T>` (the author owns paging), a streaming query (its method shape is not a custom
-   query), and a request carrying no query id. All three are decided from the resolved method
-   *before* invocation, so this is a branch, not a failed attempt.
-6. `DefaultPersistentObjectActions<T>` gains **two** hooks, both `public virtual` and
-   `[NoInterfaceMember]`, so `IPersistentObjectActions<T>` is unchanged and the hand-written-actions
-   tripwire does not fire:
-   - **restrict a source to a set of row ids** — required for correctness, not ergonomics. The
-     default filters on the row id; a query with synthetic identity (a composed query minting
-     `"collections/people"`, or a composite `"{a}|{b}"` key) would otherwise match nothing, return
-     zero rows, and be refused by the all-or-nothing rule — an action that stops working with a
-     refusal that reads like a permission problem.
-   - **materialize rows into entities** — the `GetEntities` equivalent, called from inside
-     `LoadManyAsync` at the load, batched rather than per row.
-7. An id-less row from a composed type refuses at the endpoint naming the type, rather than reaching
-   the projector and becoming a generic 500.
-8. `IDatabaseAccess.GetPersistentObjectsByIdAsync` loses its only caller. Replace it rather than
-   leaving dead public surface.
-
-### Invariants to protect, and the tests that already do
-
-Each fails **silently** if built wrong. If one of these tests needs editing to compile, that is a
-signal to re-read PRD D12 — not to edit the test.
-
-| Invariant | Pinned by |
-|---|---|
-| Returned ids must equal the distinct requested set, or refuse — compared against what the source **yielded**, never against the submitted list | `A_selection_the_batch_shrinks_is_refused_rather_than_partially_applied` |
-| One materialization call carrying all ids; rows are **not** echoed from the client | `The_whole_selection_is_resolved_in_one_batched_call` (re-point at the new producer, keep the property) |
-| Id-less selection refuses the whole request, upstream of materialization | `An_id_less_selected_item_refuses_the_whole_request` |
-| The action-name row gate takes ids from materialized rows | `A_selected_item_the_row_gate_refuses_is_a_404_not_an_invocation` |
-
-Redaction is the fourth, and applies to the fallback path: the projector must consume the
-**redacted** `PersistentObject`. The re-execution path inherits the query pipeline's own redaction.
-
-### New tests
-
-- Re-execution returns the **query's** projection: an index-computed column that is null on the
-  document arrives populated. This is the whole point of the milestone and nothing else asserts it.
-- A selection over a **composed** query yields real rows, not N copies of the page object (F13).
-- A query bound to a non-default index (`company-cars` → `VCompanyCar`) materializes through *that*
-  binding, not the type's default.
-- The route-type check: a query id naming a query over another type is refused.
-- Each fallback: `SparkQueryPage`, streaming, and no query id — all three still produce rows and
-  still enforce all-or-nothing.
-- The materialization hook: overridable, and reached on the fallback path.
-- The id-restriction hook: a query whose rows carry **synthetic ids** (the composed demo's
-  `collections/people`, and a composite `"{a}|{b}"`) materializes correctly through an override, and
-  **fails loudly rather than silently returning nothing** without one.
-- A hook returning more or different rows than were requested is caught by the all-or-nothing
-  comparison rather than trusted.
-
-### Migration
-
-- `args.Parent ?? args.SelectedItems.FirstOrDefault()` stops compiling — `Parent` stays a
-  `PersistentObject`, so the two no longer unify. Coalesce on ids:
-  `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id`. Three demo actions, ~3 lines each,
-  and every external consumer with the same idiom. Needs an explicit release-note line.
-- One assertion reads `SelectedItems[0].Name`; `QueryResultItem` has none. The property it pins —
-  server state, not submitted state — is still worth pinning, restated over `Breadcrumb`.
-- Rows carry the **query surface**, not the full attribute set. An action needing a detail-only
-  attribute, the entity, or an etag uses the hook.
-
-### Documented limitations
-
-- **`Etag` and `Can` are gone.** `QueryResultItem` carries neither. Accepted.
-- **The three fallback shapes still lose index-computed values**, because they still materialize by
-  id. Narrow, and stated in the guide rather than papered over.
-
-### Docs that go stale
-
-`docs/guide-custom-actions.md` says the opposite in as many words — *"`SelectedItems` holds
-**entities**, not the rows the grid displayed"* — and both it and `docs/guide-row-security.md` still
-reference a `SubmittedSelectedItems` that #327 already removed. `docs/release-notes-preview-66.md`
-needs the migration line.
+**Tests (18).** `Endpoints/Queries/QueryIdRestrictionTests.cs` (7) covers the executor: exact rows
+back, the query's computed columns present, paging ignored, an unknown id simply absent, an
+unrestricted run unaffected, the loud failure naming `RestrictToIds`, and `OwnsItsOwnPaging` answered
+without invoking anything. `ExecuteCustomActionTests` gains 6 for the endpoint: re-executed rather
+than loaded, narrowed to the submitted ids, a foreign query refused before it runs, a short
+re-execution refusing the whole request, and both fallbacks. The client adds 2, and the pre-existing
+invariant tests were kept **unedited** — which was the point of naming them here.

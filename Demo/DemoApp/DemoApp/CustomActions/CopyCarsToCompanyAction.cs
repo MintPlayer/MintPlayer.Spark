@@ -37,24 +37,22 @@ public partial class CopyCarsToCompanyAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
-        // Detail-page invocation sends a Parent and no selection; a query sends the reverse. Taking
-        // the selection first keeps both working from one line.
-        var sources = args.SelectedItems.Length > 0
-            ? args.SelectedItems
-            : args.Parent is { } single ? [single] : [];
+        // Coalesce on IDS, not on objects. A selected row is a QueryResultItem -- an id, a display
+        // string and a value per column -- while Parent is a PersistentObject, so the two no longer
+        // unify. That is deliberate: a row is not a document, and this action wants documents.
+        string[] carIds = args.SelectedItems.Length > 0
+            ? [.. args.SelectedItems.Select(i => i.Id)]
+            : args.Parent?.Id is { Length: > 0 } parentId ? [parentId] : [];
 
-        if (sources.Length == 0)
+        if (carIds.Length == 0)
             throw new InvalidOperationException("Select at least one car to copy.");
 
         // The company whose page we were on. Absent on the top-level car list, where each copy
         // simply keeps the owner of the car it was copied from.
         var targetCompanyId = args.QueryParent?.Id;
 
-        foreach (var source in sources)
+        foreach (var carId in carIds)
         {
-            var carId = source.Id
-                ?? throw new InvalidOperationException("Selected item has no id.");
-
             var car = await dbAccess.GetDocumentUncheckedAsync<Car>(carId)
                 ?? throw new InvalidOperationException($"Car '{carId}' not found.");
 

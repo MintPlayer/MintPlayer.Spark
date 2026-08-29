@@ -73,9 +73,8 @@ public class CustomActionArgs
     /// re-loaded server-side and row-checked. Null when the request named none.
     public PersistentObject? Parent { get; set; }
 
-    /// Selected rows from a query, each re-loaded server-side and row-checked.
-    /// Empty when invoked from a detail view.
-    public PersistentObject[] SelectedItems { get; set; } = [];
+    /// The rows selected in a query, as the grid had them. Empty on a detail view.
+    public QueryResultItem[] SelectedItems { get; set; } = [];
 
     /// The parent exactly as the client submitted it -- untrusted, for actions that edit.
     public PersistentObject? SubmittedParent { get; set; }
@@ -85,10 +84,20 @@ public class CustomActionArgs
 }
 ```
 
-`SelectedItems` holds **entities**, not the rows the grid displayed. The client posts
-`selectedItemIds` -- a list of strings -- and the framework loads each one through the row-gated
-read path before your action runs. That is what makes a selection safe to act on: a row is a
-projection the server handed out, never a document a client may hand back.
+`SelectedItems` holds the **rows the grid displayed** -- `QueryResultItem`s: an id, a display string,
+and a value per query column. The client posts `selectedItemIds` and the query it came from; the
+server **re-runs that query narrowed to those ids** and hands you the result.
+
+Re-running rather than loading documents is what keeps the rows faithful. A column computed inside an
+index and stored there exists on no document, so loading by id would return it as null -- silently.
+And a composed query has no documents at all, so it could not be materialized by id in the first
+place.
+
+The query id is client-supplied but narrowing-only: the `Query` right is enforced on it
+independently, and its entity type must match the action's type or the request is refused.
+
+To act on the **entity** behind a row, materialize it -- see below. A row is deliberately weak: no
+attribute metadata, no `can` block, no etag. It is not a document and cannot be saved.
 
 ### SparkCustomAction vs ICustomAction
 
@@ -321,6 +330,38 @@ since `SelectedItems` is the same list resolved and row-checked. There is no sub
 of a selection because a row was never a document: the grid renders a projection with no attribute
 metadata, no `can` block and no etag, so there is nothing meaningful a client could submit back.
 An action that wants edited values wants a *detail form*, which is `SubmittedParent`.
+
+### Getting the entity behind a row
+
+```csharp
+// In {Type}Actions -- one batched load, never one per row.
+var entities = await MaterializeAsync([.. args.SelectedItems.Select(i => i.Id)]);
+```
+
+Override `MaterializeAsync` to change *how* entities are found, not *which*: the framework applies
+the collection guard, the row rule and redaction to whatever comes back, and refuses the whole
+request unless every requested id resolved.
+
+### When a query's rows have identity the framework cannot filter on
+
+Re-running a query narrowed to ids works by default when a row's `Id` is a document id. A composed
+query mints its own -- `"collections/people"` -- and composite keys (`"{a}|{b}"`) are common. Declare
+the hook so the framework can find those rows again:
+
+```csharp
+// In {Type}Actions
+public object RestrictToIds(object source, IReadOnlyCollection<string> ids)
+    => ((IEnumerable<MyRow>)source).Where(r => ids.Contains(r.Id)).ToList();
+```
+
+Without it, such a query **throws** naming this hook, rather than returning nothing and letting the
+all-or-nothing rule report a refusal that reads like a permission problem.
+
+### Three shapes fall back to a document load
+
+A query owning its own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no query
+cannot be re-run. Those selections are materialized by id instead, and **lose index-computed column
+values** -- the column is present, the value is null.
 
 ### A sub-query's container: `QueryParent`
 

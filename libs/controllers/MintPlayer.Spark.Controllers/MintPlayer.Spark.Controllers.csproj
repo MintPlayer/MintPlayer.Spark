@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Controllers</PackageId>
-		<Version>10.0.0-preview.66</Version>
+		<Version>10.0.0-preview.67</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>MVC controller support for MintPlayer.Spark. Mounts an application's own controllers inside Spark's pipeline so they share its authentication, authorization and antiforgery rules, and ships the SPARK010 analyzer that reports a bare MapControllers() call.</Description>

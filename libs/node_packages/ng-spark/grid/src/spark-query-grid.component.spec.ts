@@ -446,13 +446,26 @@ describe('SparkQueryGridComponent', () => {
 
       await c.onCustomAction(copyAction);
 
-      const [typeId, , parent, ids, queryParent] = service.executeCustomAction.mock.calls[0];
+      const [typeId, , parent, ids, queryParent, queryId] = service.executeCustomAction.mock.calls[0];
       expect(typeId).toBe(c.entityType()!.id);
       expect(ids).toEqual(['cars/1', 'cars/2']);
       expect(queryParent).toEqual({ id: 'companies/1', type: 'Company' });
       // NOT the `parent` argument: that means an object of the action's own type, and the server
       // loads it under that type - so a Company id there would refuse.
       expect(parent).toBeUndefined();
+      // And the query, so the server re-runs it narrowed to those ids rather than re-deriving the
+      // rows from documents - which is what keeps index-computed columns populated.
+      expect(queryId).toBe('q-all');
+    });
+
+    it('sends the query the rows came from', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , , queryId] = service.executeCustomAction.mock.calls[0];
+      expect(queryId).toBe('q-all');
     });
 
     it('sends no container from a top-level query page', async () => {

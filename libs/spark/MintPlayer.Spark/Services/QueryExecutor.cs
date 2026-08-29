@@ -13,7 +13,24 @@ namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
 {
-    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, CancellationToken cancellationToken = default);
+    /// <param name="restrictToIds">
+    /// When set, the run is narrowed to these row ids and paging is ignored — the caller wants
+    /// exactly these rows, not a page. This is how a custom action re-materializes a selection: it
+    /// re-runs the query the rows came from, so they arrive with the query's own projection
+    /// (index-computed columns included) rather than being re-derived from documents.
+    /// </param>
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether this query's method returns its own page (<see cref="SparkQueryPage{T}"/>) and
+    /// therefore owns filtering, search, sorting, counting and paging.
+    /// </summary>
+    /// <remarks>
+    /// Answered from the declared return type without invoking anything, so a caller that cannot
+    /// work with an author-paged query — re-materializing a selection, which has no way to ask for
+    /// "the page containing these ids" — can branch rather than try and fail.
+    /// </remarks>
+    bool OwnsItsOwnPaging(SparkQuery query);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -30,7 +47,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
 
-    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, CancellationToken cancellationToken = default)
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
     {
         var (isCustom, name) = ResolveSource(query);
 
@@ -40,11 +57,11 @@ internal partial class QueryExecutor : IQueryExecutor
         QuerySourceResult source;
         if (isCustom)
         {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, cancellationToken);
+            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, cancellationToken);
+            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken);
         }
 
         var (allResults, definition, searchPushedDown, authorTotalItems) = source;
@@ -90,7 +107,11 @@ internal partial class QueryExecutor : IQueryExecutor
         var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
         var totalItems = materialized.Count;
 
-        var paged = materialized.Skip(skip).Take(take);
+        // A restricted run returns exactly the rows asked for. Paging it would serve "the first
+        // `take` of the selection", which is how a bulk action silently acts on a subset.
+        var paged = restrictToIds is { Count: > 0 }
+            ? materialized
+            : materialized.Skip(skip).Take(take);
 
         // Columns ship once per result, not once per row. A definition-less result cannot describe
         // its own columns, and the client renders from them, so an empty column set is the honest
@@ -127,6 +148,120 @@ internal partial class QueryExecutor : IQueryExecutor
         int? AuthorTotalItems = null)
 ;
 
+    /// <summary>
+    /// Narrows a query source to a set of row ids, for a custom action re-materializing a selection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three ways, in order. <b>An actions class may declare</b>
+    /// <c>object RestrictToIds(object source, IReadOnlyCollection&lt;string&gt; ids)</c> — duck-typed,
+    /// like the virtual-type load hook — and it wins. Otherwise the default composes
+    /// <c>Where(x =&gt; ids.Contains(x.Id))</c> onto the queryable. Failing both, this <b>throws</b>.
+    /// </para>
+    /// <para>
+    /// ⚠️ It throws rather than falling back to filtering after materialization, and that is the
+    /// whole point. A restricted run ignores paging, so a fallback would have to materialize the
+    /// entire result to find a handful of rows — and if it instead kept the page, the selected rows
+    /// would usually not be in it, the result would come back empty, and the caller's all-or-nothing
+    /// check would report that as a refusal. An action would simply stop working, with an error that
+    /// reads like a permission problem. Loud is the only honest option.
+    /// </para>
+    /// <para>
+    /// The hook exists because <c>Id</c> is not always a document id. A composed query mints its own
+    /// identity, and a composite key (<c>"{a}|{b}"</c>) is a normal shape — neither is something the
+    /// default can express.
+    /// </para>
+    /// </remarks>
+    private static object RestrictToIds(
+        object source,
+        Type elementType,
+        IReadOnlyCollection<string> ids,
+        SparkQuery query,
+        EntityTypeDefinition definition,
+        object? actions)
+    {
+        if (actions is not null && ResolveRestrictHook(actions.GetType()) is { } hook)
+            return hook.Invoke(actions, [source, ids])!;
+
+        var idProperty = elementType.GetCachedProperty("Id");
+        if (idProperty is not null && idProperty.CanRead && idProperty.PropertyType == typeof(string)
+            && source is IQueryable)
+        {
+            var parameter = Expression.Parameter(elementType, "x");
+            var idAccess = Expression.Property(parameter, idProperty);
+            var containsCall = Expression.Call(
+                ContainsMethod, Expression.Constant(ids.ToList()), idAccess);
+            var lambda = Expression.Lambda(containsCall, parameter);
+
+            var whereMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+                ("QueryExecutor.QueryableWhere", elementType),
+                static k => typeof(Queryable).GetMethods()
+                    .First(m => m.Name == nameof(Queryable.Where)
+                             && m.GetParameters().Length == 2
+                             && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                    .MakeGenericMethod(k.Element));
+
+            return whereMethod.Invoke(null, [source, lambda])!;
+        }
+
+        throw new InvalidOperationException(
+            $"Query '{query.Name}' cannot be narrowed to a selection. Its rows are '{elementType.Name}', " +
+            $"which the framework cannot filter by id: it is not a queryable with a readable string 'Id'. " +
+            $"This happens when a query computes its own row identity — a composed query minting ids, or a " +
+            $"composite key. Declare the hook on '{definition.Name}Actions' so the framework can find those " +
+            $"rows again:\n" +
+            $"    public object RestrictToIds(object source, IReadOnlyCollection<string> ids)\n" +
+            $"Without it a custom action over a selection from this query cannot resolve its rows, and " +
+            $"would refuse every invocation.");
+    }
+
+    /// <summary>The <c>List&lt;string&gt;.Contains</c> the default restriction composes.</summary>
+    private static readonly MethodInfo ContainsMethod = typeof(List<string>)
+        .GetMethod(nameof(List<string>.Contains), [typeof(string)])!;
+
+    /// <summary>
+    /// An actions class's optional <c>RestrictToIds</c>, duck-typed and cached (nulls too).
+    /// </summary>
+    private static MethodInfo? ResolveRestrictHook(Type actionsType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("QueryExecutor.RestrictToIdsHook", actionsType),
+            static k =>
+            {
+                var method = k.Type.GetMethod("RestrictToIds", [typeof(object), typeof(IReadOnlyCollection<string>)]);
+                if (method is not null && method.ReturnType != typeof(object))
+                    throw new InvalidOperationException(
+                        $"'{k.Type.FullName}.RestrictToIds' must return object. Expected: " +
+                        $"'object RestrictToIds(object source, IReadOnlyCollection<string> ids)'.");
+                return method;
+            });
+
+    public bool OwnsItsOwnPaging(SparkQuery query)
+    {
+        var (isCustom, methodName) = ResolveSource(query);
+        if (!isCustom) return false;
+
+        var definition = ResolveEntityTypeDefinition(query, methodName);
+        if (definition is null) return false;
+
+        var entityType = string.IsNullOrEmpty(definition.ClrType)
+            ? null
+            : SparkTypeResolver.ResolveClrType(definition.ClrType);
+
+        var actions = entityType is not null
+            ? actionsResolver.ResolveForType(entityType)
+            : actionsResolver.ResolveByEntityName(definition.Name);
+        if (actions is null) return false;
+
+        var method = actions.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+        if (method is null) return false;
+
+        var returnType = method.ReturnType;
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            returnType = returnType.GetGenericArguments()[0];
+
+        return typeof(ISparkQueryPage).IsAssignableFrom(returnType);
+    }
+
     private static (bool IsCustom, string Name) ResolveSource(SparkQuery query)
     {
         var source = query.Source;
@@ -145,7 +280,8 @@ internal partial class QueryExecutor : IQueryExecutor
     #region Database Queries
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, string? searchTerm, CancellationToken cancellationToken)
+        SparkQuery query, string propertyName, string? searchTerm,
+        IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
         // is resolution work — reflecting over the context, reading a property, matching a CLR type
@@ -260,6 +396,11 @@ internal partial class QueryExecutor : IQueryExecutor
             (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm);
         }
 
+        if (restrictToIds is { Count: > 0 })
+        {
+            queryable = RestrictToIds(queryable, sortType, restrictToIds, query, entityTypeDefinition, actions: null);
+        }
+
         if (query.SortColumns.Length > 0)
         {
             queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
@@ -316,7 +457,8 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
-        int skip, int take, string? search, CancellationToken cancellationToken)
+        int skip, int take, string? search, IReadOnlyCollection<string>? restrictToIds,
+        CancellationToken cancellationToken)
     {
         // Resolve the entity type for this query
         var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName)
@@ -452,6 +594,18 @@ internal partial class QueryExecutor : IQueryExecutor
         if (isQueryable && entityType is not null)
         {
             result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
+        }
+
+        // Narrow to a selection before anything else touches the shape. Paging is deliberately not
+        // applied when this is set — the caller asked for these rows, not for a page of them.
+        if (restrictToIds is { Count: > 0 })
+        {
+            result = RestrictToIds(
+                result, methodInfo.ResultElementType, restrictToIds, query, entityTypeDefinition, actionsInstance);
+            isQueryable = result is IQueryable;
+            isRavenQueryable = typeof(IRavenQueryable<>)
+                .MakeGenericType(methodInfo.ResultElementType)
+                .IsInstanceOfType(result);
         }
 
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory

@@ -308,7 +308,10 @@ export class SparkQueryGridComponent {
         action.name,
         undefined,
         this.selection().map(r => r.id),
-        pId && pType ? { id: pId, type: pType } : undefined);
+        pId && pType ? { id: pId, type: pType } : undefined,
+        // The query too: the server re-runs it narrowed to these ids, so the action receives the
+        // rows this grid rendered rather than a re-derivation from documents.
+        this.query()?.id);
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) this.reload();
     } catch (e) {

@@ -176,7 +176,10 @@ public class ExecuteCustomActionTests
         await action.Received(1).ExecuteAsync(
             Arg.Is<CustomActionArgs>(a =>
                 a.Parent != null && a.Parent.Name == "Alice's car (server state)" &&
-                a.SelectedItems.Length == 1 && a.SelectedItems[0].Name == "Second car (server state)" &&
+                // A row has no Name -- it is a projection. Breadcrumb is the display string, and it
+                // still pins the property that matters: the action receives SERVER state, never the
+                // object the client submitted.
+                a.SelectedItems.Length == 1 && a.SelectedItems[0].Breadcrumb == "Second car (server state)" &&
                 a.SubmittedParent != null && a.SubmittedParent.Name == "Alice's car (as submitted)" &&
                 a.SubmittedSelectedItemIds.Length == 1),
             Arg.Any<CancellationToken>());
@@ -581,8 +584,14 @@ public class ExecuteCustomActionTests
     private readonly IRowSecurity _rowSecurity = new PermissiveRowSecurity();
     private readonly ISparkTypeResolver _typeResolver = Substitute.For<ISparkTypeResolver>();
 
+    // Unstubbed by default, so ResolveQuery returns null and every test here takes the FALLBACK
+    // materialization path — the batched load, projected. The re-execution path has its own tests,
+    // which stub these two.
+    private readonly IQueryLoader _queryLoader = Substitute.For<IQueryLoader>();
+    private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
+
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader);
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader, _queryLoader, _queryExecutor);
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,
@@ -770,6 +779,197 @@ public class ExecuteCustomActionTests
         await action.Received(1).ExecuteAsync(
             Arg.Is<CustomActionArgs>(a => a.QueryParent == null && a.QueryParentType == null),
             Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+    }
+
+    // ----------------------------------------------------------------------------------
+    // #327 M11 — a selection is re-materialized by re-running its query
+    // ----------------------------------------------------------------------------------
+
+    private static readonly SparkQuery CarsQuery = new()
+    {
+        Id = Guid.Parse("dddd1111-2222-3333-4444-555566667777"),
+        Name = "AllCars",
+        Source = "Database.Cars",
+        EntityType = "Car",
+    };
+
+    private static QueryResultItem Row(string id, string plate) => new()
+    {
+        Id = id,
+        Breadcrumb = plate,
+        Values = [new QueryResultItemValue { Key = "LicensePlate", Value = plate }],
+    };
+
+    /// <summary>The query resolves, is re-executable, and returns the named rows.</summary>
+    private void ArrangeReExecution(params QueryResultItem[] rows)
+    {
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _queryLoader.ResolveQuery(CarsQuery.Id.ToString()).Returns(CarsQuery);
+        _queryExecutor.OwnsItsOwnPaging(CarsQuery).Returns(false);
+        _queryExecutor.ExecuteQueryAsync(
+                CarsQuery, Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
+                Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>())
+            .Returns(new QueryResult
+            {
+                Columns = [], Items = rows, TotalItems = rows.Length, Skip = 0, Take = rows.Length,
+            });
+    }
+
+    [Fact]
+    public async Task A_selection_naming_its_query_is_re_executed_rather_than_loaded()
+    {
+        var action = Substitute.For<ICustomAction>();
+        ArrangeReExecution(Row("cars/1", "1-ABC"), Row("cars/2", "2-DEF"));
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/1", "cars/2"], QueryId = CarsQuery.Id.ToString() });
+
+        var result = await endpoint.HandleAsync(context);
+
+        // The document load must not happen: it would re-derive rows the query already produced,
+        // losing anything the query computed.
+        await _databaseAccess.DidNotReceive().GetPersistentObjectsByIdAsync(
+            Arg.Any<Guid>(), Arg.Any<IReadOnlyList<string>>());
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.SelectedItems.Length == 2
+                && a.SelectedItems[0].Breadcrumb == "1-ABC"),
+            Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task The_run_is_narrowed_to_the_submitted_ids()
+    {
+        var action = Substitute.For<ICustomAction>();
+        ArrangeReExecution(Row("cars/2", "2-DEF"));
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        await endpoint.HandleAsync(NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/2"], QueryId = CarsQuery.Id.ToString() }));
+
+        await _queryExecutor.Received(1).ExecuteQueryAsync(
+            CarsQuery, Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
+            Arg.Any<string?>(),
+            Arg.Is<IReadOnlyCollection<string>?>(ids => ids != null && ids.Count == 1 && ids.Contains("cars/2")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_query_over_another_type_is_refused_before_it_runs()
+    {
+        // The query id is client-supplied. It narrows; it must never hand this action rows of a type
+        // it was not authorized on.
+        var action = Substitute.For<ICustomAction>();
+        var foreign = new SparkQuery
+        { Id = CarsQuery.Id, Name = "People", Source = "Database.People", EntityType = "Person" };
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _queryLoader.ResolveQuery(foreign.Id.ToString()).Returns(foreign);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/1"], QueryId = foreign.Id.ToString() },
+            authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
+        await _queryExecutor.DidNotReceive().ExecuteQueryAsync(
+            Arg.Any<SparkQuery>(), Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_re_execution_that_returns_fewer_rows_refuses_the_whole_request()
+    {
+        // All-or-nothing survives the new path, and the comparison is against what the SOURCE
+        // yielded — not against the submitted list zipped with results.
+        var action = Substitute.For<ICustomAction>();
+        ArrangeReExecution(Row("cars/1", "1-ABC"));   // two asked for, one returned
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/1", "cars/2"], QueryId = CarsQuery.Id.ToString() },
+            authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_query_owning_its_own_paging_falls_back_to_the_load()
+    {
+        // SparkQueryPage cannot be asked for "the page containing these ids", so the framework must
+        // not try — it branches on the declared shape and loads instead.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "cars/1", Name = "A car", ObjectTypeId = CarType.Id, Attributes = [] };
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _queryLoader.ResolveQuery(CarsQuery.Id.ToString()).Returns(CarsQuery);
+        _queryExecutor.OwnsItsOwnPaging(CarsQuery).Returns(true);
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { selected });
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/1"], QueryId = CarsQuery.Id.ToString() });
+
+        var result = await endpoint.HandleAsync(context);
+
+        await _databaseAccess.Received(1).GetPersistentObjectsByIdAsync(
+            CarType.Id, Arg.Any<IReadOnlyList<string>>());
+        await _queryExecutor.DidNotReceive().ExecuteQueryAsync(
+            Arg.Any<SparkQuery>(), Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.SelectedItems.Length == 1 && a.SelectedItems[0].Id == "cars/1"),
+            Arg.Any<CancellationToken>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_request_naming_no_query_falls_back_to_the_load()
+    {
+        // A direct POST, or a caller predating the field. Still works, still all-or-nothing.
+        var action = Substitute.For<ICustomAction>();
+        var selected = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "cars/1", Name = "A car", ObjectTypeId = CarType.Id, Attributes = [] };
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { selected });
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItemIds = ["cars/1"] });
+
+        var result = await endpoint.HandleAsync(context);
+
+        await _databaseAccess.Received(1).GetPersistentObjectsByIdAsync(
+            CarType.Id, Arg.Any<IReadOnlyList<string>>());
         (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
     }
 

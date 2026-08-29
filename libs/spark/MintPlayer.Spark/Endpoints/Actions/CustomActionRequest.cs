@@ -28,5 +28,21 @@ internal sealed class CustomActionRequest
     /// <inheritdoc cref="ParentId"/>
     public string? ParentType { get; set; }
 
+    /// <summary>
+    /// The query the selection came from, by id or alias, so the server can re-run it narrowed to
+    /// <see cref="SelectedItemIds"/> and hand the action the rows the grid actually had.
+    /// </summary>
+    /// <remarks>
+    /// Client-supplied, and <b>narrowing-only</b>: the executor enforces the <c>Query</c> right on it
+    /// independently, so naming another query yields nothing the caller could not have fetched
+    /// directly, and its entity type must match the action's route type or the request is refused.
+    /// The ids only filter — they cannot introduce a row the query would not have returned, which is
+    /// also why the collection guard is unnecessary on this path: the query defines the collection.
+    /// <para>
+    /// Absent for a detail-page invocation, and for a caller that posts directly.
+    /// </para>
+    /// </remarks>
+    public string? QueryId { get; set; }
+
     public RetryResult[]? RetryResults { get; set; }
 }

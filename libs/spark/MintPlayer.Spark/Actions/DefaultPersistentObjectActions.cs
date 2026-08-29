@@ -118,18 +118,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (requested.Count == 0)
             return [];
 
-        // #239: prime the consumer's declared includes so referenced documents arrive in the same
-        // round-trip instead of a breadcrumb load each. RavenDB requires the includes on the same
-        // fluent load call (there's no pre-register-on-session), so this is the seam — and the
-        // multi-id overload of it is what makes a bulk selection ONE request rather than N.
-        var includes = GetDefaultIncludes();
-        var loaded = includes is { Count: > 0 }
-            ? await session.LoadAsync<T>(requested, builder =>
-              {
-                  foreach (var path in includes)
-                      builder.IncludeDocuments(path);
-              })
-            : await session.LoadAsync<T>(requested);
+        var loaded = await MaterializeAsync(requested);
 
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
         var rowSecurity = services.GetRequiredService<IRowSecurity>();
@@ -219,6 +208,43 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     [NoInterfaceMember]
     public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;
+
+    /// <summary>
+    /// Turns row ids into entities — <b>one batched load</b>, never one per row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The seam an action uses when it needs the document behind a selected row rather than the row
+    /// itself. A <c>QueryResultItem</c> is deliberately weak — an id, a display string, a value per
+    /// query column — so anything wanting a detail-only attribute, an etag, or something to mutate
+    /// and save comes here.
+    /// </para>
+    /// <para>
+    /// ⚠️ Override to change <em>how</em> entities are found, not <em>which</em>: the framework
+    /// applies the collection guard, the row rule and redaction to whatever comes back, and a caller
+    /// refuses the whole request unless every requested id resolved. Returning extra rows does not
+    /// widen anything; returning fewer refuses.
+    /// </para>
+    /// <para>
+    /// #239: the declared includes are attached to this load, because RavenDB requires them on the
+    /// same fluent call — there is no pre-register-on-session. That is why the default lives here
+    /// and not at the call site, and why the multi-id overload is what makes a bulk selection one
+    /// request rather than N.
+    /// </para>
+    /// </remarks>
+    [NoInterfaceMember]
+    public virtual async Task<IDictionary<string, T>> MaterializeAsync(IReadOnlyList<string> ids)
+    {
+        var session = RequireServices().GetRequiredService<IAsyncDocumentSession>();
+        var includes = GetDefaultIncludes();
+        return includes is { Count: > 0 }
+            ? await session.LoadAsync<T>(ids, builder =>
+              {
+                  foreach (var path in includes)
+                      builder.IncludeDocuments(path);
+              })
+            : await session.LoadAsync<T>(ids);
+    }
 
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)

@@ -144,6 +144,8 @@ export class SparkService {
    *   on — a DIFFERENT type (the cars listed on a company's page are Cars, the page is a Company).
    *   Sent as id + type, exactly as the query endpoint names it, and resolved server-side under its
    *   own type with its own Read gate.
+   * @param queryId The query the selection came from, so the server can re-run it narrowed to those
+   *   ids and hand the action the rows the grid actually had -- index-computed columns included.
    */
   async executeCustomAction(
     objectTypeId: string,
@@ -151,11 +153,13 @@ export class SparkService {
     parent?: PersistentObject,
     selectedItemIds?: string[],
     queryParent?: { id: string; type: string },
+    queryId?: string,
   ): Promise<void> {
     const body: {
       parent?: PersistentObject; selectedItemIds?: string[];
-      parentId?: string; parentType?: string; retryResults?: RetryActionResult[];
-    } = { parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type };
+      parentId?: string; parentType?: string; queryId?: string;
+      retryResults?: RetryActionResult[];
+    } = { parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
       body as any

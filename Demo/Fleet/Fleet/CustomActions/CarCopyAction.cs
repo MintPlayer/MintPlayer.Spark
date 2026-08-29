@@ -12,13 +12,10 @@ public partial class CarCopyAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
-        // Support both detail view (parent) and query view (selectedItems)
-        var source = args.Parent ?? args.SelectedItems.FirstOrDefault();
-        if (source is null)
-            throw new InvalidOperationException("No item selected");
-
-        var carId = source.Id
-            ?? throw new InvalidOperationException("Selected item has no ID");
+        // Coalesce on ids: a selected row is a QueryResultItem, the parent is a PersistentObject,
+        // and the two deliberately no longer unify -- a row is not a document.
+        var carId = args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id
+            ?? throw new InvalidOperationException("No item selected");
 
         var car = await dbAccess.GetDocumentUncheckedAsync<Car>(carId);
         if (car == null)

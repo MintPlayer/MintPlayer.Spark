@@ -69,7 +69,8 @@ export class SparkQueryActionsService {
     }
 
     await this.sparkService.executeCustomAction(
-      context.entityType.id, actionName, options?.parent, options?.selectedItemIds, options?.queryParent);
+      context.entityType.id, actionName, options?.parent, options?.selectedItemIds, options?.queryParent,
+      context.query.id);
   }
 
   /**

@@ -14,11 +14,12 @@ public partial class SyncColumnsAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
-        var source = args.Parent ?? args.SelectedItems.FirstOrDefault();
-        if (source?.Id is null)
+        // Coalesce on ids: a selected row is a QueryResultItem, the parent is a PersistentObject.
+        var projectId = args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id;
+        if (projectId is null)
             throw new InvalidOperationException("No item selected");
 
-        var project = await dbAccess.GetDocumentUncheckedAsync<GitHubProject>(source.Id);
+        var project = await dbAccess.GetDocumentUncheckedAsync<GitHubProject>(projectId);
         if (project is null)
             throw new InvalidOperationException("Project not found");
 
