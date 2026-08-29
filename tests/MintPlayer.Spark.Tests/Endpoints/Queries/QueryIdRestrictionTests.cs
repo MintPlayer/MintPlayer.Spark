@@ -127,6 +127,60 @@ public class QueryIdRestrictionTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task A_queryable_source_is_narrowed_by_the_DEFAULT_filter_with_no_hook()
+    {
+        // ⚠️ This covers the path every other test in this file skips. GadgetActions declares
+        // RestrictToIds, so the hook wins and the framework's own expression is never built — which
+        // is how a genuine defect in it (List<string>.Contains is an INSTANCE method, so the list is
+        // the receiver and not the first argument) survived a green suite and was found by clicking
+        // the demo. WidgetlessActions deliberately declares no hook.
+        var model = GadgetModel(source: "Custom.GetQueryableGadgets", name: "Widgetless");
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+
+        var result = await RunAsync(factory, model, ["gadgets/1", "gadgets/3"]);
+
+        result.Items.Select(i => i.Id).Should().BeEquivalentTo(["gadgets/1", "gadgets/3"]);
+        result.Items.Should().OnlyContain(i => i.Values.Any(v => v.Key == "ComputedTotal"));
+    }
+
+    [Fact]
+    public async Task A_RAVEN_backed_source_is_narrowed_in_the_database()
+    {
+        // ⚠️ The third path, and the third bug found by clicking rather than by the suite. RavenDB
+        // and LINQ-to-objects need DIFFERENT expressions for the same idea and neither works on the
+        // other: Raven wants `x.Id.In(ids)` and fails to translate `ids.Contains(x.Id)` at all.
+        // The in-memory test above passes either way, so it could not have caught this.
+        var personType = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels.Person(
+            Guid.Parse("cc33dd44-ee55-ff66-7788-990011223344"));
+        personType.Queries =
+        [
+            new SparkQuery
+            {
+                Id = Guid.Parse("dd44ee55-ff66-7788-9900-112233445566"),
+                Name = "AllPeople",
+                Source = "Database.People",
+                EntityType = "Person",
+            },
+        ];
+
+        await SeedAsync(async session =>
+        {
+            await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
+            await session.StoreAsync(new Person { FirstName = "Bob", LastName = "Jones" }, "people/2");
+            await session.StoreAsync(new Person { FirstName = "Carol", LastName = "Davis" }, "people/3");
+        });
+
+        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        using var scope = factory.GetService<IServiceScopeFactory>().CreateScope();
+        var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
+
+        var result = await executor.ExecuteQueryAsync(
+            personType.Queries[0], restrictToIds: ["people/1", "people/3"]);
+
+        result.Items.Select(i => i.Id).Should().BeEquivalentTo(["people/1", "people/3"]);
+    }
+
+    [Fact]
     public async Task A_source_that_cannot_be_narrowed_and_declares_no_hook_fails_loudly()
     {
         // Without this the run would return every row, the ids would not match, and the caller's
@@ -182,6 +236,20 @@ public sealed class GadgetActions
     /// </summary>
     public object RestrictToIds(object source, IReadOnlyCollection<string> ids)
         => ((IEnumerable<GadgetRow>)source).Where(g => ids.Contains(g.Id)).ToList();
+}
+
+/// <summary>
+/// Returns an IQueryable and declares NO hook, so the framework's default id filter is what narrows
+/// it. That is the path the demo exercised and the suite did not.
+/// </summary>
+public sealed class WidgetlessActions
+{
+    public IQueryable<GadgetRow> GetQueryableGadgets() => new[]
+    {
+        new GadgetRow("gadgets/1", "Alpha", 100),
+        new GadgetRow("gadgets/2", "Beta", 200),
+        new GadgetRow("gadgets/3", "Gamma", 300),
+    }.AsQueryable();
 }
 
 /// <summary>The same shape without the hook — the loud-failure case.</summary>

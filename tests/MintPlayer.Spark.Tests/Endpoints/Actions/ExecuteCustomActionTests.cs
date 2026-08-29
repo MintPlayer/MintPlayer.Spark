@@ -863,6 +863,63 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
+    public async Task The_re_execution_is_given_the_sub_querys_container_as_the_querys_parent()
+    {
+        // Found by clicking it, not by a test: the first version passed `request.Parent` here. That
+        // means an object of the ACTION's own type and is null on exactly the invocations that have
+        // a container, so a sub-query was re-run with no parent — returning every row in the
+        // collection, or throwing outright for a query that calls EnsureParent.
+        //
+        // The stubs below deliberately assert the parent argument. The earlier tests matched it with
+        // Arg.Any, which is why they all passed while the feature was broken in the browser.
+        var action = Substitute.For<ICustomAction>();
+        var company = new MintPlayer.Spark.Abstractions.PersistentObject
+        { Id = "companies/1", Name = "Contoso", ObjectTypeId = CompanyType.Id, Attributes = [] };
+
+        ArrangeReExecution(Row("cars/1", "1-ABC"));
+        _modelLoader.ResolveEntityType("Company").Returns(CompanyType);
+        _databaseAccess.GetPersistentObjectAsync(CompanyType.Id, "companies/1").Returns(company);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        await endpoint.HandleAsync(NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            {
+                SelectedItemIds = ["cars/1"],
+                QueryId = CarsQuery.Id.ToString(),
+                ParentId = "companies/1",
+                ParentType = "Company",
+            }));
+
+        await _queryExecutor.Received(1).ExecuteQueryAsync(
+            CarsQuery,
+            Arg.Is<Abstractions.PersistentObject?>(p => p != null && p.Id == "companies/1"),
+            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(),
+            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_top_level_selection_re_runs_its_query_with_no_parent()
+    {
+        // The other half: no container, so the query must be re-run exactly as the grid ran it.
+        var action = Substitute.For<ICustomAction>();
+        ArrangeReExecution(Row("cars/1", "1-ABC"));
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var endpoint = NewEndpoint();
+        await endpoint.HandleAsync(NewContext(
+            CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest
+            { SelectedItemIds = ["cars/1"], QueryId = CarsQuery.Id.ToString() }));
+
+        await _queryExecutor.Received(1).ExecuteQueryAsync(
+            CarsQuery, Arg.Is<Abstractions.PersistentObject?>(p => p == null),
+            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(),
+            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task A_query_over_another_type_is_refused_before_it_runs()
     {
         // The query id is client-supplied. It narrows; it must never hand this action rows of a type

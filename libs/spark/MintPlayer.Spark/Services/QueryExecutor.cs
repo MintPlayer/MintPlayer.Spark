@@ -189,9 +189,36 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             var parameter = Expression.Parameter(elementType, "x");
             var idAccess = Expression.Property(parameter, idProperty);
-            var containsCall = Expression.Call(
-                ContainsMethod, Expression.Constant(ids.ToList()), idAccess);
-            var lambda = Expression.Lambda(containsCall, parameter);
+            // RavenDB and LINQ-to-objects need DIFFERENT expressions for the same idea, and neither
+            // one works on the other:
+            //
+            //   Raven      -> x.Id.In(ids)         — the provider's own marker method
+            //   in-memory  -> ids.Contains(x.Id)   — an ordinary instance call
+            //
+            // Handing Raven the Contains form fails at query translation ("Could not understand how
+            // to translate value(List<string>)"), and .In() outside a Raven query is a marker with
+            // no runtime meaning. Both failures land at the first restricted run.
+            //
+            // Contains is an INSTANCE method, so the list is the receiver and not the first
+            // argument — the other way round throws "Static method requires null instance".
+            var idList = ids.ToList();
+            var isRavenBacked = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsInstanceOfType(source);
+
+            Expression predicate = isRavenBacked
+                ? Expression.Call(
+                    ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+                        ("QueryExecutor.RavenIn", typeof(string)),
+                        static _ => typeof(Raven.Client.Documents.Linq.RavenQueryableExtensions)
+                            .GetMethods()
+                            .First(m => m.Name == "In"
+                                     && m.GetParameters().Length == 2
+                                     && m.GetParameters()[1].ParameterType.IsGenericType)
+                            .MakeGenericMethod(typeof(string))),
+                    idAccess,
+                    Expression.Constant(idList))
+                : Expression.Call(Expression.Constant(idList), ContainsMethod, idAccess);
+
+            var lambda = Expression.Lambda(predicate, parameter);
 
             var whereMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
                 ("QueryExecutor.QueryableWhere", elementType),

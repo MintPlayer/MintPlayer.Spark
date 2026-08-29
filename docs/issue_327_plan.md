@@ -331,10 +331,42 @@ the caller asked for those rows and not for a page of them.
 2. ~~Replace `IDatabaseAccess.GetPersistentObjectsByIdAsync`~~ — kept. It is no longer the *primary*
    path but it is exactly what the three fallbacks need, so removing it would mean writing it again.
 
-**Tests (18).** `Endpoints/Queries/QueryIdRestrictionTests.cs` (7) covers the executor: exact rows
-back, the query's computed columns present, paging ignored, an unknown id simply absent, an
-unrestricted run unaffected, the loud failure naming `RestrictToIds`, and `OwnsItsOwnPaging` answered
-without invoking anything. `ExecuteCustomActionTests` gains 6 for the endpoint: re-executed rather
-than loaded, narrowed to the submitted ids, a foreign query refused before it runs, a short
-re-execution refusing the whole request, and both fallbacks. The client adds 2, and the pre-existing
-invariant tests were kept **unedited** — which was the point of naming them here.
+**Tests (22).** `Endpoints/Queries/QueryIdRestrictionTests.cs` (9) covers the executor, including
+**one per narrowing path** — the `RestrictToIds` hook, an in-memory queryable, and a Raven-backed
+query — plus exact rows back, the query's computed columns present, paging ignored, an unknown id
+simply absent, an unrestricted run unaffected, the loud failure naming the hook, and
+`OwnsItsOwnPaging` answered without invoking anything. `ExecuteCustomActionTests` gains 8 for the
+endpoint: re-executed rather than loaded, narrowed to the submitted ids, **the container passed as
+the query's parent** and no parent on a top-level selection, a foreign query refused before it runs,
+a short re-execution refusing the whole request, and both fallbacks. The client adds 2. The
+pre-existing invariant tests were kept **unedited** — which was the point of naming them here.
+
+### Verified in a browser, which found three bugs the suite did not
+
+DemoApp, Company → Cars tab → select → **Copy to this company**. The copy landed on the right
+company. Three defects surfaced on the way, each green in the suite beforehand:
+
+1. **The re-execution was given the wrong parent.** It passed the action's `Parent`, which is null on
+   exactly the invocations that have a container, so the sub-query re-ran with no parent and threw.
+   The endpoint tests matched that argument with `Arg.Any`, so nothing noticed.
+2. **`List<string>.Contains` is an instance method**, and the default filter built it as a static
+   call. Every restriction test went through the `RestrictToIds` hook, so the framework's own
+   expression had **zero coverage**.
+3. **RavenDB cannot translate `ids.Contains(x.Id)`** — it needs `x.Id.In(ids)`, and `.In()` is
+   meaningless outside a Raven query. The coverage added for (2) used an in-memory queryable, so it
+   passed either way.
+
+All three now have tests. The lesson worth keeping: those three narrowing paths look
+interchangeable and are not.
+
+### Docs updated with it
+
+`guide-custom-actions.md` (the opening example no longer compiled; the #236 section, the key-points
+list, the QueryParent table and the migration note all described the old mechanism),
+`guide-row-security.md` (claimed `SelectedItems` were row-checked entities and referenced a
+`SubmittedSelectedItems` removed earlier in this PR), and `guide-queries-and-sorting.md` (the
+`SparkQueryPage` consequence for selections). Release notes re-cut as `preview-67`.
+
+The repo's `CLAUDE.md` gained a section on running the demo apps: the ASP.NET host spawns the Angular
+dev server itself via `UseAngularCliServer`, so `dotnet run` is the whole command — and a C# change
+needs the host's whole process tree restarted, which is what these three bugs cost to verify.

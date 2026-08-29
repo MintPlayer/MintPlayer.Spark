@@ -221,7 +221,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // owning its own paging, a streaming query, and a request naming no query.
             var selectedItems = submittedIds.Count == 0
                 ? []
-                : await MaterializeSelectionAsync(request, entityType, submittedIds!, httpContext);
+                : await MaterializeSelectionAsync(request, entityType, submittedIds!, queryParent, httpContext);
 
             if (selectedItems is null)
             {
@@ -316,6 +316,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         CustomActionRequest? request,
         EntityTypeDefinition entityType,
         IReadOnlyList<string> submittedIds,
+        Po? queryParent,
         HttpContext httpContext)
     {
         if (!string.IsNullOrEmpty(request?.QueryId) && queryLoader.ResolveQuery(request.QueryId) is { } query)
@@ -330,7 +331,14 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             {
                 var restricted = await queryExecutor.ExecuteQueryAsync(
                     query,
-                    parent: request.Parent,
+                    // ⚠️ The QUERY's parent is the sub-query's container, not this action's
+                    // `Parent`. A sub-query filters its rows by the page it is rendered on — the
+                    // company whose cars these are — and re-running it without that parent either
+                    // returns every row in the collection or, for a query that requires one,
+                    // throws. `Parent` here means an object of the ACTION's own type and is null on
+                    // exactly the invocations that have a container, so passing it re-ran the query
+                    // with no parent at all.
+                    parent: queryParent,
                     skip: 0,
                     take: submittedIds.Count,
                     search: null,
