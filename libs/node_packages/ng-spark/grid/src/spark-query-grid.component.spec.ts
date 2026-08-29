@@ -313,6 +313,61 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+  describe('ship-vs-draw columns', () => {
+    it('does not draw a column marked isVisible false, but keeps its value reachable', async () => {
+      // A renderer needing a sibling value (a lock glyph beside a name) reads it off the row; the
+      // grid must not give it a column. showedOn decides the wire, isVisible decides the drawing.
+      const cols = [
+        { name: 'Name', dataType: 'string', order: 1, isVisible: true },
+        { name: 'IsPrivate', dataType: 'boolean', order: 2, isVisible: false },
+      ] as any;
+      const { c } = await setup({}, {
+        data: [{ id: 'r/1', values: [{ key: 'Name', value: 'spark' }, { key: 'IsPrivate', value: true }] }],
+        columns: cols,
+      });
+
+      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
+      expect(c.allColumns().map((x: any) => x.name)).toEqual(['Name', 'IsPrivate']);
+    });
+
+    it('treats an absent isVisible as visible', async () => {
+      // A server predating the field must keep drawing everything.
+      const cols = [{ name: 'Name', dataType: 'string', order: 1 }] as any;
+      const { c } = await setup({}, { data: [], columns: cols });
+
+      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
+    });
+  });
+
+  describe('composed rows have no default detail link (R10)', () => {
+    it('withholds the row link when the type has no clrType', async () => {
+      // Live in DemoApp before this: Read/StartPage implies Query/StartPage, so a composed grid
+      // rendered every row linked to /po/{type}/{rowId} — which does not 404, it silently
+      // re-renders the same composed page. A plausible wrong page is worse than a missing one.
+      const composed = { id: 't-1', name: 'StartPage', alias: 'startpage', attributes: [] } as any;
+      const { c } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([composed]) });
+      c.entityType.set(composed);
+
+      expect((c as any).rowRouteFor({ id: 'collections/people', values: [] })).toBeNull();
+    });
+
+    it('still links an entity-backed row', async () => {
+      const { c } = await setup();
+
+      expect((c as any).rowRouteFor({ id: 'people/1', values: [] })).not.toBeNull();
+    });
+
+    it('lets a host override the withheld link for composed rows that do have a page', async () => {
+      const composed = { id: 't-1', name: 'StartPage', alias: 'startpage', attributes: [] } as any;
+      const { c } = await setup(
+        { getEntityTypes: vi.fn().mockResolvedValue([composed]) },
+        { rowRoute: (r: QueryResultItem) => ['/a', r.id] });
+      c.entityType.set(composed);
+
+      expect((c as any).rowRouteFor({ id: 'accounts/spark', values: [] })).toEqual(['/a', 'accounts/spark']);
+    });
+  });
+
   describe('rowRoute (#327 §9.2)', () => {
     // rowRouteFor is protected; TypeScript's protection is compile-time only, and reaching it
     // directly is what lets these pin the RULE rather than bs-datatable's rendering.

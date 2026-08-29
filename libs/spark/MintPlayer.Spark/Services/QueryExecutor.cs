@@ -184,8 +184,36 @@ internal partial class QueryExecutor : IQueryExecutor
             return hook.Invoke(actions, [source, ids])!;
 
         var idProperty = elementType.GetCachedProperty("Id");
-        if (idProperty is not null && idProperty.CanRead && idProperty.PropertyType == typeof(string)
-            && source is IQueryable)
+        var hasReadableId = idProperty is not null && idProperty.CanRead
+            && idProperty.PropertyType == typeof(string);
+
+        // A plain sequence — a List, which is how most composed queries are written — is narrowed
+        // in memory. This used to fall through to the throw below and demand a hook, which was
+        // wrong: nothing about a List makes its ids unfindable, and the first bulk action over any
+        // composed query 500'd as a result. The hook is for rows whose identity is not a readable
+        // `Id`, not for rows that simply arrived eagerly.
+        //
+        // Filtering AFTER the source has produced everything is also the only honest option, and
+        // not merely a fallback: it is what proves the submitted ids were in the query's result at
+        // all. Narrowing at the source would let a caller name rows the query would never have
+        // returned, and the all-or-nothing count check could not tell.
+        if (hasReadableId && source is not IQueryable && source is System.Collections.IEnumerable rows)
+        {
+            var wanted = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+            var getId = AccessorCache.GetGetter(idProperty!);
+            var kept = (System.Collections.IList)Activator.CreateInstance(
+                typeof(List<>).MakeGenericType(elementType))!;
+
+            foreach (var row in rows)
+            {
+                if (row is not null && getId(row) is string id && wanted.Contains(id))
+                    kept.Add(row);
+            }
+
+            return kept;
+        }
+
+        if (hasReadableId && source is IQueryable)
         {
             var parameter = Expression.Parameter(elementType, "x");
             var idAccess = Expression.Property(parameter, idProperty);
@@ -233,12 +261,11 @@ internal partial class QueryExecutor : IQueryExecutor
 
         throw new InvalidOperationException(
             $"Query '{query.Name}' cannot be narrowed to a selection. Its rows are '{elementType.Name}', " +
-            $"which the framework cannot filter by id: it is not a queryable with a readable string 'Id'. " +
-            $"This happens when a query computes its own row identity — a composed query minting ids, or a " +
-            $"composite key. Declare the hook on '{definition.Name}Actions' so the framework can find those " +
-            $"rows again:\n" +
+            $"which has no readable string 'Id' for the framework to match on. That is normal for a row " +
+            $"type that computes its own identity — a composite key, or an id minted per row — so say how " +
+            $"to find those rows again by declaring the hook on '{definition.Name}Actions':\n" +
             $"    public object RestrictToIds(object source, IReadOnlyCollection<string> ids)\n" +
-            $"Without it a custom action over a selection from this query cannot resolve its rows, and " +
+            $"Without it, a custom action over a selection from this query cannot resolve its rows and " +
             $"would refuse every invocation.");
     }
 

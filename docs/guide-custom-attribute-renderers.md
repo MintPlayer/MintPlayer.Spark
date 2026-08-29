@@ -307,6 +307,11 @@ What `item` is depends on the host:
 A renderer used in **both** a grid and an AsDetail table sees two different shapes, which is why the
 example above narrows through a helper instead of indexing directly.
 
+**To read a sibling value the grid does not draw**, mark its attribute `"showedOn": "Query",
+"isVisible": false`. It then ships on every row and no column is rendered for it. A value marked
+`"showedOn": "PersistentObject"` is not on the query wire at all and `valueFor` returns `undefined`
+— that is the failure to check first when a renderer's sibling read comes back empty.
+
 ## Using `rendererOptions`
 
 Options are passed from the model JSON as-is. Access them in your component:

@@ -70,7 +70,7 @@ async function setup(serviceOverrides: Record<string, unknown> = {}) {
     getQuery: vi.fn().mockResolvedValue(allPeopleQuery),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue([]),
-    executeQuery: vi.fn().mockResolvedValue({ data: [], totalRecords: 0 }),
+    executeQuery: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0, skip: 0, take: 50 }),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,

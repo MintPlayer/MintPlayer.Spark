@@ -168,7 +168,18 @@ export class SparkQueryGridComponent {
     if (custom) return custom(row);
 
     const type = this.entityType();
-    return ['/po', type?.alias || type?.id, row.id];
+
+    // ⚠️ A composed type has no per-row detail page by construction: its rows are computed, and
+    // `{Name}Actions.OnLoadAsync` serves ONE page which is free to ignore the id it was given. So
+    // /po/{type}/{rowId} does not 404 — it silently renders that same page, which is worse, because
+    // nothing looks wrong. This branch is live in DemoApp today: Read/StartPage implies
+    // Query/StartPage, so the composed grid renders with canRead() true and every row linked.
+    //
+    // `clrType` is absent exactly for those types and is already on the wire; the grid simply never
+    // consulted it. A host whose composed rows DO have a page says so with `rowRoute`.
+    if (!type?.clrType) return null;
+
+    return ['/po', type.alias || type.id, row.id];
   }
 
   query = signal<SparkQuery | null>(null);
@@ -205,7 +216,15 @@ export class SparkQueryGridComponent {
    */
   private readonly fetchedColumns = signal<QueryColumn[]>([]);
 
-  visibleColumns = computed(() => this.columns() ?? this.fetchedColumns());
+  /** Every column on the wire, drawn or not — what renderers and lookups resolve against. */
+  allColumns = computed(() => this.columns() ?? this.fetchedColumns());
+
+  /**
+   * The columns the grid draws. `isVisible: false` ships a value without a column, so a renderer
+   * can read a sibling the grid does not show; undefined means visible, so a server that predates
+   * the field still draws everything.
+   */
+  visibleColumns = computed(() => this.allColumns().filter(c => c.isVisible !== false));
 
   /**
    * True when rows do not come from this component's own fetch.
@@ -433,7 +452,9 @@ export class SparkQueryGridComponent {
       this.resultCount.set(r.totalItems);
       // Columns come from the result now, not from the entity type: the server decides the query
       // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
-      this.fetchedColumns.set(r.columns);
+      // ?? [] because a malformed or older response must render an empty grid, not throw inside a
+      // computed — where the stack points at the column filter and not at the response that lacked them.
+      this.fetchedColumns.set(r.columns ?? []);
       return {
         data: r.items,
         totalRecords: r.totalItems,
@@ -451,7 +472,9 @@ export class SparkQueryGridComponent {
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {
-    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleColumns()));
+    // Over ALL columns, not just the drawn ones: an undrawn column's value can still be rendered
+    // by a renderer reading it as a sibling, and it would resolve to a raw key without its options.
+    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.allColumns()));
   }
 
   /**

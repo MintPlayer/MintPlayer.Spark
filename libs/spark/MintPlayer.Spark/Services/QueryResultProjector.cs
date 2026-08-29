@@ -27,11 +27,27 @@ internal static class QueryResultProjector
     /// </remarks>
     public static IReadOnlyList<QueryColumn> BuildColumns(EntityTypeDefinition definition)
         => [.. definition.Attributes
-            .Where(a => a.IsVisible && a.ShowedOn.HasFlag(EShowedOn.Query))
+            // ⚠️ ShowedOn ALONE decides what ships; IsVisible only decides what is drawn, and is
+            // carried to the client rather than applied here.
+            //
+            // Two reasons. First, this is the same predicate the sort allow-list uses — filtering
+            // on IsVisible here as well made an attribute marked `Query, isVisible:false`
+            // *sortable with no column*, which is incoherent. Second, an app has legitimate reason
+            // to ship a value it does not draw: a renderer showing a lock glyph beside a name needs
+            // that row's IsPrivate without giving it a column of its own. Under the pre-#327 wire
+            // every attribute rode along and that was free; narrowing on both flags took it away
+            // with no way to ask for it back, since making it visible is the layout decision the
+            // app was avoiding.
+            //
+            // No disclosure either way: rows used to carry EVERY attribute regardless of both
+            // flags, so this is still strictly narrower than what shipped before. Per-caller
+            // redaction is unaffected — it nulls values on the row, never on this definition.
+            .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
             .OrderBy(a => a.Order)
             .Select(a => new QueryColumn
             {
                 Name = a.Name,
+                IsVisible = a.IsVisible,
                 Label = a.Label,
                 DataType = a.DataType,
                 Order = a.Order,

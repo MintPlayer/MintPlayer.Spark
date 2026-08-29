@@ -181,11 +181,28 @@ public class QueryIdRestrictionTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_source_that_cannot_be_narrowed_and_declares_no_hook_fails_loudly()
+    public async Task A_plain_sequence_with_a_readable_id_needs_NO_hook()
     {
-        // Without this the run would return every row, the ids would not match, and the caller's
-        // all-or-nothing check would refuse — an action that stops working, with an error that reads
-        // like a permission problem. The message must name the hook instead.
+        // ⚠️ This used to throw, and that was a design error severe enough to make composed queries
+        // unusable with custom actions: a List is the most natural way to write one, and nothing
+        // about arriving eagerly makes a row's id unfindable. Filtering in memory is also the honest
+        // semantic — narrowing at the SOURCE would let a caller name rows the query never returned,
+        // and the all-or-nothing count could not tell.
+        var model = GadgetModel(source: "Custom.GetPlainList", name: "PlainList");
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+
+        var result = await RunAsync(factory, model, ["gadgets/2"]);
+
+        result.Items.Should().ContainSingle().Which.Id.Should().Be("gadgets/2");
+    }
+
+    [Fact]
+    public async Task A_source_the_framework_cannot_match_on_and_declaring_no_hook_fails_loudly()
+    {
+        // What genuinely needs the hook: a row whose identity is not a readable STRING Id — here a
+        // numeric key, and in the wild a composite one. The framework has nothing to compare, so it
+        // must say so rather than return every row and let all-or-nothing report a refusal that
+        // reads like a permission problem.
         var model = GadgetModel(source: "Custom.GetUnnarrowable", name: "Unnarrowable");
         await using var factory = new SparkEndpointFactory(Store, [model]);
 
@@ -255,10 +272,26 @@ public sealed class WidgetlessActions
 /// <summary>The same shape without the hook — the loud-failure case.</summary>
 public sealed class UnnarrowableActions
 {
-    public IEnumerable<GadgetRow> GetUnnarrowable() =>
+    public IEnumerable<NumericRow> GetUnnarrowable() =>
     [
-        new("gadgets/1", "Alpha", 100),
+        new(1, "Alpha", 100),
     ];
 }
+
+/// <summary>
+/// A plain List with an ordinary string id — the shape of nearly every composed query, and the one
+/// that must work with no hook at all.
+/// </summary>
+public sealed class PlainListActions
+{
+    public IEnumerable<GadgetRow> GetPlainList() =>
+    [
+        new("gadgets/1", "Alpha", 100),
+        new("gadgets/2", "Beta", 200),
+    ];
+}
+
+/// <summary>Rows the framework cannot match a submitted id against — a non-string key.</summary>
+public sealed record NumericRow(int Id, string Label, int ComputedTotal);
 
 public sealed record GadgetRow(string Id, string Label, int ComputedTotal);

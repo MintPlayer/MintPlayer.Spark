@@ -42,6 +42,22 @@ public static class SparkComposedQueries
         {
             if (string.IsNullOrEmpty(query.EntityType)) continue;
             if (!byName.TryGetValue(query.EntityType, out var type)) continue;
+            // ⚠️ The zero-column cliff is checked for EVERY type carrying a query, composed or not.
+            // R8 named only the composed case, because that is where the demo model invited the
+            // mistake — but an entity-backed type whose attributes are all PersistentObject-only
+            // renders exactly the same blank grid, with rows and nothing to draw them into.
+            if (!type.Attributes.Any(a => a.ShowedOn.HasFlag(EShowedOn.Query)))
+            {
+                problems.Add(
+                    $"Query '{query.Name}' returns rows of '{type.Name}', but none of that type's " +
+                    $"{type.Attributes.Length} attribute(s) is shown on a query — every one is " +
+                    $"\"showedOn\": \"PersistentObject\". Columns come from the attributes marked " +
+                    $"\"Query\", so this query would render rows into a grid with no columns. Mark the " +
+                    $"attributes the grid should show as \"showedOn\": \"Query, PersistentObject\" (or " +
+                    $"\"Query\") in the type's model file. To ship a value without drawing it, keep " +
+                    $"\"showedOn\": \"Query\" and set \"isVisible\": false.");
+            }
+
             if (!IsComposed(type)) continue;
 
             // Refused here rather than at the first MoveNext inside an open websocket, where it
@@ -57,20 +73,6 @@ public static class SparkComposedQueries
                     $"an entity class.");
             }
 
-            // A composed type's attributes are hand-authored, and the only two in the wild are
-            // PersistentObject-only — which is what an author copies when they add a query to one.
-            // The result is a grid with rows and no columns: the rows arrive, the client has
-            // nothing to render them into, and nothing anywhere says why.
-            if (!type.Attributes.Any(a => a.ShowedOn.HasFlag(EShowedOn.Query)))
-            {
-                problems.Add(
-                    $"Query '{query.Name}' returns rows of '{type.Name}', but none of that type's " +
-                    $"{type.Attributes.Length} attribute(s) is shown on a query — every one is " +
-                    $"\"showedOn\": \"PersistentObject\". Columns come from the attributes marked " +
-                    $"\"Query\", so this query would render rows into a grid with no columns. Mark the " +
-                    $"attributes the grid should show as \"showedOn\": \"Query, PersistentObject\" (or " +
-                    $"\"Query\") in the type's model file.");
-            }
         }
 
         return problems;

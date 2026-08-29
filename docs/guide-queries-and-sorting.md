@@ -63,6 +63,26 @@ Two rules the server now enforces rather than tolerating: a row **must** have an
 (every null key compares equal), and duplicates rendered the same row repeatedly with a matching
 total.
 
+### `showedOn` decides the wire; `isVisible` decides the drawing
+
+A column is on the wire when its attribute's `showedOn` includes `Query` — the same flag the sort
+allow-list is checked against, so one rule governs both. `isVisible` is carried to the client and
+applied there.
+
+That split exists so an app can **ship a value without drawing it**:
+
+```jsonc
+{ "name": "IsPrivate", "dataType": "boolean", "showedOn": "Query", "isVisible": false }
+```
+
+The row carries `IsPrivate`, the grid renders no column for it, and a custom renderer on a *different*
+column can read it — a lock glyph beside a repository name, without spending a column on the fact.
+Before, the only way to get a value to a renderer was to make it a visible column, which is exactly
+the layout decision such an app is avoiding.
+
+Filtering on `isVisible` server-side would also have made an attribute marked `"showedOn": "Query",
+"isVisible": false` **sortable with no column** — the sort gate checks `showedOn` alone.
+
 ### Type hints
 
 `columns`, `items` and `values` may each carry a `typeHints` map — an open, string-keyed

@@ -42,6 +42,12 @@ export interface SparkCellColumn {
 export interface QueryColumn extends SparkCellColumn {
   order: number;
   isSortable?: boolean;
+  /**
+   * Whether the grid draws this column. `false` means the row carries the value but no column is
+   * rendered — for a renderer that needs a sibling value (a lock glyph beside a name) without
+   * spending a column on it. `showedOn` decides what ships; this decides what is drawn.
+   */
+  isVisible?: boolean;
   /** The query backing a Reference column, by name — the client's option source. */
   query?: string;
 }

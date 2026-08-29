@@ -114,6 +114,66 @@ public class StringPresentationColumnTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task An_invisible_attribute_still_ships_its_value()
+    {
+        // showedOn decides what is ON THE WIRE; isVisible decides what is DRAWN. A renderer that
+        // needs a sibling value — a lock glyph beside a name — must be able to read it without the
+        // app spending a column on it. Filtering both flags server-side took that away with no way
+        // to ask for it back, since making it visible is the layout decision the app was avoiding.
+        var model = GalleryModel();
+        model.PersistentObject.Attributes =
+        [
+            .. model.PersistentObject.Attributes,
+            new EntityAttributeDefinition
+            {
+                Id = Guid.NewGuid(), Name = "Hidden", DataType = "string",
+                IsVisible = false, ShowedOn = EShowedOn.Query,
+            },
+        ];
+
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+        var result = await ExecuteAsync(factory);
+
+        var column = result.Columns.Single(c => c.Name == "Hidden");
+        column.IsVisible.Should().BeFalse("the client decides whether to draw it");
+        result.Items.Should().OnlyContain(i => i.Values.Any(v => v.Key == "Hidden"),
+            "the value ships regardless — that is the point");
+    }
+
+    [Fact]
+    public async Task An_attribute_off_the_query_surface_does_not_ship_at_all()
+    {
+        // The other half of the rule, and the one that keeps the payload saving: showedOn still
+        // decides membership. isVisible never widens it.
+        var model = GalleryModel();
+        model.PersistentObject.Attributes =
+        [
+            .. model.PersistentObject.Attributes,
+            new EntityAttributeDefinition
+            {
+                Id = Guid.NewGuid(), Name = "DetailOnly", DataType = "string",
+                IsVisible = true, ShowedOn = EShowedOn.PersistentObject,
+            },
+        ];
+
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+        var result = await ExecuteAsync(factory);
+
+        result.Columns.Should().NotContain(c => c.Name == "DetailOnly");
+        result.Items.Should().OnlyContain(i => i.Values.All(v => v.Key != "DetailOnly"));
+    }
+
+    [Fact]
+    public async Task Columns_are_visible_by_default()
+    {
+        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+
+        var result = await ExecuteAsync(factory);
+
+        result.Columns.Should().OnlyContain(c => c.IsVisible);
+    }
+
+    [Fact]
     public async Task A_presentation_column_is_an_ordinary_column_in_every_other_respect()
     {
         // No special-casing crept in: these still carry their label, order and array-ness like any

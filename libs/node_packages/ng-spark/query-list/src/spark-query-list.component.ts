@@ -62,6 +62,12 @@ export class SparkQueryListComponent {
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   showCustomActions = input(true);
 
+  /**
+   * Forwarded to the grid, so a query PAGE can replace its row links — the same reason the card
+   * forwards it. Without this the escape hatch existed only for a directly-embedded grid.
+   */
+  rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
+
   rowClicked = output<QueryResultItem>();
   createClicked = output<void>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();

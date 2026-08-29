@@ -66,6 +66,12 @@ export class SparkQueryCardComponent {
   rowClicked = output<QueryResultItem>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
 
+  /**
+   * Forwarded to the grid. Without this the escape hatch was unreachable from a card — i.e. from
+   * every auto-rendered sub-query and program-unit query page, which is most grids.
+   */
+  rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
+
   colors = Color;
 
   private readonly iconSlots = contentChildren(SparkQueryIconDirective);

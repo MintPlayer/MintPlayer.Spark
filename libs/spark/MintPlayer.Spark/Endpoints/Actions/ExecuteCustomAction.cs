@@ -151,7 +151,12 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // whatever the action itself does), but it is now a small constant, and an overrun is
             // a signal worth reading rather than an expected consequence of a large selection.
             const int ActionRequestBudget = 30;
-            using var _ = session.IgnoreMaxRequests(ActionRequestBudget, logger);
+            // Named, so the overrun warning identifies itself. It used to report the CallerMemberName
+            // — "HandleAsync performed 412 requests" — a number with no subject, from a name several
+            // endpoints share.
+            using var _ = session.IgnoreMaxRequests(
+                ActionRequestBudget, logger,
+                $"action '{actionName}' on '{entityType.Name}' ({(request?.SelectedItemIds?.Length ?? 0)} selected)");
 
             // Row-gated server-side resolution (#236 G3). The wire's Parent and selected ids are
             // whatever the caller typed — a caller holding the type-level action right could name
@@ -221,7 +226,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // owning its own paging, a streaming query, and a request naming no query.
             var selectedItems = submittedIds.Count == 0
                 ? []
-                : await MaterializeSelectionAsync(request, entityType, submittedIds!, queryParent, httpContext);
+                : await MaterializeSelectionAsync(request, entityType, submittedIds!, queryParent, actionName, httpContext);
 
             if (selectedItems is null)
             {
@@ -317,6 +322,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         EntityTypeDefinition entityType,
         IReadOnlyList<string> submittedIds,
         Po? queryParent,
+        string actionName,
         HttpContext httpContext)
     {
         if (!string.IsNullOrEmpty(request?.QueryId) && queryLoader.ResolveQuery(request.QueryId) is { } query)
@@ -325,7 +331,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             // client could name a query over another type and have its rows handed to an action
             // gated on a different grant.
             if (!string.Equals(query.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                // Logged because the response is deliberately permission-shaped: without this line
+                // nobody can tell a genuine refusal from a client naming the wrong query.
+                logger.LogWarning(
+                    "Custom action refused: query '{QueryId}' returns rows of '{QueryType}', but the action " +
+                    "runs on '{RouteType}'. The selection cannot be materialized from a query over another type.",
+                    request.QueryId, query.EntityType, entityType.Name);
                 return null;
+            }
 
             if (IsReExecutable(query))
             {
@@ -349,7 +363,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             }
         }
 
-        // Fallback: the batched row-gated load, projected onto the same shape.
+        // Fallback: the batched row-gated load, projected onto the same shape. Announced, because
+        // it silently produces DIFFERENT values than the grid showed — a column computed inside an
+        // index is on no document, so it arrives null. That is the exact defect re-execution exists
+        // to remove, and leaving its one remaining path unannounced would be the same mistake in
+        // miniature.
+        logger.LogWarning(
+            "Custom action '{Action}' on '{Type}' materialized its selection by loading documents ({Reason}). " +
+            "Columns computed inside an index will be null, unlike the grid the rows came from.",
+            actionName, entityType.Name, DescribeFallback(request));
+
         var loaded = await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, submittedIds);
         var columns = QueryResultProjector.BuildColumns(entityType);
         return QueryResultProjector.ToItems(loaded, columns, $"Action '{entityType.Name}'");
@@ -364,6 +387,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
     /// own filtering and paging, and there is no way to ask it for "the page containing these ids".
     /// Both are properties of the declaration, so this is a branch rather than a failed attempt.
     /// </remarks>
+    /// <summary>Which of the three non-re-runnable shapes sent this selection to the load path.</summary>
+    private string DescribeFallback(CustomActionRequest? request)
+    {
+        if (string.IsNullOrEmpty(request?.QueryId)) return "the request named no query";
+        if (queryLoader.ResolveQuery(request.QueryId) is not { } query) return "the named query did not resolve";
+        if (query.IsStreamingQuery) return $"'{query.Name}' is a streaming query";
+        if (queryExecutor.OwnsItsOwnPaging(query)) return $"'{query.Name}' returns its own page";
+        return "unknown";
+    }
+
     private bool IsReExecutable(SparkQuery query)
         => !query.IsStreamingQuery && !queryExecutor.OwnsItsOwnPaging(query);
 

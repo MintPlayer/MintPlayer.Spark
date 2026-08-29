@@ -370,3 +370,69 @@ list, the QueryParent table and the migration note all described the old mechani
 The repo's `CLAUDE.md` gained a section on running the demo apps: the ASP.NET host spawns the Angular
 dev server itself via `UseAngularCliServer`, so `dotnet run` is the whole command — and a C# change
 needs the host's whole process tree restarted, which is what these three bugs cost to verify.
+
+---
+
+## M12 — Review response (Coverage feedback on PR #328)
+
+Six changes from an architectural review by the consumer that filed the issue. Two were defects that
+would have shipped; one was a contract change argued better than my original.
+
+### The one that mattered most
+
+**Composed query + custom action 500'd.** `RestrictToIds` demanded an `IQueryable`, and a plain
+`List` — the natural way to write a composed query — fell through to the hook-required throw. Both
+demo composed queries are that shape and no demo declares a hook; it was latent only because no
+action targeted them. **A plain sequence with a readable string `Id` is now narrowed in memory.**
+
+Filtering *after* the source produced everything is also the honest semantic, not a fallback: it is
+what proves the submitted ids were in the query's result. Narrowing at the source would let a caller
+name rows the query never returned, and the all-or-nothing count could not tell.
+
+### `showedOn` decides the wire; `isVisible` decides the drawing
+
+`BuildColumns` filtered on both, so a value could only reach a renderer by becoming a visible column
+— the layout decision the app was avoiding. It now filters on `showedOn` alone and carries
+`IsVisible` to the client.
+
+The reviewer's case was a renderer reading a sibling `IsPrivate`. The sharper argument is one neither
+of us made first: **the sort allow-list already checks `showedOn` alone**, so the old filter made an
+attribute `sortable with no column`. One predicate now governs both. No disclosure either — pre-#327
+rows carried every attribute regardless of both flags.
+
+### R10, which was firing in this branch's own demo
+
+`Read ⇒ Query` meant the composed StartPage grid rendered every row linked to `/po/startpage/{rowId}`
+— which does not 404, it silently re-renders the same composed page. The row link now defaults to
+`null` when `clrType` is absent (a composed type has no per-row page by construction; the signal was
+already on the wire and the grid never consulted it), and **`rowRoute` is forwarded through
+`spark-query-card` and `spark-query-list`** — without which the escape hatch was unreachable from
+every auto-rendered sub-query and query page, i.e. most grids.
+
+### Four silent exits, now logged
+
+The three non-re-runnable fallbacks say which one applied and that index-computed values will be
+null. So does the entity-type mismatch guard — the check between a client-supplied query id and
+another type's rows, which previously returned a permission-shaped refusal with no trace.
+
+### Request budget
+
+The overrun warning reported `HandleAsync performed 412 requests` — a number with no subject, from a
+`CallerMemberName` several endpoints share. It now names the action, the type and the selection size.
+
+### R8 widened
+
+The zero-column cliff is checked for **every** type carrying a query, not only composed ones: an
+entity-backed type whose attributes are all `PersistentObject`-only renders the same blank grid.
+
+### Declined
+
+**Memoizing the re-execution.** For an API-backed query a bulk action does hit the service a second
+time. That is accepted, and the reason is recorded next to the code rather than only here: re-running
+*unrestricted* and filtering is what validates the selection. A body fetching only the named ids
+would let a caller name rows that were never in any grid, and the count check would pass. The next
+reader will see an obvious wasted call, so the comment says why it is not one.
+
+**Tests:** +9. Ship-vs-draw (3 server, 2 client), composed rows have no default link (3 client), a
+plain sequence needing no hook, and the loud failure narrowed to what genuinely needs one — a row
+keyed by something that is not a readable string `Id`.
