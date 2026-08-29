@@ -1,5 +1,24 @@
 # MintPlayer.Spark — repository instructions
 
+## Running the demo apps: never start the Angular dev server yourself
+
+Every demo app (`Demo/DemoApp`, `Demo/Fleet`, `Demo/HR`, `Demo/WebhooksDemo`) hosts its SPA through
+**`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
+
+- **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second
+  dev server just fights for ports.
+- **Do not run `ng build` / `ng test` against that workspace while the host is running.** It is
+  unnecessary (the host builds), it shares `.angular/cache` with the live dev server, and it can
+  wedge the file watcher.
+- **To see a client change:** save the file. The dev server rebuilds and the browser live-reloads.
+- **To see a *server* change:** restart the host — watch mode does not reload C#. Kill the whole
+  `dotnet run` process **tree**, not just the child `<App>.exe`, or the next build fails with
+  MSB3027/MSB3021 "file is locked by <App>".
+- **If output looks stale**, suspect a wedged watcher rather than your code, and restart the host.
+
+The host prints the dev server's own port (`➜ Local: http://localhost:NNNNN/`) once it is ready;
+that is the signal the app is actually serviceable, not `Now listening on:`.
+
 ## Versioning: major version is locked to the targeted platform
 
 The major version of every published package in this repository is **not** a semver

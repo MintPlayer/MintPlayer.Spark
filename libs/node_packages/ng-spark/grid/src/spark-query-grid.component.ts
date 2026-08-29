@@ -7,21 +7,23 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
-import { rendererValue } from '@mintplayer/ng-spark/renderers';
-import { AttributeValuePipe, ReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { cellValue } from '@mintplayer/ng-spark/renderers';
+import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
 import {
   CustomActionDefinition,
   EntityAttributeDefinition,
   EntityType,
   LookupReference,
-  PersistentObject,
+  QueryColumn,
+  QueryResultItem,
   SparkQuery,
   filterQueryActions,
   parseSelectionRule,
   selectionModeFor,
+  valueFor,
 } from '@mintplayer/ng-spark/models';
-import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery, visibleGridAttributes } from './spark-grid-columns';
+import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
 import { SparkGridRenderers } from './spark-grid-renderers';
 import { SparkGridCellComponent } from './spark-grid-cell.component';
 
@@ -56,7 +58,7 @@ import { SparkGridCellComponent } from './spark-grid-cell.component';
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, AttributeValuePipe, ReferenceChipsPipe, TranslateKeyPipe],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -91,7 +93,7 @@ export class SparkQueryGridComponent {
    * default — means "fetch for yourself"; an empty array means "you have been given no rows",
    * which is a different statement and renders an empty grid rather than triggering a load.
    */
-  data = input<PersistentObject[] | null>(null);
+  data = input<QueryResultItem[] | null>(null);
 
   /**
    * Server-side search term, passed through to the query.
@@ -100,6 +102,12 @@ export class SparkQueryGridComponent {
    * host with client-side rows filters them itself before binding `data`.
    */
   search = input<string>('');
+
+  /**
+   * Column metadata for externally supplied rows. Required whenever `data` is bound, because a
+   * projection cannot describe itself — there is no per-row metadata left to infer it from.
+   */
+  columns = input<QueryColumn[] | null>(null);
 
   /**
    * Change this to re-run the query. Any value works; only its identity matters.
@@ -125,14 +133,54 @@ export class SparkQueryGridComponent {
   }));
 
   /** Rows the user has ticked. Two-way so chrome outside the grid can read and clear them. */
-  selection = model<PersistentObject[]>([]);
+  selection = model<QueryResultItem[]>([]);
+
+  /**
+   * Replaces where the first column's link points, per row.
+   *
+   * Return `null` to suppress the link for that row — useful when a grid mixes rows that have a
+   * detail page with rows that do not.
+   *
+   * ⚠️ **It changes the destination, not the permission.** `canRead()` still gates whether any
+   * link is rendered at all, and this function is never consulted when that gate is closed. It
+   * cannot be used to reach a row the rights model withheld; it exists for the case where the
+   * row's natural destination is not `/po/{type}/{id}` — a composed row that maps to a page of
+   * its own, or a grid embedded in a route that owns its own child paths.
+   */
+  rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
 
   /** Emitted whenever a load or a page fetch fails, for a host in bespoke chrome. */
   error = output<HttpErrorResponse>();
-  rowClicked = output<PersistentObject>();
+  rowClicked = output<QueryResultItem>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
 
   colors = Color;
+
+  /**
+   * Where the first column's link points for this row: the host's `rowRoute` when it supplied one,
+   * otherwise the row's own detail page.
+   *
+   * A method rather than a computed because the answer is per row, and the template already
+   * iterates rows — a computed would have to be a map keyed by id, rebuilt on every page.
+   */
+  protected rowRouteFor(row: QueryResultItem): unknown[] | null {
+    const custom = this.rowRoute();
+    if (custom) return custom(row);
+
+    const type = this.entityType();
+
+    // ⚠️ A composed type has no per-row detail page by construction: its rows are computed, and
+    // `{Name}Actions.OnLoadAsync` serves ONE page which is free to ignore the id it was given. So
+    // /po/{type}/{rowId} does not 404 — it silently renders that same page, which is worse, because
+    // nothing looks wrong. This branch is live in DemoApp today: Read/StartPage implies
+    // Query/StartPage, so the composed grid renders with canRead() true and every row linked.
+    //
+    // `clrType` is absent exactly for those types and is already on the wire; the grid simply never
+    // consulted it. A host whose composed rows DO have a page says so with `rowRoute`.
+    if (!type?.clrType) return null;
+
+    return ['/po', type.alias || type.id, row.id];
+  }
 
   query = signal<SparkQuery | null>(null);
   entityType = signal<EntityType | null>(null);
@@ -143,7 +191,7 @@ export class SparkQueryGridComponent {
   canCreate = signal(false);
   resultCount = signal<number | null>(null);
   customActions = signal<CustomActionDefinition[]>([]);
-  fetchFn = signal<BsDatatableFetch<PersistentObject> | null>(null);
+  fetchFn = signal<BsDatatableFetch<QueryResultItem> | null>(null);
 
   /**
    * Why the component renders its own failure instead of only reporting one.
@@ -160,7 +208,23 @@ export class SparkQueryGridComponent {
 
   isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
 
-  visibleAttributes = computed(() => visibleGridAttributes(this.entityType()));
+  /**
+   * Columns as sent with the most recent fetched page.
+   *
+   * A host binding `data` (streaming) supplies its own via the `columns` input instead — the
+   * snapshot carries them once, exactly as a paged result does.
+   */
+  private readonly fetchedColumns = signal<QueryColumn[]>([]);
+
+  /** Every column on the wire, drawn or not — what renderers and lookups resolve against. */
+  allColumns = computed(() => this.columns() ?? this.fetchedColumns());
+
+  /**
+   * The columns the grid draws. `isVisible: false` ships a value without a column, so a renderer
+   * can read a sibling the grid does not show; undefined means visible, so a server that predates
+   * the field still draws everything.
+   */
+  visibleColumns = computed(() => this.allColumns().filter(c => c.isVisible !== false));
 
   /**
    * True when rows do not come from this component's own fetch.
@@ -176,7 +240,7 @@ export class SparkQueryGridComponent {
 
   /** Whether an action's selection rule is satisfied right now. The server checks it again. */
   isActionEnabled(action: CustomActionDefinition): boolean {
-    return parseSelectionRule(action.selectionRule)(this.selection().length);
+    return parseSelectionRule(action.selectionRule)(this.selection().map(r => r.id).length);
   }
 
   constructor() {
@@ -249,7 +313,24 @@ export class SparkQueryGridComponent {
       if (!confirm(message)) return;
     }
     try {
-      await this.sparkService.executeCustomAction(this.entityType()!.id, action.name, undefined, this.selection());
+      // The sub-query's container travels with the action (#327). Without it an action invoked
+      // from a company's Cars tab could not tell it was on a company's page at all — the grid knew
+      // (it filters the rows by that parent) and simply dropped the fact on the way out.
+      //
+      // Sent as parentId/parentType, NOT as the `parent` argument: that one means an object of this
+      // action's OWN type and is loaded under it server-side, so handing it a Company id for a Car
+      // action refuses — correctly, and confusingly.
+      const pId = this.parentId();
+      const pType = this.parentType();
+      await this.sparkService.executeCustomAction(
+        this.entityType()!.id,
+        action.name,
+        undefined,
+        this.selection().map(r => r.id),
+        pId && pType ? { id: pId, type: pType } : undefined,
+        // The query too: the server re-runs it narrowed to these ids, so the action receives the
+        // rows this grid rendered rather than a re-derivation from documents.
+        this.query()?.id);
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) this.reload();
     } catch (e) {
@@ -356,10 +437,10 @@ export class SparkQueryGridComponent {
     const sourceName = extractSourceName(query.source);
     const singular = singularize(sourceName);
     return entityTypes.find(t =>
-      t.name === sourceName || t.name === singular || t.clrType.endsWith(singular)) ?? null;
+      t.name === sourceName || t.name === singular || t.clrType?.endsWith(singular)) ?? null;
   }
 
-  private makeFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<PersistentObject> {
+  private makeFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
     return (req) => this.sparkService.executeQuery(query.id, {
       sortColumns: req.sortColumns,
       skip: (req.page - 1) * req.perPage,
@@ -368,11 +449,16 @@ export class SparkQueryGridComponent {
       parentId, parentType,
     }).then(r => {
       this.errorMessage.set(null);
-      this.resultCount.set(r.totalRecords);
+      this.resultCount.set(r.totalItems);
+      // Columns come from the result now, not from the entity type: the server decides the query
+      // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
+      // ?? [] because a malformed or older response must render an empty grid, not throw inside a
+      // computed — where the stack points at the column filter and not at the response that lacked them.
+      this.fetchedColumns.set(r.columns ?? []);
       return {
-        data: r.data,
-        totalRecords: r.totalRecords,
-        totalPages: Math.ceil(r.totalRecords / req.perPage) || 1,
+        data: r.items,
+        totalRecords: r.totalItems,
+        totalPages: Math.ceil(r.totalItems / req.perPage) || 1,
         perPage: req.perPage,
         page: req.page,
       };
@@ -386,25 +472,28 @@ export class SparkQueryGridComponent {
   }
 
   private async loadLookupReferenceOptions(): Promise<void> {
-    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.visibleAttributes()));
+    // Over ALL columns, not just the drawn ones: an undrawn column's value can still be rendered
+    // by a renderer reading it as a sibling, and it would resolve to a raw key without its options.
+    this.lookupReferenceOptions.set(await this.gridRenderers.loadLookupOptions(this.allColumns()));
   }
 
   /**
    * The underlying value a custom renderer receives, which is not the printable one.
    *
-   * `rendererValue` unwraps an AsDetail attribute to the nested object (or objects) rather than
-   * flattening it to text — a renderer for a nested type needs the object, not a summary of it.
+   * A projection is flat, so this is the cell's own value rather than a display string. It is
+   * deliberately not the attribute-shaped `rendererValue`: a query row has no nested object to
+   * fall back to, and reaching for one would hand every renderer `undefined`.
    */
-  rendererValueFor(item: PersistentObject, attr: EntityAttributeDefinition): unknown {
-    return rendererValue(item.attributes.find(a => a.name === attr.name));
+  rendererValueFor(item: QueryResultItem, column: QueryColumn): unknown {
+    return cellValue(valueFor(item, column.name));
   }
 
-  getColumnRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    return this.gridRenderers.columnComponentFor(attr);
+  getColumnRendererComponent(column: QueryColumn): Type<any> | null {
+    return this.gridRenderers.columnComponentFor(column);
   }
 
-  getColumnRendererInputs(component: Type<any>, item: PersistentObject, attr: EntityAttributeDefinition): Record<string, any> {
-    return this.gridRenderers.columnInputsFor(component, item, attr);
+  getColumnRendererInputs(component: Type<any>, item: QueryResultItem, column: QueryColumn): Record<string, any> {
+    return this.gridRenderers.columnInputsFor(component, item, column);
   }
 }
 

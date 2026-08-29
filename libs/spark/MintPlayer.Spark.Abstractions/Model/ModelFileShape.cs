@@ -110,20 +110,23 @@ public static class ModelFileShape
                 }
             }
 
-            // A query contributes a line only when it carries an indexName, so a model whose queries
-            // were never stamped hashes exactly as it did before the field became structural.
+            // Every query contributes a line, and `source` and `entityType` are structural (#327 M3).
+            //
+            // This used to skip a query entirely unless it carried an `indexName`, which meant
+            // "queries": [] and "queries": [<a whole query>] hashed IDENTICALLY — a hand-authored
+            // model file could gain a complete query without moving the file hash by one bit. That
+            // is exactly the shape composed queries introduce, and the two omitted fields are the
+            // two that matter most: `source` names an arbitrary method that runs with no row
+            // security, and `entityType` chooses the right that gates the request and selects which
+            // actions class is invoked. Editing either on a deployed model must trip the gate.
             if (document.RootElement.TryGetProperty("queries", out var queries) && queries.ValueKind == JsonValueKind.Array)
             {
                 foreach (var query in queries.EnumerateArray()
                              .OrderBy(q => q.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "", StringComparer.Ordinal))
                 {
-                    if (!query.TryGetProperty("indexName", out var indexName)
-                        || indexName.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-                        continue;
-
                     builder.Append("  query");
-                    AppendInline(builder, "name", query);
-                    AppendInline(builder, "indexName", query);
+                    foreach (var field in StructuralQueryFields)
+                        AppendInline(builder, field, query);
                     builder.Append('\n');
                 }
             }
@@ -137,6 +140,20 @@ public static class ModelFileShape
         "name", "dataType", "isRequired", "isReadOnly", "isArray",
         "referenceType", "asDetailType", "lookupReferenceType", "isSortable",
         "inCollectionType", "inQueryType", "query",
+    ];
+
+    /// <summary>
+    /// The query fields a deployed model may not change without tripping the hash gate.
+    /// </summary>
+    /// <remarks>
+    /// <c>source</c> and <c>entityType</c> are the security-relevant pair: the first names the
+    /// method that produces the rows, the second names the type whose <c>Query</c> right gates the
+    /// request. <c>isStreamingQuery</c> is here because it selects an entirely different execution
+    /// path. Presentation — <c>description</c>, <c>renderMode</c>, <c>sortColumns</c> — is not.
+    /// </remarks>
+    private static readonly string[] StructuralQueryFields =
+    [
+        "name", "source", "entityType", "indexName", "alias", "isStreamingQuery",
     ];
 
     private static void AppendRules(StringBuilder builder, JsonElement attribute)

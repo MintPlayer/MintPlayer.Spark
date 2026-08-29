@@ -29,8 +29,9 @@ public class SparkClientQueryTests
     {
         Content = JsonContent.Create(new QueryResult
         {
-            Data = Array.Empty<PersistentObject>(),
-            TotalRecords = 0,
+            Columns = [],
+            Items = [],
+            TotalItems = 0,
             Skip = 0,
             Take = 50,
         }, options: JsonOptions),

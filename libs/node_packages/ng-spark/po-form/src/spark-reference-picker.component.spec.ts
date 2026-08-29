@@ -9,8 +9,8 @@ import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
 const companyType: EntityType = { id: 't-company', name: 'Company', clrType: 'Test.Company', attributes: [] };
 
 const companies: PersistentObject[] = [
-  { id: 'companies/1', name: 'Acme', breadcrumb: 'Acme Corp', objectTypeId: 't-company', attributes: [] } as any,
-  { id: 'companies/2', name: 'Globex', objectTypeId: 't-company', attributes: [] } as any,
+  { id: 'companies/1', breadcrumb: 'Acme Corp', values: [] } as any,
+  { id: 'companies/2', values: [{ key: 'Name', value: 'Globex' }] } as any,
 ];
 
 function createComponent(serviceOverrides: Partial<SparkService> = {}) {
@@ -30,15 +30,17 @@ function createComponent(serviceOverrides: Partial<SparkService> = {}) {
 }
 
 describe('SparkReferencePickerComponent', () => {
-  it('displayValue prefers breadcrumb, then name, then the raw id, and shows notSelected when unset', () => {
+  it('displayValue prefers the breadcrumb, then the raw id, and shows notSelected when unset', () => {
     const { fixture, component } = createComponent();
     fixture.componentRef.setInput('options', companies);
 
     fixture.componentRef.setInput('value', 'companies/1');
     expect(component.displayValue()).toBe('Acme Corp');
 
+    // A row carries only a server-resolved breadcrumb; without one there is nothing left to
+    // display but the id, which is still more use than an empty cell (#327 M4).
     fixture.componentRef.setInput('value', 'companies/2');
-    expect(component.displayValue()).toBe('Globex');
+    expect(component.displayValue()).toBe('companies/2');
 
     fixture.componentRef.setInput('value', 'companies/missing');
     expect(component.displayValue()).toBe('companies/missing');
@@ -60,7 +62,7 @@ describe('SparkReferencePickerComponent', () => {
     expect(component.pagination()?.totalRecords).toBe(2);
   });
 
-  it('applyFilter narrows pagination data by name (case-insensitive)', async () => {
+  it('applyFilter narrows pagination data by any cell value (case-insensitive)', async () => {
     const { fixture, component } = createComponent();
     fixture.componentRef.setInput('options', companies);
     fixture.componentRef.setInput('referenceType', 'Test.Company');
@@ -70,7 +72,7 @@ describe('SparkReferencePickerComponent', () => {
     component.onSearchChange();
 
     expect(component.pagination()?.data).toHaveLength(1);
-    expect(component.pagination()?.data[0].name).toBe('Globex');
+    expect(component.pagination()?.data[0].id).toBe('companies/2');
   });
 
   it('select emits the picked id via valueChange and closes the modal', async () => {

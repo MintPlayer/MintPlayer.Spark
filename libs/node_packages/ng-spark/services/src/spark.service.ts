@@ -78,7 +78,7 @@ export class SparkService {
     parentType?: string;
   }): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
-    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { data: [], totalRecords: 0, skip: 0, take: 50 };
+    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { columns: [], items: [], totalItems: 0, skip: 0, take: 50 };
   }
 
   // Program Units
@@ -137,8 +137,29 @@ export class SparkService {
     return firstValueFrom(this.http.get<CustomActionDefinition[]>(`${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}`));
   }
 
-  async executeCustomAction(objectTypeId: string, actionName: string, parent?: PersistentObject, selectedItems?: PersistentObject[]): Promise<void> {
-    const body: { parent?: PersistentObject; selectedItems?: PersistentObject[]; retryResults?: RetryActionResult[] } = { parent, selectedItems };
+  /**
+   * @param parent The object of THIS type the action is operating on — the detail-page invocation.
+   * @param selectedItemIds Row ids from a query. Ids, never row objects: a row is a projection.
+   * @param queryParent When invoked from a sub-query, the object whose detail page it was rendered
+   *   on — a DIFFERENT type (the cars listed on a company's page are Cars, the page is a Company).
+   *   Sent as id + type, exactly as the query endpoint names it, and resolved server-side under its
+   *   own type with its own Read gate.
+   * @param queryId The query the selection came from, so the server can re-run it narrowed to those
+   *   ids and hand the action the rows the grid actually had -- index-computed columns included.
+   */
+  async executeCustomAction(
+    objectTypeId: string,
+    actionName: string,
+    parent?: PersistentObject,
+    selectedItemIds?: string[],
+    queryParent?: { id: string; type: string },
+    queryId?: string,
+  ): Promise<void> {
+    const body: {
+      parent?: PersistentObject; selectedItemIds?: string[];
+      parentId?: string; parentType?: string; queryId?: string;
+      retryResults?: RetryActionResult[];
+    } = { parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
       body as any

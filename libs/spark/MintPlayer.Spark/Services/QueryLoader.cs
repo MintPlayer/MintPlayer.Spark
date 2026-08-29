@@ -36,11 +36,40 @@ internal partial class QueryLoader : IQueryLoader
         // with the --spark-verify-model gate so CI cannot accept a model the runtime refuses.
         var byAlias = SparkQueryAliases.Index(queries);
 
+        AnnounceComposedQueries(queries);
+
         var byId = new Dictionary<Guid, SparkQuery>();
         foreach (var query in queries)
             byId[query.Id] = query;
 
         return (byId, byAlias);
+    }
+
+    /// <summary>
+    /// Refuses an unusable composed query, and announces every usable one.
+    /// </summary>
+    /// <remarks>
+    /// Here because this is the one place the whole query set is assembled, and it runs once per
+    /// process. The refusal duplicates <c>--spark-verify-model</c> deliberately: CI catches it
+    /// before merge, this catches the model that never went through CI.
+    /// </remarks>
+    private void AnnounceComposedQueries(IReadOnlyCollection<SparkQuery> queries)
+    {
+        var types = modelLoader.GetEntityTypes().ToList();
+
+        var problems = SparkComposedQueries.Validate(types, queries);
+        if (problems.Count > 0)
+            throw new InvalidOperationException(string.Join(Environment.NewLine, problems));
+
+        var byName = types.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var query in queries)
+        {
+            if (query.EntityType is null || !byName.TryGetValue(query.EntityType, out var type))
+                continue;
+
+            if (SparkComposedQueries.Announce(query, type) is { } line)
+                Console.WriteLine(line);
+        }
     }
 
     public IEnumerable<SparkQuery> GetQueries()

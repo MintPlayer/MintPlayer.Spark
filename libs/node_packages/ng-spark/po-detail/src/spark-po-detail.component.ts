@@ -29,13 +29,14 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
-  CustomActionDefinition,
-  EntityType,
-  EntityAttributeDefinition,
-  AttributeTab,
   AttributeGroup,
+  AttributeTab,
+  CustomActionDefinition,
+  EntityAttributeDefinition,
+  EntityType,
   LookupReference,
   PersistentObject,
+  QueryResultItem,
   ShowedOn,
   hasShowedOnFlag,
 } from '@mintplayer/ng-spark/models';
@@ -86,7 +87,7 @@ export class SparkPoDetailComponent {
   item = signal<PersistentObject | null>(null);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
   asDetailTypes = signal<Record<string, EntityType>>({});
-  asDetailReferenceOptions = signal<Record<string, Record<string, PersistentObject[]>>>({});
+  asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
   type = '';
   id = '';
   canEdit = signal(false);
@@ -242,12 +243,12 @@ export class SparkPoDetailComponent {
                 parentId: this.id,
                 parentType: this.type,
               });
-              return [col.name, result.data] as const;
+              return [col.name, result.items] as const;
             })
           );
           this.asDetailReferenceOptions.update(prev => ({
             ...prev,
-            [attr.name]: refEntries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, PersistentObject[]>)
+            [attr.name]: refEntries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, QueryResultItem[]>)
           }));
         }
       }

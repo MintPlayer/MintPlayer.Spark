@@ -13,7 +13,24 @@ namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
 {
-    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null);
+    /// <param name="restrictToIds">
+    /// When set, the run is narrowed to these row ids and paging is ignored — the caller wants
+    /// exactly these rows, not a page. This is how a custom action re-materializes a selection: it
+    /// re-runs the query the rows came from, so they arrive with the query's own projection
+    /// (index-computed columns included) rather than being re-derived from documents.
+    /// </param>
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether this query's method returns its own page (<see cref="SparkQueryPage{T}"/>) and
+    /// therefore owns filtering, search, sorting, counting and paging.
+    /// </summary>
+    /// <remarks>
+    /// Answered from the declared return type without invoking anything, so a caller that cannot
+    /// work with an author-paged query — re-materializing a selection, which has no way to ask for
+    /// "the page containing these ids" — can branch rather than try and fail.
+    /// </remarks>
+    bool OwnsItsOwnPaging(SparkQuery query);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -30,22 +47,41 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
 
-    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null)
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
     {
         var (isCustom, name) = ResolveSource(query);
 
         // Null/whitespace collapses to null here, so every path below tests one thing.
         var searchTerm = BuildSearchTerm(search);
 
-        IEnumerable<PersistentObject> allResults;
-        bool searchPushedDown;
+        QuerySourceResult source;
         if (isCustom)
         {
-            (allResults, searchPushedDown) = await ExecuteCustomQueryAsync(query, name, parent, searchTerm);
+            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
         }
         else
         {
-            (allResults, searchPushedDown) = await ExecuteDatabaseQueryAsync(query, name, searchTerm);
+            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken);
+        }
+
+        var (allResults, definition, searchPushedDown, authorTotalItems) = source;
+
+        // The author's page is returned as it stands. Search, sort, count and paging were all
+        // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
+        // them here would trim, reorder or recount a result that is already final — and every one
+        // of those failures is invisible in the grid.
+        if (authorTotalItems is int authorTotal)
+        {
+            var authorRows = allResults as IList<PersistentObject> ?? allResults.ToList();
+            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
+            return new QueryResult
+            {
+                Columns = authorColumns,
+                Items = QueryResultProjector.ToItems(authorRows, authorColumns, query.Name),
+                TotalItems = authorTotal,
+                Skip = skip,
+                Take = take,
+            };
         }
 
         // Fallback for shapes that cannot push down: a Custom. query returning a non-Raven
@@ -67,19 +103,257 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         // Counted after filtering and before paging, either way — which is what keeps
-        // TotalRecords search-aware now that the filter may have run in the database.
+        // TotalItems search-aware now that the filter may have run in the database.
         var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
-        var totalRecords = materialized.Count;
+        var totalItems = materialized.Count;
 
-        var paged = materialized.Skip(skip).Take(take);
+        // A restricted run returns exactly the rows asked for. Paging it would serve "the first
+        // `take` of the selection", which is how a bulk action silently acts on a subset.
+        var paged = restrictToIds is { Count: > 0 }
+            ? materialized
+            : materialized.Skip(skip).Take(take);
+
+        // Columns ship once per result, not once per row. A definition-less result cannot describe
+        // its own columns, and the client renders from them, so an empty column set is the honest
+        // answer rather than a guess reconstructed from whichever attributes the first row happens
+        // to carry.
+        var columns = definition is not null
+            ? QueryResultProjector.BuildColumns(definition)
+            : [];
 
         return new QueryResult
         {
-            Data = paged,
-            TotalRecords = totalRecords,
+            Columns = columns,
+            Items = QueryResultProjector.ToItems(paged, columns, query.Name),
+            TotalItems = totalItems,
             Skip = skip,
             Take = take,
         };
+    }
+
+    /// <summary>
+    /// What a query source produced, and how much of the pipeline it already applied.
+    /// </summary>
+    /// <param name="Rows">The mapped rows, before paging unless <paramref name="AuthorTotalItems"/> says otherwise.</param>
+    /// <param name="Definition">The entity type the rows were mapped against; <see langword="null"/> when the source produced nothing to describe.</param>
+    /// <param name="SearchPushedDown">Whether the search term was applied in the database, so the in-memory fallback must not run again.</param>
+    /// <param name="AuthorTotalItems">
+    /// Non-null when the custom method returned a <see cref="SparkQueryPage{T}"/> and therefore owns
+    /// filtering, search, sorting, counting and paging. The value is the pre-paging total.
+    /// </param>
+    private sealed record QuerySourceResult(
+        IEnumerable<PersistentObject> Rows,
+        EntityTypeDefinition? Definition,
+        bool SearchPushedDown,
+        int? AuthorTotalItems = null)
+;
+
+    /// <summary>
+    /// Narrows a query source to a set of row ids, for a custom action re-materializing a selection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three ways, in order. <b>An actions class may declare</b>
+    /// <c>object RestrictToIds(object source, IReadOnlyCollection&lt;string&gt; ids)</c> — duck-typed,
+    /// like the virtual-type load hook — and it wins. Otherwise the default composes
+    /// <c>Where(x =&gt; ids.Contains(x.Id))</c> onto the queryable. Failing both, this <b>throws</b>.
+    /// </para>
+    /// <para>
+    /// ⚠️ It throws rather than falling back to filtering after materialization, and that is the
+    /// whole point. A restricted run ignores paging, so a fallback would have to materialize the
+    /// entire result to find a handful of rows — and if it instead kept the page, the selected rows
+    /// would usually not be in it, the result would come back empty, and the caller's all-or-nothing
+    /// check would report that as a refusal. An action would simply stop working, with an error that
+    /// reads like a permission problem. Loud is the only honest option.
+    /// </para>
+    /// <para>
+    /// The hook exists because <c>Id</c> is not always a document id. A composed query mints its own
+    /// identity, and a composite key (<c>"{a}|{b}"</c>) is a normal shape — neither is something the
+    /// default can express.
+    /// </para>
+    /// </remarks>
+    private static object RestrictToIds(
+        object source,
+        Type elementType,
+        IReadOnlyCollection<string> ids,
+        SparkQuery query,
+        EntityTypeDefinition definition,
+        object? actions)
+    {
+        if (actions is not null && ResolveRestrictHook(actions.GetType()) is { } hook)
+            return hook.Invoke(actions, [source, ids])!;
+
+        var declaredId = elementType.GetCachedProperty("Id");
+
+        // ── The queryable branch pushes the filter into the provider, and stays string-only.
+        // Not a limitation: RavenDB cannot translate ToString() into RQL, and a document id is a
+        // string by definition, so nothing reachable here needs more.
+        if (declaredId is { CanRead: true } && declaredId.PropertyType == typeof(string)
+            && source is IQueryable)
+        {
+            var parameter = Expression.Parameter(elementType, "x");
+            var idAccess = Expression.Property(parameter, declaredId);
+
+            // RavenDB and LINQ-to-objects need DIFFERENT expressions for the same idea, and neither
+            // one works on the other:
+            //
+            //   Raven      -> x.Id.In(ids)         — the provider's own marker method
+            //   in-memory  -> ids.Contains(x.Id)   — an ordinary instance call
+            //
+            // Handing Raven the Contains form fails at query translation; .In() outside a Raven
+            // query is a marker with no runtime meaning. Both land at the first restricted run.
+            //
+            // Contains is an INSTANCE method, so the list is the receiver and not the first
+            // argument — the other way round throws "Static method requires null instance".
+            var idList = ids.ToList();
+            var isRavenBacked = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsInstanceOfType(source);
+
+            Expression predicate = isRavenBacked
+                ? Expression.Call(
+                    ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+                        ("QueryExecutor.RavenIn", typeof(string)),
+                        static _ => typeof(Raven.Client.Documents.Linq.RavenQueryableExtensions)
+                            .GetMethods()
+                            .First(m => m.Name == "In"
+                                     && m.GetParameters().Length == 2
+                                     && m.GetParameters()[1].ParameterType.IsGenericType)
+                            .MakeGenericMethod(typeof(string))),
+                    idAccess,
+                    Expression.Constant(idList))
+                : Expression.Call(Expression.Constant(idList), ContainsMethod, idAccess);
+
+            var lambda = Expression.Lambda(predicate, parameter);
+
+            var whereMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
+                ("QueryExecutor.QueryableWhere", elementType),
+                static k => typeof(Queryable).GetMethods()
+                    .First(m => m.Name == nameof(Queryable.Where)
+                             && m.GetParameters().Length == 2
+                             && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                    .MakeGenericMethod(k.Element));
+
+            return whereMethod.Invoke(null, [source, lambda])!;
+        }
+
+        // ── The in-memory branch matches on the row's id AS A STRING, read off the row's RUNTIME
+        // type. Both halves of that matter.
+        //
+        // ToString(), because that is literally how the id on the wire was minted: the mapper does
+        // `Id?.ToString()` and the projector copies it onto the row. So a row keyed by an int or a
+        // Guid renders a perfectly good grid, and comparing the same way it was serialised makes
+        // narrowing agree with it by construction rather than by luck. Requiring `string` here was
+        // an arbitrary narrowing of a path that had no reason to care.
+        //
+        // The RUNTIME type, because the declared one can be weaker: a method declared
+        // `IEnumerable<IRow>` returning concrete rows rendered a flawless grid — the mapper reads
+        // the instance — and then threw on narrowing, which read the interface. The two now read
+        // the same place.
+        //
+        // Filtering after the source produced everything is also the honest semantic and not a
+        // fallback: it is what proves the submitted ids were in the query's result. Narrowing at
+        // the source would let a caller name rows the query never returned, and the all-or-nothing
+        // count could not tell.
+        if (source is not IQueryable && source is System.Collections.IEnumerable rows)
+        {
+            var wanted = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+            var kept = (System.Collections.IList)Activator.CreateInstance(
+                typeof(List<>).MakeGenericType(elementType))!;
+
+            foreach (var row in rows)
+            {
+                if (row is null) continue;
+
+                var rowId = row.GetType().GetCachedProperty("Id");
+                if (rowId is null || !rowId.CanRead)
+                    throw NoIdToMatchOn(query, row.GetType(), definition, actions);
+
+                if (AccessorCache.GetGetter(rowId)(row)?.ToString() is { } id && wanted.Contains(id))
+                    kept.Add(row);
+            }
+
+            return kept;
+        }
+
+        throw NoIdToMatchOn(query, elementType, definition, actions);
+    }
+
+    /// <summary>
+    /// The one message for "this query's rows cannot be matched against the ids the client posted".
+    /// </summary>
+    /// <remarks>
+    /// Reachable only for a row type with no readable <c>Id</c> at all — and such a type is already
+    /// refused, by name, the first time its grid renders (<c>QueryResultProjector.ToItems</c>), so
+    /// in practice nothing gets this far without having been told once already.
+    /// </remarks>
+    private static InvalidOperationException NoIdToMatchOn(
+        SparkQuery query, Type rowType, EntityTypeDefinition definition, object? actions)
+        => new(
+            $"Query '{query.Name}' cannot be narrowed to a selection. Its rows are '{rowType.Name}', " +
+            $"which has no readable 'Id' for the framework to match the submitted ids against. That is " +
+            $"normal for a row type that computes its own identity — a composite key, or an id minted " +
+            $"per row — so say how to find those rows again by declaring the hook on " +
+            $"'{HookHost(definition, actions)}':\n" +
+            $"    public object RestrictToIds(object source, IReadOnlyCollection<string> ids)\n" +
+            $"Without it, a custom action over a selection from this query cannot resolve its rows and " +
+            $"would refuse every invocation.");
+
+    /// <summary>
+    /// The actions class the resolver ACTUALLY consults, for the message that tells an author where
+    /// to put the hook.
+    /// </summary>
+    /// <remarks>
+    /// An entity-backed query resolves <c>{ClrTypeName}Actions</c> and a composed one
+    /// <c>{ModelTypeName}Actions</c>. Those coincide until a model file renames its type — and
+    /// naming the wrong one sends the author to edit a class the framework never looks at.
+    /// </remarks>
+    private static string HookHost(EntityTypeDefinition definition, object? actions)
+        => actions?.GetType().Name ?? $"{definition.Name}Actions";
+
+    /// <summary>The <c>List&lt;string&gt;.Contains</c> the default restriction composes.</summary>
+    private static readonly MethodInfo ContainsMethod = typeof(List<string>)
+        .GetMethod(nameof(List<string>.Contains), [typeof(string)])!;
+
+    /// <summary>
+    /// An actions class's optional <c>RestrictToIds</c>, duck-typed and cached (nulls too).
+    /// </summary>
+    private static MethodInfo? ResolveRestrictHook(Type actionsType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
+            ("QueryExecutor.RestrictToIdsHook", actionsType),
+            static k =>
+            {
+                var method = k.Type.GetMethod("RestrictToIds", [typeof(object), typeof(IReadOnlyCollection<string>)]);
+                if (method is not null && method.ReturnType != typeof(object))
+                    throw new InvalidOperationException(
+                        $"'{k.Type.FullName}.RestrictToIds' must return object. Expected: " +
+                        $"'object RestrictToIds(object source, IReadOnlyCollection<string> ids)'.");
+                return method;
+            });
+
+    public bool OwnsItsOwnPaging(SparkQuery query)
+    {
+        var (isCustom, methodName) = ResolveSource(query);
+        if (!isCustom) return false;
+
+        var definition = ResolveEntityTypeDefinition(query, methodName);
+        if (definition is null) return false;
+
+        var entityType = string.IsNullOrEmpty(definition.ClrType)
+            ? null
+            : SparkTypeResolver.ResolveClrType(definition.ClrType);
+
+        var actions = entityType is not null
+            ? actionsResolver.ResolveForType(entityType)
+            : actionsResolver.ResolveByEntityName(definition.Name);
+        if (actions is null) return false;
+
+        var method = actions.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+        if (method is null) return false;
+
+        var returnType = method.ReturnType;
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            returnType = returnType.GetGenericArguments()[0];
+
+        return typeof(ISparkQueryPage).IsAssignableFrom(returnType);
     }
 
     private static (bool IsCustom, string Name) ResolveSource(SparkQuery query)
@@ -99,41 +373,60 @@ internal partial class QueryExecutor : IQueryExecutor
 
     #region Database Queries
 
-    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, string? searchTerm)
+    private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
+        SparkQuery query, string propertyName, string? searchTerm,
+        IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
     {
-        var sparkContext = sparkContextResolver.ResolveContext(session);
-        if (sparkContext == null)
-        {
-            return ([], false);
-        }
+        // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
+        // is resolution work — reflecting over the context, reading a property, matching a CLR type
+        // to a model file — and every step of it used to run for a caller with no Query right at
+        // all, because the only check sat after the last of them. That is backwards on its own, and
+        // it also meant a misconfigured query answered a denied caller with an empty grid instead
+        // of a denial. The check below on the resolved definition stays and remains authoritative;
+        // permission decisions memoize per request, so asking twice costs nothing.
+        if (!string.IsNullOrEmpty(query.EntityType))
+            await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
+
+        var sparkContext = sparkContextResolver.ResolveContext(session)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' reads 'Database.{propertyName}', but this application registers no " +
+                $"SparkContext. A Database.* query resolves its rows from a context property; without a " +
+                $"context there is nothing to resolve against. Register one, or give the query a Custom.* " +
+                $"source served by an actions class.");
 
         var contextType = sparkContext.GetType();
         var property = contextType.GetCachedProperty(propertyName);
 
         if (property == null || !property.CanRead)
         {
-            return ([], false);
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' reads 'Database.{propertyName}', but '{contextType.Name}' has no " +
+                $"readable property named '{propertyName}'. Check the query's source in its model file " +
+                $"against the context's properties — the name is matched exactly, and a mismatch used to " +
+                $"render as an empty grid.");
         }
 
-        var queryable = AccessorCache.GetGetter(property)(sparkContext);
-        if (queryable == null)
-        {
-            return ([], false);
-        }
+        var queryable = AccessorCache.GetGetter(property)(sparkContext)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' reads '{contextType.Name}.{propertyName}', which returned null. A " +
+                $"context property is expected to hand back a queryable over its collection; a null one " +
+                $"cannot be distinguished from an empty collection at the grid.");
 
         var queryableType = property.PropertyType;
         var entityType = queryableType.GetGenericArguments().FirstOrDefault();
         if (entityType == null)
         {
-            return ([], false);
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' reads '{contextType.Name}.{propertyName}', typed " +
+                $"'{queryableType.Name}', which names no element type. A context property must be an " +
+                $"IRavenQueryable<T> so the framework knows what a row is.");
         }
 
-        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
-        if (entityTypeDefinition == null)
-        {
-            return ([], false);
-        }
+        var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)
+            ?? throw new InvalidOperationException(
+                $"Query '{query.Name}' returns rows of '{entityType.Name}', which has no model file in " +
+                $"App_Data/Model. Run '--spark-synchronize-model' and commit the result — without a " +
+                $"definition there are no columns to render and no attributes to map into.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
@@ -183,7 +476,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query");
+        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
 
@@ -197,56 +490,119 @@ internal partial class QueryExecutor : IQueryExecutor
             (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm);
         }
 
+        if (restrictToIds is { Count: > 0 })
+        {
+            // The actions instance, not null: the hook is documented as THE way to say how a query's
+            // rows are found again, and passing null here made it silently inert on the framework's
+            // most common query source — while the throw below still told the author to write it.
+            // Costs nothing: actions classes are scoped and row security already resolved this one
+            // earlier in the same request, so this is a dictionary lookup behind a guard that only
+            // a custom action's selection reaches.
+            queryable = RestrictToIds(
+                queryable, sortType, restrictToIds, query, entityTypeDefinition,
+                actionsResolver.ResolveForType(entityType));
+        }
+
         if (query.SortColumns.Length > 0)
         {
             queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
         }
 
-        var materialized = (await ExecuteQueryableAsync(queryable, resultType)).ToList();
+        var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
 
         // Row-level authorization. The type-level check above answers "may this principal query
         // this type at all"; it says nothing about which rows. Without this, an entity whose
         // Actions class scopes rows to their owner was filtered correctly when opened and listed
         // in full here — and the list screen is the one that shows every row at once.
         var entities = (await rowSecurity.FilterAsync(
-            session, materialized, entityType, resultType, "Query")).ToList();
+            session, materialized, entityType, resultType, "Query", cancellationToken)).ToList();
 
         // Referenced docs were primed into the session cache by .Include() above; the resolver's
         // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition, cancellationToken);
 
         var mapped = entities
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query");
-        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
+        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query", cancellationToken);
+
+        // ⚠️ DO NOT REMOVE THIS DistinctBy. It is not defensive, and it is not about the analyzer.
+        //
+        // WHY IT IS HERE: this path queries a RavenDB *index*, and a fan-out index emits one entry
+        // per element of a collection the map projects over. Given
+        //
+        //     from car in cars from tag in car.Tags select new { car.Id, tag }
+        //
+        // a car with three tags produces THREE index entries, all pointing at the same document.
+        // The query returns three results, they map to three PersistentObjects with the same Id,
+        // and the grid shows the same row three times with a TotalRecords to match. Deduping by Id
+        // is what makes one document one row.
+        //
+        // WHY IT LOOKS UNNECESSARY: nothing here says "fan-out" — whether the bound index fans out
+        // is a property of the index definition, which lives in the consuming application, so no
+        // amount of reading this file reveals a duplicate-producing case. The repo's own docs once
+        // attributed this call to the search analyzer, which was wrong and was corrected in place
+        // (issue_210_PRD.md); the guard is still correct, it just guards a different hazard than
+        // that note claimed. If you are here because it "seems redundant", it is not: write a
+        // fan-out index over a collection property and watch the row count multiply.
+        //
+        // WHY IT IS NOT ON THE CUSTOM PATH: see the sibling comment at the end of
+        // ExecuteCustomQueryAsync. In memory there is no fan-out, and DistinctBy is destructive
+        // there — it treats every null Id as equal and collapses the grid to a single row.
+        return new QuerySourceResult(
+            mapped.Select(m => m.Po).DistinctBy(po => po.Id), entityTypeDefinition, searchPushedDown);
     }
 
     #endregion
 
     #region Custom Queries
 
-    private async Task<(IEnumerable<PersistentObject> Results, bool SearchPushedDown)> ExecuteCustomQueryAsync(
-        SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm)
+    private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
+        SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
+        int skip, int take, string? search, IReadOnlyCollection<string>? restrictToIds,
+        CancellationToken cancellationToken)
     {
         // Resolve the entity type for this query
-        var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName);
-        if (entityTypeDefinition == null)
-        {
-            return ([], false);
-        }
+        var entityTypeDefinition = ResolveEntityTypeDefinition(query, methodName)
+            ?? throw new InvalidOperationException(
+                string.IsNullOrEmpty(query.EntityType)
+                    ? $"Query '{query.Name}' has source 'Custom.{methodName}' but names no entityType. A "
+                      + $"custom query's rows are mapped against a declared type — that is where the columns "
+                      + $"come from — so the executor cannot infer one from the method's return type. Set "
+                      + $"\"entityType\" in the query's model file."
+                    : $"Query '{query.Name}' names entityType '{query.EntityType}', which has no model file in "
+                      + $"App_Data/Model. Check the spelling against the type's \"name\", or run "
+                      + $"'--spark-synchronize-model' if the type is new.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
-        // Resolve the entity CLR type
-        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType);
-        if (entityType == null)
+        // A composed query: the model type declares no clrType, so there is no entity class to
+        // resolve actions over, no document behind a row, and nothing for row security to judge.
+        // The actions class is found by the type's NAME instead — the same seam the virtual-type
+        // page path uses. A clrType that IS declared but resolves to nothing is a different
+        // failure and stays loud: that is a broken binding, not a composed type.
+        Type? entityType = null;
+        if (!string.IsNullOrEmpty(entityTypeDefinition.ClrType))
         {
-            return ([], false);
+            entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType)
+                ?? throw new InvalidOperationException(
+                    $"Query '{query.Name}' maps rows to entity type '{entityTypeDefinition.Name}', whose " +
+                    $"clrType '{entityTypeDefinition.ClrType}' is not declared by any loaded assembly. Either " +
+                    $"the class was renamed or removed without re-running '--spark-synchronize-model', or its " +
+                    $"assembly is not referenced by the host. A type that is meant to have no class at all " +
+                    $"should omit clrType entirely — that is a composed type, and it is served by " +
+                    $"'{entityTypeDefinition.Name}Actions'.");
         }
 
-        // Resolve the Actions class for this entity type
-        var actionsInstance = actionsResolver.ResolveForType(entityType);
+        // Resolve the Actions class — by type where there is one, by name where there is not.
+        var actionsInstance = entityType is not null
+            ? actionsResolver.ResolveForType(entityType)
+            : actionsResolver.ResolveByEntityName(entityTypeDefinition.Name)
+                ?? throw new InvalidOperationException(
+                    $"Query '{query.Name}' is a composed query on '{entityTypeDefinition.Name}', a type with no " +
+                    $"clrType, but no '{entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
+                    $"type has no document behind it, so its actions class is the only thing that can produce " +
+                    $"rows; without one the query has no source at all.");
 
         // Find the custom query method
         var methodInfo = ResolveCustomQueryMethod(actionsInstance.GetType(), methodName);
@@ -264,6 +620,9 @@ internal partial class QueryExecutor : IQueryExecutor
             Parent = parent,
             ParentType = parentTypeName,
             Query = query,
+            Skip = skip,
+            Take = take,
+            Search = search,
         };
 
         object? result;
@@ -285,8 +644,22 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (result == null)
         {
-            return ([], false);
+            throw new InvalidOperationException(
+                $"Custom query method '{methodName}' on '{actionsInstance.GetType().Name}' returned null. " +
+                $"Return an empty sequence to say there are no rows — a null one is indistinguishable from " +
+                $"that at the grid, and hides a method that fell through without returning.");
         }
+
+        // The author's own page. Everything below that would filter, search, sort or trim is
+        // already skipped for free — a SparkQueryPage is neither IQueryable nor Raven-queryable, so
+        // projection, includes, search pushdown and provider sorting all no-op — except the
+        // in-memory sort at the end, which this flag suppresses.
+        //
+        // Row security is NOT part of what the author takes over. The binary rule is about the five
+        // presentation concerns (filter, search, sort, count, page); whether this caller may see a
+        // row is a different question, and one an author cannot opt out of by choosing a return
+        // type.
+        var authorPage = result as ISparkQueryPage;
 
         // Capabilities come from the object, not from the signature (#294). A method declared
         // IQueryable<T> whose body is session.Query<T>() returns a Raven queryable, and asking the
@@ -309,7 +682,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Chain .Include() on the custom query too (#239) — custom queries applied no includes
         // before. Only for RavenDB-backed queryables (an in-memory IQueryable has no .Include).
-        if (isRavenQueryable)
+        if (isRavenQueryable && entityType is not null)
         {
             var includePaths = referenceResolver.ResolveIncludePaths(methodInfo.ResultElementType, entityType);
             if (includePaths.Count > 0)
@@ -320,9 +693,21 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Push the row filter into the custom query too — a custom query says where rows come
         // from, not which of them this caller may see. No-op when the method yields projections.
-        if (isQueryable)
+        if (isQueryable && entityType is not null)
         {
-            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query");
+            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
+        }
+
+        // Narrow to a selection before anything else touches the shape. Paging is deliberately not
+        // applied when this is set — the caller asked for these rows, not for a page of them.
+        if (restrictToIds is { Count: > 0 })
+        {
+            result = RestrictToIds(
+                result, methodInfo.ResultElementType, restrictToIds, query, entityTypeDefinition, actionsInstance);
+            isQueryable = result is IQueryable;
+            isRavenQueryable = typeof(IRavenQueryable<>)
+                .MakeGenericType(methodInfo.ResultElementType)
+                .IsInstanceOfType(result);
         }
 
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
@@ -347,7 +732,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // is what made Task<IRavenQueryable<T>> throw before #294 — a blocking ToList() over an
             // async session, which RavenDB rejects. Both branches now ask the object the same
             // question, so they can no longer disagree.
-            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType);
+            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType, cancellationToken);
         }
         else if (isQueryable)
         {
@@ -360,27 +745,139 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            return ([], false);
+            throw new InvalidOperationException(
+                $"Custom query method '{methodName}' on '{actionsInstance.GetType().Name}' returned a " +
+                $"'{result.GetType().Name}', which is not a sequence. It must return IQueryable<T>, " +
+                $"IRavenQueryable<T>, IEnumerable<T> or SparkQueryPage<T> (or a Task<> of one of those).");
         }
 
         // Row-level authorization, as on the database path. A custom query is a developer saying
         // *where* rows come from; it is not permission to skip *whether* the caller may see them.
-        var entityList = await rowSecurity.FilterAsync(
-            session,
-            entities as IReadOnlyList<object> ?? entities.ToList(),
-            entityType,
-            methodInfo.ResultElementType,
-            "Query");
+        //
+        // ⚠️ SKIPPED ENTIRELY FOR A COMPOSED QUERY, and this is the one place that says so.
+        // Not a policy choice and not a gap to close later: row security judges a *document* —
+        // FilterAsync re-reads each row's collection type, re-evaluates the type's row rule against
+        // the stored entity, and RedactAsync nulls the attributes this caller may not read. A
+        // composed row is computed, not stored. There is no document to re-judge, no collection to
+        // resolve a rule from, and no stored value to compare against; every one of those steps
+        // would be asking a question about an object that never came from the database.
+        //
+        // What follows from that, and what an author of a composed query is therefore responsible
+        // for: filtering rows to what the caller may see, omitting values the caller may not read,
+        // and gating anything the rows can be acted upon with. The framework still enforces the
+        // TYPE-level "Query" right above (that check is not row-shaped), and the per-row envelope
+        // is forced closed below — but between those two, the actions class is the only thing
+        // standing between a caller and every row it computes. Every composed query announces this
+        // at startup for exactly that reason (see QueryLoader).
+        var rawRows = entities as IReadOnlyList<object> ?? entities.ToList();
+        var entityList = entityType is not null
+            ? await rowSecurity.FilterAsync(session, rawRows, entityType, methodInfo.ResultElementType, "Query", cancellationToken)
+            : rawRows;
 
         // Resolve breadcrumbs (recursive, batched) for the custom query's results.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition);
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition, cancellationToken);
 
         var mapped = entityList
             .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
             .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query");
-        return (mapped.Select(m => m.Po).DistinctBy(po => po.Id), searchPushedDown);
+        // Skipped for a composed query for the reason spelled out at FilterAsync above: redaction
+        // compares a mapped attribute against the value on the stored document, and a composed row
+        // has none.
+        if (entityType is not null)
+            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
+
+        // Nothing here squares the per-row envelope closed, and nothing needs to: M4 made a row a
+        // projection, and QueryResultItem carries no `can` block at all — for exactly this reason.
+        // A composed row names nothing that can be saved or deleted, and neither does any other
+        // row; the affordance was removed from the shape rather than forced to false per path.
+
+        // ⚠️ DO NOT REMOVE THIS DistinctBy, and do not make it unconditional. Both halves matter.
+        //
+        // WHY IT IS HERE (the isRavenQueryable case): a custom query may hand back a Raven queryable
+        // over a *fan-out index* — one that projects over a collection and therefore emits one entry
+        // per element. Three tags on one car means three index entries naming the same document,
+        // which map to three PersistentObjects with the same Id and render as the same row three
+        // times. Deduping by Id makes one document one row. Whether the bound index fans out is a
+        // property of the index definition in the consuming application, so nothing in this file
+        // will ever look like it needs this — that is exactly why it is spelled out here. (The
+        // repo's docs once attributed this to the search analyzer; that was wrong and was corrected
+        // in issue_210_PRD.md. The guard is right, the old explanation was not.)
+        //
+        // WHY IT IS CONDITIONAL: this single return is shared by all three custom shapes — Raven
+        // queryable, in-memory IQueryable, and plain IEnumerable. Off the index there is no fan-out,
+        // and DistinctBy is actively DESTRUCTIVE there: Enumerable.DistinctBy uses the default
+        // comparer, which treats every null key as equal, so a computed row type with no readable
+        // Id collapses the entire grid to one row — silently, with a matching TotalRecords. That
+        // was S1 in #327. A duplicate id on a composed path is an authoring bug and throws in the
+        // projector (QueryResultItem.Id is non-nullable and unique); it is never something to
+        // quietly collapse.
+        IEnumerable<PersistentObject> rows = mapped.Select(m => m.Po);
+        if (isRavenQueryable)
+            rows = rows.DistinctBy(po => po.Id);
+
+        // Sorting has to happen somewhere. ApplySorting above runs only when the result is IQueryable,
+        // so a method returning a plain IEnumerable silently ignored both the query's declared sort
+        // columns and the caller's ?sortColumns= override. Sort the mapped rows instead — and do it
+        // AFTER redaction, because ordering by a value the caller may not read is the same comparison
+        // oracle ApplySorting's ShowedOn gate exists to close, and by now a protected value is null.
+        //
+        // Not when the author returned their own page: that sort authority went with it, and
+        // reordering a page in memory would present a page-local ordering as a global one.
+        if (!isQueryable && authorPage is null && query.SortColumns.Length > 0)
+            rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
+
+        return new QuerySourceResult(
+            rows.ToList(), entityTypeDefinition, searchPushedDown, authorPage?.TotalItems);
     }
+
+    /// <summary>
+    /// Orders already-mapped rows by their attribute values, for a result that never was an
+    /// <see cref="IQueryable"/> and so could not be ordered by a provider.
+    /// </summary>
+    /// <remarks>
+    /// The comparer is pinned rather than inherited from the machine: ordinal case-insensitive for
+    /// strings, nulls after values. This does NOT match RavenDB's index-term ordering, and the
+    /// divergence is deliberate — an in-memory result has no index terms to order by, and a
+    /// culture-sensitive default would sort differently per machine. Documented in the query guide.
+    /// <para>
+    /// The same <c>IsSortableAttribute</c> gate as <c>ApplySorting</c> applies, for the same reason:
+    /// a sort column is a comparison oracle over a value the caller may never read.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<PersistentObject> SortMappedRows(
+        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition)
+    {
+        IOrderedEnumerable<PersistentObject>? ordered = null;
+
+        foreach (var col in sortColumns)
+        {
+            if (!IsSortableAttribute(definition, col.Property))
+            {
+                Console.WriteLine(
+                    $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
+                    $"surface; the column is refused and rows keep their index order.");
+                continue;
+            }
+
+            var property = col.Property;
+            var descending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
+
+            ordered = ordered is null
+                ? descending
+                    ? rows.OrderByDescending(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                    : rows.OrderBy(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                : descending
+                    ? ordered.ThenByDescending(po => SortKeyFor(po, property), RowSortComparer.Instance)
+                    : ordered.ThenBy(po => SortKeyFor(po, property), RowSortComparer.Instance);
+        }
+
+        return ordered ?? rows;
+    }
+
+    private static object? SortKeyFor(PersistentObject po, string attributeName)
+        => po.Attributes
+            .FirstOrDefault(a => string.Equals(a.Name, attributeName, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
 
     private EntityTypeDefinition? ResolveEntityTypeDefinition(SparkQuery query, string methodName)
     {
@@ -424,6 +921,27 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' takes parameters " +
                    $"the executor cannot supply: {signature}. {expected}";
+        }
+
+        // A usable shape carrying an unusable ROW type needs the opposite fix from a wrong shape, and
+        // saying "returns a shape the executor cannot use" about IEnumerable<PersistentObject> sends the
+        // author to rewrite a signature that was already right.
+        var returnType = method.ReturnType;
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            returnType = returnType.GetGenericArguments()[0];
+
+        var elementType = ExtractQueryableElementType(returnType);
+        if (elementType is not null && IsUnusableRowType(elementType))
+        {
+            var why = elementType == typeof(PersistentObject)
+                ? "a PersistentObject is mapped AS an entity — every declared attribute is looked up as a CLR " +
+                  "property, none is found, and the grid renders the right number of rows with every cell blank"
+                : "an object/dynamic row has nothing to reflect, so every cell renders blank";
+
+            return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' returns rows of type " +
+                   $"'{elementType.Name}', which cannot be mapped: {why}. Return a sequence of a concrete row type " +
+                   $"whose property names match the attributes declared on the query's entity type — an anonymous " +
+                   $"type, a record or an ad-hoc class all work.";
         }
 
         return $"Custom query method '{methodName}' on actions class '{actionsType.Name}' returns a shape the " +
@@ -474,7 +992,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
             // Extract the element type from IQueryable<T> or IRavenQueryable<T>
             var elementType = ExtractQueryableElementType(returnType);
-            if (elementType == null)
+            if (elementType == null || IsUnusableRowType(elementType))
                 return null;
 
             return new CustomQueryMethodInfo
@@ -513,16 +1031,31 @@ internal partial class QueryExecutor : IQueryExecutor
                 foreach (var iface in t.GetInterfaces())
                 {
                     if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                    {
-                        var elementType = iface.GetGenericArguments()[0];
-                        if (elementType != typeof(object))
-                            return elementType;
-                    }
+                        return iface.GetGenericArguments()[0];
                 }
 
                 return null;
             });
     }
+
+    /// <summary>
+    /// Whether an element type names rows the mapper cannot populate, and which are therefore refused
+    /// rather than mapped into a grid of blanks.
+    /// </summary>
+    /// <remarks>
+    /// Both cases used to produce the same silent wrong answer: the right number of rows, every cell
+    /// empty, no error and no log.
+    /// <list type="bullet">
+    /// <item><description><c>PersistentObject</c> — the mapper treats each row AS an entity, reflecting a
+    /// CLR property per declared attribute and finding none, so it skips them all.</description></item>
+    /// <item><description><c>object</c>/<c>dynamic</c> — nothing to reflect at all. The old guard lived only
+    /// in the interface-scan branch, so a method DECLARED <c>IEnumerable&lt;object&gt;</c> matched the
+    /// generic-definition branch first and slipped past it entirely.</description></item>
+    /// </list>
+    /// The check is one method so the rejection and the message that explains it cannot disagree.
+    /// </remarks>
+    private static bool IsUnusableRowType(Type elementType)
+        => elementType == typeof(object) || elementType == typeof(PersistentObject);
 
     private static IEnumerable<object> MaterializeQueryable(object queryable, Type elementType)
     {
@@ -899,7 +1432,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <param name="queryable"></param>
     /// <param name="entityType"></param>
     /// <returns></returns>
-    private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType)
+    private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType, CancellationToken cancellationToken)
     {
         var genericToListMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
             ("QueryExecutor.LinqToListAsync", entityType),
@@ -917,7 +1450,9 @@ internal partial class QueryExecutor : IQueryExecutor
             return [];
         }
 
-        var task = genericToListMethod.Invoke(null, [queryable, CancellationToken.None]) as Task;
+        // Was hardcoded to CancellationToken.None, which is where a cancelled request stopped
+        // mattering: the socket was gone, and the database kept materializing the result anyway.
+        var task = genericToListMethod.Invoke(null, [queryable, cancellationToken]) as Task;
 
         if (task == null)
         {
@@ -956,4 +1491,37 @@ internal sealed class CustomQueryMethodInfo
     public required bool AcceptsArgs { get; init; }
     public required Type ResultElementType { get; init; }
     public required bool IsAsync { get; init; }
+}
+
+/// <summary>
+/// The ordering rule for rows sorted in memory: nulls after values, strings ordinal case-insensitive,
+/// everything else by its own <see cref="IComparable"/>.
+/// </summary>
+/// <remarks>
+/// Mixed or non-comparable values compare EQUAL rather than throwing. A grid that cannot order one
+/// column is a smaller failure than a request that 500s, and the alternative — letting
+/// <c>Comparer&lt;object&gt;.Default</c> throw <c>InvalidOperationException</c> mid-enumeration — would
+/// surface as an unexplained error on a query that renders fine unsorted.
+/// <para>
+/// Nulls-after-values is expressed in the comparer, so a descending sort reverses it and nulls lead.
+/// That is the same asymmetry a database gives you without an explicit NULLS LAST.
+/// </para>
+/// </remarks>
+internal sealed class RowSortComparer : IComparer<object?>
+{
+    public static readonly RowSortComparer Instance = new();
+
+    public int Compare(object? x, object? y)
+    {
+        if (x is null) return y is null ? 0 : 1;
+        if (y is null) return -1;
+
+        if (x is string sx && y is string sy)
+            return string.Compare(sx, sy, StringComparison.OrdinalIgnoreCase);
+
+        if (x is IComparable comparable && x.GetType() == y.GetType())
+            return comparable.CompareTo(y);
+
+        return 0;
+    }
 }

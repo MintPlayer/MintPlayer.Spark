@@ -41,9 +41,9 @@ public class StreamingQueryExecutorUnitTests
         EntityType = entityType,
     };
 
-    private static async Task<List<PersistentObject[]>> Drain(IAsyncEnumerable<PersistentObject[]> stream)
+    private static async Task<List<StreamingQueryBatch>> Drain(IAsyncEnumerable<StreamingQueryBatch> stream)
     {
-        var batches = new List<PersistentObject[]>();
+        var batches = new List<StreamingQueryBatch>();
         await foreach (var b in stream) batches.Add(b);
         return batches;
     }
@@ -100,7 +100,30 @@ public class StreamingQueryExecutorUnitTests
         var act = () => Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.Foo"), CancellationToken.None));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(e => e.Message.Contains("CLR type") && e.Message.Contains("GhostType"));
+            .Where(e => e.Message.Contains("GhostType") && e.Message.Contains("synchronize-model"));
+    }
+
+    [Fact]
+    public async Task Streaming_over_a_composed_type_is_refused_by_name_not_by_a_failed_type_lookup()
+    {
+        // #327 M5. A type with no clrType is composed — its rows are computed, so there is no
+        // collection for a change stream to watch. This used to fall into the CLR-type lookup and
+        // die as `CLR type '' not found`, which named neither the query nor the actual reason.
+        // Refused at --spark-verify-model and at query load too; this is the last line of defence,
+        // for a model that changed under a running process.
+        var composed = new EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "Dashboard",
+            ClrType = null,
+        };
+        _modelLoader.GetEntityTypeByName("TestEntity").Returns(composed);
+        var executor = CreateExecutor();
+
+        var act = () => Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.Foo"), CancellationToken.None));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("no collection to watch") && e.Message.Contains("Dashboard"));
     }
 
     [Fact]
@@ -167,8 +190,8 @@ public class StreamingQueryExecutorUnitTests
         var batches = await Drain(executor.ExecuteStreamingQueryAsync(Q("Custom.BatchStream"), CancellationToken.None));
 
         batches.Should().HaveCount(2, "BatchStream yields two batches of two items each");
-        batches[0].Should().HaveCount(2);
-        batches[1].Should().HaveCount(2);
+        batches[0].Items.Should().HaveCount(2);
+        batches[1].Items.Should().HaveCount(2);
     }
 
     [Fact]
@@ -182,7 +205,7 @@ public class StreamingQueryExecutorUnitTests
 
         // SingleStream yields three TestEntity instances — each wrapped in its own array.
         batches.Should().HaveCount(3);
-        batches.Should().AllSatisfy(b => b.Should().HaveCount(1));
+        batches.Should().AllSatisfy(b => b.Items.Should().HaveCount(1));
     }
 
     [Fact]
@@ -240,13 +263,18 @@ public class StreamingQueryExecutorUnitTests
             .Returns(Task.CompletedTask);
     }
 
+    private int _echoCounter;
+
     private void StubMapperToEcho()
     {
         _entityMapper
             .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>())
+            // Distinct ids per row. A constant would now fail the projection's uniqueness check,
+            // and rightly so — two streamed rows sharing an id collide in the diff engine's state
+            // and in client-side selection alike.
             .Returns(ci => new PersistentObject
             {
-                Id = "echo",
+                Id = $"echo/{Interlocked.Increment(ref _echoCounter)}",
                 Name = "TestEntity",
                 ObjectTypeId = (Guid)ci.Args()[1]!,
                 Attributes = [],

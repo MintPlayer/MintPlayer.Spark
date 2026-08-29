@@ -12,6 +12,7 @@ import {
   SparkShellSidebarTopDirective,
   SparkShellTabDirective,
   SparkShellTopbarEndDirective,
+  SparkShellTopbarActionsDirective,
   SparkShellTopbarStartDirective,
 } from './spark-shell-slots';
 import { SparkService } from '@mintplayer/ng-spark/services';
@@ -74,7 +75,7 @@ describe('SparkShellComponent', () => {
       standalone: true,
       imports: [
         SparkShellComponent,
-        SparkShellTopbarStartDirective, SparkShellTopbarEndDirective,
+        SparkShellTopbarStartDirective, SparkShellTopbarEndDirective, SparkShellTopbarActionsDirective,
         SparkShellSidebarHeaderDirective, SparkShellSidebarTopDirective,
         SparkShellMainHeaderDirective, SparkShellTabDirective,
       ],
@@ -115,6 +116,62 @@ describe('SparkShellComponent', () => {
     expect(el.querySelector('nav h5')).toBeNull();                       // replaced
     expect(el.querySelector('bs-navbar-toggler')).toBeTruthy();          // untouched default
     expect(el.querySelector('spark-program-units')).toBeTruthy();        // not replaceable
+  });
+
+  // ----------------------------------------------------------------------------------
+  // #327 §9.7 — *sparkShellTopbarActions sits BESIDE the trailing chrome, not instead of it
+  // ----------------------------------------------------------------------------------
+
+  it('topbar actions render alongside the language selector, not in place of it', async () => {
+    // The whole reason this slot exists. *sparkShellTopbarEnd REPLACES the region, which is right
+    // for an auth bar and wrong for a page-level button: a host that only wanted to add a button
+    // had to re-render the language selector itself to keep it.
+    const fixture = await render(`
+      <spark-shell title="My App">
+        <button *sparkShellTopbarActions class="my-action">Publish</button>
+        <div class="routed"></div>
+      </spark-shell>`);
+    const el: HTMLElement = fixture.nativeElement;
+
+    expect(el.querySelector('.my-action')).toBeTruthy();
+    expect(el.querySelector('spark-language-selector')).toBeTruthy();   // still there
+  });
+
+  it('topbar actions render ahead of the trailing chrome', async () => {
+    const fixture = await render(`
+      <spark-shell title="My App">
+        <button *sparkShellTopbarActions class="my-action">Publish</button>
+        <div class="routed"></div>
+      </spark-shell>`);
+    const el: HTMLElement = fixture.nativeElement;
+
+    const action = el.querySelector('.my-action')!;
+    const selector = el.querySelector('spark-language-selector')!;
+    // DOCUMENT_POSITION_FOLLOWING === the selector comes after the action.
+    expect(action.compareDocumentPosition(selector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('topbar actions survive a host that also replaces the trailing edge', async () => {
+    // Supplying both is allowed and additive: topbarEnd replaces the default chrome, and the
+    // actions still render ahead of whatever it put there.
+    const fixture = await render(`
+      <spark-shell title="My App">
+        <button *sparkShellTopbarActions class="my-action">Publish</button>
+        <span *sparkShellTopbarEnd class="my-auth">auth</span>
+        <div class="routed"></div>
+      </spark-shell>`);
+    const el: HTMLElement = fixture.nativeElement;
+
+    expect(el.querySelector('.my-action')).toBeTruthy();
+    expect(el.querySelector('.my-auth')).toBeTruthy();
+    expect(el.querySelector('spark-language-selector')).toBeNull();     // topbarEnd replaced it
+  });
+
+  it('renders nothing extra in the topbar when the actions slot is omitted', async () => {
+    const fixture = await render(`<spark-shell title="My App"><div class="routed"></div></spark-shell>`);
+
+    expect(fixture.nativeElement.querySelector('.my-action')).toBeNull();
+    expect(fixture.nativeElement.querySelector('spark-language-selector')).toBeTruthy();
   });
 
   it('renders the empty-by-default regions only when supplied', async () => {

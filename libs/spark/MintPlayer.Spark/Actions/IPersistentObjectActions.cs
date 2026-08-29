@@ -21,6 +21,12 @@ public interface IPersistentObjectActions<T> where T : class
     /// <param name="id">The requested object id, straight from the URL — untrusted.</param>
     /// <param name="parent">The object this load is nested under, when the client provided one;
     /// null for a top-level page load (the usual case).</param>
+    /// <remarks>
+    /// This is the only load hook. When the framework resolves several ids at once — a custom
+    /// action's selection — it batches the work internally rather than calling this N times, but
+    /// that is an optimization, not a second seam: an actions class that overrides this method
+    /// still has it called per id, so an override can never be bypassed by a bulk path.
+    /// </remarks>
     Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent);
 
     /// <summary>

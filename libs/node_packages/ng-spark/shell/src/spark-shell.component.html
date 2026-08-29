@@ -7,6 +7,11 @@
       <bs-navbar-toggler [state]="isSidebarVisible()" (stateChange)="toggleSidebar($event)" />
     }
     <div class="ms-auto me-3 d-flex align-items-center gap-2">
+      <!-- Ahead of the trailing chrome, and OUTSIDE the @if below: these actions are additive, so
+           they render whether the host replaced the trailing edge or left the default selector. -->
+      @if (topbarActionsTpl(); as tpl) {
+        <ng-container *ngTemplateOutlet="tpl" />
+      }
       @if (topbarEndTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl" />
       } @else {

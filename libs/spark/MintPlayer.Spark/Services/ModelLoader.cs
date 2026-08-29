@@ -59,16 +59,22 @@ internal partial class ModelLoader : IModelLoader
                     // Auto-generate alias from Name if not explicitly set
                     entityType.Alias ??= entityType.Name.ToLowerInvariant();
 
-                    byId[entityType.Id] = entityType;
+                    // Symmetrical with SparkQueryAliases.Index, which throws for the same reason
+                    // (#327 M3). This used to warn to the console and keep the FIRST, while the
+                    // line above kept the LAST — so on a collision the two indexes resolved the same
+                    // alias to different types, and the loser was silently unroutable. A URL names
+                    // exactly one type; there is no useful behaviour to pick between them.
+                    if (byAlias.TryGetValue(entityType.Alias, out var existing))
+                    {
+                        throw new InvalidOperationException(
+                            $"Two entity types resolve to the alias '{entityType.Alias}': '{existing.Name}' and " +
+                            $"'{entityType.Name}' (in {Path.GetFileName(file)}). A URL identifies exactly one type, " +
+                            $"so the second would be unreachable by alias. Give one of them an explicit, distinct " +
+                            $"\"alias\" in its model file.");
+                    }
 
-                    if (byAlias.ContainsKey(entityType.Alias))
-                    {
-                        Console.WriteLine($"Warning: Duplicate entity type alias '{entityType.Alias}' in {file}. Alias must be unique.");
-                    }
-                    else
-                    {
-                        byAlias[entityType.Alias] = entityType;
-                    }
+                    byId[entityType.Id] = entityType;
+                    byAlias[entityType.Alias] = entityType;
 
                     // Extract queries and auto-populate EntityType
                     foreach (var query in entityTypeFile.Queries)
@@ -78,8 +84,14 @@ internal partial class ModelLoader : IModelLoader
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
+                // Narrow on purpose. This used to catch everything, which quietly defeated the
+                // alias-collision throw above (#327 M3): the exception was raised, printed as
+                // "Error loading model file …", and swallowed — so the colliding type was skipped
+                // and the application started anyway, with one of two types unroutable. A file that
+                // cannot be read or parsed is a different kind of problem and still degrades to a
+                // message; a model that parses but contradicts itself must stop the process.
                 Console.WriteLine($"Error loading model file {file}: {ex.Message}");
             }
         }

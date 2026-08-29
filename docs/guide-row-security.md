@@ -87,7 +87,7 @@ public override Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(s
 
 ## Custom actions
 
-`CustomActionArgs.Parent` and `SelectedItems` are **server-loaded and row-checked**: the framework re-resolves the ids the client named through the row-gated read path before invoking your action. A denied or missing id is a 404 and your action never runs. The raw client payload stays available as `SubmittedParent` / `SubmittedSelectedItems` for actions that edit (treat those as untrusted). See [guide-custom-actions.md](./guide-custom-actions.md).
+`CustomActionArgs.Parent` and `SelectedItems` are both produced **server-side** from the ids the client named — neither is the object the browser posted. `Parent` goes through the row-gated read path; `SelectedItems` is re-materialized by re-running the query the rows came from (#327), so it carries that query's own projection. A denied or missing id refuses the whole request with a 404 and your action never runs. The submitted parent stays available as `SubmittedParent` for actions that edit (treat it as untrusted); there is no submitted form of a selection, because a row was never a document. See [guide-custom-actions.md](./guide-custom-actions.md).
 
 ## The generic UI (`can` block)
 

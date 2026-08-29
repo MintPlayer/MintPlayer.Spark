@@ -94,6 +94,69 @@ describe('SparkGridCellComponent', () => {
     });
   });
 
+  describe('image (#327 §9.1)', () => {
+    it('renders an <img>, not the URL as text', () => {
+      const f = setup({ column: col({ dataType: 'image' }), display: 'https://cdn.example.com/a.png' });
+
+      const img = html(f).querySelector('img') as HTMLImageElement;
+      expect(img).toBeTruthy();
+      expect(img.getAttribute('src')).toBe('https://cdn.example.com/a.png');
+      expect(html(f).textContent?.trim()).toBe('');
+    });
+
+    it('sizes itself inline, because the grid cell lives in a shadow root', () => {
+      // In a query grid this renders inside <mp-datatable>'s shadow root, which sees neither this
+      // component's scoped rules nor Bootstrap's. A class-based height would silently do nothing
+      // and a full-size image would blow the row height out.
+      const f = setup({ column: col({ dataType: 'image' }), display: 'https://cdn.example.com/a.png' });
+
+      const img = html(f).querySelector('img') as HTMLImageElement;
+      expect(img.getAttribute('style')).toContain('max-height');
+    });
+
+    it('renders nothing when the value is empty', () => {
+      const f = setup({ column: col({ dataType: 'image' }), display: null });
+
+      expect(html(f).querySelector('img')).toBeNull();
+    });
+  });
+
+  describe('url (#327 §9.1)', () => {
+    it('renders an anchor to the value', () => {
+      const f = setup({ column: col({ dataType: 'url' }), display: 'https://example.com/docs' });
+
+      const a = html(f).querySelector('a') as HTMLAnchorElement;
+      expect(a).toBeTruthy();
+      expect(a.getAttribute('href')).toBe('https://example.com/docs');
+      expect(a.textContent?.trim()).toBe('https://example.com/docs');
+    });
+
+    it('opens in a new tab WITHOUT handing it a window.opener handle', () => {
+      // rel is not optional next to target=_blank: without noopener the opened page can reach back
+      // through window.opener, and these hrefs are data the application did not author.
+      const f = setup({ column: col({ dataType: 'url' }), display: 'https://example.com' });
+
+      const a = html(f).querySelector('a') as HTMLAnchorElement;
+      expect(a.getAttribute('target')).toBe('_blank');
+      expect(a.getAttribute('rel')).toContain('noopener');
+    });
+
+    it('renders no anchor when the value is empty', () => {
+      const f = setup({ column: col({ dataType: 'url' }), display: '' });
+
+      expect(html(f).querySelector('a')).toBeNull();
+    });
+
+    it('is a plain href, not a routerLink', () => {
+      // The reference-link branch below produces a routerLink; a url column is an EXTERNAL address
+      // and must not be routed into the app.
+      const f = setup({ column: col({ dataType: 'url' }), display: 'https://example.com' });
+
+      const a = html(f).querySelector('a') as HTMLAnchorElement;
+      expect(a.getAttribute('href')).toBe('https://example.com');
+    });
+  });
+
   describe('custom renderer', () => {
     it('takes precedence over every built-in branch', () => {
       const f = setup(

@@ -644,11 +644,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 var wasReference = existingAttr.DataType == "Reference" || existingAttr.ReferenceType != null;
 
                 // Update existing attribute, preserving custom settings.
-                // "MultiLineString" is a presentation-only override of a string property (render a
-                // textarea instead of a single-line input): the CLR shape is still string, so keep a
-                // hand-set MultiLineString rather than resetting it to "string" on every sync. Any other
-                // change still wins - switching the property away from string clears it.
-                if (!(existingAttr.DataType == "MultiLineString" && dataType == "string"))
+                // A presentation-only override of a string property — MultiLineString, image, url —
+                // says how to render something the CLR shape cannot describe, so a hand-set one is
+                // kept rather than reset to "string" on every sync. Any other change still wins:
+                // switching the property away from string clears it, because the hint would then be
+                // describing a shape that no longer exists. See SparkStringPresentations.
+                if (!SparkStringPresentations.Preserves(existingAttr.DataType, dataType))
                 {
                     existingAttr.DataType = dataType;
                 }

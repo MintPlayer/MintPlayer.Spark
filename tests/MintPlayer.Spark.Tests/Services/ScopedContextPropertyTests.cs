@@ -102,9 +102,9 @@ public class ScopedContextPropertyTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query("Database.MyAccounts"));
 
-        result.TotalRecords.Should().Be(2);
-        result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "Name").Value?.ToString())
+        result.TotalItems.Should().Be(2);
+        result.Items
+            .Select(po => po.Values.Single(a => a.Key == "Name").Value?.ToString())
             .Should().BeEquivalentTo(["mine-a", "mine-b"]);
     }
 
@@ -117,7 +117,7 @@ public class ScopedContextPropertyTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query("Database.MyAccounts"));
 
-        result.TotalRecords.Should().Be(2);
+        result.TotalItems.Should().Be(2);
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class ScopedContextPropertyTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query("Database.AllAccounts"));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -141,6 +141,6 @@ public class ScopedContextPropertyTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query("Database.AllAccounts"));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 }

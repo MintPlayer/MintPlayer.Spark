@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -13,7 +14,7 @@ namespace MintPlayer.Spark.Actions;
 /// Entity mapping from PersistentObject to T happens inside OnSaveAsync.
 /// </summary>
 /// <typeparam name="T">The entity type</typeparam>
-public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T> where T : class
+public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T>, IBatchedLoadActions where T : class
 {
     [Inject] private readonly IEntityMapper entityMapper;
     // Optional (nullable [Inject] fields get a `= null` ctor default) so existing manual
@@ -59,74 +60,137 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </para>
     /// </summary>
     public virtual async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+        => (await LoadManyAsync([id], parent)).FirstOrDefault();
+
+    /// <summary>
+    /// Whether the framework may resolve a set of ids through <see cref="LoadManyAsync"/> instead
+    /// of calling <see cref="OnLoadAsync"/> once per id.
+    /// </summary>
+    /// <remarks>
+    /// False as soon as a subclass overrides <c>OnLoadAsync</c>. Batching is an optimization over
+    /// the base pipeline, and the base pipeline is the only thing it is equivalent to — an override
+    /// decorates the page, and skipping it because several rows were asked for at once would make
+    /// a row's content depend on how many rows were requested. So the optimization applies exactly
+    /// where it is invisible.
+    /// </remarks>
+    public bool SupportsBatchedLoad => ReflectionCache.GetOrAdd<(string Op, Type Type), bool>(
+        ("DefaultPersistentObjectActions.BatchedLoad", GetType()),
+        static k =>
+        {
+            var declaring = k.Type
+                .GetMethod(nameof(OnLoadAsync), [typeof(string), typeof(PersistentObject)])
+                ?.DeclaringType;
+
+            return declaring is { IsGenericType: true }
+                && declaring.GetGenericTypeDefinition() == typeof(DefaultPersistentObjectActions<>);
+        });
+
+    /// <summary>
+    /// The entity read pipeline for a SET of ids. Everything expensive happens once for the whole
+    /// set: one document load carrying <see cref="GetDefaultIncludes"/>, one breadcrumb
+    /// resolution, one redaction pass. <see cref="OnLoadAsync"/> is one call to this.
+    /// <para>
+    /// Rows come back <b>in the order the ids were given</b>. An id is omitted when it names no
+    /// document, names a document in a foreign collection, or is refused by the type's row rule —
+    /// the three reasons deliberately indistinguishable, so a caller cannot use this as an
+    /// existence oracle. Duplicate ids collapse to one row; empty ids are ignored.
+    /// </para>
+    /// <para>
+    /// Deliberately <b>not</b> a hook. There is one load seam — <c>OnLoadAsync</c> — and this is
+    /// how the framework implements it efficiently when it is asked for several ids at once. A
+    /// second overridable entry point would be a second thing to keep consistent, and the case for
+    /// it (an author wanting to batch their own decoration) has never come up in the framework this
+    /// design is drawn from.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<PersistentObject>> LoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)
     {
         var services = RequireServices();
         var session = services.GetRequiredService<IAsyncDocumentSession>();
 
-        if (string.IsNullOrEmpty(id))
-            return null;
+        // Ids are untrusted client input: de-duplicate (a selection may legitimately repeat a row,
+        // and RavenDB's multi-load would return it twice) and drop empties, preserving order.
+        var requested = ids
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        // #239: prime the consumer's declared includes so referenced documents arrive in the same
-        // round-trip instead of a breadcrumb load each. RavenDB requires the includes on the same
-        // fluent load call (there's no pre-register-on-session), so this is the seam.
-        var includes = GetDefaultIncludes();
-        var entity = includes is { Count: > 0 }
-            ? await session.LoadAsync<T>(id, builder =>
-              {
-                  foreach (var path in includes)
-                      builder.IncludeDocuments(path);
-              })
-            : await session.LoadAsync<T>(id);
-        if (entity is null)
-            return null;
+        if (requested.Count == 0)
+            return [];
 
-        // Id-to-type binding (security sweep C1): the caller authorized this type, but the id is
-        // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
-        // the same. A document whose real @collection isn't this type's is not this type's — 404,
-        // indistinguishable from missing, so it's no oracle for cross-collection existence.
+        var loaded = await MaterializeAsync(requested);
+
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
-        if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, typeof(T)))
-            return null;
-
-        // Row-level read gate: entity-type "Read" passed before this method ran; now this type's
-        // own row rule decides whether this specific instance is visible to the current caller.
         var rowSecurity = services.GetRequiredService<IRowSecurity>();
-        if (!await rowSecurity.IsAllowedAsync(typeof(T), "Read", entity))
-            return null;
+
+        // Both gates below are per-row but cost no I/O: the guard reads session metadata already in
+        // memory, and the row filter is compiled and memoized per (type, action) per request.
+        var entities = new List<T>(requested.Count);
+        foreach (var id in requested)
+        {
+            if (!loaded.TryGetValue(id, out var entity) || entity is null)
+                continue;
+
+            // Id-to-type binding (security sweep C1): the caller authorized this type, but the id is
+            // untrusted and RavenDB's LoadAsync deserializes a foreign-collection document into it all
+            // the same. A document whose real @collection isn't this type's is not this type's — it is
+            // omitted, indistinguishable from missing, so it's no oracle for cross-collection existence.
+            if (!collectionGuard.BelongsToAuthorizedCollection(session, entity, typeof(T)))
+                continue;
+
+            // Row-level read gate: entity-type "Read" passed before this method ran; now this type's
+            // own row rule decides whether this specific instance is visible to the current caller.
+            if (!await rowSecurity.IsAllowedAsync(typeof(T), "Read", entity))
+                continue;
+
+            entities.Add(entity);
+        }
+
+        if (entities.Count == 0)
+            return [];
 
         var definition = services.GetRequiredService<IModelLoader>()
             .GetEntityTypeByClrType(typeof(T).FullName ?? typeof(T).Name);
 
-        // Resolve breadcrumbs (recursive, batched) for this entity and its references.
+        // Resolve breadcrumbs (recursive, batched) for every entity at once. The resolver's cost is
+        // O(breadcrumb depth) and independent of row count, so this is the single biggest saving.
         var breadcrumbs = await services.GetRequiredService<Services.Breadcrumb.IBreadcrumbResolver>()
-            .ResolveAsync(session, [entity], definition);
+            .ResolveAsync(session, [.. entities.Cast<object>()], definition);
 
-        var obj = entityMapper.ToPersistentObject(entity, breadcrumbs);
+        var mapped = entities
+            .Select(entity => (Po: entityMapper.ToPersistentObject(entity, breadcrumbs), Row: (object)entity))
+            .ToList();
 
         // Per-viewer attribute redaction (#236 G4) — GetProtectedAttributesAsync may hide specific
-        // attributes of this row from this caller (e.g. a secret only managers may view).
-        await rowSecurity.RedactAsync(session, [(obj, (object)entity)], typeof(T), typeof(T), "Read");
+        // attributes of a row from this caller (e.g. a secret only managers may view). Already plural.
+        await rowSecurity.RedactAsync(session, mapped, typeof(T), typeof(T), "Read");
 
         // Per-row affordances (#236 G5): when the type has a row rule, tell the client whether it
         // may edit/delete THIS row, so the generic UI doesn't render buttons that would 404.
         // Invariant (#243): never claims more than GET /spark/permissions/{type} — the row rule
-        // only narrows type-level rights. Type-level first: cheap, and when it already denies,
-        // the row hook isn't invoked.
+        // only narrows type-level rights. The two type-level decisions are hoisted out of the loop:
+        // PermissionService memoizes per request anyway, but hoisting says so.
         if (rowSecurity.HasRowRule(typeof(T)) && definition is not null)
         {
             var permissionService = services.GetRequiredService<Abstractions.Authorization.IPermissionService>();
-            obj.Can = new PersistentObjectPermissions
+            var mayEditType = await permissionService.IsAllowedAsync("Edit", definition.Name);
+            var mayDeleteType = await permissionService.IsAllowedAsync("Delete", definition.Name);
+
+            foreach (var (po, row) in mapped)
             {
-                Edit = await permissionService.IsAllowedAsync("Edit", definition.Name)
-                    && await rowSecurity.IsAllowedAsync(typeof(T), "Edit", entity),
-                Delete = await permissionService.IsAllowedAsync("Delete", definition.Name)
-                    && await rowSecurity.IsAllowedAsync(typeof(T), "Delete", entity),
-            };
+                po.Can = new PersistentObjectPermissions
+                {
+                    Edit = mayEditType && await rowSecurity.IsAllowedAsync(typeof(T), "Edit", row),
+                    Delete = mayDeleteType && await rowSecurity.IsAllowedAsync(typeof(T), "Delete", row),
+                };
+            }
         }
 
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
-        obj.Etag = session.Advanced.GetChangeVectorFor(entity);
-        return obj;
+        foreach (var (po, row) in mapped)
+            po.Etag = session.Advanced.GetChangeVectorFor(row);
+
+        return [.. mapped.Select(m => m.Po)];
     }
 
     /// <summary>
@@ -144,6 +208,43 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     [NoInterfaceMember]
     public virtual IReadOnlyCollection<string>? GetDefaultIncludes() => null;
+
+    /// <summary>
+    /// Turns row ids into entities — <b>one batched load</b>, never one per row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The seam an action uses when it needs the document behind a selected row rather than the row
+    /// itself. A <c>QueryResultItem</c> is deliberately weak — an id, a display string, a value per
+    /// query column — so anything wanting a detail-only attribute, an etag, or something to mutate
+    /// and save comes here.
+    /// </para>
+    /// <para>
+    /// ⚠️ Override to change <em>how</em> entities are found, not <em>which</em>: the framework
+    /// applies the collection guard, the row rule and redaction to whatever comes back, and a caller
+    /// refuses the whole request unless every requested id resolved. Returning extra rows does not
+    /// widen anything; returning fewer refuses.
+    /// </para>
+    /// <para>
+    /// #239: the declared includes are attached to this load, because RavenDB requires them on the
+    /// same fluent call — there is no pre-register-on-session. That is why the default lives here
+    /// and not at the call site, and why the multi-id overload is what makes a bulk selection one
+    /// request rather than N.
+    /// </para>
+    /// </remarks>
+    [NoInterfaceMember]
+    public virtual async Task<IDictionary<string, T>> MaterializeAsync(IReadOnlyList<string> ids)
+    {
+        var session = RequireServices().GetRequiredService<IAsyncDocumentSession>();
+        var includes = GetDefaultIncludes();
+        return includes is { Count: > 0 }
+            ? await session.LoadAsync<T>(ids, builder =>
+              {
+                  foreach (var path in includes)
+                      builder.IncludeDocuments(path);
+              })
+            : await session.LoadAsync<T>(ids);
+    }
 
     /// <inheritdoc />
     public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)

@@ -211,6 +211,27 @@
   },
   "queries": [
     {
+      "id": "c0ffee01-1234-4a5b-9c8d-0e1f2a3b4c5d",
+      "name": "Company_Cars",
+      "description": {
+        "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company through the Company_Cars index.",
+        "fr": "Voitures de cette entreprise.",
+        "nl": "Auto's van dit bedrijf."
+      },
+      "source": "Custom.Company_Cars",
+      "alias": "company-cars",
+      "sortColumns": [
+        {
+          "property": "LicensePlate",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "Company_Cars",
+      "entityType": "Car",
+      "isStreamingQuery": false
+    },
+    {
       "id": "bc696815-2abb-4e7c-98a1-ac86b4352105",
       "name": "GetCars",
       "description": {

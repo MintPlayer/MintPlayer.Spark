@@ -212,7 +212,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncRaven), [new SortColumn { Property = "LastName", Direction = "asc" }]));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
         rql.Should().ContainSingle().Which.Should().Contain("order by LastName");
     }
 
@@ -226,7 +226,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncRaven)));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncRaven)), search: "grace");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
         rql.Should().ContainSingle().Which.Should().Contain("search(");
     }
 
@@ -252,9 +252,9 @@ public class AsyncCustomQueryTests : SparkTestDriver
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncProjection)));
 
-        result.TotalRecords.Should().Be(3);
-        result.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "FullName").Value?.ToString())
+        result.TotalItems.Should().Be(3);
+        result.Items
+            .Select(po => po.Values.Single(a => a.Key == "FullName").Value?.ToString())
             .Should().BeEquivalentTo(["Ada Lovelace", "Grace Hopper", "Linus Torvalds"]);
     }
 
@@ -271,7 +271,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncDeclaredQueryable)), search: "grace");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
         rql.Should().ContainSingle().Which.Should().Contain("search(");
     }
 
@@ -286,7 +286,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.SyncDeclaredQueryable)), search: "grace");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
         rql.Should().ContainSingle().Which.Should().Contain("search(");
     }
 
@@ -302,7 +302,7 @@ public class AsyncCustomQueryTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             Query(nameof(CrewActions.AsyncEnumerable), [new SortColumn { Property = "LastName", Direction = "asc" }]));
 
-        result.TotalRecords.Should().Be(3);
+        result.TotalItems.Should().Be(3);
         rql.Should().ContainSingle().Which.Should().NotContain("order by");
     }
 

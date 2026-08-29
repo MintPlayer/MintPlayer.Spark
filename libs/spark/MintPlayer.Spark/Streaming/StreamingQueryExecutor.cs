@@ -24,7 +24,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     /// <summary>How often (in batches) a live stream re-checks its type-level authorization.</summary>
     private const int ReauthorizeEveryNBatches = 10;
 
-    public async IAsyncEnumerable<PersistentObject[]> ExecuteStreamingQueryAsync(
+    public async IAsyncEnumerable<StreamingQueryBatch> ExecuteStreamingQueryAsync(
         SparkQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Validate source
@@ -53,13 +53,28 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // Check authorization
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDef.Name);
 
-        // Resolve CLR type and Actions class
-        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
-        if (entityType is null)
+        // Resolved once: a stream is one result whose rows arrive over time, so its shape is fixed
+        // when it opens.
+        var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef);
+
+        // Resolve CLR type and Actions class. Both failures are refused at --spark-verify-model and
+        // at query-load time (SparkComposedQueries); reaching either here means the model changed
+        // under a running process, so the message still has to stand on its own inside a websocket
+        // frame that the client renders as one line.
+        if (SparkComposedQueries.IsComposed(entityTypeDef))
         {
             throw new InvalidOperationException(
-                $"CLR type '{entityTypeDef.ClrType}' not found for streaming query '{query.Name}'.");
+                $"Streaming query '{query.Name}' streams over '{entityTypeDef.Name}', which declares no " +
+                $"clrType. Streaming watches a RavenDB collection for changes, and a composed type has no " +
+                $"collection to watch — its rows are computed by {entityTypeDef.Name}Actions. Serve it as a " +
+                $"non-streaming query instead.");
         }
+
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType)
+            ?? throw new InvalidOperationException(
+                $"Streaming query '{query.Name}' maps rows to '{entityTypeDef.Name}', whose clrType " +
+                $"'{entityTypeDef.ClrType}' is not declared by any loaded assembly. Re-run " +
+                $"'--spark-synchronize-model' if the class was renamed, or reference the assembly declaring it.");
 
         var actionsInstance = actionsResolver.ResolveForType(entityType);
 
@@ -143,7 +158,13 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
                 .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
                 .ToList();
             await rowSecurity.RedactAsync(batchSession, mapped, entityType, methodInfo.ElementType, "Query");
-            yield return mapped.Select(m => m.Po).ToArray();
+
+            // Same projection as a paged query, so a streamed row and a fetched row are the same
+            // shape on the wire — including the refusal of a row with no id, which on a stream would
+            // otherwise be dropped silently by the diff engine (it keys state on the id).
+            yield return new StreamingQueryBatch(
+                columns,
+                Services.QueryResultProjector.ToItems(mapped.Select(m => m.Po), columns, query.Name));
         }
     }
 

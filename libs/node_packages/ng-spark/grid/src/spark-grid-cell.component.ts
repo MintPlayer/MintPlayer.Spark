@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule, NgComponentOutlet } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { ReferenceChip } from '@mintplayer/ng-spark/pipes';
 import { SparkGridRenderers } from './spark-grid-renderers';
 
@@ -44,7 +44,7 @@ export class SparkGridCellComponent {
   private readonly renderers = inject(SparkGridRenderers);
 
   /** The column being rendered. Its `dataType` and `renderer` decide everything below. */
-  column = input.required<EntityAttributeDefinition>();
+  column = input.required<SparkCellColumn>();
 
   /**
    * What the caller's value pipe produced: the display text for most columns, and the raw value

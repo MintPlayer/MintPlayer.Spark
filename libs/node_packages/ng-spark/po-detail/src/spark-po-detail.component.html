@@ -147,6 +147,21 @@
                 } @else {
                   -
                 }
+              } @else if (attr.dataType === 'image') {
+                @let imageSrc = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
+                @if (imageSrc) {
+                  <img [src]="imageSrc" [alt]="(attr.label | resolveTranslation) || attr.name" loading="lazy"
+                       class="img-fluid rounded" style="max-height: 12rem;">
+                } @else {
+                  -
+                }
+              } @else if (attr.dataType === 'url') {
+                @let hrefVal = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
+                @if (hrefVal) {
+                  <a [href]="hrefVal" target="_blank" rel="noopener noreferrer">{{ hrefVal }}</a>
+                } @else {
+                  -
+                }
               } @else if (attr.dataType === 'Reference' && attr.isArray) {
                 @let chips = (attr.name | referenceChips:item());
                 @if (chips.length) {

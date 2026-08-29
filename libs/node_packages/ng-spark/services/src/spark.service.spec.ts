@@ -95,7 +95,7 @@ describe('SparkService', () => {
     const promise = service.executeQueryByName('UnknownQuery');
     httpTesting.expectOne('/spark/queries').flush([{ id: 'q/x', name: 'Other' }]);
 
-    await expect(promise).resolves.toEqual({ data: [], totalRecords: 0, skip: 0, take: 50 });
+    await expect(promise).resolves.toEqual({ columns: [], items: [], totalItems: 0, skip: 0, take: 50 });
   });
 
   // --- write-side: envelope unwrapping + dispatcher fan-out ------------

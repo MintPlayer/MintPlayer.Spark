@@ -20,7 +20,8 @@ import { SparkQueryGridComponent } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
-  PersistentObject,
+  QueryColumn,
+  QueryResultItem,
 } from '@mintplayer/ng-spark/models';
 
 /**
@@ -61,7 +62,13 @@ export class SparkQueryListComponent {
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   showCustomActions = input(true);
 
-  rowClicked = output<PersistentObject>();
+  /**
+   * Forwarded to the grid, so a query PAGE can replace its row links — the same reason the card
+   * forwards it. Without this the escape hatch existed only for a directly-embedded grid.
+   */
+  rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
+
+  rowClicked = output<QueryResultItem>();
   createClicked = output<void>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
 
@@ -97,8 +104,10 @@ export class SparkQueryListComponent {
 
   isStreaming = signal(false);
   private streamingSub: Subscription | null = null;
-  private readonly allItems = signal<PersistentObject[]>([]);
-  private readonly streamItems = signal<PersistentObject[]>([]);
+  /** Columns as sent with the stream's snapshot; empty until it arrives. */
+  protected readonly streamColumns = signal<QueryColumn[]>([]);
+  private readonly allItems = signal<QueryResultItem[]>([]);
+  private readonly streamItems = signal<QueryResultItem[]>([]);
 
   /**
    * Rows handed to the grid, or `null` to let it fetch for itself.
@@ -147,6 +156,7 @@ export class SparkQueryListComponent {
     this.queryId.set(null);
     this.allItems.set([]);
     this.streamItems.set([]);
+    this.streamColumns.set([]);
     this.disconnectStreaming();
 
     const queryId = params.get('queryId');
@@ -234,6 +244,10 @@ export class SparkQueryListComponent {
     switch (message.type) {
       case 'snapshot':
         this.errorMessage.set(null);
+        // Columns come with the snapshot and never change for the life of the stream, so they are
+        // stored once and handed to the grid alongside the rows — a projection cannot describe
+        // itself, and the grid has no entity-type metadata to fall back on any more.
+        this.streamColumns.set(message.columns);
         this.allItems.set(message.data);
         break;
 
@@ -244,8 +258,8 @@ export class SparkQueryListComponent {
             if (!patch) return item;
             return {
               ...item,
-              attributes: item.attributes.map(attr =>
-                attr.name in patch.attributes ? { ...attr, value: patch.attributes[attr.name] } : attr),
+              values: item.values.map(v =>
+                v.key in patch.values ? { ...v, value: patch.values[v.key] } : v),
             };
           }));
         }
@@ -263,7 +277,7 @@ export class SparkQueryListComponent {
     const term = this.searchTerm().toLowerCase();
     if (term) {
       items = items.filter(item =>
-        item.attributes.some(a => String(a.value ?? '').toLowerCase().includes(term)));
+        item.values.some(v => String(v.value ?? '').toLowerCase().includes(term)));
     }
 
     // The datatable in `[data]` mode also sorts on header clicks, but the sort must survive a
@@ -273,8 +287,8 @@ export class SparkQueryListComponent {
     if (sortCols.length > 0) {
       items = [...items].sort((a, b) => {
         for (const col of sortCols) {
-          const aVal = a.attributes.find(attr => attr.name === col.property)?.value ?? '';
-          const bVal = b.attributes.find(attr => attr.name === col.property)?.value ?? '';
+          const aVal = a.values.find(v => v.key === col.property)?.value ?? '';
+          const bVal = b.values.find(v => v.key === col.property)?.value ?? '';
           const cmp = String(aVal).localeCompare(String(bVal));
           if (cmp !== 0) return col.direction === 'descending' ? -cmp : cmp;
         }

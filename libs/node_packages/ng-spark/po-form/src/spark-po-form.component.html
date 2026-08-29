@@ -143,7 +143,7 @@
                       <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
                       @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
                         <option [ngValue]="option.id">
-                          {{ option.breadcrumb || option.name || option.id }}
+                          {{ option.breadcrumb || option.id }}
                         </option>
                       }
                     </bs-select>

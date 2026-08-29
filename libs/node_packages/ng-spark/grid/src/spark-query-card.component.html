@@ -9,14 +9,6 @@
         <ng-container *ngTemplateOutlet="tpl; context: { $implicit: query() }"></ng-container>
       }
 
-      <span class="me-auto">
-        @if (captionTpl(); as tpl) {
-          <ng-container *ngTemplateOutlet="tpl; context: { $implicit: caption(), query: query() }"></ng-container>
-        } @else {
-          {{ caption() }}
-        }
-      </span>
-
       @if (actionsTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl; context: { $implicit: customActions(), selection: selection(), query: query() }"></ng-container>
       } @else if (customActions().length) {
@@ -34,6 +26,21 @@
           }
         </bs-priority-nav>
       }
+
+      <!--
+        Caption last, actions first. The auto margin is conditional rather than fixed, and that is
+        the point: with actions present `ms-auto` pushes the caption to the trailing edge, and with
+        none it falls back to `me-auto` so a plain card looks exactly as it always did. A fixed
+        `ms-auto` would have right-aligned the caption of every action-less query card in every app
+        — a change nobody asked for, to fix a layout only some cards have.
+      -->
+      <span [class.ms-auto]="customActions().length" [class.me-auto]="!customActions().length">
+        @if (captionTpl(); as tpl) {
+          <ng-container *ngTemplateOutlet="tpl; context: { $implicit: caption(), query: query() }"></ng-container>
+        } @else {
+          {{ caption() }}
+        }
+      </span>
     </div>
   </bs-card-header>
 
@@ -45,6 +52,7 @@
         [reloadToken]="reloadToken()"
         [data]="data()"
         [search]="search()"
+        [rowRoute]="rowRoute()"
         (error)="error.emit($event)"
         (rowClicked)="rowClicked.emit($event)"
         (customActionExecuted)="customActionExecuted.emit($event)" />

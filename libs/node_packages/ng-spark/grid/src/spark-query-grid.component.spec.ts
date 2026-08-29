@@ -9,7 +9,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, PersistentObject, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 
 /**
  * These carry over from the two components this one replaces. They are not fresh coverage: each
@@ -26,7 +26,7 @@ const personType: EntityType = {
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
+      order: 1, showedOn: ShowedOn.Query | ShowedOn.QueryResultItem,
     } as any,
     {
       id: 'a-internal', name: 'Internal', dataType: 'string',
@@ -36,7 +36,7 @@ const personType: EntityType = {
     {
       id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 3, showedOn: ShowedOn.PersistentObject,
+      order: 3, showedOn: ShowedOn.QueryResultItem,
     } as any,
   ],
 } as any;
@@ -52,9 +52,15 @@ const allPeopleQuery: SparkQuery = {
   isStreamingQuery: false,
 } as any;
 
+// The shape the server sends: columns once, then id + values per row (#327 M4).
+const sampleColumns = [
+  { name: 'FirstName', dataType: 'string', order: 1 } as any,
+];
+
 const samplePage = {
-  data: [{ id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [] } as any],
-  totalRecords: 1,
+  columns: sampleColumns,
+  items: [{ id: 'people/1', breadcrumb: 'Alice', values: [{ key: 'FirstName', value: 'Alice' }] } as any],
+  totalItems: 1,
 };
 
 /**
@@ -155,10 +161,12 @@ describe('SparkQueryGridComponent', () => {
     expect(c.resultCount()).toBe(1);
   });
 
-  it('shows only attributes that are visible and flagged for the query view', async () => {
+  it(`renders the columns the result declares, not the entity type's attributes`, async () => {
+    // The visible-column rule (isVisible && ShowedOn.Query) moved to the server, which is also
+    // where the sort-column allow-list is checked — so both now derive from one place.
     const { c } = await setup();
 
-    expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    expect(c.visibleColumns().map(col => col.name)).toEqual(['FirstName']);
   });
 
   it('isVirtualScrolling reflects the query renderMode', async () => {
@@ -274,33 +282,286 @@ describe('SparkQueryGridComponent', () => {
       value = input<any>();
     }
 
-    const nested = { id: 'cov/1', objectTypeId: 't-cov', attributes: [] } as any;
-    const asDetailAttr = { name: 'Coverage', dataType: 'AsDetail', rendererOptions: { bar: true } } as any;
+    const asDetailColumn = { name: 'Coverage', dataType: 'AsDetail', isArray: true, order: 1, rendererOptions: { bar: true } } as any;
 
-    it('AsDetail attribute: renderer receives the nested PO as value and the row as item', async () => {
+    it(`a renderer receives the cell value, the row and the column's options`, async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: nested }] } as PersistentObject;
+      // A projection is flat: an AsDetail cell carries the child COUNT, not the children, because
+      // a row deliberately drags no nested object graph across the wire.
+      const row = { id: 'people/1', values: [{ key: 'Coverage', value: 3 }] } as QueryResultItem;
 
-      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr);
-      expect(inputs['value']).toBe(nested);
+      const inputs = c.getColumnRendererInputs(FullColumnRenderer, row, asDetailColumn);
+      expect(inputs['value']).toBe(3);
       expect(inputs['item']).toBe(row);
       expect(inputs['options']).toEqual({ bar: true });
     });
 
-    it('AsDetail array attribute: renderer receives the nested PO array as value', async () => {
+    it('a cell the row does not carry yields undefined rather than throwing', async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'Coverage', value: null, object: null, objects: [nested] }] } as PersistentObject;
+      const row = { id: 'people/1', values: [] } as QueryResultItem;
 
-      expect(c.getColumnRendererInputs(FullColumnRenderer, row, asDetailAttr)['value']).toEqual([nested]);
+      expect(c.getColumnRendererInputs(FullColumnRenderer, row, asDetailColumn)['value']).toBeUndefined();
     });
 
     it('renderer declaring only value gets a filtered bag (pins the NgComponentOutlet undeclared-input throw)', async () => {
       const { c } = await setup();
-      const row = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
+      const row = { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] } as QueryResultItem;
 
-      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, personType.attributes[0]);
+      const inputs = c.getColumnRendererInputs(ValueOnlyRenderer, row, sampleColumns[0]);
       expect(Object.keys(inputs)).toEqual(['value']);
       expect(inputs['value']).toBe('Alice');
     });
   });
+
+  describe('ship-vs-draw columns', () => {
+    it('does not draw a column marked isVisible false, but keeps its value reachable', async () => {
+      // A renderer needing a sibling value (a lock glyph beside a name) reads it off the row; the
+      // grid must not give it a column. showedOn decides the wire, isVisible decides the drawing.
+      const cols = [
+        { name: 'Name', dataType: 'string', order: 1, isVisible: true },
+        { name: 'IsPrivate', dataType: 'boolean', order: 2, isVisible: false },
+      ] as any;
+      const { c } = await setup({}, {
+        data: [{ id: 'r/1', values: [{ key: 'Name', value: 'spark' }, { key: 'IsPrivate', value: true }] }],
+        columns: cols,
+      });
+
+      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
+      expect(c.allColumns().map((x: any) => x.name)).toEqual(['Name', 'IsPrivate']);
+    });
+
+    it('treats an absent isVisible as visible', async () => {
+      // A server predating the field must keep drawing everything.
+      const cols = [{ name: 'Name', dataType: 'string', order: 1 }] as any;
+      const { c } = await setup({}, { data: [], columns: cols });
+
+      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
+    });
+  });
+
+  describe('composed rows have no default detail link (R10)', () => {
+    it('withholds the row link when the type has no clrType', async () => {
+      // Live in DemoApp before this: Read/StartPage implies Query/StartPage, so a composed grid
+      // rendered every row linked to /po/{type}/{rowId} — which does not 404, it silently
+      // re-renders the same composed page. A plausible wrong page is worse than a missing one.
+      const composed = { id: 't-1', name: 'StartPage', alias: 'startpage', attributes: [] } as any;
+      const { c } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([composed]) });
+      c.entityType.set(composed);
+
+      expect((c as any).rowRouteFor({ id: 'collections/people', values: [] })).toBeNull();
+    });
+
+    it('still links an entity-backed row', async () => {
+      const { c } = await setup();
+
+      expect((c as any).rowRouteFor({ id: 'people/1', values: [] })).not.toBeNull();
+    });
+
+    it('lets a host override the withheld link for composed rows that do have a page', async () => {
+      const composed = { id: 't-1', name: 'StartPage', alias: 'startpage', attributes: [] } as any;
+      const { c } = await setup(
+        { getEntityTypes: vi.fn().mockResolvedValue([composed]) },
+        { rowRoute: (r: QueryResultItem) => ['/a', r.id] });
+      c.entityType.set(composed);
+
+      expect((c as any).rowRouteFor({ id: 'accounts/spark', values: [] })).toEqual(['/a', 'accounts/spark']);
+    });
+  });
+
+  describe('rowRoute (#327 §9.2)', () => {
+    // rowRouteFor is protected; TypeScript's protection is compile-time only, and reaching it
+    // directly is what lets these pin the RULE rather than bs-datatable's rendering.
+    const routeFor = (c: SparkQueryGridComponent, row: QueryResultItem) =>
+      (c as any).rowRouteFor(row) as unknown[] | null;
+
+    const row = { id: 'people/1', values: [] } as QueryResultItem;
+
+    it(`defaults to the row's own detail page`, async () => {
+      const { c } = await setup();
+
+      expect(routeFor(c, row)).toEqual(['/po', c.entityType()?.alias ?? c.entityType()?.id, 'people/1']);
+    });
+
+    it(`uses the host's function when one is supplied`, async () => {
+      const { c } = await setup({}, { rowRoute: (r: QueryResultItem) => ['/custom', r.id] });
+
+      expect(routeFor(c, row)).toEqual(['/custom', 'people/1']);
+    });
+
+    it('suppresses the link for a row the function returns null for', async () => {
+      // A grid may mix rows that have a destination with rows that do not — a composed grid
+      // listing collections, say, where only some map to a page.
+      const { c } = await setup({}, { rowRoute: () => null });
+
+      expect(routeFor(c, row)).toBeNull();
+    });
+
+    it('is consulted per row, not once for the grid', async () => {
+      const seen: string[] = [];
+      const { c } = await setup({}, { rowRoute: (r: QueryResultItem) => { seen.push(r.id); return ['/x', r.id]; } });
+
+      seen.length = 0;   // rendering already called it; the subject here is the per-row call
+      routeFor(c, { id: 'people/1', values: [] } as QueryResultItem);
+      routeFor(c, { id: 'people/2', values: [] } as QueryResultItem);
+
+      expect(seen).toEqual(['people/1', 'people/2']);
+    });
+
+    /**
+     * ⚠️ The one that matters. `rowRoute` replaces the DESTINATION; `canRead()` is what decides
+     * whether any link renders. A host must not be able to hand itself a link to a row the rights
+     * model withheld, so the gate is asserted where it lives — in the template's own condition,
+     * ahead of the call.
+     */
+    /**
+     * ⚠️ The one that matters: `rowRoute` replaces the DESTINATION, `canRead()` is the gate.
+     *
+     * Asserted through the CALL rather than the rendered anchor. `bs-datatable` is a Lit component
+     * and renders no row anchors under jsdom, so a `querySelector('a')` assertion here passes
+     * whether the gate works or not — the kind of green that means nothing. The template condition
+     * is `first && canRead() && rowRouteFor(row)`, so short-circuiting is observable: with Read
+     * withheld the function is never reached at all.
+     */
+    it('is never even consulted when Read is withheld', async () => {
+      const asked: string[] = [];
+      const { fixture, c } = await setup(
+        { getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: false, canCreate: false, canEdit: false, canDelete: false }) },
+        { data: [{ id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] }], columns: sampleColumns,
+          rowRoute: (r: QueryResultItem) => { asked.push(r.id); return ['/anywhere']; } });
+
+      expect(c.canRead()).toBe(false);
+      expect(asked).toEqual([]);
+      void fixture;
+    });
+
+    it('IS consulted once Read is granted — so the test above is not vacuous', async () => {
+      // The control. Same fixture, same bound rows, Read granted: the function is reached. Without
+      // this, the assertion above would keep passing if the row template stopped rendering at all.
+      const asked: string[] = [];
+      await setup(
+        { getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: false, canEdit: false, canDelete: false }) },
+        { data: [{ id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] }], columns: sampleColumns,
+          rowRoute: (r: QueryResultItem) => { asked.push(r.id); return ['/custom', r.id]; } });
+
+      expect(asked).toContain('people/1');
+    });
+  });
+  describe('selection -> custom action (#327)', () => {
+    const rows: QueryResultItem[] = [
+      { id: 'cars/1', values: [{ key: 'LicensePlate', value: '1-ABC' }] },
+      { id: 'cars/2', values: [{ key: 'LicensePlate', value: '2-DEF' }] },
+      { id: 'cars/3', values: [{ key: 'LicensePlate', value: '3-GHI' }] },
+    ];
+
+    const copyAction = {
+      name: 'CopyCarsToCompany',
+      displayName: { en: 'Copy' },
+      showedOn: 'both',
+      selectionRule: '>=1',
+      refreshOnCompleted: false,
+    } as any;
+
+    async function grid(inputs: Record<string, unknown> = {}) {
+      return await setup(
+        { getCustomActions: vi.fn().mockResolvedValue([copyAction]) },
+        { data: rows, columns: sampleColumns, ...inputs });
+    }
+
+    it('posts exactly the selected ids, in selection order', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[2], rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
+      const [, actionName, , ids] = service.executeCustomAction.mock.calls[0];
+      expect(actionName).toBe('CopyCarsToCompany');
+      expect(ids).toEqual(['cars/3', 'cars/1']);
+    });
+
+    it('posts ids, never the row objects', async () => {
+      // The wire contract: a row is a projection the server handed out, not a document the client
+      // may hand back. Posting rows is what #327 removed.
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , ids] = service.executeCustomAction.mock.calls[0];
+      expect(ids).toEqual(['cars/1']);
+      expect(ids.every((v: unknown) => typeof v === 'string')).toBe(true);
+    });
+
+    it('sends the sub-query container as parentId/parentType', async () => {
+      // The flow this whole thing exists for: a grid on a Company detail page. Without it the
+      // action cannot tell which company it was invoked from - the grid knew (it filters the rows
+      // by that parent) and used to drop the fact on the way out.
+      const { c, service } = await grid({ parentId: 'companies/1', parentType: 'Company' });
+      c.selection.set([rows[0], rows[1]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [typeId, , parent, ids, queryParent, queryId] = service.executeCustomAction.mock.calls[0];
+      expect(typeId).toBe(c.entityType()!.id);
+      expect(ids).toEqual(['cars/1', 'cars/2']);
+      expect(queryParent).toEqual({ id: 'companies/1', type: 'Company' });
+      // NOT the `parent` argument: that means an object of the action's own type, and the server
+      // loads it under that type - so a Company id there would refuse.
+      expect(parent).toBeUndefined();
+      // And the query, so the server re-runs it narrowed to those ids rather than re-deriving the
+      // rows from documents - which is what keeps index-computed columns populated.
+      expect(queryId).toBe('q-all');
+    });
+
+    it('sends the query the rows came from', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , , queryId] = service.executeCustomAction.mock.calls[0];
+      expect(queryId).toBe('q-all');
+    });
+
+    it('sends no container from a top-level query page', async () => {
+      const { c, service } = await grid();
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , queryParent] = service.executeCustomAction.mock.calls[0];
+      expect(queryParent).toBeUndefined();
+    });
+
+    it('sends no container when only one half of the parent is bound', async () => {
+      // Matches executeQuery and the execute endpoint, both of which resolve a parent only when
+      // id and type are both present. Half a parent is not a parent.
+      const { c, service } = await grid({ parentId: 'companies/1' });
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      const [, , , , queryParent] = service.executeCustomAction.mock.calls[0];
+      expect(queryParent).toBeUndefined();
+    });
+
+    it('surfaces a failure instead of silently doing nothing', async () => {
+      const { c, service } = await grid();
+      service.executeCustomAction.mockRejectedValue({ error: { error: 'Not found' } });
+      c.selection.set([rows[0]]);
+
+      await c.onCustomAction(copyAction);
+
+      expect(c.errorMessage()).toBe('Not found');
+    });
+
+    it('enables the action only once its selection rule is satisfied', async () => {
+      const { c } = await grid();
+
+      expect(c.isActionEnabled(copyAction)).toBe(false);
+      c.selection.set([rows[0]]);
+      expect(c.isActionEnabled(copyAction)).toBe(true);
+    });
+  });
+
 });

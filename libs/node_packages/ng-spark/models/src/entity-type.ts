@@ -86,7 +86,14 @@ export interface EntityType {
   id: string;
   name: string;
   description?: TranslatedString;
-  clrType: string;
+  /**
+   * The backing CLR type, or absent for a JSON-only virtual type (#325).
+   *
+   * Optional on purpose: the server sends null for a virtual type, and this was declared
+   * non-nullable, so any unguarded `.endsWith(...)` on it threw a TypeError naming an innocent
+   * query. Types are data from the wire, not a promise about it.
+   */
+  clrType?: string;
   alias?: string;
   /**
    * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder

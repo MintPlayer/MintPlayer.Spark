@@ -17,8 +17,12 @@ internal sealed class SnapshotMessage : StreamingMessage
     [JsonPropertyName("type")]
     public override string Type => "snapshot";
 
+    /// <summary>The column metadata for the whole stream, sent once with the snapshot.</summary>
+    [JsonPropertyName("columns")]
+    public required IReadOnlyList<QueryColumn> Columns { get; set; }
+
     [JsonPropertyName("data")]
-    public required PersistentObject[] Data { get; set; }
+    public required IReadOnlyList<QueryResultItem> Data { get; set; }
 }
 
 internal sealed class PatchMessage : StreamingMessage
@@ -35,8 +39,9 @@ internal sealed class PatchItem
     [JsonPropertyName("id")]
     public required string Id { get; set; }
 
-    [JsonPropertyName("attributes")]
-    public required Dictionary<string, object?> Attributes { get; set; }
+    /// <summary>Changed cell values, keyed by column name. Never metadata — the snapshot fixed that.</summary>
+    [JsonPropertyName("values")]
+    public required Dictionary<string, object?> Values { get; set; }
 }
 
 internal sealed class ErrorMessage : StreamingMessage

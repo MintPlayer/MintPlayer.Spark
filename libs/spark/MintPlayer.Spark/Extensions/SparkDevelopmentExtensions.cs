@@ -180,11 +180,17 @@ public static class SparkDevelopmentExtensions
         var expected = ModelHashFile.Read(contentRoot);
         var actual = ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRoot);
 
+        // These two are independent of the hash and run either way (#327 M3). They used to sit
+        // inside the in-sync branch below, so a change that both drifted the hash AND collided an
+        // alias reported only the drift — and the collision stayed invisible until the drift was
+        // fixed and CI was run again. Two round trips for one commit's worth of problems.
+        VerifyQueryAliasesAreUnique(contentRoot);
+        VerifyRefreshTriggersAreImplemented(contentRoot);
+        VerifyComposedQueriesAreUsable(contentRoot);
+
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
             Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
-            VerifyQueryAliasesAreUnique(contentRoot);
-            VerifyRefreshTriggersAreImplemented(contentRoot);
             return;
         }
 
@@ -207,6 +213,13 @@ public static class SparkDevelopmentExtensions
 
         Console.Error.WriteLine();
         Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
+        // A JSON-only virtual type (no clrType) has no CLR class to regenerate from, so synchronize
+        // only re-stamps its hash. Same command, but "regenerated" would send the author looking for
+        // a class that does not exist — which is the whole point of the type.
+        Console.Error.WriteLine(
+            $"  For a hand-authored model file (a JSON-only type with no clrType), nothing is regenerated — " +
+            $"{SynchronizeFlag} just re-stamps {ModelHashFile.FileName} with what is on disk. Review the drift " +
+            $"above first; that file is the source of truth for its own shape.");
 
         Environment.ExitCode = ExitDrift;
     }
@@ -369,6 +382,61 @@ public static class SparkDevelopmentExtensions
         catch (InvalidOperationException ex)
         {
             Console.Error.WriteLine(ex.Message);
+            Environment.ExitCode = ExitDrift;
+        }
+    }
+
+    /// <summary>
+    /// Refuses a composed query that cannot be served — one that streams over a type with no
+    /// collection, or returns rows into a type that shows nothing on a query.
+    /// </summary>
+    /// <remarks>
+    /// Rides <c>--spark-verify-model</c> for the same reasons the alias check does: the rules are
+    /// about hand-authored JSON that no analyzer can see, and both failures otherwise surface only
+    /// by opening the page — one as a websocket that closes with <c>Stream failed</c>, the other as
+    /// a grid with rows and no columns. Neither says which query, and neither is visible in review.
+    /// <para>
+    /// The rules themselves are <see cref="SparkComposedQueries.Validate"/>, shared with the runtime
+    /// loader, so this gate cannot pass a model the application then refuses to start on.
+    /// </para>
+    /// </remarks>
+    private static void VerifyComposedQueriesAreUsable(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var types = new List<EntityTypeDefinition>();
+        var queries = new List<SparkQuery>();
+
+        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        {
+            try
+            {
+                var entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file), jsonOptions);
+                if (entityTypeFile?.PersistentObject is not { } type)
+                    continue;
+
+                types.Add(type);
+                foreach (var query in entityTypeFile.Queries)
+                {
+                    // The loader stamps this when a query omits it; do the same here so a query
+                    // declared inside its own type's file is matched to that type.
+                    query.EntityType ??= type.Name;
+                    queries.Add(query);
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A malformed model file is the hash check's problem, as above.
+            }
+        }
+
+        foreach (var problem in SparkComposedQueries.Validate(types, queries))
+        {
+            Console.Error.WriteLine(problem);
             Environment.ExitCode = ExitDrift;
         }
     }

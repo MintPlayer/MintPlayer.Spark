@@ -1,0 +1,538 @@
+# Plan — Query result model: rows, batching, composed queries
+
+> Companion to [`issue_327_PRD.md`](issue_327_PRD.md). Issue
+> [#327](https://github.com/MintPlayer/MintPlayer.Spark/issues/327).
+> Branch `feat/issue-327-query-result-item`, cut from master @ `5ebfaa45` (`preview.65` / ng-spark `22.6.0`).
+> **One pull request**, per the repo's standing rule.
+
+## Milestones
+
+Status as of the latest commit on `feat/issue-327-query-result-item`.
+
+| # | Milestone | Status | Commit |
+|---|---|---|---|
+| M0 | Spikes | ✅ S1 resolved without prototyping, S2 rejected, S3 folded into M5 | — |
+| M1 | Free fixes: `DistinctBy`, in-memory sort, reject `PersistentObject`/`object` rows | ✅ done | `361aaeb8` |
+| M2 | Batch the selection load (the live N+1) | ✅ done | `22e1f533`, reworked `161e107d` |
+| M3 | Model hash `source` + `entityType`; alias symmetry; verify ordering | ✅ done | `f5585e52` |
+| M4 | Row/entity separation — the wire contract, server + client | ✅ done | `107bf1bd` (server), `7add96b6` (client) |
+| M5 | `clrType` optional in the query path (composed queries) | ✅ done | `0caa20d0` |
+| M6 | Every silent bail becomes loud | ✅ done | folded into M1/M3/M4/M5 + `be073176` |
+| M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
+| M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
+| M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` + tests |
+| M10 | Versions + release notes | ✅ done | `c1f47463`, re-cut for M11 |
+| M11 | `SelectedItems` becomes `QueryResultItem[]`, re-materialized by re-running the query | ✅ done | this commit |
+
+**Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
+tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
+sides at once, and a half-migrated client is not a testable state — so it landed as two commits that
+are only green together. M5 rides on M4's seams. M6 is folded into whichever milestone owns each
+site rather than being a separate sweep, except the startup/verify diagnostics, which land with M5.
+
+**Test discipline:** the full suite runs once at the end (repo convention), with type-checks,
+targeted suites and the AOT library build in between. ⚠️ M9 initially shipped with **no tests at
+all** — caught by auditing coverage before handover rather than by anything failing, since untested
+code does not go red. Backfilled to 41 tests across the six additions. Both halves of M4 were verified against the
+full 1795-test server suite and the 330-test client suite before commit, because a wire change has no
+smaller safe unit.
+
+**Two CI gates to respect throughout:** `--spark-verify-model` and `--spark-verify-security` run
+against all four demo apps on every PR. M3 forced a hash rebake in all four (done); M8's demo
+query rebaked DemoApp's model hash again. It did **not** move `securityPosture.txt`, contrary to the
+prediction here — `Read/StartPage` already implies `Query/StartPage`, so the composed query needed no
+new grant. Both gates fail the build rather than warn.
+
+---
+
+## M0 — Spikes ✅
+
+**S1 — batch load with includes.** **Resolved during investigation, no spike needed.**
+`IAsyncDocumentSession.LoadAsync<T>(IEnumerable<string>, Action<IIncludeBuilder<T>>, CancellationToken)`
+is present in the pinned RavenDB.Client 7.2.5 (verified in the shipped XML docs). The repo simply never
+used the combination. M2 uses it directly.
+
+**S2 — renderer compatibility shim. Rejected, not run.** It would have rebuilt the old
+`(value, attribute, options, item)` bag from `(itemValue, column)` so renderers migrated once centrally.
+Once "no backward compatibility" was restated as the governing rule the shim stopped being worth
+de-risking — and it was worse than unnecessary: the bag it reconstructs hands every column renderer an
+`EntityAttributeDefinition` the grid no longer possesses, which is fabricated metadata a projection
+deliberately does not carry. Renderers take `column: SparkCellColumn` instead (PRD D9); the two demo
+column renderers were a two-line change each.
+
+**S3 — composed query end to end. Folded into M5 rather than run ahead of it.** M4 landed the contract a
+composed query renders through, so the prototype and the milestone became the same work. What the spike
+was meant to establish is now pinned by `Endpoints/Queries/ComposedQueryTests.cs`. The observation that
+prompted it held: no virtual type had a query (both carried `"queries": []`), which is why the gap went
+unnoticed — and why M5 validates that a composed type carrying a query shows at least one attribute on it.
+
+---
+
+## M1 — Free fixes ✅
+
+Independent of everything else; each closes a silent failure.
+
+- **`DistinctBy`** — keep at `QueryExecutor.cs:222` (Raven fan-out, semantically expected); remove from
+  `:382`. ⚠ `:382` is the single return for all three custom shapes, so the Raven sub-case must keep dedup
+  **explicitly** rather than lose it by accident. Kills S1 (the null-`Id` grid collapse).
+- **In-memory sort fallback** beside the existing in-memory search fallback (`:55-67`), so a custom query
+  returning a plain `IEnumerable` honours `sortColumns` instead of ignoring them. Kills S3. Comparer pinned
+  explicitly (`OrdinalIgnoreCase`, nulls last) and the divergence from RavenDB term ordering documented
+  (R7).
+- **Reject `PersistentObject` and `object`/`dynamic`** as custom-query element types, loudly, naming the
+  declared return type. ⚠ The existing `!= typeof(object)` guard only covers the interface-scan branch —
+  the direct declarations (`IEnumerable<object>`, `Task<IQueryable<object>>`, …) bypass it entirely, so the
+  check goes in `ExtractQueryableElementType`'s first two branches too. Closes F6 and R12.
+
+**Tests:** `Services/QueryExecutorUnitTests.cs` (element-type rejection, message content),
+`QueryExecutorIntegrationTests.cs` (null-id rows survive; in-memory sort applies).
+
+---
+
+## M2 — Batch the selection load ✅
+
+The live N+1, on entity-backed grids, independent of composed queries.
+
+1. **No new hook.** `IPersistentObjectActions<T>` is unchanged -- batching is an optimization, not a
+   seam (owner decision; the reference framework has no plural hook either). The batched pipeline lives
+   on `DefaultPersistentObjectActions<T>` as `LoadManyAsync`, reached through an internal non-generic
+   `IBatchedLoadActions`, and `SupportsBatchedLoad` turns it off for any subclass that overrides
+   `OnLoadAsync` so a decorated page can never be skipped by a bulk path.
+2. `DefaultPersistentObjectActions<T>` implements the whole pipeline there, batched -- one
+   `LoadAsync<T>(ids, includes)`, one `breadcrumbResolver.ResolveAsync(session, entities, def)`, one
+   `RedactAsync(session, pairs, ...)`; guard/`Read`/mapping/`Can`/etag stay per-row and cost no I/O.
+   `OnLoadAsync` becomes `(await LoadManyAsync([id], parent)).FirstOrDefault()` -- **one pipeline, so
+   single and batch cannot drift.**
+3. `IDatabaseAccess` gains the batch sibling, keeping the `Read` type gate (memoized: N ids, one decision)
+   and the virtual-type fork (`clrType == null` falls back to the per-id compose path).
+4. `ExecuteCustomAction` makes one call and **refuses when the returned count is short of the requested
+   count** — never silently shrink.
+5. `estimatedRequests` becomes a small constant; the `#239 M5` comment is rewritten (it currently
+   documents lifting the ceiling *as the fix*).
+
+✅ **No interface breakage.** Because the batch form is internal rather than a new interface member,
+`LegacyHandWrittenActions` (`Actions/HandWrittenActionsCompatibilityTests.cs:32`) is untouched and its
+tripwire never fires -- which is the point of keeping batching off the public surface.
+
+**Tests.** Five existing tests in `Endpoints/Actions/ExecuteCustomActionTests.cs` assert
+`GetPersistentObjectAsync` per id (`:143`, `:180`, `:203`, `:240`, `:267`) and must be restubbed onto the
+batch member — keeping the behavioural invariants they pin: all-or-nothing refusal, id-less selected item ⇒
+404, route-type-not-wire-type, server state (not wire state) reaching the action. New:
+
+- A `SparkTestDriver` integration test modelled on
+  `Services/RowSecurityProjectionBatchingTests.cs:54` — seed ~50 rows of a reference-heavy, row-scoped
+  type, invoke a custom action selecting all of them, assert `session.Advanced.NumberOfRequests` (or
+  `RqlRecorder`) stays O(depth) not O(N), and that correctness no longer depends on `IgnoreMaxRequests`.
+- The missing `MaxSelectedItems` boundary test (200 proceeds, 201 refuses) — M2 is tempted to touch that
+  ceiling, so pin it.
+- ⚠ There is **no end-to-end HTTP custom-action test in the repo**. Add one via
+  `SparkClient.ExecuteActionAsync` on a `SparkEndpointFactory`-booted host (`SparkClient` mints
+  antiforgery itself), following the `ExecuteQueryEndpointTests` idiom.
+
+---
+
+## M3 — Model hashing, alias symmetry, verify ordering ✅
+
+Before composed queries ship, not after — under M5 a query's `source` names an arbitrary method that skips
+row security, and `entityType` chooses the right that gates it.
+
+- `ModelFileShape.Describe` — `source` and `entityType` become structural, **and the `indexName`-gated
+  `continue` is removed** so a query always contributes a line. ⚠ Today `"queries": []` and
+  `"queries": [<a whole query with no indexName>]` hash identically; that is exactly the shape #327 adds.
+- Entity-type alias collision **throws**, symmetrically with `SparkQueryAliases.Index`; `byId`'s last-wins
+  is aligned with `byAlias`'s first-wins so the two indexes cannot disagree (F19).
+- `Verify` runs `VerifyQueryAliasesAreUnique` and `VerifyRefreshTriggersAreImplemented` regardless of hash
+  drift (F20), and the drift message distinguishes a hand-authored file from a generated one.
+- **Rebake `modelHashes.json` in all four demo apps** via `--spark-synchronize-model`.
+
+**Tests:** `Model/ModelHashVerifierTests.cs`, `Model/SparkModelShapeTests.cs` (a query differing only in
+`source` now hashes differently; a query with no `indexName` contributes a line),
+`Services/ModelLoaderTests.cs` (alias collision throws).
+
+---
+
+## M4 — The row/entity separation ✅
+
+The rewrite. Server and client changed together; a half-migrated client is not a testable state.
+Landed as `107bf1bd` (server) and `7add96b6` (client).
+
+**Server.** New `QueryResultItem`, `QueryResultItemValue`, `QueryColumn` in `Abstractions`;
+`QueryResult` reshaped (`Columns` + `Items` + `TotalItems`). `QueryResultProjector` builds the
+columns from `ShowedOn.Query` and projects each mapped row — see PRD D10 for why the pipeline still
+builds a `PersistentObject` internally rather than growing a second mapper. Streaming follows the
+same contract: `StreamingQueryBatch` carries columns (sent once, with the snapshot),
+`StreamingDiffEngine` keys on a now-guaranteed id and diffs `Values` by key, `PatchItem.Attributes`
+becomes `Values`.
+
+**Client.** New wire models; `spark.service.ts` (the one fetch, and `executeQueryByName`'s empty
+fallback); a new `queryCellValue` / `queryReferenceChips` pipe pair for the projected row shape,
+deliberately separate from the attribute-shaped `attributeValue` (the fallbacks that make sense there
+— reaching into `attr.object`, recomputing a breadcrumb template — are unreachable for a projection,
+so sharing the code would carry branches that can never fire and invite feeding one shape into the
+other); `spark-grid-renderers.ts`; the grid component and template; `query-list` (streaming merge,
+client search/sort); `spark-query-card` passthrough; the reference picker and the po-form/po-detail
+option lists.
+
+**Decisions taken during implementation, recorded in the PRD:**
+
+- **No renderer shim** (S2 rejected). Renderers take `column: SparkCellColumn`; see D9.
+- **Selection is ids.** `SelectedItems` → `SelectedItemIds`, `SubmittedSelectedItems` deleted. Nothing
+  in `libs/`, `Demo/` or `tests/` read it except one assertion on its length.
+- **Row identity is enforced here, not in M5.** `QueryResultItem.Id` is non-nullable, so "no id" and
+  "duplicate id" became loud errors as soon as the type existed. M5 keeps the composed-query
+  diagnostics that surround it.
+- **AsDetail columns project a child count** plus, for a single child, the resolved breadcrumb —
+  otherwise a grid cell that used to read "3 items" would render empty.
+
+**Also in this pass (R3):** `clrType?: string` on the TS model, guarded `?.endsWith(...)`, and the
+unguarded `entityType()!` in the row link.
+
+**Tests migrated, not weakened.** Two server tests inverted into their new truth (a streaming mapper
+stub that gave every row the id `"echo"` now trips the uniqueness check; the M1 null-id test became
+"a row with no id is refused"). Twelve client specs moved to the new fixtures; the reference-picker
+and `ReferenceDisplayValuePipe` cases that asserted a `name` fallback now assert the id fallback,
+with a comment saying why the middle rung is gone.
+
+---
+
+## M5 — Composed queries (`clrType` optional in the query path) ✅
+
+Landed as `0caa20d0`. What shipped, and the two places it diverged from the plan above.
+
+- `ResolveByEntityName(def.Name)` where there is no CLR type, `ResolveForType` where there is; the
+  silent CLR bail is gone. A `clrType` that *is* declared but resolves to nothing stays a loud
+  error — that is a broken binding, not a composed type, and the two need opposite fixes.
+- **Row security skipped, because there is nothing to evaluate.** Written into the enforcing hook,
+  at the `FilterAsync` call, at the length it deserves: what is skipped, why it cannot be otherwise,
+  and what the actions class is therefore responsible for.
+- **Every composed query announces itself at startup** (`SparkComposedQueries.Announce`, called from
+  `QueryLoader`), naming the type and what does not apply.
+- ~~Row identity required~~ **landed in M4** — `QueryResultItem.Id` is non-nullable.
+- ~~Per-row envelope squared closed~~ **needed no code.** M4 removed `can` from the row shape
+  altogether, so there is nothing to force to false on this path or any other. Pinned as a
+  type-shape test (`A_row_carries_no_affordance_to_close`) rather than re-asserted per path — the
+  executor edit that did it was written, found to be dead, and removed.
+- `SparkQueryPage<T>` with the binary authority rule (R6). `CustomQueryArgs` gains `Skip`, `Take`
+  and `Search`, without which the escape hatch is unusable.
+- Streaming refused for a `clrType`-less type, and a composed type carrying a query required to show
+  at least one attribute on it (R8) — both in `SparkComposedQueries.Validate`, shared by
+  `QueryLoader` and `--spark-verify-model` exactly as `SparkQueryAliases` is, so CI cannot accept a
+  model the runtime refuses. The streaming executor keeps a third copy of the refusal for the model
+  that changes under a running process.
+
+**Also fixed here, because M5 is where it surfaced:** `ModelLoader`'s per-file `catch (Exception)`
+swallowed the entity alias-collision throw that M3 had just added — the exception was raised, printed
+as `Error loading model file …`, and discarded, so the application started with one of two types
+unroutable. Narrowed to `JsonException`/`IOException`/`UnauthorizedAccessException`. The test that
+pinned first-wins as intended behaviour is inverted, and a companion test pins that an unparseable
+file still degrades to a message.
+
+**Tests:** `Endpoints/Queries/ComposedQueryTests.cs` (15) — rows rendered from a name-resolved
+actions class, breadcrumb template over a computed row, `Query` right enforced, missing actions class
+and duplicate ids both loud, sort honoured, and five on `SparkQueryPage` (author's total, no second
+paging, ordering kept under `?sortColumns=`, result kept under `?search=`). Plus the streaming
+refusal in `StreamingQueryExecutorUnitTests`.
+
+---
+
+## M6 — Loud failures
+
+Folded into the milestone owning each site. The nine `([], false)` bails and ten further silent
+degradations become `DEV:`-style errors naming the fix, or verify-time refusals — following
+`LoadVirtualObjectViaActionsAsync`, which already throws on a shape mismatch rather than 404ing.
+Includes moving authorization above the `Database.*` bails (F1), and R13/R14 (in M3).
+
+---
+
+## M7 — `CancellationToken`
+
+One method, one implementation, one call site; `httpContext.RequestAborted` already in scope.
+`ExecuteQueryableAsync`'s hardcoded `CancellationToken.None` goes. `IRowSecurity.FilterAsync` /
+`ComposeRowFilterAsync` / `RedactAsync` gain tokens. Composed row counts capped loudly (R5).
+
+---
+
+## M8 — Docs + demo
+
+- `docs/guide-queries-and-sorting.md` — a composed-queries section, the row/column wire contract, type
+  hints, and the `SparkQueryPage` authority rule.
+- `docs/guide-custom-actions.md` — selection is ids; the server re-materializes and re-judges.
+- An **AsDetail-array subsection** documenting the escape hatch that works today for small fixed lists,
+  with its two easy-to-miss constraints (the child type needs a `clrType`; the child needs its own `Query`
+  grant) and the explicit warning that it is not the mechanism — the next page will have 5,000 rows.
+- **DemoApp's `StartPage` gains a composed query** — no virtual type has one today, which is why the gap
+  went unnoticed. Moves `securityPosture.txt`; regenerate.
+- `README.md` guide table if a new guide file is added.
+
+---
+
+## M9 — The additive asks (issue §9)
+
+Independently shippable, and in this PR because the repo's rule is one PR.
+
+- **§9.1** `"image"` and `"url"` data types — `GetDataType`, `spark-grid-cell.component.html` (inline
+  styles: the grid is inside `mp-datatable`'s shadow root), the po-detail chain, `input-type.pipe.ts`.
+- **§9.2** `rowRoute` — an optional `(row) => unknown[] | null` replacing the anchor's target, `canRead()`
+  gate untouched.
+- **§9.4** `[SparkAuthorize(Group = …)]` bypasses the `wellKnown` reservation — resolve through
+  `ISecurityConfigurationLoader` and refuse a name resolving to a reserved id.
+- **§9.5** SPARK010's message overstates what is lost — correct it to antiforgery path scoping and
+  pipeline ordering.
+- **§9.6** `SparkDenial` is `internal` — make `Refuse` public (or map `[SparkAuthorize]` failures through
+  it) so apps can match the 404-not-403 posture.
+- **§9.7** `SparkQueryActionsService` exporting `actionsFor(queryIdOrAlias)` / `execute(...)`, so a
+  page-level action can be rendered outside the query card. Plus a `*sparkShellTopbarActions` slot that
+  sits *beside* the language selector rather than replacing it.
+- **§9.9** Document that `[SparkAuthorize]` on a SignalR hub would resolve the root provider and throw
+  (latent — no SignalR in Spark today).
+
+---
+
+## M10 — Versions + release notes
+
+- NuGet `10.0.0-preview.65` → `10.0.0-preview.66` across all `MintPlayer.Spark*` projects (.NET 10 → major
+  stays 10).
+- npm `@mintplayer/ng-spark` and `@mintplayer/ng-spark-auth` `22.6.0` → `22.7.0`, **in lockstep** (Angular
+  22 → major stays 22). A breaking API change is a minor here; the major tracks the platform.
+- `docs/release-notes-preview-67.md`.
+- Final full sweep: `nx run-many -t test`, both `--spark-verify-model` and `--spark-verify-security` across
+  all four demo apps, then the PR.
+
+---
+
+## M11 — `SelectedItems` becomes `QueryResultItem[]` ✅
+
+Design and rationale in PRD **D12**. What shipped, and the two places it differed from the plan.
+
+**A selection is re-materialized by re-running the query it came from**, narrowed to the selected ids.
+`IQueryExecutor.ExecuteQueryAsync` gains `restrictToIds`; paging is ignored when it is set, because
+the caller asked for those rows and not for a page of them.
+
+- `CustomActionArgs.SelectedItems` : `PersistentObject[]` → `QueryResultItem[]`.
+- `CustomActionRequest.QueryId`, sent by the grid and by `SparkQueryActionsService`. Narrowing-only:
+  the executor enforces `Query` on it, and its entity type must match the route type or the request
+  is refused.
+- `IQueryExecutor.OwnsItsOwnPaging` answers from the declared return type, so the endpoint branches
+  on shape rather than trying and failing.
+- Fallback to the batched load for the three shapes that cannot be re-run: `SparkQueryPage<T>`,
+  streaming queries, and a request naming no query.
+- `DefaultPersistentObjectActions<T>.MaterializeAsync` — rows → entities, one batched load, holding
+  the `[Reference]` includes that must ride the same fluent call.
+- `RestrictToIds` — duck-typed on the actions class, like the virtual-type load hook. Required
+  wherever a row's identity is not a document id; **throws naming itself** otherwise, rather than
+  returning nothing and letting the all-or-nothing rule report a refusal that reads like a
+  permission problem.
+
+**Differed from the plan, both for the better:**
+
+1. ~~A superset column set for the action path~~ — dropped. Re-execution returns the query's own
+   columns, and a richer fallback would make an action's data depend on which shape its query
+   happened to be. The hook covers anything more.
+2. ~~Replace `IDatabaseAccess.GetPersistentObjectsByIdAsync`~~ — kept. It is no longer the *primary*
+   path but it is exactly what the three fallbacks need, so removing it would mean writing it again.
+
+**Tests (22).** `Endpoints/Queries/QueryIdRestrictionTests.cs` (9) covers the executor, including
+**one per narrowing path** — the `RestrictToIds` hook, an in-memory queryable, and a Raven-backed
+query — plus exact rows back, the query's computed columns present, paging ignored, an unknown id
+simply absent, an unrestricted run unaffected, the loud failure naming the hook, and
+`OwnsItsOwnPaging` answered without invoking anything. `ExecuteCustomActionTests` gains 8 for the
+endpoint: re-executed rather than loaded, narrowed to the submitted ids, **the container passed as
+the query's parent** and no parent on a top-level selection, a foreign query refused before it runs,
+a short re-execution refusing the whole request, and both fallbacks. The client adds 2. The
+pre-existing invariant tests were kept **unedited** — which was the point of naming them here.
+
+### Verified in a browser, which found three bugs the suite did not
+
+DemoApp, Company → Cars tab → select → **Copy to this company**. The copy landed on the right
+company. Three defects surfaced on the way, each green in the suite beforehand:
+
+1. **The re-execution was given the wrong parent.** It passed the action's `Parent`, which is null on
+   exactly the invocations that have a container, so the sub-query re-ran with no parent and threw.
+   The endpoint tests matched that argument with `Arg.Any`, so nothing noticed.
+2. **`List<string>.Contains` is an instance method**, and the default filter built it as a static
+   call. Every restriction test went through the `RestrictToIds` hook, so the framework's own
+   expression had **zero coverage**.
+3. **RavenDB cannot translate `ids.Contains(x.Id)`** — it needs `x.Id.In(ids)`, and `.In()` is
+   meaningless outside a Raven query. The coverage added for (2) used an in-memory queryable, so it
+   passed either way.
+
+All three now have tests. The lesson worth keeping: those three narrowing paths look
+interchangeable and are not.
+
+### Docs updated with it
+
+`guide-custom-actions.md` (the opening example no longer compiled; the #236 section, the key-points
+list, the QueryParent table and the migration note all described the old mechanism),
+`guide-row-security.md` (claimed `SelectedItems` were row-checked entities and referenced a
+`SubmittedSelectedItems` removed earlier in this PR), and `guide-queries-and-sorting.md` (the
+`SparkQueryPage` consequence for selections). Release notes re-cut as `preview-67`.
+
+The repo's `CLAUDE.md` gained a section on running the demo apps: the ASP.NET host spawns the Angular
+dev server itself via `UseAngularCliServer`, so `dotnet run` is the whole command — and a C# change
+needs the host's whole process tree restarted, which is what these three bugs cost to verify.
+
+---
+
+## M12 — Review response (Coverage feedback on PR #328)
+
+Six changes from an architectural review by the consumer that filed the issue. Two were defects that
+would have shipped; one was a contract change argued better than my original.
+
+### The one that mattered most
+
+**Composed query + custom action 500'd.** `RestrictToIds` demanded an `IQueryable`, and a plain
+`List` — the natural way to write a composed query — fell through to the hook-required throw. Both
+demo composed queries are that shape and no demo declares a hook; it was latent only because no
+action targeted them. **A plain sequence with a readable string `Id` is now narrowed in memory.**
+
+Filtering *after* the source produced everything is also the honest semantic, not a fallback: it is
+what proves the submitted ids were in the query's result. Narrowing at the source would let a caller
+name rows the query never returned, and the all-or-nothing count could not tell.
+
+### `showedOn` decides the wire; `isVisible` decides the drawing
+
+`BuildColumns` filtered on both, so a value could only reach a renderer by becoming a visible column
+— the layout decision the app was avoiding. It now filters on `showedOn` alone and carries
+`IsVisible` to the client.
+
+The reviewer's case was a renderer reading a sibling `IsPrivate`. The sharper argument is one neither
+of us made first: **the sort allow-list already checks `showedOn` alone**, so the old filter made an
+attribute `sortable with no column`. One predicate now governs both. No disclosure either — pre-#327
+rows carried every attribute regardless of both flags.
+
+### R10, which was firing in this branch's own demo
+
+`Read ⇒ Query` meant the composed StartPage grid rendered every row linked to `/po/startpage/{rowId}`
+— which does not 404, it silently re-renders the same composed page. The row link now defaults to
+`null` when `clrType` is absent (a composed type has no per-row page by construction; the signal was
+already on the wire and the grid never consulted it), and **`rowRoute` is forwarded through
+`spark-query-card` and `spark-query-list`** — without which the escape hatch was unreachable from
+every auto-rendered sub-query and query page, i.e. most grids.
+
+### Four silent exits, now logged
+
+The three non-re-runnable fallbacks say which one applied and that index-computed values will be
+null. So does the entity-type mismatch guard — the check between a client-supplied query id and
+another type's rows, which previously returned a permission-shaped refusal with no trace.
+
+### Request budget
+
+The overrun warning reported `HandleAsync performed 412 requests` — a number with no subject, from a
+`CallerMemberName` several endpoints share. It now names the action, the type and the selection size.
+
+### R8 widened
+
+The zero-column cliff is checked for **every** type carrying a query, not only composed ones: an
+entity-backed type whose attributes are all `PersistentObject`-only renders the same blank grid.
+
+### Declined
+
+**Memoizing the re-execution.** For an API-backed query a bulk action does hit the service a second
+time. That is accepted, and the reason is recorded next to the code rather than only here: re-running
+*unrestricted* and filtering is what validates the selection. A body fetching only the named ids
+would let a caller name rows that were never in any grid, and the count check would pass. The next
+reader will see an obvious wasted call, so the comment says why it is not one.
+
+**Tests:** +9. Ship-vs-draw (3 server, 2 client), composed rows have no default link (3 client), a
+plain sequence needing no hook, and the loud failure narrowed to what genuinely needs one — a row
+keyed by something that is not a readable string `Id`.
+
+---
+
+## M13 — `valueFor` reads a row of any shape
+
+Raised in the second review round and deliberately *not* asked for: pre-existing, orthogonal, and the
+branch was already large. Done anyway, because the framework is in preview and the argument against
+was cost rather than correctness — and because the shape of the complaint was damning. A helper
+shipped in this PR could not be used by the case that most needed it, and the consumer's own
+wrapper's branch count went **up** after #328 rather than to zero.
+
+`item` has three shapes and they are genuinely different objects: a `QueryResultItem` in a query
+grid, the flat record `nestedPoToDisplayRow` builds in an AsDetail sub-table, and a
+`PersistentObject` on a detail page. `valueFor` was typed for the first only.
+
+It now reads all three, normalising onto one cell and deriving what each expresses differently:
+
+- a `PersistentObject` reference has no `objectId` field, because its **value** is the target's id;
+- an AsDetail row keeps its resolved label in the `__sparkBreadcrumbs` side channel, which is
+  populated only for single references — so its presence for a key is what identifies one, the flat
+  record carrying no `dataType` to ask.
+
+`SparkRow`, `isQueryRow` and `isPersistentObject` are exported for the cases that genuinely need to
+know which shape they hold.
+
+⚠️ Shape detection discriminates on the **elements**, not on `Array.isArray` alone. A flat AsDetail
+record may legitimately have a column named `values` holding an array, and mistaking it for a query
+row would silently read the wrong thing rather than fail. Two tests pin exactly that.
+
+**Tests (14).** All three shapes read by name; the cell's `objectId` derived for a reference on each;
+absent keys returning `undefined` rather than a cell with an undefined value; the two collision cases
+above; null-safety.
+
+**Docs.** The renderer guide's example previously hand-rolled this branch — the clearest possible
+sign the framework should own it — and now reads as one call. The three shapes are a table there
+rather than prose, and the release notes carry the migration line: *delete your helper*.
+
+---
+
+## M14 — Two claims that were announced and not built
+
+The consuming app checked the branch against my own PR comments and found two changes I had written
+as done. Both were real gaps. Recorded here because the failure was **stating work as complete**,
+which is worse than not doing it: a reviewer stops looking, and the claim propagates into their
+migration notes.
+
+### What was claimed, and what was true
+
+1. *"a startup + `--spark-verify-model` check for the remaining unambiguous case"* — **never built.**
+   `RestrictToIds` appeared in exactly one file.
+2. *"the `Database.*` path passes `actions: null` … Fixing that too"* — **still passed null.**
+
+Neither broke anything shipping. Both only bit on unusual identity shapes. Dropping them as
+no-longer-worth-it would have been legitimate; claiming them was not.
+
+### The resolution: make the residual case not exist, rather than report it
+
+**The `Database.*` hook now works.** One expression, passing the resolved actions instance. It costs
+nothing — actions classes are scoped and row security already resolved that instance earlier in the
+same request — and changes behaviour only for a type that declares the hook, which was previously
+ignored there. The old state was worse than a missing feature: the throw told the author to declare a
+hook that this path would then ignore, with nothing distinguishing *missing* from *ignored*.
+
+**In-memory narrowing matches any readable `Id` by its `ToString()`, read off the row's RUNTIME
+type.** Both halves were wrong before:
+
+- Requiring `string` stranded rows keyed by an `int`, a `Guid` or a value object — whose grids render
+  perfectly, because the mapper mints the wire id with `Id?.ToString()`. Comparing the same way it
+  was serialised makes narrowing agree with the grid by construction rather than by luck.
+- Reading the **declared** element type meant a method declared `IEnumerable<IRow>` returning concrete
+  rows rendered a flawless grid and threw the moment anyone ticked a box — the mapper reads the
+  instance, narrowing read the interface. Both now read the same place.
+
+The queryable branch stays string-only, which costs nothing: RavenDB cannot translate `ToString()`
+into RQL, and a document id is a string by definition.
+
+### Why no startup gate afterwards
+
+What remains reachable is a row type with **no readable `Id` at all** — and `QueryResultProjector`
+already refuses that, by name, the first time the grid renders, long before anyone can tick a box. A
+gate would then guard a case the framework can no longer reach.
+
+The gate was also the wrong instrument on its own terms. Its most likely firing is a **false
+positive**: a grid whose rows carry an odd key and which no custom action ever narrows, since the
+type↔action binding lives in `security.json` and `customActions.json` — a coupling no model gate has.
+It would also need a third copy of the actions-class assembly scan, with the same load-order
+fragility as the existing two.
+
+**The error message also named the wrong class.** It said `{ModelName}Actions` while the entity-backed
+resolver looks up `{ClrTypeName}Actions`; where a model renames its type, the message sent the author
+to edit a class the framework never consults. Now derived from the instance actually resolved.
+
+**Tests (+2, and two inverted).** The hook honoured on a `Database.*` source; a weakly-declared row
+type narrowing; and the two former loud-failure tests turned into the supported cases they now are —
+a non-string id, and a plain sequence.
+
+⚠️ One fixture lesson worth keeping: `ActionsResolver.Resolve<T>()` returns a `{Name}Actions` class
+**only if it implements `IPersistentObjectActions<T>`**. A bare class carrying just a hook is silently
+skipped in favour of `DefaultPersistentObjectActions<T>` — which is why the first version of the
+database-path test failed with the hook never called.

@@ -70,7 +70,7 @@ async function setup(serviceOverrides: Record<string, unknown> = {}) {
     getQuery: vi.fn().mockResolvedValue(allPeopleQuery),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue([]),
-    executeQuery: vi.fn().mockResolvedValue({ data: [], totalRecords: 0 }),
+    executeQuery: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0, skip: 0, take: 50 }),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,
@@ -173,28 +173,30 @@ describe('SparkQueryListComponent', () => {
 
       streamSubject.next({
         type: 'snapshot',
+        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
         data: [
-          { id: 'people/1', name: 'Alice', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Alice' }] },
-          { id: 'people/2', name: 'Bob', objectTypeId: 't-person', attributes: [{ name: 'FirstName', value: 'Bob' }] },
+          { id: 'people/1', breadcrumb: 'Alice', values: [{ key: 'FirstName', value: 'Alice' }] },
+          { id: 'people/2', breadcrumb: 'Bob', values: [{ key: 'FirstName', value: 'Bob' }] },
         ],
       });
       await settle(harness.fixture);
       expect(c.gridData()).toHaveLength(2);
 
-      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', attributes: { FirstName: 'Alicia' } }] });
+      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', values: { FirstName: 'Alicia' } }] });
       await settle(harness.fixture);
 
       const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
-      expect(alice.attributes.find((a: any) => a.name === 'FirstName')?.value).toBe('Alicia');
+      expect(alice.values.find((v: any) => v.key === 'FirstName')?.value).toBe('Alicia');
     });
 
     it('filters the snapshot client-side — there is no request to attach a search to', async () => {
       const { c, harness, streamSubject } = await live();
       streamSubject.next({
         type: 'snapshot',
+        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
         data: [
-          { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] },
-          { id: 'people/2', attributes: [{ name: 'FirstName', value: 'Bob' }] },
+          { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] },
+          { id: 'people/2', values: [{ key: 'FirstName', value: 'Bob' }] },
         ],
       });
       await settle(harness.fixture);

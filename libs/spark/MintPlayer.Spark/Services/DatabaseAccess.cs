@@ -101,6 +101,53 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return (PersistentObject?)task.GetCompletedTaskResult();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PersistentObject>> GetPersistentObjectsByIdAsync(Guid objectTypeId, IReadOnlyList<string> ids)
+    {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
+        if (entityTypeDefinition == null) return [];
+        if (ids.Count == 0) return [];
+
+        // One type-level decision for the whole set — PermissionService memoizes per request, so
+        // this costs the same as the singular path did for one id.
+        await permissionService.EnsureAuthorizedAsync("Read", entityTypeDefinition.Name);
+
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
+        if (entityType == null)
+        {
+            // A JSON-only virtual type has no documents to batch: its rows are composed, one call to
+            // the name-resolved hook per id. Batching would be a lie about where the cost is.
+            var composed = new List<PersistentObject>(ids.Count);
+            foreach (var id in ids)
+            {
+                var obj = await LoadVirtualObjectViaActionsAsync(entityTypeDefinition, id);
+                if (obj is not null) composed.Add(obj);
+            }
+            return composed;
+        }
+
+        var actions = actionsResolver.ResolveForType(entityType);
+
+        // Batching is an optimization over the BASE pipeline, so it applies only where it is
+        // invisible. An actions class that overrides OnLoadAsync decorates the page, and taking the
+        // batched path would skip that decoration — making a row's content depend on how many rows
+        // were asked for. SupportsBatchedLoad is false for exactly those, and they fall through to
+        // the per-id loop below: slower, and correct.
+        if (actions is Actions.IBatchedLoadActions { SupportsBatchedLoad: true } batched)
+            return await batched.LoadManyAsync(ids, null);
+
+        var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
+        var resolved = new List<PersistentObject>(ids.Count);
+        foreach (var id in ids.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var task = (Task)onLoadMethod.Invoke(actions, [id, null])!;
+            await task;
+            if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
+                resolved.Add(obj);
+        }
+        return resolved;
+    }
+
     public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
     {
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);

@@ -13,6 +13,7 @@ import {
   SparkShellSidebarTopDirective,
   SparkShellTabDirective,
   SparkShellTopbarEndDirective,
+  SparkShellTopbarActionsDirective,
   SparkShellTopbarStartDirective,
   SparkSidebarTab,
 } from './spark-shell-slots';
@@ -77,6 +78,7 @@ export class SparkShellComponent {
   // (the spark-query-card precedent). The projected directive wins when both are present.
   readonly topbarStartTemplate = input<TemplateRef<unknown> | null>(null);
   readonly topbarEndTemplate = input<TemplateRef<unknown> | null>(null);
+  readonly topbarActionsTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarHeaderTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarTopTemplate = input<TemplateRef<unknown> | null>(null);
   readonly sidebarFooterTemplate = input<TemplateRef<unknown> | null>(null);
@@ -84,6 +86,7 @@ export class SparkShellComponent {
 
   private readonly topbarStartSlot = contentChild(SparkShellTopbarStartDirective);
   private readonly topbarEndSlot = contentChild(SparkShellTopbarEndDirective);
+  private readonly topbarActionsSlot = contentChild(SparkShellTopbarActionsDirective);
   private readonly sidebarHeaderSlot = contentChild(SparkShellSidebarHeaderDirective);
   private readonly sidebarTopSlot = contentChild(SparkShellSidebarTopDirective);
   private readonly sidebarFooterSlot = contentChild(SparkShellSidebarFooterDirective);
@@ -91,6 +94,7 @@ export class SparkShellComponent {
 
   protected readonly topbarStartTpl = computed(() => this.topbarStartSlot()?.templateRef ?? this.topbarStartTemplate());
   protected readonly topbarEndTpl = computed(() => this.topbarEndSlot()?.templateRef ?? this.topbarEndTemplate());
+  protected readonly topbarActionsTpl = computed(() => this.topbarActionsSlot()?.templateRef ?? this.topbarActionsTemplate());
   protected readonly sidebarHeaderTpl = computed(() => this.sidebarHeaderSlot()?.templateRef ?? this.sidebarHeaderTemplate());
   protected readonly sidebarTopTpl = computed(() => this.sidebarTopSlot()?.templateRef ?? this.sidebarTopTemplate());
   protected readonly sidebarFooterTpl = computed(() => this.sidebarFooterSlot()?.templateRef ?? this.sidebarFooterTemplate());

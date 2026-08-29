@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
@@ -16,6 +16,6 @@ import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 })
 export class ColorColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  attribute = input<EntityAttributeDefinition>();
+  column = input<SparkCellColumn>();
   options = input<Record<string, any>>();
 }

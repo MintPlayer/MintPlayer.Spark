@@ -142,11 +142,11 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         await SeedNotesAsync();
         NoteActions.CurrentUser = "alice";
 
-        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Data.ToList();
+        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Items.ToList();
 
         results.Should().HaveCount(2,
             "the list screen shows every row at once — it is the worst place for a row rule to be skipped");
-        results.Select(r => r.Attributes.Single(a => a.Name == "Title").Value?.ToString())
+        results.Select(r => r.Values.Single(a => a.Key == "Title").Value?.ToString())
             .Should().BeEquivalentTo(["Alice's first", "Alice's second"]);
     }
 
@@ -156,10 +156,10 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         await SeedNotesAsync();
         NoteActions.CurrentUser = "bob";
 
-        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Data.ToList();
+        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Items.ToList();
 
         results.Should().ContainSingle()
-            .Which.Attributes.Single(a => a.Name == "Title").Value?.ToString()
+            .Which.Values.Single(a => a.Key == "Title").Value?.ToString()
             .Should().Be("Bob's secret");
     }
 
@@ -169,7 +169,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         await SeedNotesAsync();
         NoteActions.CurrentUser = "mallory";
 
-        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Data.ToList();
+        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Notes", "Note"))).Items.ToList();
 
         results.Should().BeEmpty();
     }
@@ -183,7 +183,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
             await session.StoreAsync(new Memo { Title = "Public two" });
         });
 
-        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Memos", "Memo"))).Data.ToList();
+        var results = (await CreateExecutor().ExecuteQueryAsync(Query("Memos", "Memo"))).Items.ToList();
 
         results.Should().HaveCount(2,
             "types that never declared a rule must behave exactly as before — that is what makes "

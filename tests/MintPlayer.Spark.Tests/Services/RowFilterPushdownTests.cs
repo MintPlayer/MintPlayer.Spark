@@ -373,9 +373,9 @@ public class RowFilterPushdownTests : SparkTestDriver
         };
         var result = await executor.ExecuteQueryAsync(query);
 
-        result.Data.Should().HaveCount(2);
-        result.TotalRecords.Should().Be(2, "totals must be computed on the filtered set");
-        result.Data.Select(po => po.Attributes.Single(a => a.Name == "Title").Value?.ToString())
+        result.Items.Should().HaveCount(2);
+        result.TotalItems.Should().Be(2, "totals must be computed on the filtered set");
+        result.Items.Select(po => po.Values.Single(a => a.Key == "Title").Value?.ToString())
             .Should().BeEquivalentTo(["Alice's first", "Alice's locked"]);
     }
 }

@@ -7,7 +7,7 @@
       "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
       "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
     },
-    "breadcrumb": "Start",
+    "breadcrumb": "{Collection}",
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -62,8 +62,50 @@
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
+      },
+      {
+        "id": "9e5acb86-af7b-4dbe-db65-ca8c6d9fbe34",
+        "name": "Collection",
+        "label": { "en": "Collection", "fr": "Collection", "nl": "Collectie" },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "isSortable": true,
+        "rules": []
+      },
+      {
+        "id": "af6bdc97-b08c-4ecf-ec76-db9d7ea0cf45",
+        "name": "Records",
+        "label": { "en": "Records", "fr": "Enregistrements", "nl": "Records" },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query",
+        "isSortable": true,
+        "rules": []
       }
     ]
   },
-  "queries": []
+  "queries": [
+    {
+      "id": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+      "name": "StartPageCollections",
+      "alias": "collections",
+      "description": {
+        "en": "A composed query: one row per collection with its live count. No documents back these rows -- StartPageActions.GetCollections computes them.",
+        "fr": "Requete composee : une ligne par collection.",
+        "nl": "Samengestelde query: een rij per collectie."
+      },
+      "source": "Custom.GetCollections",
+      "entityType": "StartPage",
+      "sortColumns": [{ "property": "Records", "direction": "desc" }]
+    }
+  ]
 }

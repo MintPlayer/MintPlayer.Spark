@@ -45,7 +45,13 @@ namespace MintPlayer.Spark.Endpoints;
 /// that "denied the whole type" and "denied this one row" stop reporting differently.
 /// </para>
 /// </remarks>
-internal static class SparkDenial
+/// <para>
+/// <b>Public</b> (#327 §9.6). An application writing its own endpoints alongside Spark's has to be
+/// able to refuse the same way, or its endpoints reopen the oracle Spark closed: one 403 next to
+/// Spark's 404 is enough to tell a prober which ids exist. Sharing the decision is the only way the
+/// two provably agree — a hand-written copy agrees until either side changes.
+/// </para>
+public static class SparkDenial
 {
     /// <summary>
     /// The one message every refusal on an access endpoint carries.

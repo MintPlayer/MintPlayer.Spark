@@ -62,40 +62,45 @@ public class QueryExecutorUnitTests
     }
 
     [Fact]
-    public async Task Database_query_returns_empty_when_SparkContext_unresolved()
+    public async Task Database_query_without_a_SparkContext_says_so()
     {
+        // #327 M6. This used to return an empty grid, which is the same thing a correctly
+        // configured query over an empty collection returns — so an application that forgot to
+        // register a context looked like one with no data.
         _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns((SparkContext?)null);
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("Database.People"));
+        var act = () => executor.ExecuteQueryAsync(Q("Database.People"));
 
-        result.Data.Should().BeEmpty();
-        result.TotalRecords.Should().Be(0);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("registers no SparkContext"));
     }
 
     private sealed class EmptyContext : SparkContext { }
 
     [Fact]
-    public async Task Database_query_returns_empty_when_property_does_not_exist_on_context()
+    public async Task Database_query_naming_a_property_the_context_does_not_have_says_so()
     {
         _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(new EmptyContext());
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("Database.NoSuchProperty"));
+        var act = () => executor.ExecuteQueryAsync(Q("Database.NoSuchProperty"));
 
-        result.Data.Should().BeEmpty();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("NoSuchProperty") && e.Message.Contains("EmptyContext"));
     }
 
     [Fact]
-    public async Task Custom_query_returns_empty_when_EntityType_is_not_set()
+    public async Task Custom_query_without_an_entityType_says_what_to_set()
     {
-        // EntityType is null on SparkQuery → ResolveEntityTypeDefinition returns null → empty
+        // A custom query's columns come from its declared type, so there is nothing to infer from
+        // the method's return type. Naming the missing field beats an empty grid.
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("Custom.SomeMethod"));
+        var act = () => executor.ExecuteQueryAsync(Q("Custom.SomeMethod"));
 
-        result.Data.Should().BeEmpty();
-        result.TotalRecords.Should().Be(0);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("names no entityType"));
     }
 
     [Fact]
@@ -103,10 +108,12 @@ public class QueryExecutorUnitTests
     {
         var executor = CreateExecutor();
 
-        // No EntityType → empty data, but the prefix-matching branch was taken without throwing
-        var result = await executor.ExecuteQueryAsync(Q("custom.Anything"));
+        // The subject is the prefix match, not what follows it: 'custom.' routes to the custom
+        // path, which then fails on the missing entityType rather than on an unknown source.
+        var act = () => executor.ExecuteQueryAsync(Q("custom.Anything"));
 
-        result.Data.Should().BeEmpty();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("names no entityType"));
     }
 
     [Fact]
@@ -115,9 +122,36 @@ public class QueryExecutorUnitTests
         _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns((SparkContext?)null);
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("DATABASE.People"));
+        var act = () => executor.ExecuteQueryAsync(Q("DATABASE.People"));
 
-        result.Data.Should().BeEmpty();
+        // Reaching the missing-context message at all proves 'DATABASE.' matched the database
+        // branch; an unmatched prefix throws about the source instead.
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("registers no SparkContext"));
+    }
+
+    /// <summary>
+    /// A query the executor can actually run to completion — needed now that a misconfigured one
+    /// throws instead of quietly answering with an empty envelope (#327 M6). The rows are empty,
+    /// which is all the envelope tests care about.
+    /// </summary>
+    private SparkQuery WorkingCustomQuery()
+    {
+        _modelLoader.GetEntityTypeByName("QEEnvelopeEntity").Returns(new EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "QEEnvelopeEntity",
+            ClrType = typeof(QECacheTestEntity).FullName!,
+        });
+        _actionsResolver.ResolveForType(typeof(QECacheTestEntity)).Returns(new QECacheTestActions());
+
+        return new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "QEEnvelopeQuery",
+            Source = "Custom.EmptyPeople",
+            EntityType = "QEEnvelopeEntity",
+        };
     }
 
     [Fact]
@@ -125,7 +159,7 @@ public class QueryExecutorUnitTests
     {
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("Database.People"));
+        var result = await executor.ExecuteQueryAsync(WorkingCustomQuery());
 
         result.Skip.Should().Be(0);
         result.Take.Should().Be(50);
@@ -136,7 +170,7 @@ public class QueryExecutorUnitTests
     {
         var executor = CreateExecutor();
 
-        var result = await executor.ExecuteQueryAsync(Q("Database.People"), skip: 25, take: 10);
+        var result = await executor.ExecuteQueryAsync(WorkingCustomQuery(), skip: 25, take: 10);
 
         result.Skip.Should().Be(25);
         result.Take.Should().Be(10);
@@ -176,8 +210,8 @@ public class QueryExecutorUnitTests
 
         results.Should().AllSatisfy(r =>
         {
-            r.Data.Should().BeEmpty();
-            r.TotalRecords.Should().Be(0);
+            r.Items.Should().BeEmpty();
+            r.TotalItems.Should().Be(0);
         });
     }
 

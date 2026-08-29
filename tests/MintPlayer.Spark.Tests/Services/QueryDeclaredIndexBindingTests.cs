@@ -138,12 +138,12 @@ public class QueryDeclaredIndexBindingTests : SparkTestDriver
         var overview = await _executor.ExecuteQueryAsync(Query("GetCommits", "Commits_Overview"));
         var byRepository = await _executor.ExecuteQueryAsync(Query("GetCommitsByRepository", "Commits_ByRepository"));
 
-        overview.TotalRecords.Should().Be(2);
-        byRepository.TotalRecords.Should().Be(2);
+        overview.TotalItems.Should().Be(2);
+        byRepository.TotalItems.Should().Be(2);
 
         // The specialized projection computes Summary; the default projection does not have it.
-        byRepository.Data
-            .Select(po => po.Attributes.Single(a => a.Name == "Summary").Value?.ToString())
+        byRepository.Items
+            .Select(po => po.Values.Single(a => a.Key == "Summary").Value?.ToString())
             .Should().BeEquivalentTo(["spark: init", "spark: fix"]);
     }
 
@@ -158,11 +158,11 @@ public class QueryDeclaredIndexBindingTests : SparkTestDriver
         var overview = await _executor.ExecuteQueryAsync(Query("GetCommits", "Commits_Overview"));
         var byRepository = await _executor.ExecuteQueryAsync(Query("GetCommitsByRepository", "Commits_ByRepository"));
 
-        overview.Data.Should().OnlyContain(po =>
-            po.Attributes.Single(a => a.Name == "Summary").Value == null,
+        overview.Items.Should().OnlyContain(po =>
+            po.Values.Single(a => a.Key == "Summary").Value == null,
             "the default projection has no Summary");
-        byRepository.Data.Should().OnlyContain(po =>
-            po.Attributes.Single(a => a.Name == "Author").Value == null,
+        byRepository.Items.Should().OnlyContain(po =>
+            po.Values.Single(a => a.Key == "Author").Value == null,
             "the specialized projection has no Author");
     }
 
@@ -178,6 +178,6 @@ public class QueryDeclaredIndexBindingTests : SparkTestDriver
 
         var act = () => _executor.ExecuteQueryAsync(query);
 
-        (await act.Should().NotThrowAsync()).Which.TotalRecords.Should().Be(2);
+        (await act.Should().NotThrowAsync()).Which.TotalItems.Should().Be(2);
     }
 }

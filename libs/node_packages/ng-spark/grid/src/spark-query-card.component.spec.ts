@@ -67,7 +67,7 @@ function configure(actions: unknown[] = []) {
     getQuery: vi.fn().mockResolvedValue(carsQuery),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
     getCustomActions: vi.fn().mockResolvedValue(actions),
-    executeQuery: vi.fn().mockResolvedValue({ data: [], totalRecords: 0 }),
+    executeQuery: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0, skip: 0, take: 50 }),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
   };
@@ -245,4 +245,38 @@ describe('SparkQueryCardComponent', () => {
       expect(text()).toContain('FORWARDED');
     });
   });
+  describe('header layout', () => {
+    /** Where each element sits in the header, left to right. */
+    function headerOrder(fixture: ComponentFixture<unknown>): string[] {
+      const header = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header div')!;
+      return Array.from(header.children).map(el =>
+        el.tagName.toLowerCase() === 'bs-priority-nav' ? 'actions' : 'caption');
+    }
+
+    it('renders the actions before the caption', async () => {
+      const { fixture } = await bare([exportAction]);
+
+      expect(headerOrder(fixture)).toEqual(['actions', 'caption']);
+    });
+
+    it('pushes the caption to the trailing edge when there are actions', async () => {
+      const { fixture } = await bare([exportAction]);
+      const caption = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header > div > span')!;
+
+      expect(caption.classList.contains('ms-auto')).toBe(true);
+      expect(caption.classList.contains('me-auto')).toBe(false);
+    });
+
+    it('leaves an action-less card exactly as it was', async () => {
+      // The reason the auto margin is conditional. A fixed ms-auto would have right-aligned the
+      // caption of every query card without actions, in every app - a change nobody asked for.
+      const { fixture } = await bare();
+      const caption = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header > div > span')!;
+
+      expect(headerOrder(fixture)).toEqual(['caption']);
+      expect(caption.classList.contains('me-auto')).toBe(true);
+      expect(caption.classList.contains('ms-auto')).toBe(false);
+    });
+  });
+
 });

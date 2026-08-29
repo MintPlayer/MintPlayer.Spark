@@ -67,7 +67,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
 
         var result = await _client.ExecuteQueryAsync(AllPeopleQueryId);
 
-        result.TotalRecords.Should().Be(2);
+        result.TotalItems.Should().Be(2);
     }
 
     [Fact]
@@ -75,8 +75,8 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     {
         var result = await _client.ExecuteQueryAsync(AllPeopleQueryId);
 
-        result.TotalRecords.Should().Be(0);
-        result.Data.Should().BeEmpty();
+        result.TotalItems.Should().Be(0);
+        result.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
 
         var result = await _client.ExecuteQueryAsync(AllPeopleQueryId, search: "ALICE");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
     }
 
     [Fact]
@@ -102,10 +102,10 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
 
         var result = await _client.ExecuteQueryAsync(AllPeopleQueryId, skip: 3, take: 4);
 
-        result.TotalRecords.Should().Be(10);
+        result.TotalItems.Should().Be(10);
         result.Skip.Should().Be(3);
         result.Take.Should().Be(4);
-        result.Data.Should().HaveCount(4);
+        result.Items.Should().HaveCount(4);
     }
 
     [Fact]
@@ -126,6 +126,6 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
 
         var result = await _client.ExecuteQueryAsync("allpeople");
 
-        result.TotalRecords.Should().Be(1);
+        result.TotalItems.Should().Be(1);
     }
 }

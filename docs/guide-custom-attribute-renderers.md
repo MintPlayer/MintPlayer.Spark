@@ -97,9 +97,17 @@ that the flattened `formData` drops).
 
 Implement `SparkAttributeColumnRenderer`. This component is shown in query list table cells. Keep it compact.
 
+> **Breaking change (#327).** A column renderer receives **`column`**, not `attribute`. A query row is
+> now a projection: the server sends the column metadata **once per result** instead of repeating a
+> full attribute definition on every row, so there is no `EntityAttributeDefinition` to hand a cell
+> any more. Detail and edit renderers are unaffected and keep `attribute` — those paths really are
+> attribute-shaped. To migrate a column renderer, rename the input and change its type; the fields a
+> cell actually reads (`name`, `label`, `dataType`, `isArray`, `renderer`, `rendererOptions`,
+> `referenceType`, `lookupReferenceType`, `asDetailType`) are all on `SparkCellColumn`.
+
 ```typescript
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
+import { SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 @Component({
@@ -114,13 +122,18 @@ import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 })
 export class VideoColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  attribute = input<EntityAttributeDefinition>();
+  column = input<SparkCellColumn>();
   options = input<Record<string, any>>();
 }
 ```
 
 A column renderer may also declare `item` to receive the row it belongs to (see
 [Row context](#row-context-the-item-input) below).
+
+`SparkCellColumn` is a small structural interface, and both `QueryColumn` (from a query result) and
+`EntityAttributeDefinition` (from an AsDetail sub-table) satisfy it. That is what lets one cell
+component serve the query grid and the detail page's nested tables without either side knowing about
+the other's shape.
 
 ### Edit Renderer (optional)
 
@@ -219,7 +232,8 @@ you need.
 | Input | Type | Detail | Column | Edit | Description |
 |---|---|---|---|---|---|
 | `value` | `any` | Yes | Yes | Yes | The current attribute value (see [AsDetail values](#asdetail-values) for AsDetail attributes) |
-| `attribute` | `EntityAttributeDefinition` | Yes | Yes | Yes | Full attribute metadata (name, dataType, label, rules, etc.) |
+| `attribute` | `EntityAttributeDefinition` | Yes | - | Yes | Full attribute metadata (name, dataType, label, rules, etc.). **Not passed to column renderers** -- see `column` |
+| `column` | `SparkCellColumn` | - | Yes | - | The column being rendered: `name`, `label`, `dataType`, `isArray`, `renderer`, `rendererOptions`, `referenceType`, `lookupReferenceType`, `asDetailType` |
 | `options` | `Record<string, any>` | Yes | Yes | Yes | The `rendererOptions` object from the model JSON |
 | `formData` | `Record<string, any>` | Yes | - | - | All attribute values (detail page only, for cross-field logic); AsDetail keys carry the nested PO(s) |
 | `item` | `PersistentObject \| Record<string, any>` | Yes | Yes | AsDetail cells only | The row/object this attribute belongs to (see [Row context](#row-context-the-item-input)) |
@@ -262,18 +276,52 @@ A renderer that needs **other fields of the same row** (a name cell with an inli
 ```typescript
 export class RepoNameColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  item = input<PersistentObject | Record<string, any>>();
+  item = input<SparkRow>();
 
-  isPrivate = computed(() => toDict(this.item())['IsPrivate'] === true);
+  // One call, whatever shape the row is in. valueFor returns the CELL
+  // ({ key, value, objectId, breadcrumb }) rather than the bare value, because a reference cell is
+  // worth as much for its objectId as for its text.
+  isPrivate = computed(() => valueFor(this.item(), 'IsPrivate')?.value === true);
 }
 ```
 
-What `item` is depends on the host:
+`item` has **three shapes**, depending on the host — and `valueFor` reads all three, so a renderer
+does not have to know which one it got:
 
-- **query-list / sub-query grids**: the row `PersistentObject`
-- **po-detail field**: the full `PersistentObject` being displayed
-- **AsDetail sub-table cells** (detail and form): the flat row record (which may include the
-  reserved `__sparkBreadcrumbs` key — ignore it)
+| Host | `item` is |
+|---|---|
+| query-list / sub-query grid | a `QueryResultItem` — `{ id, breadcrumb, values }` |
+| po-detail field | the full `PersistentObject` being displayed |
+| AsDetail sub-table cell (detail and form) | a flat row record |
+
+They are genuinely different objects rather than variations of one, which matters because a renderer
+reused across a grid and an AsDetail table sees two of them. `valueFor` normalises all three onto the
+same cell, deriving what each shape expresses differently — a `PersistentObject` reference has no
+`objectId` field, for instance, because its *value* is the target's id.
+
+Type `item` as `SparkRow` and use `valueFor`. Indexing into `values`, `attributes` or the record by
+hand works for exactly one host and fails silently on the others.
+
+**To read a sibling value the grid does not draw**, mark its attribute `"showedOn": "Query",
+"isVisible": false`. It then ships on every row and no column is rendered for it. A value marked
+`"showedOn": "PersistentObject"` is not on the query wire at all and `valueFor` returns `undefined`
+— that is the failure to check first when a renderer's sibling read comes back empty.
+
+⚠️ **An option that names a sibling attribute only works if that attribute is on the query surface.**
+A configurable renderer — one whose `rendererOptions` carry the *name* of another attribute —
+splits the declaration in two: the renderer is written once, and the attribute it needs is chosen
+per call site in the model JSON.
+
+```jsonc
+{ "renderer": "short-sha", "rendererOptions": { "titleAttribute": "Message" } }
+```
+
+Whoever writes that must also mark `Message` as `"showedOn": "Query"`. Forget it and the value is
+simply absent — the renderer is fine, the model is fine, the tooltip just never appears.
+
+The framework cannot check this: it has no way to know which option keys name attributes rather than
+holding ordinary configuration. So it is on the author, and it is worth a second look precisely on
+configurable renderers, where the two declarations are furthest apart.
 
 ## Using `rendererOptions`
 
