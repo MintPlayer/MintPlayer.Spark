@@ -472,3 +472,67 @@ above; null-safety.
 **Docs.** The renderer guide's example previously hand-rolled this branch — the clearest possible
 sign the framework should own it — and now reads as one call. The three shapes are a table there
 rather than prose, and the release notes carry the migration line: *delete your helper*.
+
+---
+
+## M14 — Two claims that were announced and not built
+
+The consuming app checked the branch against my own PR comments and found two changes I had written
+as done. Both were real gaps. Recorded here because the failure was **stating work as complete**,
+which is worse than not doing it: a reviewer stops looking, and the claim propagates into their
+migration notes.
+
+### What was claimed, and what was true
+
+1. *"a startup + `--spark-verify-model` check for the remaining unambiguous case"* — **never built.**
+   `RestrictToIds` appeared in exactly one file.
+2. *"the `Database.*` path passes `actions: null` … Fixing that too"* — **still passed null.**
+
+Neither broke anything shipping. Both only bit on unusual identity shapes. Dropping them as
+no-longer-worth-it would have been legitimate; claiming them was not.
+
+### The resolution: make the residual case not exist, rather than report it
+
+**The `Database.*` hook now works.** One expression, passing the resolved actions instance. It costs
+nothing — actions classes are scoped and row security already resolved that instance earlier in the
+same request — and changes behaviour only for a type that declares the hook, which was previously
+ignored there. The old state was worse than a missing feature: the throw told the author to declare a
+hook that this path would then ignore, with nothing distinguishing *missing* from *ignored*.
+
+**In-memory narrowing matches any readable `Id` by its `ToString()`, read off the row's RUNTIME
+type.** Both halves were wrong before:
+
+- Requiring `string` stranded rows keyed by an `int`, a `Guid` or a value object — whose grids render
+  perfectly, because the mapper mints the wire id with `Id?.ToString()`. Comparing the same way it
+  was serialised makes narrowing agree with the grid by construction rather than by luck.
+- Reading the **declared** element type meant a method declared `IEnumerable<IRow>` returning concrete
+  rows rendered a flawless grid and threw the moment anyone ticked a box — the mapper reads the
+  instance, narrowing read the interface. Both now read the same place.
+
+The queryable branch stays string-only, which costs nothing: RavenDB cannot translate `ToString()`
+into RQL, and a document id is a string by definition.
+
+### Why no startup gate afterwards
+
+What remains reachable is a row type with **no readable `Id` at all** — and `QueryResultProjector`
+already refuses that, by name, the first time the grid renders, long before anyone can tick a box. A
+gate would then guard a case the framework can no longer reach.
+
+The gate was also the wrong instrument on its own terms. Its most likely firing is a **false
+positive**: a grid whose rows carry an odd key and which no custom action ever narrows, since the
+type↔action binding lives in `security.json` and `customActions.json` — a coupling no model gate has.
+It would also need a third copy of the actions-class assembly scan, with the same load-order
+fragility as the existing two.
+
+**The error message also named the wrong class.** It said `{ModelName}Actions` while the entity-backed
+resolver looks up `{ClrTypeName}Actions`; where a model renames its type, the message sent the author
+to edit a class the framework never consults. Now derived from the instance actually resolved.
+
+**Tests (+2, and two inverted).** The hook honoured on a `Database.*` source; a weakly-declared row
+type narrowing; and the two former loud-failure tests turned into the supported cases they now are —
+a non-string id, and a plain sequence.
+
+⚠️ One fixture lesson worth keeping: `ActionsResolver.Resolve<T>()` returns a `{Name}Actions` class
+**only if it implements `IPersistentObjectActions<T>`**. A bare class carrying just a hook is silently
+skipped in favour of `DefaultPersistentObjectActions<T>` — which is why the first version of the
+database-path test failed with the hook never called.

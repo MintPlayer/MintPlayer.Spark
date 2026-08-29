@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raven.Client.Documents.Linq;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
@@ -197,21 +199,75 @@ public class QueryIdRestrictionTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_source_the_framework_cannot_match_on_and_declaring_no_hook_fails_loudly()
+    public async Task A_non_string_id_narrows_without_a_hook()
     {
-        // What genuinely needs the hook: a row whose identity is not a readable STRING Id — here a
-        // numeric key, and in the wild a composite one. The framework has nothing to compare, so it
-        // must say so rather than return every row and let all-or-nothing report a refusal that
-        // reads like a permission problem.
+        // ⚠️ This used to throw and demand a hook. It should not have: the id on the wire IS this
+        // row's Id run through ToString() — that is how the mapper mints it — so matching the same
+        // way makes narrowing agree with the grid by construction. Requiring `string` was an
+        // arbitrary narrowing of a path with no reason to care, and it stranded any row keyed by an
+        // int, a Guid, or a value-object key while its grid rendered perfectly.
         var model = GadgetModel(source: "Custom.GetUnnarrowable", name: "Unnarrowable");
         await using var factory = new SparkEndpointFactory(Store, [model]);
 
-        var act = () => RunAsync(factory, model, ["gadgets/1"]);
+        var result = await RunAsync(factory, model, ["1"]);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
-        ex.Message.Should().Contain("cannot be narrowed to a selection")
-            .And.Contain("RestrictToIds")
-            .And.Contain("UnnarrowableActions");
+        result.Items.Should().ContainSingle().Which.Id.Should().Be("1");
+    }
+
+    [Fact]
+    public async Task A_row_declared_weakly_but_returned_concretely_still_narrows()
+    {
+        // The divergence this closes: the mapper reads Id off the RUNTIME row, narrowing used to
+        // read it off the DECLARED element type. A method declared over an interface therefore
+        // rendered a flawless grid and threw the moment anyone ticked a box. Both now read the
+        // same place.
+        var model = GadgetModel(source: "Custom.GetWeaklyDeclared", name: "WeaklyDeclared");
+        await using var factory = new SparkEndpointFactory(Store, [model]);
+
+        var result = await RunAsync(factory, model, ["gadgets/2"]);
+
+        result.Items.Should().ContainSingle().Which.Id.Should().Be("gadgets/2");
+    }
+
+    [Fact]
+    public async Task The_hook_is_honoured_on_a_DATABASE_sourced_query_too()
+    {
+        // ⚠️ The database path used to pass `actions: null`, so this hook was silently inert on the
+        // framework's MOST COMMON query source — while the throw still told the author to write it.
+        // Following that instruction produced the identical exception on the next run, with nothing
+        // distinguishing "hook missing" from "hook ignored".
+        //
+        // Reachable whenever a projection's Id is not a string: every other read path tolerates that
+        // via ToString(), so the grid renders and the selection only fails at the action.
+        var personType = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels.Person(
+            Guid.Parse("ee55ff66-7788-9900-1122-334455667788"));
+        personType.Queries =
+        [
+            new SparkQuery
+            {
+                Id = Guid.Parse("ff667788-9900-1122-3344-556677889900"),
+                Name = "AllPeopleHooked",
+                Source = "Database.People",
+                EntityType = "Person",
+            },
+        ];
+
+        await SeedAsync(async session =>
+        {
+            await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
+            await session.StoreAsync(new Person { FirstName = "Bob", LastName = "Jones" }, "people/2");
+        });
+
+        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        using var scope = factory.GetService<IServiceScopeFactory>().CreateScope();
+        var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
+
+        PersonActions.RestrictCalls = 0;
+        var result = await executor.ExecuteQueryAsync(
+            personType.Queries[0], restrictToIds: ["people/2"]);
+
+        PersonActions.RestrictCalls.Should().Be(1, "the hook must be consulted on a Database.* source");
+        result.Items.Should().ContainSingle().Which.Id.Should().Be("people/2");
     }
 
     [Fact]
@@ -291,7 +347,41 @@ public sealed class PlainListActions
     ];
 }
 
-/// <summary>Rows the framework cannot match a submitted id against — a non-string key.</summary>
+/// <summary>
+/// Declares the hook for the entity-backed <c>Person</c> type, so a Database.* query can prove the
+/// hook is reached at all. Found by name — <c>{ClrTypeName}Actions</c> on this path.
+/// </summary>
+public sealed class PersonActions(
+    MintPlayer.Spark.Services.IEntityMapper entityMapper,
+    Microsoft.AspNetCore.Http.IHttpContextAccessor httpContextAccessor)
+    : DefaultPersistentObjectActions<Person>(entityMapper, httpContextAccessor)
+{
+    public static int RestrictCalls;
+
+    public object RestrictToIds(object source, IReadOnlyCollection<string> ids)
+    {
+        RestrictCalls++;
+        // Defer to the ordinary shape: the subject here is that the hook RUNS, not what it does.
+        return ((IQueryable<Person>)source).Where(p => p.Id!.In(ids));
+    }
+}
+
+/// <summary>
+/// Declares its rows as an interface while returning concrete ones — the shape whose grid rendered
+/// and whose narrowing threw, before both sides read the id off the same place.
+/// </summary>
+public sealed class WeaklyDeclaredActions
+{
+    public IEnumerable<IHasGadgetId> GetWeaklyDeclared() =>
+    [
+        new GadgetRow("gadgets/1", "Alpha", 100),
+        new GadgetRow("gadgets/2", "Beta", 200),
+    ];
+}
+
+public interface IHasGadgetId { }
+
+/// <summary>A row keyed by something other than a string — now narrowed by its ToString().</summary>
 public sealed record NumericRow(int Id, string Label, int ComputedTotal);
 
-public sealed record GadgetRow(string Id, string Label, int ComputedTotal);
+public sealed record GadgetRow(string Id, string Label, int ComputedTotal) : IHasGadgetId;

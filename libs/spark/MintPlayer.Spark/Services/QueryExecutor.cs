@@ -183,49 +183,25 @@ internal partial class QueryExecutor : IQueryExecutor
         if (actions is not null && ResolveRestrictHook(actions.GetType()) is { } hook)
             return hook.Invoke(actions, [source, ids])!;
 
-        var idProperty = elementType.GetCachedProperty("Id");
-        var hasReadableId = idProperty is not null && idProperty.CanRead
-            && idProperty.PropertyType == typeof(string);
+        var declaredId = elementType.GetCachedProperty("Id");
 
-        // A plain sequence — a List, which is how most composed queries are written — is narrowed
-        // in memory. This used to fall through to the throw below and demand a hook, which was
-        // wrong: nothing about a List makes its ids unfindable, and the first bulk action over any
-        // composed query 500'd as a result. The hook is for rows whose identity is not a readable
-        // `Id`, not for rows that simply arrived eagerly.
-        //
-        // Filtering AFTER the source has produced everything is also the only honest option, and
-        // not merely a fallback: it is what proves the submitted ids were in the query's result at
-        // all. Narrowing at the source would let a caller name rows the query would never have
-        // returned, and the all-or-nothing count check could not tell.
-        if (hasReadableId && source is not IQueryable && source is System.Collections.IEnumerable rows)
-        {
-            var wanted = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
-            var getId = AccessorCache.GetGetter(idProperty!);
-            var kept = (System.Collections.IList)Activator.CreateInstance(
-                typeof(List<>).MakeGenericType(elementType))!;
-
-            foreach (var row in rows)
-            {
-                if (row is not null && getId(row) is string id && wanted.Contains(id))
-                    kept.Add(row);
-            }
-
-            return kept;
-        }
-
-        if (hasReadableId && source is IQueryable)
+        // ── The queryable branch pushes the filter into the provider, and stays string-only.
+        // Not a limitation: RavenDB cannot translate ToString() into RQL, and a document id is a
+        // string by definition, so nothing reachable here needs more.
+        if (declaredId is { CanRead: true } && declaredId.PropertyType == typeof(string)
+            && source is IQueryable)
         {
             var parameter = Expression.Parameter(elementType, "x");
-            var idAccess = Expression.Property(parameter, idProperty);
+            var idAccess = Expression.Property(parameter, declaredId);
+
             // RavenDB and LINQ-to-objects need DIFFERENT expressions for the same idea, and neither
             // one works on the other:
             //
             //   Raven      -> x.Id.In(ids)         — the provider's own marker method
             //   in-memory  -> ids.Contains(x.Id)   — an ordinary instance call
             //
-            // Handing Raven the Contains form fails at query translation ("Could not understand how
-            // to translate value(List<string>)"), and .In() outside a Raven query is a marker with
-            // no runtime meaning. Both failures land at the first restricted run.
+            // Handing Raven the Contains form fails at query translation; .In() outside a Raven
+            // query is a marker with no runtime meaning. Both land at the first restricted run.
             //
             // Contains is an INSTANCE method, so the list is the receiver and not the first
             // argument — the other way round throws "Static method requires null instance".
@@ -259,15 +235,79 @@ internal partial class QueryExecutor : IQueryExecutor
             return whereMethod.Invoke(null, [source, lambda])!;
         }
 
-        throw new InvalidOperationException(
-            $"Query '{query.Name}' cannot be narrowed to a selection. Its rows are '{elementType.Name}', " +
-            $"which has no readable string 'Id' for the framework to match on. That is normal for a row " +
-            $"type that computes its own identity — a composite key, or an id minted per row — so say how " +
-            $"to find those rows again by declaring the hook on '{definition.Name}Actions':\n" +
+        // ── The in-memory branch matches on the row's id AS A STRING, read off the row's RUNTIME
+        // type. Both halves of that matter.
+        //
+        // ToString(), because that is literally how the id on the wire was minted: the mapper does
+        // `Id?.ToString()` and the projector copies it onto the row. So a row keyed by an int or a
+        // Guid renders a perfectly good grid, and comparing the same way it was serialised makes
+        // narrowing agree with it by construction rather than by luck. Requiring `string` here was
+        // an arbitrary narrowing of a path that had no reason to care.
+        //
+        // The RUNTIME type, because the declared one can be weaker: a method declared
+        // `IEnumerable<IRow>` returning concrete rows rendered a flawless grid — the mapper reads
+        // the instance — and then threw on narrowing, which read the interface. The two now read
+        // the same place.
+        //
+        // Filtering after the source produced everything is also the honest semantic and not a
+        // fallback: it is what proves the submitted ids were in the query's result. Narrowing at
+        // the source would let a caller name rows the query never returned, and the all-or-nothing
+        // count could not tell.
+        if (source is not IQueryable && source is System.Collections.IEnumerable rows)
+        {
+            var wanted = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+            var kept = (System.Collections.IList)Activator.CreateInstance(
+                typeof(List<>).MakeGenericType(elementType))!;
+
+            foreach (var row in rows)
+            {
+                if (row is null) continue;
+
+                var rowId = row.GetType().GetCachedProperty("Id");
+                if (rowId is null || !rowId.CanRead)
+                    throw NoIdToMatchOn(query, row.GetType(), definition, actions);
+
+                if (AccessorCache.GetGetter(rowId)(row)?.ToString() is { } id && wanted.Contains(id))
+                    kept.Add(row);
+            }
+
+            return kept;
+        }
+
+        throw NoIdToMatchOn(query, elementType, definition, actions);
+    }
+
+    /// <summary>
+    /// The one message for "this query's rows cannot be matched against the ids the client posted".
+    /// </summary>
+    /// <remarks>
+    /// Reachable only for a row type with no readable <c>Id</c> at all — and such a type is already
+    /// refused, by name, the first time its grid renders (<c>QueryResultProjector.ToItems</c>), so
+    /// in practice nothing gets this far without having been told once already.
+    /// </remarks>
+    private static InvalidOperationException NoIdToMatchOn(
+        SparkQuery query, Type rowType, EntityTypeDefinition definition, object? actions)
+        => new(
+            $"Query '{query.Name}' cannot be narrowed to a selection. Its rows are '{rowType.Name}', " +
+            $"which has no readable 'Id' for the framework to match the submitted ids against. That is " +
+            $"normal for a row type that computes its own identity — a composite key, or an id minted " +
+            $"per row — so say how to find those rows again by declaring the hook on " +
+            $"'{HookHost(definition, actions)}':\n" +
             $"    public object RestrictToIds(object source, IReadOnlyCollection<string> ids)\n" +
             $"Without it, a custom action over a selection from this query cannot resolve its rows and " +
             $"would refuse every invocation.");
-    }
+
+    /// <summary>
+    /// The actions class the resolver ACTUALLY consults, for the message that tells an author where
+    /// to put the hook.
+    /// </summary>
+    /// <remarks>
+    /// An entity-backed query resolves <c>{ClrTypeName}Actions</c> and a composed one
+    /// <c>{ModelTypeName}Actions</c>. Those coincide until a model file renames its type — and
+    /// naming the wrong one sends the author to edit a class the framework never looks at.
+    /// </remarks>
+    private static string HookHost(EntityTypeDefinition definition, object? actions)
+        => actions?.GetType().Name ?? $"{definition.Name}Actions";
 
     /// <summary>The <c>List&lt;string&gt;.Contains</c> the default restriction composes.</summary>
     private static readonly MethodInfo ContainsMethod = typeof(List<string>)
@@ -452,7 +492,15 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (restrictToIds is { Count: > 0 })
         {
-            queryable = RestrictToIds(queryable, sortType, restrictToIds, query, entityTypeDefinition, actions: null);
+            // The actions instance, not null: the hook is documented as THE way to say how a query's
+            // rows are found again, and passing null here made it silently inert on the framework's
+            // most common query source — while the throw below still told the author to write it.
+            // Costs nothing: actions classes are scoped and row security already resolved this one
+            // earlier in the same request, so this is a dictionary lookup behind a guard that only
+            // a custom action's selection reaches.
+            queryable = RestrictToIds(
+                queryable, sortType, restrictToIds, query, entityTypeDefinition,
+                actionsResolver.ResolveForType(entityType));
         }
 
         if (query.SortColumns.Length > 0)
