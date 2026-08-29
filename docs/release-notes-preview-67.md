@@ -154,6 +154,25 @@ Not a disclosure widening: rows carried every attribute regardless of both flags
 release, so it stays strictly narrower than what shipped previously, and per-caller redaction is
 untouched — that nulls values on the row, never on the definition.
 
+## `valueFor` reads a row of any shape
+
+A renderer's `item` arrives in three shapes — a `QueryResultItem` in a query grid, a flat record in
+an AsDetail sub-table, the `PersistentObject` itself on a detail page — and they are genuinely
+different objects rather than variations of one. `valueFor(item, key)` now normalises all three onto
+the same cell, so a renderer reused across a grid and an AsDetail table stops needing a branch:
+
+```ts
+readonly isPrivate = computed(() => valueFor(this.item(), 'IsPrivate')?.value === true);
+```
+
+It derives what each shape expresses differently — a `PersistentObject` reference carries no
+`objectId` because its *value* is the target's id; an AsDetail row keeps its resolved label in a
+side channel. Type the input as `SparkRow`. `isQueryRow` and `isPersistentObject` are exported for
+the cases that genuinely need to know.
+
+Raised by the first consumer, whose own helper's branch count would otherwise have gone **up** after
+this release rather than to zero.
+
 ## A sub-query's action knows which page it was on
 
 A grid rendered on another object's detail page now passes that object to its custom actions, as
@@ -269,4 +288,5 @@ own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no que
 | read attributes off `args.SelectedItems` | read the column value, or materialize the entity via `MaterializeAsync` |
 | have a query whose rows carry synthetic or composite ids | declare `RestrictToIds` on its actions class |
 | have a renderer reading a sibling value off a row | mark that attribute `"showedOn": "Query", "isVisible": false` |
+| hand-wrote a helper branching on the shape of `item` | delete it — `valueFor(item, key)` reads all three shapes |
 | have a renderer whose `rendererOptions` *names* a sibling attribute | mark that attribute too — see the renderer guide |

@@ -436,3 +436,39 @@ reader will see an obvious wasted call, so the comment says why it is not one.
 **Tests:** +9. Ship-vs-draw (3 server, 2 client), composed rows have no default link (3 client), a
 plain sequence needing no hook, and the loud failure narrowed to what genuinely needs one — a row
 keyed by something that is not a readable string `Id`.
+
+---
+
+## M13 — `valueFor` reads a row of any shape
+
+Raised in the second review round and deliberately *not* asked for: pre-existing, orthogonal, and the
+branch was already large. Done anyway, because the framework is in preview and the argument against
+was cost rather than correctness — and because the shape of the complaint was damning. A helper
+shipped in this PR could not be used by the case that most needed it, and the consumer's own
+wrapper's branch count went **up** after #328 rather than to zero.
+
+`item` has three shapes and they are genuinely different objects: a `QueryResultItem` in a query
+grid, the flat record `nestedPoToDisplayRow` builds in an AsDetail sub-table, and a
+`PersistentObject` on a detail page. `valueFor` was typed for the first only.
+
+It now reads all three, normalising onto one cell and deriving what each expresses differently:
+
+- a `PersistentObject` reference has no `objectId` field, because its **value** is the target's id;
+- an AsDetail row keeps its resolved label in the `__sparkBreadcrumbs` side channel, which is
+  populated only for single references — so its presence for a key is what identifies one, the flat
+  record carrying no `dataType` to ask.
+
+`SparkRow`, `isQueryRow` and `isPersistentObject` are exported for the cases that genuinely need to
+know which shape they hold.
+
+⚠️ Shape detection discriminates on the **elements**, not on `Array.isArray` alone. A flat AsDetail
+record may legitimately have a column named `values` holding an array, and mistaking it for a query
+row would silently read the wrong thing rather than fail. Two tests pin exactly that.
+
+**Tests (14).** All three shapes read by name; the cell's `objectId` derived for a reference on each;
+absent keys returning `undefined` rather than a cell with an undefined value; the two collision cases
+above; null-safety.
+
+**Docs.** The renderer guide's example previously hand-rolled this branch — the clearest possible
+sign the framework should own it — and now reads as one call. The three shapes are a table there
+rather than prose, and the release notes carry the migration line: *delete your helper*.

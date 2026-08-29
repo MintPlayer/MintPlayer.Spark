@@ -276,36 +276,31 @@ A renderer that needs **other fields of the same row** (a name cell with an inli
 ```typescript
 export class RepoNameColumnRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
-  item = input<QueryResultItem | Record<string, any>>();
+  item = input<SparkRow>();
 
-  // valueFor returns the CELL ({ key, value, objectId, breadcrumb }), not the bare value --
-  // a reference cell needs its objectId as much as its text, so the cell is what it hands back.
-  isPrivate = computed(() => {
-    const row = this.item();
-    return isQueryRow(row) ? valueFor(row, 'IsPrivate')?.value === true : row?.['IsPrivate'] === true;
-  });
-}
-
-// A grid row has `values`; an AsDetail row is a flat record.
-function isQueryRow(row: unknown): row is QueryResultItem {
-  return Array.isArray((row as QueryResultItem | undefined)?.values);
+  // One call, whatever shape the row is in. valueFor returns the CELL
+  // ({ key, value, objectId, breadcrumb }) rather than the bare value, because a reference cell is
+  // worth as much for its objectId as for its text.
+  isPrivate = computed(() => valueFor(this.item(), 'IsPrivate')?.value === true);
 }
 ```
 
-What `item` is depends on the host:
+`item` has **three shapes**, depending on the host — and `valueFor` reads all three, so a renderer
+does not have to know which one it got:
 
-- **query-list / sub-query grids**: the row, a `QueryResultItem` — `{ id, breadcrumb, values }`,
-  where `values` is a list of `{ key, value, objectId, breadcrumb }`. **Changed in #327**: it used
-  to be a `PersistentObject` with an `attributes` array. Reach into it with the `valueFor(item, key)`
-  helper from `@mintplayer/ng-spark/models` rather than by hand — the shape is a wire contract, not
-  a convenience.
-- **po-detail field**: the full `PersistentObject` being displayed (unchanged — a detail page really
-  does load a document)
-- **AsDetail sub-table cells** (detail and form): the flat row record (which may include the
-  reserved `__sparkBreadcrumbs` key — ignore it)
+| Host | `item` is |
+|---|---|
+| query-list / sub-query grid | a `QueryResultItem` — `{ id, breadcrumb, values }` |
+| po-detail field | the full `PersistentObject` being displayed |
+| AsDetail sub-table cell (detail and form) | a flat row record |
 
-A renderer used in **both** a grid and an AsDetail table sees two different shapes, which is why the
-example above narrows through a helper instead of indexing directly.
+They are genuinely different objects rather than variations of one, which matters because a renderer
+reused across a grid and an AsDetail table sees two of them. `valueFor` normalises all three onto the
+same cell, deriving what each shape expresses differently — a `PersistentObject` reference has no
+`objectId` field, for instance, because its *value* is the target's id.
+
+Type `item` as `SparkRow` and use `valueFor`. Indexing into `values`, `attributes` or the record by
+hand works for exactly one host and fails silently on the others.
 
 **To read a sibling value the grid does not draw**, mark its attribute `"showedOn": "Query",
 "isVisible": false`. It then ships on every row and no column is rendered for it. A value marked
