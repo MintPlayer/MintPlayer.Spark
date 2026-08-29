@@ -22,6 +22,7 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
 | M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` + tests |
 | M10 | Versions + release notes | ✅ done | `c1f47463` |
+| M11 | `CustomActionArgs.SelectedItems` becomes `QueryResultItem[]` | ⬜ next | — |
 
 **Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
 tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
@@ -296,3 +297,71 @@ Independently shippable, and in this PR because the repo's rule is one PR.
 - `docs/release-notes-preview-66.md`.
 - Final full sweep: `nx run-many -t test`, both `--spark-verify-model` and `--spark-verify-security` across
   all four demo apps, then the PR.
+
+---
+
+## M11 — `SelectedItems` becomes `QueryResultItem[]`
+
+The half of the issue's title that M2/M4 did not land. The wire became ids and the resolution became
+one batched load; the **author-facing** type stayed `PersistentObject[]`. Design and rationale in PRD
+**D12**; this is the work.
+
+**Not a performance milestone.** M2 already made the selection one round trip. This changes the shape
+an author sees, and closes the parity gap the issue documented.
+
+### The change
+
+1. `CustomActionArgs.SelectedItems` : `PersistentObject[]` -> `QueryResultItem[]`. `Parent`,
+   `SubmittedParent`, `QueryParent` and `SubmittedSelectedItemIds` are unchanged.
+2. `ExecuteCustomAction` projects the already-loaded, already-redacted rows through
+   `QueryResultProjector` at the boundary. The load itself does not move.
+3. `QueryResultProjector` gains an all-visible-attributes column builder for the action path (PRD
+   D12: reusing the `ShowedOn.Query` filter would silently hide detail-only attributes from actions).
+   `ToItems`'s `queryName` parameter widens to a neutral context string -- its two error messages
+   currently say *"Query '...' produced..."* and would otherwise name a query that was not involved.
+4. `DefaultPersistentObjectActions<T>` gains the materialization hook: `public virtual`,
+   `[NoInterfaceMember]`, called from inside `LoadManyAsync` at the load. **No change to
+   `IPersistentObjectActions<T>`**, so the hand-written-actions tripwire does not fire.
+5. An id-less row from a JSON-only virtual type refuses at the endpoint, naming the type, rather than
+   reaching the projector and becoming a generic 500.
+6. `IDatabaseAccess.GetPersistentObjectsByIdAsync` has exactly one caller. If the selection path
+   moves to a `QueryResultItem`-producing member, replace it rather than leaving dead public surface.
+
+### Three invariants to protect, and the tests that already do
+
+Each fails **silently** if the projection is built the wrong way. Keep these tests exactly as they
+are; if one needs editing to compile, that is a signal to re-read PRD D12 rather than to edit it.
+
+| Invariant | Pinned by |
+|---|---|
+| Short-result refusal compares **loaded** rows against the distinct id count | `A_selection_the_batch_shrinks_is_refused_rather_than_partially_applied` |
+| One batched call carrying all ids, zero singular loads -- i.e. rows are **not** echoed from the client | `The_whole_selection_is_resolved_in_one_batched_call` |
+| Id-less selection refuses the whole request, upstream of the load | `An_id_less_selected_item_refuses_the_whole_request` |
+
+Redaction is the fourth: the projector must consume the **redacted** `PersistentObject`, which is
+what it already does on the query path. Projecting from raw entities bypasses `RedactAsync` and turns
+this into a disclosure bug.
+
+### Migration
+
+- `args.Parent ?? args.SelectedItems.FirstOrDefault()` stops compiling -- `Parent` stays a
+  `PersistentObject`, so the two no longer unify. Coalesce on ids instead:
+  `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id`. Three demo actions, ~3 lines each,
+  and every external consumer using the same idiom. Needs an explicit release-note line.
+- One test assertion reads `SelectedItems[0].Name`; `QueryResultItem` has no `Name`. The property it
+  pins -- server state, not submitted state -- is still worth pinning, restated over `Breadcrumb`.
+
+### Documented limitations (PRD D12)
+
+- **Index-computed columns arrive null.** A selection is a document load, so a value computed inside
+  an index and stored there is on neither the document nor the CLR class. Silent at every step
+  today; the guide must say so.
+- **`Etag` and `Can` are lost.** `QueryResultItem` carries neither. Accepted; recorded so it is a
+  decision rather than a discovery.
+
+### Docs that go stale
+
+`docs/guide-custom-actions.md` states the opposite in as many words -- *"`SelectedItems` holds
+**entities**, not the rows the grid displayed"* -- and both it and `docs/guide-row-security.md` still
+reference a `SubmittedSelectedItems` that #327 already removed. `docs/release-notes-preview-66.md`
+needs the migration line.

@@ -553,6 +553,114 @@ non-PO route must otherwise withhold `Read` and re-implement the link in a custo
 work for the first column, since `cellContent` is projected *inside* the framework's anchor and nested
 anchors are invalid HTML (confirmed verbatim in the template comment).
 
+### D12 — `CustomActionArgs.SelectedItems` becomes `QueryResultItem[]`
+
+The issue's own research recorded the prior art's shape — *"the author-facing entry point is
+`SelectedItems` as row items, with an explicit opt-in to materialize entities"* — and M2/M4
+implemented the wire (`selectedItemIds`) and the batched resolution but left the author-facing type
+as `PersistentObject[]`. This closes that gap.
+
+**The shape.** The client keeps posting ids only. The server keeps doing exactly one batched
+`session.LoadAsync<T>(ids)` through `DefaultPersistentObjectActions<T>.LoadManyAsync`, with
+`[Reference]` includes attached. The resulting rows — already collection-guarded, row-rule-checked
+and **redacted** — are projected at the boundary into `QueryResultItem[]`.
+
+⚠️ **Not echoed from the client.** The prior art accepts the browser's rows, which is why its row
+type carries no integrity token and why its second gate (materialization) is the entire defence.
+Spark's rows are built from the load, so their values are server truth. That difference is the point
+of this design and must not be optimized away.
+
+#### What this does NOT buy
+
+**It is not a performance win.** M2 already made the selection one round trip, independent of
+selection size. Projecting shrinks the *wire*, not the server work: the document is still loaded,
+guarded, rule-checked, mapped and redacted before projection. In particular this is **not** an
+argument for raising `MaxSelectedItems` — that ceiling bounds materialized work, not round trips.
+
+#### Three invariants that must survive verbatim
+
+Each is load-bearing, each is already pinned by a test, and each fails silently if the projection is
+built the wrong way.
+
+1. **The id-less refusal** (`ExecuteCustomAction`) is a pre-check on the submitted ids, upstream of
+   the load. It must not be folded into the projector.
+2. **The short-result refusal** compares the count of **loaded rows** against the caller's *distinct*
+   id count. It means something only because the left side is what the database yielded. Build the
+   projection by zipping submitted ids with loaded rows, or by filling gaps with id-only stubs, and
+   the check silently becomes `n == n` — and a bulk action quietly processes 498 of 500.
+3. **The row gate on the action's own name** must keep deriving its ids from the **loaded** rows.
+   `IRowSecurity.AreAllowedAsync` applies neither the type right nor the collection guard — it is a
+   refinement, never an entry point — so feeding it submitted ids is precisely the misuse its own
+   contract warns about.
+
+#### Redaction decides whether this is safe
+
+`RedactAsync` mutates the mapped `PersistentObject` in place, and the load path already runs it
+before the rows leave. **The projector must therefore consume the redacted `PersistentObject`**,
+which is what it already does on the query path. Projecting from raw entities, or re-mapping after
+the fact, bypasses redaction entirely — that is the one way this change becomes a disclosure bug.
+
+#### What is genuinely lost
+
+- **`Etag` and the `Can` block.** `QueryResultItem` carries neither, by design — but that design is
+  about *client-supplied* rows, and here the row is server-built, so the loss is gratuitous rather
+  than principled. No action reads either today; an action wanting optimistic concurrency loses its
+  only handle. Accepted, and recorded here so it is a decision rather than a discovery.
+- **Index-computed column values.** See below.
+- **Source compatibility** for `args.Parent ?? args.SelectedItems.FirstOrDefault()`, an idiom in all
+  three demo actions and presumably in every consumer. `Parent` stays a `PersistentObject`, so the
+  two no longer unify. The migration is to coalesce on ids:
+  `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id`.
+
+#### ⚠️ Index-computed columns arrive null, unavoidably
+
+A selection is materialized by `session.Load<TEntity>(ids)` — a **document** load. A column whose
+value is computed inside an index (the demo's `OwnerFullName`, produced by a `LoadDocument` in the
+index map and stored there) exists on neither the document nor the CLR class. The model file already
+records this as `"inCollectionType": false`.
+
+The chain is silent at every step: the mapper scaffolds the attribute from the definition, finds no
+CLR property, and skips it deliberately ("attribute may be projection-only"); the projector then
+emits `{ Key, Value = null }`. So an action's rows carry every column the grid showed, and any
+index-only column among them is empty.
+
+**Accepted, not worked around.** The alternative — re-querying the index by id — bypasses the whole
+row-gated pipeline (collection guard, row rule, breadcrumbs, redaction), is subject to indexing lag,
+and can only use the type's *default* index, so it would silently disagree with any query that named
+a different one. Trading a security pipeline for cosmetic completeness on values no consumer reads
+is the wrong trade. Documented in the custom-actions guide instead.
+
+#### The column set: a superset, not the query's
+
+`QueryResultProjector.BuildColumns` keeps only `IsVisible && ShowedOn.Query` attributes. Reusing it
+unchanged would silently hide every detail-only attribute from actions, which can see the full
+attribute set today — a functional regression no test would catch.
+
+So the action path projects over **all visible attributes**, not the query surface. The grid's
+columns remain a subset, values stay keyed by name, and nothing an action can read today stops being
+readable. (Columns are already per-entity-type rather than per-query — `BuildColumns` takes no
+`SparkQuery` — so the query surface was never the authoritative set here anyway.)
+
+#### The materialization hook
+
+`DefaultPersistentObjectActions<T>` gains a `public virtual` hook marked `[NoInterfaceMember]`,
+following `GetDefaultIncludes`, called from inside `LoadManyAsync` at the load itself — the only
+place includes can still be attached.
+
+It stays **off** `IPersistentObjectActions<T>` deliberately. The hook is typed on `T` *and* needs the
+framework-attached session, so a hand-written implementer that inherits nothing could not provide one
+meaningfully: it would be a member that cannot reasonably be implemented from outside the framework,
+which is exactly what the hand-written-actions tripwire exists to prevent. Nothing in
+`IBatchedLoadActions` changes, and that tripwire does not fire.
+
+#### One hazard to decide deliberately
+
+`ToItems` throws on a null or duplicate id. On the action path duplicates are already collapsed and
+ids come from documents — **except for a JSON-only virtual type**, whose rows are composed per id by
+the actions class and are not guaranteed to carry one. Today an id-less composed row reaches an
+action silently; under projection it becomes an unhandled exception and a generic 500 with the cause
+only in the log. It should refuse at the endpoint with a message naming the type instead.
+
 ## Breaking changes
 
 All intentional; preview, so no shims, no `[Obsolete]`, no migration window (per the governing
