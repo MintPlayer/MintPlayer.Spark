@@ -21,7 +21,7 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
 | M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
 | M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` + tests |
-| M10 | Versions + release notes | ✅ done | this commit |
+| M10 | Versions + release notes | ✅ done | `c1f47463` |
 
 **Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
 tree was green before the rewrite started. M4 could not be split — the wire contract changes on both
