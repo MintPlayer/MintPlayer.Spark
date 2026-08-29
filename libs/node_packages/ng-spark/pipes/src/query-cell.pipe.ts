@@ -33,8 +33,10 @@ export class QueryCellValuePipe implements PipeTransform {
     if (cell.breadcrumb) return cell.breadcrumb;
 
     if (column.dataType === 'AsDetail') {
-      // The projection carries a child COUNT rather than the children, so the wording — and its
-      // pluralisation — is decided here, where the language is.
+      // An array cell carries a child COUNT rather than the children, so the wording — and its
+      // pluralisation — is decided here, where the language is. A single-child cell carries the
+      // child object (for a renderer to read) and is displayed by the server-resolved breadcrumb
+      // above, never by stringifying it here.
       if (!column.isArray) return '';
       const count = typeof cell.value === 'number' ? cell.value : 0;
       return count === 0 ? '' : `${count} item${count !== 1 ? 's' : ''}`;
