@@ -30,13 +30,10 @@ public partial class CarCopyAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
-        // Support both detail view (parent) and query view (selectedItems)
-        var source = args.Parent ?? args.SelectedItems.FirstOrDefault();
-        if (source is null)
-            throw new InvalidOperationException("No item selected");
-
-        var carId = source.Id
-            ?? throw new InvalidOperationException("Selected item has no ID");
+        // Coalesce on IDS. A selected row is a QueryResultItem and the parent is a
+        // PersistentObject, so the two deliberately do not unify: a row is not a document.
+        var carId = args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id
+            ?? throw new InvalidOperationException("No item selected");
 
         var car = await dbAccess.GetDocumentAsync<Car>(carId);
         if (car == null)
@@ -60,7 +57,8 @@ public partial class CarCopyAction : SparkCustomAction
 Key points:
 - Use `[Inject]` for dependency injection (requires `partial` class)
 - `args.Parent` is populated when invoked from a detail page
-- `args.SelectedItems` is populated when invoked from a query list (contains the selected rows)
+- `args.SelectedItems` is populated when invoked from a query list -- the rows the grid had,
+  as `QueryResultItem`s. Call `MaterializeAsync` when you need the entity behind a row
 - Use `IDatabaseAccess` (or your own services) for data operations
 - Throw exceptions for errors -- they are caught and returned as 500 responses
 
@@ -315,18 +313,20 @@ See the Fleet demo app for a working example:
 - `MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs` -- list endpoint
 - `MintPlayer.Spark/Endpoints/Actions/ExecuteCustomAction.cs` -- execute endpoint
 
-## Row-level security: server-loaded `Parent` / `SelectedItems` (#236)
+## Row-level security: nothing an action receives came from the browser (#236, #327)
 
-`CustomActionArgs.Parent` and `CustomActionArgs.SelectedItems` are **server-loaded and row-checked**. The framework re-resolves the ids the client named through the same row-gated read path as every other load before invoking your action:
+`CustomActionArgs.Parent` and `CustomActionArgs.SelectedItems` are both produced **server-side** from
+the ids the client named — the parent through the row-gated read path, the selection by re-running
+its query (#327). Neither is ever the object the browser posted:
 
 - an id the caller may not see (or that does not exist) fails the whole request with **404** -- your action is never invoked, and denial is indistinguishable from not-found;
-- the entities your action receives are the **current server state**, not whatever the client typed;
+- what your action receives is the **current server state**, not whatever the client typed;
 - the submitted parent remains available as `SubmittedParent` for actions that need edited, possibly unsaved values -- treat it as untrusted input;
 - a parent submitted **without an id** (unsaved form state) is not resolved: `Parent` is `null` and the submitted values are in `SubmittedParent`.
 
 **There is no `SubmittedSelectedItems`, by design (#327).** A selected row is named by an **id** and
 nothing else; `SubmittedSelectedItemIds` carries those raw ids, and they are rarely what you want,
-since `SelectedItems` is the same list resolved and row-checked. There is no submitted-object form
+since `SelectedItems` is what those ids resolved to. There is no submitted-object form
 of a selection because a row was never a document: the grid renders a projection with no attribute
 metadata, no `can` block and no etag, so there is nothing meaningful a client could submit back.
 An action that wants edited values wants a *detail form*, which is `SubmittedParent`.
@@ -370,7 +370,7 @@ A grid rendered on another object's detail page — a company's Cars tab — inv
 
 | | What it is | When it is set |
 |---|---|---|
-| `SelectedItems` | The ticked rows, re-loaded and row-checked | Any query invocation |
+| `SelectedItems` | The ticked rows, re-materialized by re-running the query | Any query invocation |
 | `QueryParent` | The object whose page the grid was on | Sub-query only |
 | `Parent` | An object **of this action's own type** | Detail-page invocation only |
 
@@ -400,7 +400,10 @@ there is one and keeps each car's existing owner when there is not.
 the row rule -- the whole request is refused. An action never silently receives 498 of the 500 rows
 the user selected.
 
-**Migration note (breaking):** actions that relied on client-supplied state arriving in
-`Parent`/`SelectedItems` must switch those reads to `SubmittedParent`. Actions that only used
-`Parent`/`SelectedItems` to obtain an id and re-load the entity can skip the reload -- the entity
-they receive already passed the row gate.
+**Migration note (breaking).** Two changes, both from #327:
+
+- Actions that relied on client-supplied state arriving in `Parent` must read `SubmittedParent`.
+- `SelectedItems` is `QueryResultItem[]`, so `args.Parent ?? args.SelectedItems.FirstOrDefault()`
+  no longer compiles -- `Parent` is a `PersistentObject` and the two do not unify. Coalesce on ids:
+  `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id`. To act on the entity behind a row,
+  call `MaterializeAsync`.

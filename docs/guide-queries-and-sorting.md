@@ -743,6 +743,12 @@ Row-level security is **not** part of what transfers. Whether this caller may se
 different question from how rows are presented, and not one a method opts out of by choosing a
 return type.
 
+⚠️ **One consequence for custom actions.** A selection is normally re-materialized by re-running its
+query narrowed to the selected ids, which is what keeps index-computed columns populated. A
+`SparkQueryPage<T>` cannot be asked for "the page containing these ids", so selections from such a
+query fall back to a document load and **lose index-computed values**. Same for a streaming query.
+See [custom actions](guide-custom-actions.md).
+
 ## Searching
 
 A query list's search box sends its term as `?search=`, and the server pushes it into RavenDB as a
