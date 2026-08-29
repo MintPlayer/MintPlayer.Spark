@@ -10,7 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.6.0" />
 		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
 			<PrivateAssets>all</PrivateAssets>
