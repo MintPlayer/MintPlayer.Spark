@@ -129,6 +129,31 @@ never be skipped by a bulk path.
 
 `ExecuteCustomAction` **refuses a short result** rather than acting on 498 of 500 selected rows.
 
+## `showedOn` decides the wire; `isVisible` decides the drawing
+
+A column is on the query wire when its attribute's `showedOn` includes `Query`. `isVisible` no longer
+filters server-side — it is carried to the client and applied there.
+
+That split lets an app **ship a value without giving it a column**:
+
+```jsonc
+{ "name": "IsPrivate", "dataType": "boolean", "showedOn": "Query", "isVisible": false }
+```
+
+Every row then carries `IsPrivate`, no column is drawn for it, and a custom renderer on a *different*
+column can read it — a lock glyph beside a name, without spending a column on the fact. Previously
+the only way to get a value to a renderer was to make it a visible column, which is exactly the
+layout decision such an app is avoiding.
+
+It also removes an inconsistency that was introduced rather than inherited: **the sort allow-list
+checks `showedOn` alone**, so filtering on both flags made an attribute marked
+`"showedOn": "Query", "isVisible": false` *sortable with no column* — the kind of thing that reads as
+a bug report from a user who cannot possibly explain it.
+
+Not a disclosure widening: rows carried every attribute regardless of both flags before this
+release, so it stays strictly narrower than what shipped previously, and per-caller redaction is
+untouched — that nulls values on the row, never on the definition.
+
 ## A sub-query's action knows which page it was on
 
 A grid rendered on another object's detail page now passes that object to its custom actions, as
@@ -243,3 +268,5 @@ own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no que
 | wrote `args.Parent ?? args.SelectedItems.FirstOrDefault()` | coalesce on ids: `args.Parent?.Id ?? args.SelectedItems.FirstOrDefault()?.Id` |
 | read attributes off `args.SelectedItems` | read the column value, or materialize the entity via `MaterializeAsync` |
 | have a query whose rows carry synthetic or composite ids | declare `RestrictToIds` on its actions class |
+| have a renderer reading a sibling value off a row | mark that attribute `"showedOn": "Query", "isVisible": false` |
+| have a renderer whose `rendererOptions` *names* a sibling attribute | mark that attribute too — see the renderer guide |

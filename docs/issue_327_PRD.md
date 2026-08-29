@@ -791,6 +791,17 @@ direction). Marked ✅ where already landed on the branch.
 - **`[SparkIgnore]`/`[SparkView]` marker classes.** Rejected in §4A of the issue and previously rejected by
   this repo in #324; the absence of `clrType` is already the better declaration.
 - **A full rights lattice.** Out of scope here; `Read ⇒ Query` shipped in #325 and #326 tracks the warning.
+- **Unifying the three shapes `item` can take.** A renderer's `item` is a `QueryResultItem` in a query
+  grid, a flat `Record<string, any>` in an AsDetail sub-table, and a `PersistentObject` on a detail
+  page. `valueFor(item, key)` is typed for the first only, so a renderer reused across a grid and an
+  AsDetail table cannot use it directly and every app wraps it in a helper that branches on shape.
+  Raised in review by the consuming app, which has exactly such a helper and whose branch count goes
+  *up* after this PR rather than to zero.
+  **Deliberately deferred, and the reasoning is theirs:** it predates this work, it is orthogonal to
+  the row/persistent-object separation, and this branch is already large. Better evidence exists
+  after a real migration than before one — what a unified shape must carry is a question their
+  helper can answer from experience rather than either side speculating. To be filed separately with
+  that helper as the worked example.
 - **A post-construction row hook (the `QueryExecuted` equivalent).** Named, not built. The prior art runs
   one after items are constructed, and it is how conditional row presentation works there — an author
   stamps a hint onto a row and the grid reads it. Spark has no such seam, which is why `TypeHints` has a

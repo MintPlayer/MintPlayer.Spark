@@ -312,6 +312,22 @@ example above narrows through a helper instead of indexing directly.
 `"showedOn": "PersistentObject"` is not on the query wire at all and `valueFor` returns `undefined`
 — that is the failure to check first when a renderer's sibling read comes back empty.
 
+⚠️ **An option that names a sibling attribute only works if that attribute is on the query surface.**
+A configurable renderer — one whose `rendererOptions` carry the *name* of another attribute —
+splits the declaration in two: the renderer is written once, and the attribute it needs is chosen
+per call site in the model JSON.
+
+```jsonc
+{ "renderer": "short-sha", "rendererOptions": { "titleAttribute": "Message" } }
+```
+
+Whoever writes that must also mark `Message` as `"showedOn": "Query"`. Forget it and the value is
+simply absent — the renderer is fine, the model is fine, the tooltip just never appears.
+
+The framework cannot check this: it has no way to know which option keys name attributes rather than
+holding ordinary configuration. So it is on the author, and it is worth a second look precisely on
+configurable renderers, where the two declarations are furthest apart.
+
 ## Using `rendererOptions`
 
 Options are passed from the model JSON as-is. Access them in your component:
