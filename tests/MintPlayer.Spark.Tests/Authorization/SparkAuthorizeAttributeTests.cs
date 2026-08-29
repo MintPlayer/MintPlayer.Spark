@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Tests.Authorization;
@@ -52,7 +53,28 @@ public class SparkAuthorizeAttributeTests
             => Task.FromResult<IEnumerable<string>>(groups);
     }
 
-    private static async Task<IHost> StartAsync(IAccessControl accessControl, IGroupMembershipProvider? groups = null)
+    /// <summary>
+    /// A security.json whose <c>wellKnown</c> block names one group as <c>authenticated</c>.
+    /// </summary>
+    private sealed class StubSecurityLoader(string groupId, string displayName) : ISecurityConfigurationLoader
+    {
+        public SecurityConfiguration GetConfiguration() => new()
+        {
+            Groups = { [groupId] = TranslatedString.Create(displayName) },
+            WellKnown = new Dictionary<string, string> { [SparkWellKnownGroups.Authenticated] = groupId },
+        };
+
+        public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds) => RightsDecision.None;
+        public void InvalidateCache() { }
+    }
+
+    private const string WellKnownGroupId = "a1b2c3d4-0000-0000-0000-00000000000f";
+    private const string WellKnownGroupName = "Signed-in users";
+
+    private static async Task<IHost> StartAsync(
+        IAccessControl accessControl,
+        IGroupMembershipProvider? groups = null,
+        ISecurityConfigurationLoader? securityLoader = null)
         => await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
@@ -66,6 +88,8 @@ public class SparkAuthorizeAttributeTests
                     services.AddScoped(_ => accessControl);
                     if (groups is not null)
                         services.AddScoped(_ => groups);
+                    if (securityLoader is not null)
+                        services.AddScoped(_ => securityLoader);
                 })
                 .Configure(app =>
                 {
@@ -83,6 +107,14 @@ public class SparkAuthorizeAttributeTests
                         endpoints.MapGet("/anonymous", () => Results.Ok())
                             .RequireAuthorization(new SparkAuthorizeAttribute("Read", "Person"))
                             .AllowAnonymous();
+
+                        // The two ways an author would name a well-known group: by the id
+                        // security.json declares, and by the display name that id resolves to.
+                        endpoints.MapGet("/wellknown-by-id", () => Results.Ok())
+                            .RequireAuthorization(new SparkAuthorizeAttribute { Group = WellKnownGroupId });
+
+                        endpoints.MapGet("/wellknown-by-name", () => Results.Ok())
+                            .RequireAuthorization(new SparkAuthorizeAttribute { Group = WellKnownGroupName });
                     });
                 }))
             .StartAsync();
@@ -159,6 +191,71 @@ public class SparkAuthorizeAttributeTests
         using var host = await StartAsync(new StubAccessControl());
 
         var response = await host.GetTestClient().GetAsync("/anonymous");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ----------------------------------------------------------------------------------
+    // #327 §9.4 — a well-known group cannot be demanded through the group form
+    // ----------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Naming_the_authenticated_group_by_id_throws_rather_than_denying_forever()
+    {
+        // Well-known ids are decided from authentication state and deliberately excluded from
+        // claim-derived membership, so this requirement could never be satisfied. Left as a
+        // refusal it produced a 403 indistinguishable from an ordinary one, on an attribute that
+        // reads as "signed-in users may do this" — a permanent silent lockout.
+        using var host = await StartAsync(
+            new StubAccessControl(),
+            new StubGroups("Administrators"),
+            new StubSecurityLoader(WellKnownGroupId, WellKnownGroupName));
+
+        var act = () => host.GetTestClient().GetAsync("/wellknown-by-id");
+
+        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
+        ex.Which.Message.Should().Contain("authenticated").And.Contain("[SparkAuthorize(");
+    }
+
+    [Fact]
+    public async Task Naming_the_authenticated_group_by_its_display_name_throws_too()
+    {
+        // An author is far likelier to write the readable name than the GUID, so matching only the
+        // id would leave the common spelling of the mistake undetected.
+        using var host = await StartAsync(
+            new StubAccessControl(),
+            new StubGroups("Administrators"),
+            new StubSecurityLoader(WellKnownGroupId, WellKnownGroupName));
+
+        var act = () => host.GetTestClient().GetAsync("/wellknown-by-name");
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task An_ordinary_group_is_unaffected_by_the_well_known_check()
+    {
+        // The guard must not fire on the normal case: /administrators names a group that is not
+        // declared well-known, and still authorizes exactly as before.
+        using var host = await StartAsync(
+            new StubAccessControl(),
+            new StubGroups("Administrators"),
+            new StubSecurityLoader(WellKnownGroupId, WellKnownGroupName));
+
+        var response = await host.GetTestClient().GetAsync("/administrators");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task With_no_security_configuration_resolvable_the_group_form_still_works()
+    {
+        // The check resolves ISecurityConfigurationLoader optionally: outside a Spark-configured
+        // host there is no wellKnown block to contradict, and the attribute must not start
+        // throwing merely because the loader is absent.
+        using var host = await StartAsync(new StubAccessControl(), new StubGroups("Administrators"));
+
+        var response = await host.GetTestClient().GetAsync("/administrators");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }

@@ -290,6 +290,10 @@ describe('InputTypePipe', () => {
     ['color', 'color'],
     ['string', 'text'],
     ['unknown-type', 'text'],
+    // #327 §9.1. Both hold a URL, so both get the browser's url validation and keyboard. `image`
+    // is a LINK to an image, not an upload — the value is still a string the author types.
+    ['url', 'url'],
+    ['image', 'url'],
   ])('maps %s → %s', (input, expected) => {
     expect(pipe.transform(input)).toBe(expected);
   });

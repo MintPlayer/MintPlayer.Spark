@@ -312,4 +312,83 @@ describe('SparkQueryGridComponent', () => {
       expect(inputs['value']).toBe('Alice');
     });
   });
+
+  describe('rowRoute (#327 §9.2)', () => {
+    // rowRouteFor is protected; TypeScript's protection is compile-time only, and reaching it
+    // directly is what lets these pin the RULE rather than bs-datatable's rendering.
+    const routeFor = (c: SparkQueryGridComponent, row: QueryResultItem) =>
+      (c as any).rowRouteFor(row) as unknown[] | null;
+
+    const row = { id: 'people/1', values: [] } as QueryResultItem;
+
+    it(`defaults to the row's own detail page`, async () => {
+      const { c } = await setup();
+
+      expect(routeFor(c, row)).toEqual(['/po', c.entityType()?.alias ?? c.entityType()?.id, 'people/1']);
+    });
+
+    it(`uses the host's function when one is supplied`, async () => {
+      const { c } = await setup({}, { rowRoute: (r: QueryResultItem) => ['/custom', r.id] });
+
+      expect(routeFor(c, row)).toEqual(['/custom', 'people/1']);
+    });
+
+    it('suppresses the link for a row the function returns null for', async () => {
+      // A grid may mix rows that have a destination with rows that do not — a composed grid
+      // listing collections, say, where only some map to a page.
+      const { c } = await setup({}, { rowRoute: () => null });
+
+      expect(routeFor(c, row)).toBeNull();
+    });
+
+    it('is consulted per row, not once for the grid', async () => {
+      const seen: string[] = [];
+      const { c } = await setup({}, { rowRoute: (r: QueryResultItem) => { seen.push(r.id); return ['/x', r.id]; } });
+
+      seen.length = 0;   // rendering already called it; the subject here is the per-row call
+      routeFor(c, { id: 'people/1', values: [] } as QueryResultItem);
+      routeFor(c, { id: 'people/2', values: [] } as QueryResultItem);
+
+      expect(seen).toEqual(['people/1', 'people/2']);
+    });
+
+    /**
+     * ⚠️ The one that matters. `rowRoute` replaces the DESTINATION; `canRead()` is what decides
+     * whether any link renders. A host must not be able to hand itself a link to a row the rights
+     * model withheld, so the gate is asserted where it lives — in the template's own condition,
+     * ahead of the call.
+     */
+    /**
+     * ⚠️ The one that matters: `rowRoute` replaces the DESTINATION, `canRead()` is the gate.
+     *
+     * Asserted through the CALL rather than the rendered anchor. `bs-datatable` is a Lit component
+     * and renders no row anchors under jsdom, so a `querySelector('a')` assertion here passes
+     * whether the gate works or not — the kind of green that means nothing. The template condition
+     * is `first && canRead() && rowRouteFor(row)`, so short-circuiting is observable: with Read
+     * withheld the function is never reached at all.
+     */
+    it('is never even consulted when Read is withheld', async () => {
+      const asked: string[] = [];
+      const { fixture, c } = await setup(
+        { getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: false, canCreate: false, canEdit: false, canDelete: false }) },
+        { data: [{ id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] }], columns: sampleColumns,
+          rowRoute: (r: QueryResultItem) => { asked.push(r.id); return ['/anywhere']; } });
+
+      expect(c.canRead()).toBe(false);
+      expect(asked).toEqual([]);
+      void fixture;
+    });
+
+    it('IS consulted once Read is granted — so the test above is not vacuous', async () => {
+      // The control. Same fixture, same bound rows, Read granted: the function is reached. Without
+      // this, the assertion above would keep passing if the row template stopped rendering at all.
+      const asked: string[] = [];
+      await setup(
+        { getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: false, canEdit: false, canDelete: false }) },
+        { data: [{ id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] }], columns: sampleColumns,
+          rowRoute: (r: QueryResultItem) => { asked.push(r.id); return ['/custom', r.id]; } });
+
+      expect(asked).toContain('people/1');
+    });
+  });
 });

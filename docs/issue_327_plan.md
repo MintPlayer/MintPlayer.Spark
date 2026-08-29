@@ -20,7 +20,7 @@ Status as of the latest commit on `feat/issue-327-query-result-item`.
 | M6 | Every silent bail becomes loud | ✅ done | folded into M1/M3/M4/M5 + `be073176` |
 | M7 | `CancellationToken` through `IQueryExecutor` | ✅ done | `be073176` |
 | M8 | Docs + demo (DemoApp `StartPage` gains a composed query) | ✅ done | `637daeab` |
-| M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` |
+| M9 | The additive asks from issue §9 | ✅ done | `ce53a6a4` + tests |
 | M10 | Versions + release notes | ✅ done | this commit |
 
 **Sequencing intent (held):** M1–M3 were correct and shippable on their own and landed first, so the
@@ -30,7 +30,9 @@ are only green together. M5 rides on M4's seams. M6 is folded into whichever mil
 site rather than being a separate sweep, except the startup/verify diagnostics, which land with M5.
 
 **Test discipline:** the full suite runs once at the end (repo convention), with type-checks,
-targeted suites and the AOT library build in between. Both halves of M4 were verified against the
+targeted suites and the AOT library build in between. ⚠️ M9 initially shipped with **no tests at
+all** — caught by auditing coverage before handover rather than by anything failing, since untested
+code does not go red. Backfilled to 41 tests across the six additions. Both halves of M4 were verified against the
 full 1795-test server suite and the 330-test client suite before commit, because a wire change has no
 smaller safe unit.
 

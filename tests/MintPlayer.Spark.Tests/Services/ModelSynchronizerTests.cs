@@ -212,29 +212,63 @@ public sealed class ModelSynchronizerTests : IDisposable
         file.PersistentObject.Attributes.Single(a => a.Name == "Steps").IsSortable.Should().BeTrue();
     }
 
-    [Fact]
-    public void MultiLineString_dataType_is_preserved_on_re_synchronize()
+    /// <summary>
+    /// A CLR <c>string</c> property can be a paragraph, a link, or the address of an image, and the
+    /// type says nothing about which — so these are hand-authored and must survive re-synchronize.
+    /// <c>MultiLineString</c> was a one-off condition in the synchronizer; #327 §9.1 added
+    /// <c>image</c> and <c>url</c>, and the list moved to <c>SparkStringPresentations</c> so a
+    /// second hard-coded name could not start disagreeing with what the client renders.
+    /// </summary>
+    [Theory]
+    [InlineData("MultiLineString")]
+    [InlineData("image")]
+    [InlineData("url")]
+    public void A_string_presentation_override_is_preserved_on_re_synchronize(string presentation)
     {
         var ctx = typeof(OrderedContext);
         var sync = CreateSynchronizer();
 
         sync.SynchronizeModels(ctx);
 
-        // Hand-edit: promote the plain string "Name" attribute to a MultiLineString (textarea) presentation.
+        // Hand-edit: promote the plain string "Name" attribute to the presentation under test.
         var path = ModelFile("MS_OrderedParent");
-        var tampered = System.Text.RegularExpressions.Regex.Replace(
-            File.ReadAllText(path),
-            "(\"name\": \"Name\".*?\"dataType\": )\"string\"",
-            "$1\"MultiLineString\"",
-            System.Text.RegularExpressions.RegexOptions.Singleline);
-        File.WriteAllText(path, tampered);
+        File.WriteAllText(path, RetypeNameAttribute(File.ReadAllText(path), presentation));
 
         sync.SynchronizeModels(ctx);
 
         var file = Read<EntityTypeFile>(path);
         file.PersistentObject.Attributes.Single(a => a.Name == "Name").DataType
-            .Should().Be("MultiLineString", "a hand-set MultiLineString is a presentation override the synchronizer preserves across re-sync");
+            .Should().Be(presentation,
+                "a hand-set presentation override is preserved across re-sync — the CLR shape cannot express it");
     }
+
+    [Fact]
+    public void Every_declared_string_presentation_is_covered_by_the_theory_above()
+    {
+        // A tripwire, not a tautology: adding a fourth presentation to SparkStringPresentations
+        // without a matching InlineData would ship an override the synchronizer silently resets on
+        // the next sync, and nothing else in the suite would notice.
+        SparkStringPresentations.All.Should().BeEquivalentTo(["MultiLineString", "image", "url"]);
+    }
+
+    [Fact]
+    public void A_presentation_override_is_dropped_when_the_property_stops_being_a_string()
+    {
+        // The other half of the rule. Preservation is conditional on the CLR shape still being a
+        // string; a hint describing something that is no longer true is worse than no hint, and it
+        // is part of the structural hash, so verification would go on confirming the stale value.
+        SparkStringPresentations.Preserves("image", "string").Should().BeTrue();
+        SparkStringPresentations.Preserves("image", "datetime").Should().BeFalse();
+        SparkStringPresentations.Preserves("Reference", "string").Should().BeFalse("only presentation overrides survive");
+        SparkStringPresentations.Preserves(null, "string").Should().BeFalse();
+    }
+
+    private static string RetypeNameAttribute(string json, string dataType)
+        => System.Text.RegularExpressions.Regex.Replace(
+            json,
+            "(\"name\": \"Name\".*?\"dataType\": )\"string\"",
+            $"$1\"{dataType}\"",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
 
     [Fact]
     public void Synthesizes_a_default_breadcrumb_from_the_first_attribute_when_none_authored()
