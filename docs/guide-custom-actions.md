@@ -357,6 +357,19 @@ public object RestrictToIds(object source, IReadOnlyCollection<string> ids)
 Without it, such a query **throws** naming this hook, rather than returning nothing and letting the
 all-or-nothing rule report a refusal that reads like a permission problem.
 
+⚠️ **Where the hook has to live differs by type, and getting it wrong is silent.**
+
+- **Entity-backed type** — the hook must be on the class that *is* the type's actions class, i.e. one
+  implementing `IPersistentObjectActions<T>` (normally by deriving from
+  `DefaultPersistentObjectActions<T>`). A standalone `{Name}Actions` carrying only the hook is
+  **skipped**: the resolver requires the interface, falls back to the default actions, and your hook
+  is never consulted — with no error.
+- **Composed type** (no `clrType`) — any class named `{Name}Actions` is used, since there is no
+  entity to close the interface over.
+
+Rarely needed at all now: a readable `Id` of any type narrows without a hook, matched by its
+`ToString()` — the same value the row id on the wire was minted from.
+
 ### Three shapes fall back to a document load
 
 A query owning its own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no query
