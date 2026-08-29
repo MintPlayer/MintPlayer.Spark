@@ -32,10 +32,12 @@ export function rendererValue(attr: PersistentObjectAttribute | undefined): any 
 /**
  * The renderer-facing value of a query-result cell.
  *
- * A grid row carries no nested objects to fall back to — a projection is flat by construction —
- * so this is deliberately not the same function as {@link rendererValue}. Keeping them separate
- * is what stops a renderer silently receiving `undefined` because it was written against the
- * attribute shape.
+ * A cell is a single channel: whatever a renderer needs is already on `value` — for a single-child
+ * AsDetail column that is the nested PersistentObject itself, put there by the server so this
+ * matches what {@link rendererValue} falls through to on a detail page. There is nothing to fall
+ * back to, which is why this is deliberately not the same function: keeping them separate is what
+ * stops a renderer silently receiving `undefined` because it was written against the attribute
+ * shape's `object` / `objects` fields, which a row does not carry.
  */
 export function cellValue(value: QueryResultItemValue | undefined): any {
   return value?.value;

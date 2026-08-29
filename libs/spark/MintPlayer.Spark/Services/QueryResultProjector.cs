@@ -121,16 +121,19 @@ internal static class QueryResultProjector
             return new QueryResultItemValue { Key = column.Name };
 
         // An AsDetail column has no flat value by construction — the mapper nulls it and puts the
-        // nested object graph on Object/Objects, which a projection deliberately does not carry.
-        // Rather than render an empty cell where a count used to be, project the two facts a grid
-        // can actually use: how many children (data, so the client owns the wording and its
-        // pluralisation) and, for a single child, the breadcrumb the server already resolved.
+        // nested object graph on Object/Objects. An ARRAY column projects to the one fact a grid can
+        // use without carrying every child: how many (data, so the client owns the wording and its
+        // pluralisation). A SINGLE child carries the child itself, because a custom renderer on such
+        // a column is documented to receive the nested PersistentObject — the same value it gets on
+        // a detail page — and nothing else can stand in for it. Sending null there (#329) painted
+        // every such column blank with no error. A rendererless cell is unaffected: it prints
+        // Breadcrumb below, which the client's cell pipe tests before it ever looks at Value.
         if (attribute is PersistentObjectAttributeAsDetail asDetail)
         {
             return new QueryResultItemValue
             {
                 Key = column.Name,
-                Value = column.IsArray ? asDetail.Objects?.Count ?? 0 : null,
+                Value = column.IsArray ? asDetail.Objects?.Count ?? 0 : asDetail.Object,
                 Breadcrumb = asDetail.Object?.Breadcrumb ?? asDetail.Breadcrumb,
             };
         }

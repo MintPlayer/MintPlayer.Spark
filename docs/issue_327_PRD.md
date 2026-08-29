@@ -549,6 +549,12 @@ render an empty cell where a count used to be, the projector emits the two facts
 child **count** (data, so the client owns the wording and its pluralisation) and, for a single child,
 the breadcrumb the server already resolved.
 
+> **Amended by #329.** The paragraph above covered the plain-text cell and missed the custom-renderer
+> cell: a renderer on a grid is handed the cell's `value` and nothing else, so nulling it painted
+> every single-child `AsDetail` column blank. A single child now projects the nested
+> `PersistentObject` as the value — the same value the detail path hands a renderer — with the
+> breadcrumb still beside it for rendererless cells. The array branch is unchanged.
+
 ### D11 — `image` / `url` data types, and `rowRoute`
 
 `GetDataType` gains `"image"` and `"url"`. On the client both need branches in
