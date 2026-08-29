@@ -467,6 +467,11 @@ keys lower-cased once at the boundary. No registry and no validation — that op
 its own keys with zero framework change. Server-consumed keys are documented; everything else is passed
 through to the client untouched.
 
+⚠️ **The transport shipped; the authoring surface did not.** Nothing populates `TypeHints` today and no
+author hook can: the projector never sets it, and there is no post-construction seam where an app could.
+So "an app adds its own keys with zero framework change" is, as of this PR, aspirational. The missing
+piece is a hook that runs after items are built — see *Out of scope*.
+
 ### D6 — Every silent bail becomes loud
 
 The nine `([], false)` returns and ten further silent degradations (F15) become either a thrown
@@ -661,14 +666,36 @@ Genuinely lost, and recorded so it is a decision rather than a discovery: **`Eta
 block.** `QueryResultItem` carries neither. No action reads either today; one wanting optimistic
 concurrency uses the hook.
 
-#### The materialization hook
+#### Two hooks, and why the second is not optional
 
-`DefaultPersistentObjectActions<T>` gains a `public virtual` hook marked `[NoInterfaceMember]`,
-following `GetDefaultIncludes`, called from inside `LoadManyAsync` at the load itself — the only
-place `[Reference]` includes can still be attached. It is what an action calls to turn selected rows
-into entities, and what the fallback paths use internally.
+Both live on `DefaultPersistentObjectActions<T>` as `public virtual` members marked
+`[NoInterfaceMember]`, following `GetDefaultIncludes`.
 
-It stays **off** `IPersistentObjectActions<T>` deliberately. The hook is typed on `T` *and* needs the
+**1. Restrict a source to a set of row ids.** This is what makes re-execution work at all, and the
+default — filter where the row's id is in the set — is right only when **a row's id is a document
+id**.
+
+It frequently is not. A composed query mints its own identity: this PR's own demo returns
+`new CollectionRow("collections/people", …)`, and composite keys (`"{a}|{b}"`, split apart again
+inside the action) are a normal shape in the prior art's estate. For any such query the default
+restriction matches nothing, the re-execution returns zero rows, and the all-or-nothing rule turns
+that into a refusal — so **the action simply stops working, with a refusal that reads like a
+permission problem.**
+
+That is precisely the class of silent failure the rest of this work converts into loud ones, so the
+hook is a correctness requirement rather than an extension point. An author whose rows carry
+synthetic identity says here how to find them again.
+
+⚠️ It restricts, it never widens. The framework applies its own gates around the result regardless,
+and the all-or-nothing comparison still holds: a hook that returns more rows than were asked for, or
+different ones, fails that check rather than being trusted.
+
+**2. Materialize rows into entities.** The `GetEntities` equivalent — what an action calls when it
+needs the entity rather than the row, and what the fallback paths use internally. Called from inside
+`LoadManyAsync` at the load itself, the only place `[Reference]` includes can still be attached, and
+batched rather than one load per row.
+
+Both stay **off** `IPersistentObjectActions<T>` deliberately. They are typed on `T` *and* need the
 framework-attached session, so a hand-written implementer that inherits nothing could not provide one
 meaningfully — a member that cannot reasonably be implemented from outside the framework is exactly
 what the hand-written-actions tripwire exists to prevent. Nothing in `IBatchedLoadActions` changes,
@@ -764,6 +791,12 @@ direction). Marked ✅ where already landed on the branch.
 - **`[SparkIgnore]`/`[SparkView]` marker classes.** Rejected in §4A of the issue and previously rejected by
   this repo in #324; the absence of `clrType` is already the better declaration.
 - **A full rights lattice.** Out of scope here; `Read ⇒ Query` shipped in #325 and #326 tracks the warning.
+- **A post-construction row hook (the `QueryExecuted` equivalent).** Named, not built. The prior art runs
+  one after items are constructed, and it is how conditional row presentation works there — an author
+  stamps a hint onto a row and the grid reads it. Spark has no such seam, which is why `TypeHints` has a
+  transport and no producer (D5). It is the natural companion to composed queries and will be asked for
+  first once they land; folding it into this PR would widen a change that is already wide. **Anyone
+  reading D5 and assuming type hints are usable should read this line first.**
 
 ## Spikes
 

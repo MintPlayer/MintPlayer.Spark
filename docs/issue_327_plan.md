@@ -333,9 +333,16 @@ is the only thing that produces real rows for a composed type; on its own it dec
    `SparkQueryPage<T>` (the author owns paging), a streaming query (its method shape is not a custom
    query), and a request carrying no query id. All three are decided from the resolved method
    *before* invocation, so this is a branch, not a failed attempt.
-6. `DefaultPersistentObjectActions<T>` gains the materialization hook: `public virtual`,
-   `[NoInterfaceMember]`, called from inside `LoadManyAsync` at the load. **No change to
-   `IPersistentObjectActions<T>`**, so the hand-written-actions tripwire does not fire.
+6. `DefaultPersistentObjectActions<T>` gains **two** hooks, both `public virtual` and
+   `[NoInterfaceMember]`, so `IPersistentObjectActions<T>` is unchanged and the hand-written-actions
+   tripwire does not fire:
+   - **restrict a source to a set of row ids** — required for correctness, not ergonomics. The
+     default filters on the row id; a query with synthetic identity (a composed query minting
+     `"collections/people"`, or a composite `"{a}|{b}"` key) would otherwise match nothing, return
+     zero rows, and be refused by the all-or-nothing rule — an action that stops working with a
+     refusal that reads like a permission problem.
+   - **materialize rows into entities** — the `GetEntities` equivalent, called from inside
+     `LoadManyAsync` at the load, batched rather than per row.
 7. An id-less row from a composed type refuses at the endpoint naming the type, rather than reaching
    the projector and becoming a generic 500.
 8. `IDatabaseAccess.GetPersistentObjectsByIdAsync` loses its only caller. Replace it rather than
@@ -367,6 +374,11 @@ Redaction is the fourth, and applies to the fallback path: the projector must co
 - Each fallback: `SparkQueryPage`, streaming, and no query id — all three still produce rows and
   still enforce all-or-nothing.
 - The materialization hook: overridable, and reached on the fallback path.
+- The id-restriction hook: a query whose rows carry **synthetic ids** (the composed demo's
+  `collections/people`, and a composite `"{a}|{b}"`) materializes correctly through an override, and
+  **fails loudly rather than silently returning nothing** without one.
+- A hook returning more or different rows than were requested is caught by the all-or-nothing
+  comparison rather than trusted.
 
 ### Migration
 
