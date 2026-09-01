@@ -126,6 +126,10 @@ jobs:
         token: ${{ secrets.COVERAGE_TOKEN }}
         files: |
           tests/*/coverage/**/coverage.cobertura.xml
+          apps/*/*/coverage/**/coverage.cobertura.xml
+          libs/node_packages/*/coverage/cobertura-coverage.xml
+          apps/*/*/ClientApp/coverage/cobertura-coverage.xml
+          apps/*/action/coverage/cobertura-coverage.xml
         disable-search: true
         finish: true
         fail-ci-if-error: false

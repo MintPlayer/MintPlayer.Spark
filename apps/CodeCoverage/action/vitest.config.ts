@@ -8,7 +8,7 @@ export default defineConfig({
       provider: 'v8',
       // lcovonly is what gets uploaded; text-summary is for the person reading the
       // CI log. No html — nothing renders it here.
-      reporter: ['lcovonly', 'text-summary'],
+      reporter: ['cobertura', 'text-summary'],
       reportsDirectory: 'coverage',
       // `all` so untested files count against us. Measuring only what the tests
       // happened to import reports a flattering number that never moves.

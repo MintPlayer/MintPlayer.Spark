@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 /**
+ * NOT CURRENTLY WIRED INTO CI IN THIS REPOSITORY, and deliberately so.
+ *
+ * It was load-bearing in the standalone MintPlayer/CodeCoverage repo, where the action
+ * and the SPA both emitted lcov and both reported `src/main.ts`. On absorbing the app
+ * into the Spark monorepo the two imported projects were switched to cobertura instead,
+ * matching what ng-spark and ng-spark-auth already emitted. A vitest cobertura report
+ * carries an absolute `<source>` root, so every path is unambiguous by construction and
+ * there is nothing left to rebase — a better fix than rebasing, because it removes the
+ * failure mode rather than detecting it.
+ *
+ * Kept because it is the only thing that would make lcov safe here again if a project
+ * ever switches back, and its `node --test` suite still passes. Delete it if that stops
+ * being a plausible future.
+ *
+ * ---
+ *
  * Rewrites the `SF:` paths in an lcov report so they are relative to the repository
  * root, and verifies that every one of them names a tracked file.
  *

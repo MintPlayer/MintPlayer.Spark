@@ -68,7 +68,7 @@
         "tsConfig": "apps/CodeCoverage/CodeCoverage/ClientApp/tsconfig.spec.json",
         "runner": "vitest",
         "coverage": true,
-        "coverageReporters": ["lcovonly", "text-summary"],
+        "coverageReporters": ["cobertura", "text-summary"],
         "coverageExclude": [
           "src/**/*.spec.ts",
           "src/main.ts",
