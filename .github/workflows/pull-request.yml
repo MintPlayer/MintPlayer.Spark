@@ -94,6 +94,26 @@ jobs:
     - name: Build affected projects (Nx)
       run: npx nx affected --target=build
 
+    # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
+    # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
+    # A pull request that leaves an app unaffected therefore died on dotnet's opaque "An error
+    # occurred trying to start process ... No such file or directory". Latent until now, because
+    # almost every change touches libs/spark/** and makes all five affected at once.
+    #
+    # Naming the projects explicitly is what fixes it: nx only replays a cached output for a task it
+    # actually schedules, so asking for the task is what produces the binary. For an unaffected app
+    # that is a cache hit -- `build` declares bin/Debug and obj/Debug as its outputs (nx.json), so
+    # the artifacts are restored rather than recompiled -- and for an affected one it is a no-op the
+    # step above already did.
+    #
+    # Verifying all five, rather than skipping the unaffected ones, is deliberate. Skipping would be
+    # sound only if `affected` were exactly right, and dependency tracking here is not purely
+    # automatic: CodeCoverage/project.json carries implicitDependencies by hand, and
+    # code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
+    # check that silently does nothing when that bookkeeping slips is worse than a slow one.
+    - name: Restore the Spark app binaries the verifications need
+      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,WebhooksDemo,CodeCoverage
+
     # Catches a change that touched the entity classes without regenerating the model. Without this
     # the mismatch is only noticed at deployment, where it stops the application from starting.
     #
@@ -104,6 +124,14 @@ jobs:
     - name: Verify Spark models are in sync
       run: |
         for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
+          name="$(basename "$project")"
+          # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
+          # guard into a false alarm. Better than dotnet's start-process error, which names a path
+          # without saying why it is absent.
+          if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+            echo "::error::$name was not built and no cached output was restored for it, so it cannot be verified."
+            exit 1
+          fi
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
           echo "::endgroup::"
@@ -118,6 +146,14 @@ jobs:
     - name: Verify the anonymous surface has not widened
       run: |
         for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
+          name="$(basename "$project")"
+          # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
+          # guard into a false alarm. Better than dotnet's start-process error, which names a path
+          # without saying why it is absent.
+          if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+            echo "::error::$name was not built and no cached output was restored for it, so it cannot be verified."
+            exit 1
+          fi
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-security
           echo "::endgroup::"
