@@ -1,0 +1,84 @@
+name: coverage-action-publish
+
+# Republishes the coverage-upload action's bundle and moves the tags consumers pin.
+#
+# Its own workflow file purely for the `paths:` filter below — GitHub has no per-job path
+# filter, and this MUST NOT run on every master push. `major-tag` is force-moved on each
+# run, so firing on unrelated commits would walk `coverage-upload-v1` forward with them,
+# and the tag would come to mean "latest master commit" rather than "latest commit
+# carrying a v1-compatible bundle". The immutable/moving split only means something if the
+# moving tag moves for a reason.
+#
+# Two tag levels, and only one of them moves:
+#   coverage-upload-v1.2.0  cut once, on one commit, never moved — so any upload stays
+#                           reproducible after the fact and a consumer that gets bitten
+#                           can pin backwards without forking.
+#   coverage-upload-v1      force-updated to the latest v1-compatible commit — what every
+#                           consumer pins, so a bundle fix reaches all of them with no PR
+#                           anywhere.
+#
+# Consumers must never pin @master: this is a monorepo whose default branch moves many
+# times a day for reasons that have nothing to do with the action.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/CodeCoverage/action/**'
+  workflow_dispatch:
+
+# Queue rather than cancel. Two pushes in quick succession would otherwise run two
+# publishers that both commit, both push, and both force-move the major tag; cancelling
+# one mid-push is worse than making it wait.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish coverage-upload action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        # Full history and tags so the immutable-tag guard can tell an existing release
+        # tag from a new one, and so the bundle commit pushes as a fast-forward.
+        fetch-depth: 0
+        fetch-tags: true
+
+    # Two lines, and the whole TypeScript -> single index.js pipeline comes from one place
+    # shared with the actions in MintPlayer/github-actions. The push uses the default
+    # GITHUB_TOKEN, which does NOT trigger workflows, so committing the bundle cannot
+    # loop. Swapping in a PAT would remove that guarantee and require an explicit
+    # [skip ci].
+    - name: Rebuild, publish and tag
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/action
+        output-dir: dist
+        node-version: 20.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: push
+        commit-message: 'build: repack the coverage-upload bundle'
+        major-tag: coverage-upload-v1
+        # Cut from the folder's own package.json version, so bumping that file is what
+        # mints an immutable tag. Creating one that already exists on another commit is an
+        # error, never a silent move.
+        version-tag-from: apps/CodeCoverage/action/package.json
+        version-tag-prefix: coverage-upload-v
+
+    # The bundle test drives the just-built dist/index.js as a child process. It runs here
+    # too, not only on pull requests: `mode: push` may have committed a rebuilt bundle, and
+    # this is the last chance to notice that the artifact consumers are about to pin does
+    # not actually run.
+    - name: Smoke-test the published bundle
+      working-directory: apps/CodeCoverage/action
+      run: npm run test:bundle

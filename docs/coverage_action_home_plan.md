@@ -145,10 +145,17 @@ Two call sites, each ~2 lines of `uses:` plus inputs:
 
 1. **`.github/workflows/pull-request.yml`** — new job, `mode: verify`. Runs the 35 jest tests and
    fails on a stale bundle. This is the gate `github-actions` never had.
-2. **`.github/workflows/dotnet-build-master.yml`** (or a small dedicated workflow) — `mode: push`,
-   path-filtered to `apps/CodeCoverage/action/**`, plus the two tag inputs from M6:
-   `major-tag: coverage-upload-v1` on every run, and `version-tag` only when
-   `apps/CodeCoverage/action/package.json`'s version changed.
+2. **`.github/workflows/coverage-action-publish.yml`** — its own file, `mode: push`, path-filtered
+   to `apps/CodeCoverage/action/**`, plus both tag inputs from M6.
+
+   The separate file is not tidiness: GitHub has no per-job `paths:` filter, and `major-tag` is
+   force-moved on every run. Putting this job in `dotnet-build-master.yml` — which is what the first
+   implementation did — fires it on every master push and walks `coverage-upload-v1` onto unrelated
+   commits, so the tag comes to mean *"latest master commit"* rather than *"latest commit carrying a
+   v1-compatible bundle"*. The immutable/moving split only means something if the moving tag moves
+   for a reason. Caught while reviewing
+   [github-actions#8](https://github.com/MintPlayer/github-actions/pull/8), whose `publish.sh` moves
+   the major tag unconditionally — correctly, given the workflow is supposed to be filtered.
 
 `master` is **unprotected** (verified) so the push-back needs no special handling, and
 `GITHUB_TOKEN` pushes do not re-trigger workflows. Record in a comment that swapping in a PAT would
