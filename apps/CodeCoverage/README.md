@@ -11,12 +11,12 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 (ASP.NET Core + RavenDB + Angular) with
 [mintplayer-ng-bootstrap](https://github.com/MintPlayer/mintplayer-ng-bootstrap).
 
-- **Product & architecture**: [docs/PRD.md](docs/PRD.md)
-- **Milestone plan**: [docs/PLAN.md](docs/PLAN.md)
+- **Product & architecture**: [docs/code-coverage/product-overview.md](../../docs/code-coverage/product-overview.md)
+- **Milestone plan**: [docs/code-coverage/build-log-m0-m10.md](../../docs/code-coverage/build-log-m0-m10.md)
 - **The upload GitHub Action**: [action/README.md](action/README.md) (`uses: MintPlayer/CodeCoverage/action@master`)
-- **The upload API contract** (states, polling, gating a PR): [docs/upload-api.md](docs/upload-api.md)
-- **Upstream (Spark) work items**: [docs/spark-handoff.md](docs/spark-handoff.md)
-- **How this repo measures itself**: [docs/self-coverage-PRD.md](docs/self-coverage-PRD.md)
+- **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
+- **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
+- **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
 
 ## How this repo measures itself
 
@@ -159,7 +159,7 @@ they are safe to run while the app is running.
 ## Which HTTP surfaces you may build on
 
 **`/api/uploads/*` is the public contract.** Uploading reports, finishing a build and reading a
-run's result are documented in [docs/upload-api.md](docs/upload-api.md) and will stay compatible:
+run's result are documented in [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md) and will stay compatible:
 fields get added, never removed or repurposed. If you are automating anything — a merge gate, a
 dashboard, a bot — this is the surface to use. It authenticates with an upload token or with GitHub
 Actions OIDC, so it works for private repositories.

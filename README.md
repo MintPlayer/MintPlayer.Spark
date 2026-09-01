@@ -132,12 +132,13 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
-├── apps/
+├── apps/                                         # Applications: the demos, and CodeCoverage
+│   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
 │   └── WebhooksDemo/                             # GitHub webhooks demo application
-└── docs/                                         # Documentation (guides, prd/, codecov/)
+└── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
 ## Documentation

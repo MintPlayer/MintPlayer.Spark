@@ -6,6 +6,11 @@ See [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md), [findings-replication-mt
 
 TDD where there's behaviour to pin: failing test first, then the fix. Per CLAUDE.md, **test suites run once at the end**, not per milestone — intermediate milestones are verified by reading code and type-checking. Committing per milestone is fine.
 
+**Status:** ✅ Shipped. Everything below landed in `10.0.0-preview.42` and the subsequent
+IdentityProvider security pass. The "resume here" framing is preserved as the working record of how
+it was sequenced — it is not an invitation to pick it up. The consumer that motivated it now lives in
+this repository at `apps/CodeCoverage`; see [docs/code-coverage/](code-coverage/README.md).
+
 ## Status — resume here
 
 Branch `feat/spark-hardening-m0`, based on `master` @ `febea26`. Working tree clean.
