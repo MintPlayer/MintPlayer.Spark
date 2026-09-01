@@ -14,7 +14,7 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 
 - **Product & architecture**: [docs/code-coverage/product-overview.md](../../docs/code-coverage/product-overview.md)
 - **Milestone plan**: [docs/code-coverage/build-log-m0-m10.md](../../docs/code-coverage/build-log-m0-m10.md)
-- **The upload GitHub Action**: [MintPlayer/github-actions](https://github.com/MintPlayer/github-actions#coverage-upload) (`uses: MintPlayer/github-actions/coverage-upload@main`) — it lives with the other actions, not with this app
+- **The upload GitHub Action**: [action/](action/README.md) (`uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`) — it lives beside the server it talks to, so an API change and the action change are one pull request
 - **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
@@ -25,7 +25,7 @@ The badge above is this application reporting on its own source, through the sam
 API and the same action every other repository uses. Worth knowing if you are
 setting up a repository that looks like this one:
 
-- **Three reports, three flags, one build.** `.github/workflows/ci.yml` measures the
+- **Three reports, three flags, one build.** `.github/workflows/pull-request.yml` measures the
   .NET projects (coverlet → Cobertura), the Angular SPA and the action's TypeScript
   (Vitest → lcov) in separate jobs, then a single `coverage-upload` job uploads all
   three. Because the server keys a build on `(repository, commitSha, runId,
@@ -40,14 +40,16 @@ setting up a repository that looks like this one:
   `tools/rebase-lcov-paths.mjs` rewrites them to repo-root-relative and fails the
   job if any path names no tracked file. If your coverage looks inexplicably low
   after wiring up a monorepo, check this first.
-- **The workflow uses `MintPlayer/github-actions/coverage-upload@main`.**
-  Consuming repositories should pin `@master` as documented in
-  [action/README.md](action/README.md). This one deliberately does not: uploading
-  with the action *as the pull request changes it* is what catches a regression in
-  the uploader before the next repository inherits it.
-- **`publish.yml` collects no coverage on purpose.** It also fires on a master push,
+- **The workflow uses `uses: ./apps/CodeCoverage/action`.** Consuming repositories should pin the
+  moving major tag, `coverage-upload-v1`, as documented in [action/README.md](action/README.md).
+  This one deliberately does not: uploading with the action *as the pull request changes it* is what
+  catches a regression in the uploader before the next repository inherits it — and it is the reason
+  the action's source lives here at all (see
+  [coverage_action_home_PRD.md](../../docs/coverage_action_home_PRD.md)).
+- **`code-coverage-deploy.yml` collects no coverage on purpose.** It also fires on a master push,
   and a second, .NET-only upload for the same commit would leave the badge showing
-  whichever run finalized last.
+  whichever run finalized last. It is also filtered to ignore `apps/CodeCoverage/action/**`, so
+  republishing the action's bundle never deploys the server.
 
 ## Local development
 
@@ -176,7 +178,7 @@ work right up until it doesn't.
 
 `docker-compose.yml` runs the app plus a pinned RavenDB on an internal network behind
 Traefik. Every push to `master` tests, publishes `ghcr.io/mintplayer/codecoverage:master`,
-and SSHes into the VPS to pull + restart (`.github/workflows/publish.yml`). The VPS keeps
+and SSHes into the VPS to pull + restart (`.github/workflows/code-coverage-deploy.yml`). The VPS keeps
 **no git checkout**: the deploy refetches `docker-compose.yml` from the repo each time,
 while `.env` and `github-app.pem` in `/var/www/code-coverage` are **server-managed and never
 touched by deploys**.

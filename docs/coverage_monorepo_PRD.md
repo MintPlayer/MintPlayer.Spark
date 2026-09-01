@@ -188,6 +188,11 @@ is right and the copies must not come along — but note neither existing patter
 
 ### R2 — `action/`'s repo-root path is a public API
 
+**REVERSED** by [`coverage_action_home_PRD.md`](coverage_action_home_PRD.md): the action came back to
+`apps/CodeCoverage/action`, and is consumed as
+`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`. The text below
+records the original reasoning.
+
 `action/action.yml` is consumed as `MintPlayer/CodeCoverage/action@master` by this repository's own
 `pull-request.yml` and `dotnet-build-master.yml`, and by `C:\Repos\mintplayer-ng-bootstrap`. Per D2
 all move to the new path in this same unit of work. Coverage's own CI already uses local `./action`,

@@ -3,15 +3,16 @@
 The contract between a CI workflow and a Coverage server. Everything on this page is stable: fields
 are added, never removed or repurposed.
 
-Three endpoints, all under `/api/uploads`:
+Four endpoints, all under `/api/uploads`:
 
 | | |
 |---|---|
 | `POST /api/uploads` | Send one coverage report bundle. Returns immediately; parsing is asynchronous. |
 | `POST /api/uploads/finish` | Close the run's build now instead of waiting for the debounce. |
 | `GET /api/uploads/status` | Ask how a run turned out. This is what a gate polls. |
+| `GET /api/uploads/capabilities` | Ask what this deployment supports. **404 means contract 0.** |
 
-Most workflows should use [the action](../action/README.md) rather than these endpoints directly —
+Most workflows should use [the action](../../apps/CodeCoverage/action/README.md) rather than these endpoints directly —
 it does the polling, the credential refresh and the back-off described below. This page exists so
 that you can write the loop yourself, correctly, without reading any C#.
 
@@ -229,6 +230,44 @@ The two 404s are the distinction a gate needs: the first means *give up*, the se
 the wrong question*. Neither means *keep polling*.
 
 ---
+
+## `GET /api/uploads/capabilities`
+
+What this deployment can do. Same authentication as the other three; the `uploads-status` rate limit
+applies, not the tighter `uploads` one.
+
+```json
+{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth"] }
+```
+
+**A client MUST treat 404 as `contract: 0`.** That is exactly what every image deployed before this
+endpoint existed answers, and it is what makes an old server self-describing without being modified.
+Absence is the baseline, never an error — and neither is a 5xx, a timeout or an unreadable body: a
+capability probe that can fail a step is worse than no probe, because the upload itself reports
+connectivity and auth problems with far better messages.
+
+### Why this exists at all
+
+The action is consumed from a **git ref**. The server ships as a **docker image a VPS pulls**. Those
+two clocks are independent, so a merged action is live for every consumer immediately while the
+server it talks to is whatever was last deployed. Co-locating the two — which is where the action
+now lives — does not change that: an action and a server built from the same commit still meet at
+different times. This endpoint is the mechanism; sharing a repository is not.
+
+### The compatibility rules
+
+| | |
+|---|---|
+| **Request fields stay additive** | ASP.NET model binding **drops** unknown `multipart/form-data` fields rather than rejecting them, so a new field sent to an old server is silently ignored. That makes new fields safe to add — and makes it your job to gate any field whose absence changes what the result *means* on `features`. |
+| **Response fields stay optional** | Tolerate every field being absent. This already applies to `state` (closed set, anything unrecognised is read as `CompleteWithErrors`); it applies equally to `baseline`, `projection`, `patch` and `baselineScope`. |
+| **`contract` only moves for a break** | Removing, renaming or repurposing a field, or requiring a new endpoint. Adding a field never moves it. |
+| **A break keeps the old behaviour for a deploy cycle** | Consumers pin a git ref and upgrade on their own schedule, so there is no moment at which every client is new. |
+
+The silent-wrong-number case worth understanding, because it is what the `features` list prevents:
+`partial: true` sent to a server that predates partial uploads is **accepted**, and the subset is
+then compared against a whole-workspace baseline as though it had measured everything. Nothing
+errors; the number is simply wrong, in the direction that looks fine. The action warns instead —
+see `apps/CodeCoverage/action/src/capabilities.ts`.
 
 ## Writing the loop
 

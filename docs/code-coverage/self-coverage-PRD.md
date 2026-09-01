@@ -41,7 +41,7 @@ already names Vitest as the intended stack; `.gitignore` appears to anticipate
 
 ### Decisions, and why
 
-**Keep `uses: ./action`, do not switch to `MintPlayer/CodeCoverage/action@master`.**
+**Keep `uses: ./apps/CodeCoverage/action`, do not switch to a published ref.**
 Every consumer pins `@master`. This repo should not: `./action` uploads with the
 action *as the pull request changes it*, so a regression in the uploader is caught
 by the PR that introduces it rather than by the next consumer to update. This is the

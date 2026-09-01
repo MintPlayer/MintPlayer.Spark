@@ -153,7 +153,11 @@ jobs:
     # CodeCoverage.Tests lands.
     - name: Upload coverage
       if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml') != ''
-      uses: MintPlayer/github-actions/coverage-upload@main
+      # The working copy, not a published ref: the action's source lives in this
+      # repository, so a PR that changes the upload API and the action together is
+      # tested with the action it just changed. `coverage-action` below guarantees
+      # dist/index.js matches src/, so this runs the built bundle from this PR.
+      uses: ./apps/CodeCoverage/action
       with:
         url: https://coverage.mintplayer.com
         token: ${{ secrets.COVERAGE_TOKEN }}
@@ -167,3 +171,40 @@ jobs:
         base-sha: ${{ env.NX_BASE }}
         finish: true
         fail-ci-if-error: false
+
+  # The upload action's source lives in this repository (docs/coverage_action_home_PRD.md).
+  # `dist/index.js` is committed and is what `runs.main` executes, so a PR that
+  # edits src/ without rebuilding would ship nothing -- this job is what makes
+  # that impossible to merge. It also runs the action's own suites, which the
+  # action never had in CI while it lived in MintPlayer/github-actions.
+  coverage-action:
+    name: coverage-upload action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # Two lines, and the whole TypeScript -> single index.js pipeline comes from
+    # one place shared with the five other actions in MintPlayer/github-actions.
+    # mode: verify rebuilds and fails on drift; the master workflow uses
+    # mode: push to commit the rebuilt bundle.
+    - name: Build and verify the bundle
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/action
+        output-dir: dist
+        node-version: 20.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: verify
+
+    # Drives the built dist/index.js as a child process against a real HTTP
+    # server speaking the documented contract. The unit tests import src/, so
+    # they all pass against a bundle built from the wrong entry point -- an
+    # action that exits 0 having uploaded nothing. Only this catches that.
+    - name: Smoke-test the built bundle
+      working-directory: apps/CodeCoverage/action
+      run: npm run test:bundle

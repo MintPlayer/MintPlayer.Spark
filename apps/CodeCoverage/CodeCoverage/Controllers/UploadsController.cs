@@ -42,7 +42,47 @@ public partial class UploadsController : ControllerBase
 
     private const long MaxReportBytes = 50 * 1024 * 1024;
 
+    /// <summary>
+    /// The upload contract this build implements, reported by
+    /// <c>GET /api/uploads/capabilities</c>.
+    /// <para>
+    /// Bump this ONLY for a change a client cannot absorb in silence: a field
+    /// removed, renamed or repurposed, or a newly required endpoint. Adding a
+    /// request field does not qualify — unknown form fields are dropped by model
+    /// binding — and neither does adding a response field, because clients are
+    /// required to tolerate every one of them being absent. When it does move,
+    /// the previous behaviour stays for at least one deploy cycle: consumers pin
+    /// a git ref and upgrade on their own schedule, so there is no moment when
+    /// every client is new.
+    /// </para>
+    /// </summary>
+    private const int UploadContract = 1;
+
+    /// <summary>
+    /// Capability names a client may branch on. Additive: a name is never
+    /// removed or given a new meaning, because an old action still asks for it.
+    /// Only list what is genuinely implemented — this is what a client trusts
+    /// instead of trying an input to see whether it worked.
+    /// </summary>
+    private static readonly string[] SupportedFeatures =
+    [
+        "partial-uploads",   // partial + baseSha, scoped baseline, projection
+        "patch-coverage",    // patch{} on the status response
+        "flag-coverage",     // per-flag totals
+        "gzip-reports",      // gzipped report parts, detected by magic bytes
+        "oidc-auth",         // GitHubOidc scheme, audience = Coverage:BaseUrl
+    ];
+
     public sealed record UploadResponse(string BuildId, string SessionId);
+
+    /// <param name="Contract">
+    /// The contract version. A client comparing this against its own must treat a
+    /// server that is <em>ahead</em> as fine (every change is additive from the
+    /// client's side) and a server that is <em>behind</em> as a reason to degrade,
+    /// never to fail.
+    /// </param>
+    /// <param name="Features">Names from <see cref="SupportedFeatures"/>.</param>
+    public sealed record CapabilitiesResponse(int Contract, string[] Features);
 
     [HttpPost]
     [RequestSizeLimit(MaxReportBytes)]
@@ -169,14 +209,40 @@ public partial class UploadsController : ControllerBase
     }
 
     /// <summary>
+    /// What this deployment can do, so a newer action talking to an older image
+    /// can find out rather than guess.
+    /// <para>
+    /// The action is consumed from a git ref; this server ships as a docker image
+    /// the VPS pulls. Those clocks are independent — even an action and a server
+    /// built from the same commit are not guaranteed to meet — so "same
+    /// repository" is not a compatibility mechanism and this endpoint is.
+    /// </para>
+    /// <para>
+    /// A client MUST treat <b>404 as contract 0</b>: that is precisely what every
+    /// image deployed before this endpoint existed answers, which is what makes
+    /// an old image self-describing without being modified. Absence is the
+    /// baseline, never an error.
+    /// </para>
+    /// </summary>
+    [HttpGet("capabilities")]
+    // The uploads policy is sized for 50 MB payloads at 60/minute; a probe that
+    // rides in front of every upload would eat that budget. Same partition key.
+    [EnableRateLimiting("uploads-status")]
+    public ActionResult<CapabilitiesResponse> Capabilities()
+        => Ok(new CapabilitiesResponse(UploadContract, SupportedFeatures));
+
+    /// <summary>
     /// How did a workflow run turn out? The endpoint a CI gate polls — and the
     /// reason it exists rather than pointing consumers at <c>/api/browse</c>:
     /// browse authorizes against a signed-in human's GitHub access, so no CI
     /// credential can read a private repository through it, and it cannot tell
     /// "no build yet" apart from "not allowed".
     /// <para>
-    /// Documented in <c>docs/upload-api.md</c>, which is a compatibility
-    /// promise: fields are added here, never removed or repurposed.
+    /// Documented in <c>docs/code-coverage/upload-api.md</c>, which is a
+    /// compatibility promise: fields are added here, never removed or repurposed.
+    /// A change that cannot honour that promise bumps
+    /// <see cref="UploadContract"/> and keeps the old behaviour for a deploy
+    /// cycle; see <c>GET /api/uploads/capabilities</c>.
     /// </para>
     /// </summary>
     [HttpGet("status")]

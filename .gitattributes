@@ -61,3 +61,12 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# The coverage-upload action ships a committed ncc bundle.
+#
+# eol=lf so a Windows checkout cannot rewrite it to CRLF and make the Linux
+# runner see phantom drift in the `mode: verify` job. linguist-generated keeps a
+# 1.1 MB minified single line collapsed in pull request diffs.
+###############################################################################
+apps/CodeCoverage/action/dist/index.js text eol=lf linguist-generated=true

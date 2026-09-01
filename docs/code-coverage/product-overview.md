@@ -36,7 +36,7 @@ Anything not specific to the coverage domain is implemented in the appropriate u
 | `MintPlayer.Spark` | API-token (PAT) authentication library; missing webhook events (`workflow_run`, `status`); bug fixes found during investigation (see §10) |
 | `mintplayer-ng-bootstrap` | Coverage-annotatable code viewer; circle-packing/sunburst chart; radial progress; datatable column filtering (if needed) |
 | `Coverage` (this repo) | Coverage domain only: parsers, normalized model, merge, upload API, badge endpoint, app UI, and the GitHub Action under `action/` |
-| `action/` (in this repo) | The GitHub Action, consumed as `MintPlayer/CodeCoverage/action@<ref>` (own repo only if Marketplace) |
+| `apps/CodeCoverage/action/` | The GitHub Action, consumed as `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1` |
 
 We are **not confined to Spark's `/spark/*` endpoints**: the app freely adds its own controllers/minimal-API endpoints (`/api/uploads`, `/badge/…`) alongside Spark — the sanctioned pattern WebhooksDemo already uses (its SPA fallback excludes both `/spark` and `/api`). The rule cuts the other way: whenever a piece of such an endpoint turns out to be generic (token authentication, a file-upload primitive, a webhook event), it is extracted into Spark rather than kept app-local.
 
@@ -217,7 +217,7 @@ Usage sketch:
 permissions:
   id-token: write        # tokenless OIDC
 steps:
-  - uses: MintPlayer/CodeCoverage/action@master
+  - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1
     with:
       url: https://coverage.mintplayer.com
       use-oidc: true
