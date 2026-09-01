@@ -208,8 +208,8 @@ public class EntityMapperInverseTests
         _mapper.PopulateObjectValues(po, profession);
 
         profession.Label.Should().NotBeNull();
-        profession.Label!.Translations.Should().ContainKey("en").WhoseValue.Should().Be("Doctor");
-        profession.Label.Translations.Should().ContainKey("fr").WhoseValue.Should().Be("Médecin");
+        profession.Label!.Translations.Should().ContainKey("en").Which.Should().Be("Doctor");
+        profession.Label.Translations.Should().ContainKey("fr").Which.Should().Be("Médecin");
     }
 
     [Fact]

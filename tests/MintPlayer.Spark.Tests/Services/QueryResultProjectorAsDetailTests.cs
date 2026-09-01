@@ -75,7 +75,7 @@ public class QueryResultProjectorAsDetailTests
         cell.Value.Should().BeOfType<PersistentObject>(
             "a renderer on a single-child AsDetail column receives the nested object — the grid has " +
             "no second channel to reach it through (#329)");
-        cell.Value.As<PersistentObject>().Attributes
+        ((PersistentObject)cell.Value!).Attributes
             .Should().Contain(a => a.Name == "LinesCovered");
     }
 

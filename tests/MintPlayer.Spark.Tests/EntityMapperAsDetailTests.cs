@@ -128,7 +128,7 @@ public class EntityMapperAsDetailTests
         asDetail.Object.Should().NotBeNull(
             "single AsDetail gets a pre-scaffolded empty child so UIs open a structured form");
         asDetail.Object!.ObjectTypeId.Should().Be(AddressTypeId);
-        asDetail.Object.Attributes.Select(a => a.Name).Should().Contain(["Street", "City"]);
+        asDetail.Object.Attributes.Select(a => a.Name).Should().Contain("Street").And.Contain("City");
         asDetail.AsDetailType.Should().Be(typeof(TestAddress).FullName);
     }
 

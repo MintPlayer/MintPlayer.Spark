@@ -82,7 +82,7 @@ public class SyncActionRetrySweeperTests : SparkTestDriver
 
         using var verify = Store.OpenAsyncSession();
         (await verify.LoadAsync<SparkSyncAction>(due.Id!)).WakeUp.Should().BeTrue();
-        (await verify.LoadAsync<SparkSyncAction>(due.Id!)).LastWakeUpUtc.Should().NotBeNull();
+        (await verify.LoadAsync<SparkSyncAction>(due.Id!)).LastWakeUpUtc.Should().HaveValue();
 
         (await verify.LoadAsync<SparkSyncAction>(notYetDue.Id!)).WakeUp.Should().BeFalse(
             "its backoff has not elapsed — waking it would defeat the backoff entirely");

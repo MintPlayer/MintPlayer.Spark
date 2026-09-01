@@ -126,7 +126,7 @@ public class TranslatedStringMergeTests
         attr.Value.Should().NotBeNull("Description value must round-trip on the wire");
         var translations = ParseTranslations(attr.Value!);
         foreach (var (lang, value) in expected)
-            translations.Should().ContainKey(lang).WhoseValue.Should().Be(value, $"language '{lang}' should be preserved");
+            translations.Should().ContainKey(lang).Which.Should().Be(value, $"language '{lang}' should be preserved");
     }
 
     private static Dictionary<string, string> ParseTranslations(object value)

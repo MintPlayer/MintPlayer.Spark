@@ -1,4 +1,3 @@
-using FluentAssertions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents.Indexes;
@@ -102,8 +101,8 @@ public class IndexCatalogTests
         var act = catalog.Freeze;
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*Cars_Overview*")
-            .WithMessage("*Cars_Search*")
-            .WithMessage("*[DefaultIndex]*");
+            .And.WithMessage("*Cars_Search*")
+            .And.WithMessage("*[DefaultIndex]*");
     }
 
     [Fact]

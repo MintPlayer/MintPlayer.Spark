@@ -79,7 +79,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
 
         var config = loader.GetProgramUnits();
 
-        var group = config.ProgramUnitGroups.Should().ContainSingle().Subject;
+        var group = config.ProgramUnitGroups.Should().ContainSingle().Which;
         group.Icon.Should().Be("car");
         group.ProgramUnits.Should().ContainSingle().Which.Type.Should().Be("query");
     }

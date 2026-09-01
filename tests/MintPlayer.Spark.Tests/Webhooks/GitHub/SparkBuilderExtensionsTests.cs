@@ -109,7 +109,7 @@ public class SparkBuilderExtensionsTests
 
         builder.AddGithubWebhooks(opt => opt.DevelopmentAppId = 12345L);
 
-        var descriptor = builder.Services.Should().ContainSingle(d => d.ServiceType == typeof(IDevWebSocketService)).Subject;
+        var descriptor = builder.Services.Should().ContainSingle(d => d.ServiceType == typeof(IDevWebSocketService)).Which;
         descriptor.Lifetime.Should().Be(ServiceLifetime.Singleton);
         descriptor.ImplementationType.Should().Be<DevWebSocketService>();
     }

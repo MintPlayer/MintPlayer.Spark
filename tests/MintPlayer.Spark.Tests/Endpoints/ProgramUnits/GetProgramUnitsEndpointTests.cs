@@ -132,7 +132,7 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
         var result = await GetConfigAsync(factory);
 
         var returned = result.ProgramUnitGroups.Should().ContainSingle()
-            .Which.ProgramUnits.Should().ContainSingle().Subject;
+            .Which.ProgramUnits.Should().ContainSingle().Which;
         returned.Id.Should().Be(unit.Id);
         returned.ObjectId.Should().Be("start", "the deep-link target must survive serialization");
     }
@@ -260,7 +260,7 @@ public class GetProgramUnitsEndpointTests : SparkTestDriver
         var result = await GetConfigAsync(factory);
 
         var returned = result.ProgramUnitGroups.Should().ContainSingle()
-            .Which.ProgramUnits.Should().ContainSingle().Subject;
+            .Which.ProgramUnits.Should().ContainSingle().Which;
         returned.Type.Should().Be("url");
         returned.Url.Should().Be("https://status.example.com");
     }

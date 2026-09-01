@@ -139,7 +139,7 @@ public class SynchronizeIdempotencyTests : IDisposable
 
         Synchronize();
 
-        Snapshot().Should().BeEquivalentTo(second);
+        ((object)Snapshot()).Should().BeEquivalentTo(second);
     }
 
     [Fact]
@@ -166,8 +166,8 @@ public class SynchronizeIdempotencyTests : IDisposable
 
         Synchronize();
 
-        Snapshot().Should().BeEquivalentTo(first,
-            "the first run canonicalises the seed; every run after it must be a no-op");
+        ((object)Snapshot()).Should().BeEquivalentTo(first,
+            because: "the first run canonicalises the seed; every run after it must be a no-op");
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public class SynchronizeIdempotencyTests : IDisposable
         Synchronize();
         Synchronize();
 
-        Snapshot().Should().BeEquivalentTo(first);
+        ((object)Snapshot()).Should().BeEquivalentTo(first);
         first["IdemProbe.json"].Should().Contain("\"Virtual\"", "the virtual attribute must survive");
         first["IdemProbe.json"].Should().Contain("\"bold\"", "hand-set presentation must survive");
     }
@@ -322,7 +322,7 @@ public class SynchronizeIdempotencyTests : IDisposable
 
         Synchronize();
 
-        Snapshot().Should().BeEquivalentTo(first);
+        ((object)Snapshot()).Should().BeEquivalentTo(first);
         first["IdemProbe.json"].Should().Contain("\"showedOn\": \"PersistentObject\"",
             "the hand trim must survive re-synchronize, not be re-derived from projection membership (#274)");
     }
@@ -485,7 +485,7 @@ public class SynchronizeCorrectnessTests : IDisposable
         Synchronize(registry, typeof(TwoRootsContext));
         Synchronize(registry, typeof(TwoRootsContext));
 
-        QueryNames().Should().BeEquivalentTo(queries, "and it must converge, not oscillate");
+        QueryNames().Should().BeEquivalentTo(queries, because: "and it must converge, not oscillate");
     }
 
     private string[] QueryNames()

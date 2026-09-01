@@ -177,13 +177,13 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Completed);
 
             final.LastError.Should().BeNull();
-            final.NextAttemptAtUtc.Should().BeNull("happy path clears any previously scheduled retry window");
+            final.NextAttemptAtUtc.Should().NotHaveValue("happy path clears any previously scheduled retry window");
             handler.CallCount.Should().Be(1);
             handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
             handler.LastRequest.RequestUri!.ToString().Should().Be($"{OwnerUrl}/spark/sync/apply");
             handler.LastRequestBody.Should().Contain("\"requestingModule\":\"HR\"");
             handler.LastRequestBody.Should().Contain("\"actionType\":\"Insert\""); // SyncActionType serializes as a string (JsonStringEnumConverter)
-            (await GetRetryCounterAsync(id)).Should().BeNull("retry counter should be cleared on success");
+            (await GetRetryCounterAsync(id)).Should().NotHaveValue("retry counter should be cleared on success");
         }
         finally
         {
@@ -210,7 +210,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         {
             var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Failed);
             final.LastError.Should().Contain("BadRequest").And.Contain("validation failed");
-            (await GetRetryCounterAsync(id)).Should().BeNull();
+            (await GetRetryCounterAsync(id)).Should().NotHaveValue();
         }
         finally
         {
@@ -264,7 +264,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
 
             final.LastError.Should().Contain("InternalServerError").And.Contain("boom");
-            final.NextAttemptAtUtc.Should().NotBeNull("the subscription query gates re-delivery on this field");
+            final.NextAttemptAtUtc.Should().HaveValue("the subscription query gates re-delivery on this field");
             final.NextAttemptAtUtc!.Value.Should().BeAfter(DateTime.UtcNow, "backoff schedules the next attempt into the future");
 
             // This assertion is a negative — "the first action was NOT redelivered" — and no amount
@@ -304,7 +304,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
             var final = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
 
             final.LastError.Should().Contain("GhostModule").And.Contain("not found");
-            final.NextAttemptAtUtc.Should().NotBeNull();
+            final.NextAttemptAtUtc.Should().HaveValue();
             handler.CallCount.Should().Be(0);
 
             (await GetRetryCounterAsync(id)).Should().Be(1);
@@ -340,7 +340,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         try
         {
             var parked = await WaitForAsync(id, s => s.Status == ESyncActionStatus.Pending && s.LastError != null);
-            parked.NextAttemptAtUtc.Should().NotBeNull();
+            parked.NextAttemptAtUtc.Should().HaveValue();
             parked.WakeUp.Should().BeFalse("a parked action must not be visible to the subscription yet");
 
             handler.Respond = _ => new HttpResponseMessage(HttpStatusCode.OK);
@@ -370,7 +370,7 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
 
             completed.WakeUp.Should().BeFalse("the worker consumes the wake-up when it picks the action up");
             handler.CallCount.Should().Be(2, "the failed attempt, then the redelivery the sweeper triggered");
-            (await GetRetryCounterAsync(id)).Should().BeNull(
+            (await GetRetryCounterAsync(id)).Should().NotHaveValue(
                 "a successful delivery clears the retry counter, so a later failure starts its backoff from scratch");
         }
         finally

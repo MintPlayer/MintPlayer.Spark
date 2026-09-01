@@ -53,7 +53,7 @@ public class SecurityConfigurationValidatorTests
             .WithMessage("*wellKnown*")
             // The instruction that prevents the obvious wrong migration: a deleted grant denies
             // signed-in users too, because type-level rights gate row rules.
-            .And.Message.Should().Contain("MOVE it to the authenticated group");
+            .And.Which.Message.Should().Contain("MOVE it to the authenticated group");
     }
 
     [Fact]

@@ -178,7 +178,7 @@ public class SortColumnDisclosureTests : SparkTestDriver
             new SortColumn { Property = "SecretToken", Direction = "asc" },
             new SortColumn { Property = "Label", Direction = "asc" }));
 
-        var emitted = rql.Should().ContainSingle().Subject;
+        var emitted = rql.Should().ContainSingle().Which;
         emitted.Should().Contain("order by Label");
         emitted.Should().NotContain("SecretToken");
     }

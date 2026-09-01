@@ -87,7 +87,7 @@ public class ClientAccessorTests
 
         var op = accessor.Operations.Should().ContainSingle().Which.Should().BeOfType<NavigateOperation>().Which;
         op.RouteName.Should().Be("home");
-        op.ObjectTypeId.Should().BeNull();
+        op.ObjectTypeId.Should().NotHaveValue();
         op.Id.Should().BeNull();
     }
 
@@ -117,7 +117,7 @@ public class ClientAccessorTests
 
         var op = (NotifyOperation)accessor.Operations[0];
         op.Kind.Should().Be(NotificationKind.Info);
-        op.DurationMs.Should().BeNull();
+        op.DurationMs.Should().NotHaveValue();
     }
 
     #endregion

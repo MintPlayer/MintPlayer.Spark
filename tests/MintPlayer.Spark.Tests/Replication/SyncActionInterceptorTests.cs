@@ -148,7 +148,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
 
         stored.Actions[0].Properties.Should().BeEquivalentTo(["Plate"],
-            "Display is get-only and InternalToken is [IgnoreProperty]; neither may be written");
+            because: "Display is get-only and InternalToken is [IgnoreProperty]; neither may be written");
     }
 
     [Fact]
