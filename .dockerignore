@@ -34,6 +34,14 @@ README.md
 .playwright-mcp/
 docs/
 tmp/
+# Nx cache. Pure build state, and the Dockerfile runs with --skip-nx-cache anyway.
+.nx/
+# Test projects. The image never builds or runs them -- the Dockerfile restores and publishes
+# CodeCoverage.csproj alone, and no test project is an npm workspace. Measured: they were 714 MB
+# of the 742 MB context, almost all of it a leftover tests/MintPlayer.Spark.Tests/bin.stale/ that
+# **/bin does not match, because the component is 'bin.stale' and not 'bin'.
+tests/
+**/*.Tests/
 # Root-level only, deliberately: Docker's * does not cross /, so this leaves the
 # per-project READMEs and AGENTS.md in the context, which the build is happy with.
 *.md
