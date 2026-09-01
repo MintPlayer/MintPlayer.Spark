@@ -45,6 +45,41 @@ The entry point is `src/index.ts`, which exists only to call `run()` from `src/m
 having done nothing. `pull-request.yml` rebuilds and fails on any drift, so a stale bundle cannot
 merge.
 
+## Releasing a new version
+
+Two tags, and only one of them moves. Both names come from the `version` in this folder's
+`package.json`, so that field is the only thing you ever change:
+
+| Tag | Moves? | Who pins it |
+|---|---|---|
+| `coverage-upload-v1.2.0` | never — cut once, on one commit | anyone who needs a reproducible pin, or to pin backwards after a bad release |
+| `coverage-upload-v1` | yes — follows the newest commit of major 1 | **all consumers, by default** |
+
+**The easy way — no local checkout.** Actions → *coverage-action-publish* → **Run workflow**, and pick
+`patch`, `minor` or `major`. That bumps `package.json`, commits it, rebuilds, cuts
+`coverage-upload-v<new version>` and re-points `coverage-upload-v<major>`.
+
+**Or locally**, if you are changing code anyway — bump in the same PR:
+
+```bash
+cd apps/CodeCoverage/action
+npm version minor --no-git-tag-version   # patch | minor | major
+```
+
+`--no-git-tag-version` matters: npm would otherwise create a bare `v1.3.0` tag in the monorepo's
+shared tag namespace — the wrong name, and one that collides with anything else here that ever wants
+a version tag. The real, prefixed tags are cut by CI on merge to `master`.
+
+### Going to a new major
+
+Bump to `2.0.0` and nothing else needs editing. The publish workflow derives the moving tag from the
+version, so it starts moving `coverage-upload-v2` and **leaves `coverage-upload-v1` frozen** on the
+last v1 commit — which is exactly what a consumer still pinned to v1 needs. Repoint consumers
+deliberately, one at a time; never delete the frozen tag, because that is the whole point of it.
+
+A change that does not bump the version just repacks the bundle and re-points the moving tag. The
+release tag is only cut for a version that does not have one yet.
+
 ## Talking to a server older than the action
 
 The action is consumed from a git ref while the server ships as a docker image a VPS pulls, so the

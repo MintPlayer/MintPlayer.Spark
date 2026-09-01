@@ -10,12 +10,15 @@ name: coverage-action-publish
 # moving tag moves for a reason.
 #
 # Two tag levels, and only one of them moves:
-#   coverage-upload-v1.2.0  cut once, on one commit, never moved — so any upload stays
-#                           reproducible after the fact and a consumer that gets bitten
-#                           can pin backwards without forking.
-#   coverage-upload-v1      force-updated to the latest v1-compatible commit — what every
-#                           consumer pins, so a bundle fix reaches all of them with no PR
-#                           anywhere.
+#   coverage-upload-v<full>   cut once, on one commit, never moved — so any upload stays
+#                             reproducible after the fact and a consumer that gets bitten can
+#                             pin backwards without forking.
+#   coverage-upload-v<major>  force-updated to the latest commit of that major — what every
+#                             consumer pins, so a bundle fix reaches all of them with no PR
+#                             anywhere.
+#
+# Both names are derived from apps/CodeCoverage/action/package.json, so a major bump retires the
+# old moving tag automatically instead of relying on somebody editing this file.
 #
 # Consumers must never pin @master: this is a monorepo whose default branch moves many
 # times a day for reasons that have nothing to do with the action.
@@ -27,6 +30,16 @@ on:
     paths:
       - 'apps/CodeCoverage/action/**'
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump to apply before publishing (none = just repack)"
+        type: choice
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
 
 # Queue rather than cancel. Two pushes in quick succession would otherwise run two
 # publishers that both commit, both push, and both force-move the major tag; cancelling
@@ -52,11 +65,89 @@ jobs:
         fetch-depth: 0
         fetch-tags: true
 
+    # The whole version flow, in one place: pick patch/minor/major from the Run workflow button
+    # and this bumps package.json, commits it, and lets the steps below cut the tags from the new
+    # number. Nothing to remember, no local checkout, and no hand-edited tag names anywhere.
+    #
+    # `--no-git-tag-version` because npm would otherwise create a bare `v1.3.0` tag in the
+    # monorepo's shared namespace -- the wrong name, and one that collides with anything else here
+    # that ever wants a version tag. The real tags are cut below, prefixed.
+    #
+    # This push is a plain fast-forward with GITHUB_TOKEN, which does not trigger workflows, so
+    # bumping cannot re-enter this workflow even though it touches a path in the filter above.
+    - name: Bump the action's version
+      if: inputs.bump != '' && inputs.bump != 'none'
+      run: |
+        cd apps/CodeCoverage/action
+        npm version "${BUMP}" --no-git-tag-version
+        version="$(node -p "require('./package.json').version")"
+        cd "$GITHUB_WORKSPACE"
+
+        git config --local user.name  'github-actions[bot]'
+        git config --local user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add apps/CodeCoverage/action/package.json apps/CodeCoverage/action/package-lock.json
+        git commit -m "release(coverage-action): ${version}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
+        echo "Bumped to ${version}."
+      env:
+        BUMP: ${{ inputs.bump }}
+
+    # Both tag names come from ONE source: the action's own package.json version.
+    #
+    # Hardcoding `major-tag: coverage-upload-v1` while deriving the immutable tag from
+    # package.json is a trap that springs exactly once, on the day someone bumps to 2.0.0: the run
+    # would cut coverage-upload-v2.0.0 and go on moving coverage-upload-v1 to the same commit,
+    # handing a breaking bundle to every consumer pinned to v1. Nothing downstream would complain,
+    # because a moving tag moving is what it does.
+    #
+    # Deriving it means the cutover needs no workflow edit and cannot be forgotten: bump the version
+    # to 2.0.0 and this run cuts coverage-upload-v2.0.0, starts moving coverage-upload-v2, and
+    # leaves coverage-upload-v1 frozen on the last v1 commit -- which is precisely what a consumer
+    # still pinned to it needs. Never delete the frozen tag; that is what "immutable" buys.
+    #
+    # (The older attempt at this in github-actions derived the major with
+    # `git describe --tags | grep -o "v[0-9]*"`. Nearest-tag-wins is wrong in a monorepo, where the
+    # closest tag routinely belongs to something else entirely.)
+    - name: Derive the action's tag names
+      id: tags
+      run: |
+        version="$(node -p "require('./apps/CodeCoverage/action/package.json').version")"
+        major="${version%%.*}"
+        case "$major" in
+          ''|*[!0-9]*)
+            echo "::error::Could not read a numeric major version from apps/CodeCoverage/action/package.json (got '${version}')."
+            exit 1
+            ;;
+        esac
+        echo "major=coverage-upload-v${major}" >> "$GITHUB_OUTPUT"
+        echo "Moving tag: coverage-upload-v${major} (from version ${version})"
+
+        # Cut the immutable tag only when this version does not have one yet.
+        #
+        # Without this, ANY commit touching the action folder without a version bump fails the
+        # publish: the bundle is unchanged so nothing is committed, and then the release tag for
+        # the current version is found on an earlier commit and publish.sh -- correctly -- refuses
+        # to move a released tag. A README fix inside this folder would turn master red.
+        #
+        # Worse, when the bundle DID change, that refusal lands after the bundle commit is already
+        # pushed, leaving a half-done publish: new bundle on master, moving tag left behind.
+        #
+        # So the decision moves here, where it can be made before anything is pushed: a version
+        # with no tag yet gets one; a version already released just repacks and re-points the
+        # moving tag. publish.sh's guard stays as the backstop for a genuine race.
+        if [ -n "$(git ls-remote --tags origin "refs/tags/coverage-upload-v${version}")" ]; then
+          echo "version-from=" >> "$GITHUB_OUTPUT"
+          echo "coverage-upload-v${version} is already released; not cutting it again."
+          echo "::notice::Version ${version} is already tagged. Run this workflow with a bump (patch/minor/major) to release a new one."
+        else
+          echo "version-from=apps/CodeCoverage/action/package.json" >> "$GITHUB_OUTPUT"
+          echo "Will cut coverage-upload-v${version}."
+        fi
+
     # Two lines, and the whole TypeScript -> single index.js pipeline comes from one place
     # shared with the actions in MintPlayer/github-actions. The push uses the default
-    # GITHUB_TOKEN, which does NOT trigger workflows, so committing the bundle cannot
-    # loop. Swapping in a PAT would remove that guarantee and require an explicit
-    # [skip ci].
+    # GITHUB_TOKEN, which does NOT trigger workflows, so committing the bundle cannot loop.
+    # Swapping in a PAT would remove that guarantee and require an explicit [skip ci].
     - name: Rebuild, publish and tag
       uses: MintPlayer/github-actions/compile-ts-action@main
       with:
@@ -68,11 +159,11 @@ jobs:
         build-command: npm run build
         mode: push
         commit-message: 'build: repack the coverage-upload bundle'
-        major-tag: coverage-upload-v1
-        # Cut from the folder's own package.json version, so bumping that file is what
-        # mints an immutable tag. Creating one that already exists on another commit is an
-        # error, never a silent move.
-        version-tag-from: apps/CodeCoverage/action/package.json
+        major-tag: ${{ steps.tags.outputs.major }}
+        # Empty when this version is already released, so a repack does not try to re-cut a
+        # released tag. Creating one that exists on another commit is an error, never a silent
+        # move -- see the step above.
+        version-tag-from: ${{ steps.tags.outputs.version-from }}
         version-tag-prefix: coverage-upload-v
 
     # The bundle test drives the just-built dist/index.js as a child process. It runs here
