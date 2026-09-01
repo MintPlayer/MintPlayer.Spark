@@ -384,11 +384,11 @@ grant, which is why one appears on every role above.
 ## Complete Example
 
 See the demo apps for working authorization setups:
-- `../Demo/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
-- `../Demo/Fleet/Fleet/Program.cs` -- the same thing through `AddSparkFull` / `UseSparkFull`, which bundle the common packages
-- `../Demo/Fleet/Fleet/App_Data/security.json` -- role-based permissions including custom action permissions
-- `../Demo/HR/HR/App_Data/security.json` -- role-based permissions for HR entities
-- `../Demo/DemoApp/DemoApp/App_Data/security.json` -- a fully public app, and the `Query`-without-`Read` showcase
+- `../apps/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
+- `../apps/Fleet/Fleet/Program.cs` -- the same thing through `AddSparkFull` / `UseSparkFull`, which bundle the common packages
+- `../apps/Fleet/Fleet/App_Data/security.json` -- role-based permissions including custom action permissions
+- `../apps/HR/HR/App_Data/security.json` -- role-based permissions for HR entities
+- `../apps/DemoApp/DemoApp/App_Data/security.json` -- a fully public app, and the `Query`-without-`Read` showcase
 - `../../spark/MintPlayer.Spark/Services/SecurityFileAccessControl.cs` -- permission evaluation, in core
 
 ## Requirements

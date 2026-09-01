@@ -17,8 +17,8 @@ WORKDIR /src
 # Selective csproj COPY for restore-layer caching. Paths must match the repo's
 # libs/<group>/ layout and cover WebhooksDemo's full transitive ProjectReference
 # closure, since `dotnet restore` (below) runs before `COPY . .`.
-COPY ["Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj", "Demo/WebhooksDemo/WebhooksDemo/"]
-COPY ["Demo/WebhooksDemo/WebhooksDemo.Library/WebhooksDemo.Library.csproj", "Demo/WebhooksDemo/WebhooksDemo.Library/"]
+COPY ["apps/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj", "apps/WebhooksDemo/WebhooksDemo/"]
+COPY ["apps/WebhooksDemo/WebhooksDemo.Library/WebhooksDemo.Library.csproj", "apps/WebhooksDemo/WebhooksDemo.Library/"]
 COPY ["libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj", "libs/spark/MintPlayer.Spark/"]
 COPY ["libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "libs/spark/MintPlayer.Spark.Abstractions/"]
 COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]
@@ -29,12 +29,12 @@ COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.
 COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/"]
 COPY ["libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj", "libs/source_generators/MintPlayer.Spark.SourceGenerators/"]
 COPY ["libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/"]
-RUN dotnet restore "./Demo/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj"
+RUN dotnet restore "./apps/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj"
 COPY . .
 
 # Build Angular frontend via Nx (post-Nx-migration: there's no per-app
 # angular.json, so `ng build` doesn't see a workspace; build target is
-# defined in Demo/WebhooksDemo/WebhooksDemo/ClientApp/project.json).
+# defined in apps/WebhooksDemo/WebhooksDemo/ClientApp/project.json).
 #
 # `--skip-nx-cache` is intentional. This Dockerfile produces the artifact
 # that ships to production, so it must be hermetic: every byte must be
@@ -49,7 +49,7 @@ RUN npm ci
 RUN npx nx run @spark-demo/webhooks-demo:build --configuration=production --skip-nx-cache
 
 # Build .NET application
-WORKDIR "/src/Demo/WebhooksDemo/WebhooksDemo"
+WORKDIR "/src/apps/WebhooksDemo/WebhooksDemo"
 RUN dotnet build "./WebhooksDemo.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
@@ -59,5 +59,5 @@ RUN dotnet publish "./WebhooksDemo.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-COPY --from=build /src/Demo/WebhooksDemo/WebhooksDemo/ClientApp/dist ./ClientApp/dist
+COPY --from=build /src/apps/WebhooksDemo/WebhooksDemo/ClientApp/dist ./ClientApp/dist
 ENTRYPOINT ["dotnet", "WebhooksDemo.dll"]

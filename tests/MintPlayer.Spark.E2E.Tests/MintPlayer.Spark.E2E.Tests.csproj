@@ -47,7 +47,7 @@
 
   <ItemGroup>
     <!-- Feeds the PersistentObjectIds generator. E2E tests target Fleet, so we surface its schemas. -->
-    <AdditionalFiles Include="..\..\Demo\Fleet\Fleet\App_Data\Model\*.json" />
+    <AdditionalFiles Include="..\..\apps\Fleet\Fleet\App_Data\Model\*.json" />
   </ItemGroup>
 
   <!--

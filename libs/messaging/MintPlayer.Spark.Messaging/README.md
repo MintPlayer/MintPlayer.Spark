@@ -351,14 +351,14 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 See the DemoApp for a working example:
 
-- `../Demo/DemoApp.Library/Messages/` -- message definitions with `[MessageQueue]`
-- `../Demo/DemoApp/Recipients/LogPersonCreated.cs` -- simple `IRecipient<T>` handler
-- `../Demo/DemoApp/Recipients/LogPersonDeleted.cs` -- simple `IRecipient<T>` handler
-- `../Demo/DemoApp/Recipients/LogCompanyUpdated.cs` -- demonstrates per-handler retry isolation
-- `../Demo/DemoApp/Recipients/NotifyEmployeesRecipient.cs` -- `ICheckpointRecipient<T>` with batch progress tracking
-- `../Demo/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from lifecycle hooks
-- `../Demo/DemoApp/Actions/CompanyActions.cs` -- broadcasting batch messages with employee IDs
-- `../Demo/DemoApp/Program.cs` -- service registration
+- `../apps/DemoApp.Library/Messages/` -- message definitions with `[MessageQueue]`
+- `../apps/DemoApp/Recipients/LogPersonCreated.cs` -- simple `IRecipient<T>` handler
+- `../apps/DemoApp/Recipients/LogPersonDeleted.cs` -- simple `IRecipient<T>` handler
+- `../apps/DemoApp/Recipients/LogCompanyUpdated.cs` -- demonstrates per-handler retry isolation
+- `../apps/DemoApp/Recipients/NotifyEmployeesRecipient.cs` -- `ICheckpointRecipient<T>` with batch progress tracking
+- `../apps/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from lifecycle hooks
+- `../apps/DemoApp/Actions/CompanyActions.cs` -- broadcasting batch messages with employee IDs
+- `../apps/DemoApp/Program.cs` -- service registration
 
 ## Requirements
 

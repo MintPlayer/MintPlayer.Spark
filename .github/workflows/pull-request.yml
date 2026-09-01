@@ -103,7 +103,7 @@ jobs:
     # compiled against. Exit 3 means drift; the run fails before the slow test suite.
     - name: Verify Spark models are in sync
       run: |
-        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo; do
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
           echo "::endgroup::"
@@ -117,7 +117,7 @@ jobs:
     # the anonymous surface moved; run --spark-synchronize-security and commit the baseline.
     - name: Verify the anonymous surface has not widened
       run: |
-        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo; do
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-security
           echo "::endgroup::"

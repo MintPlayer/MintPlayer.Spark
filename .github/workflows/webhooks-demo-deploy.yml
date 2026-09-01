@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'Demo/WebhooksDemo/**'
+      - 'apps/WebhooksDemo/**'
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging/**'
@@ -85,7 +85,7 @@ jobs:
       uses: docker/build-push-action@v7
       with:
         context: .
-        file: ./Demo/WebhooksDemo/WebhooksDemo/Dockerfile
+        file: ./apps/WebhooksDemo/WebhooksDemo/Dockerfile
         push: true
         tags: ${{ steps.meta-ghcr.outputs.tags }}
         labels: ${{ steps.meta-ghcr.outputs.labels }}
@@ -130,7 +130,7 @@ jobs:
           # Download latest docker-compose.yml from the repository
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
-            https://raw.githubusercontent.com/${{ github.repository }}/master/Demo/WebhooksDemo/docker-compose.yml
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/WebhooksDemo/docker-compose.yml
 
           # Log in to GHCR
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin

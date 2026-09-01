@@ -24,7 +24,7 @@ updates:
           - "*"
 
   - package-ecosystem: docker
-    directory: /Demo/WebhooksDemo/WebhooksDemo
+    directory: /apps/WebhooksDemo/WebhooksDemo
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

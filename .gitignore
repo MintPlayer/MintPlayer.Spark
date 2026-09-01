@@ -390,8 +390,8 @@ libs/node_packages/ng-spark-auth/dist/
 **/spark-auth.setup.ts
 
 # E2E test fixture writes per-session config overrides here; auto-cleaned on DisposeAsync.
-Demo/*/*/appsettings.E2E.json
-Demo/*/*/appsettings.json.e2e-backup
+apps/*/*/appsettings.E2E.json
+apps/*/*/appsettings.json.e2e-backup
 
 # Playwright MCP session artifacts (snapshots, console logs, screenshots)
 .playwright-mcp/
@@ -406,6 +406,5 @@ Demo/*/*/appsettings.json.e2e-backup
 # pointers ($(SparkAgentsGuideMode)=Pointer). A pointer neither duplicates the guide nor churns
 # when it is edited, so it gets tracked instead. Kept until then so the copies stay out of
 # git status. The apps/ patterns cover the Demo -> apps rename.
-Demo/*/*/AGENTS.md
 tests/*/AGENTS.md
 apps/*/*/AGENTS.md

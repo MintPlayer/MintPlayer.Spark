@@ -1,29 +1,29 @@
 {
-  "name": "@spark-demo/demo-app",
+  "name": "@spark-demo/webhooks-demo",
   "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "root": "Demo/DemoApp/DemoApp/ClientApp",
-  "sourceRoot": "Demo/DemoApp/DemoApp/ClientApp/src",
+  "root": "apps/WebhooksDemo/WebhooksDemo/ClientApp",
+  "sourceRoot": "apps/WebhooksDemo/WebhooksDemo/ClientApp/src",
   "prefix": "app",
   "targets": {
     "build": {
       "executor": "@nx/angular:application",
-      "outputs": ["{workspaceRoot}/Demo/DemoApp/DemoApp/ClientApp/dist/ClientApp"],
+      "outputs": ["{workspaceRoot}/apps/WebhooksDemo/WebhooksDemo/ClientApp/dist/ClientApp"],
       "options": {
-        "outputPath": "Demo/DemoApp/DemoApp/ClientApp/dist/ClientApp",
-        "browser": "Demo/DemoApp/DemoApp/ClientApp/src/main.ts",
-        "tsConfig": "Demo/DemoApp/DemoApp/ClientApp/tsconfig.app.json",
+        "outputPath": "apps/WebhooksDemo/WebhooksDemo/ClientApp/dist/ClientApp",
+        "browser": "apps/WebhooksDemo/WebhooksDemo/ClientApp/src/main.ts",
+        "tsConfig": "apps/WebhooksDemo/WebhooksDemo/ClientApp/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
           {
             "glob": "**/*",
-            "input": "Demo/DemoApp/DemoApp/ClientApp/public"
+            "input": "apps/WebhooksDemo/WebhooksDemo/ClientApp/public"
           }
         ],
         "styles": [
           "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
           "node_modules/bootstrap-icons/font/bootstrap-icons.css",
-          "Demo/DemoApp/DemoApp/ClientApp/src/styles.scss"
+          "apps/WebhooksDemo/WebhooksDemo/ClientApp/src/styles.scss"
         ],
         "loader": {
           ".svg": "text"
@@ -52,10 +52,10 @@
       },
       "configurations": {
         "production": {
-          "buildTarget": "@spark-demo/demo-app:build:production"
+          "buildTarget": "@spark-demo/webhooks-demo:build:production"
         },
         "development": {
-          "buildTarget": "@spark-demo/demo-app:build:development"
+          "buildTarget": "@spark-demo/webhooks-demo:build:development"
         }
       },
       "defaultConfiguration": "development"

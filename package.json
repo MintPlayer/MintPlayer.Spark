@@ -11,10 +11,10 @@
   "workspaces": [
     "libs/node_packages/ng-spark",
     "libs/node_packages/ng-spark-auth",
-    "Demo/DemoApp/DemoApp/ClientApp",
-    "Demo/Fleet/Fleet/ClientApp",
-    "Demo/HR/HR/ClientApp",
-    "Demo/WebhooksDemo/WebhooksDemo/ClientApp"
+    "apps/DemoApp/DemoApp/ClientApp",
+    "apps/Fleet/Fleet/ClientApp",
+    "apps/HR/HR/ClientApp",
+    "apps/WebhooksDemo/WebhooksDemo/ClientApp"
   ],
   "dependencies": {
     "@angular/animations": "22.1.3",

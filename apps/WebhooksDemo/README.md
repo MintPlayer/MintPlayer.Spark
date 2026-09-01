@@ -55,7 +55,7 @@ Click **"Install"**, then choose either "All repositories" or "Only select repos
 From the repository root, run:
 
 ```bash
-cd Demo/WebhooksDemo/WebhooksDemo
+cd apps/WebhooksDemo/WebhooksDemo
 
 # Required: webhook secret (must match what you entered in the GitHub App settings)
 dotnet user-secrets set "GitHub:WebhookSecret" "your-webhook-secret"
@@ -110,7 +110,7 @@ The committed `appsettings.json` intentionally omits the `Production` and `Devel
 ### 6. Run the application
 
 ```bash
-cd Demo/WebhooksDemo/WebhooksDemo
+cd apps/WebhooksDemo/WebhooksDemo
 dotnet run
 ```
 

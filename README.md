@@ -132,7 +132,7 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
-├── Demo/
+├── apps/
 │   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
@@ -234,13 +234,13 @@ F5 from Visual Studio or plain `dotnet run` still works — each demo's `Program
 docker run -d -p 8080:8080 -e RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork ravendb/ravendb
 
 # Run the demo application
-cd Demo/DemoApp/DemoApp
+cd apps/DemoApp/DemoApp
 dotnet run
 ```
 
 The application will be available at `https://localhost:5001`.
 
-> **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `Demo/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
+> **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `apps/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
 
 #### Running multiple modules together (SlnLaunch)
 
@@ -266,7 +266,7 @@ Use **10.0.1+**, which builds the projects sequentially before launching them in
 When you modify entity classes, regenerate the JSON model files:
 
 ```bash
-cd Demo/DemoApp
+cd apps/DemoApp
 dotnet run --spark-synchronize-model
 ```
 
@@ -378,8 +378,8 @@ property, so the contradiction surfaces when you compile rather than when you ne
 
 - **MintPlayer.Spark** - Core library, no application-specific code
 - **MintPlayer.Spark.Abstractions** - Interfaces and models shared across projects
-- **Demo/DemoApp** - Sample application for testing features
-- **Demo/DemoApp.Library** - Example of shared entity definitions
+- **apps/DemoApp** - Sample application for testing features
+- **apps/DemoApp.Library** - Example of shared entity definitions
 
 ## License
 

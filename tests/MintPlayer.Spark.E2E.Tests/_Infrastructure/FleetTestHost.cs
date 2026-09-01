@@ -482,7 +482,7 @@ public sealed class FleetTestHost : IAsyncLifetime
             await EnsureAngularBundleAsync();
 
             var repoRoot = FindRepoRoot();
-            var fleetProject = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "Fleet.csproj");
+            var fleetProject = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "Fleet.csproj");
             var psi = new ProcessStartInfo("dotnet", $"build \"{fleetProject}\" --configuration Debug");
             var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
             if (exitCode != 0)
@@ -499,11 +499,11 @@ public sealed class FleetTestHost : IAsyncLifetime
     private static async Task EnsureAngularBundleAsync()
     {
         var repoRoot = FindRepoRoot();
-        var distPath = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "ClientApp", "dist", "ClientApp", "browser");
+        var distPath = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp", "dist", "ClientApp", "browser");
         if (Directory.Exists(distPath) && Directory.EnumerateFileSystemEntries(distPath).Any())
             return;
 
-        var clientApp = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet", "ClientApp");
+        var clientApp = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp");
         // ⚠️ On Windows npm is a .cmd, and handing its bare name to ProcessStartInfo is not the
         // same as running it from a shell: cmd.exe ends up with a relative %0, so %~dp0 resolves to
         // the working directory and npm.cmd then hunts for its own internals under
@@ -600,7 +600,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         _fleetHttpUrl = $"http://localhost:{httpPort}";
 
         var repoRoot = FindRepoRoot();
-        var fleetDir = Path.Combine(repoRoot, "Demo", "Fleet", "Fleet");
+        var fleetDir = Path.Combine(repoRoot, "apps", "Fleet", "Fleet");
         var fleetProject = Path.Combine(fleetDir, "Fleet.csproj");
 
         // ASP.NET Core reads appsettings.{Environment}.json from the content root. By default
@@ -734,11 +734,11 @@ public sealed class FleetTestHost : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 10 && dir is not null; i++)
         {
-            if (File.Exists(Path.Combine(dir, "MintPlayer.Spark.sln")))
+            if (File.Exists(Path.Combine(dir, "MintPlayer.Spark.slnx")))
                 return dir;
             dir = Path.GetDirectoryName(dir);
         }
-        throw new InvalidOperationException("Could not locate MintPlayer.Spark.sln starting from " + AppContext.BaseDirectory);
+        throw new InvalidOperationException("Could not locate MintPlayer.Spark.slnx starting from " + AppContext.BaseDirectory);
     }
 }
 

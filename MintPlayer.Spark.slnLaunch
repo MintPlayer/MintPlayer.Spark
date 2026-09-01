@@ -3,12 +3,12 @@
     "Name": "HR + Fleet",
     "Projects": [
       {
-        "Path": "Demo\\Fleet\\Fleet\\Fleet.csproj",
+        "Path": "apps\\Fleet\\Fleet\\Fleet.csproj",
         "Action": "Start",
         "DebugTarget": "https"
       },
       {
-        "Path": "Demo\\HR\\HR\\HR.csproj",
+        "Path": "apps\\HR\\HR\\HR.csproj",
         "Action": "Start",
         "DebugTarget": "https"
       }

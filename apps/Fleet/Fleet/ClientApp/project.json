@@ -1,29 +1,29 @@
 {
-  "name": "@spark-demo/hr-demo",
+  "name": "@spark-demo/fleet-demo",
   "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "root": "Demo/HR/HR/ClientApp",
-  "sourceRoot": "Demo/HR/HR/ClientApp/src",
+  "root": "apps/Fleet/Fleet/ClientApp",
+  "sourceRoot": "apps/Fleet/Fleet/ClientApp/src",
   "prefix": "app",
   "targets": {
     "build": {
       "executor": "@nx/angular:application",
-      "outputs": ["{workspaceRoot}/Demo/HR/HR/ClientApp/dist/ClientApp"],
+      "outputs": ["{workspaceRoot}/apps/Fleet/Fleet/ClientApp/dist/ClientApp"],
       "options": {
-        "outputPath": "Demo/HR/HR/ClientApp/dist/ClientApp",
-        "browser": "Demo/HR/HR/ClientApp/src/main.ts",
-        "tsConfig": "Demo/HR/HR/ClientApp/tsconfig.app.json",
+        "outputPath": "apps/Fleet/Fleet/ClientApp/dist/ClientApp",
+        "browser": "apps/Fleet/Fleet/ClientApp/src/main.ts",
+        "tsConfig": "apps/Fleet/Fleet/ClientApp/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
           {
             "glob": "**/*",
-            "input": "Demo/HR/HR/ClientApp/public"
+            "input": "apps/Fleet/Fleet/ClientApp/public"
           }
         ],
         "styles": [
           "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
           "node_modules/bootstrap-icons/font/bootstrap-icons.css",
-          "Demo/HR/HR/ClientApp/src/styles.scss"
+          "apps/Fleet/Fleet/ClientApp/src/styles.scss"
         ],
         "loader": {
           ".svg": "text"
@@ -32,7 +32,7 @@
       "configurations": {
         "production": {
           "budgets": [
-            { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
+            { "type": "initial", "maximumWarning": "1MB", "maximumError": "2MB" },
             { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
           ],
           "outputHashing": "all"
@@ -52,10 +52,10 @@
       },
       "configurations": {
         "production": {
-          "buildTarget": "@spark-demo/hr-demo:build:production"
+          "buildTarget": "@spark-demo/fleet-demo:build:production"
         },
         "development": {
-          "buildTarget": "@spark-demo/hr-demo:build:development"
+          "buildTarget": "@spark-demo/fleet-demo:build:development"
         }
       },
       "defaultConfiguration": "development"

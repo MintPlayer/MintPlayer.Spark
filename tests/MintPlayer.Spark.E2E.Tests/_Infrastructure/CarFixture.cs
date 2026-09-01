@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 /// <c>Security/*Tests</c>. Collapses ~4 hand-built object initializers with magic
 /// strings into one constructor call, and pulls the Guid from the source-generated
 /// <see cref="PersistentObjectIds"/> constants (fed by
-/// <c>Demo/Fleet/Fleet/App_Data/Model/Car.json</c> via <c>&lt;AdditionalFiles&gt;</c>
+/// <c>apps/Fleet/Fleet/App_Data/Model/Car.json</c> via <c>&lt;AdditionalFiles&gt;</c>
 /// in the csproj), so schema drift in the Fleet model file flows through to the
 /// tests at compile time rather than failing mysteriously on the wire.
 /// </summary>

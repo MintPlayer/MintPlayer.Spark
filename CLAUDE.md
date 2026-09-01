@@ -2,7 +2,7 @@
 
 ## Running the demo apps: never start the Angular dev server yourself
 
-Every demo app (`Demo/DemoApp`, `Demo/Fleet`, `Demo/HR`, `Demo/WebhooksDemo`) hosts its SPA through
+Every demo app (`apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/WebhooksDemo`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second
