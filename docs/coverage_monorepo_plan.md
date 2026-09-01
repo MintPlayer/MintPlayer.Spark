@@ -37,7 +37,7 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
 | 🔶 | M12 raise coverage | items 1-2 done: 0% security gates + unmeasured worker (`60101ee1`). Items 3-8 open. |
 | ✅ | M13 docs triage | 4 LIVE / 11 historical / 4 stubbed / 2 dropped (`268b27fd`) |
 | ✅ | M14 docker + deploy | image name unchanged; not built (no daemon) (`ee526ab8`) |
-| ⬜ | M15 test sweep | |
+| ✅ | M15 test sweep | 2351/2351 .NET + 22 SPA + 35 action; one real semantics fix (`1ab63111`) |
 | 📋 | M16 empty old repo | handoff written with preconditions (`cc838cf8`) |
 | ✅ | M17 authorization migration | ALREADY DONE upstream before the merge; verified, no work needed |
 
@@ -522,7 +522,53 @@ Also in this milestone:
 
 Do not deploy to production as part of verification. First deploy happens after merge.
 
-## M15 — Test sweep
+## M15 — Test sweep ✅ DONE
+
+### Result
+
+| Suite | Result |
+|---|---|
+| `MintPlayer.Spark.Tests` | 1884/1884 |
+| `CodeCoverage.Tests` | 144/144 |
+| `MintPlayer.Spark.SourceGenerators.Tests` | 203/203 |
+| `MintPlayer.Spark.E2E.Tests` | 82/82 |
+| `MintPlayer.Spark.Client.Tests` | 38/38 |
+| `@spark-apps/code-coverage` (SPA) | 22/22 |
+| coverage action (vitest) | 35/35 |
+
+The E2E teardown flake and the RavenTestDriver start cascade did **not** appear. The single failure
+in the first run was neither — see `1ab63111`: FluentAssertions compared boxed numerics by value, so
+`Be(42)` passed against a boxed `long`; `MintPlayer.Assertions` uses `Equals` and surfaced it.
+
+### Measured coverage
+
+Unioned per (file, line) across all eight cobertura reports, excluding generated code:
+
+| Scope | Covered | Lines | |
+|---|---|---|---|
+| Spark .NET libs — comparable to the 83.98% baseline | 16,550 | 18,869 | **87.71%** |
+| CodeCoverage app (.NET) | 1,583 | 3,118 | 50.77% |
+| Angular / JS | 2,126 | 2,615 | 81.30% |
+| **Everything** | **20,259** | **24,602** | **82.35%** |
+
+Two measurement traps worth writing down, because both silently produced a wrong number first:
+
+1. **The reports disagree on the filename form.** The `tests/` reports are relative to
+   `<source>C:/Repos/MintPlayer.Spark/libs/`, the `apps/` one to the repo root, and the latter uses
+   backslashes. Keyed naively, every shared line counts twice and the union read **55.22%**. The
+   filename must be joined with each report's own `<source>`.
+2. **Generated code is instrumented.** There is no runsettings in this repo, so `*.g.cs` and `obj/`
+   are counted: 79.90% including them versus 82.35% excluding. This is the
+   `coverlet.runsettings` question already open in the PRD, and it is worth ~2.5 points.
+
+**The D6 target of ≥90% is not met.** M12 closed the two 0% security extensions and the unmeasured
+worker package; items 3–8 of the gap analysis are untouched. The largest remaining gaps are the
+CodeCoverage app itself at 50.77% (its own suite covers ingestion and services well but little of
+the endpoints), `Webhooks.GitHub.DevTunnel` at 23.0%, `Webhooks.GitHub` at 61.9%, and
+`Replication` at 72.0%.
+
+### Original plan
+
 
 Batched to the end. **One sweep:**
 
