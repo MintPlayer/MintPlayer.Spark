@@ -538,7 +538,7 @@ This requires a **Client secret** generated on the GitHub App's settings page (u
 
 ## WebhooksDemo: Project board automation
 
-The [`Demo/WebhooksDemo`](../Demo/WebhooksDemo) application demonstrates how to combine GitHub OAuth login with webhook-driven project board automation. Users log in with GitHub, select which GitHub Projects to automate, configure event-to-column mappings, and from that point on issues and pull requests are automatically moved on the project board.
+The [`apps/WebhooksDemo`](../apps/WebhooksDemo) application demonstrates how to combine GitHub OAuth login with webhook-driven project board automation. Users log in with GitHub, select which GitHub Projects to automate, configure event-to-column mappings, and from that point on issues and pull requests are automatically moved on the project board.
 
 ### How it works
 
@@ -637,7 +637,7 @@ Board columns are cached on the `GitHubProject` entity when it's first enabled. 
 
 ## Docker deployment
 
-The repository includes a production-ready `docker-compose.yml` at `../Demo/WebhooksDemo/docker-compose.yml` with `${...}` placeholders for secrets. Create a `.env` file on your server (see `../Demo/WebhooksDemo/.env.example`):
+The repository includes a production-ready `docker-compose.yml` at `../apps/WebhooksDemo/docker-compose.yml` with `${...}` placeholders for secrets. Create a `.env` file on your server (see `../apps/WebhooksDemo/.env.example`):
 
 ```env
 GITHUB_WEBHOOK_SECRET=whsec_your_webhook_secret

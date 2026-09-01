@@ -1,0 +1,149 @@
+{
+  "persistentObject": {
+    "id": "3163f80e-da58-4718-b252-5f62667f6760",
+    "name": "BuildSession",
+    "clrType": "CodeCoverage.Entities.BuildSession",
+    "breadcrumb": "{SessionId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e42efb15-0dc0-4a42-9897-7bd35f0c4cdc",
+        "name": "Error",
+        "label": {
+          "en": "Error"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "df0396ff-d019-43a6-8dd6-415d2fd31a86",
+        "name": "FilesCount",
+        "label": {
+          "en": "Files Count"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "97ddf8ee-2c96-4a55-8097-4ebdbd9ff325",
+        "name": "Flags",
+        "label": {
+          "en": "Flags"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4385debf-84d2-47e1-9e70-e9d20769bcdb",
+        "name": "JobName",
+        "label": {
+          "en": "Job Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fc2e5c12-a99c-4e57-897c-5753552c5d85",
+        "name": "ParseStatus",
+        "label": {
+          "en": "Parse Status"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8fb49001-c7d4-400f-ba5a-8afb3e71e050",
+        "name": "RawFileNames",
+        "label": {
+          "en": "Raw File Names"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "88021ff7-e093-44a7-b9f8-d3b43a9b06d2",
+        "name": "RootDir",
+        "label": {
+          "en": "Root Dir"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "38a4a4dd-a653-4cf9-ae3f-49ab422648d6",
+        "name": "SessionId",
+        "label": {
+          "en": "Session Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5c9d6ce5-4b25-434b-bc96-7f92c95ab4fd",
+        "name": "UploadedAtUtc",
+        "label": {
+          "en": "Uploaded At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -34,7 +34,7 @@ public class MessageBusTests : SparkTestDriver
         message.MessageType.Should().Be(typeof(OrderPlaced).AssemblyQualifiedName);
         message.Status.Should().Be(EMessageStatus.Pending);
         message.PayloadJson.Should().Contain("orders/1").And.Contain("99.95");
-        message.NextAttemptAtUtc.Should().BeNull();
+        message.NextAttemptAtUtc.Should().NotHaveValue();
         message.MaxAttempts.Should().Be(5);
         message.AttemptCount.Should().Be(0);
     }
@@ -75,7 +75,7 @@ public class MessageBusTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
-        message.NextAttemptAtUtc.Should().NotBeNull();
+        message.NextAttemptAtUtc.Should().HaveValue();
         message.NextAttemptAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(30));
     }
 

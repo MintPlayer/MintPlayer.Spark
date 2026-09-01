@@ -226,5 +226,5 @@ See the following files for working implementations:
 - `ISparkCronBuilder.cs` — `AddJob` registration (default, override, multi-schedule)
 - `SparkCronExtensions.cs` — `AddCron` DI registration
 - `../MintPlayer.Spark.SourceGenerators/Generators/CronJobRegistrationGenerator.cs` — source generator for auto-registration
-- `../Demo/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — explicit `AddCronJobs()` registration
-- `../Demo/Fleet/Fleet/Jobs/FleetHeartbeatJob.cs` — zero-config registration via `AddSparkFull`
+- `../apps/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — explicit `AddCronJobs()` registration
+- `../apps/Fleet/Fleet/Jobs/FleetHeartbeatJob.cs` — zero-config registration via `AddSparkFull`

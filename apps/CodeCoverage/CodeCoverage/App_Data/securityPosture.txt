@@ -1,0 +1,11 @@
+Browse/Coverage
+Query/Account
+Query/Build
+Query/Commit
+Query/Home
+Query/Repository
+Read/Account
+Read/Build
+Read/Commit
+Read/Home
+Read/Repository

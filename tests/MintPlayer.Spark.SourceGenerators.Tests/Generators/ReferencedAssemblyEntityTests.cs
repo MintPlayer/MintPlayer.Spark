@@ -49,7 +49,7 @@ public class ReferencedAssemblyEntityTests
     {
         var result = RunWithLibrary("namespace Fleet; public class Program { }");
 
-        var generated = result.GeneratedSources.Should().ContainSingle().Subject.Source;
+        var generated = result.GeneratedSources.Should().ContainSingle().Which.Source;
 
         // The index lands in the APP's namespace, over the LIBRARY's entity type.
         generated.Should().Contain("namespace Fleet.Indexes");

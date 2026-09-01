@@ -225,8 +225,8 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
             final.Handlers.Should().ContainSingle();
             final.Handlers[0].Status.Should().Be(EHandlerStatus.Completed);
-            final.Handlers[0].CompletedAtUtc.Should().NotBeNull();
-            final.CompletedAtUtc.Should().NotBeNull();
+            final.Handlers[0].CompletedAtUtc.Should().HaveValue();
+            final.CompletedAtUtc.Should().HaveValue();
             recipient.Received.Should().Equal("orders/1");
         }
         finally
@@ -271,7 +271,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         {
             var final = await WaitForMessageAsync(id, m => m.Status == EMessageStatus.Completed);
             final.Handlers.Should().BeEmpty();
-            final.CompletedAtUtc.Should().NotBeNull();
+            final.CompletedAtUtc.Should().HaveValue();
         }
         finally
         {
@@ -353,10 +353,10 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             final.Handlers.Should().ContainSingle();
             final.Handlers[0].Status.Should().Be(EHandlerStatus.Failed);
             final.Handlers[0].AttemptCount.Should().Be(1);
-            final.NextAttemptAtUtc.Should().NotBeNull();
+            final.NextAttemptAtUtc.Should().HaveValue();
             final.NextAttemptAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow + TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(30));
             // CompletedAtUtc stays null while still retrying
-            final.CompletedAtUtc.Should().BeNull();
+            final.CompletedAtUtc.Should().NotHaveValue();
         }
         finally
         {

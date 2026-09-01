@@ -1,0 +1,377 @@
+{
+  "persistentObject": {
+    "id": "2487903b-6dc7-4540-a99c-fc94c5d92551",
+    "name": "Build",
+    "clrType": "CodeCoverage.Entities.Build",
+    "queryType": "CodeCoverage.Indexes.VBuild",
+    "indexName": "Builds_Overview",
+    "breadcrumb": "{CiRunId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b35409ca-47af-4d73-89be-088af06fa44f",
+        "name": "CiRunAttempt",
+        "label": {
+          "en": "Ci Run Attempt"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b31dad93-2418-4bc6-977d-02f4dfa52cdd",
+        "name": "CiRunId",
+        "label": {
+          "en": "Ci Run Id"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "af396501-b50e-4364-aae9-7fa8385b487c",
+        "name": "Commit",
+        "label": {
+          "en": "Commit"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetCommits",
+        "referenceType": "CodeCoverage.Entities.Commit",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e0182f5d-9906-423a-9b6b-ed0d2dda14ef",
+        "name": "Coverage",
+        "label": {
+          "en": "Coverage"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "asDetailType": "CodeCoverage.Entities.CoverageSummary",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "coverage-bar"
+      },
+      {
+        "id": "85919c63-245b-4954-876a-10a59165ff46",
+        "name": "CreatedAtUtc",
+        "label": {
+          "en": "Created"
+        },
+        "dataType": "datetime",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "date-time"
+      },
+      {
+        "id": "c5a98666-1fb2-4a2e-8e64-1000a1e363e7",
+        "name": "DeclaredBaseSha",
+        "label": {
+          "en": "Declared Base Sha"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d3af4b5b-41b8-4f54-ae60-2431a2c505d4",
+        "name": "EventName",
+        "label": {
+          "en": "Event Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d287dc72-bdb5-48b2-82a7-6ad74309dcde",
+        "name": "Feedback",
+        "label": {
+          "en": "Feedback"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 17,
+        "asDetailType": "CodeCoverage.Entities.BuildFeedback",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bce5895b-a41f-4911-90ad-b44e555a8feb",
+        "name": "FeedbackNextAttemptAtUtc",
+        "label": {
+          "en": "Feedback Next Attempt At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 19,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2ce95585-bb56-465d-b495-d6d1674360f4",
+        "name": "FeedbackState",
+        "label": {
+          "en": "Feedback State"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dc719560-c154-4ca6-9b8b-0529593560c0",
+        "name": "FinalizedAtUtc",
+        "label": {
+          "en": "Finalized At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "renderer": "date-time"
+      },
+      {
+        "id": "cdb97b1f-5b8a-4079-8e41-313781aa056e",
+        "name": "FinalizeReason",
+        "label": {
+          "en": "Finalize Reason"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7831aaa9-ded8-41be-96c7-9ee956790931",
+        "name": "FlagCoverage",
+        "label": {
+          "en": "Flag Coverage"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5e3d9442-d45c-4498-8e39-b6ea6a9905a5",
+        "name": "GateSnapshot",
+        "label": {
+          "en": "Gate Snapshot"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 20,
+        "asDetailType": "CodeCoverage.Entities.GateSettings",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b061f85f-d080-49fb-9efd-feebe38c0d78",
+        "name": "LastUploadAtUtc",
+        "label": {
+          "en": "Last Upload At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "renderer": "date-time"
+      },
+      {
+        "id": "7d5c2b4f-7c9a-4c87-a480-eaf933a6f821",
+        "name": "Partial",
+        "label": {
+          "en": "Partial"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8a7f538b-2c64-445e-8612-fd801a981db9",
+        "name": "Patch",
+        "label": {
+          "en": "Patch"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 16,
+        "asDetailType": "CodeCoverage.Entities.PatchCoverage",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9f2e7d10-4b8c-4e35-a1d6-7c3b9e04f512",
+        "name": "Run",
+        "label": {
+          "en": "Run"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a8c2e25f-432a-4e5b-b46c-2d5b3f90213c",
+        "name": "Sessions",
+        "label": {
+          "en": "Sessions"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "CodeCoverage.Entities.BuildSession",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "build-sessions"
+      },
+      {
+        "id": "0b98f18b-683a-4599-b52b-7dae6708bcc3",
+        "name": "Status",
+        "label": {
+          "en": "Status"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "61e10589-fdec-4983-b6bc-42292634c0eb",
+        "name": "WorkflowName",
+        "label": {
+          "en": "Workflow Name"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "8b5d0c41-6e3f-4a92-8d78-4f9c2b7e1a32",
+      "name": "Commit_Builds",
+      "description": {
+        "en": "Builds"
+      },
+      "source": "Custom.Commit_Builds",
+      "alias": "commit-builds",
+      "sortColumns": [
+        {
+          "property": "CreatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Build",
+      "isStreamingQuery": false
+    },
+    {
+      "id": "45cfc0b2-0e55-4ab5-889a-7faa91c7431a",
+      "name": "GetBuilds",
+      "source": "Database.Builds",
+      "sortColumns": [
+        {
+          "property": "Status",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "Builds_Overview",
+      "entityType": "Build",
+      "isStreamingQuery": false
+    }
+  ]
+}

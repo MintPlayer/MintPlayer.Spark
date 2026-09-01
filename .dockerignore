@@ -14,6 +14,7 @@
 **/azds.yaml
 **/bin
 **/charts
+# Safe to leave unanchored because the app is named CodeCoverage, not Coverage.
 **/coverage
 **/docker-compose*
 **/Dockerfile*
@@ -24,6 +25,31 @@
 **/values.dev.yaml
 LICENSE
 README.md
+
+# Merged from the Coverage repo's own .dockerignore. Only the build-context
+# root's file is honoured, so these have to live here rather than beside the app.
+**/dist/
+**/.angular/
+.github/
+.playwright-mcp/
+docs/
+tmp/
+# Nx cache. Pure build state, and the Dockerfile runs with --skip-nx-cache anyway.
+.nx/
+# Test projects. The image never builds or runs them -- the Dockerfile restores and publishes
+# CodeCoverage.csproj alone, and no test project is an npm workspace. Measured: they were 714 MB
+# of the 742 MB context, almost all of it a leftover tests/MintPlayer.Spark.Tests/bin.stale/ that
+# **/bin does not match, because the component is 'bin.stale' and not 'bin'.
+tests/
+**/*.Tests/
+# Root-level only, deliberately: Docker's * does not cross /, so this leaves the
+# per-project READMEs and AGENTS.md in the context, which the build is happy with.
+*.md
+# **/ is load-bearing. `*.pem` alone matches ONLY a root-level key -- it would NOT have
+# excluded apps/CodeCoverage/github-app.pem, which is exactly the file this rule exists
+# to keep out of an image layer.
+**/*.pem
+
 !**/.gitignore
 !.git/HEAD
 !.git/config

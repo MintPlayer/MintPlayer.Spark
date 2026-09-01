@@ -62,7 +62,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             }
             """) + IndexStub);
 
-        var file = result.GeneratedSources.Should().ContainSingle().Subject;
+        var file = result.GeneratedSources.Should().ContainSingle().Which;
         file.HintName.Should().Be("SparkIndexEntitySortFields.g.cs");
         file.Source.Should().Contain("namespace TestApp.Data");
         file.Source.Should().Contain("public partial class VCar");

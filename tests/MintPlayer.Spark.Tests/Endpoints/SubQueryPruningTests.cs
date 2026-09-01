@@ -123,7 +123,7 @@ public class SubQueryPruningTests : SparkTestDriver
         factory.GetService<IModelLoader>()
             .GetEntityTypes().Single().Queries.Should().BeEquivalentTo(
                 ["childdocs"],
-                "the pruner must copy per request, never filter the shared definition in place");
+                because: "the pruner must copy per request, never filter the shared definition in place");
     }
 
     /// <summary>

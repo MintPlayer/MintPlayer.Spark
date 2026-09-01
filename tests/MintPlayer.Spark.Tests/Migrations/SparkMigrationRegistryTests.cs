@@ -38,7 +38,7 @@ public class SparkMigrationRegistryTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*42*")
-            .WithMessage("*First*")
-            .WithMessage("*Second*");
+            .And.WithMessage("*First*")
+            .And.WithMessage("*Second*");
     }
 }

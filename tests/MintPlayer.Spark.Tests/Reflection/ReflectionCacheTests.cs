@@ -133,7 +133,7 @@ public class ReflectionCacheTests
 
         failures.Should().BeEmpty("no racer may fault");
         factoryRuns.Should().Be(1, "Lazy<T>(ExecutionAndPublication) guarantees single execution");
-        results.Should().AllBeEquivalentTo(7);
+        results.Should().AllSatisfy(r => r.Should().Be(7));
     }
 
     [Fact]

@@ -1,0 +1,103 @@
+<bs-card class="mt-3 d-block">
+  <bs-card-header>Files</bs-card-header>
+
+  @if (flagEntries().length > 0) {
+    <div class="d-flex flex-wrap gap-2 align-items-center px-3 pt-3" role="group" aria-label="Filter by flag">
+      <span class="small text-muted" aria-hidden="true">Flags:</span>
+      <button type="button" class="btn btn-sm"
+              [class.btn-primary]="!selectedFlag()"
+              [class.btn-outline-secondary]="!!selectedFlag()"
+              [attr.aria-pressed]="!selectedFlag()"
+              (click)="selectFlag(null)">All</button>
+      @for (entry of flagEntries(); track entry.flag) {
+        <button type="button" class="btn btn-sm"
+                [class.btn-primary]="selectedFlag() === entry.flag"
+                [class.btn-outline-secondary]="selectedFlag() !== entry.flag"
+                [attr.aria-pressed]="selectedFlag() === entry.flag"
+                attr.aria-label="{{ entry.flag }} coverage {{ entry.rate }}"
+                (click)="selectFlag(entry.flag)">
+          {{ entry.flag }} <span class="opacity-75">{{ entry.rate }}</span>
+        </button>
+      }
+    </div>
+  }
+
+  @if (hierarchy(); as h) {
+    <div class="row g-3 mb-2">
+      <div class="col-12 col-lg-5">
+        <!-- aspect-ratio 1 fills the column width; keep it bounded -->
+        <bs-hierarchy-chart
+          style="max-width: 420px; margin-inline: auto;"
+          [data]="h"
+          layout="sunburst"
+          [rootId]="chartRootId()"
+          (rootIdChange)="chartRootId.set($event)"
+          [maxDepth]="'auto'"
+          [colorMin]="60"
+          [colorMax]="80"
+          inputLabel="Coverage by folder"
+          valueUnitLabel="lines"
+          (zoom)="onChartZoom($event)"
+          (nodeSelect)="onChartSelect($event)" />
+      </div>
+      <div class="col-12 col-lg-7">
+        <ng-container *ngTemplateOutlet="folderList" />
+      </div>
+    </div>
+  } @else {
+    <ng-container *ngTemplateOutlet="folderList" />
+  }
+</bs-card>
+
+<ng-template #folderList>
+  <bs-breadcrumb class="mb-2">
+    <bs-breadcrumb-item><a href="javascript:void(0)" (click)="openFolder('')">root</a></bs-breadcrumb-item>
+    @for (segment of pathSegments(); track segment.path) {
+      <bs-breadcrumb-item><a href="javascript:void(0)" (click)="openFolder(segment.path)">{{ segment.name }}</a></bs-breadcrumb-item>
+    }
+  </bs-breadcrumb>
+
+  @if (tree(); as t) {
+    @if (t.unmatchedFiles.length > 0) {
+      <bs-alert [type]="warningColor" class="d-block mb-2">
+        {{ t.unmatchedTotal }} report path(s) couldn't be matched to the repository tree
+        (e.g. {{ t.unmatchedFiles[0] }}). Check the action's <code>rootDir</code>/checkout.
+        @if (t.unmatchedFiles.length < t.unmatchedTotal) {
+          <span class="d-block small">Showing {{ t.unmatchedFiles.length }} of {{ t.unmatchedTotal }} unmatched paths.</span>
+        }
+      </bs-alert>
+    }
+    @if (t.entries.length === 0) {
+      <p class="text-muted mb-0">No coverage data in this folder.</p>
+    } @else {
+      <!-- isResponsive is BsTable's own .table-responsive + nowrap wrapper, off by
+           default; without it a wide file table overflows its card on a phone. -->
+      <bs-table [isResponsive]="true">
+        <thead>
+          <tr><th>Name</th><th>Coverage</th><th class="text-end">Lines</th></tr>
+        </thead>
+        <tbody>
+          @for (entry of t.entries; track entry.path) {
+            <tr>
+              <td>
+                <i class="bi" [class.bi-folder-fill]="!entry.isFile" [class.bi-file-earmark-code]="entry.isFile"
+                   [class.text-warning]="!entry.isFile"></i>
+                @if (entry.isFile) {
+                  <a href="javascript:void(0)" (click)="openFile(entry.path)" class="ms-1">{{ entry.name }}</a>
+                } @else {
+                  <a href="javascript:void(0)" (click)="openFolder(entry.path)" class="ms-1">{{ entry.name }}</a>
+                }
+              </td>
+              <td>
+                <app-coverage-bar [summary]="{ linesCovered: entry.linesCovered, linesCoverable: entry.linesCoverable, branchesCovered: 0, branchesTotal: 0, filesCount: 0 }" />
+              </td>
+              <td class="text-end small text-muted">{{ entry.linesCovered }}/{{ entry.linesCoverable }}</td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
+    }
+  } @else {
+    <bs-spinner />
+  }
+</ng-template>

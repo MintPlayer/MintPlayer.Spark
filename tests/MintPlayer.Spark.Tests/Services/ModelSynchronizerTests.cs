@@ -183,7 +183,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         var notes = file.PersistentObject.Attributes.Single(a => a.Name == "Notes");
         notes.DataType.Should().Be("AsDetail");
         notes.IsArray.Should().BeTrue();
-        notes.IsSortable.Should().BeNull("a non-[Sortable] AsDetail array carries no isSortable flag (absent, not false)");
+        notes.IsSortable.Should().NotHaveValue("a non-[Sortable] AsDetail array carries no isSortable flag (absent, not false)");
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
         // [Sortable] on a scalar string — meaningless, must not set the flag.
-        file.PersistentObject.Attributes.Single(a => a.Name == "Name").IsSortable.Should().BeNull();
+        file.PersistentObject.Attributes.Single(a => a.Name == "Name").IsSortable.Should().NotHaveValue();
     }
 
     [Fact]
@@ -394,7 +394,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         sync.SynchronizeModels(ctx);
 
-        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).PersistentObject.BreadcrumbProjectionSatisfiable.Should().BeNull();
+        Read<EntityTypeFile>(ModelFile("MS_TestPerson")).PersistentObject.BreadcrumbProjectionSatisfiable.Should().NotHaveValue();
     }
 
     [Fact]
@@ -440,7 +440,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         sync.SynchronizeModels(ctx);
 
         Read<EntityTypeFile>(ModelFile("MS_BreadcrumbPerson")).PersistentObject.BreadcrumbProjectionSatisfiable
-            .Should().BeNull();
+            .Should().NotHaveValue();
     }
 
     [Fact]
@@ -495,7 +495,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         var file = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson"));
         file.PersistentObject.Attributes.Select(a => a.Name)
-            .Should().BeEquivalentTo(["FirstName"], "[IgnoreProperty] excludes a property from the model");
+            .Should().BeEquivalentTo(["FirstName"], because: "[IgnoreProperty] excludes a property from the model");
     }
 
     [Fact]
@@ -548,7 +548,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         sync.SynchronizeModels(typeof(IgnoredContext));
 
         var attrs = Read<EntityTypeFile>(ModelFile("MS_IgnoredPerson")).PersistentObject.Attributes;
-        var virtualAttr = attrs.Should().ContainSingle(a => a.Name == "TotalPurchaseBudget").Subject;
+        var virtualAttr = attrs.Should().ContainSingle(a => a.Name == "TotalPurchaseBudget").Which;
 
         virtualAttr.Id.Should().Be(Guid.Parse("44444444-4444-4444-4444-444444444444"),
             "a regenerated id silently breaks every client that stored the old one");
@@ -626,7 +626,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         var attrs = Read<EntityTypeFile>(ModelFile("MS_ComputedOrder")).PersistentObject.Attributes;
 
-        var computed = attrs.Should().ContainSingle(a => a.Name == "Total").Subject;
+        var computed = attrs.Should().ContainSingle(a => a.Name == "Total").Which;
         computed.IsReadOnly.Should().BeTrue("nothing can write a property with no setter");
         computed.DataType.Should().Be("decimal",
             "a computed property is typed from its return type like any other");
@@ -671,7 +671,7 @@ public sealed class ModelSynchronizerTests : IDisposable
 
         Read<EntityTypeFile>(ModelFile("MS_IndexerEntity")).PersistentObject.Attributes
             .Select(a => a.Name)
-            .Should().BeEquivalentTo(["Name"], "the indexer is not part of the model");
+            .Should().BeEquivalentTo(["Name"], because: "the indexer is not part of the model");
     }
 
     [Fact]
@@ -698,7 +698,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         sync.SynchronizeModels(ctx);
 
         Read<EntityTypeFile>(ModelFile("MS_IgnoredChild")).PersistentObject.Attributes
-            .Select(a => a.Name).Should().BeEquivalentTo(["Label"], "the rule applies at every level, not just entity roots");
+            .Select(a => a.Name).Should().BeEquivalentTo(["Label"], because: "the rule applies at every level, not just entity roots");
     }
 
     [Fact]

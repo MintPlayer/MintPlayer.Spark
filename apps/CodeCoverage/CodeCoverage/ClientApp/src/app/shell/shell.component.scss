@@ -1,0 +1,24 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+// The chrome colours are spark-shell's own custom properties. Set here rather
+// than restyled, so the shell keeps owning its layout and we only choose the
+// palette — these are the values the hand-rolled shell used.
+spark-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  --spark-shell-topbar-bg: #212529;
+  --spark-shell-sidebar-bg: #333;
+  --spark-shell-main-bg: #f8f9fa;
+}
+
+// The navbar-toggler's bars use --bs-secondary-color (dark by default); lighten
+// it so the toggler is visible against the dark topbar. spark-shell renders the
+// toggler itself, so this reaches into it.
+::ng-deep bs-navbar-toggler {
+  --bs-secondary-color: rgba(255, 255, 255, 0.85);
+}

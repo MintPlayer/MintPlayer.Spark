@@ -328,7 +328,7 @@ public class ValidationServiceTests
         var service = new ValidationService(_modelLoader, _translations);
         var result = service.Validate(Po(("LastName", "TooLongName")));
 
-        result.Errors.Should().ContainSingle().Which.ErrorMessage.Translations
+        ((object)result.Errors.Should().ContainSingle().Which.ErrorMessage.Translations)
             .Should().BeEquivalentTo(new Dictionary<string, string>
             {
                 ["en"] = "Surname must be at most 5 chars",

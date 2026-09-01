@@ -40,7 +40,7 @@ public class RetryActionDeleteTests
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
         retry.GetProperty("title").GetString().Should().Be("Delete car");
-        retry.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Contain(["Delete", "Cancel"]);
+        retry.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Contain("Delete").And.Contain("Cancel");
         var step = retry.GetProperty("step").GetInt32();
         var po = retry.GetProperty("persistentObject").Clone();
 

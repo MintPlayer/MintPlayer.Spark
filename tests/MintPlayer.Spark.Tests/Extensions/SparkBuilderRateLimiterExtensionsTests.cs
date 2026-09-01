@@ -137,7 +137,7 @@ public class SparkBuilderRateLimiterExtensionsTests
         // outcome worse than a startup error.
         act.Should().Throw<ArgumentException>()
            .WithMessage("*PathPrefixes*")
-           .Which.ParamName.Should().Be(nameof(SparkRateLimiterOptions.PathPrefixes),
+           .And.Which.ParamName.Should().Be(nameof(SparkRateLimiterOptions.PathPrefixes),
                "the caller set PathPrefixes, so naming an internal parameter tells them nothing");
     }
 

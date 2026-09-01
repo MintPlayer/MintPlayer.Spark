@@ -91,7 +91,7 @@ public class RetryNumeratorTests
         var delay1 = (ts1 - DateTime.UtcNow).TotalSeconds;
         var delay3 = (ts3 - DateTime.UtcNow).TotalSeconds;
         delay3.Should().BeGreaterThan(delay1, "later attempts wait longer");
-        delay3.Should().BeApproximately(delay1 * 3, 2.0, "linear scaling of BaseDelay * attempt");
+        delay3.Should().BeCloseTo(delay1 * 3, 2.0, "linear scaling of BaseDelay * attempt");
     }
 
     private static async Task<DateTime> RefreshTimestampAfterAttemptAsync(RetryNumerator numerator, int attempt)

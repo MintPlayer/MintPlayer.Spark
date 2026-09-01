@@ -1,5 +1,17 @@
 <Project>
 	<PropertyGroup>
 		<NpmInstallWorkingDirectory>$(MSBuildThisFileDirectory)</NpmInstallWorkingDirectory>
+
+		<!--
+		  In-repo projects get a short generated pointer to the agent guide under libs/ instead of
+		  a full copy of it. The source of truth is already in this tree, so copying it into every
+		  app would duplicate it and put a diff in each one on every edit of the guide.
+
+		  Set here rather than per-csproj because Directory.Build.props is imported by every project
+		  under the repo root, so one line covers the apps, the test projects and anything added
+		  later. External NuGet consumers never see this property and keep the default, Copy, which
+		  is what they need: their source lives inside a package.
+		-->
+		<SparkAgentsGuideMode>Pointer</SparkAgentsGuideMode>
 	</PropertyGroup>
 </Project>

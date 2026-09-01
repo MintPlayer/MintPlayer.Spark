@@ -1,13 +1,35 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
 	<!--
-	  When consumed via ProjectReference (local development), analyzer references
-	  don't flow transitively. This targets file adds them for the consuming project.
+	  Two consumption modes, distinguished by whether the sibling generator projects
+	  exist next to this file.
 
-	  When consumed via NuGet, the analyzers/ folder in the package handles this
-	  automatically and this file is not needed.
+	  In-repo (ProjectReference): analyzer references do not flow transitively, so
+	  this file adds them for the consuming project.
+
+	  From the NuGet package: the package's own analyzers/dotnet/cs folder already
+	  carries both generator DLLs, so the ProjectReferences are neither needed nor
+	  resolvable: inside a package layout these relative paths point at
+	  directories that do not exist. Restore still succeeds, but every build emits
+	  MSB9008 ("the referenced project does not exist").
+
+	  Note the coupling to SPARK001: SparkValidateSourceGeneratorsReference accepts a
+	  ProjectReference carrying OutputItemType="Analyzer" and never checks that the
+	  project file is real, so the dangling reference was silently satisfying that
+	  validation for package consumers. Dropping it without also setting the
+	  validated flag turns a benign warning into a hard SPARK001 build error, so the
+	  package branch asserts the flag directly: the analyzers genuinely are present,
+	  just delivered through analyzers/dotnet/cs rather than a project reference.
 	-->
-	<ItemGroup>
+
+	<PropertyGroup>
+		<_SparkAllFeaturesInRepo Condition="Exists('$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj')">true</_SparkAllFeaturesInRepo>
+		<_SparkAllFeaturesInRepo Condition="'$(_SparkAllFeaturesInRepo)' == ''">false</_SparkAllFeaturesInRepo>
+
+		<MintPlayerSparkSourceGeneratorsReferenceValidated Condition="'$(_SparkAllFeaturesInRepo)' == 'false'">true</MintPlayerSparkSourceGeneratorsReferenceValidated>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(_SparkAllFeaturesInRepo)' == 'true'">
 		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
 			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"

@@ -51,7 +51,7 @@ public sealed class SelectionRuleValidationTests : IDisposable
 
         act.Should().Throw<FormatException>()
             .WithMessage("*Archive*", "the message must name the offending action")
-            .And.Message.Should().Contain("1-5", "and quote the rule that was rejected");
+            .And.Which.Message.Should().Contain("1-5", "and quote the rule that was rejected");
     }
 
     /// <summary>Fixing one typo only to be shown the next is the worst version of this message.</summary>

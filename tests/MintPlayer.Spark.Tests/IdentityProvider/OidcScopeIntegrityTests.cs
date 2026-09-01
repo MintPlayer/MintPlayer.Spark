@@ -224,7 +224,7 @@ public class OidcScopeIntegrityTests : OidcTestHost
         introspection.GetProperty("active").GetBoolean().Should().BeTrue();
         introspection.GetProperty("scope").GetString()!.Split(' ')
             .Should().BeEquivalentTo(ScopeClaims(body.GetProperty("access_token").GetString()!),
-                "what introspection reports and what the token carries are the same authority, "
+                because: "what introspection reports and what the token carries are the same authority, "
                 + "and a resource server has no way to notice if they differ");
     }
 

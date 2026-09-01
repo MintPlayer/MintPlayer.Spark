@@ -1,4 +1,3 @@
-using FluentAssertions;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -82,7 +81,7 @@ public class ClientSecretHasherTests
         var b = ClientSecretHasher.GenerateSecret();
 
         a.Should().NotBe(b);
-        a.Should().NotContainAny("+", "/", "=");
+        a.Should().NotContain("+").And.NotContain("/").And.NotContain("=");
         a.Length.Should().BeGreaterThan(40, "256 bits of entropy in base64url");
     }
 }

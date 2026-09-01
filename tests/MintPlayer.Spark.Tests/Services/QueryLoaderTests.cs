@@ -123,7 +123,7 @@ public class QueryLoaderTests
         var act = () => loader.GetQueryByAlias("duplicate");
 
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*GetCars*").And.Message.Should().Contain("GetPeople");
+            .WithMessage("*GetCars*").And.Which.Message.Should().Contain("GetPeople");
     }
 
     /// <summary>
@@ -143,7 +143,7 @@ public class QueryLoaderTests
         var act = () => loader.GetQueryByAlias("stocks");
 
         act.Should().Throw<InvalidOperationException>()
-            .And.Message.Should().Contain("derived from its name",
+            .Which.Message.Should().Contain("derived from its name",
                 "the author of the colliding query does not know they chose an alias at all");
     }
 

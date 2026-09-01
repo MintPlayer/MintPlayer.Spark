@@ -1,0 +1,96 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/CodeCoverage/">
+    <Project Path="apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj" />
+  </Folder>
+  <Folder Name="/apps/DemoApp/">
+    <Project Path="apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj" />
+    <Project Path="apps/DemoApp/DemoApp/DemoApp.csproj" />
+  </Folder>
+  <Folder Name="/apps/Fleet/">
+    <Project Path="apps/Fleet/Fleet.Library/Fleet.Library.csproj" />
+    <Project Path="apps/Fleet/Fleet/Fleet.csproj" />
+  </Folder>
+  <Folder Name="/apps/HR/">
+    <Project Path="apps/HR/HR.Library/HR.Library.csproj" />
+    <Project Path="apps/HR/HR/HR.csproj" />
+  </Folder>
+  <Folder Name="/apps/WebhooksDemo/">
+    <Project Path="apps/WebhooksDemo/WebhooksDemo.Library/WebhooksDemo.Library.csproj" />
+    <Project Path="apps/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj" />
+  </Folder>
+  <Folder Name="/libs/" />
+  <Folder Name="/libs/all_features/">
+    <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" />
+    <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj" />
+  </Folder>
+  <Folder Name="/libs/authorization/">
+    <Project Path="libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj" />
+  </Folder>
+  <Folder Name="/libs/client/">
+    <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
+    <Project Path="libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj" />
+  </Folder>
+  <Folder Name="/libs/controllers/">
+    <Project Path="libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj" />
+  </Folder>
+  <Folder Name="/libs/cron/">
+    <Project Path="libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj" />
+  </Folder>
+  <Folder Name="/libs/identity_provider/">
+    <Project Path="libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj" />
+  </Folder>
+  <Folder Name="/libs/messaging/">
+    <Project Path="libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj" />
+    <Project Path="libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj" />
+  </Folder>
+  <Folder Name="/libs/migrations/">
+    <Project Path="libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj" />
+  </Folder>
+  <Folder Name="/libs/node_packages/">
+    <Project Path="libs/node_packages/ng-spark-auth/ng-spark-auth.esproj">
+      <Platform Project="AnyCPU" />
+    </Project>
+    <Project Path="libs/node_packages/ng-spark/ng-spark.esproj">
+      <Platform Project="AnyCPU" />
+    </Project>
+  </Folder>
+  <Folder Name="/libs/replication/">
+    <Project Path="libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj" />
+    <Project Path="libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj" />
+  </Folder>
+  <Folder Name="/libs/socket_extensions/">
+    <Project Path="libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj" />
+  </Folder>
+  <Folder Name="/libs/source_generators/">
+    <Project Path="libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj" />
+  </Folder>
+  <Folder Name="/libs/spark/">
+    <Project Path="libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
+  </Folder>
+  <Folder Name="/libs/subscription_worker/">
+    <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+    <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj" />
+  </Folder>
+  <Folder Name="/libs/testing/">
+    <Project Path="libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj" />
+  </Folder>
+  <Folder Name="/libs/webhooks/">
+    <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+    <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj" />
+  </Folder>
+</Solution>

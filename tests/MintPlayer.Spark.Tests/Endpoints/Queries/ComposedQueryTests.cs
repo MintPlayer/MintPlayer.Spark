@@ -267,7 +267,7 @@ public class ComposedQueryTests : SparkTestDriver
 
         result.Items.Should().HaveCount(2);
         result.Items.Select(i => i.Id).Should().BeEquivalentTo(["page/10", "page/11"],
-            "the method received skip=10 through CustomQueryArgs and honoured it");
+            because: "the method received skip=10 through CustomQueryArgs and honoured it");
     }
 
     [Fact]

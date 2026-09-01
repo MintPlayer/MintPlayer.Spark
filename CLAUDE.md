@@ -1,8 +1,23 @@
 # MintPlayer.Spark — repository instructions
 
-## Running the demo apps: never start the Angular dev server yourself
+## `apps/` holds applications, and one of them is production
 
-Every demo app (`Demo/DemoApp`, `Demo/Fleet`, `Demo/HR`, `Demo/WebhooksDemo`) hosts its SPA through
+`apps/` (renamed from `Demo/`) holds the four demos **and `apps/CodeCoverage`**, which is not a demo:
+it is the coverage server running at coverage.mintplayer.com, absorbed from `MintPlayer/CodeCoverage`.
+Treat changes to it as production changes. Its docs are in [docs/code-coverage/](docs/code-coverage/README.md).
+
+Two consequences worth knowing before editing it:
+
+- The app is named **CodeCoverage**, not Coverage, and that is load-bearing. `**/coverage/` in
+  `.gitignore` matches a path component equal to `coverage`, case-insensitively on Windows, so a
+  directory named `Coverage/` would be silently untracked. Never rename it back.
+- Its RavenDB database is still called `Coverage` and its `[SparkAuthorize(..., Coverage)]`
+  resources still say `Coverage`. Those are production data and authorization identifiers, not
+  naming leftovers.
+
+## Running the apps: never start the Angular dev server yourself
+
+Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/WebhooksDemo`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second

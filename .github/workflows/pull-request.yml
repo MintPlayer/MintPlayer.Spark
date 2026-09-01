@@ -103,7 +103,7 @@ jobs:
     # compiled against. Exit 3 means drift; the run fails before the slow test suite.
     - name: Verify Spark models are in sync
       run: |
-        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
           echo "::endgroup::"
@@ -117,7 +117,7 @@ jobs:
     # the anonymous surface moved; run --spark-synchronize-security and commit the baseline.
     - name: Verify the anonymous surface has not widened
       run: |
-        for project in Demo/DemoApp/DemoApp Demo/HR/HR Demo/Fleet/Fleet Demo/WebhooksDemo/WebhooksDemo; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-security
           echo "::endgroup::"
@@ -145,14 +145,23 @@ jobs:
     # that matches nothing must be a no-op, not an auto-detected upload of
     # stray unparsable reports; the hashFiles gate skips the step entirely
     # when nx affected ran no test project at all.
+    # The Angular reports are new here. Both workflows used to glob only
+    # tests/*/coverage/**, and `disable-search: true` means nothing else is picked
+    # up, so vitest has been writing libs/node_packages/*/coverage/cobertura-coverage.xml
+    # on every run and CI has been throwing it away -- roughly 2,000 measured lines,
+    # and the badge has been .NET-only. apps/*/*/coverage/** is new too: it is where
+    # CodeCoverage.Tests lands.
     - name: Upload coverage
-      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
-      uses: MintPlayer/CodeCoverage/action@master
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml') != ''
+      uses: MintPlayer/github-actions/coverage-upload@main
       with:
         url: https://coverage.mintplayer.com
         token: ${{ secrets.COVERAGE_TOKEN }}
         files: |
           tests/*/coverage/**/coverage.cobertura.xml
+          apps/*/*/coverage/**/coverage.cobertura.xml
+          libs/node_packages/*/coverage/cobertura-coverage.xml
+          apps/*/*/ClientApp/coverage/cobertura-coverage.xml
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}

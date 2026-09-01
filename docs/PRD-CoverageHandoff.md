@@ -1,6 +1,6 @@
 # PRD — Spark hardening for the Coverage integration (M0)
 
-**Status:** Draft for review
+**Status:** ✅ Shipped — the items here landed in `10.0.0-preview.42` (Spark #231) and the security work grew into the IdentityProvider pass tracked by [coverage-handoff-plan.md](coverage-handoff-plan.md). Kept as the record of what the first out-of-tree consumer asked for, and which asks were overturned rather than built. The originating file, `docs/spark-handoff.md` in the Coverage repo, now lives at [docs/code-coverage/spark-handoff.md](code-coverage/spark-handoff.md) as a stub pointing back here.
 **Date:** 2026-08-07
 **Author:** Investigation team (6 parallel investigators) + synthesis
 **Origin:** `C:\Repos\Coverage\docs\spark-handoff.md`, generated during the Coverage-analyzer investigation. Cross-checked against Coverage's own `docs/PRD.md` §10 and `docs/PLAN.md` M0.

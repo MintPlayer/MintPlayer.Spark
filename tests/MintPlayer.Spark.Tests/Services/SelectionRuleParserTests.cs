@@ -1,4 +1,3 @@
-using FluentAssertions;
 using MintPlayer.Spark.Services;
 using System.Text.Json;
 

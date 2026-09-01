@@ -338,8 +338,15 @@ shares a *server* and keeps the database as the isolation boundary.
 ## Conventions
 
 - **Naming:** sentence style — `POST_without_antiforgery_token_is_rejected_with_400`.
-- **Assertions:** FluentAssertions (pinned at 7.x — v8 is a paid licence). Imported globally; no
-  `using` needed.
+- **Assertions:** `MintPlayer.Assertions`. Imported globally via a csproj `<Using>`; no `using`
+  needed. It replaced FluentAssertions, whose v8 went to a paid licence. Mostly source-compatible,
+  but four differences bite: absence on a nullable *value* type is `NotHaveValue()`/`HaveValue()`,
+  not `BeNull()`/`NotBeNull()`; `BeEquivalentTo` takes an `IEnumerable`, has no `params` overload,
+  and its 3rd positional is the options lambda, so a reason must be passed as `because:`;
+  `AndWhichConstraint` exposes `.Which`, not `.Subject`; and `Throw<T>()` returns
+  `ExceptionAssertions<T>` directly while `WithMessage()` returns an `AndConstraint`, so chaining
+  off the former uses `.Which` and off the latter `.And`. `WithMessage` globs are
+  case-**sensitive** here.
 - **Snapshots:** `Verify` is wired automatically by a module initializer, writing to
   `VerifyResults/{Class}/{Method}.verified.*`. It is a minority technique here; explicit
   assertions are the norm.

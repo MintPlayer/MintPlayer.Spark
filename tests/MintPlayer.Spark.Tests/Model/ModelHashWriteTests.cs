@@ -77,7 +77,7 @@ public class ModelHashWriteTests : IDisposable
         Synchronize();
         var second = ReadAllOutputs();
 
-        second.Should().BeEquivalentTo(first);
+        ((object)second).Should().BeEquivalentTo(first);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class ModelHashWriteTests : IDisposable
         var recomputed = Recompute();
 
         recomputed.ModelHash.Should().Be(written.ModelHash);
-        recomputed.Entities.Should().BeEquivalentTo(written.Entities);
+        ((object)recomputed.Entities).Should().BeEquivalentTo(written.Entities);
     }
 
     // --- tamper detection ------------------------------------------------

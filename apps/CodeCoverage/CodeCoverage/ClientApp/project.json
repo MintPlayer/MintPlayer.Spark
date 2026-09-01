@@ -1,0 +1,82 @@
+{
+  "name": "@spark-apps/code-coverage",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/CodeCoverage/CodeCoverage/ClientApp",
+  "sourceRoot": "apps/CodeCoverage/CodeCoverage/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": ["{workspaceRoot}/apps/CodeCoverage/CodeCoverage/ClientApp/dist/ClientApp"],
+      "options": {
+        "outputPath": "apps/CodeCoverage/CodeCoverage/ClientApp/dist/ClientApp",
+        "index": "apps/CodeCoverage/CodeCoverage/ClientApp/src/index.html",
+        "browser": "apps/CodeCoverage/CodeCoverage/ClientApp/src/main.ts",
+        "polyfills": [],
+        "tsConfig": "apps/CodeCoverage/CodeCoverage/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/CodeCoverage/CodeCoverage/ClientApp/public"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "apps/CodeCoverage/CodeCoverage/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
+            { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-apps/code-coverage:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-apps/code-coverage:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test",
+      "options": {
+        "tsConfig": "apps/CodeCoverage/CodeCoverage/ClientApp/tsconfig.spec.json",
+        "runner": "vitest",
+        "coverage": true,
+        "coverageReporters": ["cobertura", "text-summary"],
+        "coverageExclude": [
+          "src/**/*.spec.ts",
+          "src/main.ts",
+          "src/spark-auth.setup.ts",
+          "src/app/app.config.ts"
+        ],
+        "coverageInclude": ["src/**/*.ts"]
+      }
+    }
+  }
+}

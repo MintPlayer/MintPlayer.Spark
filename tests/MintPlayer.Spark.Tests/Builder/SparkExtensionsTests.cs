@@ -186,7 +186,7 @@ public class SparkExtensionsTests
         handled.Should().BeTrue();
         Environment.ExitCode.Should().Be(0);
         Directory.GetFiles(modelDir).Select(f => (f, File.GetLastWriteTimeUtc(f))).Should().BeEquivalentTo(before,
-            "verify must leave the workspace exactly as the pull request left it");
+            because: "verify must leave the workspace exactly as the pull request left it");
     }
 
     [Fact]

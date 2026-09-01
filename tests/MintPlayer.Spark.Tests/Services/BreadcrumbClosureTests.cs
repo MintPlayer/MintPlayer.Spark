@@ -100,7 +100,7 @@ public class BreadcrumbClosureTests
         var cycles = closure.GetCycles();
 
         cycles.Should().ContainSingle("the A<->B loop is reported once, not once per rotation");
-        cycles[0].Should().Contain(["T.A", "T.B"]);
+        cycles[0].Should().Contain("T.A").And.Contain("T.B");
     }
 
     [Fact]
@@ -180,6 +180,6 @@ public class BreadcrumbClosureTests
         closure.GetDepth(a).Should().Be(2);
         closure.GetDepth(b).Should().Be(2);
         closure.GetCycles().Should().ContainSingle();
-        closure.GetCycles()[0].Should().Contain(["T.A", "T.B"]);
+        closure.GetCycles()[0].Should().Contain("T.A").And.Contain("T.B");
     }
 }

@@ -19,7 +19,7 @@ public class PersistentObjectAttributeTests
         attr.Value.Should().BeNull();
         attr.Breadcrumb.Should().BeNull();
         attr.Query.Should().BeNull();
-        attr.Group.Should().BeNull();
+        attr.Group.Should().NotHaveValue();
         attr.Renderer.Should().BeNull();
         attr.RendererOptions.Should().BeNull();
         attr.ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);

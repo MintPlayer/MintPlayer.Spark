@@ -1,0 +1,26 @@
+{
+  "name": "@spark-apps/code-coverage",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "nx run @spark-apps/code-coverage:serve",
+    "build": "nx run @spark-apps/code-coverage:build",
+    "test": "nx run @spark-apps/code-coverage:test"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "@mintplayer/ng-spark": "^22.8.0",
+    "@mintplayer/ng-spark-auth": "^22.8.0"
+  }
+}

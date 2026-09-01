@@ -1,4 +1,3 @@
-using FluentAssertions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Services;
 
@@ -61,7 +60,8 @@ public class QueueNamesTests
         var name = QueueNames.ForMessageType(typeof(GenericMessage<PayloadA>));
 
         QueueNames.IsValid(name).Should().BeTrue();
-        name.Should().NotContainAny("[", "]", ",", "=", " ");
+        name.Should().NotContain("[").And.NotContain("]").And.NotContain(",")
+            .And.NotContain("=").And.NotContain(" ");
     }
 
     [Fact]

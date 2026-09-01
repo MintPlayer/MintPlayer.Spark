@@ -32,7 +32,7 @@ public class StreamingDiffEngineTests
 
         var message = engine.ComputeMessage(Batch(items));
 
-        var snapshot = message.Should().BeOfType<SnapshotMessage>().Subject;
+        var snapshot = message.Should().BeOfType<SnapshotMessage>().Which;
         snapshot.Data.Should().HaveCount(2);
         snapshot.Type.Should().Be("snapshot");
     }
@@ -57,12 +57,12 @@ public class StreamingDiffEngineTests
 
         var patch = engine.ComputeMessage(Batch(Po("people/1", ("FirstName", "Alicia"), ("LastName", "Smith"))));
 
-        var patchMessage = patch.Should().BeOfType<PatchMessage>().Subject;
+        var patchMessage = patch.Should().BeOfType<PatchMessage>().Which;
         patchMessage.Type.Should().Be("patch");
         patchMessage.Updated.Should().HaveCount(1);
         var item = patchMessage.Updated[0];
         item.Id.Should().Be("people/1");
-        item.Values.Should().ContainKey("FirstName").WhoseValue.Should().Be("Alicia");
+        item.Values.Should().ContainKey("FirstName").Which.Should().Be("Alicia");
         item.Values.Should().NotContainKey("LastName");
     }
 
@@ -77,12 +77,12 @@ public class StreamingDiffEngineTests
             Po("people/2", ("FirstName", "Bob"), ("LastName", "Jones"))
         ));
 
-        var patchMessage = patch.Should().BeOfType<PatchMessage>().Subject;
+        var patchMessage = patch.Should().BeOfType<PatchMessage>().Which;
         patchMessage.Updated.Should().HaveCount(1);
         var newItem = patchMessage.Updated[0];
         newItem.Id.Should().Be("people/2");
-        newItem.Values.Should().ContainKey("FirstName").WhoseValue.Should().Be("Bob");
-        newItem.Values.Should().ContainKey("LastName").WhoseValue.Should().Be("Jones");
+        newItem.Values.Should().ContainKey("FirstName").Which.Should().Be("Bob");
+        newItem.Values.Should().ContainKey("LastName").Which.Should().Be("Jones");
     }
 
     [Fact]
@@ -95,9 +95,9 @@ public class StreamingDiffEngineTests
             Po("people/1", ("FirstName", "Alice"), ("LastName", "Smith"))
         ));
 
-        var patchMessage = patch.Should().BeOfType<PatchMessage>().Subject;
+        var patchMessage = patch.Should().BeOfType<PatchMessage>().Which;
         var item = patchMessage.Updated.Single();
-        item.Values.Should().ContainKey("LastName").WhoseValue.Should().Be("Smith");
+        item.Values.Should().ContainKey("LastName").Which.Should().Be("Smith");
     }
 
     [Fact]
@@ -115,10 +115,10 @@ public class StreamingDiffEngineTests
             Po("people/2", ("FirstName", "Bob"))
         ));
 
-        var patch = second.Should().BeOfType<PatchMessage>().Subject;
-        var added = patch.Updated.Should().ContainSingle().Subject;
+        var patch = second.Should().BeOfType<PatchMessage>().Which;
+        var added = patch.Updated.Should().ContainSingle().Which;
         added.Id.Should().Be("people/2");
-        added.Values.Should().ContainKey("FirstName").WhoseValue.Should().Be("Bob",
+        added.Values.Should().ContainKey("FirstName").Which.Should().Be("Bob",
             "a row the client has never seen needs every value, not a diff against nothing");
     }
 
@@ -141,7 +141,7 @@ public class StreamingDiffEngineTests
 
         var secondMessage = engine.ComputeMessage(Batch(Po("people/1", ("Nickname", "Ally"))));
 
-        var patch = secondMessage.Should().BeOfType<PatchMessage>().Subject;
+        var patch = secondMessage.Should().BeOfType<PatchMessage>().Which;
         patch.Updated.Single().Values["Nickname"].Should().Be("Ally");
     }
 
