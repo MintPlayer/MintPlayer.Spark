@@ -323,13 +323,23 @@ genuine break runs the **other** way.
 unconditional `ItemGroup` adding two `ProjectReference`s via `$(MSBuildThisFileDirectory)..\..\`. Its
 own header comment says *"When consumed via NuGet, the analyzers/ folder in the package handles this
 automatically and this file is not needed"* — but `MintPlayer.Spark.AllFeatures.csproj:60` packs it to
-`buildTransitive/$(PackageId).targets`, so NuGet auto-imports it anyway. In a package layout those
-`..\..\` paths resolve to directories that do not exist, so an external consumer gets a
-`ProjectReference` to a missing project and a restore failure, plus duplicate analyzers if it did
-resolve.
+`buildTransitive/$(PackageId).targets`, so NuGet auto-imports it anyway, and in a package layout those
+`..\..\` paths resolve to directories that do not exist.
 
-Fix is one of: guard the `ItemGroup` with `Condition="Exists(...)"`, or stop packing the file, since it
-is purely an in-repo convenience. Cheap, and this is the moment to do it.
+**Measured, not assumed** — packed to a folder feed and consumed by a scratch app: restore *succeeds*,
+and the symptom is an `MSB9008` warning ("the referenced project … does not exist") on every build. It
+is noise plus broken intent, not the restore failure first supposed.
+
+The fix is **not** just `Condition="Exists(...)"` on the `ItemGroup`. `SPARK001`'s validation accepts a
+`ProjectReference` carrying `OutputItemType="Analyzer"` without checking the project file is real, so
+the dangling reference had been silently *satisfying* that validation for package consumers; guarding
+it alone converts a warning into a hard `SPARK001` error. The package branch must also assert
+`MintPlayerSparkSourceGeneratorsReferenceValidated` — accurate rather than a workaround, since the
+package genuinely ships both generator DLLs in `analyzers/dotnet/cs`.
+
+**Status: done** (commit `4d488261`), verified in both directions — external consumer builds clean, and
+Fleet still evaluates both analyzer `ProjectReference`s with the validated flag left unset so `SPARK001`
+still runs for real.
 
 ### R12 — Coverage measurement is missing a whole language (D6)
 

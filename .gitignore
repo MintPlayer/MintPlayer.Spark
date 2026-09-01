@@ -67,7 +67,8 @@ BenchmarkDotNet.Artifacts/
 # .NET Core
 project.lock.json
 project.fragment.lock.json
-artifacts/
+# Anchored to the repo root: unanchored, this also matches any nested directory named artifacts/.
+/artifacts/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -148,12 +149,19 @@ _TeamCity*
 .axoCover/*
 !.axoCover/settings.json
 
-# Coverlet is a free, cross platform Code Coverage Tool
+# Coverlet is a free, cross platform Code Coverage Tool.
+# Anchored to where coverage output is actually written, NOT globbed. core.ignorecase is true on
+# Windows, so a bare `coverage/` or `**/coverage/` also matches a directory named `Coverage/` --
+# which would silently swallow the whole apps/Coverage application and any docs/coverage folder.
+# Verified: `git check-ignore -v Coverage/App_Data/security.json` used to match `**/coverage/`.
 coverage*.json
 coverage*.xml
 coverage*.info
-coverage/
-**/coverage/
+tests/*/coverage/
+apps/*/*/coverage/
+apps/*/*/ClientApp/coverage/
+apps/*/action/coverage/
+libs/node_packages/*/coverage/
 
 # Visual Studio code coverage results
 *.coverage
@@ -393,5 +401,11 @@ Demo/*/*/appsettings.json.e2e-backup
 # copies would duplicate it and put a diff in every demo on every edit of the guide. A DOWNSTREAM
 # consumer should still commit its copy, which is what the file's own front-matter says: there the
 # source is in a NuGet package, so an agent cloning that repo would otherwise see nothing.
+#
+# TEMPORARY: these rules are deleted once in-repo projects switch from full copies to generated
+# pointers ($(SparkAgentsGuideMode)=Pointer). A pointer neither duplicates the guide nor churns
+# when it is edited, so it gets tracked instead. Kept until then so the copies stay out of
+# git status. The apps/ patterns cover the Demo -> apps rename.
 Demo/*/*/AGENTS.md
 tests/*/AGENTS.md
+apps/*/*/AGENTS.md

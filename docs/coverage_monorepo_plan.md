@@ -17,9 +17,9 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
 
 ---
 
-## M0 — Make `.gitignore` stop swallowing `Coverage/`
+## M0 — Make `.gitignore` stop swallowing `Coverage/` ✅ DONE
 
-**Gates everything.** Verified: `git check-ignore -v Coverage/App_Data/security.json` matches
+**Gates everything.** Verified: `git check-ignore -v Coverage/App_Data/security.json` matched
 `.gitignore:156:**/coverage/`, because `core.ignorecase=true`.
 
 1. Replace the unanchored Coverlet block at `.gitignore:152-156` with paths anchored to where coverage
@@ -32,12 +32,11 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
    - keep `coverage*.json` / `coverage*.xml` / `coverage*.info`; drop bare `coverage/` and
      `**/coverage/`.
 2. Anchor `.gitignore:70` `artifacts/` to `/artifacts/`.
-3. **Delete** the `Demo/*/*/AGENTS.md` and `tests/*/AGENTS.md` rules (`.gitignore:390-397`) along with
-   their rationale comment. Under D5 the generated files become tracked pointers, not copies — the
-   comment's objection ("committing the copies would duplicate it and put a diff in every demo on
-   every edit of the guide") no longer applies to a handful of stable lines that change only when a
-   path changes. Do not add an `apps/` replacement rule. Sequencing note: the pointers do not exist
-   until M8, so this step only removes the rules; the files get committed there.
+3. **Keep** the `Demo/*/*/AGENTS.md` and `tests/*/AGENTS.md` rules for now and **add**
+   `apps/*/*/AGENTS.md` to cover the M1 rename, marked TEMPORARY in the file. Deleting them here (as
+   originally drafted) would leave seven untracked full copies sitting in `git status` from now until
+   M8. They come out in M8a, in the same commit that starts generating tracked pointers — so every
+   intermediate commit stays clean.
 4. Ensure nothing ignores `apps/Coverage/action/dist/`; add an explicit `!` negation if a `dist/` rule
    reaches it. Add `apps/Coverage/action/node_modules/` if not already covered.
 
@@ -304,19 +303,29 @@ guide — Spark's for apps, Testing's for test projects — which is the thing t
 today. Confirm an external-style consumer still gets a full copy by building with
 `-p:SparkAgentsGuideMode=Copy` in a scratch project.
 
-### M8b — `spark-allfeatures.targets` NuGet break
+### M8b — `spark-allfeatures.targets` NuGet break ✅ DONE (`4d488261`)
 
-`libs/all_features/MintPlayer.Spark.AllFeatures/Targets/spark-allfeatures.targets` adds two
-`ProjectReference`s through `$(MSBuildThisFileDirectory)..\..\` with no condition, and
-`MintPlayer.Spark.AllFeatures.csproj:60` packs it to `buildTransitive/` — so NuGet auto-imports it and
-those paths do not exist in a package layout. The file's own comment already says it *"is not needed"*
-when consumed via NuGet. Either wrap the `ItemGroup` in
-`Condition="Exists('$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj')"`
-or stop packing the file. Prefer the condition — it keeps the in-repo convenience and makes the intent
-explicit.
+Done ahead of sequence: it is self-contained and depends on nothing else in the plan.
 
-**Verify:** `dotnet pack` the AllFeatures project, then restore a scratch console app that
-`PackageReference`s the produced `.nupkg` from a folder feed. It must restore.
+Two things turned out differently from the original write-up, both found by actually packing and
+consuming the package rather than reasoning about it:
+
+1. **The symptom is an `MSB9008` warning, not a restore failure.** Restore succeeds; every build of an
+   external consumer warns that the referenced project does not exist.
+2. **`Condition="Exists(...)"` alone makes it worse.** `SPARK001` accepts any `ProjectReference` with
+   `OutputItemType="Analyzer"` without checking the file exists, so the dangling reference had been
+   silently satisfying that validation for package consumers. Guarding it turns the warning into a hard
+   `SPARK001` build error. The package branch therefore also asserts
+   `MintPlayerSparkSourceGeneratorsReferenceValidated` — which is truthful, since the package ships both
+   generator DLLs in `analyzers/dotnet/cs`.
+
+**Verified both directions.** External: packed to a folder feed, consumed by `PackageReference` from a
+scratch app → builds clean, no `MSB9008`, no `SPARK001`, no warnings. In-repo: Fleet still evaluates
+both analyzer `ProjectReference`s from this file, `_SparkAllFeaturesInRepo` is `true`, the validated
+flag stays unset so `SPARK001` still runs for real, and `dotnet build MintPlayer.Spark.sln` is green.
+
+Watch out when editing this file: `--` is illegal inside an XML comment and MSBuild reports it as
+`MSB4024` at import time, which reads like a missing file rather than a syntax error.
 
 ## M9 — Regenerate model and security artefacts
 
