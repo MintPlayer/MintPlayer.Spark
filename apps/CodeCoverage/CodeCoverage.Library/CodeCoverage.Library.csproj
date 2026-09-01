@@ -8,10 +8,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.Spark.Abstractions" Version="10.0.0-preview.68" />
 		<!-- [JsonIgnore] on transient entity properties: RavenDB serializes through
 		     Newtonsoft, so its attribute is what keeps a value out of the document. -->
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	</ItemGroup>
 
 </Project>

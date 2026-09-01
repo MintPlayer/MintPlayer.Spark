@@ -85,7 +85,7 @@ public class BaseResolverTests : CoverageRavenTest
         resolved.ResolvedSha.Should().Be("base000");
         resolved.RequestedSha.Should().Be("base000");
         resolved.BaseBuildId.Should().NotBeNull();
-        resolved.CodeCoverage.Should().NotBeNull();
+        resolved.Coverage.Should().NotBeNull();
     }
 
     [Fact]

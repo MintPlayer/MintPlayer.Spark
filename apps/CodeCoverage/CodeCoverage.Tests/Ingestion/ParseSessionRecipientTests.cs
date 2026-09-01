@@ -48,7 +48,7 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         buildSession.ParseStatus.Should().Be("Parsed");
         buildSession.Error.Should().BeNull();
         buildSession.FilesCount.Should().Be(FileCount);
-        build.CodeCoverage.Should().NotBeNull();
+        build.Coverage.Should().NotBeNull();
 
         var fileCoverages = await assertSession.Advanced
             .LoadStartingWithAsync<FileCoverage>($"{BuildId}/files/", pageSize: 1024);

@@ -44,7 +44,7 @@ builder.Services.AddMemoryCache();
 // Bounded, and separate from the shared cache on purpose — see SourceContentCache.
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddCoverage();
+builder.Services.AddCodeCoverage();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<CoverageSparkContext>();

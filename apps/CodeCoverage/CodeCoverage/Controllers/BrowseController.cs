@@ -150,8 +150,8 @@ public partial class BrowseController : ControllerBase
         return Ok(commits
             .Where(c => c.Coverage is { LinesCoverable: > 0 })
             .Select(c => new HistoryPoint(c.Sha, c.AuthoredAt ?? c.FirstSeenAtUtc,
-                c.Coverage!.LinesCovered, c.CodeCoverage.LinesCoverable,
-                Math.Round(c.CodeCoverage.LinesCovered * 100.0 / c.CodeCoverage.LinesCoverable, 1))));
+                c.Coverage!.LinesCovered, c.Coverage.LinesCoverable,
+                Math.Round(c.Coverage.LinesCovered * 100.0 / c.Coverage.LinesCoverable, 1))));
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public partial class BrowseController : ControllerBase
                 g => visible[g.Key].FullName,
                 g => g.Take(20)
                       .Reverse()
-                      .Select(c => Math.Round(c.Coverage!.LinesCovered * 100.0 / c.CodeCoverage.LinesCoverable, 1))
+                      .Select(c => Math.Round(c.Coverage!.LinesCovered * 100.0 / c.Coverage.LinesCoverable, 1))
                       .ToArray());
 
         return Ok(result);

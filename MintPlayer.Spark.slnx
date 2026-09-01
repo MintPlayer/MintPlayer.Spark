@@ -5,6 +5,11 @@
     <Platform Name="x86" />
   </Configurations>
   <Folder Name="/apps/" />
+  <Folder Name="/apps/CodeCoverage/">
+    <Project Path="apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj" />
+  </Folder>
   <Folder Name="/apps/DemoApp/">
     <Project Path="apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj" />
     <Project Path="apps/DemoApp/DemoApp/DemoApp.csproj" />

@@ -13,5 +13,15 @@
         "DebugTarget": "https"
       }
     ]
+  },
+  {
+    "Name": "CodeCoverage",
+    "Projects": [
+      {
+        "Path": "apps\\CodeCoverage\\CodeCoverage\\CodeCoverage.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      }
+    ]
   }
 ]

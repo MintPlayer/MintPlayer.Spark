@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
+
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
@@ -10,35 +12,44 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.*" />
+		<!-- Pinned to the version MintPlayer.Spark.Authorization pins, rather than the floating
+		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
-		<PackageReference Include="MintPlayer.Spark" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Authorization" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Controllers" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Cron" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Messaging" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Migrations" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub" Version="10.0.0-preview.68" />
-		<PackageReference Include="MintPlayer.Spark.Webhooks.GitHub.DevTunnel" Version="10.0.0-preview.68" />
 		<PackageReference Include="YamlDotNet" Version="16.3.0" />
-		<PackageReference Include="MintPlayer.Spark.SourceGenerators" Version="10.0.0-preview.68">
-			<PrivateAssets>all</PrivateAssets>
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\Coverage.Library\Coverage.Library.csproj" />
+		<ProjectReference Include="..\CodeCoverage.Library\CodeCoverage.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<AdditionalFiles Include="App_Data\translations.json" />
 		<AdditionalFiles Include="App_Data\Model\*.json" />
+		<AdditionalFiles Include="App_Data\culture.json" Condition="Exists('App_Data\culture.json')" />
 	</ItemGroup>
+
+	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" />
+
+	<!--
+	  Imported explicitly because this repo consumes the package by ProjectReference, where
+	  NuGet's automatic buildTransitive import does not apply. A downstream consumer using a
+	  PackageReference gets this for free.
+	-->
+	<Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.targets" />
 
 </Project>

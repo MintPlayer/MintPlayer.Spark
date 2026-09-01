@@ -208,7 +208,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
 
         var inFlight = Body(await controller.Status(RepoName, Sha, runId: 7));
         inFlight.State.Should().Be("InFlight");
-        inFlight.CodeCoverage.Should().BeNull();
+        inFlight.Coverage.Should().BeNull();
         inFlight.CommitUrl.Should().Be($"https://coverage.example.com/r/{RepoName}/c/{Sha}");
 
         var build = await session.LoadAsync<Build>(Build.DocumentId(RepoId, Sha, 7, 1));
@@ -471,7 +471,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         // Like-for-like: only the measured path, on both sides.
         body.Baseline!.Sha.Should().Be(BaselineSha);
         body.Baseline.Coverage!.LinesCoverable.Should().Be(10);
-        body.Baseline.CodeCoverage.LinesCovered.Should().Be(8);
+        body.Baseline.Coverage.LinesCovered.Should().Be(8);
 
         body.BaselineScope!.BaseResolution.Should().Be("exact");
         body.BaselineScope.RequestedBaseSha.Should().Be(BaselineSha);
@@ -479,8 +479,8 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         body.BaselineScope.FilesInScope.Should().Be(1);
 
         // Projection: base patched with the measured file.
-        body.Projection!.CodeCoverage.LinesCovered.Should().Be(10 + 90);
-        body.Projection.CodeCoverage.LinesCoverable.Should().Be(10 + 100);
+        body.Projection!.Coverage.LinesCovered.Should().Be(10 + 90);
+        body.Projection.Coverage.LinesCoverable.Should().Be(10 + 100);
         body.Projection.Complete.Should().BeTrue();
         body.Projection.IncompleteReasons.Should().BeEmpty();
     }

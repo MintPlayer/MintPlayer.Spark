@@ -67,7 +67,7 @@ public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
 
         var prCommit = await verify.LoadAsync<Commit>(Commit.DocumentId(RepoGitHubId, "feat0000"));
         prCommit.Should().NotBeNull("the commit keeps its display summary");
-        prCommit!.CodeCoverage.Should().NotBeNull();
+        prCommit!.Coverage.Should().NotBeNull();
         prCommit.LatestBuildId.Should().BeNull("nothing may dangle");
 
         // The default-branch commit — the repository's history — is untouched.
