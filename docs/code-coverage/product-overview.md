@@ -36,7 +36,7 @@ Anything not specific to the coverage domain is implemented in the appropriate u
 | `MintPlayer.Spark` | API-token (PAT) authentication library; missing webhook events (`workflow_run`, `status`); bug fixes found during investigation (see §10) |
 | `mintplayer-ng-bootstrap` | Coverage-annotatable code viewer; circle-packing/sunburst chart; radial progress; datatable column filtering (if needed) |
 | `Coverage` (this repo) | Coverage domain only: parsers, normalized model, merge, upload API, badge endpoint, app UI, and the GitHub Action under `action/` |
-| `action/` (in this repo) | The GitHub Action, consumed as `MintPlayer/CodeCoverage/action@<ref>` (own repo only if Marketplace) |
+| `apps/CodeCoverage/action/` | The GitHub Action, consumed as `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1` |
 
 We are **not confined to Spark's `/spark/*` endpoints**: the app freely adds its own controllers/minimal-API endpoints (`/api/uploads`, `/badge/…`) alongside Spark — the sanctioned pattern WebhooksDemo already uses (its SPA fallback excludes both `/spark` and `/api`). The rule cuts the other way: whenever a piece of such an endpoint turns out to be generic (token authentication, a file-upload primitive, a webhook event), it is extracted into Spark rather than kept app-local.
 
@@ -209,7 +209,16 @@ Lives at `action/` in MintPlayer/CodeCoverage, consumed as `MintPlayer/CodeCover
 - **Inputs**: `url` (server base), `token` (optional), `use-oidc` (default false; auto-chosen only when NO token is supplied and `id-token: write` is available), `files`/`directory` (globs; else auto-detect using Codecov's proven glob + ignore lists), `flags`, `name`, `fail-ci-if-error` (default false), `finish` (boolean → calls the finalize endpoint, for users who want deterministic completion), `disable-search`.
 - **Sends**: gzipped report files + flat form fields: `repository`, `commitSha` (= `pull_request.head.sha` on PR events — **never** the merge `GITHUB_SHA`), `parentSha` (the PR base SHA on PR events), `branch` (`GITHUB_HEAD_REF` on PRs else `GITHUB_REF_NAME`), `pullRequestNumber`, `eventName`, `runId`, `runAttempt`, `jobName`, `workflow`, `flags` (comma-joined, split server-side), `rootDir` (`GITHUB_WORKSPACE`), `fileList` (`git ls-files`). The repository *id* travels only as an OIDC claim, never as a body field.
 - **Multiple invocations per run** are the *designed* case: each call = one session appended to the same Build (`runId`+`runAttempt` key).
-- **Versioning**: pin `@master` for now; a `v1` tag is cut once the input surface settles (nothing is tagged yet).
+- **Versioning**: two tags, and only one of them moves. `coverage-upload-v<major>` follows the
+  newest commit of that major and is what consumers pin; `coverage-upload-v<full version>` is cut
+  once and never moves, so any upload stays reproducible and a bad release can be pinned backwards.
+  Both names are derived from `apps/CodeCoverage/action/package.json`, so a major bump retires the
+  old moving tag by itself. **Never pin `@master`** — this is a monorepo whose default branch moves
+  many times a day for unrelated reasons.
+- **Releasing**: Actions → *coverage-action-publish* → **Run workflow**, choosing
+  `patch`/`minor`/`major`; or `npm version <bump> --no-git-tag-version` in the action folder as part
+  of a code PR. Full flow, including the new-major playbook, in
+  [`apps/CodeCoverage/action/README.md`](../../apps/CodeCoverage/action/README.md#releasing-a-new-version).
 
 Usage sketch:
 
@@ -217,7 +226,7 @@ Usage sketch:
 permissions:
   id-token: write        # tokenless OIDC
 steps:
-  - uses: MintPlayer/CodeCoverage/action@master
+  - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1
     with:
       url: https://coverage.mintplayer.com
       use-oidc: true

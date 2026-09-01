@@ -1,6 +1,11 @@
 # Handoff — repoint `mintplayer-ng-bootstrap` at the moved coverage action
 
-**Status:** pending · **Raised by:** [coverage_monorepo_plan.md](../coverage_monorepo_plan.md) M7 ·
+**Status:** SUPERSEDED — the destination in the table below is no longer where the action lives.
+Repoint at `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`
+instead, and see [`../coverage_action_home_plan.md`](../coverage_action_home_plan.md) M6, which
+covers all five remaining consumers rather than this one repository.
+This document is kept because it explains the intermediate state a reader may still find in git
+history. · **Raised by:** [coverage_monorepo_plan.md](../coverage_monorepo_plan.md) M7 ·
 **Target repo:** `C:\Repos\mintplayer-ng-bootstrap`
 
 ## Why

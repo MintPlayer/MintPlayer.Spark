@@ -12,10 +12,18 @@ returns nothing), so it can be emptied — but **not yet**, and the order matter
 ## Do not start until all three are true
 
 1. **This PR is merged**, so the code exists on `master` here.
-2. **The action is live in `MintPlayer/github-actions`** ([PR #5](https://github.com/MintPlayer/github-actions/pull/5))
-   **and `mintplayer-ng-bootstrap` has been repointed at it** — see
-   [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md). Until then the old repo is still
-   serving `MintPlayer/CodeCoverage/action@master` to it, and archiving would break its uploads.
+2. ~~**The action is live in `MintPlayer/github-actions`**~~ — **superseded.** The action now lives
+   at `apps/CodeCoverage/action` in this repository and is consumed as
+   `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`; see
+   [`../coverage_action_home_PRD.md`](../coverage_action_home_PRD.md). What still gates archiving is
+   unchanged in substance: **every consumer must be repointed first.** Five repositories were still
+   pinned at `MintPlayer/CodeCoverage/action@master` when that PRD was written
+   (`MintPlayer.AspNetCore.SpaServices`, `MintPlayer.Dotnet.Tools`, `MintPlayer.AI`,
+   `MintPlayer.AspNetCore.Tools`, `mintplayer-ng-bootstrap`), each in two workflow files.
+
+   Note the repository is **already archived**, ahead of this precondition. Archiving does not break
+   `uses:` resolution, so their uploads still work — but that bundle can never be rebuilt, so those
+   five are frozen on it until they are repointed.
 3. **One deploy has succeeded from this repository.** `code-coverage-deploy.yml` publishes the same
    image name the VPS already pulls, but that path has never run. If it fails, the old repo's
    `publish.yml` is the working fallback — and only while the old repo is intact.

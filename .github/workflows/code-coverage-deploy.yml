@@ -14,6 +14,13 @@ on:
       - master
     paths:
       - 'apps/CodeCoverage/**'
+      # The upload action lives here but is not part of the server image: it is
+      # consumed by consumers from a git ref, and `coverage-action.yml` rebuilds
+      # and republishes its bundle. Without this exclusion every action-only
+      # commit would build an image and SSH-deploy the VPS for a change the image
+      # does not contain. The old standalone repo guarded the same way
+      # (`paths-ignore: ['action/**']` in its publish.yml).
+      - '!apps/CodeCoverage/action/**'
       # CodeCoverage's transitive ProjectReference closure. Hand-maintained: if the app takes a new
       # Spark dependency, add it here or a change to that library will not trigger a deploy.
       - 'libs/spark/MintPlayer.Spark/**'

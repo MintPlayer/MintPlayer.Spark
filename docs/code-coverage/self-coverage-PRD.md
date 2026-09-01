@@ -41,7 +41,7 @@ already names Vitest as the intended stack; `.gitignore` appears to anticipate
 
 ### Decisions, and why
 
-**Keep `uses: ./action`, do not switch to `MintPlayer/CodeCoverage/action@master`.**
+**Keep `uses: ./apps/CodeCoverage/action`, do not switch to a published ref.**
 Every consumer pins `@master`. This repo should not: `./action` uploads with the
 action *as the pull request changes it*, so a regression in the uploader is caught
 by the PR that introduces it rather than by the next consumer to update. This is the
@@ -87,8 +87,11 @@ Genuinely not being done, not deferred:
 - **Raising coverage.** This lands the measurement and a seed suite that proves the
   pipeline end to end. Writing tests to a target number is separate work driven by
   what the resulting report shows.
-- **A `v1` tag for the action.** No tags exist; consumers pin `@master` by design
-  until the input surface settles. Unrelated to measuring ourselves.
+- **A `v1` tag for the action.** ~~No tags exist; consumers pin `@master` by design
+  until the input surface settles.~~ **Superseded** — the action is released as
+  `coverage-upload-v<major>` (moving) plus `coverage-upload-v<full>` (immutable), both derived from
+  its `package.json`; pinning `@master` is now explicitly wrong. See
+  [`../../apps/CodeCoverage/action/README.md`](../../apps/CodeCoverage/action/README.md#releasing-a-new-version).
 
 ## Also on this branch
 

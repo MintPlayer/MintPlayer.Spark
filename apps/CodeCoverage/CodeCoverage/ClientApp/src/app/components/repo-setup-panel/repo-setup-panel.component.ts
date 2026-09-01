@@ -56,8 +56,14 @@ export class RepoSetupPanelComponent {
   /** Example CI workflows per ecosystem, built against this deployment's URL. */
   readonly workflowExamples = computed<WorkflowExample[]>(() => {
     const url = this.baseUrl() || location.origin;
+    // Pinned to the moving major tag, never to a branch: `master` of that
+    // monorepo moves many times a day for unrelated reasons, while
+    // coverage-upload-v1 only ever moves to a commit carrying a v1-compatible
+    // bundle. The previous value here — MintPlayer/CodeCoverage/action@master —
+    // pointed at a repository that is now archived, so every repo onboarded
+    // through this panel was handed a ref that can never be rebuilt.
     const upload = (extra = '') => `      - name: Upload coverage
-        uses: MintPlayer/CodeCoverage/action@master
+        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1
         with:
           url: ${url}
           use-oidc: true${extra}
