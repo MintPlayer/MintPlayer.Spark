@@ -15,7 +15,7 @@ failure on Spark PR #123.
 |---|---|
 | [`upload-api.md`](upload-api.md) | The stable CI↔server upload contract. Fields are added, never removed; the action and every consuming pipeline depend on it. |
 | [`../../apps/CodeCoverage/action/README.md`](../../apps/CodeCoverage/action/README.md) | The upload action itself: what it sends, how it degrades against an older server, and **how to release a new version** (the one-click bump, and the two-tag scheme). |
-| [`compile-ts-action-handoff.md`](compile-ts-action-handoff.md) | The shared TypeScript→`index.js` build action in `MintPlayer/github-actions` that builds the bundle, and why it lives there rather than here. |
+| [`compile-ts-action-handoff.md`](compile-ts-action-handoff.md) | **Delivered.** The shared TypeScript→`index.js` build action in `MintPlayer/github-actions` that builds the bundle, why it lives there rather than here, and the six ways the implementation had to deviate from the spec. |
 | [`roadmap-2026-08.md`](roadmap-2026-08.md) | Proposed next phase. Parts were absorbed elsewhere, but T0.1 (backups) and T1.1–T1.4 (honest numbers) are unbuilt — this is the live backlog. |
 | [`product-overview.md`](product-overview.md) | Product and architecture overview; the first thing to read. Renamed from `PRD.md`, which meant nothing in a directory of PRDs. |
 | [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md) | **Historical.** Superseded twice over: the action came back to `apps/CodeCoverage/action`, and every consumer now pins `coverage-upload-v1`. Kept because it explains an intermediate state visible in git history. |
