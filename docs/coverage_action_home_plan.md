@@ -1,7 +1,7 @@
 # Plan — move the coverage-upload action beside its API
 
 **Implements:** [`coverage_action_home_PRD.md`](coverage_action_home_PRD.md) Option 3 ·
-**Status:** implemented in this repository (M0 handed off, M5 partial, M6-M7 pending consumers)
+**Status:** COMPLETE — every milestone landed; M8 moot (the old repo is archived at `MintPlayer-Archive/CodeCoverage`)
 
 All code lands as **one unit of work** per `CLAUDE.md` ("One pull request. Never split work."). The
 cross-repo pieces are sequenced, not split: M0 must be on `github-actions/main` before M2 can run
@@ -200,7 +200,7 @@ degradation on a 404.
 
 ---
 
-## M5 — the dogfood gate — PARTIALLY DELIVERED
+## M5 — the dogfood gate
 
 Two halves, and only one of them is built.
 
@@ -218,16 +218,39 @@ producing an action that exits 0 having done nothing. See PRD R3.
 **Also built:** `uses: ./apps/CodeCoverage/action` is now what both workflows here upload with, so
 every PR uploads real coverage using the action as that PR changes it.
 
-**Not built: a live server in CI.** Standing the real app up in a workflow needs RavenDB, a
-`github-app.pem` and `Coverage:BaseUrl` matching the OIDC audience (`Program.cs:207-218`) — none of
-which could be verified from this session, and a workflow written blind against them would be worse
-than none. The stub server pins the action's side of the contract; `UploadsControllerCapabilitiesTests`
-pins the server's. What remains unproven is the two meeting over a socket.
+**Also built, and it needed no CI plumbing at all:**
+`apps/CodeCoverage/CodeCoverage.Tests/UploadActionDogfoodTests.cs` runs the committed bundle against
+a **real running server** over a real socket — upload → finish → status.
 
-Remaining work, for whoever picks it up: a job with a RavenDB service container that runs the app
-with a `covt_` token (`pull-request.yml` has no `id-token: write`, so the token path is simpler than
-OIDC), then `uses: ./apps/CodeCoverage/action` against it. PRD exit criterion 5 — prove it goes red
-by breaking one `UploadForm` field — applies to that job, not to the stub.
+The first design here was a workflow job with a RavenDB service container, deferred because it
+needed secrets and startup prerequisites that could not be verified from a session. That was the
+wrong shape: `CoverageRavenTest` already gives every test a live RavenDB in CI, so the test starts
+`CodeCoverage.dll` pointed at it (`Spark__RavenDb__Urls__0`, `Spark__RavenDb__Database`), seeds a
+`Repository` and an `ApiToken` through the store, and drives `node dist/index.js` at it. No service
+container, no secret, no new job.
+
+Two prerequisites the test discovered rather than assumed:
+
+- The app **refuses to start** without `GitHub:Production:ClientId`/`ClientSecret` — GitHub is the
+  only sign-in provider it registers, so it fails loudly instead of starting half-configured.
+  Placeholders suffice; ingestion authenticates with `ApiToken`/`GitHubOidc` and never touches that
+  path.
+- It must run as **Production**, not Development, or `UseAngularCliServer` spawns the Angular dev
+  server and fights for ports.
+
+**PRD exit criterion 5 is met.** Renaming one form field on the server —
+`[FromForm(Name = "commit_sha")]` on `UploadForm.CommitSha` — turns the test red with the real
+failure, then reverted:
+
+```
+::error::http://127.0.0.1:50514/api/uploads responded 400:
+  {"errors":{"commit_sha":["The CommitSha field is required."]}}
+Failed!  - Failed: 1, Passed: 0
+```
+
+The assertions are deliberately about numbers rather than presence — `LinesCoverable == 2`,
+`LinesCovered == 1` from the seeded report — because a parser that silently drops a report whose
+paths it cannot match still produces a `Build`, just an empty one.
 
 ---
 

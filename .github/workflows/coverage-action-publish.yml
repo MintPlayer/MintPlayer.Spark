@@ -29,6 +29,14 @@ on:
       - master
     paths:
       - 'apps/CodeCoverage/action/**'
+      # This file too, so a change to the publishing machinery exercises the publishing machinery.
+      # Without it the only way to validate an edit here is a later, unrelated commit -- or
+      # remembering to dispatch it by hand. That is not hypothetical: #350 fixed a duplicate-header
+      # bug in this workflow, touched nothing else, therefore did not run, and sat unverified on
+      # master until a manual dispatch. A publish triggered by a workflow edit is harmless: the
+      # bundle is unchanged, so nothing is committed, the release tag is skipped as already
+      # published, and only the moving tag re-points to the same tree.
+      - '.github/workflows/coverage-action-publish.yml'
   workflow_dispatch:
     inputs:
       bump:

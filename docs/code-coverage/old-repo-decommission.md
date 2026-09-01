@@ -1,6 +1,29 @@
 # Handoff — decommission `MintPlayer/CodeCoverage`
 
-**Status:** pending, owner action · **Raised by:** [coverage_monorepo_plan.md](../coverage_monorepo_plan.md) M16
+**Status: DONE.** The repository is archived and has been transferred out of the organisation to
+**`MintPlayer-Archive/CodeCoverage`** (verified: `archived=true`, still public). Nothing further is
+required, and the "strip it to a README" step below is moot -- moving it out of `MintPlayer`
+achieves what the pointer was for, and an archived repository is read-only anyway.
+
+All three preconditions were met on 2026-09-01:
+
+1. The code is on `master` here (#339, then #349 brought the action back beside it).
+2. Every consumer was repointed -- ten workflow files across five repositories now pin
+   `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`, and
+   `MintPlayer/github-actions` dropped its duplicate copy.
+3. A deploy succeeded from this repository
+   ([run 33556385393](https://github.com/MintPlayer/MintPlayer.Spark/actions/runs/33556385393)),
+   readiness 200 on the first attempt.
+
+One thing worth carrying forward: **GitHub redirects the old path.** `MintPlayer/CodeCoverage`
+resolves to the new location, so a straggler still pinning
+`MintPlayer/CodeCoverage/action@master` would keep working silently rather than failing loudly.
+That is precisely why the five repositories had to be repointed deliberately instead of waiting for
+something to break.
+
+The record of the original plan follows.
+
+**Raised by:** [coverage_monorepo_plan.md](../coverage_monorepo_plan.md) M16
 
 The application's source now lives at `apps/CodeCoverage` in this repository, and its docs at
 [`docs/code-coverage/`](README.md). The old repository still holds a full copy of both, plus the

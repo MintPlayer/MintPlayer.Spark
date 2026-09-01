@@ -1,13 +1,42 @@
 # Handoff — `compile-ts-action` in `MintPlayer/github-actions`
 
-**Status:** pending, blocks CI here · **Tracked as
-[github-actions#7](https://github.com/MintPlayer/github-actions/issues/7)** · **Target repo:**
-`MintPlayer/github-actions` (default branch **`main`**) · **Raised by:**
+**Status: DELIVERED.** `compile-ts-action` is live on `MintPlayer/github-actions@main` (`deb622b`,
+[PR #8](https://github.com/MintPlayer/github-actions/pull/8), closing
+[#7](https://github.com/MintPlayer/github-actions/issues/7)), and both workflows here call it.
+`MintPlayer/github-actions` also dropped its duplicate `coverage-upload` in `67d4552`
+([#10](https://github.com/MintPlayer/github-actions/issues/10)). · **Raised by:**
 [`../coverage_action_home_plan.md`](../coverage_action_home_plan.md) M0
 
-> The issue carries the same file contents as this document. Whichever you work from, they are the
-> same spec — this copy exists so the requirement is reviewable in the pull request that depends on
-> it, rather than only in another repository's tracker.
+> Kept as the record of what was asked for and why, and because the spec below is still the
+> reference for the action's input surface. **It is no longer a to-do list**; the file contents in
+> §§1-5 describe what now exists rather than what to create.
+
+## What changed on the way in — read this before trusting §§1-5
+
+The implementation deviated from this spec in six places, all correct, and two of them would have
+shipped broken. Both were verified against the repo rather than argued about:
+
+- **The drift check failed open.** `git status --porcelain -- <path>` exits **0 with empty output**
+  for a pathspec matching nothing, and a failed command substitution inside `[ … ]` does not abort
+  under `bash -e`. So the one-liner in §1 reported "no drift" — and `verify` went **green** — with no
+  checkout, a typo'd `output-dir`, a build writing elsewhere, or a gitignored bundle. It is now
+  `drift.sh`, which asserts its preconditions and fails closed.
+- **The `token` input was declared, documented, and wired to nothing.** `publish.sh` pushed on
+  whatever `actions/checkout` had persisted, so a caller passing a PAT silently got `GITHUB_TOKEN`
+  behaviour. It is now applied as a git `extraheader`.
+
+Also: the immutable-tag guard peels with `^{commit}`, because an annotated tag's own object SHA never
+equals `HEAD` — `v2` and `v3` in that repo are annotated, so the drafted comparison was a live
+failure; inputs reach bash through `env:` rather than `${{ }}` pasted into `run:`; `push` mode
+refuses a non-branch ref; and `node -p` takes the path through `argv` instead of spliced into a JS
+string literal.
+
+**One defect remains open upstream:**
+[github-actions#9](https://github.com/MintPlayer/github-actions/issues/9) — `publish.sh` displaces
+the caller's credential by clearing `--local` config, which is not where `actions/checkout@v5+`
+stores it. That produced two `Authorization` headers and an HTTP 400 on the first publish from this
+repo. Worked around here by passing `token: ''`
+(`.github/workflows/coverage-action-publish.yml`); remove that line when the issue is fixed.
 
 ## Why this is a handoff and not a commit
 
@@ -20,12 +49,14 @@ it in two lines.
 A session rooted in this repository cannot write to another repository, so the files below have to be
 applied from a session rooted in `github-actions`.
 
-## Sequencing — read this first
+## Sequencing — historical
 
-`.github/workflows/pull-request.yml` and `.github/workflows/dotnet-build-master.yml` in **this**
+~~`.github/workflows/pull-request.yml` and `.github/workflows/dotnet-build-master.yml` in **this**
 repository already reference `MintPlayer/github-actions/compile-ts-action@main`. That path does not
-exist yet, so **the `coverage-action` job here fails until this handoff lands** with
-*"Can't find 'action.yml' … in 'MintPlayer/github-actions/compile-ts-action'"*.
+exist yet, so **the `coverage-action` job here fails until this handoff lands**~~ — resolved: the
+action exists, and the publish job moved to its own
+[`coverage-action-publish.yml`](../../.github/workflows/coverage-action-publish.yml) so a `paths:`
+filter could stop it firing on unrelated master pushes.
 
 That is deliberate and visible rather than hidden behind a temporary pin: the alternative is pointing
 at a branch ref that later needs a second commit to correct, which is how the previous move ended up
@@ -331,21 +362,28 @@ commented-out "Update Major Tag" step — the latter is now implemented properly
 
 ### 5. `README.md`
 
-Document `compile-ts-action` alongside the others, and — **only after
-[M6](../coverage_action_home_plan.md) has repointed all five consumers** — remove the
-`coverage-upload` section, replacing it with a pointer to
-`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action`.
+Done: `compile-ts-action` is documented there, and the `coverage-upload` section was removed with the
+duplicate itself — after M6, not before.
 
-## Do NOT delete `coverage-upload` yet
+## ~~Do NOT delete `coverage-upload` yet~~ — done, in the right order
 
-That is M7, and it must come after M6. Until every consumer is repointed, deleting it breaks their
-uploads. The five repositories still pinned at the **archived** `MintPlayer/CodeCoverage/action@master`
-are listed in [`../coverage_action_home_PRD.md`](../coverage_action_home_PRD.md) §3.2.
+M7 happened after M6, as required: all five consumers were repointed to
+`coverage-upload-v1` first, and only then did `MintPlayer/github-actions` drop its copy in `67d4552`.
 
-## Verifying it landed
+## Verified
 
-1. `delay`'s `dist/index.js` is **byte-identical** after a `mode: push` run — the only real proof the
-   extraction is faithful (PRD exit criterion 4).
-2. A pull request that edits `src/` without rebuilding fails the new `verify` job.
-3. The `coverage-action` job in `MintPlayer.Spark`'s `pull-request.yml` goes green.
-4. `npm test` appears in the workflow log — for the first time in that repository.
+1. ✅ The five surviving bundles are **byte-identical** after a rebuild from the pruned dependency
+   tree — blob hashes compared (`delay 1a840733e4a5` before and after), and CI agreed independently
+   by adding no repack commit. PRD exit criterion 4.
+2. ✅ `verify` fails on a stale bundle. It is also what guards this repo's own action:
+   `pull-request.yml`'s `coverage-action` job runs `mode: verify`.
+3. ✅ The `coverage-action` job here is green.
+4. ✅ `npm test` runs in that repository's CI — for the first time, via the `pull_request` workflow
+   §3 added, which now covers every action there rather than only `coverage-upload`.
+
+One thing the definition of done did not anticipate: `drift.sh` decides on `git status --porcelain`,
+which can report a **stat-dirty** index as modified even when content is identical (observed on a
+Windows checkout: `git diff` clean and `git hash-object` equal, yet five files flagged). Harmless on
+`ubuntu-latest`, where freshly written files are re-hashed — but a `git update-index --refresh`
+before the check would make it immune. Not filed; mentioned upstream on
+[#10](https://github.com/MintPlayer/github-actions/issues/10).
