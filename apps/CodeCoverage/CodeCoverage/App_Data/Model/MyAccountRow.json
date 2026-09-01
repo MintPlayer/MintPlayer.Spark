@@ -1,0 +1,158 @@
+{
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. --spark-synchronize-model leaves it alone because there is no",
+    "CLR entity behind it: MyAccountRow is a virtual type, and preview.67 made a composed query on a",
+    "clrType-less type first-class. Its rows are an aggregate over Account and Repository documents,",
+    "built per request by Custom.MyAccounts (MyAccountRowActions -> IMyAccountsService).",
+    "",
+    "No clrType also means the framework defaults each row's link to null, so the first column is",
+    "text rather than a dead link to a document that does not exist. Per-account navigation is the",
+    "account-link renderer on Login instead: spark-po-detail does not forward the grid's rowRoute",
+    "input, so on the auto-rendered Home card that escape hatch is unreachable.",
+    "",
+    "Only Query is granted on this type (security.json), never Read -- the pair that publishes a",
+    "list whose rows have no detail page."
+  ],
+  "persistentObject": {
+    "id": "6b35f39f-15cc-4fee-9fb9-fc91567f5b29",
+    "name": "MyAccountRow",
+    "breadcrumb": "{Login}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "7aa00d13-06e7-472e-9d1f-1accf7281172",
+        "name": "AvatarUrl",
+        "label": {
+          "en": "Avatar",
+          "fr": "Avatar",
+          "nl": "Avatar"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query",
+        "renderer": "account-avatar",
+        "rules": []
+      },
+      {
+        "id": "0589f77f-8a4e-4289-9549-38b6aca0f7af",
+        "name": "Login",
+        "label": {
+          "en": "Account",
+          "fr": "Compte",
+          "nl": "Account"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query",
+        "renderer": "account-link",
+        "rules": []
+      },
+      {
+        "id": "f0072f4c-6756-4b4f-9e08-1694834841ad",
+        "name": "Type",
+        "label": {
+          "en": "Type",
+          "fr": "Type",
+          "nl": "Type"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "_comment": "Shipped, not drawn. The account-avatar renderer reads it as a sibling to choose bi-person vs bi-people when a row has no AvatarUrl; without showedOn=Query the value never reaches the row and the fallback silently picks the wrong icon.",
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "44aaf1d2-3a82-49c7-a785-11b3c4e356ff",
+        "name": "RepoCount",
+        "label": {
+          "en": "Repositories",
+          "fr": "Dépôts",
+          "nl": "Repositories"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "c9766b00-77b2-44b5-9913-c4ccc452d126",
+        "name": "AggregateCoverage",
+        "label": {
+          "en": "Coverage",
+          "fr": "Couverture",
+          "nl": "Dekking"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "renderer": "account-coverage",
+        "rules": []
+      },
+      {
+        "id": "b0ba053b-3218-4e17-a3c1-97c38ffedaee",
+        "name": "IsAppInstalled",
+        "label": {
+          "en": "GitHub App",
+          "fr": "Application GitHub",
+          "nl": "GitHub App"
+        },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "_comment": "A boolean column renders a checkbox; today this is a translated green/grey badge, which is a colour-carrying affordance rather than a truth value. Hence the renderer.",
+        "showedOn": "Query",
+        "renderer": "app-installed",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "my-accounts"
+    ]
+  },
+  "queries": [
+    {
+      "id": "b772a610-b935-4a32-a277-90d2bccd3442",
+      "name": "MyAccounts",
+      "description": {
+        "en": "Your accounts",
+        "fr": "Vos comptes",
+        "nl": "Jouw accounts"
+      },
+      "source": "Custom.MyAccounts",
+      "alias": "my-accounts",
+      "sortColumns": [
+        {
+          "property": "Login",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "MyAccountRow",
+      "isStreamingQuery": false
+    }
+  ]
+}

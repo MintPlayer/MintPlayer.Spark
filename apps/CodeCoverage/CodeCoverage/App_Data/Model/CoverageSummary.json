@@ -1,0 +1,89 @@
+{
+  "persistentObject": {
+    "id": "f01ec20d-d23d-41e0-a1b3-3c536960e3a1",
+    "name": "CoverageSummary",
+    "clrType": "CodeCoverage.Entities.CoverageSummary",
+    "breadcrumb": "{LinesCovered}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "a1a72c91-bcbf-42db-bd35-0f04193a122e",
+        "name": "BranchesCovered",
+        "label": {
+          "en": "Branches Covered"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4967a832-e5f3-4c72-a854-7b68abde7035",
+        "name": "BranchesTotal",
+        "label": {
+          "en": "Branches Total"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cc34fe25-d048-494d-808c-5e81d953a3bd",
+        "name": "FilesCount",
+        "label": {
+          "en": "Files Count"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c5f2ea02-3446-4cfa-977e-042e8a84f35d",
+        "name": "LinesCoverable",
+        "label": {
+          "en": "Lines Coverable"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e8f9b601-7742-4f85-a93d-8d7a547360ff",
+        "name": "LinesCovered",
+        "label": {
+          "en": "Lines Covered"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

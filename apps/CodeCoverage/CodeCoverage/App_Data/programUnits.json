@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "The server-driven sidebar menu. GET /spark/program-units filters this per caller before it",
+    "reaches the client, so a unit whose target the caller has no right to never appears -- hosts",
+    "write zero router links for navigation.",
+    "",
+    "Home is a persistentObject unit with an objectId, which makes it a deep link to one page",
+    "(/po/home/main) rather than a list. The id is any stable string the app chooses; HomeActions",
+    "receives it as OnLoadAsync's id argument and ignores it -- there is exactly one Home.",
+    "",
+    "There is deliberately NO url unit for the 'install the GitHub App' link. Its address is",
+    "per-environment (coveragedevelopment vs coverageproduction, resolved from configuration at",
+    "request time), and this file is static -- a hardcoded slug would point a developer's machine",
+    "at the production App. That link stays in the Angular extra content on the Home page, where",
+    "it comes from /api/me/accounts and is correct in every environment."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "f9f0d8c9-7a38-4a58-9098-910934099b7f",
+      "name": { "en": "Coverage", "fr": "Coverage", "nl": "Coverage" },
+      "icon": "bi-graph-up",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "8ee457f1-37bd-4736-a9bd-046ea808912c",
+          "name": { "en": "Home", "fr": "Accueil", "nl": "Start" },
+          "icon": "bi-house",
+          "type": "persistentObject",
+          "persistentObjectId": "149ab426-ae90-4c96-ae26-3fdde3554754",
+          "alias": "home",
+          "objectId": "main",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

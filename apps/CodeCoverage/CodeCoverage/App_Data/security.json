@@ -1,0 +1,36 @@
+{
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "00000000-0000-0000-0000-000000000001"
+  },
+
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "fr": "Visiteurs anonymes", "nl": "Anonieme bezoekers" },
+    "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users", "fr": "Utilisateurs connectés", "nl": "Aangemelde gebruikers" }
+  },
+
+  "rights": [
+    { "id": "c0e5a9e1-0000-4000-8000-000000000001", "resource": "QueryRead/Account", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000002", "resource": "QueryRead/Repository", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000003", "resource": "QueryRead/Commit", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000004", "resource": "QueryRead/Build", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+
+    { "id": "c0e5a9e1-0000-4000-8000-000000000011", "resource": "QueryRead/Account", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000012", "resource": "QueryRead/Repository", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000013", "resource": "QueryRead/Commit", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000014", "resource": "QueryRead/Build", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+
+    { "id": "c0e5a9e1-0000-4000-8000-000000000021", "resource": "Browse/Coverage", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000022", "resource": "Browse/Coverage", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+
+    { "id": "c0e5a9e1-0000-4000-8000-000000000031", "resource": "Manage/UploadToken", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000032", "resource": "Manage/RepoSettings", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000033", "resource": "Upload/Coverage", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+
+    { "id": "c0e5a9e1-0000-4000-8000-000000000041", "resource": "Read/Home", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000042", "resource": "Read/Home", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+
+    { "id": "c0e5a9e1-0000-4000-8000-000000000051", "resource": "Query/MyAccountRow", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false },
+    { "id": "c0e5a9e1-0000-4000-8000-000000000052", "resource": "Resync/Home", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": false }
+  ]
+}

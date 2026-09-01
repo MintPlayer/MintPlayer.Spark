@@ -1,0 +1,119 @@
+{
+  "persistentObject": {
+    "id": "ed251b83-c8f6-4b59-bd3a-1cc948797e73",
+    "name": "GateSettings",
+    "clrType": "CodeCoverage.Entities.GateSettings",
+    "breadcrumb": "{ProjectMode}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "3b06bdf2-cb33-4d5d-a2b4-ab3e959f9d95",
+        "name": "Blocking",
+        "label": {
+          "en": "Blocking"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "286762e1-3aec-41c4-8abb-b48711db114f",
+        "name": "PatchTarget",
+        "label": {
+          "en": "Patch Target"
+        },
+        "dataType": "decimal",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5eefcb9a-8e51-427c-9388-77734c4e45d8",
+        "name": "PatchThreshold",
+        "label": {
+          "en": "Patch Threshold"
+        },
+        "dataType": "decimal",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d0787d45-ba35-499f-af7f-5abd13236ebe",
+        "name": "ProjectBasis",
+        "label": {
+          "en": "Project Basis"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "05f886ae-0e4a-4a7e-8cb8-3ff6e2a7cb34",
+        "name": "ProjectMode",
+        "label": {
+          "en": "Project Mode"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1a8a15ca-d094-4e07-8942-6a6092073afb",
+        "name": "ProjectTarget",
+        "label": {
+          "en": "Project Target"
+        },
+        "dataType": "decimal",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bd7fd258-18cb-498e-9fa7-97f362f2b243",
+        "name": "ProjectThreshold",
+        "label": {
+          "en": "Project Threshold"
+        },
+        "dataType": "decimal",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -1,0 +1,119 @@
+{
+  "persistentObject": {
+    "id": "d2b0f1f4-7ca0-4e37-bd5d-c8bc649bd9a3",
+    "name": "PatchCoverage",
+    "clrType": "CodeCoverage.Entities.PatchCoverage",
+    "breadcrumb": "{DiffBaseRef}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b1cf6133-af13-4e33-960d-8b7478e5ad98",
+        "name": "DiffBaseRef",
+        "label": {
+          "en": "Diff Base Ref"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b1a56467-ad28-4aa0-b354-50d261ff210f",
+        "name": "DiffTruncated",
+        "label": {
+          "en": "Diff Truncated"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "78fef2ed-65a2-4ec0-9c77-d8c9b333ec82",
+        "name": "FilesInDiff",
+        "label": {
+          "en": "Files In Diff"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e21caeb9-99bb-4be6-8559-6f3e8b8301bf",
+        "name": "FilesMatched",
+        "label": {
+          "en": "Files Matched"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7c6a0a0c-cccc-4192-ac70-770f0efa41f8",
+        "name": "LinesCoverable",
+        "label": {
+          "en": "Lines Coverable"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e839a9f-9657-4c99-8bb9-6686ab87749f",
+        "name": "LinesCovered",
+        "label": {
+          "en": "Lines Covered"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "19a06410-5bfc-48ea-9f49-07f1c764c143",
+        "name": "MergeBaseSha",
+        "label": {
+          "en": "Merge Base Sha"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

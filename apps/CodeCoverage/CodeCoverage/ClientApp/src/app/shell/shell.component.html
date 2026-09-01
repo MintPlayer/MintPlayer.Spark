@@ -1,0 +1,41 @@
+<spark-shell [title]="'app.title' | t" breakpoint="md" sidebarTheme="dark">
+  <!--
+    Replaces the slot's default (<spark-language-selector/>), so the language
+    selector is re-rendered here explicitly — omitting it would silently drop it.
+    The GitHub auth block stays app-owned rather than <spark-auth-bar>: the popup
+    handshake, the popup→redirect fallback and the four-code error map all live in
+    GitHubLoginService, and none of that is expressible through the generic bar.
+  -->
+  <div *sparkShellTopbarEnd class="d-flex align-items-center gap-2">
+    @if (lang.languages() | keyvalue; as langs) {
+      @if (langs.length > 1) {
+        <bs-select [ngModel]="lang.language()"
+                   (ngModelChange)="lang.setLanguage($event)">
+          @for (l of langs; track l.key) {
+            <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
+          }
+        </bs-select>
+      }
+    }
+    @if (authService.user()?.isAuthenticated) {
+      <span class="text-light">{{ authService.user()?.userName }}</span>
+      <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
+    } @else {
+      <button class="btn btn-outline-light btn-sm" (click)="loginWithGitHub()">
+        <i class="bi bi-github"></i> {{ 'app.signInWithGitHub' | t }}
+      </button>
+    }
+  </div>
+
+  <ng-container *sparkShellMainHeader>
+    @if (loginError(); as error) {
+      <bs-alert [type]="dangerColor" [announce]="true" class="d-block mb-3"
+                (isVisibleChange)="onLoginAlertVisible($event)">
+        <i class="bi bi-exclamation-triangle"></i> {{ error }}
+        <bs-alert-close />
+      </bs-alert>
+    }
+  </ng-container>
+
+  <router-outlet />
+</spark-shell>

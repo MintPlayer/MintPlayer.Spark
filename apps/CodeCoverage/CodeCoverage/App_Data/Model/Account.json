@@ -1,0 +1,115 @@
+{
+  "persistentObject": {
+    "id": "a6c9a501-43a6-44f2-acf1-bafcfb2698cb",
+    "name": "Account",
+    "clrType": "CodeCoverage.Entities.Account",
+    "queryType": "CodeCoverage.Indexes.VAccount",
+    "indexName": "Accounts_Overview",
+    "breadcrumb": "{Login}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f6c2f843-1be2-4af2-902f-1547077bff03",
+        "name": "AvatarUrl",
+        "label": {
+          "en": "Avatar",
+          "fr": "Avatar",
+          "nl": "Avatar"
+        },
+        "dataType": "image",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
+        "name": "GitHubId",
+        "label": {
+          "en": "Git Hub Id"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "01dfdc3b-b185-4044-a15e-9fb7c2ce119b",
+        "name": "InstallationId",
+        "label": {
+          "en": "Installation Id"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ec42fca3-2c2c-4f8d-b022-a9db0aa8978d",
+        "name": "Login",
+        "label": {
+          "en": "Login",
+          "fr": "Identifiant",
+          "nl": "Login"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "47ee693b-379e-469b-ba29-22a472796297",
+        "name": "Type",
+        "label": {
+          "en": "Type",
+          "fr": "Type",
+          "nl": "Type"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "account-repositories"
+    ]
+  },
+  "queries": [
+    {
+      "id": "c74dd235-11a2-49ef-bb8f-f5ba78eb72c3",
+      "name": "GetAccounts",
+      "source": "Database.Accounts",
+      "sortColumns": [
+        {
+          "property": "Login",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "Accounts_Overview",
+      "entityType": "Account",
+      "isStreamingQuery": false
+    }
+  ]
+}

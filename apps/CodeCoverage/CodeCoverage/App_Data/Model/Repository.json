@@ -1,0 +1,257 @@
+{
+  "persistentObject": {
+    "id": "22880468-80f5-4fd2-9472-4f87842ce4ff",
+    "name": "Repository",
+    "clrType": "CodeCoverage.Entities.Repository",
+    "queryType": "CodeCoverage.Indexes.VRepository",
+    "indexName": "Repositories_Overview",
+    "breadcrumb": "{FullName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "a33211c6-5059-477e-bcae-ab482fcc3584",
+        "name": "Account",
+        "label": {
+          "en": "Account"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetAccounts",
+        "referenceType": "CodeCoverage.Entities.Account",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae617697-7cdc-4618-98b8-5676a1cfdf0e",
+        "name": "Archived",
+        "label": {
+          "en": "Archived"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b676851e-f8de-4297-8408-6fe1f4287b42",
+        "name": "BadgeToken",
+        "label": {
+          "en": "Badge Token"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "88534f91-2542-4520-8773-00390de2cf10",
+        "name": "DefaultBranch",
+        "label": {
+          "en": "Default Branch"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a6ac6d37-7d03-4094-8d19-8c86a4fefa7f",
+        "name": "FullName",
+        "label": {
+          "en": "Trend"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": [],
+        "renderer": "coverage-sparkline"
+      },
+      {
+        "id": "e2447502-d8a1-48d5-ad44-c28cd7308a7e",
+        "name": "Gate",
+        "label": {
+          "en": "Gate"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "asDetailType": "CodeCoverage.Entities.GateSettings",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2eeb1e3b-9a67-40f3-8ed7-052961f44df0",
+        "name": "GitHubId",
+        "label": {
+          "en": "Git Hub Id"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dfb8fc92-bdce-42c0-9439-5469de78c911",
+        "name": "IsPrivate",
+        "label": {
+          "en": "Is Private"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a5dab619-07dd-4a7a-ba95-d7966cee3f30",
+        "name": "LatestCoverage",
+        "label": {
+          "en": "Coverage"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "CodeCoverage.Entities.CoverageSummary",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "coverage-bar"
+      },
+      {
+        "id": "89a49e24-b5c9-45f9-9cff-86713ab647cd",
+        "name": "LatestCoverageAtUtc",
+        "label": {
+          "en": "Latest Coverage At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "86daca14-2fef-4f3a-a098-8efcbb2806aa",
+        "name": "LatestCoverageSha",
+        "label": {
+          "en": "Latest commit"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "short-sha"
+      },
+      {
+        "id": "6cca49ee-2ede-4502-8811-4de802d904b6",
+        "name": "Name",
+        "label": {
+          "en": "Repository"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "repo-name"
+      },
+      {
+        "id": "28457041-7915-454c-9186-f6bc79f788ce",
+        "name": "OwnerLogin",
+        "label": {
+          "en": "Owner Login"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "repository-commits"
+    ]
+  },
+  "queries": [
+    {
+      "id": "7a4c9b30-5d2e-4f81-9c67-3e8b1a6d0f21",
+      "name": "Account_Repositories",
+      "description": {
+        "en": "Repositories"
+      },
+      "source": "Custom.Account_Repositories",
+      "alias": "account-repositories",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Repository",
+      "isStreamingQuery": false
+    },
+    {
+      "id": "551b2212-8f16-4129-aea6-1dfe313d8edc",
+      "name": "GetRepositories",
+      "source": "Database.Repositories",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "Repositories_Overview",
+      "entityType": "Repository",
+      "isStreamingQuery": false
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Settings for coverlet's VSTest data collector, used by the "XPlat Code Coverage"
+  collection steps in ci.yml. Without it the collector runs on bare defaults and
+  measures generated code as if it were ours.
+
+  Kept at the repo root, matching every other MintPlayer repository, so the same
+  settings argument is copy-pasteable between them.
+
+  Note for editors: an XML comment may not contain a double hyphen, so the command
+  line flags are spelled out in prose here rather than quoted.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <!-- The server parses lcov, Cobertura and JaCoCo. Cobertura is what the
+               collector does best and what every other MintPlayer repo uploads. -->
+          <Format>cobertura</Format>
+
+          <!-- Coverage of the test assembly itself is noise: it inflates the total
+               with code that is by definition fully exercised. -->
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+
+          <!-- Spark generates the model/registration code from the entity classes.
+               It is not hand-written, is not reviewed, and would swamp the real
+               numbers. obj/** catches the rest of the build's generated output. -->
+          <ExcludeByFile>**/*.g.cs,**/obj/**</ExcludeByFile>
+
+          <!-- Both off deliberately. SourceLink rewrites paths to raw.githubusercontent
+               URLs and DeterministicReport rewrites them to /_/-prefixed placeholders;
+               either one breaks the server's path resolution, which matches report paths
+               against `git ls-files` output by longest suffix. Repo-relative paths are
+               exactly what it wants. -->
+          <UseSourceLink>false</UseSourceLink>
+          <DeterministicReport>false</DeterministicReport>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

@@ -14,6 +14,7 @@
 **/azds.yaml
 **/bin
 **/charts
+# Safe to leave unanchored because the app is named CodeCoverage, not Coverage.
 **/coverage
 **/docker-compose*
 **/Dockerfile*
@@ -24,6 +25,19 @@
 **/values.dev.yaml
 LICENSE
 README.md
+
+# Merged from the Coverage repo's own .dockerignore. Only the build-context
+# root's file is honoured, so these have to live here rather than beside the app.
+**/dist/
+**/.angular/
+.github/
+.playwright-mcp/
+docs/
+tmp/
+*.md
+# Never let a GitHub App private key into an image layer.
+*.pem
+
 !**/.gitignore
 !.git/HEAD
 !.git/config

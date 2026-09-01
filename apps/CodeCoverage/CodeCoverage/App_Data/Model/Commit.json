@@ -1,0 +1,240 @@
+{
+  "persistentObject": {
+    "id": "ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe",
+    "name": "Commit",
+    "clrType": "CodeCoverage.Entities.Commit",
+    "breadcrumb": "{Sha}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "77203692-9b28-495d-913f-c8b34f038564",
+        "name": "AuthoredAt",
+        "label": {
+          "en": "Authored At"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "eee6f50d-e887-4c84-9697-c479730de0b0",
+        "name": "Branch",
+        "label": {
+          "en": "Branch"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "98971124-8b79-43ed-951c-29110c46577f",
+        "name": "Coverage",
+        "label": {
+          "en": "Coverage"
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "CodeCoverage.Entities.CoverageSummary",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "coverage-bar"
+      },
+      {
+        "id": "b8d4f2a1-7c39-4e60-9d18-2f5a6b0c3e77",
+        "name": "CoverageDelta",
+        "label": {
+          "en": "Δ"
+        },
+        "dataType": "decimal",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": [],
+        "renderer": "coverage-delta"
+      },
+      {
+        "id": "4e7b2c90-1a6d-4f83-9b25-8c0d7a3e5f14",
+        "name": "Date",
+        "label": {
+          "en": "Date"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "date-time"
+      },
+      {
+        "id": "3f8a2c61-9d54-4b0e-8f1a-6cd2e07b5a94",
+        "name": "FirstSeenAtUtc",
+        "label": {
+          "en": "First Seen At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c1b18792-3a93-4b1b-a590-802beb91ba99",
+        "name": "LatestBuildId",
+        "label": {
+          "en": "Latest Build Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "query": "GetBuilds",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "28215491-4f8b-44e6-8b58-52c03fee7b3c",
+        "name": "Message",
+        "label": {
+          "en": "Message"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "70fecd30-b3d9-43d2-ad29-113dbc6fd4ab",
+        "name": "ParentSha",
+        "label": {
+          "en": "Parent Sha"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "de160dcb-97ee-4254-aab4-4d70cc2aa5db",
+        "name": "PullRequestNumber",
+        "label": {
+          "en": "Pull Request Number"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "71ba0b8b-834e-4ebe-bb23-301ec8655791",
+        "name": "Repository",
+        "label": {
+          "en": "Repository"
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5ceeda88-3885-4697-9cb4-000d51c15b1b",
+        "name": "Sha",
+        "label": {
+          "en": "Commit"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "short-sha",
+        "rendererOptions": {
+          "titleAttribute": "Message"
+        }
+      }
+    ],
+    "queries": [
+      "commit-builds"
+    ]
+  },
+  "queries": [
+    {
+      "id": "862ebef6-c883-4dd4-800a-7372f77761da",
+      "name": "GetCommits",
+      "source": "Database.Commits",
+      "sortColumns": [
+        {
+          "property": "Sha",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Commit",
+      "isStreamingQuery": false
+    },
+    {
+      "id": "6c1f8a52-9d3e-4b70-8e21-5a7d4c9b0e63",
+      "name": "Repository_Commits",
+      "description": {
+        "en": "Commits"
+      },
+      "source": "Custom.Repository_Commits",
+      "alias": "repository-commits",
+      "sortColumns": [
+        {
+          "property": "Date",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Commit",
+      "isStreamingQuery": false
+    }
+  ]
+}

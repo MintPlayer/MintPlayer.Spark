@@ -1,0 +1,104 @@
+{
+  "persistentObject": {
+    "id": "283378ff-b248-43a6-ab1c-1fca3ea6ce9d",
+    "name": "BuildFeedback",
+    "clrType": "CodeCoverage.Entities.BuildFeedback",
+    "breadcrumb": "{State}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d7a25227-bd0d-4297-a5c8-d9a1c4dc366f",
+        "name": "Attempts",
+        "label": {
+          "en": "Attempts"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "170757e0-878a-4d0e-86e1-53d1f4ab6767",
+        "name": "Error",
+        "label": {
+          "en": "Error"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "005dcba3-c253-4306-a920-96f25d25b84a",
+        "name": "NextAttemptAtUtc",
+        "label": {
+          "en": "Next Attempt At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "80516de9-1358-4d0a-aa03-14cc896bb864",
+        "name": "PatchCheckRunId",
+        "label": {
+          "en": "Patch Check Run Id"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "295e0719-f882-4edd-a4d1-715f2ef3dc1c",
+        "name": "ProjectCheckRunId",
+        "label": {
+          "en": "Project Check Run Id"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b1a3627c-66c8-4686-a206-f0a205089307",
+        "name": "State",
+        "label": {
+          "en": "State"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

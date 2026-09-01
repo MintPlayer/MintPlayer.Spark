@@ -150,18 +150,22 @@ _TeamCity*
 !.axoCover/settings.json
 
 # Coverlet is a free, cross platform Code Coverage Tool.
-# Anchored to where coverage output is actually written, NOT globbed. core.ignorecase is true on
-# Windows, so a bare `coverage/` or `**/coverage/` also matches a directory named `Coverage/` --
-# which would silently swallow the whole apps/Coverage application and any docs/coverage folder.
-# Verified: `git check-ignore -v Coverage/App_Data/security.json` used to match `**/coverage/`.
-coverage*.json
-coverage*.xml
-coverage*.info
-tests/*/coverage/
-apps/*/*/coverage/
-apps/*/*/ClientApp/coverage/
-apps/*/action/coverage/
-libs/node_packages/*/coverage/
+#
+# The directory rules are the stock unanchored ones, and that is safe *because* the application is
+# named CodeCoverage, not Coverage: `**/coverage/` matches a path component equal to "coverage",
+# and core.ignorecase is true on Windows, so a directory named `Coverage/` WOULD have matched and
+# been silently swallowed. `CodeCoverage/` does not. The coverage output directories these rules
+# are actually for (ClientApp/coverage, action/coverage, tests/*/coverage) still match correctly.
+coverage/
+**/coverage/
+#
+# The FILE globs, however, must stay root-anchored, and renaming the app did not change that: the
+# entity is called CoverageSummary, so an unanchored `coverage*.json` matches
+# apps/CodeCoverage/CodeCoverage/App_Data/Model/CoverageSummary.json -- a persistent-object model
+# file the app refuses to start without -- along with any other Coverage*-prefixed model file.
+/coverage*.json
+/coverage*.xml
+/coverage*.info
 
 # Visual Studio code coverage results
 *.coverage

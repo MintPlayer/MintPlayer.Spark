@@ -1,0 +1,94 @@
+{
+  "app": {
+    "title": {
+      "en": "Coverage",
+      "fr": "Coverage",
+      "nl": "Coverage"
+    },
+    "welcomeTitle": {
+      "en": "Welcome to Coverage",
+      "fr": "Bienvenue sur Coverage",
+      "nl": "Welkom bij Coverage"
+    },
+    "welcomeSubtitle": {
+      "en": "Track code coverage per commit across your GitHub repositories.",
+      "fr": "Suivez la couverture de code par commit dans vos dépôts GitHub.",
+      "nl": "Volg de codedekking per commit in je GitHub-repositories."
+    },
+    "signInPrompt": {
+      "en": "Sign in with your GitHub account to see your organizations and repositories.",
+      "fr": "Connectez-vous avec votre compte GitHub pour voir vos organisations et dépôts.",
+      "nl": "Meld je aan met je GitHub-account om je organisaties en repositories te zien."
+    },
+    "signInWithGitHub": {
+      "en": "Sign in with GitHub",
+      "fr": "Se connecter avec GitHub",
+      "nl": "Aanmelden met GitHub"
+    },
+    "home": {
+      "en": "Home",
+      "fr": "Accueil",
+      "nl": "Start"
+    },
+    "yourAccounts": {
+      "en": "Your accounts",
+      "fr": "Vos comptes",
+      "nl": "Je accounts"
+    },
+    "loadingAccounts": {
+      "en": "Loading accounts...",
+      "fr": "Chargement des comptes...",
+      "nl": "Accounts laden..."
+    },
+    "noAccounts": {
+      "en": "No accounts found.",
+      "fr": "Aucun compte trouvé.",
+      "nl": "Geen accounts gevonden."
+    },
+    "appInstalled": {
+      "en": "App installed",
+      "fr": "Application installée",
+      "nl": "App geïnstalleerd"
+    },
+    "appNotInstalled": {
+      "en": "App not installed",
+      "fr": "Application non installée",
+      "nl": "App niet geïnstalleerd"
+    },
+    "installAppHintBefore": {
+      "en": "To start collecting coverage, install",
+      "fr": "Pour commencer à collecter la couverture, installez",
+      "nl": "Om dekking te verzamelen, installeer"
+    },
+    "installAppHintLink": {
+      "en": "the GitHub App",
+      "fr": "l'application GitHub",
+      "nl": "de GitHub-app"
+    },
+    "installAppHintAfter": {
+      "en": "on your account or organization.",
+      "fr": "sur votre compte ou organisation.",
+      "nl": "op je account of organisatie."
+    },
+    "reauthBanner": {
+      "en": "Coverage lost access to your GitHub account, so some organizations may be missing below. Reconnect to restore them.",
+      "fr": "Coverage a perdu l'accès à votre compte GitHub ; certaines organisations peuvent donc manquer ci-dessous. Reconnectez-vous pour les restaurer.",
+      "nl": "Coverage heeft geen toegang meer tot je GitHub-account, waardoor hieronder mogelijk organisaties ontbreken. Verbind opnieuw om ze te herstellen."
+    },
+    "reconnectGitHub": {
+      "en": "Reconnect GitHub",
+      "fr": "Reconnecter GitHub",
+      "nl": "GitHub opnieuw verbinden"
+    },
+    "resync": {
+      "en": "Resync",
+      "fr": "Resynchroniser",
+      "nl": "Hersynchroniseren"
+    },
+    "resyncTooltip": {
+      "en": "Re-query GitHub for your organizations and installations.",
+      "fr": "Reinterroger GitHub pour vos organisations et installations.",
+      "nl": "GitHub opnieuw bevragen voor je organisaties en installaties."
+    }
+  }
+}

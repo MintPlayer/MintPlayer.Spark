@@ -1,0 +1,93 @@
+services:
+
+  coverage-raven:
+    # Pinned (not 7.1-latest): floating tags have previously advanced to builds
+    # that reject unsecured access on a 0.0.0.0 bind, breaking deploys on a
+    # plain `docker compose pull`.
+    image: docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64
+    environment:
+      - RAVEN_Setup_Mode=None
+      # Raven only permits unsecured access on a 0.0.0.0 bind with this flag.
+      # What keeps Raven off the public internet is the network topology:
+      # coverage-raven publishes no host ports and lives only on the internal
+      # network below, never on the public 'web' Traefik network.
+      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
+      - RAVEN_ServerUrl=http://0.0.0.0:8080
+    volumes:
+      - raven-data:/var/lib/ravendb/data
+    networks:
+      - coverage-internal
+    # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  coverage-app:
+    # Pull-only: no build block, so `docker compose up -d` on the VPS can
+    # never fall back to building from source — deploys are pull + restart.
+    image: ghcr.io/mintplayer/codecoverage:master
+    depends_on:
+      coverage-raven:
+        condition: service_healthy
+    environment:
+      # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
+      # the environment name — anything else silently disables sign-in.
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Spark__RavenDb__Urls__0=http://coverage-raven:8080
+      - Spark__RavenDb__EnsureDatabaseCreated=true
+      # OIDC audience: workflows must request an id-token with this audience
+      - Coverage__BaseUrl=https://coverage.mintplayer.com
+      - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
+      - GitHub__Production__AppId=${GITHUB_APP_ID}
+      # Optional: the App's public slug (github.com/apps/<slug>) for "install
+      # the App" links; empty falls back to the generic apps page.
+      - GitHub__Production__AppSlug=${GITHUB_APP_SLUG:-}
+      # Optional dev App id: webhooks arriving for THAT app are not processed
+      # here but downstreamed to connected dev clients (single webhook URL).
+      - GitHub__Development__AppId=${GITHUB_DEVELOPMENT_APP_ID:-}
+      - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
+      - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
+      - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
+    volumes:
+      # GitHub App private key, downloaded from the App settings page; see
+      # .env.example for the expected location.
+      - ./github-app.pem:/run/secrets/github-app.pem:ro
+    labels:
+      - "traefik.enable=true"
+      # Hardcoded like every other MintPlayer deployment: interpolating the
+      # host from the server .env produced a non-matching router (empty/CRLF
+      # value -> SNI never matches -> Traefik serves its default cert and
+      # never requests one from Let's Encrypt).
+      - "traefik.http.routers.coverage.rule=Host(`coverage.mintplayer.com`)"
+      - "traefik.http.routers.coverage.entrypoints=websecure"
+      - "traefik.http.routers.coverage.tls.certresolver=letsencrypt"
+      # Pin the upstream port explicitly so Traefik never guesses.
+      - "traefik.http.services.coverage.loadbalancer.server.port=8080"
+      # The app sits on two networks; without this Traefik may resolve the
+      # container's coverage-internal IP, which it can't reach (random 504s).
+      - "traefik.docker.network=web"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+    networks:
+      - web
+      - coverage-internal
+    restart: unless-stopped
+
+volumes:
+  raven-data:
+
+networks:
+  web:
+    external: true
+  # Dedicated internal network for app<->Raven traffic. Raven sits on this
+  # network only; the public Traefik network never reaches port 8080.
+  coverage-internal:
+    driver: bridge

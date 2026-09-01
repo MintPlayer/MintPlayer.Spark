@@ -1,0 +1,24 @@
+// The viewer ships no annotation colors of its own — the kinds are opaque
+// consumer strings, styled through shadow parts (not CSS variables; upstream
+// decision, see docs/PLAN.md M10).
+:host ::ng-deep mp-code-snippet {
+  &::part(annotation-covered) {
+    background: rgba(25, 135, 84, 0.12);
+  }
+
+  &::part(annotation-partial) {
+    background: rgba(255, 193, 7, 0.18);
+  }
+
+  &::part(annotation-uncovered) {
+    background: rgba(220, 53, 69, 0.14);
+  }
+}
+
+// `code { min-width: max-content }` inside the viewer propagates its
+// min-content width outward; without this the card's flex/grid ancestors
+// refuse to shrink and phones get body-level horizontal scroll.
+:host {
+  display: block;
+  min-width: 0;
+}

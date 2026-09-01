@@ -1,0 +1,119 @@
+name: 'Coverage Upload'
+description: 'Upload coverage reports (lcov, cobertura, …) to a self-hosted Coverage instance'
+author: 'MintPlayer'
+branding:
+  icon: 'umbrella'
+  color: 'green'
+
+inputs:
+  url:
+    description: 'Base URL of the Coverage server, e.g. https://coverage.example.com'
+    required: true
+  token:
+    description: 'Upload token (covt_…). Optional when OIDC is available (see use-oidc).'
+    required: false
+  use-oidc:
+    description: 'Authenticate with GitHub Actions OIDC instead of a token (requires `permissions: id-token: write`; unavailable to fork PRs). Defaults to on whenever no token is given and OIDC is available.'
+    required: false
+    default: 'false'
+  files:
+    description: 'Explicit report files or globs (comma- or newline-separated). When omitted, well-known coverage files are auto-detected.'
+    required: false
+  directory:
+    description: 'Root directory for auto-detection (default: workspace).'
+    required: false
+  flags:
+    description: 'Comma-separated flags labelling this upload (e.g. unit,linux).'
+    required: false
+  partial:
+    description: 'Declare that this upload measures only a subset of the workspace (e.g. `nx affected` on a pull request). The server then compares like-for-like against the declared base instead of reading the totals as whole-workspace.'
+    required: false
+    default: 'false'
+  base-sha:
+    description: 'The base commit the affected-computation ran against (the sha passed to `nx affected --base`). Strongly recommended with `partial: true`; without it the server falls back to the newest covered default-branch commit and says so.'
+    required: false
+  name:
+    description: 'Session name; defaults to the job name.'
+    required: false
+  finish:
+    description: 'Finalize the build after uploading (set true on the last upload job, or run a dedicated finish job).'
+    required: false
+    default: 'false'
+  fail-ci-if-error:
+    description: 'Fail the step when the upload fails (default: false — coverage upload should not break CI).'
+    required: false
+    default: 'false'
+  disable-search:
+    description: 'Only upload the explicitly listed files.'
+    required: false
+    default: 'false'
+  wait-for-finalize:
+    description: 'Wait for the server to finish parsing and expose the result as outputs. Off by default: an upload should not hold a CI job hostage to parser latency. Pair with `finish: true` on the last uploading job — otherwise the wait includes the server''s ~2-minute debounce.'
+    required: false
+    default: 'false'
+  wait-timeout:
+    description: 'Seconds to wait for finalize. The default matches the server''s own 30-minute ceiling, so it can never expire before the server has decided.'
+    required: false
+    default: '1800'
+  wait-poll-interval:
+    description: 'Seconds between status polls (eases off automatically after the first minute).'
+    required: false
+    default: '5'
+
+outputs:
+  build-id:
+    description: 'The build this upload joined.'
+  session-id:
+    description: 'This upload''s session on that build.'
+  state:
+    description: 'InFlight | Complete | CompleteWithErrors. The field to branch on. Requires wait-for-finalize.'
+  build-status:
+    description: 'Open | Finalized (informational).'
+  finalize-reason:
+    description: 'Explicit | Debounce | Timeout (informational).'
+  lines-covered:
+    description: 'Covered lines in the finalized build.'
+  lines-coverable:
+    description: 'Coverable lines in the finalized build.'
+  line-rate:
+    description: 'Line coverage as a percentage to one decimal. Empty when there are no coverable lines — 0/0 is no data, not 100%.'
+  branches-covered:
+    description: 'Covered branches in the finalized build.'
+  branches-total:
+    description: 'Total branches in the finalized build.'
+  branch-rate:
+    description: 'Branch coverage as a percentage to one decimal.'
+  files-count:
+    description: 'Files with coverage in the finalized build.'
+  base-resolution:
+    description: 'How the comparison base resolved for a partial build: exact | mergeBase | walked | none. Empty on whole uploads.'
+  resolved-base-sha:
+    description: 'The base commit the comparison actually used (may differ from base-sha — check base-resolution).'
+  projection-line-rate:
+    description: 'Patched whole-workspace line rate for a partial build (base tree with measured files overwritten). Empty when no base resolved.'
+  projection-complete:
+    description: 'true when the projection had every input it needed; false means best-effort (see projection-incomplete-reasons). Empty on whole uploads.'
+  projection-incomplete-reasons:
+    description: 'Comma-separated: baseWalked, noFileList, unmatchedPaths, parseErrors.'
+  patch-lines-covered:
+    description: 'Covered added lines (patch coverage vs the diff base).'
+  patch-lines-coverable:
+    description: 'Coverable added lines. Empty when no diff was obtainable — treat empty as abstain, never as zero.'
+  patch-rate:
+    description: 'Patch coverage as a percentage to one decimal. Empty when there are no coverable added lines.'
+  patch-diff-truncated:
+    description: 'true when GitHub capped the comparison at 300 files, so patch coverage under-reports.'
+  commit-url:
+    description: 'Link to this commit on the Coverage server.'
+  baseline-sha:
+    description: 'The default-branch commit this build is compared against. Empty on a first upload.'
+  baseline-lines-covered:
+    description: 'Covered lines on the baseline commit.'
+  baseline-lines-coverable:
+    description: 'Coverable lines on the baseline commit.'
+  baseline-line-rate:
+    description: 'Baseline line coverage as a percentage to one decimal. Empty when there is no baseline.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

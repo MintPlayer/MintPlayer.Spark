@@ -1,0 +1,97 @@
+{
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. The Home page is virtual: no clrType, no documents, no",
+    "collection. HomeActions.OnLoadAsync scaffolds the object per request, fills these values and",
+    "sets Breadcrumb -- which is what the generic page renders as its <h2> title, replacing the",
+    "bs-card-header the hand-written page used.",
+    "",
+    "tabs and groups are both empty on purpose: attributes then land in one unheaded card, so the",
+    "breadcrumb is the only heading on the page and there is no double title.",
+    "",
+    "The accounts grid is the my-accounts query of MyAccountRow, named below. Read/Home is granted",
+    "to BOTH well-known roles -- anonymous visitors get the page and the welcome text; the grid",
+    "itself needs Query/MyAccountRow, which only the authenticated role holds, so it simply does",
+    "not render for them."
+  ],
+  "persistentObject": {
+    "id": "149ab426-ae90-4c96-ae26-3fdde3554754",
+    "name": "Home",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "1db89eca-02af-45ec-a093-161a8ec5438e",
+        "name": "Title",
+        "label": {
+          "en": "",
+          "fr": "",
+          "nl": ""
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "_comment": "Feeds the breadcrumb template only; never drawn as a row. HomeActions sets Breadcrumb directly as well, so this is the fallback path rather than the primary one.",
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "641cd307-8cba-4ed5-adcd-7fa8300f04ad",
+        "name": "Subtitle",
+        "label": {
+          "en": "About",
+          "fr": "À propos",
+          "nl": "Over"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "49fd3545-3fdb-4dd0-a8ee-cf3e3e6b7fa5",
+        "name": "AccountCount",
+        "label": {
+          "en": "Accounts",
+          "fr": "Comptes",
+          "nl": "Accounts"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d107ebb1-1ab2-4e98-b114-0bba908ff1ad",
+        "name": "RepoCount",
+        "label": {
+          "en": "Repositories",
+          "fr": "Dépôts",
+          "nl": "Repositories"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "my-accounts"
+    ]
+  }
+}
