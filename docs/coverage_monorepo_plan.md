@@ -1,6 +1,6 @@
 # Plan — Absorb the Coverage app into the MintPlayer.Spark workspace
 
-**Companion to:** [coverage_monorepo_PRD.md](coverage_monorepo_PRD.md) · **Date:** 2026-09-01
+**Companion to:** [coverage_monorepo_PRD.md](coverage_monorepo_PRD.md) · **Date:** 2026-09-01 · **Status:** implemented — [PR #339](https://github.com/MintPlayer/MintPlayer.Spark/pull/339)
 
 Eighteen milestones on **one branch, one pull request** — including the `mintplayer-ng-bootstrap`
 change, framework fixes to Spark's own build targets, a coverage push, and the emptying of the old
@@ -40,6 +40,7 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
 | ✅ | M15 test sweep | 2351/2351 .NET + 22 SPA + 35 action; one real semantics fix (`1ab63111`) |
 | 📋 | M16 empty old repo | handoff written with preconditions (`cc838cf8`) |
 | ✅ | M17 authorization migration | ALREADY DONE upstream before the merge; verified, no work needed |
+| ✅ | *(after M15)* release + Docker | see **Post-sweep** below (`39a0ef1a`, `5568bc63`, `960c3f3f`, `9d391f7a`) |
 
 **The app was renamed `Coverage` → `CodeCoverage`** during M2, matching the GitHub repo and the
 published image. That is what let the stock `**/coverage/` ignore rules come back: they match a path
@@ -615,6 +616,61 @@ Unblocked by the merge — stalled since 2026-08-21 only because it needed cross
    confirm each still resolves anonymously.
 
 ---
+
+## Post-sweep — work the milestones did not anticipate
+
+Four changes after M15, each forced by something measured rather than foreseen.
+
+### Release: `10.0.0-preview.69` (`39a0ef1a`)
+
+This branch changed three **shipped** targets files (`spark-allfeatures`, `spark`, `spark-testing`)
+and the Testing `AGENTS.md`. Without a bump the merge would have published nothing at all —
+`dotnet nuget push` uses `--skip-duplicate` and `npm-publish` no-ops on an unchanged version — so
+`preview.68` would have stayed on nuget.org while its source had moved, and both framework fixes
+would have reached no consumer. All 22 packable projects moved together; the major digit tracks
+net10.0 and does not move. ng-spark and ng-spark-auth were deliberately left at 22.8.0: zero changed
+files, so a bump would republish an identical package.
+
+Audited repository URLs at the same time, since the app arrived from another repo. No packable
+library ever lived there — all 22 already pointed at MintPlayer.Spark. What did still point at the
+old repo was documentation, including `action/README.md`'s usage snippet in six places, which is the
+text consumers paste.
+
+### Docker: context 742 MB → 6.6 MB, and a key that was not excluded (`5568bc63`, `960c3f3f`)
+
+Once a Docker daemon was available the image built first try (375 MB), but the context was 742 MB.
+714 MB of that was `tests/MintPlayer.Spark.Tests/bin.stale/`, which `**/bin` does not match because
+the path component is `bin.stale`. Excluded `tests/` and `**/*.Tests/` — the image never builds or
+runs them — plus `.nx/`. Re-verified all 42 required build inputs still reach the context, then
+rebuilt `--no-cache` to prove it rather than infer it.
+
+Separately, `*.pem` did **not** exclude `apps/CodeCoverage/github-app.pem`: Docker's `*` does not
+cross `/`, so it matched only a root-level file. The rule existed precisely to keep that key out of
+an image layer. Now `**/*.pem`.
+
+### Untracking 68 build artefacts (`9d391f7a`)
+
+`ClientApp/dist` was being committed. M4 runs the Nx build to prove ng-spark resolves from source,
+the build wrote `dist`, there was no ignore rule yet, and `git add -A` swept it in — 5,161
+insertions of Angular chunks in the PR diff.
+
+Adding the ignore rule did not fix it, because `.gitignore` governs only untracked files. The check
+that should have caught it, and which appears in several commits in this branch, was useless:
+
+    git ls-files | git check-ignore --stdin
+
+`git check-ignore` consults the index first and stays **silent** about tracked files, so empty
+output reads as "clean" when it means "cannot tell you". It needs `--no-index`. With that flag the
+68 files appear immediately. Audited the whole index that way: 81 tracked files match an ignore
+rule, and the other 13 are ClientApp `.vscode/`/`.claude/` files already tracked on master under
+`Demo/`, which only look new because M1 renamed the directory.
+
+### The pattern worth remembering
+
+Three of these are the same mistake in different syntaxes: **a pattern that looks like it covers a
+case and does not.** `**/coverage/` swallowing `Coverage/` (M0), `**/bin` missing `bin.stale`,
+`*.pem` missing a nested key. Check a new ignore rule against a real path with `git check-ignore -v`
+or an equivalent, rather than reading it and believing it.
 
 ## Risks carried into implementation
 

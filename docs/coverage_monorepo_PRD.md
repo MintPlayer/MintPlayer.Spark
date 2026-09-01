@@ -1,6 +1,8 @@
 # PRD — Absorb the Coverage app into the MintPlayer.Spark workspace
 
-**Status:** proposed · **Date:** 2026-09-01 · **Plan:** [coverage_monorepo_plan.md](coverage_monorepo_plan.md)
+**Status:** implemented — [PR #339](https://github.com/MintPlayer/MintPlayer.Spark/pull/339), branch `feat/absorb-coverage-app` · **Date:** 2026-09-01 · **Plan:** [coverage_monorepo_plan.md](coverage_monorepo_plan.md)
+
+> Written before the work and kept as the record of what was intended. Where the build disagreed with it, the plan's milestone notes say so rather than this file being quietly rewritten — §6 records which acceptance criteria actually hold.
 
 > **Naming note.** This repo will soon hold six "coverage" things meaning four subjects. To be
 > precise:
@@ -416,17 +418,63 @@ hidden — the gaps are real.
     type-level grants **moved** to `authenticated`, and `IsAllowedAsync` overrides deciding
     per-organization/repository/commit visibility.
 
+### Outcome
+
+**16 of 18 hold.** 2351/2351 .NET tests pass plus 22 SPA and 35 action; the app runs against
+RavenDB; the image builds (375 MB, verified twice, once `--no-cache`); ng-spark resolves to source,
+proven with `tsc --showConfig`; both `--spark-verify-*` gates exit 0 and synchronize is a fixed
+point; the action's `dist` rebuilds byte-identically behind a CI gate; and no `FluentAssertions`
+reference remains anywhere.
+
+Two do not:
+
+- **#17 (≥90% coverage) is not met.** Measured, excluding generated code: Spark .NET libs 87.71%,
+  the CodeCoverage app 50.77%, Angular 81.30%, overall **82.35%**. M12 closed the two 0% security
+  extensions and the unmeasured worker package; items 3–8 of the gap analysis are untouched.
+- **#9 was withdrawn, not met.** It required reviewing all 69 `WithMessage` sites individually for
+  case sensitivity. That criterion rested on a wrong premise — the change is strictly *stricter*, so
+  it can only turn a passing test into a failing one, never produce a false pass. Running the suite
+  covers it. See R9.
+
+**#18 needed no work**: the authorization migration had already landed upstream before the merge.
+Verified rather than assumed — `wellKnown {anonymous, authenticated}`, no legacy `Everyone`, row
+gating on four action classes, and `LocalCredentials` correctly relying on the preview.58 default.
+
+### Beyond the plan
+
+Work the eighteen milestones did not anticipate, all of it forced by something measured:
+
+- **`10.0.0-preview.69`** across all 22 .NET libraries. Three *shipped* targets files changed, and
+  `--skip-duplicate` would otherwise have published nothing while the source moved on. ng-spark and
+  ng-spark-auth deliberately unbumped — zero changed files.
+- **Docker build context 742 MB → 6.6 MB.** 714 MB of it was
+  `tests/MintPlayer.Spark.Tests/bin.stale/`, which `**/bin` does not match because the component is
+  `bin.stale`. `tests/` and `**/*.Tests/` are now excluded; the image never needs them.
+- **`*.pem` did not exclude the GitHub App private key.** Docker's `*` does not cross `/`, so it
+  matched only a root-level file. Now `**/*.pem`.
+- **68 `ClientApp/dist` artefacts were being committed.** M4 runs the Nx build, there was no ignore
+  rule yet, and `git add -A` swept them in. Untracked with `git rm --cached`, and
+  `apps/**/ClientApp/dist/` now prevents a recurrence.
+
+The last three share one shape, and it is the same shape as R1: **a pattern that looks like it
+covers a case and does not.** `**/coverage/` swallowing `Coverage/`, `**/bin` missing `bin.stale`,
+`*.pem` missing a nested key. Worth checking any new ignore rule against a real path rather than
+reading it.
+
 ## 7. Open questions
 
-- **Nx project naming.** Demos use `@spark-demo/<app>`; Coverage is not a demo. Proposal:
-  `@spark-apps/coverage` for the SPA, inferred `Coverage` for the host. Cosmetic, but it sets the
-  precedent for the `apps/` root.
-- **Test-project placement.** `tests/Coverage.Tests/` (matching this repo's flat `tests/`) or
-  `apps/CodeCoverage/CodeCoverage.Tests/` (keeping the app self-contained)? Proposal: the latter, since it
-  tests an app rather than a library, with a `project.json` to stay in CI's coverage glob.
-- **`coverlet.runsettings` at this repo's root.** Coverage keeps one at its root, matching every
-  other MintPlayer repo. Adopting it here would also apply `ExcludeByFile=**/*.g.cs` to Spark's own
-  coverage — arguably right, but a measurable change to reported numbers and so a conscious call.
+~~**Nx project naming.**~~ **Decided:** `@spark-apps/code-coverage` for the SPA, inferred
+`CodeCoverage` for the host — `@spark-apps/`, not `@spark-demo/`, because this is a product.
+
+~~**Test-project placement.**~~ **Decided:** `apps/CodeCoverage/CodeCoverage.Tests/`, keeping the
+app self-contained, with a `project.json` overriding the `test` target. That override turned out to
+be load-bearing rather than cosmetic: `@nx/dotnet` infers a `test` target as bare `dotnet test` with
+no `--collect`, so without it the project would have run and measured nothing.
+
+- **`coverlet.runsettings` at this repo's root** — still open, but now with a number attached.
+  There is no runsettings here, so generated code is instrumented: **79.90% including `*.g.cs` and
+  `obj/` versus 82.35% excluding**. Adopting the Coverage repo's `ExcludeByFile` is worth ~2.5
+  points on the reported figure for no change in tested behaviour.
 - **`self-coverage-PRD.md` vs `docs/codecov/`.** After the merge, one repo has two documents
   answering "how does this repo measure its own coverage". They should be reconciled; this PRD does
   not decide how.
