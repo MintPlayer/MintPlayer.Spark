@@ -277,7 +277,16 @@ global usings, not 272 file headers.
 **Verify:** `dotnet build` clean; `grep -rn "FluentAssertions" --include=*.csproj --include=*.cs .`
 returns nothing. Suites run in M13.
 
-## M7 — Move `action/` and update every consumer (D2)
+## M7 — Move `action/` and update every consumer (D2) ✅ DONE, then REVISED
+
+> **Revised after the sweep.** M7 as planned moved the action *into this repo* at
+> `apps/CodeCoverage/action` and pointed the workflows at `./apps/CodeCoverage/action`. That
+> worked, but it puts a general-purpose action inside an application's directory and keeps a
+> 2.3 MB committed bundle plus a stale-`dist` CI gate in the monorepo. The action now lives in
+> [`MintPlayer/github-actions`](https://github.com/MintPlayer/github-actions/pull/5) as
+> `coverage-upload@main`, ported to that repo's conventions and with its 35 tests converted from
+> vitest to jest. `apps/CodeCoverage/action` is deleted here and both workflows reference the
+> external action. The original M7 text below is kept as the record of what was first built.
 
 New reference: `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master`.
 
@@ -576,7 +585,7 @@ Batched to the end. **One sweep:**
 - `dotnet build MintPlayer.Spark.slnx`
 - `npx nx run-many --target=test` — this repo's four projects plus `Coverage.Tests` and everything
   M12 added, all on `MintPlayer.Assertions`
-- both SPA suites, and `apps/CodeCoverage/action` Vitest
+- both SPA suites (the action's 35 tests moved to MintPlayer/github-actions with it, and run there)
 - `--spark-verify-model` + `--spark-verify-security` across all five apps
 - a second full build, confirming the M8a pointers leave `git status` clean
 - union the cobertura reports and confirm the D6 target: **≥90%** .NET line coverage, up from 83.98%

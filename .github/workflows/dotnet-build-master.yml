@@ -120,7 +120,7 @@ jobs:
     # server compares partial PR uploads against.
     - name: Upload coverage
       if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
-      uses: ./apps/CodeCoverage/action
+      uses: MintPlayer/github-actions/coverage-upload@main
       with:
         url: https://coverage.mintplayer.com
         token: ${{ secrets.COVERAGE_TOKEN }}
@@ -129,7 +129,6 @@ jobs:
           apps/*/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
           apps/*/*/ClientApp/coverage/cobertura-coverage.xml
-          apps/*/action/coverage/cobertura-coverage.xml
         disable-search: true
         finish: true
         fail-ci-if-error: false

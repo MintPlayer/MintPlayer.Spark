@@ -12,7 +12,8 @@ returns nothing), so it can be emptied — but **not yet**, and the order matter
 ## Do not start until all three are true
 
 1. **This PR is merged**, so the code exists on `master` here.
-2. **`mintplayer-ng-bootstrap` has been repointed** at the action's new path — see
+2. **The action is live in `MintPlayer/github-actions`** ([PR #5](https://github.com/MintPlayer/github-actions/pull/5))
+   **and `mintplayer-ng-bootstrap` has been repointed at it** — see
    [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md). Until then the old repo is still
    serving `MintPlayer/CodeCoverage/action@master` to it, and archiving would break its uploads.
 3. **One deploy has succeeded from this repository.** `code-coverage-deploy.yml` publishes the same
@@ -22,7 +23,10 @@ returns nothing), so it can be emptied — but **not yet**, and the order matter
 ## Then
 
 1. Strip the repository to a README pointing at
-   `MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage`, and remove `action/` (it moved).
+   `MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage` for the server, and at
+   `MintPlayer/github-actions` for the upload action. The two went to different homes on purpose:
+   the application belongs beside the framework it consumes, the action belongs with the other
+   actions.
 2. Disable its workflows before archiving, or the last scheduled run may deploy a stale image over
    the one this repo just published.
 3. Archive it. Do not delete: the history is the origin of four documents that are now stubs here,

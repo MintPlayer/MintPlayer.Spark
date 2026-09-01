@@ -77,7 +77,7 @@ fix land in the same commit, and Coverage's ~144 tests become a regression gate 
 | # | Question | Decision |
 |---|---|---|
 | D1 | Where does Coverage live? | **`git mv Demo apps`**, then `apps/CodeCoverage/CodeCoverage` + `apps/CodeCoverage/CodeCoverage.Library`. All applications share one root; Coverage is not filed as a demo. |
-| D2 | What happens to `action/`? | **Move it and update consumers** — `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master`. Every pinned consumer is updated in the same unit of work. |
+| D2 | What happens to `action/`? | **Move it and update consumers.** *Revised during the work:* the action went to **`MintPlayer/github-actions/coverage-upload@main`**, not into this repo. A collection of actions is the right home for one; it does not belong beside the server application. Every pinned consumer is updated in the same unit of work. |
 | D3 | How does deployment move? | **Port the workflow, keep the image name.** A new workflow here publishes `ghcr.io/mintplayer/codecoverage:master` exactly as before and drives the same VPS ssh deploy. |
 | D4 | FluentAssertions? | **Drop it entirely; adopt `MintPlayer.Assertions`** solution-wide — all five existing test projects and every new one. One assertion library per workspace. |
 | D5 | Generated `AGENTS.md` in-repo? | **In-repo consumers get a pointer to the single source of truth in `libs/`; external NuGet consumers keep the full copy.** Pointers become tracked files, replacing the current ignore-the-copies rule. |
@@ -91,6 +91,17 @@ and those are enumerable — thirteen files, listed in the plan's M1.
 D2 is the one decision that breaks something outside this repo, taken deliberately: a single action
 surface is worth more than uninterrupted pins, and per the one-PR rule the consumer updates land
 together rather than as a follow-up.
+
+It was also the one decision revised mid-flight. The action first landed here as
+`apps/CodeCoverage/action`, which worked but put a general-purpose action inside an application's
+directory. It now lives in [`MintPlayer/github-actions`](https://github.com/MintPlayer/github-actions)
+with the other actions ([PR #5](https://github.com/MintPlayer/github-actions/pull/5)), ported to that
+repo's conventions — shared `package.json`, `tsc` → `lib/` → `ncc` → `dist/<action>/`, and its 35 tests
+converted from vitest to jest. That leaves this repo with no committed 2.3 MB bundle and no
+stale-`dist` CI gate, and it means the action's release cadence is no longer tied to the monorepo.
+
+**Merge order matters:** github-actions#5 first, then this PR, then the ng-bootstrap change,
+then archive the old repo.
 
 D4's scope is solution-wide by choice. Coverage's 8.8.0 reference is the urgent part, but leaving this
 repo's four projects on 7.2.2 would mean two assertion libraries in one workspace and a permanent
@@ -180,7 +191,9 @@ is right and the copies must not come along — but note neither existing patter
 `action/action.yml` is consumed as `MintPlayer/CodeCoverage/action@master` by this repository's own
 `pull-request.yml` and `dotnet-build-master.yml`, and by `C:\Repos\mintplayer-ng-bootstrap`. Per D2
 all move to the new path in this same unit of work. Coverage's own CI already uses local `./action`,
-which simply becomes `./apps/CodeCoverage/action`.
+which simply becomes `./apps/CodeCoverage/action`. **Superseded — see D2:** the action ended up in
+MintPlayer/github-actions instead, so all three consumers reference
+`MintPlayer/github-actions/coverage-upload@main` and this repo keeps no copy.
 
 `action/dist/index.js` is a **committed 2.31 MB bundle** and CI enforces it is current
 (`git status --porcelain dist` clean after `npm run build`). That gate comes along, and no ignore

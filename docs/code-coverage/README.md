@@ -16,7 +16,8 @@ failure on Spark PR #123.
 | [`upload-api.md`](upload-api.md) | The stable CI↔server upload contract. Fields are added, never removed; the action and every consuming pipeline depend on it. |
 | [`roadmap-2026-08.md`](roadmap-2026-08.md) | Proposed next phase. Parts were absorbed elsewhere, but T0.1 (backups) and T1.1–T1.4 (honest numbers) are unbuilt — this is the live backlog. |
 | [`product-overview.md`](product-overview.md) | Product and architecture overview; the first thing to read. Renamed from `PRD.md`, which meant nothing in a directory of PRDs. |
-| [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md) | Pending cross-repo change: repoint `mintplayer-ng-bootstrap` at the action's new path. |
+| [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md) | Pending cross-repo change: repoint `mintplayer-ng-bootstrap` at `MintPlayer/github-actions/coverage-upload@main`. |
+| [`old-repo-decommission.md`](old-repo-decommission.md) | Pending owner action: emptying and archiving `MintPlayer/CodeCoverage`, and the three preconditions that must hold first. |
 
 ## Historical — shipped, kept as the record of why
 

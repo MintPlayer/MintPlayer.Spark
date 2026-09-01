@@ -3,9 +3,10 @@
  * NOT CURRENTLY WIRED INTO CI IN THIS REPOSITORY, and deliberately so.
  *
  * It was load-bearing in the standalone MintPlayer/CodeCoverage repo, where the action
- * and the SPA both emitted lcov and both reported `src/main.ts`. On absorbing the app
- * into the Spark monorepo the two imported projects were switched to cobertura instead,
- * matching what ng-spark and ng-spark-auth already emitted. A vitest cobertura report
+ * and the SPA both emitted lcov and both reported `src/main.ts`. Two things removed that
+ * collision: the SPA switched to cobertura, matching what ng-spark and ng-spark-auth
+ * already emitted, and the action left this repository altogether for
+ * MintPlayer/github-actions. A vitest cobertura report
  * carries an absolute `<source>` root, so every path is unambiguous by construction and
  * there is nothing left to rebase — a better fix than rebasing, because it removes the
  * failure mode rather than detecting it.

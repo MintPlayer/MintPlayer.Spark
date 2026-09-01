@@ -123,23 +123,6 @@ jobs:
           echo "::endgroup::"
         done
 
-    # The coverage action is a separate npm project with its own lockfile, deliberately
-    # outside the workspaces (CommonJS node20 bundle, its own typescript, @vercel/ncc).
-    # Its dist/ is the PUBLISHED contract -- consumers run the committed bundle, not the
-    # source -- so a dist that has drifted from src ships a stale action to everyone who
-    # references it. The rebuild-and-diff below is what makes that impossible to merge.
-    - name: Test the coverage action and prove dist is current
-      working-directory: apps/CodeCoverage/action
-      run: |
-        npm ci
-        npm run test:coverage
-        npm run build
-        if [ -n "$(git status --porcelain dist)" ]; then
-          echo "::error::apps/CodeCoverage/action/dist is stale. Run 'npm run build' in that directory and commit the result."
-          git --no-pager diff --stat dist
-          exit 1
-        fi
-
     - name: Run affected tests (.NET + Angular via Nx)
       # Step-level so the known hang (E2E suite wedging with no output) fails
       # here and the `if: always()` coverage upload below still runs with
@@ -170,7 +153,7 @@ jobs:
     # CodeCoverage.Tests lands.
     - name: Upload coverage
       if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml') != ''
-      uses: ./apps/CodeCoverage/action
+      uses: MintPlayer/github-actions/coverage-upload@main
       with:
         url: https://coverage.mintplayer.com
         token: ${{ secrets.COVERAGE_TOKEN }}
@@ -179,7 +162,6 @@ jobs:
           apps/*/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
           apps/*/*/ClientApp/coverage/cobertura-coverage.xml
-          apps/*/action/coverage/cobertura-coverage.xml
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}

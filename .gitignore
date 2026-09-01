@@ -155,7 +155,7 @@ _TeamCity*
 # named CodeCoverage, not Coverage: `**/coverage/` matches a path component equal to "coverage",
 # and core.ignorecase is true on Windows, so a directory named `Coverage/` WOULD have matched and
 # been silently swallowed. `CodeCoverage/` does not. The coverage output directories these rules
-# are actually for (ClientApp/coverage, action/coverage, tests/*/coverage) still match correctly.
+# are actually for (ClientApp/coverage, tests/*/coverage) still match correctly.
 coverage/
 **/coverage/
 #

@@ -14,7 +14,7 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 
 - **Product & architecture**: [docs/code-coverage/product-overview.md](../../docs/code-coverage/product-overview.md)
 - **Milestone plan**: [docs/code-coverage/build-log-m0-m10.md](../../docs/code-coverage/build-log-m0-m10.md)
-- **The upload GitHub Action**: [action/README.md](action/README.md) (`uses: MintPlayer/CodeCoverage/action@master`)
+- **The upload GitHub Action**: [MintPlayer/github-actions](https://github.com/MintPlayer/github-actions#coverage-upload) (`uses: MintPlayer/github-actions/coverage-upload@main`) — it lives with the other actions, not with this app
 - **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
@@ -40,7 +40,7 @@ setting up a repository that looks like this one:
   `tools/rebase-lcov-paths.mjs` rewrites them to repo-root-relative and fails the
   job if any path names no tracked file. If your coverage looks inexplicably low
   after wiring up a monorepo, check this first.
-- **The workflow uses `./action`, not `MintPlayer/CodeCoverage/action@master`.**
+- **The workflow uses `MintPlayer/github-actions/coverage-upload@main`.**
   Consuming repositories should pin `@master` as documented in
   [action/README.md](action/README.md). This one deliberately does not: uploading
   with the action *as the pull request changes it* is what catches a regression in
