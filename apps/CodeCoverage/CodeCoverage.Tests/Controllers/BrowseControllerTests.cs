@@ -3,7 +3,6 @@ using CodeCoverage.Controllers;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents;

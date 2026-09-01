@@ -2,7 +2,6 @@ using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
-using FluentAssertions;
 using Xunit;
 
 namespace CodeCoverage.Tests.Feedback;
@@ -70,7 +69,7 @@ public class GateEvaluatorTests
         var verdict = GateEvaluator.Project(gate, build, Comparison(baseCoverage: null));
 
         verdict.Conclusion.Should().Be("neutral");
-        verdict.Passed.Should().BeNull();
+        verdict.Passed.Should().NotHaveValue();
     }
 
     [Fact]
@@ -131,7 +130,7 @@ public class GateEvaluatorTests
         var verdict = GateEvaluator.Patch(new GateSettings { Blocking = true, PatchTarget = 80 }, new Build());
 
         verdict.Conclusion.Should().Be("neutral");
-        verdict.Passed.Should().BeNull();
+        verdict.Passed.Should().NotHaveValue();
     }
 
     [Fact]

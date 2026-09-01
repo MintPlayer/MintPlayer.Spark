@@ -1,6 +1,5 @@
 using System.Net;
 using CodeCoverage.Services;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,7 +79,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         var visibility = await harness.Access.GetVisibilityAsync();
 
         visibility.TokenState.Should().Be(GitHubTokenState.Ok);
-        visibility.Owners.Should().BeEquivalentTo("MintPlayer", "pieterjan");
+        visibility.Owners.Should().BeEquivalentTo(["MintPlayer", "pieterjan"]);
         harness.Tokens.ForcedCalls.Should().Be(1);
         harness.Handler.Requests.Should().HaveCount(2, "the stale token 401s once, the refreshed token succeeds");
     }
@@ -100,7 +99,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         var first = await harness.Access.GetVisibilityAsync();
         var second = await harness.Access.GetVisibilityAsync();
 
-        first.Owners.Should().BeEquivalentTo("pieterjan");
+        first.Owners.Should().BeEquivalentTo(["pieterjan"]);
         first.TokenState.Should().Be(GitHubTokenState.ReauthRequired);
         // Degraded results are never cached: the second call re-consults the
         // token service instead of replaying a cached owner list.
@@ -120,7 +119,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
         var visibility = await harness.Access.GetVisibilityAsync();
 
-        visibility.Owners.Should().BeEquivalentTo("pieterjan");
+        visibility.Owners.Should().BeEquivalentTo(["pieterjan"]);
         visibility.TokenState.Should().Be(GitHubTokenState.ReauthRequired);
         harness.Tokens.ForcedCalls.Should().Be(1, "exactly one forced refresh — no retry loops");
         harness.Handler.Requests.Should().HaveCount(2);
@@ -138,7 +137,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
         var visibility = await harness.Access.GetVisibilityAsync();
 
-        visibility.Owners.Should().BeEquivalentTo("pieterjan");
+        visibility.Owners.Should().BeEquivalentTo(["pieterjan"]);
         visibility.TokenState.Should().Be(GitHubTokenState.ReauthRequired);
         harness.Handler.Requests.Should().BeEmpty();
     }
@@ -155,7 +154,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
         var visibility = await harness.Access.GetVisibilityAsync();
 
-        visibility.Owners.Should().BeEquivalentTo("pieterjan");
+        visibility.Owners.Should().BeEquivalentTo(["pieterjan"]);
         visibility.TokenState.Should().Be(GitHubTokenState.Unavailable);
         // 502 is not 401: no forced refresh, no burned refresh token.
         harness.Tokens.ForcedCalls.Should().Be(0);

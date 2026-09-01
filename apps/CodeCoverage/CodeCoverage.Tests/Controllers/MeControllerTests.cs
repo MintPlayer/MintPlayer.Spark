@@ -1,7 +1,6 @@
 using CodeCoverage.Controllers;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
-using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;

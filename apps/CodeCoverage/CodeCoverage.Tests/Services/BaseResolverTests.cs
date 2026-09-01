@@ -1,6 +1,5 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
-using FluentAssertions;
 using Raven.Client.Documents;
 using Xunit;
 

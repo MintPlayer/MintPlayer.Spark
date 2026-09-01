@@ -2,7 +2,6 @@ using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Ingestion.Parsing;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;

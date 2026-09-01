@@ -1,6 +1,5 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Recipients;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;

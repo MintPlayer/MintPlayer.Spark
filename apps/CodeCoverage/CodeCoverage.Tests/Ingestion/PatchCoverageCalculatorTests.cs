@@ -2,7 +2,6 @@ using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
-using FluentAssertions;
 using Raven.Client.Documents;
 using Xunit;
 

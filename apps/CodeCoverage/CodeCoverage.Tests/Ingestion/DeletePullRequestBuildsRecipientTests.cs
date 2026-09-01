@@ -1,6 +1,5 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Raven.Client.Documents;
 using Xunit;

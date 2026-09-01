@@ -1,7 +1,6 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Indexes;
 using CodeCoverage.Services;
-using FluentAssertions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using CodeCoverage.Tests;

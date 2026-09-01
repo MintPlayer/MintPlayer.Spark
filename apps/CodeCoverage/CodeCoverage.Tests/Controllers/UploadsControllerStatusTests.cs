@@ -3,7 +3,6 @@ using CodeCoverage.ApiTokens;
 using CodeCoverage.Controllers;
 using CodeCoverage.Entities;
 using CodeCoverage.Indexes;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -337,7 +336,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
 
         foreach (var result in new[] { unauthorized, unknown })
         {
-            var notFound = result.Result.Should().BeOfType<NotFoundResult>().Subject;
+            var notFound = result.Result.Should().BeOfType<NotFoundResult>().Which;
             notFound.StatusCode.Should().Be(404);
         }
     }
@@ -358,7 +357,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
 
         var result = await CreateController(session, AccountToken("acme")).Status(RepoName, Sha, runId: 999);
 
-        var notFound = result.Result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        var notFound = result.Result.Should().BeOfType<NotFoundObjectResult>().Which;
         notFound.Value!.ToString().Should().Contain("No build for run 999");
     }
 

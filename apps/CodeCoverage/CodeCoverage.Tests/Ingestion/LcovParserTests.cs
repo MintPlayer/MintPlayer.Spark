@@ -1,7 +1,6 @@
 using Xunit;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion.Parsing;
-using FluentAssertions;
 
 namespace CodeCoverage.Tests.Ingestion;
 
@@ -76,7 +75,7 @@ public class LcovParserTests
         var file = parser.Parse(lcov2).Files.Single();
         // '-' means the enclosing block never executed — distinct from 0 but
         // still an untaken edge, so the line is partial.
-        file.Branches[(5, "0", "0")].Should().BeNull();
+        file.Branches[(5, "0", "0")].Should().NotHaveValue();
         file.Branches[(5, "0", "1")].Should().Be(4);
         file.Lines[5].Status.Should().Be(LineStatus.PartiallyCovered);
     }

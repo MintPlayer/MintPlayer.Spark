@@ -1,5 +1,4 @@
 using CodeCoverage.Services;
-using FluentAssertions;
 using Xunit;
 
 namespace CodeCoverage.Tests.Services;

@@ -1,7 +1,6 @@
 using Xunit;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion.Parsing;
-using FluentAssertions;
 
 namespace CodeCoverage.Tests.Ingestion;
 
@@ -58,7 +57,7 @@ public class JaCoCoParserTests
         var result = parser.Parse(Sample);
 
         result.Files.Select(f => f.RawPath).Should().BeEquivalentTo(
-            "com/example/Calculator.java", "com/example/Util.java", "Root.java");
+            ["com/example/Calculator.java", "com/example/Util.java", "Root.java"]);
     }
 
     [Fact]
@@ -69,7 +68,7 @@ public class JaCoCoParserTests
 
         // JaCoCo has no execution counts: covered lines carry Hits = null
         // (executed, count unknown), unexecuted lines a genuine 0.
-        file.Lines[10].Hits.Should().BeNull();
+        file.Lines[10].Hits.Should().NotHaveValue();
         file.Lines[10].Status.Should().Be(LineStatus.Covered);
 
         file.Lines[14].Hits.Should().Be(0);

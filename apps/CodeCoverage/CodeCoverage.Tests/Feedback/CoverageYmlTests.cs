@@ -1,6 +1,5 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
-using FluentAssertions;
 using Xunit;
 
 namespace CodeCoverage.Tests.Feedback;

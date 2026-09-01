@@ -3,7 +3,6 @@ using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Ingestion.Parsing;
 using CodeCoverage.Tests.Services;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -87,7 +86,7 @@ public class FlagCoverageTests : CoverageRavenTest
         var finalized = await verify.LoadAsync<Build>(BuildId);
 
         finalized.FlagCoverage.Should().NotBeNull();
-        finalized.FlagCoverage!.Keys.Should().BeEquivalentTo("unit", "e2e", "linux");
+        finalized.FlagCoverage!.Keys.Should().BeEquivalentTo(["unit", "e2e", "linux"]);
 
         // unit saw only x.ts (1 of 2); e2e/linux only y.ts (2 of 2).
         finalized.FlagCoverage["unit"].LinesCoverable.Should().Be(2);
