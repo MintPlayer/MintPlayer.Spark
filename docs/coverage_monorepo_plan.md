@@ -17,6 +17,37 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
 
 ---
 
+## Progress
+
+| | Milestone | Outcome |
+|---|---|---|
+| ✅ | M8b build targets | `spark-allfeatures.targets` no longer warns for NuGet consumers (`4d488261`) |
+| ✅ | M0 gitignore | Coverage tree visible to git (`36be83bf`) |
+| ✅ | M1 `Demo/`→`apps/` + `.slnx` | 40 nx projects; solution 49 KB → 4.9 KB (`297ded1b`) |
+| ✅ | M2 copy + rename to CodeCoverage | 230 files; stock ignore rules restored (`64740304`) |
+| ✅ | M3 Spark from source | no Spark PackageReference left (`41260720`) |
+| ✅ | M4 npm / Nx wiring | ng-spark compiles from source; 22 SPA tests pass (`05351963`) |
+| ✅ | M5 assertions pilot | 144/144 on MintPlayer.Assertions (`8bbdbd7c`) |
+| ✅ | M6 assertions solution-wide | FluentAssertions gone; 4 projects compile (`cf568708`) |
+| ⬜ | M7 action/ + consumers | |
+| ⬜ | M8a AGENTS.md pointer mode | |
+| ⬜ | M9 model + security regen | needs RavenDB (owner-managed) |
+| ⬜ | M10 first real run | needs RavenDB + host (owner-managed) |
+| ⬜ | M11 CI | |
+| ⬜ | M12 raise coverage | |
+| ⬜ | M13 docs triage | |
+| ⬜ | M14 docker + deploy | |
+| ⬜ | M15 test sweep | |
+| ⬜ | M16 empty old repo | owner action |
+| ⬜ | M17 authorization migration | |
+
+**The app was renamed `Coverage` → `CodeCoverage`** during M2, matching the GitHub repo and the
+published image. That is what let the stock `**/coverage/` ignore rules come back: they match a path
+component equal to `coverage`, which `CodeCoverage` is not. The *file* globs stay root-anchored
+regardless, because the entity is named `CoverageSummary`.
+
+---
+
 ## M0 — Make `.gitignore` stop swallowing `Coverage/` ✅ DONE
 
 **Gates everything.** Verified: `git check-ignore -v Coverage/App_Data/security.json` matched
@@ -28,7 +59,7 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
    - `apps/*/*/ClientApp/coverage/`
    - `apps/*/*/coverage/` (for `Coverage.Tests`)
    - `libs/node_packages/*/coverage/`
-   - `apps/Coverage/action/coverage/`
+   - `apps/CodeCoverage/action/coverage/`
    - keep `coverage*.json` / `coverage*.xml` / `coverage*.info`; drop bare `coverage/` and
      `**/coverage/`.
 2. Anchor `.gitignore:70` `artifacts/` to `/artifacts/`.
@@ -37,20 +68,20 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
    originally drafted) would leave seven untracked full copies sitting in `git status` from now until
    M8. They come out in M8a, in the same commit that starts generating tracked pointers — so every
    intermediate commit stays clean.
-4. Ensure nothing ignores `apps/Coverage/action/dist/`; add an explicit `!` negation if a `dist/` rule
-   reaches it. Add `apps/Coverage/action/node_modules/` if not already covered.
+4. Ensure nothing ignores `apps/CodeCoverage/action/dist/`; add an explicit `!` negation if a `dist/` rule
+   reaches it. Add `apps/CodeCoverage/action/node_modules/` if not already covered.
 
-The docs folder is named **`docs/coverage-app/`** rather than `docs/coverage/` so it sidesteps this
+The docs folder is named **`docs/code-coverage/`** rather than `docs/coverage/` so it sidesteps this
 trap by name instead of depending on step 1.
 
 **Verify:** `git check-ignore -v` returns non-zero for probe files at
-`apps/Coverage/Coverage/App_Data/security.json`, `apps/Coverage/action/dist/index.js`,
-`apps/Coverage/Coverage/ClientApp/src/spark-auth.setup.ts`, `docs/coverage-app/PRD.md` and
+`apps/CodeCoverage/CodeCoverage/App_Data/security.json`, `apps/CodeCoverage/action/dist/index.js`,
+`apps/CodeCoverage/CodeCoverage/ClientApp/src/spark-auth.setup.ts`, `docs/code-coverage/PRD.md` and
 `Demo/HR/HR/AGENTS.md`; and still *matches*
 `tests/MintPlayer.Spark.Tests/coverage/x/coverage.cobertura.xml`. Prove nothing regresses:
 `git ls-files | git check-ignore --stdin` must print nothing.
 
-## M1 — `git mv Demo apps`
+## M1 — `git mv Demo apps` ✅ DONE
 
 Rename first, so Coverage is copied into its final home exactly once. `Demo/HR/HR` → `apps/HR/HR` is
 the same depth, so all `..\..\..\libs\...` references, `tsconfig.base.json` extends chains and
@@ -59,7 +90,7 @@ enumerated from `git grep`:
 
 | File | What changes |
 |---|---|
-| `MintPlayer.Spark.sln` | project paths + the `Demos` solution folder (rename it `apps`) |
+| `MintPlayer.Spark.slnx` | project paths + the `Demos` solution folder (rename it `apps`) |
 | `MintPlayer.Spark.slnLaunch` | lines 6, 11 |
 | `package.json` | 4 `workspaces` entries |
 | `.gitignore` | lines 385, 386, 396 |
@@ -78,25 +109,25 @@ The `Demo.Car` / `Demo.Person` hits in `tests/MintPlayer.Spark.Tests/**` are CLR
 
 Then `npm install` at the root to rewrite the `workspaces` paths in `package-lock.json`.
 
-**Verify:** `dotnet build MintPlayer.Spark.sln`; `npx nx show projects` still lists 40; `npm ci` clean;
+**Verify:** `dotnet build MintPlayer.Spark.slnx`; `npx nx show projects` still lists 40; `npm ci` clean;
 a grep for a remaining `Demo/` or `Demo\` outside `docs/` and the type-name fixtures returns nothing.
 
-## M2 — Copy the Coverage tree in (filesystem commands only)
+## M2 — Copy the Coverage tree in (filesystem commands only) ✅ DONE
 
 `cp -r` / `copy` only — no file is read and retyped. Source `C:\Repos\Coverage`.
 
 | From | To |
 |---|---|
-| `Coverage/` | `apps/Coverage/Coverage/` |
-| `Coverage.Library/` | `apps/Coverage/Coverage.Library/` |
-| `Coverage.Tests/` | `apps/Coverage/Coverage.Tests/` |
-| `action/` | `apps/Coverage/action/` |
-| `tools/` | `apps/Coverage/tools/` |
-| `docs/` | `docs/coverage-app/` (triaged in M13) |
-| `docker-compose.yml` | `apps/Coverage/docker-compose.yml` |
-| `README.md` | `apps/Coverage/README.md` |
-| `.env.example` | `apps/Coverage/.env.example` |
-| `coverlet.runsettings` | `apps/Coverage/coverlet.runsettings` |
+| `Coverage/` | `apps/CodeCoverage/CodeCoverage/` |
+| `Coverage.Library/` | `apps/CodeCoverage/CodeCoverage.Library/` |
+| `Coverage.Tests/` | `apps/CodeCoverage/CodeCoverage.Tests/` |
+| `action/` | `apps/CodeCoverage/action/` |
+| `tools/` | `apps/CodeCoverage/tools/` |
+| `docs/` | `docs/code-coverage/` (triaged in M13) |
+| `docker-compose.yml` | `apps/CodeCoverage/docker-compose.yml` |
+| `README.md` | `apps/CodeCoverage/README.md` |
+| `.env.example` | `apps/CodeCoverage/.env.example` |
+| `coverlet.runsettings` | `apps/CodeCoverage/coverlet.runsettings` |
 
 **Do not copy:** `.git/`, `.vs/`, `.playwright-mcp/`, `tmp/`, `artifacts/`, `node_modules/` (×3),
 `bin/`, `obj/`, `dist/` except `action/dist/`, `Coverage.Tests/TestResults/`,
@@ -104,12 +135,12 @@ a grep for a remaining `Demo/` or `Demo\` outside `docs/` and the type-name fixt
 `.dockerignore`, `.claude/settings.local.json`.
 
 Two of those deserve a word. **`Coverage.slnx`** is dropped because its three projects join
-`MintPlayer.Spark.sln` in M3. **`.claude/settings.local.json`** is dropped rather than merged: its four
+`MintPlayer.Spark.slnx` in M3. **`.claude/settings.local.json`** is dropped rather than merged: its four
 entries are all stale (a dead scratchpad UUID and an `ilspycmd` invocation against `preview.46` in the
 NuGet cache) — nothing to salvage.
 
-**Delete after copying:** `apps/Coverage/Coverage/AGENTS.md` and
-`apps/Coverage/Coverage.Tests/AGENTS.md`. Both are build-generated, and M8 replaces them with
+**Delete after copying:** `apps/CodeCoverage/CodeCoverage/AGENTS.md` and
+`apps/CodeCoverage/CodeCoverage.Tests/AGENTS.md`. Both are build-generated, and M8 replaces them with
 pointers. Their byte-identity is not a curiosity — it is the bug M8 fixes, diagnosed in PRD R10.
 
 Keep `ClientApp/src/spark-auth.setup.ts` only if M0's negation covers it; otherwise let the
@@ -123,9 +154,9 @@ either breaks the demo image builds or ships a `.pem` into a layer.
 **Verify:** `git add -A --dry-run` stages the expected count (≈205 after exclusions); `git status`
 shows no unexpected deletions.
 
-## M3 — .NET wiring
+## M3 — .NET wiring ✅ DONE
 
-1. `apps/Coverage/Coverage/Coverage.csproj`: drop all ten `MintPlayer.Spark.*` `PackageReference`s; add
+1. `apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj`: drop all ten `MintPlayer.Spark.*` `PackageReference`s; add
    `ProjectReference`s to `..\..\..\libs\{spark\MintPlayer.Spark, authorization\..., controllers\...,
    cron\..., messaging\..., migrations\..., webhooks\MintPlayer.Spark.Webhooks.GitHub,
    webhooks\...DevTunnel}`, plus `source_generators\MintPlayer.Spark.SourceGenerators` as
@@ -140,19 +171,19 @@ shows no unexpected deletions.
    milestone stays a pure reference swap.
 4. Pin the floating `Microsoft.AspNetCore.Authentication.JwtBearer` `10.0.*` to the exact version the
    demos resolve.
-5. Add all three projects to `MintPlayer.Spark.sln` under a new `apps/Coverage` solution folder.
+5. Add all three projects to `MintPlayer.Spark.slnx` under a new `apps/CodeCoverage` solution folder.
 6. Add a `Coverage` profile to `MintPlayer.Spark.slnLaunch`.
 7. Confirm ports 5200/5201 in `Properties/launchSettings.json` are unchanged — the GitHub App callback
    URL is registered against 5200, so do not renumber — and that the four `--spark-*` CLI profiles
    survived the copy.
 
-**Verify:** `dotnet build MintPlayer.Spark.sln`; `grep -rn "MintPlayer.Spark.*Version" apps/Coverage`
+**Verify:** `dotnet build MintPlayer.Spark.slnx`; `grep -rn "MintPlayer.Spark.*Version" apps/CodeCoverage`
 finds no Spark package reference.
 
-## M4 — npm / Nx wiring (single atomic step)
+## M4 — npm / Nx wiring (single atomic step) ✅ DONE
 
-1. Add `apps/Coverage/Coverage/ClientApp` to the root `package.json` `workspaces`.
-2. Delete `apps/Coverage/Coverage/ClientApp/package-lock.json`; strip its dependency lists to the demo
+1. Add `apps/CodeCoverage/CodeCoverage/ClientApp` to the root `package.json` `workspaces`.
+2. Delete `apps/CodeCoverage/CodeCoverage/ClientApp/package-lock.json`; strip its dependency lists to the demo
    shape (Spark Angular packages only) and point `start`/`build`/`test` at
    `nx run @spark-apps/coverage:<target>`.
 3. Lift Coverage-only deps to the root `package.json`: `@angular/cdk`,
@@ -166,9 +197,9 @@ finds no Spark package reference.
    `loader: {".svg": "text"}`, its style list, its budgets, and its `unit-test` coverage excludes
    (`src/**/*.spec.ts`, `src/main.ts`, `src/spark-auth.setup.ts`, `src/app/app.config.ts`). Delete
    `angular.json` — this repo has none.
-5. Add `apps/Coverage/Coverage/project.json`:
+5. Add `apps/CodeCoverage/CodeCoverage/project.json`:
    `{ "name": "Coverage", "implicitDependencies": ["@spark-apps/coverage"] }`.
-6. Add `apps/Coverage/Coverage.Tests/project.json` with a `test` target running
+6. Add `apps/CodeCoverage/CodeCoverage.Tests/project.json` with a `test` target running
    `dotnet test --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory coverage`,
    and widen CI's `tests/*/coverage/**` glob to cover `apps/*/*/coverage/**` (M10).
 7. Make `ClientApp/tsconfig.json` extend `../../../../tsconfig.base.json` so `@mintplayer/ng-spark`
@@ -180,7 +211,7 @@ finds no Spark package reference.
 `@spark-apps/coverage`; `npx nx run @spark-apps/coverage:build` succeeds; touching
 `libs/node_packages/ng-spark/src/public-api.ts` marks the SPA affected.
 
-## M5 — Drop FluentAssertions from `Coverage.Tests` (the pilot)
+## M5 — Drop FluentAssertions from `CodeCoverage.Tests` (the pilot) ✅ DONE
 
 Coverage is on **8.8.0** — the paid-licence major — so it cannot stay, and at 367 call sites over 25
 files it is the right place to prove `MintPlayer.Assertions` before touching 3800 Spark sites.
@@ -201,11 +232,11 @@ files it is the right place to prove `MintPlayer.Assertions` before touching 380
 5. Meta-tests that assert on a failure exception must expect
    `MintPlayer.Assertions.AssertionFailedException`, not `XunitException`.
 
-**Verify:** `dotnet test apps/Coverage/Coverage.Tests` green. This is the one place in the plan where a
+**Verify:** `dotnet test apps/CodeCoverage/CodeCoverage.Tests` green. This is the one place in the plan where a
 single project's suite runs before the M13 sweep — it is the gate on D4, and running it here is far
 cheaper than discovering a library problem after 4167 sites have moved.
 
-## M6 — Drop FluentAssertions from the four Spark test projects (solution-wide)
+## M6 — Drop FluentAssertions from the four Spark test projects (solution-wide) ✅ DONE
 
 3800 remaining call sites, and cheaper than that number suggests: all four projects import FA through a
 csproj-level `<Using Include="FluentAssertions" />`, so this is **four** package references and **four**
@@ -247,14 +278,14 @@ returns nothing. Suites run in M13.
 
 ## M7 — Move `action/` and update every consumer (D2)
 
-New reference: `MintPlayer/MintPlayer.Spark/apps/Coverage/action@master`.
+New reference: `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master`.
 
 1. `.github/workflows/pull-request.yml` and `dotnet-build-master.yml`: replace
-   `MintPlayer/CodeCoverage/action@master` with local `./apps/Coverage/action` — same repo now, no need
+   `MintPlayer/CodeCoverage/action@master` with local `./apps/CodeCoverage/action` — same repo now, no need
    to round-trip through GitHub.
 2. `C:\Repos\mintplayer-ng-bootstrap`: update its workflow to the new external path. Lands in this same
    unit of work per the one-PR rule; if cross-repo writes are blocked from this session, prepare the
-   exact diff at `docs/coverage-app/ng-bootstrap-action-path.md` and apply it from a session rooted in
+   exact diff at `docs/code-coverage/ng-bootstrap-action-path.md` and apply it from a session rooted in
    that repo **before** merging.
 3. Add the stale-`dist` gate to this repo's CI: `npm ci && npm run test:coverage`, then
    `npm run build`, failing if `git status --porcelain dist` is dirty.
@@ -263,7 +294,7 @@ New reference: `MintPlayer/MintPlayer.Spark/apps/Coverage/action@master`.
    bundle change and the committed `dist/` is contract. Keep its private lockfile.
 
 **Verify:** `grep -rn "MintPlayer/CodeCoverage" .github` returns nothing;
-`cd apps/Coverage/action && npm ci && npm run build && git status --porcelain dist` prints nothing.
+`cd apps/CodeCoverage/action && npm ci && npm run build && git status --porcelain dist` prints nothing.
 
 ## M8 — Fix the shipped build targets (D5 + PRD R10/R11)
 
@@ -322,7 +353,7 @@ consuming the package rather than reasoning about it:
 **Verified both directions.** External: packed to a folder feed, consumed by `PackageReference` from a
 scratch app → builds clean, no `MSB9008`, no `SPARK001`, no warnings. In-repo: Fleet still evaluates
 both analyzer `ProjectReference`s from this file, `_SparkAllFeaturesInRepo` is `true`, the validated
-flag stays unset so `SPARK001` still runs for real, and `dotnet build MintPlayer.Spark.sln` is green.
+flag stays unset so `SPARK001` still runs for real, and `dotnet build MintPlayer.Spark.slnx` is green.
 
 Watch out when editing this file: `--` is illegal inside an XML comment and MSBuild reports it as
 `MSB4024` at import time, which reads like a missing file rather than a syntax error.
@@ -331,8 +362,8 @@ Watch out when editing this file: `--` is illegal inside an XML comment and MSBu
 
 Copied `App_Data` was generated against `preview.68` **packages**; Spark-from-source may differ.
 
-1. `dotnet run --project apps/Coverage/Coverage -- --spark-synchronize-model`
-2. `dotnet run --project apps/Coverage/Coverage -- --spark-synchronize-security`
+1. `dotnet run --project apps/CodeCoverage/CodeCoverage -- --spark-synchronize-model`
+2. `dotnet run --project apps/CodeCoverage/CodeCoverage -- --spark-synchronize-security`
 3. Re-run both. **A second run must produce an empty diff** — synchronize is required to be a fixed
    point; a non-empty second diff is a Spark bug to fix here, not a file to commit.
 4. Commit the resulting `Model/*.json`, `modelHashes.json`, `security.json`, `securityPosture.txt`.
@@ -343,7 +374,7 @@ Copied `App_Data` was generated against `preview.68` **packages**; Spark-from-so
 
 ## M10 — First real run
 
-`dotnet run --project apps/Coverage/Coverage` — and nothing else. The host spawns the dev server
+`dotnet run --project apps/CodeCoverage/CodeCoverage` — and nothing else. The host spawns the dev server
 itself; do not start `ng serve`/`npm start` alongside it, and do not run `ng build`/`ng test` against
 this workspace while it is running.
 
@@ -356,11 +387,11 @@ a build page with the coverage column, and a badge URL. Requires a local RavenDB
 
 Coverage's `ci.yml`/`publish.yml` are **not** copied; their jobs fold in.
 
-1. `pull-request.yml`: append `apps/Coverage/Coverage` to **both** hardcoded verify loops — the one
+1. `pull-request.yml`: append `apps/CodeCoverage/CodeCoverage` to **both** hardcoded verify loops — the one
    place a new app is otherwise silently skipped.
 2. Fold in the Angular and action coverage uploads: Coverage's SPA suite and the action's Vitest suite
    become additional `flags:` on the existing upload step (`dotnet`, `angular`, `action`).
-3. Wire `apps/Coverage/tools/rebase-lcov-paths.mjs` into the upload path and extend its invocations to
+3. Wire `apps/CodeCoverage/tools/rebase-lcov-paths.mjs` into the upload path and extend its invocations to
    every JS project emitting a `src/main.ts` — eight now. Keep its `node --test` self-test in CI.
 4. Widen the coverage glob to include `apps/*/*/coverage/**` (paired with M4.6).
 5. Confirm `nx affected` genuinely covers Coverage before relying on it — the host's
@@ -428,7 +459,7 @@ retire silent-failure risk, not to move a badge.
 
 ## M13 — Docs triage
 
-The twenty copied files land in `docs/coverage-app/`. Triage, not bulk retention:
+The twenty copied files land in `docs/code-coverage/`. Triage, not bulk retention:
 
 **LIVE (3) — move and keep authoritative.** `upload-api.md` (the standing external upload contract:
 "fields are added, never removed"); `roadmap-2026-08.md` (T0.1 backups and T1.1–T1.4 are still
@@ -463,17 +494,17 @@ Also in this milestone:
 1. **Status-stamp `docs/PRD-CoverageHandoff.md` and `docs/coverage-handoff-plan.md`.** Both still read
    `Status: Draft for review` (2026-08-07) although everything in them shipped in preview.42 and the
    IdP pass. Sitting next to the incoming Coverage set, they would read as pending work.
-2. Add `docs/coverage-app/README.md` indexing the survivors with their status.
+2. Add `docs/code-coverage/README.md` indexing the survivors with their status.
 3. Re-point `adopt-spark-generic-ui.md`'s upstream scoreboard from GitHub issue URLs to the in-repo
    `docs/issue_*.md` files — that is a concrete gain from the merge.
-4. `apps/Coverage/README.md` keeps the GitHub App setup walkthrough; fix its six `docs/…` links and add
+4. `apps/CodeCoverage/README.md` keeps the GitHub App setup walkthrough; fix its six `docs/…` links and add
    a pointer from this repo's root `README.md`.
 5. Add a short `apps/` orientation note to `CLAUDE.md`: the `Demo/` → `apps/` rename, that Coverage is
    a production app, and that its `dotnet run` rule is the same as the demos'.
 
 ## M14 — Docker and deployment (D3)
 
-1. Port `Coverage/Dockerfile` to `apps/Coverage/Coverage/Dockerfile` modelled on
+1. Port `Coverage/Dockerfile` to `apps/CodeCoverage/CodeCoverage/Dockerfile` modelled on
    `apps/WebhooksDemo/WebhooksDemo/Dockerfile` — the current template, **not**
    `DemoApp/Dockerfile`, which targets .NET 8 and is already broken. Selective csproj `COPY` list for
    Coverage's full transitive lib closure, then `npm ci`, then
@@ -485,7 +516,7 @@ Also in this milestone:
    `IMAGE_NAME: mintplayer/codecoverage` and the `:master` tag** so the VPS compose file needs no
    change. Carry over Coverage's ghcr visibility PATCH step and its 18×10s `/health/ready` readiness
    loop (a 503 means a bad GitHub App key — hard fail, do not retry past the loop).
-3. `apps/Coverage/docker-compose.yml` keeps its hardcoded `Host(coverage.mintplayer.com)` Traefik
+3. `apps/CodeCoverage/docker-compose.yml` keeps its hardcoded `Host(coverage.mintplayer.com)` Traefik
    labels and pinned RavenDB `7.1.10`. The VPS re-curls this file from raw.githubusercontent — update
    that URL to the new path, and remember the server's copy only changes when the workflow runs.
 
@@ -495,10 +526,10 @@ Do not deploy to production as part of verification. First deploy happens after 
 
 Batched to the end. **One sweep:**
 
-- `dotnet build MintPlayer.Spark.sln`
+- `dotnet build MintPlayer.Spark.slnx`
 - `npx nx run-many --target=test` — this repo's four projects plus `Coverage.Tests` and everything
   M12 added, all on `MintPlayer.Assertions`
-- both SPA suites, and `apps/Coverage/action` Vitest
+- both SPA suites, and `apps/CodeCoverage/action` Vitest
 - `--spark-verify-model` + `--spark-verify-security` across all five apps
 - a second full build, confirming the M8a pointers leave `git status` clean
 - union the cobertura reports and confirm the D6 target: **≥90%** .NET line coverage, up from 83.98%
@@ -518,7 +549,7 @@ unchanged since, so there is no floating fix to pick up.
 After M13 is green and one deploy has succeeded from this repo:
 
 1. Strip `MintPlayer/CodeCoverage` to a README pointing at
-   `MintPlayer/MintPlayer.Spark/apps/Coverage`, with `action/` removed (D2 moved it).
+   `MintPlayer/MintPlayer.Spark/apps/CodeCoverage`, with `action/` removed (D2 moved it).
 2. Archive it. Issue/PR history stays where it is.
 
 ## M17 — Finish the deferred authorization migration
@@ -543,7 +574,7 @@ Unblocked by the merge — stalled since 2026-08-21 only because it needed cross
 
 | Risk | Mitigation |
 |---|---|
-| `.gitignore` silently ignoring the copy (PRD §R1) | M0 first, verified with `git check-ignore`; docs folder named `coverage-app` to sidestep it by name |
+| `.gitignore` silently ignoring the copy (PRD §R1) | M0 first, verified with `git check-ignore`; docs folder named `code-coverage` to sidestep it by name |
 | ng-spark published→source flip is all-or-nothing (§R3) | M4 is one atomic step; verify by editing a lib file and watching the SPA rebuild |
 | `ng-bootstrap` 22.16.0 → ^22.17.0 crosses the accordion shadow-DOM change | Expect visual fallout in Coverage's panels; budget UI time in M4 |
 | `synchronize` not a fixed point (§R4) | M9.3 runs it twice and treats a second diff as a Spark bug |

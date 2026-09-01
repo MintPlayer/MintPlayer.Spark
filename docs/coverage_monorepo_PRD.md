@@ -10,7 +10,7 @@
 >   plan grew into the whole IdentityProvider security pass. **Both still say `Status: Draft for
 >   review` although everything in them shipped** — they get status-stamped as part of this work;
 > - `docs/codecov/` — diagnosing a coverage-*report* upload failure on Spark PR #123;
-> - `docs/coverage-app/` — the Coverage app's own docs, arriving here (§5.8).
+> - `docs/code-coverage/` — the Coverage app's own docs, arriving here (§5.8).
 
 ---
 
@@ -56,7 +56,7 @@ fix land in the same commit, and Coverage's ~144 tests become a regression gate 
 - Fixing `spark-allfeatures.targets`, which breaks external NuGet consumers (§5, R11).
 - Porting Coverage's CI, and its deploy job with the published image name unchanged.
 - Regenerating `App_Data/Model/*.json`, `modelHashes.json`, `security.json`, `securityPosture.txt`.
-- Triaging Coverage's twenty docs into `docs/coverage-app/` (§5.8), stubbing the four that duplicate
+- Triaging Coverage's twenty docs into `docs/code-coverage/` (§5.8), stubbing the four that duplicate
   a Spark PRD and dropping the two that are dead.
 - Completing the deferred authorization migration.
 
@@ -74,8 +74,8 @@ fix land in the same commit, and Coverage's ~144 tests become a regression gate 
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | Where does Coverage live? | **`git mv Demo apps`**, then `apps/Coverage/Coverage` + `apps/Coverage/Coverage.Library`. All applications share one root; Coverage is not filed as a demo. |
-| D2 | What happens to `action/`? | **Move it and update consumers** — `MintPlayer/MintPlayer.Spark/apps/Coverage/action@master`. Every pinned consumer is updated in the same unit of work. |
+| D1 | Where does Coverage live? | **`git mv Demo apps`**, then `apps/CodeCoverage/CodeCoverage` + `apps/CodeCoverage/CodeCoverage.Library`. All applications share one root; Coverage is not filed as a demo. |
+| D2 | What happens to `action/`? | **Move it and update consumers** — `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master`. Every pinned consumer is updated in the same unit of work. |
 | D3 | How does deployment move? | **Port the workflow, keep the image name.** A new workflow here publishes `ghcr.io/mintplayer/codecoverage:master` exactly as before and drives the same VPS ssh deploy. |
 | D4 | FluentAssertions? | **Drop it entirely; adopt `MintPlayer.Assertions`** solution-wide — all five existing test projects and every new one. One assertion library per workspace. |
 | D5 | Generated `AGENTS.md` in-repo? | **In-repo consumers get a pointer to the single source of truth in `libs/`; external NuGet consumers keep the full copy.** Pointers become tracked files, replacing the current ignore-the-copies rule. |
@@ -162,7 +162,7 @@ $ git check-ignore -v Coverage/App_Data/security.json
 ```
 
 `cp -r` followed by `git add` would copy every file to disk and stage **nothing**, with no error.
-This applies to `docs/coverage/` too, which is why the docs folder is named **`docs/coverage-app/`**
+This applies to `docs/coverage/` too, which is why the docs folder is named **`docs/code-coverage/`**
 — it sidesteps the trap by name instead of relying on the fix. `.gitignore:70` `artifacts/`
 (unanchored) is a second, milder instance. **Fixing `.gitignore` is milestone zero and gates
 everything else.**
@@ -171,14 +171,14 @@ Two related rules: `**/spark-auth.setup.ts` is ignored here but *tracked* in the
 `Demo/*/*/AGENTS.md` / `tests/*/AGENTS.md` are ignored here while Coverage tracks committed copies.
 Those copies are build output (`CopySparkAgentsGuide` rewrites them every build) so the ignore rule
 is right and the copies must not come along — but note neither existing pattern matches
-`apps/Coverage/Coverage/AGENTS.md`, which is three segments deep. New rules are needed.
+`apps/CodeCoverage/CodeCoverage/AGENTS.md`, which is three segments deep. New rules are needed.
 
 ### R2 — `action/`'s repo-root path is a public API
 
 `action/action.yml` is consumed as `MintPlayer/CodeCoverage/action@master` by this repository's own
 `pull-request.yml` and `dotnet-build-master.yml`, and by `C:\Repos\mintplayer-ng-bootstrap`. Per D2
 all move to the new path in this same unit of work. Coverage's own CI already uses local `./action`,
-which simply becomes `./apps/Coverage/action`.
+which simply becomes `./apps/CodeCoverage/action`.
 
 `action/dist/index.js` is a **committed 2.31 MB bundle** and CI enforces it is current
 (`git status --porcelain dist` clean after `npm run build`). That gate comes along, and no ignore
@@ -231,7 +231,7 @@ writes to `<project>/coverage`.
 
 `.gitignore`, `.dockerignore`, `docker-compose.yml`, `README.md`, `coverlet.runsettings`,
 `.env.example`, `.claude/settings.local.json` and `docs/` all exist on both sides. None may be copied
-over this repo's version; each is merged or relocated into `apps/Coverage/`. `.dockerignore` is the
+over this repo's version; each is merged or relocated into `apps/CodeCoverage/`. `.dockerignore` is the
 sharp one: only the build-context root's file is honoured, so Coverage's rules (`docs/`, `action/`,
 `*.md`, `.env`, `*.pem`) must be merged additively and re-expressed relative to the new root, or the
 image build breaks or leaks.
@@ -259,10 +259,12 @@ extensions. `MintPlayer.Assertions` keeps `.Should()`, `.And`, `.Which`, the `be
 
 The sharp edges, in order of danger:
 
-1. **`WithMessage` is case-sensitive here; FluentAssertions' is case-insensitive by default.** 69
-   sites, all in `MintPlayer.Spark.Tests`, many using glob patterns like `"*action*/*target*"`. These
-   compile fine and can pass or fail for the wrong reason. Every one needs reading, or converting to
-   the explicit `StringComparison` overload. **This is the only silent-breakage class in the swap.**
+1. ~~**`WithMessage` is case-sensitive here**, so all 69 sites need individual review.~~
+   **Corrected during M6.** The direction of the change makes this safe: case-sensitive matching is
+   strictly *stricter* than FluentAssertions' case-insensitive default, so a pattern that stops
+   matching turns a passing test into a failing one, loudly. It cannot produce a false pass, because
+   the assertion has no negative form. Running the suite covers all 69 sites. The real silent-failure
+   class turned out to be single-element `BeEquivalentTo` (below).
 2. **`.Subject` does not exist on `AndWhichConstraint` — only `.Which`.** 18 sites, mechanical.
 3. **Genuine gaps**, each with few or no call sites: `BeApproximately` (1 site → `BeCloseTo`),
    `AllBeEquivalentTo` (1 site, no equivalent, rewrite), `NotContainAny` (2 sites, verify),
@@ -372,9 +374,9 @@ hidden — the gaps are real.
 ## 6. Acceptance criteria
 
 1. `git status --porcelain` after the copy shows every intended Coverage file **staged**, and
-   `git check-ignore` reports no match for anything under `apps/Coverage/` or `docs/coverage-app/`
+   `git check-ignore` reports no match for anything under `apps/CodeCoverage/` or `docs/code-coverage/`
    that should be tracked.
-2. `dotnet build MintPlayer.Spark.sln` succeeds with Coverage's three projects included, resolving
+2. `dotnet build` succeeds with Coverage's three projects included, resolving
    Spark by `ProjectReference` — no `MintPlayer.Spark.*` `PackageReference` remains.
 3. `npx nx show projects` lists the Coverage host, library, test project and SPA; a change under
    `libs/spark/` marks Coverage affected.
@@ -384,7 +386,7 @@ hidden — the gaps are real.
    library file and seeing the SPA rebuild.
 6. `--spark-verify-model` and `--spark-verify-security` pass for Coverage, and re-running the
    `--spark-synchronize-*` counterparts produces an empty diff.
-7. `dotnet run --project apps/Coverage/Coverage` starts, prints the dev server's
+7. `dotnet run --project apps/CodeCoverage/CodeCoverage` starts, prints the dev server's
    `➜ Local: http://localhost:NNNNN/`, and the app is serviceable at `https://localhost:5200`.
 8. **No `FluentAssertions` reference or using remains in any project in this repo**, and the full
    test sweep is green on `MintPlayer.Assertions`: five .NET projects, both SPA suites, the action's
@@ -397,7 +399,7 @@ hidden — the gaps are real.
     `/health/ready` loop passes — the existing server picks up the new image with no manual change.
 12. The four existing demos still build, still verify model and security, and the E2E suite still
     boots Fleet from `apps/Fleet/Fleet`.
-13. `docs/coverage-app/` holds the surviving Coverage docs with status stamps; the four
+13. `docs/code-coverage/` holds the surviving Coverage docs with status stamps; the four
     Spark-duplicating docs are one-line stubs pointing at the Spark PRD; the two dead docs are gone;
     and `PRD-CoverageHandoff.md` / `coverage-handoff-plan.md` no longer read `Draft for review`.
 14. Every in-repo project (four demos, four test projects, Coverage's two) has a **tracked**
@@ -420,7 +422,7 @@ hidden — the gaps are real.
   `@spark-apps/coverage` for the SPA, inferred `Coverage` for the host. Cosmetic, but it sets the
   precedent for the `apps/` root.
 - **Test-project placement.** `tests/Coverage.Tests/` (matching this repo's flat `tests/`) or
-  `apps/Coverage/Coverage.Tests/` (keeping the app self-contained)? Proposal: the latter, since it
+  `apps/CodeCoverage/CodeCoverage.Tests/` (keeping the app self-contained)? Proposal: the latter, since it
   tests an app rather than a library, with a `project.json` to stay in CI's coverage glob.
 - **`coverlet.runsettings` at this repo's root.** Coverage keeps one at its root, matching every
   other MintPlayer repo. Adopting it here would also apply `ExcludeByFile=**/*.g.cs` to Spark's own
