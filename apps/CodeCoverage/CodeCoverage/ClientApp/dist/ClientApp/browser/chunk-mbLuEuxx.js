@@ -1,1 +1,0 @@
-import{En as p,Q as Oo,g as De,lt as R}from"./chunk-Btq1RDbg.js";function w(t){t||(t=p(De));let i=new R(e=>{if(t.destroyed){e.next();return}return t.onDestroy(e.next.bind(e))});return e=>e.pipe(Oo(i))}export{w as t};
