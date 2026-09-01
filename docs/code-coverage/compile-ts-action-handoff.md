@@ -1,7 +1,13 @@
 # Handoff — `compile-ts-action` in `MintPlayer/github-actions`
 
-**Status:** pending, blocks CI here · **Target repo:** `MintPlayer/github-actions` (default branch
-**`main`**) · **Raised by:** [`../coverage_action_home_plan.md`](../coverage_action_home_plan.md) M0
+**Status:** pending, blocks CI here · **Tracked as
+[github-actions#7](https://github.com/MintPlayer/github-actions/issues/7)** · **Target repo:**
+`MintPlayer/github-actions` (default branch **`main`**) · **Raised by:**
+[`../coverage_action_home_plan.md`](../coverage_action_home_plan.md) M0
+
+> The issue carries the same file contents as this document. Whichever you work from, they are the
+> same spec — this copy exists so the requirement is reviewable in the pull request that depends on
+> it, rather than only in another repository's tracker.
 
 ## Why this is a handoff and not a commit
 
