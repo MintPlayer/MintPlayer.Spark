@@ -34,9 +34,13 @@ README.md
 .playwright-mcp/
 docs/
 tmp/
+# Root-level only, deliberately: Docker's * does not cross /, so this leaves the
+# per-project READMEs and AGENTS.md in the context, which the build is happy with.
 *.md
-# Never let a GitHub App private key into an image layer.
-*.pem
+# **/ is load-bearing. `*.pem` alone matches ONLY a root-level key -- it would NOT have
+# excluded apps/CodeCoverage/github-app.pem, which is exactly the file this rule exists
+# to keep out of an image layer.
+**/*.pem
 
 !**/.gitignore
 !.git/HEAD
