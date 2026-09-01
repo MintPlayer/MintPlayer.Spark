@@ -29,17 +29,17 @@ Spark half of M6. They are here because absorbing Coverage is what surfaces them
 | ✅ | M4 npm / Nx wiring | ng-spark compiles from source; 22 SPA tests pass (`05351963`) |
 | ✅ | M5 assertions pilot | 144/144 on MintPlayer.Assertions (`8bbdbd7c`) |
 | ✅ | M6 assertions solution-wide | FluentAssertions gone; 4 projects compile (`cf568708`) |
-| ⬜ | M7 action/ + consumers | |
-| ⬜ | M8a AGENTS.md pointer mode | |
-| ⬜ | M9 model + security regen | needs RavenDB (owner-managed) |
-| ⬜ | M10 first real run | needs RavenDB + host (owner-managed) |
-| ⬜ | M11 CI | |
-| ⬜ | M12 raise coverage | |
-| ⬜ | M13 docs triage | |
-| ⬜ | M14 docker + deploy | |
+| ✅ | M7 action/ + consumers | local path; ng-bootstrap diff prepared (`f9c0cf11`) |
+| ✅ | M8a AGENTS.md pointer mode | 8 tracked pointers; first-writer-wins fixed (`93d2f540`) |
+| ✅ | M9 model + security regen | hashes only; shape unchanged; fixed point (`cd257bbd`) |
+| ✅ | M10 first real run | app serviceable; program-units + badge OK (`f9c0cf11`) |
+| ✅ | M11 CI | Angular coverage now uploaded at all (`e306a471`) |
+| 🔶 | M12 raise coverage | items 1-2 done: 0% security gates + unmeasured worker (`60101ee1`). Items 3-8 open. |
+| ✅ | M13 docs triage | 4 LIVE / 11 historical / 4 stubbed / 2 dropped (`268b27fd`) |
+| ✅ | M14 docker + deploy | image name unchanged; not built (no daemon) (`ee526ab8`) |
 | ⬜ | M15 test sweep | |
-| ⬜ | M16 empty old repo | owner action |
-| ⬜ | M17 authorization migration | |
+| 📋 | M16 empty old repo | handoff written with preconditions (`cc838cf8`) |
+| ✅ | M17 authorization migration | ALREADY DONE upstream before the merge; verified, no work needed |
 
 **The app was renamed `Coverage` → `CodeCoverage`** during M2, matching the GitHub repo and the
 published image. That is what let the stock `**/coverage/` ignore rules come back: they match a path
