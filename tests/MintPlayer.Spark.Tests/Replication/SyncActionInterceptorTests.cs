@@ -176,7 +176,16 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var stored = await session.Query<SparkSyncAction>().SingleAsync();
         var data = stored.Actions[0].Data!;
         data["S"].Should().Be("hi");
-        data["I"].Should().Be(42);
+
+        // 42L, not 42. The normalizer hands back an int (TryGetInt32 wins first), but the value is
+        // then stored and re-read through RavenDB, whose Newtonsoft deserialization widens any JSON
+        // integer to long on the way out of an object-typed property. What a consumer of Data
+        // actually receives is a boxed long, so that is what this pins.
+        //
+        // FluentAssertions compared boxed numerics by value and let Be(42) pass, which meant this
+        // test never checked the half of its own name that says "to plain .NET types".
+        data["I"].Should().Be(42L);
+
         data["B"].Should().Be(true);
     }
 
