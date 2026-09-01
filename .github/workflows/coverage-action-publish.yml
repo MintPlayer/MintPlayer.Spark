@@ -135,7 +135,9 @@ jobs:
         # So the decision moves here, where it can be made before anything is pushed: a version
         # with no tag yet gets one; a version already released just repacks and re-points the
         # moving tag. publish.sh's guard stays as the backstop for a genuine race.
-        if [ -n "$(git ls-remote --tags origin "refs/tags/coverage-upload-v${version}")" ]; then
+        # Asked over the REST API rather than `git ls-remote`, so this check needs no git credential
+        # and cannot be broken by however the checkout action happens to store one this year.
+        if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/coverage-upload-v${version}" >/dev/null 2>&1; then
           echo "version-from=" >> "$GITHUB_OUTPUT"
           echo "coverage-upload-v${version} is already released; not cutting it again."
           echo "::notice::Version ${version} is already tagged. Run this workflow with a bump (patch/minor/major) to release a new one."
@@ -143,6 +145,8 @@ jobs:
           echo "version-from=apps/CodeCoverage/action/package.json" >> "$GITHUB_OUTPUT"
           echo "Will cut coverage-upload-v${version}."
         fi
+      env:
+        GH_TOKEN: ${{ github.token }}
 
     # Two lines, and the whole TypeScript -> single index.js pipeline comes from one place
     # shared with the actions in MintPlayer/github-actions. The push uses the default
@@ -160,6 +164,19 @@ jobs:
         mode: push
         commit-message: 'build: repack the coverage-upload bundle'
         major-tag: ${{ steps.tags.outputs.major }}
+        # Empty on purpose. compile-ts-action wires this token into a git `extraheader` after
+        # clearing the key with `git config --local --unset-all` -- which assumes the credential
+        # actions/checkout persisted lives in .git/config. That was true of checkout@v4, which
+        # github-actions' own workflows use. It is NOT true of @v7, which this repo standardises on:
+        # v7 writes the credential to a separate file and includes it, so the unset finds nothing,
+        # the action's own header becomes a SECOND Authorization header, and every git request to
+        # github.com fails with `remote: Duplicate header: "Authorization"` and HTTP 400. Measured on
+        # run 33551373525, the first publish after the action landed.
+        #
+        # An empty token makes publish.sh skip its credential handling entirely and use the
+        # credential checkout already set up, which is what worked before that input existed.
+        # Reported upstream; drop this line once compile-ts-action stops assuming --local.
+        token: ''
         # Empty when this version is already released, so a repack does not try to re-cut a
         # released tag. Creating one that exists on another commit is an error, never a silent
         # move -- see the step above.
