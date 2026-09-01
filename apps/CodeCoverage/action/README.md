@@ -1,7 +1,7 @@
 # Coverage Upload action
 
 Uploads coverage reports from a workflow run to a self-hosted
-[Coverage](https://github.com/MintPlayer/CodeCoverage) instance. The action is a thin,
+[Coverage](https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage) instance. The action is a thin,
 format-agnostic uploader — parsing happens server-side (lcov, Cobertura, JaCoCo, …),
 so new report formats need no action release.
 
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: dotnet test --collect:"XPlat Code Coverage"
-      - uses: MintPlayer/CodeCoverage/action@master
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master
         with:
           url: https://coverage.example.com
           use-oidc: true
@@ -37,7 +37,7 @@ Create a token in the web UI (account page → Upload tokens; account- or repo-s
 and store it as a repository secret:
 
 ```yaml
-      - uses: MintPlayer/CodeCoverage/action@master
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master
         with:
           url: https://coverage.example.com
           token: ${{ secrets.COVERAGE_TOKEN }}
@@ -73,7 +73,7 @@ not hold a CI job hostage to parser latency. Set `wait-for-finalize: true` when 
 want the number in the same job — typically to fail a PR whose coverage dropped.
 
 ```yaml
-      - uses: MintPlayer/CodeCoverage/action@master
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master
         id: coverage
         with:
           url: https://coverage.example.com
@@ -132,12 +132,12 @@ repositories, and `?branch=` for a non-default branch).
 
 ## Versioning
 
-Pin `MintPlayer/CodeCoverage/action@master` for now; a `v1` tag is cut from master
+Pin `MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@master` for now; a `v1` tag is cut from master
 once the input surface settles — after that, pin `@v1`.
 
 ## Development
 
 `npm run build` regenerates `dist/` (committed — node20 actions run the bundle). CI
 fails when `dist/` is stale. This folder is consumed as
-`MintPlayer/CodeCoverage/action@<ref>`; if it ever moves to the Marketplace it needs
+`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@<ref>`; if it ever moves to the Marketplace it needs
 its own repository with `action.yml` at the root.

@@ -1,7 +1,8 @@
 # Coverage
 
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/CodeCoverage.svg)](https://coverage.mintplayer.com/r/MintPlayer/CodeCoverage)
-[![CI](https://github.com/MintPlayer/CodeCoverage/actions/workflows/ci.yml/badge.svg)](https://github.com/MintPlayer/CodeCoverage/actions/workflows/ci.yml)
+[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![CI](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml)
+[![Deploy](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml)
 
 A self-hosted code-coverage analyzer for GitHub — upload coverage reports from your
 workflows, browse coverage per organization → repository → commit → file, and embed
