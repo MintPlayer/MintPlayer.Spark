@@ -1,7 +1,11 @@
 # PRD — where the coverage-upload action lives
 
-**Status:** proposed, awaiting approval · **Date:** 2026-09-01 · **Repos touched:**
+**Status:** DELIVERED · **Date:** 2026-09-01 · **Repos touched:**
 `MintPlayer/MintPlayer.Spark`, `MintPlayer/github-actions`, plus 5 consumer repos (one-time)
+
+Implementation record: [`coverage_action_home_plan.md`](coverage_action_home_plan.md). Findings that
+changed the design as it was built are folded into the sections below rather than left in pull
+request descriptions — §5 C5, §7 R8-R9 and §8 are the ones that moved.
 
 ## 1. The question
 
@@ -219,10 +223,30 @@ one, repurposing one, or requiring a new endpoint requires incrementing `contrac
 old behaviour for at least one deploy cycle. This turns the documentary promise of §3.3 into
 something a reviewer and a test can check.
 
-**C5 — the gate that makes C1-C4 real.** A CI job in this repo that runs the **committed bundle**
-against a locally-hosted `apps/CodeCoverage` (`uses: ./apps/CodeCoverage/action`), asserting a full
-upload → finish → status cycle. This is the dogfood job the archived repo had and the port lost.
-Only Option 3 makes it possible.
+**C5 — the gate that makes C1-C4 real.** **DELIVERED**, though not as a CI job.
+
+Specified as a workflow job hosting `apps/CodeCoverage` behind a RavenDB service container. That was
+the wrong shape and the reason it shipped deferred: it needed secrets and startup prerequisites that
+could not be verified while writing it. `CoverageRavenTest` already gives every test a live RavenDB
+in CI, so the gate is an ordinary xUnit test —
+`apps/CodeCoverage/CodeCoverage.Tests/UploadActionDogfoodTests.cs` — which starts the real
+`CodeCoverage.dll` pointed at that server, seeds a `Repository` and an `ApiToken` through the store,
+and drives `node dist/index.js` at it over a real socket through the full upload → finish → status
+cycle. No service container, no secret, no new job, and it runs locally exactly as it runs in CI.
+
+This is the dogfood gate the archived repo had (`uses: ./action` in its `ci.yml`) and the port lost.
+Only Option 3 makes it possible, which remains the load-bearing argument for the whole decision.
+
+**Two startup prerequisites, discovered by building it rather than assumed:**
+
+- The app **refuses to start** without `GitHub:Production:ClientId` / `ClientSecret`. GitHub is the
+  only sign-in provider it registers, so a missing client id means nobody could ever sign in and it
+  says so loudly instead of starting half-configured. Placeholders suffice for ingestion, which
+  authenticates with `ApiToken` / `GitHubOidc` and deliberately never accepts a browser cookie.
+- It must run as **Production**. Under Development, `UseAngularCliServer` spawns the Angular dev
+  server and fights for ports.
+
+Both matter beyond this test: they are what anyone hosting the app outside the Docker image will hit.
 
 **C6 — consumers pin a tag, not a moving branch.** Consumers must not pin `@master` of a framework
 monorepo whose default branch moves many times a day for unrelated reasons. Two tag levels, only one
@@ -259,21 +283,33 @@ together and must not be conflated.
 | R6 | `compile-ts-action` is the first composite action in `github-actions`, which has no `pull_request` CI to validate it. | Add the missing `pull_request` workflow there as part of M0; it is a prerequisite, not a nicety. |
 | R7 | The `main:` path must change from `../dist/coverage-upload/index.js` to `dist/index.js` when the folder de-pools. A wrong path fails at consumption time, not build time. | Covered by C5 — the dogfood job resolves `action.yml` and its `main:` for real. |
 | R8 | **MATERIALISED.** `compile-ts-action`'s `token` input displaces the caller's git credential by clearing `http.<host>/.extraheader` from `--local` config. `actions/checkout@v4` stores it there; **`@v7`, which this repo standardises on, writes it to a separate included file** — so the clear matches nothing, the action's header becomes a *second* `Authorization`, and every git request 400s with `remote: Duplicate header`. The first publish run after merge failed exactly this way (run 33551373525). | Pass `token: ''` so the action defers to the checkout's credential, and keep the release-tag lookup on the REST API so it needs no git credential at all. Reported as [github-actions#9](https://github.com/MintPlayer/github-actions/issues/9); the workaround is removable once the action stops assuming `--local`. |
+| R9 | **MATERIALISED.** A `push`-triggered workflow filtered on `paths:` never fires on a change to *itself*, so the publish machinery could only be validated by a later unrelated commit or a manual dispatch. #350 fixed a duplicate-`Authorization` bug in `coverage-action-publish.yml`, touched nothing else, therefore did not run, and sat unverified on `master`. | The workflow now lists its own path. A publish triggered by a workflow edit is harmless: bundle unchanged ⇒ nothing committed, release tag skipped as already published, moving tag re-points to the same tree. |
 
 ## 8. Exit criteria
 
 1. `grep -rn "MintPlayer/CodeCoverage/action" .` returns nothing in this repo — including the SPA
    setup panel, `product-overview.md:39,207,220` and `self-coverage-PRD.md:44,225`.
-2. All five consumer repos reference the tag from §5 C6; `gh search code` for the old ref returns
-   nothing org-wide.
+2. ✅ All five consumer repos reference the tag from §5 C6 — ten workflow files, read from each
+   default branch via the contents API.
+
+   **`gh search code` is not a valid check for this.** Its index lagged by hours and reported all
+   five as still stale, and separately reported this repo's own setup panel as stale after it was
+   fixed. Worse, **GitHub redirects the old path**: `MintPlayer/CodeCoverage` now resolves to
+   `MintPlayer-Archive/CodeCoverage`, so a straggler still pinning
+   `MintPlayer/CodeCoverage/action@master` keeps working *silently* rather than failing loudly. That
+   is precisely why the consumers had to be repointed deliberately instead of left to break.
 3. `coverage-upload/` and `src/coverage-upload/` and `dist/coverage-upload/` are gone from
    `github-actions`, replaced by a README pointer.
 4. `compile-ts-action` builds the remaining five actions in `github-actions` unchanged — verified by
    a byte-identical `dist/` for at least one of them — and `github-actions` has a `pull_request`
    workflow running `mode: verify` over **every** action there, so its test suite runs in CI for the
    first time.
-5. The dogfood job (C5) is green, and demonstrably red when the API and the action disagree — prove
-   it by breaking one field deliberately in a scratch commit.
+5. ✅ The dogfood gate (C5) is green, **and demonstrably red when the API and the action disagree** —
+   proven, not asserted: `[FromForm(Name = "commit_sha")]` on `UploadForm.CommitSha` produced
+   `responded 400: {"errors":{"commit_sha":["The CommitSha field is required."]}}` and a failing
+   test, then reverted. Its assertions are on numbers (`LinesCoverable == 2`, `LinesCovered == 1`)
+   rather than presence, because a parser that drops a report whose paths it cannot match still
+   produces a `Build` — an empty one.
 6. `GET /api/uploads/capabilities` returns a contract integer; the action degrades correctly against
    a server that 404s it, proven against the currently-deployed image.
 7. An action-only change does **not** trigger `code-coverage-deploy.yml` (R1).
