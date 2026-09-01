@@ -147,7 +147,7 @@ jobs:
     # when nx affected ran no test project at all.
     - name: Upload coverage
       if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
-      uses: MintPlayer/CodeCoverage/action@master
+      uses: ./apps/CodeCoverage/action
       with:
         url: https://coverage.mintplayer.com
         token: ${{ secrets.COVERAGE_TOKEN }}
