@@ -20,17 +20,26 @@
 	    - The file must exist; when the package is consumed by ProjectReference in this repo the
 	      path resolves into the source tree rather than the NuGet cache, which is fine.
 	-->
+	<!--
+	  $(SparkAgentsGuideMode) is deliberately the SAME property MintPlayer.Spark reads, not a
+	  Testing-specific twin: a repo choosing Pointer wants it for every project, and the two
+	  packages already share $(MintPlayerSparkSourceGeneratorsReferenceValidated). See the mode
+	  documentation in MintPlayer.Spark's spark.targets.
+	-->
 	<PropertyGroup>
 		<EnableSparkTestingAgentsGuide Condition=" '$(EnableSparkTestingAgentsGuide)' == '' ">true</EnableSparkTestingAgentsGuide>
+		<SparkAgentsGuideMode Condition=" '$(SparkAgentsGuideMode)' == '' ">Copy</SparkAgentsGuideMode>
 		<SparkTestingAgentsGuideSource Condition=" '$(SparkTestingAgentsGuideSource)' == '' ">$(MSBuildThisFileDirectory)..\AGENTS.md</SparkTestingAgentsGuideSource>
 		<SparkTestingAgentsGuideTarget Condition=" '$(SparkTestingAgentsGuideTarget)' == '' ">$(MSBuildProjectDirectory)\AGENTS.md</SparkTestingAgentsGuideTarget>
+
+		<_SparkTestingAgentsGuideApplies Condition=" '$(EnableSparkTestingAgentsGuide)' == 'true' And Exists('$(SparkTestingAgentsGuideSource)') ">true</_SparkTestingAgentsGuideApplies>
 	</PropertyGroup>
 
 	<Target Name="CopySparkTestingAgentsGuide"
 	        BeforeTargets="BeforeBuild"
 	        Inputs="$(SparkTestingAgentsGuideSource)"
 	        Outputs="$(SparkTestingAgentsGuideTarget)"
-	        Condition=" '$(EnableSparkTestingAgentsGuide)' == 'true' And Exists('$(SparkTestingAgentsGuideSource)') ">
+	        Condition=" '$(_SparkTestingAgentsGuideApplies)' == 'true' And '$(SparkAgentsGuideMode)' == 'Copy' ">
 
 		<Copy SourceFiles="$(SparkTestingAgentsGuideSource)"
 		      DestinationFiles="$(SparkTestingAgentsGuideTarget)"
@@ -38,6 +47,23 @@
 
 		<Message Importance="low"
 		         Text="[MintPlayer.Spark.Testing] Synced AGENTS.md into $(MSBuildProjectName)." />
+	</Target>
+
+	<Target Name="WriteSparkTestingAgentsGuidePointer"
+	        BeforeTargets="BeforeBuild"
+	        Condition=" '$(_SparkTestingAgentsGuideApplies)' == 'true' And '$(SparkAgentsGuideMode)' == 'Pointer' ">
+
+		<PropertyGroup>
+			<_SparkTestingAgentsGuideRelative>$([MSBuild]::MakeRelative($(MSBuildProjectDirectory), $([System.IO.Path]::GetFullPath('$(SparkTestingAgentsGuideSource)'))).Replace('\', '/'))</_SparkTestingAgentsGuideRelative>
+		</PropertyGroup>
+
+		<WriteLinesToFile File="$(SparkTestingAgentsGuideTarget)"
+		                  Overwrite="true"
+		                  WriteOnlyWhenDifferent="true"
+		                  Lines="---;remarks: &quot;Generated pointer. The guide itself lives in this same repository at the path below - edit it there, not here.&quot;;generated-by: &quot;MintPlayer.Spark.Testing build target (WriteSparkTestingAgentsGuidePointer)&quot;;---;;# Spark testing agent guide;;See @$(_SparkTestingAgentsGuideRelative)" />
+
+		<Message Importance="low"
+		         Text="[MintPlayer.Spark.Testing] Wrote AGENTS.md pointer in $(MSBuildProjectName) -> $(_SparkTestingAgentsGuideRelative)." />
 	</Target>
 
 </Project>

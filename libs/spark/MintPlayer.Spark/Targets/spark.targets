@@ -77,23 +77,44 @@
 	  ignored.
 
 	  ⚠️ MintPlayer.Spark.Testing ships its own AGENTS.md by the same mechanism, aimed at test
-	  projects. If one project ever references both packages they would fight over the same file
-	  name — set $(SparkAgentsGuideTarget) or $(SparkTestingAgentsGuideTarget) to disambiguate.
+	  projects, and defaults to the SAME output path. A project referencing both packages imports
+	  both targets, and the failure is not last-writer-wins: because each target declares
+	  Inputs/Outputs, whichever runs first makes the file newer than the other's Inputs, so MSBuild
+	  marks that target up to date and skips it FOREVER, silently. Hence the IsTestProject guard
+	  below — a test project takes the Testing guide, everything else takes this one.
 
-	  SkipUnchangedFiles plus the Inputs/Outputs pair keep this off the incremental-build critical
-	  path: after the first build it is a timestamp comparison and nothing else.
+	  Two modes, selected by $(SparkAgentsGuideMode):
+
+	    Copy    (default) — the full guide is copied in. Correct for a NuGet consumer: the source
+	                        lives inside a package, so without a copy an agent cloning that repo
+	                        sees nothing. The file's own front-matter tells them to commit it.
+	    Pointer           — a short generated file pointing at the source under libs/. Correct
+	                        in-repo, where the source of truth is already in the same tree:
+	                        committing seven copies would duplicate it and put a diff in every app
+	                        on every edit of the guide. This repo sets Pointer once, in the root
+	                        Directory.Build.props, so every in-repo project is covered by one line
+	                        and no external consumer ever sees it.
+
+	  SkipUnchangedFiles plus the Inputs/Outputs pair keep the Copy path off the incremental-build
+	  critical path. The Pointer path deliberately uses neither, relying on
+	  WriteOnlyWhenDifferent instead — that is what keeps it out of the wedge described above, and
+	  what keeps a tracked pointer from dirtying the worktree on every build.
 	-->
 	<PropertyGroup>
 		<EnableSparkAgentsGuide Condition=" '$(EnableSparkAgentsGuide)' == '' ">true</EnableSparkAgentsGuide>
+		<SparkAgentsGuideMode Condition=" '$(SparkAgentsGuideMode)' == '' ">Copy</SparkAgentsGuideMode>
 		<SparkAgentsGuideSource Condition=" '$(SparkAgentsGuideSource)' == '' ">$(MSBuildThisFileDirectory)..\AGENTS.md</SparkAgentsGuideSource>
 		<SparkAgentsGuideTarget Condition=" '$(SparkAgentsGuideTarget)' == '' ">$(MSBuildProjectDirectory)\AGENTS.md</SparkAgentsGuideTarget>
+
+		<!-- A test project gets the Testing guide instead; see the collision note above. -->
+		<_SparkAgentsGuideApplies Condition=" '$(EnableSparkAgentsGuide)' == 'true' And '$(IsTestProject)' != 'true' And Exists('$(SparkAgentsGuideSource)') ">true</_SparkAgentsGuideApplies>
 	</PropertyGroup>
 
 	<Target Name="CopySparkAgentsGuide"
 	        BeforeTargets="BeforeBuild"
 	        Inputs="$(SparkAgentsGuideSource)"
 	        Outputs="$(SparkAgentsGuideTarget)"
-	        Condition=" '$(EnableSparkAgentsGuide)' == 'true' And Exists('$(SparkAgentsGuideSource)') ">
+	        Condition=" '$(_SparkAgentsGuideApplies)' == 'true' And '$(SparkAgentsGuideMode)' == 'Copy' ">
 
 		<Copy SourceFiles="$(SparkAgentsGuideSource)"
 		      DestinationFiles="$(SparkAgentsGuideTarget)"
@@ -101,6 +122,23 @@
 
 		<Message Importance="low"
 		         Text="[MintPlayer.Spark] Synced AGENTS.md into $(MSBuildProjectName)." />
+	</Target>
+
+	<Target Name="WriteSparkAgentsGuidePointer"
+	        BeforeTargets="BeforeBuild"
+	        Condition=" '$(_SparkAgentsGuideApplies)' == 'true' And '$(SparkAgentsGuideMode)' == 'Pointer' ">
+
+		<PropertyGroup>
+			<_SparkAgentsGuideRelative>$([MSBuild]::MakeRelative($(MSBuildProjectDirectory), $([System.IO.Path]::GetFullPath('$(SparkAgentsGuideSource)'))).Replace('\', '/'))</_SparkAgentsGuideRelative>
+		</PropertyGroup>
+
+		<WriteLinesToFile File="$(SparkAgentsGuideTarget)"
+		                  Overwrite="true"
+		                  WriteOnlyWhenDifferent="true"
+		                  Lines="---;remarks: &quot;Generated pointer. The guide itself lives in this same repository at the path below - edit it there, not here.&quot;;generated-by: &quot;MintPlayer.Spark build target (WriteSparkAgentsGuidePointer)&quot;;---;;# Spark agent guide;;See @$(_SparkAgentsGuideRelative)" />
+
+		<Message Importance="low"
+		         Text="[MintPlayer.Spark] Wrote AGENTS.md pointer in $(MSBuildProjectName) -> $(_SparkAgentsGuideRelative)." />
 	</Target>
 
 </Project>
