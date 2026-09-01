@@ -231,6 +231,46 @@ by breaking one `UploadForm` field — applies to that job, not to the stub.
 
 ---
 
+## M2a — the first live publish run failed, and why
+
+Recorded because the failure is invisible on a pull request and will bite the next repository that
+adopts `compile-ts-action` with a modern checkout.
+
+The publish workflow fired automatically on the squash-merge of the branch — the `paths:` filter
+matched — and died in 30 seconds:
+
+```
+Bundle unchanged; nothing to commit.
+remote: Duplicate header: "Authorization"
+fatal: unable to access 'https://github.com/MintPlayer/MintPlayer.Spark/': error 400
+```
+
+`compile-ts-action`'s `publish.sh` wires its `token` input into a git `extraheader` after clearing the
+key with `git config --local --unset-all`. That assumes the credential `actions/checkout` persisted
+lives in `.git/config` — true through **v4**, which `github-actions`' own workflows use, which is why
+the bug is invisible there. **`actions/checkout@v7` stores it in a separate file and includes it**, as
+its own log shows:
+
+```
+git config --file /home/runner/work/_temp/git-credentials-<uuid>.config \
+  http.https://github.com/.extraheader AUTHORIZATION: basic ***
+```
+
+So the clear matched nothing, the add wrote a second value, and git sent two `Authorization` headers.
+The same root cause means the save-and-restore hardening added upstream saves nothing on v7 either.
+
+Two changes here, neither of which needs the upstream fix to land:
+
+1. **`token: ''`** on the `compile-ts-action` call, so `publish.sh` skips credential handling and uses
+   the credential the checkout already set up. Remove the line once
+   [github-actions#9](https://github.com/MintPlayer/github-actions/issues/9) is fixed.
+2. The release-tag lookup moves from `git ls-remote` to the REST API, so it needs **no git credential
+   at all** and cannot break on however the checkout action stores one next year.
+
+Worth stating plainly: the `push` half of this pipeline cannot be tested by a pull request, since it
+only runs on `master`. That is not a gap in the tests — it is the shape of the thing — so the first
+run after any change to it deserves watching rather than assuming.
+
 ## M6 — publish a tag, then repoint every consumer
 
 Consumers must not pin `@master` of a monorepo whose default branch moves constantly for unrelated
