@@ -15,6 +15,7 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 - **Product & architecture**: [docs/code-coverage/product-overview.md](../../docs/code-coverage/product-overview.md)
 - **Milestone plan**: [docs/code-coverage/build-log-m0-m10.md](../../docs/code-coverage/build-log-m0-m10.md)
 - **The upload GitHub Action**: [action/](action/README.md) (`uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`) — it lives beside the server it talks to, so an API change and the action change are one pull request
+- **Releasing a new version of the action**: [action/README.md § Releasing](action/README.md#releasing-a-new-version) — Actions → *coverage-action-publish* → **Run workflow** with a `patch`/`minor`/`major` bump. The tag names derive from the action's `package.json`, so going to a new major needs no workflow edit
 - **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)

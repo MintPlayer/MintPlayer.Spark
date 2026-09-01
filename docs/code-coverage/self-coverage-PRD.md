@@ -87,8 +87,11 @@ Genuinely not being done, not deferred:
 - **Raising coverage.** This lands the measurement and a seed suite that proves the
   pipeline end to end. Writing tests to a target number is separate work driven by
   what the resulting report shows.
-- **A `v1` tag for the action.** No tags exist; consumers pin `@master` by design
-  until the input surface settles. Unrelated to measuring ourselves.
+- **A `v1` tag for the action.** ~~No tags exist; consumers pin `@master` by design
+  until the input surface settles.~~ **Superseded** — the action is released as
+  `coverage-upload-v<major>` (moving) plus `coverage-upload-v<full>` (immutable), both derived from
+  its `package.json`; pinning `@master` is now explicitly wrong. See
+  [`../../apps/CodeCoverage/action/README.md`](../../apps/CodeCoverage/action/README.md#releasing-a-new-version).
 
 ## Also on this branch
 

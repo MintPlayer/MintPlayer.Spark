@@ -146,7 +146,11 @@ Two call sites, each ~2 lines of `uses:` plus inputs:
 1. **`.github/workflows/pull-request.yml`** — new job, `mode: verify`. Runs the 35 jest tests and
    fails on a stale bundle. This is the gate `github-actions` never had.
 2. **`.github/workflows/coverage-action-publish.yml`** — its own file, `mode: push`, path-filtered
-   to `apps/CodeCoverage/action/**`, plus both tag inputs from M6.
+   to `apps/CodeCoverage/action/**`, plus both tag inputs from M6 — **both derived from the action's
+   `package.json` version**, never hardcoded, so a major bump retires the old moving tag without a
+   workflow edit. It also takes a `workflow_dispatch` `bump` input (`none`/`patch`/`minor`/`major`)
+   that performs the version bump itself, which is the intended way to cut a release; documented in
+   [`apps/CodeCoverage/action/README.md`](../apps/CodeCoverage/action/README.md#releasing-a-new-version).
 
    The separate file is not tidiness: GitHub has no per-job `paths:` filter, and `major-tag` is
    force-moved on every run. Putting this job in `dotnet-build-master.yml` — which is what the first
@@ -310,7 +314,11 @@ five actions there and one here.
   — files that exist only in the archived repo. The real workflows are `pull-request.yml`,
   `dotnet-build-master.yml`, `code-coverage-deploy.yml`.
 - `product-overview.md:203-226` describes the action's design as if the folder were here; it becomes
-  true again, but the "pin `@master` for now" note must change to the M6 tag.
+  true again. **Done:** its "pin `@master` for now; a `v1` tag is cut once the input surface settles"
+  line is replaced by the two-tag scheme and a pointer to the release flow, and
+  `self-coverage-PRD.md`'s matching deferral is marked superseded. The release flow is documented in
+  three places a reader might start from: the action's own README (canonical),
+  `apps/CodeCoverage/README.md`, and the `docs/code-coverage/` index.
 - [`old-repo-decommission.md`](code-coverage/old-repo-decommission.md) precondition 2 currently
   requires the action to be live in `github-actions`; rewrite against M6. Its precondition 3 (one
   successful deploy from this repo) still stands and is **still unmet** — `code-coverage-deploy.yml`
