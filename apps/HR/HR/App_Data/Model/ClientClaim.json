@@ -13,6 +13,9 @@
         "label": {
           "en": "Type"
         },
+        "description": {
+          "en": "Claim type added to issued tokens, e.g. tenant."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "Value",
         "label": {
           "en": "Value"
+        },
+        "description": {
+          "en": "Value issued for the claim type."
         },
         "dataType": "string",
         "isRequired": false,

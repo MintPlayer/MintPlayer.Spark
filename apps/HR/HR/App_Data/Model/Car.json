@@ -20,6 +20,9 @@
           "fr": "Couleur",
           "nl": "Kleur"
         },
+        "description": {
+          "en": "Exterior colour of the car, as maintained in the Fleet app."
+        },
         "dataType": "color",
         "isRequired": false,
         "isVisible": true,
@@ -41,6 +44,9 @@
           "en": "License Plate",
           "fr": "Plaque d'immatriculation",
           "nl": "Nummerplaat"
+        },
+        "description": {
+          "en": "Registration plate of the car as maintained in the Fleet app."
         },
         "dataType": "string",
         "isRequired": true,
@@ -82,6 +88,9 @@
           "fr": "Modèle",
           "nl": "Model"
         },
+        "description": {
+          "en": "Make and model of the car as maintained in the Fleet app."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -112,6 +121,9 @@
           "en": "Year",
           "fr": "Année",
           "nl": "Jaar"
+        },
+        "description": {
+          "en": "Year the car was built, as maintained in the Fleet app."
         },
         "dataType": "number",
         "isRequired": true,

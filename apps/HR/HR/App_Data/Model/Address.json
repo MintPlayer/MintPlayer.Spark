@@ -20,6 +20,9 @@
           "fr": "Ville",
           "nl": "Stad"
         },
+        "description": {
+          "en": "Town or city the address is in."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -50,6 +53,9 @@
           "en": "Description",
           "fr": "Description",
           "nl": "Beschrijving"
+        },
+        "description": {
+          "en": "Optional label and notes for this address, such as Head office or delivery instructions."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -102,6 +108,9 @@
           "en": "Street",
           "fr": "Rue",
           "nl": "Straat"
+        },
+        "description": {
+          "en": "Street name and house number, e.g. Korenmarkt 12."
         },
         "dataType": "string",
         "isRequired": true,

@@ -20,6 +20,9 @@
           "fr": "Couleur d'accent",
           "nl": "Accentkleur"
         },
+        "description": {
+          "en": "Secondary brand colour of the company as a hex code, used alongside the primary colour."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -37,6 +40,9 @@
           "fr": "Couleur de marque",
           "nl": "Merkkleur"
         },
+        "description": {
+          "en": "Primary brand colour of the company as a hex code, e.g. #0d6efd."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -53,6 +59,9 @@
           "en": "Employee Count",
           "fr": "Nombre d'employés",
           "nl": "Aantal werknemers"
+        },
+        "description": {
+          "en": "Approximate number of people the company employs."
         },
         "dataType": "number",
         "isRequired": true,
@@ -76,6 +85,9 @@
           "en": "Name",
           "fr": "Nom",
           "nl": "Naam"
+        },
+        "description": {
+          "en": "Legal or trading name of the company."
         },
         "dataType": "string",
         "isRequired": true,
@@ -106,6 +118,9 @@
         "label": {
           "en": "Sector"
         },
+        "description": {
+          "en": "The profession that best describes the sector the company operates in."
+        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -124,6 +139,9 @@
           "en": "Website",
           "fr": "Site web",
           "nl": "Website"
+        },
+        "description": {
+          "en": "Public website of the company, including the scheme, e.g. https://example.com."
         },
         "dataType": "string",
         "isRequired": false,

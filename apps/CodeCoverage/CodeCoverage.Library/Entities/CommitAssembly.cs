@@ -23,12 +23,16 @@ public class CommitAssembly
     public const string ReasonTestsFailed = "testsFailed";
     public const string ReasonUnmeasuredChanges = "unmeasuredChanges";
 
+    /// <summary>Document id of this assembly, <c>{commitId}/assembly</c>.</summary>
     public string? Id { get; set; }
 
+    /// <summary>Document id of the commit this assembly is the coverage record of.</summary>
     public string? Commit { get; set; }
 
+    /// <summary>Document id of the repository the commit belongs to.</summary>
     public string? Repository { get; set; }
 
+    /// <summary>The git sha of the assembled commit.</summary>
     public string Sha { get; set; } = string.Empty;
 
     /// <summary>The builds whose measured files were assembled — the highest attempt of every finalized run.</summary>
@@ -43,12 +47,16 @@ public class CommitAssembly
     /// <summary>How the base was found: exact | mergeBase | walked | none.</summary>
     public string? BaseResolution { get; set; }
 
+    /// <summary>Number of files in the commit's repository file list, the universe carry-forward matched against.</summary>
     public int HeadFileCount { get; set; }
 
+    /// <summary>True when the uploader's file list carried git blob OIDs; without them nothing can be carried from the base.</summary>
     public bool HeadHasOids { get; set; }
 
+    /// <summary>Number of files measured by this commit's own builds.</summary>
     public int MeasuredFiles { get; set; }
 
+    /// <summary>Number of files copied unchanged from the base commit because their blob OID matched.</summary>
     public int CarriedFiles { get; set; }
 
     /// <summary>
@@ -59,16 +67,19 @@ public class CommitAssembly
     /// </summary>
     public int UnmeasuredFiles { get; set; }
 
+    /// <summary>The assembled line and branch totals over measured plus carried files; this is the commit's headline number.</summary>
     public CoverageSummary Coverage { get; set; } = new();
 
     /// <summary><see cref="Complete"/> or <see cref="Partial"/>.</summary>
     public string Completeness { get; set; } = Partial;
 
+    /// <summary>Why the assembly is partial, as reason codes such as <c>noBase</c>, <c>testsFailed</c> or <c>unmeasuredChanges</c>; empty when complete.</summary>
     public List<string> IncompleteReasons { get; set; } = [];
 
     /// <summary>Of all carried files, the sha the oldest one was originally measured at; null when nothing was carried.</summary>
     public string? OldestOriginSha { get; set; }
 
+    /// <summary>When this assembly was last rebuilt (UTC); every finalize of any build of the commit rebuilds it.</summary>
     public DateTime AssembledAtUtc { get; set; }
 
     public static string DocumentId(string commitId) => $"{commitId}/assembly";
@@ -83,11 +94,17 @@ public class CommitAssembly
 
 public class AssemblyBuild
 {
+    /// <summary>Document id of the finalized build that contributed measured files to the assembly.</summary>
     public string BuildId { get; set; } = string.Empty;
+    /// <summary>The GitHub Actions workflow run id of that build.</summary>
     public long CiRunId { get; set; }
+    /// <summary>The attempt number of that workflow run; only the highest attempt per run is assembled.</summary>
     public int CiRunAttempt { get; set; }
+    /// <summary>True when the build declared it measured only a subset of the workspace.</summary>
     public bool Partial { get; set; }
+    /// <summary>True when the build's tests succeeded, so unmeasured files may be carried from the base.</summary>
     public bool CarryForward { get; set; }
+    /// <summary>The base sha the build's affected-computation ran against, when declared.</summary>
     public string? DeclaredBaseSha { get; set; }
 }
 

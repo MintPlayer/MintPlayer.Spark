@@ -20,6 +20,9 @@
           "fr": "Nombre d'employés",
           "nl": "Aantal werknemers"
         },
+        "description": {
+          "en": "Number of employees the company has, as maintained in HR."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -42,6 +45,9 @@
           "en": "Name",
           "fr": "Nom",
           "nl": "Naam"
+        },
+        "description": {
+          "en": "Legal or trading name of the company, replicated read-only from HR."
         },
         "dataType": "string",
         "isRequired": true,
@@ -73,6 +79,9 @@
           "en": "Website",
           "fr": "Site web",
           "nl": "Website"
+        },
+        "description": {
+          "en": "Public website address of the company, replicated read-only from HR."
         },
         "dataType": "string",
         "isRequired": false,

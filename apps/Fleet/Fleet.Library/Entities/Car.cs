@@ -12,6 +12,7 @@ namespace Fleet.Entities;
 [GenerateIndex]
 public class Car
 {
+    /// <summary>Unique identifier of this vehicle record, assigned automatically when it is created.</summary>
     public string? Id { get; set; }
 
     /// <summary>
@@ -25,14 +26,20 @@ public class Car
     /// <summary>Searchable, and the reason the companion exists: model names contain spaces.</summary>
     [Search]
     public string Model { get; set; } = string.Empty;
+    /// <summary>Model year of the vehicle, as stated on its registration.</summary>
     public int Year { get; set; }
+    /// <summary>Exterior paint colour of the vehicle.</summary>
     public Color? Color { get; set; }
+    /// <summary>Colour of the vehicle's interior upholstery and trim.</summary>
     public Color? InteriorColor { get; set; }
+    /// <summary>Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen.</summary>
     public string? PromoVideoUrl { get; set; }
 
+    /// <summary>Current fleet status of the vehicle: <c>InUse</c>, <c>OnParking</c>, <c>InMaintenance</c> or <c>Stolen</c>.</summary>
     [LookupReference(typeof(LookupReferences.CarStatus))]
     public string? Status { get; set; }
 
+    /// <summary>Manufacturer brand of the vehicle, chosen from the list of known car brands.</summary>
     [LookupReference(typeof(LookupReferences.CarBrand))]
     public string? Brand { get; set; }
 

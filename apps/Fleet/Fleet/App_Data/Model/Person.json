@@ -20,6 +20,9 @@
           "fr": "E-mail",
           "nl": "E-mail"
         },
+        "description": {
+          "en": "Work e-mail address of the person, replicated read-only from HR."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -44,6 +47,9 @@
           "en": "First Name",
           "fr": "Prénom",
           "nl": "Voornaam"
+        },
+        "description": {
+          "en": "Given name of the person, replicated read-only from HR."
         },
         "dataType": "string",
         "isRequired": true,
@@ -75,6 +81,9 @@
           "en": "Last Name",
           "fr": "Nom de famille",
           "nl": "Achternaam"
+        },
+        "description": {
+          "en": "Family name of the person, replicated read-only from HR."
         },
         "dataType": "string",
         "isRequired": true,

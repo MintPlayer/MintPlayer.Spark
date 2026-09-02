@@ -8,17 +8,23 @@ namespace CodeCoverage.Entities;
 /// </summary>
 public class Commit
 {
+    /// <summary>Document id of this commit, <c>Commits/{repoGitHubId}/{sha}</c>.</summary>
     public string? Id { get; set; }
 
+    /// <summary>The repository this commit belongs to.</summary>
     [Reference(typeof(Repository))]
     public string? Repository { get; set; }
 
+    /// <summary>The full 40-character git commit sha.</summary>
     public string Sha { get; set; } = string.Empty;
 
+    /// <summary>The branch the commit was pushed to or the PR head branch, when known.</summary>
     public string? Branch { get; set; }
 
+    /// <summary>Number of the pull request this commit was seen on; null for plain pushes.</summary>
     public int? PullRequestNumber { get; set; }
 
+    /// <summary>Sha of the git first parent, used as the reference for the delta-vs-parent; see the source field for how much to trust it.</summary>
     public string? ParentSha { get; set; }
 
     /// <summary>
@@ -36,8 +42,10 @@ public class Commit
     /// </summary>
     public DateTime? ParentLookupAttemptedAtUtc { get; set; }
 
+    /// <summary>The commit message, as delivered by the push or pull-request webhook.</summary>
     public string? Message { get; set; }
 
+    /// <summary>When the commit was authored, from the webhook payload; null for commits only seen through an upload.</summary>
     public DateTimeOffset? AuthoredAt { get; set; }
 
     /// <summary>

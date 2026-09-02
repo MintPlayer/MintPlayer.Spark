@@ -20,6 +20,9 @@
           "fr": "Nom",
           "nl": "Naam"
         },
+        "description": {
+          "en": "Display name (e.g., \"Todo\", \"In Progress\", \"Done\")."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -36,6 +39,9 @@
           "en": "Option Id",
           "fr": "ID d'option",
           "nl": "Optie-ID"
+        },
+        "description": {
+          "en": "GitHub single-select option ID (e.g., \"f75ad846\")."
         },
         "dataType": "string",
         "isRequired": false,

@@ -13,6 +13,9 @@
         "label": {
           "en": "Diff Base Ref"
         },
+        "description": {
+          "en": "What the diff compared against (declared base sha, or the PR base tip hint)."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "DiffTruncated",
         "label": {
           "en": "Diff Truncated"
+        },
+        "description": {
+          "en": "True when GitHub's 300-file comparison cap cut the diff short; the number under-reports."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Files In Diff"
         },
+        "description": {
+          "en": "Number of files the diff touched, before dropping the ones the build did not measure."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "FilesMatched",
         "label": {
           "en": "Files Matched"
+        },
+        "description": {
+          "en": "Diff files the build actually measured — the denominator's file scope."
         },
         "dataType": "number",
         "isRequired": true,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Lines Coverable"
         },
+        "description": {
+          "en": "Number of lines added by the change that tests could have executed, the patch coverage denominator."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -88,6 +103,9 @@
         "label": {
           "en": "Lines Covered"
         },
+        "description": {
+          "en": "Number of lines added by the change that were executed at least once."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -102,6 +120,9 @@
         "name": "MergeBaseSha",
         "label": {
           "en": "Merge Base Sha"
+        },
+        "description": {
+          "en": "The merge-base GitHub computed for that comparison."
         },
         "dataType": "string",
         "isRequired": false,

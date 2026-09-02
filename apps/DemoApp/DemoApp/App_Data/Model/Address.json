@@ -20,6 +20,9 @@
           "fr": "Ville",
           "nl": "Stad"
         },
+        "description": {
+          "en": "City or town the address is located in."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -51,6 +54,9 @@
           "fr": "État",
           "nl": "Staat"
         },
+        "description": {
+          "en": "State, province or region the city belongs to."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -81,6 +87,9 @@
           "en": "Street",
           "fr": "Rue",
           "nl": "Straat"
+        },
+        "description": {
+          "en": "Street name and house number, for example Main Street 12."
         },
         "dataType": "string",
         "isRequired": true,

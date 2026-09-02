@@ -22,6 +22,9 @@
           "fr": "Marque",
           "nl": "Merk"
         },
+        "description": {
+          "en": "Manufacturer brand of the vehicle, chosen from the list of known car brands."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -39,6 +42,9 @@
           "en": "Color",
           "fr": "Couleur",
           "nl": "Kleur"
+        },
+        "description": {
+          "en": "Exterior paint colour of the vehicle."
         },
         "dataType": "color",
         "isRequired": false,
@@ -58,6 +64,9 @@
           "fr": "Créé par",
           "nl": "Aangemaakt door"
         },
+        "description": {
+          "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -75,6 +84,9 @@
           "en": "Description",
           "fr": "Description",
           "nl": "Omschrijving"
+        },
+        "description": {
+          "en": "Free-text description maintained in multiple languages. Exercises the inverse-path TranslatedString per-language merge behavior — a partial update that carries only { en: \"…\" } must preserve the existing fr / nl entries rather than overwriting the whole value."
         },
         "dataType": "TranslatedString",
         "isRequired": false,
@@ -142,6 +154,9 @@
           "fr": "Couleur intérieure",
           "nl": "Interieurkleur"
         },
+        "description": {
+          "en": "Colour of the vehicle's interior upholstery and trim."
+        },
         "dataType": "color",
         "isRequired": false,
         "isVisible": true,
@@ -159,6 +174,9 @@
           "en": "License Plate",
           "fr": "Plaque d'immatriculation",
           "nl": "Nummerplaat"
+        },
+        "description": {
+          "en": "SearchAttribute makes this full-text searchable AND gives it a LicensePlateSort companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless, and the companion is the repair."
         },
         "dataType": "string",
         "isRequired": true,
@@ -200,6 +218,9 @@
           "fr": "Gestionnaire",
           "nl": "Beheerder"
         },
+        "description": {
+          "en": "Id of the Person (replicated from HR) acting as fleet manager for this vehicle. Demo field — exercises the inverse-path reference round-trip end-to-end: client sets the id, round-trip re-fetch resolves the breadcrumb via the Person replication collection."
+        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -219,6 +240,9 @@
           "en": "Model",
           "fr": "Modèle",
           "nl": "Model"
+        },
+        "description": {
+          "en": "Searchable, and the reason the companion exists: model names contain spaces."
         },
         "dataType": "string",
         "isRequired": true,
@@ -249,6 +273,9 @@
         "label": {
           "en": "Police Report Number"
         },
+        "description": {
+          "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -266,6 +293,9 @@
           "en": "Promo Video",
           "fr": "Vidéo promotionnelle",
           "nl": "Promotievideo"
+        },
+        "description": {
+          "en": "Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -290,6 +320,9 @@
           "fr": "Statut",
           "nl": "Status"
         },
+        "description": {
+          "en": "Current fleet status of the vehicle: InUse, OnParking, InMaintenance or Stolen."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -308,6 +341,9 @@
           "en": "Year",
           "fr": "Année",
           "nl": "Jaar"
+        },
+        "description": {
+          "en": "Model year of the vehicle, as stated on its registration."
         },
         "dataType": "number",
         "isRequired": true,

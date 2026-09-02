@@ -13,6 +13,9 @@
         "label": {
           "en": "Branches Covered"
         },
+        "description": {
+          "en": "Number of branch edges (if/else, switch arms, ...) that were taken at least once."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "BranchesTotal",
         "label": {
           "en": "Branches Total"
+        },
+        "description": {
+          "en": "Total number of branch edges the reports know about, the denominator of the branch coverage percentage."
         },
         "dataType": "number",
         "isRequired": true,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Files Count"
         },
+        "description": {
+          "en": "Number of source files these totals were aggregated from."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -58,6 +67,9 @@
         "label": {
           "en": "Lines Coverable"
         },
+        "description": {
+          "en": "Number of lines that tests could have executed, the denominator of the line coverage percentage."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -72,6 +84,9 @@
         "name": "LinesCovered",
         "label": {
           "en": "Lines Covered"
+        },
+        "description": {
+          "en": "Number of coverable lines executed at least once; divided by the coverable count this gives the line coverage percentage."
         },
         "dataType": "number",
         "isRequired": true,

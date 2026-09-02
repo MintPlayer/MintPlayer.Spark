@@ -17,6 +17,9 @@
           "fr": "Avatar",
           "nl": "Avatar"
         },
+        "description": {
+          "en": "URL of the account's GitHub avatar image, shown next to the login."
+        },
         "dataType": "image",
         "isRequired": false,
         "isVisible": true,
@@ -32,6 +35,9 @@
         "label": {
           "en": "Git Hub Id"
         },
+        "description": {
+          "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": false,
@@ -46,6 +52,9 @@
         "name": "InstallationId",
         "label": {
           "en": "Installation Id"
+        },
+        "description": {
+          "en": "GitHub App installation on this account, when the app is installed."
         },
         "dataType": "number",
         "isRequired": false,
@@ -64,6 +73,9 @@
           "fr": "Identifiant",
           "nl": "Login"
         },
+        "description": {
+          "en": "The GitHub login (user name or organization slug) of this account."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -80,6 +92,9 @@
           "en": "Type",
           "fr": "Type",
           "nl": "Type"
+        },
+        "description": {
+          "en": "\"User\" or \"Organization\"."
         },
         "dataType": "string",
         "isRequired": false,

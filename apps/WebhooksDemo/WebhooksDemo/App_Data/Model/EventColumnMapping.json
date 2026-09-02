@@ -20,6 +20,9 @@
           "fr": "Ajouter automatiquement au projet",
           "nl": "Automatisch toevoegen aan project"
         },
+        "description": {
+          "en": "Automatically add the issue/PR to the project board if not already present. When false, only items already on the board are moved."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -36,6 +39,9 @@
           "en": "Move Linked Issues",
           "fr": "Déplacer les tickets liés",
           "nl": "Gelinkte issues verplaatsen"
+        },
+        "description": {
+          "en": "For pull request events: also move the issues that the PR closes/references. Ignored for issue events."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -54,6 +60,9 @@
           "fr": "Colonne cible",
           "nl": "Doelkolom"
         },
+        "description": {
+          "en": "The target column option ID on the project board."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -70,6 +79,9 @@
           "en": "Webhook Event",
           "fr": "Événement webhook",
           "nl": "Webhook-gebeurtenis"
+        },
+        "description": {
+          "en": "The webhook event type (e.g., \"IssuesOpened\")."
         },
         "dataType": "string",
         "isRequired": false,

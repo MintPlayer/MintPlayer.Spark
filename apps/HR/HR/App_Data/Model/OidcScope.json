@@ -13,6 +13,9 @@
         "label": {
           "en": "Audiences"
         },
+        "description": {
+          "en": "Audience values stamped into access tokens carrying this scope, naming the APIs that accept them."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "ClaimTypes",
         "label": {
           "en": "Claim Types"
+        },
+        "description": {
+          "en": "User claim types included in the ID token when this scope is granted, e.g. email."
         },
         "dataType": "string",
         "isRequired": false,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Description"
         },
+        "description": {
+          "en": "Explanation of what the scope grants access to, shown to users on the consent screen."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "DisplayName",
         "label": {
           "en": "Display Name"
+        },
+        "description": {
+          "en": "Human-readable name of the scope, shown to users on the consent screen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Emphasize"
         },
+        "description": {
+          "en": "Whether the consent screen highlights this scope as sensitive."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -87,6 +102,9 @@
         "name": "Enabled",
         "label": {
           "en": "Enabled"
+        },
+        "description": {
+          "en": "Whether the scope can currently be requested; disable to withdraw it without deleting it."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -103,6 +121,9 @@
         "label": {
           "en": "Name"
         },
+        "description": {
+          "en": "Scope name a client requests, e.g. openid or api.read; must be unique."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -118,6 +139,9 @@
         "label": {
           "en": "Required"
         },
+        "description": {
+          "en": "Whether the user must grant this scope and cannot untick it on the consent screen."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -132,6 +156,9 @@
         "name": "ShowInDiscoveryDocument",
         "label": {
           "en": "Show In Discovery Document"
+        },
+        "description": {
+          "en": "Whether the scope is listed publicly in the OpenID discovery document."
         },
         "dataType": "boolean",
         "isRequired": true,

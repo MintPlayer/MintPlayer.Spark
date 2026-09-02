@@ -2,6 +2,7 @@ namespace WebhooksDemo.Entities;
 
 public class GitHubProject
 {
+    /// <summary>Unique identifier of this project record, assigned automatically when it is first saved.</summary>
     public string? Id { get; set; }
 
     /// <summary>Display name of the GitHub project.</summary>

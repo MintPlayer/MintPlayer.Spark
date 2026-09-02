@@ -20,6 +20,9 @@
           "fr": "Colonnes",
           "nl": "Kolommen"
         },
+        "description": {
+          "en": "Cached column options from the project's Status field. Synced when the project is added or refreshed."
+        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -37,6 +40,9 @@
           "en": "Event Mappings",
           "fr": "Mappages d'événements",
           "nl": "Gebeurtenismappings"
+        },
+        "description": {
+          "en": "User-configured rules: which webhook events move issues to which columns."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -56,6 +62,9 @@
           "fr": "ID d'installation",
           "nl": "Installatie-ID"
         },
+        "description": {
+          "en": "GitHub App installation that owns this project (used to mint installation tokens)."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -72,6 +81,9 @@
           "en": "Name",
           "fr": "Nom",
           "nl": "Naam"
+        },
+        "description": {
+          "en": "Display name of the GitHub project."
         },
         "dataType": "string",
         "isRequired": false,
@@ -90,6 +102,9 @@
           "fr": "ID du nœud",
           "nl": "Node-ID"
         },
+        "description": {
+          "en": "GitHub GraphQL node ID (e.g., \"PVT_kwDO...\")."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -106,6 +121,9 @@
           "en": "Number",
           "fr": "Numéro",
           "nl": "Nummer"
+        },
+        "description": {
+          "en": "Project number (visible in GitHub URL)."
         },
         "dataType": "number",
         "isRequired": true,
@@ -124,6 +142,9 @@
           "fr": "Identifiant du propriétaire",
           "nl": "Gebruikersnaam eigenaar"
         },
+        "description": {
+          "en": "Owner login (user or organization)."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -140,6 +161,9 @@
           "en": "Status Field Id",
           "fr": "ID du champ de statut",
           "nl": "ID van statusveld"
+        },
+        "description": {
+          "en": "GraphQL ID of the \"Status\" single-select field."
         },
         "dataType": "string",
         "isRequired": false,
