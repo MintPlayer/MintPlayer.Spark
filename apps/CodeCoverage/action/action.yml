@@ -33,7 +33,7 @@ inputs:
     description: 'The base commit the affected-computation ran against (the sha passed to `nx affected --base`). Strongly recommended with `partial: true`; without it the server falls back to the newest covered default-branch commit and says so.'
     required: false
   carry-forward:
-    description: 'Whether the server may fill in files this upload did not measure from the base commit (only files whose git blob is unchanged are ever carried). Wire it to the test step''s outcome — `${{ steps.test.outcome == ''success'' }}` — so a crashed suite is not painted over with the base''s numbers. Default: true.'
+    description: 'Whether the server may fill in files this upload did not measure from the base commit (only files whose git blob is unchanged are ever carried). Wire it to the test step''s outcome — `${{ ''${{'' }} steps.test.outcome == ''success'' }}` — so a crashed suite is not painted over with the base''s numbers. Default: true.'
     required: false
     default: 'true'
   name:
