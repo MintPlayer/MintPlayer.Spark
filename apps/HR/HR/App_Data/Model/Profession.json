@@ -15,6 +15,9 @@
           "fr": "Description",
           "nl": "Omschrijving"
         },
+        "description": {
+          "en": "Name of the profession as shown to users, e.g. Software engineer."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -31,6 +34,9 @@
           "en": "Regime",
           "fr": "Régime",
           "nl": "Regime"
+        },
+        "description": {
+          "en": "Employment regime under which the profession is exercised, e.g. Employee or Freelance."
         },
         "dataType": "string",
         "isRequired": false,

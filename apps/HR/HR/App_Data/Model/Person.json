@@ -77,6 +77,9 @@
           "fr": "Adresse",
           "nl": "Adres"
         },
+        "description": {
+          "en": "Home address of the person."
+        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -95,6 +98,9 @@
           "en": "Company",
           "fr": "Entreprise",
           "nl": "Bedrijf"
+        },
+        "description": {
+          "en": "The company the person currently works for."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -116,6 +122,9 @@
           "fr": "Date de naissance",
           "nl": "Geboortedatum"
         },
+        "description": {
+          "en": "Date on which the person was born."
+        },
         "dataType": "date",
         "isRequired": false,
         "isVisible": true,
@@ -133,6 +142,9 @@
           "en": "Email",
           "fr": "E-mail",
           "nl": "E-mail"
+        },
+        "description": {
+          "en": "E-mail address used to contact the person."
         },
         "dataType": "string",
         "isRequired": false,
@@ -159,6 +171,9 @@
           "en": "First Name",
           "fr": "Prénom",
           "nl": "Voornaam"
+        },
+        "description": {
+          "en": "Given name of the person."
         },
         "dataType": "string",
         "isRequired": true,
@@ -207,6 +222,9 @@
         "label": {
           "en": "Jobs"
         },
+        "description": {
+          "en": "Career history of the person, ordered by dragging rows into place."
+        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -227,6 +245,9 @@
           "en": "Last Name",
           "fr": "Nom de famille",
           "nl": "Achternaam"
+        },
+        "description": {
+          "en": "Family name of the person."
         },
         "dataType": "string",
         "isRequired": true,
@@ -259,6 +280,9 @@
           "en": "Professions",
           "fr": "Professions",
           "nl": "Beroepen"
+        },
+        "description": {
+          "en": "All professions the person holds; several can be selected."
         },
         "dataType": "Reference",
         "isRequired": false,

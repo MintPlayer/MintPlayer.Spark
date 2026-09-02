@@ -22,6 +22,9 @@
           "fr": "Nombre d'employés",
           "nl": "Aantal werknemers"
         },
+        "description": {
+          "en": "Approximate number of people employed by the company; leave empty if unknown."
+        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -44,6 +47,9 @@
           "en": "Company Name",
           "fr": "Nom de l'entreprise",
           "nl": "Bedrijfsnaam"
+        },
+        "description": {
+          "en": "Official name of the company as it should appear in lists and on people's records."
         },
         "dataType": "string",
         "isRequired": true,
@@ -75,6 +81,9 @@
           "en": "Website",
           "fr": "Site web",
           "nl": "Website"
+        },
+        "description": {
+          "en": "Public website address of the company, including https://."
         },
         "dataType": "string",
         "isRequired": false,

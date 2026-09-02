@@ -15,6 +15,9 @@
         "label": {
           "en": "Account"
         },
+        "description": {
+          "en": "The GitHub user or organization that owns this repository."
+        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -32,6 +35,9 @@
         "label": {
           "en": "Archived"
         },
+        "description": {
+          "en": "True when the repository has been archived on GitHub and no longer receives uploads."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -46,6 +52,9 @@
         "name": "BadgeToken",
         "label": {
           "en": "Badge Token"
+        },
+        "description": {
+          "en": "Grants access to the rendered badge SVG only — never report data. Set for private repositories; independently rotatable. [IgnoreForIndex] because index membership is opt-out: without it this lands in VRepository, and synchronize then marks every projected field queryable — putting a live badge token in the /spark repository grid, which security.json grants to Everyone. Nothing filters or sorts on it, so the index has no use for it either."
         },
         "dataType": "string",
         "isRequired": false,
@@ -63,6 +72,9 @@
         "label": {
           "en": "Default Branch"
         },
+        "description": {
+          "en": "The repository's default branch on GitHub (e.g. master); its newest finalized build supplies the headline coverage."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -77,6 +89,9 @@
         "name": "FullName",
         "label": {
           "en": "Trend"
+        },
+        "description": {
+          "en": "owner/name"
         },
         "dataType": "string",
         "isRequired": false,
@@ -93,6 +108,9 @@
         "name": "Gate",
         "label": {
           "en": "Gate"
+        },
+        "description": {
+          "en": "Gate policy; null means every default (informational, auto-ratchet). [IgnoreForIndex]: policy is owner-facing configuration — it has no business in the anonymous /spark grid, and nothing filters on it."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -111,6 +129,9 @@
         "label": {
           "en": "Git Hub Id"
         },
+        "description": {
+          "en": "GitHub's numeric id for this repository; stable across renames and transfers."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": false,
@@ -126,6 +147,9 @@
         "label": {
           "en": "Is Private"
         },
+        "description": {
+          "en": "True when the repository is private on GitHub; private repositories need a badge token for their badge."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": false,
@@ -140,6 +164,9 @@
         "name": "LatestCoverage",
         "label": {
           "en": "Coverage"
+        },
+        "description": {
+          "en": "Denormalized from the newest finalized default-branch build, so repo lists and badges are point-loads."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -158,6 +185,9 @@
         "label": {
           "en": "Latest Coverage At Utc"
         },
+        "description": {
+          "en": "When the headline coverage was last refreshed from a finalized default-branch build (UTC)."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -172,6 +202,9 @@
         "name": "LatestCoverageSha",
         "label": {
           "en": "Latest commit"
+        },
+        "description": {
+          "en": "Sha of the default-branch commit the headline coverage was taken from."
         },
         "dataType": "string",
         "isRequired": false,
@@ -189,6 +222,9 @@
         "label": {
           "en": "Repository"
         },
+        "description": {
+          "en": "The repository name without the owner, e.g. MintPlayer.Spark."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -204,6 +240,9 @@
         "name": "OwnerLogin",
         "label": {
           "en": "Owner Login"
+        },
+        "description": {
+          "en": "GitHub login of the owning user or organization, the part before the slash in the full name."
         },
         "dataType": "string",
         "isRequired": false,

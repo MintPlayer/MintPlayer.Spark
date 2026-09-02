@@ -15,10 +15,13 @@ public class PatchCoverage
     /// <summary>The merge-base GitHub computed for that comparison.</summary>
     public string? MergeBaseSha { get; set; }
 
+    /// <summary>Number of lines added by the change that were executed at least once.</summary>
     public int LinesCovered { get; set; }
 
+    /// <summary>Number of lines added by the change that tests could have executed, the patch coverage denominator.</summary>
     public int LinesCoverable { get; set; }
 
+    /// <summary>Number of files the diff touched, before dropping the ones the build did not measure.</summary>
     public int FilesInDiff { get; set; }
 
     /// <summary>Diff files the build actually measured — the denominator's file scope.</summary>

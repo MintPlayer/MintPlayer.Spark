@@ -4,10 +4,13 @@ namespace HR.Entities;
 
 public class Address
 {
+    /// <summary>Street name and house number, e.g. <c>Korenmarkt 12</c>.</summary>
     public string Street { get; set; } = string.Empty;
     /// <summary>Postal code as the carrier prints it, e.g. <c>9000</c> for Ghent.</summary>
     public string PostalCode { get; set; } = string.Empty;
+    /// <summary>Town or city the address is in.</summary>
     public string City { get; set; } = string.Empty;
+    /// <summary>Optional label and notes for this address, such as <c>Head office</c> or delivery instructions.</summary>
     public AddressDescription? Description { get; set; }
 
     // The type's declared breadcrumb value: persisted into the document (get-only properties

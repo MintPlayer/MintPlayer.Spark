@@ -13,6 +13,9 @@
         "label": {
           "en": "Access Token Lifetime Minutes"
         },
+        "description": {
+          "en": "Validity of an issued access token in minutes."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "AllowedCorsOrigins",
         "label": {
           "en": "Allowed Cors Origins"
+        },
+        "description": {
+          "en": "Browser origins allowed to call the OIDC endpoints cross-site, e.g. https://app.example.com."
         },
         "dataType": "string",
         "isRequired": false,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Allowed Grant Types"
         },
+        "description": {
+          "en": "The grants this client may use. **Must not carry a non-empty initializer.**\nRavenDB's serializer populates the collection the property initializer already created rather than replacing it, so a default of [\"authorization_code\"] was silently re-added to every application on load. A client stored as client_credentials-only came back as [\"authorization_code\", \"client_credentials\"] — which defeats the grant gating outright: the interactive flow accepted a machine client no matter what was configured, and the check that was supposed to stop it could never fail.\nEmpty now means empty, so a client that declares no grants can use none — fail closed."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "AllowedScopes",
         "label": {
           "en": "Allowed Scopes"
+        },
+        "description": {
+          "en": "Names of the scopes this application may request; a request for any other scope is refused."
         },
         "dataType": "string",
         "isRequired": false,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Allow Remember Consent"
         },
+        "description": {
+          "en": "Whether the user may tick a box so the consent screen is skipped on later sign-ins."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -87,6 +102,9 @@
         "name": "Claims",
         "label": {
           "en": "Claims"
+        },
+        "description": {
+          "en": "Fixed claims added to every token issued to this application."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -104,6 +122,9 @@
         "label": {
           "en": "Client Id"
         },
+        "description": {
+          "en": "Public client identifier the application sends in every OIDC request; must be unique."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -118,6 +139,9 @@
         "name": "ClientType",
         "label": {
           "en": "Client Type"
+        },
+        "description": {
+          "en": "Either confidential for a server that can keep a secret, or public for a browser or mobile app that cannot."
         },
         "dataType": "string",
         "isRequired": false,
@@ -134,6 +158,9 @@
         "label": {
           "en": "Consent Lifetime Seconds"
         },
+        "description": {
+          "en": "How long, in seconds, a remembered consent stays valid; leave empty to keep it until withdrawn."
+        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -148,6 +175,9 @@
         "name": "ConsentType",
         "label": {
           "en": "Consent Type"
+        },
+        "description": {
+          "en": "Either explicit to ask the user for consent on the consent screen, or implicit to grant it automatically."
         },
         "dataType": "string",
         "isRequired": false,
@@ -164,6 +194,9 @@
         "label": {
           "en": "Display Name"
         },
+        "description": {
+          "en": "Human-readable name of the application, shown to users on the consent screen."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -178,6 +211,9 @@
         "name": "Enabled",
         "label": {
           "en": "Enabled"
+        },
+        "description": {
+          "en": "Whether the application may currently sign users in; disable to block it without deleting it."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -194,6 +230,9 @@
         "label": {
           "en": "May Introspect Any Audience"
         },
+        "description": {
+          "en": "Lets this client introspect tokens it neither issued nor is the audience of.\nOff by default: introspection discloses a token's subject and scopes, so the caller must have a reason to see them — it issued the token, or the token was minted for it. Turn this on only for a gateway that introspects on behalf of the resources behind it, and understand that it can then read every token in the system."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -208,6 +247,9 @@
         "name": "PostLogoutRedirectUris",
         "label": {
           "en": "Post Logout Redirect Uris"
+        },
+        "description": {
+          "en": "Exact URIs the identity provider may redirect back to after the user signs out."
         },
         "dataType": "string",
         "isRequired": false,
@@ -224,6 +266,9 @@
         "label": {
           "en": "Redirect Uris"
         },
+        "description": {
+          "en": "Exact URIs the identity provider may redirect back to after sign-in; any other URI is rejected."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -238,6 +283,9 @@
         "name": "RefreshTokenLifetimeDays",
         "label": {
           "en": "Refresh Token Lifetime Days"
+        },
+        "description": {
+          "en": "Validity of an issued refresh token in days."
         },
         "dataType": "number",
         "isRequired": true,
@@ -254,6 +302,9 @@
         "label": {
           "en": "Require Pkce"
         },
+        "description": {
+          "en": "Whether the authorization code flow must use PKCE; keep enabled unless a legacy client cannot support it."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -268,6 +319,9 @@
         "name": "Secrets",
         "label": {
           "en": "Secrets"
+        },
+        "description": {
+          "en": "Secrets a confidential client authenticates with; several can coexist so a secret can be rotated."
         },
         "dataType": "AsDetail",
         "isRequired": false,

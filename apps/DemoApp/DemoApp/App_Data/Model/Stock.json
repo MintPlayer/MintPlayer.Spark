@@ -20,6 +20,9 @@
           "fr": "Variation",
           "nl": "Wijziging"
         },
+        "description": {
+          "en": "Difference between the current price and the base price, in currency units; negative when the price dropped."
+        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -36,6 +39,9 @@
           "en": "Change %",
           "fr": "Variation %",
           "nl": "Wijziging %"
+        },
+        "description": {
+          "en": "Price change relative to the base price, expressed as a percentage."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -54,6 +60,9 @@
           "fr": "Entreprise",
           "nl": "Bedrijf"
         },
+        "description": {
+          "en": "Name of the company whose shares this stock represents."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -71,6 +80,9 @@
           "fr": "Prix",
           "nl": "Prijs"
         },
+        "description": {
+          "en": "Latest known price of one share."
+        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -87,6 +99,9 @@
           "en": "Symbol",
           "fr": "Symbole",
           "nl": "Symbool"
+        },
+        "description": {
+          "en": "Ticker symbol under which the stock trades, for example MSFT."
         },
         "dataType": "string",
         "isRequired": true,

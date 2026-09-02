@@ -13,6 +13,9 @@
         "label": {
           "en": "Attempts"
         },
+        "description": {
+          "en": "How many times publishing the check-runs to GitHub has been attempted for this build."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "Error",
         "label": {
           "en": "Error"
+        },
+        "description": {
+          "en": "Message of the last failed publish attempt; null when the last attempt succeeded."
         },
         "dataType": "string",
         "isRequired": false,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Next Attempt At Utc"
         },
+        "description": {
+          "en": "When the sweep should next try to publish (UTC); null when no retry is scheduled."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "PatchCheckRunId",
         "label": {
           "en": "Patch Check Run Id"
+        },
+        "description": {
+          "en": "GitHub id of the patch-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate."
         },
         "dataType": "number",
         "isRequired": false,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Project Check Run Id"
         },
+        "description": {
+          "en": "GitHub id of the project-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate."
+        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -87,6 +102,9 @@
         "name": "State",
         "label": {
           "en": "State"
+        },
+        "description": {
+          "en": "Pending | Posted | Retry | Unavailable | Failed."
         },
         "dataType": "string",
         "isRequired": false,

@@ -7,15 +7,21 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// </summary>
 public class OidcApplication
 {
+    /// <summary>Unique identifier of the client application, assigned automatically on creation.</summary>
     public string? Id { get; set; }
 
     // --- Identity ---
+    /// <summary>Public client identifier the application sends in every OIDC request; must be unique.</summary>
     public string ClientId { get; set; } = string.Empty;
+    /// <summary>Human-readable name of the application, shown to users on the consent screen.</summary>
     public string DisplayName { get; set; } = string.Empty;
+    /// <summary>Either <c>confidential</c> for a server that can keep a secret, or <c>public</c> for a browser or mobile app that cannot.</summary>
     public string ClientType { get; set; } = "confidential"; // "public" or "confidential"
+    /// <summary>Whether the application may currently sign users in; disable to block it without deleting it.</summary>
     public bool Enabled { get; set; } = true;
 
     // --- Secrets (supports rotation: multiple secrets with expiration) ---
+    /// <summary>Secrets a confidential client authenticates with; several can coexist so a secret can be rotated.</summary>
     public List<ClientSecret> Secrets { get; set; } = [];
 
     // --- Grant types ---
@@ -47,35 +53,52 @@ public class OidcApplication
     public bool MayIntrospectAnyAudience { get; set; }
 
     // --- URIs ---
+    /// <summary>Exact URIs the identity provider may redirect back to after sign-in; any other URI is rejected.</summary>
     public List<string> RedirectUris { get; set; } = [];
+    /// <summary>Exact URIs the identity provider may redirect back to after the user signs out.</summary>
     public List<string> PostLogoutRedirectUris { get; set; } = [];
+    /// <summary>Browser origins allowed to call the OIDC endpoints cross-site, e.g. <c>https://app.example.com</c>.</summary>
     public List<string> AllowedCorsOrigins { get; set; } = [];
 
     // --- Scopes & Claims ---
+    /// <summary>Names of the scopes this application may request; a request for any other scope is refused.</summary>
     public List<string> AllowedScopes { get; set; } = [];
+    /// <summary>Fixed claims added to every token issued to this application.</summary>
     public List<ClientClaim> Claims { get; set; } = [];
 
     // --- Consent ---
+    /// <summary>Either <c>explicit</c> to ask the user for consent on the consent screen, or <c>implicit</c> to grant it automatically.</summary>
     public string ConsentType { get; set; } = "explicit"; // "explicit" or "implicit"
+    /// <summary>Whether the user may tick a box so the consent screen is skipped on later sign-ins.</summary>
     public bool AllowRememberConsent { get; set; } = true;
+    /// <summary>How long, in seconds, a remembered consent stays valid; leave empty to keep it until withdrawn.</summary>
     public int? ConsentLifetimeSeconds { get; set; }
 
     // --- Token lifetimes ---
+    /// <summary>Whether the authorization code flow must use PKCE; keep enabled unless a legacy client cannot support it.</summary>
     public bool RequirePkce { get; set; } = true;
+    /// <summary>Validity of an issued access token in minutes.</summary>
     public int AccessTokenLifetimeMinutes { get; set; } = 60;
+    /// <summary>Validity of an issued refresh token in days.</summary>
     public int RefreshTokenLifetimeDays { get; set; } = 14;
 }
 
 public class ClientSecret
 {
+    /// <summary>The client secret; a plain value entered here is hashed on save and cannot be read back afterwards.</summary>
     public string Hash { get; set; } = string.Empty;
+    /// <summary>Optional note telling secrets apart, e.g. <c>Production 2026</c>.</summary>
     public string? Description { get; set; }
+    /// <summary>Moment the secret was created, in UTC.</summary>
     public DateTime CreatedAt { get; set; }
+    /// <summary>Moment after which the secret is no longer accepted, in UTC; leave empty for a secret that never expires.</summary>
     public DateTime? ExpiresAt { get; set; }
 }
 
 public class ClientClaim
 {
+    /// <summary>Claim type added to issued tokens, e.g. <c>tenant</c>.</summary>
     public string Type { get; set; } = string.Empty;
+    /// <summary>Value issued for the claim type.</summary>
     public string Value { get; set; } = string.Empty;
 }

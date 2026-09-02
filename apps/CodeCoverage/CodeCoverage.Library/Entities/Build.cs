@@ -10,16 +10,20 @@ namespace CodeCoverage.Entities;
 [GenerateIndex]
 public class Build
 {
+    /// <summary>Document id of this build, <c>Commits/{repoGitHubId}/{sha}/builds/{runId}-{runAttempt}</c>.</summary>
     public string? Id { get; set; }
 
+    /// <summary>The commit this CI run measured coverage for.</summary>
     [Reference(typeof(Commit))]
     public string? Commit { get; set; }
 
     /// <summary>"Open" while uploads may still arrive; "Finalized" once closed.</summary>
     public string Status { get; set; } = "Open";
 
+    /// <summary>The GitHub Actions workflow run id all uploads of this build came from.</summary>
     public long CiRunId { get; set; }
 
+    /// <summary>The attempt number of that workflow run; a re-run of the same run creates a separate build.</summary>
     public int CiRunAttempt { get; set; }
 
     /// <summary>
@@ -39,8 +43,10 @@ public class Build
     /// <summary>The one definition of the "Run" format; also used by the backfill migration.</summary>
     public static string ComposeRun(long ciRunId, int ciRunAttempt) => $"{ciRunId}.{ciRunAttempt}";
 
+    /// <summary>Name of the GitHub Actions workflow that produced this build (e.g. <c>CI</c>).</summary>
     public string? WorkflowName { get; set; }
 
+    /// <summary>The GitHub event that triggered the run, e.g. <c>push</c> or <c>pull_request</c>.</summary>
     public string? EventName { get; set; }
 
     /// <summary>
@@ -69,17 +75,22 @@ public class Build
     /// </summary>
     public bool CarryForward { get; set; } = true;
 
+    /// <summary>When the first upload of this run created the build (UTC).</summary>
     public DateTime CreatedAtUtc { get; set; }
 
+    /// <summary>When the most recent upload arrived (UTC); the debounce finalize counts from here.</summary>
     public DateTime? LastUploadAtUtc { get; set; }
 
+    /// <summary>When the build was closed and its coverage computed (UTC); null while still open.</summary>
     public DateTime? FinalizedAtUtc { get; set; }
 
     /// <summary>"Explicit" | "Debounce" | "Timeout"</summary>
     public string? FinalizeReason { get; set; }
 
+    /// <summary>The individual uploads (one per action invocation) merged into this build.</summary>
     public List<BuildSession> Sessions { get; set; } = [];
 
+    /// <summary>Whole-build line and branch totals, merged across all sessions at finalize; null while the build is open.</summary>
     public CoverageSummary? Coverage { get; set; }
 
     /// <summary>Added-lines coverage vs the diff base; null when no diff was obtainable.</summary>

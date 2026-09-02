@@ -22,6 +22,9 @@
           "fr": "Marque",
           "nl": "Merk"
         },
+        "description": {
+          "en": "Manufacturer of the car, picked from the list of known brands."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -40,6 +43,9 @@
           "en": "Color",
           "fr": "Couleur",
           "nl": "Kleur"
+        },
+        "description": {
+          "en": "Exterior paint colour of the car."
         },
         "dataType": "string",
         "isRequired": false,
@@ -63,6 +69,9 @@
           "en": "License Plate",
           "fr": "Plaque d'immatriculation",
           "nl": "Nummerplaat"
+        },
+        "description": {
+          "en": "Registration number shown on the car's licence plate."
         },
         "dataType": "string",
         "isRequired": true,
@@ -104,6 +113,9 @@
           "fr": "Modèle",
           "nl": "Model"
         },
+        "description": {
+          "en": "Model name of the car, for example Golf or Model 3."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -134,6 +146,9 @@
           "en": "Owner",
           "fr": "Propriétaire",
           "nl": "Eigenaar"
+        },
+        "description": {
+          "en": "Company that owns this car, picked from the companies list."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -173,6 +188,9 @@
           "fr": "Statut",
           "nl": "Status"
         },
+        "description": {
+          "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -190,6 +208,9 @@
           "en": "Year",
           "fr": "Année",
           "nl": "Jaar"
+        },
+        "description": {
+          "en": "Model year in which the car was built."
         },
         "dataType": "number",
         "isRequired": true,

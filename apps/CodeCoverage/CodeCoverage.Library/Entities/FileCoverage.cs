@@ -10,8 +10,10 @@ namespace CodeCoverage.Entities;
 /// </summary>
 public class FileCoverage
 {
+    /// <summary>Document id of this file's coverage, <c>{buildId}/files/{pathHash}</c>.</summary>
     public string? Id { get; set; }
 
+    /// <summary>Document id of the build this file's coverage was merged for.</summary>
     public string BuildId { get; set; } = string.Empty;
 
     /// <summary>Normalized repo-relative path with forward slashes.</summary>
@@ -44,8 +46,10 @@ public class FileCoverage
     /// </summary>
     public FileOrigin? Origin { get; set; }
 
+    /// <summary>Per-line coverage status for every coverable line; non-coverable lines are absent.</summary>
     public List<LineCoverage> Lines { get; set; } = [];
 
+    /// <summary>Per-branch-edge hit detail, present only for formats that report branches.</summary>
     public List<BranchCoverage> Branches { get; set; } = [];
 
     public static string DocumentId(string buildId, string normalizedPath)
@@ -72,16 +76,19 @@ public class FileCoverage
 
 public class LineCoverage
 {
+    /// <summary>One-based line number within the source file.</summary>
     public int Number { get; set; }
 
     /// <summary>Execution count; null when the source format has none (e.g. JaCoCo).</summary>
     public int? Hits { get; set; }
 
+    /// <summary>Whether the line was not covered, partially covered (some branches missed) or fully covered.</summary>
     public LineStatus Status { get; set; }
 }
 
 public class BranchCoverage
 {
+    /// <summary>One-based line number the branching expression sits on.</summary>
     public int Line { get; set; }
 
     /// <summary>Branching location within the line (format-specific block id).</summary>

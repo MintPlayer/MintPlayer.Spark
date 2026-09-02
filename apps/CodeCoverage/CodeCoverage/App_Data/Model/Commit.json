@@ -13,6 +13,9 @@
         "label": {
           "en": "Assembly Completeness"
         },
+        "description": {
+          "en": "Complete / Partial copied from the assembly so lists and indexes can filter without loading it. Null for commits whose coverage predates assemblies (full uploads, treated as complete)."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "AuthoredAt",
         "label": {
           "en": "Authored At"
+        },
+        "description": {
+          "en": "When the commit was authored, from the webhook payload; null for commits only seen through an upload."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Branch"
         },
+        "description": {
+          "en": "The branch the commit was pushed to or the PR head branch, when known."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "Coverage",
         "label": {
           "en": "Coverage"
+        },
+        "description": {
+          "en": "The commit's headline: the assembled coverage (every finalized build of the commit unioned, plus files carried unchanged from the base), stamped by the assembler and denormalized for lists and badges."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -75,6 +87,9 @@
         "label": {
           "en": "Δ base branch"
         },
+        "description": {
+          "en": "Percentage-point change versus the default branch's newest complete coverage at or before this commit's date — \"what would merging this do to the headline\". Equals CoverageDeltaVsParent on the default branch itself. Null when there is no such reference."
+        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -90,6 +105,9 @@
         "name": "CoverageDeltaVsParent",
         "label": {
           "en": "Δ parent"
+        },
+        "description": {
+          "en": "Percentage-point change versus the git first parent (ParentSha), stamped by the assembler. Null when the parent has no coverage — rendered as \"—\", never as a fake zero."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -123,6 +141,9 @@
         "label": {
           "en": "First Seen At Utc"
         },
+        "description": {
+          "en": "When this document was first created, by whichever path saw the commit first (webhook or upload). AuthoredAt only arrives via push/PR webhooks, so upload-only commits (the norm for OIDC auto-provisioned repos) would otherwise have nothing to sort by — lists order by AuthoredAt coalesced with this."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -137,6 +158,9 @@
         "name": "LatestBuildId",
         "label": {
           "en": "Latest Build Id"
+        },
+        "description": {
+          "en": "The build whose coverage is shown for this commit (file tree reads its FileCoverage docs)."
         },
         "dataType": "string",
         "isRequired": false,
@@ -154,6 +178,9 @@
         "label": {
           "en": "Message"
         },
+        "description": {
+          "en": "The commit message, as delivered by the push or pull-request webhook."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -168,6 +195,9 @@
         "name": "ParentLookupAttemptedAtUtc",
         "label": {
           "en": "Parent Lookup Attempted At Utc"
+        },
+        "description": {
+          "en": "When the server last asked GitHub for the parent (whether or not it answered). The backfill job walks commits where this is null, so a repository without any API path is asked once, not forever."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -184,6 +214,9 @@
         "label": {
           "en": "Parent Sha"
         },
+        "description": {
+          "en": "Sha of the git first parent, used as the reference for the delta-vs-parent; see the source field for how much to trust it."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -198,6 +231,9 @@
         "name": "ParentShaSource",
         "label": {
           "en": "Parent Sha Source"
+        },
+        "description": {
+          "en": "Who set ParentSha: upload (the action's claim) or api (verified against GitHub's commits API). Only api is trusted for the Δ-vs-parent; older action builds sent the PR base sha under the same name."
         },
         "dataType": "string",
         "isRequired": false,
@@ -214,6 +250,9 @@
         "label": {
           "en": "Pull Request Number"
         },
+        "description": {
+          "en": "Number of the pull request this commit was seen on; null for plain pushes."
+        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -228,6 +267,9 @@
         "name": "Repository",
         "label": {
           "en": "Repository"
+        },
+        "description": {
+          "en": "The repository this commit belongs to."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -245,6 +287,9 @@
         "name": "Sha",
         "label": {
           "en": "Commit"
+        },
+        "description": {
+          "en": "The full 40-character git commit sha."
         },
         "dataType": "string",
         "isRequired": false,

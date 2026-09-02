@@ -23,6 +23,9 @@
           "fr": "Adresse",
           "nl": "Adres"
         },
+        "description": {
+          "en": "Home or postal address of the person, with street, city and state."
+        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -67,6 +70,9 @@
           "fr": "Date de naissance",
           "nl": "Geboortedatum"
         },
+        "description": {
+          "en": "Date on which the person was born; leave empty if unknown."
+        },
         "dataType": "date",
         "isRequired": false,
         "isVisible": true,
@@ -84,6 +90,9 @@
           "en": "Email Address",
           "fr": "Adresse e-mail",
           "nl": "E-mailadres"
+        },
+        "description": {
+          "en": "Email address used to contact the person."
         },
         "dataType": "string",
         "isRequired": true,
@@ -184,6 +193,9 @@
           "en": "Last Name",
           "fr": "Nom de famille",
           "nl": "Achternaam"
+        },
+        "description": {
+          "en": "Family name or surname of the person."
         },
         "dataType": "string",
         "isRequired": true,

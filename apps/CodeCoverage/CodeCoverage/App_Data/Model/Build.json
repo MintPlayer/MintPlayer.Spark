@@ -15,6 +15,9 @@
         "label": {
           "en": "Carry Forward"
         },
+        "description": {
+          "en": "Declared by the uploader: the test step that produced this run's reports succeeded, so files it did not measure may be filled in from the base. False when any job of the run said its tests failed — a crashed suite emits no report, and the server cannot tell \"affected but crashed\" from \"unaffected\", so the assembler carries nothing for the commit instead of papering over the crash with the base's numbers."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -29,6 +32,9 @@
         "name": "CiRunAttempt",
         "label": {
           "en": "Ci Run Attempt"
+        },
+        "description": {
+          "en": "The attempt number of that workflow run; a re-run of the same run creates a separate build."
         },
         "dataType": "number",
         "isRequired": true,
@@ -45,6 +51,9 @@
         "label": {
           "en": "Ci Run Id"
         },
+        "description": {
+          "en": "The GitHub Actions workflow run id all uploads of this build came from."
+        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -59,6 +68,9 @@
         "name": "Commit",
         "label": {
           "en": "Commit"
+        },
+        "description": {
+          "en": "The commit this CI run measured coverage for."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -77,6 +89,9 @@
         "label": {
           "en": "Coverage"
         },
+        "description": {
+          "en": "Whole-build line and branch totals, merged across all sessions at finalize; null while the build is open."
+        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -94,6 +109,9 @@
         "label": {
           "en": "Created"
         },
+        "description": {
+          "en": "When the first upload of this run created the build (UTC)."
+        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,
@@ -110,6 +128,9 @@
         "label": {
           "en": "Declared Base Sha"
         },
+        "description": {
+          "en": "The base sha the uploader's affected-computation actually ran against (what was passed to nx affected --base). Declared, not inferred — deliberately a dedicated field rather than ParentSha, which has two writers and a history of meaning drift and stays a hint."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -125,6 +146,9 @@
         "label": {
           "en": "Event Name"
         },
+        "description": {
+          "en": "The GitHub event that triggered the run, e.g. push or pull_request."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -139,6 +163,9 @@
         "name": "Feedback",
         "label": {
           "en": "Feedback"
+        },
+        "description": {
+          "en": "Check-run outbox; null until the first publish attempt is enqueued."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -156,6 +183,9 @@
         "label": {
           "en": "Feedback Next Attempt At Utc"
         },
+        "description": {
+          "en": "Queryable mirror of NextAttemptAtUtc."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -171,6 +201,9 @@
         "label": {
           "en": "Feedback State"
         },
+        "description": {
+          "en": "Queryable mirror of State — the sweep cron's filter."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -185,6 +218,9 @@
         "name": "FinalizedAtUtc",
         "label": {
           "en": "Finalized At Utc"
+        },
+        "description": {
+          "en": "When the build was closed and its coverage computed (UTC); null while still open."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -202,6 +238,9 @@
         "label": {
           "en": "Finalize Reason"
         },
+        "description": {
+          "en": "\"Explicit\" | \"Debounce\" | \"Timeout\""
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -217,6 +256,9 @@
         "label": {
           "en": "Flag Coverage"
         },
+        "description": {
+          "en": "Per-flag totals, keyed by sanitized flag name, computed at finalize from the per-flag merged file documents. Null for builds parsed before flags gained storage — attribution cannot be recovered from the merged build-level documents."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -231,6 +273,9 @@
         "name": "GateSnapshot",
         "label": {
           "en": "Gate Snapshot"
+        },
+        "description": {
+          "en": "The effective gate this build was judged by (settings document merged with the base ref's coverage.yml). Snapshotted because a base-dependent verdict is unexplainable later without its inputs."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -248,6 +293,9 @@
         "label": {
           "en": "Last Upload At Utc"
         },
+        "description": {
+          "en": "When the most recent upload arrived (UTC); the debounce finalize counts from here."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -264,6 +312,9 @@
         "label": {
           "en": "Partial"
         },
+        "description": {
+          "en": "Declared by the uploader: this run measured only a subset of the workspace (e.g. nx affected on a pull request). Comparisons must scope or project rather than read the totals as whole-workspace, and a partial build never becomes a repository's headline number."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -278,6 +329,9 @@
         "name": "Patch",
         "label": {
           "en": "Patch"
+        },
+        "description": {
+          "en": "Added-lines coverage vs the diff base; null when no diff was obtainable."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -295,6 +349,9 @@
         "label": {
           "en": "Run"
         },
+        "description": {
+          "en": "\"runId.attempt\" display value for the generic grids (master-parity \"Run\" column). Deterministic from CiRunId and CiRunAttempt, both of which are fixed at creation. Stored rather than computed, which it was until the Builds index became generated: a generated index maps build.Run straight through, and that runs server-side against the JSON document — where a get-only CLR property does not exist. It would have indexed as null on every build, and the grid projects through the index, so the column would have quietly gone blank. Assign it through ComposeRun so the format lives in one place."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -309,6 +366,9 @@
         "name": "Sessions",
         "label": {
           "en": "Sessions"
+        },
+        "description": {
+          "en": "The individual uploads (one per action invocation) merged into this build."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -327,6 +387,9 @@
         "label": {
           "en": "Status"
         },
+        "description": {
+          "en": "\"Open\" while uploads may still arrive; \"Finalized\" once closed."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -341,6 +404,9 @@
         "name": "WorkflowName",
         "label": {
           "en": "Workflow Name"
+        },
+        "description": {
+          "en": "Name of the GitHub Actions workflow that produced this build (e.g. CI)."
         },
         "dataType": "string",
         "isRequired": false,

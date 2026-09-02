@@ -9,10 +9,13 @@ namespace CodeCoverage.Entities;
 /// </summary>
 public class BuildTreeSummary
 {
+    /// <summary>Document id of this summary, <c>{buildId}/tree</c>.</summary>
     public string? Id { get; set; }
 
+    /// <summary>Document id of the build whose per-file totals this summary materializes.</summary>
     public string BuildId { get; set; } = string.Empty;
 
+    /// <summary>One entry per measured file with its covered and coverable line counts, from which the file tree is rendered.</summary>
     public List<TreeFileSummary> Files { get; set; } = [];
 
     public static string DocumentId(string buildId) => $"{buildId}/tree";
@@ -30,8 +33,10 @@ public class TreeFileSummary
     /// <summary>False when the path couldn't be matched to the repo file list.</summary>
     public bool Matched { get; set; } = true;
 
+    /// <summary>Number of coverable lines in this file that were executed at least once.</summary>
     public int LinesCovered { get; set; }
 
+    /// <summary>Number of lines in this file that tests could have executed.</summary>
     public int LinesCoverable { get; set; }
 
     /// <summary>On assembled trees: <see cref="FileOrigin.Measured"/> or <see cref="FileOrigin.Carried"/>. Null on per-build trees.</summary>

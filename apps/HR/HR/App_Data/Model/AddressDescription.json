@@ -20,6 +20,9 @@
           "fr": "Notes",
           "nl": "Notities"
         },
+        "description": {
+          "en": "Free-text remarks about the address, such as access or delivery instructions."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -36,6 +39,9 @@
           "en": "Title",
           "fr": "Titre",
           "nl": "Titel"
+        },
+        "description": {
+          "en": "Short label for the address, e.g. Home or Head office."
         },
         "dataType": "string",
         "isRequired": false,

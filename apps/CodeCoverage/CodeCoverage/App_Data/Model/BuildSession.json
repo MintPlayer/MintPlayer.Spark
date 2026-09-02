@@ -13,6 +13,9 @@
         "label": {
           "en": "Error"
         },
+        "description": {
+          "en": "Why parsing this session's reports failed; null unless the parse status is Failed."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "FilesCount",
         "label": {
           "en": "Files Count"
+        },
+        "description": {
+          "en": "Number of source files this session's reports contained coverage for."
         },
         "dataType": "number",
         "isRequired": true,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Flags"
         },
+        "description": {
+          "en": "Flags the uploader tagged this session with (e.g. a project or test suite name); each flag gets its own per-flag coverage totals."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "JobName",
         "label": {
           "en": "Job Name"
+        },
+        "description": {
+          "en": "Name of the CI job that produced this upload, as reported by the action."
         },
         "dataType": "string",
         "isRequired": false,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Parse Status"
         },
+        "description": {
+          "en": "\"Pending\" | \"Parsed\" | \"Failed\""
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -87,6 +102,9 @@
         "name": "RawFileNames",
         "label": {
           "en": "Raw File Names"
+        },
+        "description": {
+          "en": "Attachment names on the Build document holding this session's raw report files."
         },
         "dataType": "string",
         "isRequired": false,
@@ -103,6 +121,9 @@
         "label": {
           "en": "Root Dir"
         },
+        "description": {
+          "en": "The CI workspace root (GITHUB_WORKSPACE), for stripping absolute report paths."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -118,6 +139,9 @@
         "label": {
           "en": "Session Id"
         },
+        "description": {
+          "en": "Unique id of this upload within the build, assigned when the action's report files are received."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -132,6 +156,9 @@
         "name": "UploadedAtUtc",
         "label": {
           "en": "Uploaded At Utc"
+        },
+        "description": {
+          "en": "When this session's report files were received (UTC)."
         },
         "dataType": "datetime",
         "isRequired": true,

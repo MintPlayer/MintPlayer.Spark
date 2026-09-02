@@ -15,6 +15,9 @@
           "fr": "Fin du contrat",
           "nl": "Contracteinde"
         },
+        "description": {
+          "en": "Date on which the contract ended; leave empty while the job is ongoing."
+        },
         "dataType": "date",
         "isRequired": false,
         "isVisible": true,
@@ -32,6 +35,9 @@
           "fr": "Début du contrat",
           "nl": "Contractstart"
         },
+        "description": {
+          "en": "Date on which the contract for this job started."
+        },
         "dataType": "date",
         "isRequired": true,
         "isVisible": true,
@@ -48,6 +54,9 @@
           "en": "Profession",
           "fr": "Profession",
           "nl": "Beroep"
+        },
+        "description": {
+          "en": "The profession held during this career step."
         },
         "dataType": "Reference",
         "isRequired": false,

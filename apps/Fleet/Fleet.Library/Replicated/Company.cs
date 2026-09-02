@@ -21,8 +21,12 @@ namespace Fleet.Replicated;
     """)]
 public class Company
 {
+    /// <summary>Identifier of the company, replicated from HR; it matches the HR document id.</summary>
     public string? Id { get; set; }
+    /// <summary>Legal or trading name of the company, replicated read-only from HR.</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary>Public website address of the company, replicated read-only from HR.</summary>
     public string? Website { get; set; }
+    /// <summary>Number of employees the company has, as maintained in HR.</summary>
     public int EmployeeCount { get; set; }
 }

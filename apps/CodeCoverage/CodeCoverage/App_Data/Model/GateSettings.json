@@ -13,6 +13,9 @@
         "label": {
           "en": "Blocking"
         },
+        "description": {
+          "en": "False (the default) posts informational check-runs that never fail — Codecov's `informational` on-ramp. Nothing blocks until a human opts in."
+        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -27,6 +30,9 @@
         "name": "PatchTarget",
         "label": {
           "en": "Patch Target"
+        },
+        "description": {
+          "en": "Percent target for patch coverage; null disables the patch gate."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -43,6 +49,9 @@
         "label": {
           "en": "Patch Threshold"
         },
+        "description": {
+          "en": "Allowed shortfall in percentage points below PatchTarget."
+        },
         "dataType": "decimal",
         "isRequired": true,
         "isVisible": true,
@@ -57,6 +66,9 @@
         "name": "ProjectBasis",
         "label": {
           "en": "Project Basis"
+        },
+        "description": {
+          "en": "Which number a partial build's project status judges: \"scoped\" (like-for-like, #11) or \"projection\" (patched whole-workspace)."
         },
         "dataType": "string",
         "isRequired": false,
@@ -73,6 +85,9 @@
         "label": {
           "en": "Project Mode"
         },
+        "description": {
+          "en": "\"auto\" ratchets against the resolved base; \"fixed\" compares to ProjectTarget and needs no base at all."
+        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -88,6 +103,9 @@
         "label": {
           "en": "Project Target"
         },
+        "description": {
+          "en": "Percent target for fixed mode (e.g. 80 = 80%)."
+        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -102,6 +120,9 @@
         "name": "ProjectThreshold",
         "label": {
           "en": "Project Threshold"
+        },
+        "description": {
+          "en": "Allowed drop in percentage points before the project status fails."
         },
         "dataType": "decimal",
         "isRequired": true,
