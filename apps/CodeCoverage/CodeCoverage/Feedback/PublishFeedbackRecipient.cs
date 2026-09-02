@@ -62,7 +62,8 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         var gate = CoverageYml.Merge(repository.Gate ?? new GateSettings(), yml, out var ymlError);
         build.GateSnapshot = gate;
 
-        var project = GateEvaluator.Project(gate, build, comparison);
+        var assembly = build.Commit is null ? null : await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(build.Commit), cancellationToken);
+        var project = GateEvaluator.Project(gate, build, comparison, assembly);
         var patch = GateEvaluator.Patch(gate, build);
 
         try

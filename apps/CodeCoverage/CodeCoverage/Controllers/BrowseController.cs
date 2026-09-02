@@ -44,7 +44,8 @@ public partial class BrowseController : ControllerBase
     public sealed record BuildInfo(long RunId, int RunAttempt, string Status, string? FinalizeReason,
         string? WorkflowName, DateTime CreatedAtUtc, CoverageSummary? Coverage, IEnumerable<SessionInfo> Sessions);
     public sealed record SessionInfo(string SessionId, string? JobName, string[] Flags, string ParseStatus, string? Error, int FilesCount);
-    public sealed record TreeEntry(string Name, string Path, bool IsFile, int LinesCovered, int LinesCoverable);
+    public sealed record TreeEntry(string Name, string Path, bool IsFile, int LinesCovered, int LinesCoverable,
+        string? Origin = null, string? CarriedFromSha = null);
     public sealed record TreeResponse(string BuildId, IEnumerable<TreeEntry> Entries, IEnumerable<string> UnmatchedFiles,
         int UnmatchedTotal = 0);
 
@@ -80,7 +81,7 @@ public partial class BrowseController : ControllerBase
 
     [HttpGet("repos/{owner}/{name}/commits")]
     public async Task<ActionResult<IEnumerable<CommitInfo>>> GetCommits(
-        string owner, string name, [FromQuery] string? branch, [FromQuery] bool withCoverageOnly = true,
+        string owner, string name, [FromQuery] string? branch, [FromQuery] bool withCoverageOnly = false,
         [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken cancellationToken = default)
     {
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
@@ -248,6 +249,8 @@ public partial class BrowseController : ControllerBase
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
         if (commit is null) return NotFound();
 
+        var assembly = await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(commit.Id!), cancellationToken);
+
         var builds = new List<Build>();
         var buildsPrefix = $"{Commit.DocumentId(repository.GitHubId, sha)}/builds/";
         await using (var stream = await session.Advanced.StreamAsync<Build>(
@@ -277,6 +280,23 @@ public partial class BrowseController : ControllerBase
             commit.AuthoredAt,
             commit.Coverage,
             commit.LatestBuildId,
+            commit.CoverageDeltaVsParent,
+            commit.CoverageDeltaVsDefaultBranch,
+            // The commit-level record the headline comes from; null for commits
+            // that predate assemblies (their Coverage is the last build's).
+            Assembly = assembly is null ? null : new
+            {
+                assembly.Completeness,
+                assembly.IncompleteReasons,
+                assembly.MeasuredFiles,
+                assembly.CarriedFiles,
+                assembly.UnmeasuredFiles,
+                assembly.BaseSha,
+                assembly.BaseResolution,
+                assembly.OldestOriginSha,
+                assembly.AssembledAtUtc,
+                Builds = assembly.Builds.Select(b => b.BuildId),
+            },
             // Per-flag totals of the build the page shows; null before flags
             // had storage. Keys are sanitized flag names — the same values
             // GetTree's ?flag= accepts.
@@ -299,9 +319,11 @@ public partial class BrowseController : ControllerBase
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
+        var source = await CoverageSourceAsync(commit, cancellationToken);
 
         // A flag narrows the tree to that flag's own merged documents; an
         // unknown flag is an empty tree, not an error — flags are user labels.
+        // Flags are attributed per upload, so per-flag trees stay build-level.
         List<TreeFileSummary> files;
         if (!string.IsNullOrEmpty(flag))
         {
@@ -311,7 +333,7 @@ public partial class BrowseController : ControllerBase
         }
         else
         {
-            files = await LoadTreeSummaries(commit.LatestBuildId, cancellationToken);
+            files = await LoadTreeSummaries(source, cancellationToken);
         }
 
         var prefix = string.IsNullOrEmpty(path) ? "" : path.TrimEnd('/') + "/";
@@ -324,7 +346,7 @@ public partial class BrowseController : ControllerBase
             var slash = rest.IndexOf('/');
             if (slash < 0)
             {
-                entries.Add(new TreeEntry(rest, file.Path, true, file.LinesCovered, file.LinesCoverable));
+                entries.Add(new TreeEntry(rest, file.Path, true, file.LinesCovered, file.LinesCoverable, file.Origin, file.CarriedFromSha));
             }
             else
             {
@@ -344,7 +366,7 @@ public partial class BrowseController : ControllerBase
             : [];
         var unmatchedTotal = string.IsNullOrEmpty(path) ? files.Count(f => !f.Matched) : 0;
 
-        return Ok(new TreeResponse(commit.LatestBuildId, result, unmatched, unmatchedTotal));
+        return Ok(new TreeResponse(source, result, unmatched, unmatchedTotal));
     }
 
     /// <summary>
@@ -362,7 +384,7 @@ public partial class BrowseController : ControllerBase
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
 
-        var files = await LoadTreeSummaries(commit.LatestBuildId, cancellationToken);
+        var files = await LoadTreeSummaries(await CoverageSourceAsync(commit, cancellationToken), cancellationToken);
 
         var root = new HierarchyNodeDto { Id = "/", Name = repository.Name, Children = [] };
         foreach (var file in files.Where(f => f.Matched).OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
@@ -422,7 +444,7 @@ public partial class BrowseController : ControllerBase
         if (commit?.LatestBuildId is null) return NotFound();
 
         var fileCoverage = await session.LoadAsync<FileCoverage>(
-            FileCoverage.DocumentId(commit.LatestBuildId, path), cancellationToken);
+            FileCoverage.DocumentId(await CoverageSourceAsync(commit, cancellationToken), path), cancellationToken);
         if (fileCoverage is null) return NotFound();
 
         long? installationId = null;
@@ -440,7 +462,21 @@ public partial class BrowseController : ControllerBase
             Source = source,
             Lines = fileCoverage.Lines,
             Branches = fileCoverage.Branches,
+            // Null on commits that predate assemblies; Measured/Carried otherwise.
+            fileCoverage.Origin,
         });
+    }
+
+    /// <summary>
+    /// Where a commit's tree and files are read from: the assembly when one
+    /// exists (its ids follow the same {source}/tree and {source}/files/{hash}
+    /// scheme as a build's), else the latest finalized build for commits that
+    /// predate assemblies.
+    /// </summary>
+    private async Task<string> CoverageSourceAsync(Commit commit, CancellationToken cancellationToken)
+    {
+        var assemblyId = CommitAssembly.DocumentId(commit.Id!);
+        return await session.Advanced.ExistsAsync(assemblyId, cancellationToken) ? assemblyId : commit.LatestBuildId!;
     }
 
     /// <summary>

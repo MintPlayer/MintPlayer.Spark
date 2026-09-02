@@ -284,6 +284,7 @@ public partial class UploadsController : ControllerBase
         }
 
         var commit = build.Commit is null ? null : await session.LoadAsync<Commit>(build.Commit, cancellationToken);
+        var assembly = build.Commit is null ? null : await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(build.Commit), cancellationToken);
         var baseUrl = configuration["Coverage:BaseUrl"]?.TrimEnd('/');
 
         // A partial build's numbers are honest only against a like-for-like
@@ -309,7 +310,19 @@ public partial class UploadsController : ControllerBase
             projection,
             build.Patch,
             build.FlagCoverage,
-            build.FeedbackState));
+            build.FeedbackState,
+            assembly is null ? null : new UploadStatusAssembly(
+                assembly.Coverage,
+                assembly.Completeness,
+                [.. assembly.IncompleteReasons],
+                assembly.MeasuredFiles,
+                assembly.CarriedFiles,
+                assembly.UnmeasuredFiles,
+                assembly.BaseSha,
+                assembly.BaseResolution,
+                assembly.OldestOriginSha,
+                [.. assembly.Builds.Select(b => b.BuildId)],
+                assembly.AssembledAtUtc)));
     }
 
     /// <summary>
@@ -393,7 +406,22 @@ public partial class UploadsController : ControllerBase
         UploadStatusProjection? Projection = null,
         PatchCoverage? Patch = null,
         IReadOnlyDictionary<string, CoverageSummary>? Flags = null,
-        string? FeedbackState = null);
+        string? FeedbackState = null,
+        UploadStatusAssembly? Assembly = null);
+
+    /// <summary>
+    /// The commit-level record: the union of every finalized build of the
+    /// commit plus files carried from the base where the git blob is unchanged.
+    /// <c>Coverage</c> here is the commit's headline; the response's top-level
+    /// <c>coverage</c> stays what this build alone measured. Null until the
+    /// first build of the commit finalized (assembly follows finalize on the
+    /// same queue) and for commits that predate assemblies.
+    /// </summary>
+    public sealed record UploadStatusAssembly(
+        CoverageSummary Coverage, string Completeness, string[] IncompleteReasons,
+        int MeasuredFiles, int CarriedFiles, int UnmeasuredFiles,
+        string? BaseSha, string? BaseResolution, string? OldestOriginSha,
+        string[] Builds, DateTime AssembledAtUtc);
 
     public sealed record UploadStatusBaseline(string Sha, string? Branch, CoverageSummary? Coverage);
 
