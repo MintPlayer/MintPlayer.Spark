@@ -81,6 +81,50 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         buildSession.Error.Should().Contain("injected session fault");
     }
 
+    [Fact]
+    public async Task A_v2_file_list_stamps_blob_oids_on_matched_files()
+    {
+        using var store = GetDocumentStore();
+        await SeedBuildWithLcovReport(store, fileCount: 3, withOids: true);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            var recipient = CreateRecipient(store, session);
+            await recipient.HandleAsync(new ParseSessionMessage { BuildId = BuildId, SessionId = SessionId });
+        }
+
+        using var assertSession = store.OpenAsyncSession();
+        var fileCoverages = await assertSession.Advanced
+            .LoadStartingWithAsync<FileCoverage>($"{BuildId}/files/", pageSize: 1024);
+
+        fileCoverages.Should().HaveCount(3);
+        fileCoverages.Should().OnlyContain(f => f.Matched && f.BlobOid == OidFor(f.Path));
+    }
+
+    [Fact]
+    public async Task A_v1_file_list_leaves_blob_oids_null()
+    {
+        using var store = GetDocumentStore();
+        await SeedBuildWithLcovReport(store, fileCount: 3, withOids: false);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            var recipient = CreateRecipient(store, session);
+            await recipient.HandleAsync(new ParseSessionMessage { BuildId = BuildId, SessionId = SessionId });
+        }
+
+        using var assertSession = store.OpenAsyncSession();
+        var fileCoverages = await assertSession.Advanced
+            .LoadStartingWithAsync<FileCoverage>($"{BuildId}/files/", pageSize: 1024);
+
+        fileCoverages.Should().HaveCount(3);
+        fileCoverages.Should().OnlyContain(f => f.Matched && f.BlobOid == null);
+    }
+
+    /// <summary>Deterministic fake OID per path: 40 hex chars derived from the path's hash.</summary>
+    private static string OidFor(string path)
+        => Convert.ToHexStringLower(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(path)));
+
     private static ParseSessionRecipient CreateRecipient(IDocumentStore store, Raven.Client.Documents.Session.IAsyncDocumentSession session)
     {
         // ActivatorUtilities resolves the generated constructor's parameters
@@ -94,7 +138,7 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services);
     }
 
-    private static async Task SeedBuildWithLcovReport(IDocumentStore store, int fileCount)
+    private static async Task SeedBuildWithLcovReport(IDocumentStore store, int fileCount, bool withOids = false)
     {
         var reportName = UploadAttachments.ReportName(SessionId, 0, "lcov.info");
         var paths = Enumerable.Range(0, fileCount).Select(i => $"libs/demo/src/file{i}.ts").ToArray();
@@ -119,7 +163,7 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         await seed.StoreAsync(build, BuildId);
 
         seed.Advanced.Attachments.Store(build, UploadAttachments.FileListName(SessionId),
-            new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', paths))));
+            new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', paths.Select(p => withOids ? $"{OidFor(p)} {p}" : p)))));
         seed.Advanced.Attachments.Store(build, reportName,
             new MemoryStream(Encoding.UTF8.GetBytes(GenerateLcov(paths))));
         await seed.SaveChangesAsync();

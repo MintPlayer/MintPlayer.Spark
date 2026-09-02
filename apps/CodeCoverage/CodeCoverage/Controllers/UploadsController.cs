@@ -150,6 +150,8 @@ public partial class UploadsController : ControllerBase
         // the same inputs; ??= just makes a disagreeing straggler harmless).
         build.Partial |= form.Partial;
         build.DeclaredBaseSha ??= form.BaseSha;
+        // One job whose tests failed disables carry-forward for the whole build.
+        build.CarryForward &= form.CarryForward ?? true;
 
         var sessionId = Guid.NewGuid().ToString("N")[..12];
         var buildSession = new BuildSession
@@ -433,6 +435,8 @@ public partial class UploadsController : ControllerBase
         public string? FileList { get; set; }
         public bool Partial { get; set; }
         public string? BaseSha { get; set; }
+        /// <summary>Absent means true: only an explicit <c>false</c> (tests failed) disables carry-forward.</summary>
+        public bool? CarryForward { get; set; }
         public IFormFileCollection Files { get; set; } = new FormFileCollection();
     }
 
