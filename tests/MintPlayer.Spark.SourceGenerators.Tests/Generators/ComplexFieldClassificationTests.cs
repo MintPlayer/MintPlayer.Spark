@@ -17,7 +17,7 @@ public class ComplexFieldClassificationTests
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute), typeof(System.Drawing.Color)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(System.Drawing.Color)],
             rootNamespace: "TestApp");
 
     private const string PersonWithAddress = """
@@ -217,12 +217,12 @@ public class ComplexFieldClassificationTests
         var library = GeneratorHarness.CompileToMetadataReference(
             "Fleet.Library",
             [PersonWithAddress],
-            referenceTypes: [typeof(GenerateIndexAttribute)]);
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)]);
 
         var result = GeneratorHarness.Run(
             GeneratorName,
             ["namespace TestApp; public class Program { }"],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp",
             additionalReferences: [library]);
 

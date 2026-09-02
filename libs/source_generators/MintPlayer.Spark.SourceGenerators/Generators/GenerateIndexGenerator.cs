@@ -98,9 +98,15 @@ public class GenerateIndexGenerator : IncrementalGenerator
         // Emit nothing when the project does not reference MintPlayer.Spark.Abstractions. Paired with the
         // producer's own early return, per house style: the pipeline gate keeps the work out, the producer
         // gate keeps the file out.
+        // Both halves are required. An entity library references Abstractions (so it sees the
+        // attribute) but not RavenDB.Client; emitting AbstractIndexCreationTask subclasses there
+        // is a guaranteed CS0400. Such a library runs this generator whenever it takes the analyzer
+        // for AttributeDescriptionsGenerator (#348); its indexes are compiled by the host, which
+        // scans referenced assemblies (DescribeReferenced) and does reference Raven.
         var knowsSparkProvider = context.CompilationProvider
             .Select(static (compilation, ct) =>
-                compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null);
+                compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null &&
+                compilation.GetTypeByMetadataName("Raven.Client.Documents.Indexes.AbstractIndexCreationTask") != null);
 
         var allEntitiesProvider = entitiesProvider
             .Combine(referencedEntitiesProvider)

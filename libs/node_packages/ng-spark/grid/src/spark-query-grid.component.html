@@ -42,6 +42,7 @@
     @for (col of visibleColumns(); track col.name) {
       <div *bsDatatableColumn="col.name; sortable: true">
         {{ (col.label | resolveTranslation) || col.name }}
+        <spark-attribute-description [description]="col.description" />
       </div>
     }
 

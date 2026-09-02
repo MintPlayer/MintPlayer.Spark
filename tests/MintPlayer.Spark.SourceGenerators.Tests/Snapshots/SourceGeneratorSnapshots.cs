@@ -222,7 +222,7 @@ public class SourceGeneratorSnapshots
         var result = GeneratorHarness.Run(
             "GenerateIndexGenerator",
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
         return Verifier.Verify(Render(result));

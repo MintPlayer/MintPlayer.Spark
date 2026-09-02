@@ -187,9 +187,17 @@ public static class SparkDevelopmentExtensions
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
+        var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
         {
+            if (descriptionDrift)
+            {
+                Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model.");
+                Environment.ExitCode = ExitDrift;
+                return;
+            }
+
             Console.WriteLine($"Spark model is in sync ({actual.ModelHash}).");
             return;
         }
@@ -244,6 +252,25 @@ public static class SparkDevelopmentExtensions
     /// <c>ActionsResolver</c> uses, because there is no service provider in the builder phase.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Reports attributes whose on-disk <c>description.en</c> is not what C# would seed (#348).
+    /// Descriptions are deliberately outside the structural hash — translating one must never refuse
+    /// startup — so this is the check that keeps the English text from going stale after a
+    /// <c>///</c> summary or <c>[Description]</c> changes. Returns <see langword="true"/> when drift was found.
+    /// </summary>
+    private static bool VerifyAttributeDescriptionsAreCurrent(Type contextType, string contentRootPath)
+    {
+        var drift = ModelSynchronizer.DescribeDescriptionDrift(contextType, contentRootPath);
+        if (drift.Count == 0)
+            return false;
+
+        Console.Error.WriteLine("Spark attribute descriptions are out of date:");
+        foreach (var line in drift)
+            Console.Error.WriteLine("  " + line);
+        Console.Error.WriteLine();
+        return true;
+    }
+
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");

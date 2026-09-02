@@ -8,15 +8,16 @@ public class GenerateIndexGeneratorTests
     private const string GeneratorName = "GenerateIndexGenerator";
 
     /// <summary>
-    /// The generated code references RavenDB types this test project does not reference, so these tests
-    /// assert on emitted text rather than on a clean final compilation. Real-build fidelity is covered
-    /// separately by a demo app that must actually compile against the generated output.
+    /// These tests assert on emitted text rather than on a clean final compilation. Real-build fidelity
+    /// is covered separately by a demo app that must actually compile against the generated output.
+    /// RavenDB.Client is referenced because the generator emits nothing without it (#348 — an entity
+    /// library that takes the analyzer must not receive index classes it cannot compile).
     /// </summary>
     private static GeneratorRunResult Run(string source, string rootNamespace = "TestApp")
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: rootNamespace);
 
     private const string PlainCar = """

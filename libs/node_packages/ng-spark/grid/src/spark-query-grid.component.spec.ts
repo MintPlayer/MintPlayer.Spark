@@ -564,4 +564,23 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+  describe('attribute descriptions (#348)', () => {
+    it('carries the description of a column through to the header template, and nowhere else', async () => {
+      // The header cells are drawn by the Lit-based datatable (mp-datatable), which does not
+      // upgrade under jsdom, so the [i] itself is not observable here — the form, detail and
+      // component specs pin the rendering; this pins that the grid hands the datatable the
+      // description on the column it reads in its header template.
+      const page = {
+        ...samplePage,
+        columns: [
+          { name: 'FirstName', dataType: 'string', order: 1, description: { en: 'Given name.' } } as any,
+          { name: 'LastName', dataType: 'string', order: 2 } as any,
+        ],
+      };
+      const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) });
+
+      expect(c.visibleColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
+    });
+  });
+
 });

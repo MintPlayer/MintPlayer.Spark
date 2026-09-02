@@ -31,6 +31,8 @@ export interface QueryResult {
 export interface SparkCellColumn {
   name: string;
   label?: TranslatedString;
+  /** Help text rendered as an [i] tooltip in the column header. Absent when the model declares none. */
+  description?: TranslatedString;
   dataType: string;
   isArray?: boolean;
   renderer?: string;

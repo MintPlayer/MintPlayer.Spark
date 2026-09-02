@@ -81,6 +81,15 @@ public sealed class EntityAttributeDefinition
     public required Guid Id { get; set; }
     public required string Name { get; set; }
     public TranslatedString? Label { get; set; }
+    /// <summary>
+    /// Help text for the person filling in or reading this attribute, rendered by the client as an
+    /// [i] tooltip beside the label (#348). Presentational: not part of the model hash, so it can be
+    /// authored and translated by hand. The English text is seeded on synchronize from a
+    /// <c>[Description]</c> attribute or the property's <c>///</c> summary when either exists; the
+    /// other languages are author-owned. Unlike <see cref="EntityTypeDefinition.Description"/>,
+    /// which is the page heading, this is explanatory prose.
+    /// </summary>
+    public TranslatedString? Description { get; set; }
     public string DataType { get; set; } = "string";
     public bool IsRequired { get; set; }
     public bool IsVisible { get; set; } = true;

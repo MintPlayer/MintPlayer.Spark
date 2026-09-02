@@ -43,6 +43,11 @@
           "fr": "Entreprise",
           "nl": "Bedrijf"
         },
+        "description": {
+          "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
+          "fr": "L'entreprise pour laquelle cette personne travaille. Choisissez dans la liste des entreprises ; laissez vide pour les indépendants.",
+          "nl": "Het bedrijf waarvoor deze persoon werkt. Kies uit de bedrijvenlijst; laat leeg voor freelancers."
+        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -105,6 +110,11 @@
           "fr": "Prénom",
           "nl": "Voornaam"
         },
+        "description": {
+          "en": "Given name, as it should appear on badges and in greetings.",
+          "fr": "Prénom, tel qu'il doit figurer sur les badges et dans les salutations.",
+          "nl": "Voornaam, zoals die op badges en in begroetingen moet verschijnen."
+        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -154,6 +164,9 @@
           "en": "Is Active",
           "fr": "Actif",
           "nl": "Actief"
+        },
+        "description": {
+          "en": "Whether this person can sign in and appears in the default people lists."
         },
         "dataType": "boolean",
         "isRequired": true,

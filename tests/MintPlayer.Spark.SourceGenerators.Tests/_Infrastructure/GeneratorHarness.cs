@@ -33,7 +33,8 @@ internal static class GeneratorHarness
         IEnumerable<(string Path, string Text)>? additionalTexts = null,
         string? generatorAssemblyName = null,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
-        IEnumerable<MetadataReference>? additionalReferences = null)
+        IEnumerable<MetadataReference>? additionalReferences = null,
+        CSharpParseOptions? parseOptions = null)
     {
         var generator = InstantiateGenerator(generatorTypeName, generatorAssemblyName);
 
@@ -42,9 +43,9 @@ internal static class GeneratorHarness
         if (sourceList.Count == 0)
             sourceList.Add("// intentionally empty");
 
-        var compilation = BuildCompilation(sourceList, referenceTypes ?? Array.Empty<Type>(), outputKind, additionalReferences);
+        var compilation = BuildCompilation(sourceList, referenceTypes ?? Array.Empty<Type>(), outputKind, additionalReferences, parseOptions);
 
-        var parseOptions = (CSharpParseOptions)compilation.SyntaxTrees.First().Options;
+        var driverParseOptions = (CSharpParseOptions)compilation.SyntaxTrees.First().Options;
 
         // Surface RootNamespace via analyzer config so the generator can read Settings.
         var optionsProvider = new StubAnalyzerConfigOptionsProvider(rootNamespace);
@@ -56,7 +57,7 @@ internal static class GeneratorHarness
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: [generator.AsSourceGenerator()],
             additionalTexts: additionalTextList,
-            parseOptions: parseOptions,
+            parseOptions: driverParseOptions,
             optionsProvider: optionsProvider);
 
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
@@ -134,10 +135,14 @@ internal static class GeneratorHarness
         IEnumerable<string> sources,
         IEnumerable<Type> referenceTypes,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
-        IEnumerable<MetadataReference>? additionalReferences = null)
+        IEnumerable<MetadataReference>? additionalReferences = null,
+        CSharpParseOptions? parseOptions = null)
     {
+        // Default parse options carry DocumentationMode.Parse, i.e. `///` is structured trivia and
+        // GetDocumentationCommentXml() works. A real project WITHOUT GenerateDocumentationFile
+        // compiles with DocumentationMode.None instead; tests that care pass it explicitly.
         var syntaxTrees = sources.Select((src, i) =>
-            CSharpSyntaxTree.ParseText(src, path: $"Source{i}.cs")).ToList();
+            CSharpSyntaxTree.ParseText(src, parseOptions, path: $"Source{i}.cs")).ToList();
 
         // Minimum BCL references so Roslyn can build + resolve symbols.
         var references = new HashSet<MetadataReference>(
@@ -194,6 +199,34 @@ internal static class GeneratorHarness
         }
         stream.Position = 0;
         return MetadataReference.CreateFromStream(stream);
+    }
+
+    /// <summary>
+    /// Compiles <paramref name="sources"/> and loads the result as a live <see cref="Assembly"/>, so a
+    /// test can reflect over it the way the runtime does (e.g. read <c>[assembly: …]</c> attributes).
+    /// <paramref name="parseOptions"/> carries the preprocessor symbols, which is how a test chooses
+    /// between a DEBUG and a RELEASE build of the fixture.
+    /// </summary>
+    public static Assembly EmitAndLoad(
+        string assemblyName,
+        IEnumerable<string> sources,
+        IEnumerable<Type>? referenceTypes = null,
+        CSharpParseOptions? parseOptions = null)
+    {
+        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>(), parseOptions: parseOptions)
+            .WithAssemblyName(assemblyName);
+
+        using var stream = new MemoryStream();
+        var emit = compilation.Emit(stream);
+        if (!emit.Success)
+        {
+            var errors = string.Join(Environment.NewLine,
+                emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()));
+            throw new InvalidOperationException(
+                $"Failed to emit fixture assembly '{assemblyName}':{Environment.NewLine}{errors}");
+        }
+
+        return Assembly.Load(stream.ToArray());
     }
 }
 

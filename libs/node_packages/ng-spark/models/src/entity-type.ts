@@ -17,6 +17,8 @@ export interface EntityAttributeDefinition {
   id: string;
   name: string;
   label?: TranslatedString;
+  /** Help text rendered as an [i] tooltip beside the label. Absent when the model declares none. */
+  description?: TranslatedString;
   dataType: string;
   isRequired: boolean;
   isVisible: boolean;

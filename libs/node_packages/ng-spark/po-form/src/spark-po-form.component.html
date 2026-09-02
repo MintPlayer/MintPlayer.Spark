@@ -47,6 +47,7 @@
           @if (attr.isRequired) {
             <span class="text-danger">*</span>
           }
+          <spark-attribute-description [description]="attr.description" />
         </label>
         <div [md]="8">
           @if (attr.dataType === 'boolean') {
@@ -201,7 +202,7 @@
                     <th style="width: 32px"></th>
                   }
                   @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                    <th>{{ col.label | resolveTranslation:col.name }}</th>
+                    <th>{{ col.label | resolveTranslation:col.name }}<spark-attribute-description [description]="col.description" /></th>
                   }
                   <th style="width: 50px"></th>
                 </tr>
@@ -267,7 +268,7 @@
                     <th style="width: 32px"></th>
                   }
                   @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                    <th>{{ col.label | resolveTranslation:col.name }}</th>
+                    <th>{{ col.label | resolveTranslation:col.name }}<spark-attribute-description [description]="col.description" /></th>
                   }
                   <th style="width: 80px"></th>
                 </tr>

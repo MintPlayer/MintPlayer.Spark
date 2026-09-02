@@ -34,12 +34,12 @@ public class ReferencedAssemblyEntityTests
         var library = GeneratorHarness.CompileToMetadataReference(
             "Fleet.Library",
             [librarySource],
-            referenceTypes: [typeof(GenerateIndexAttribute)]);
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)]);
 
         return GeneratorHarness.Run(
             GeneratorName,
             [appSource],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "Fleet",
             additionalReferences: [library]);
     }
@@ -121,7 +121,7 @@ public class ReferencedAssemblyEntityTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             ["namespace Fleet; public class Program { }"],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "Fleet",
             additionalReferences: [unrelated]);
 

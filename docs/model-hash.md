@@ -59,9 +59,14 @@ reflects over property types and never opens a session — so it runs anywhere, 
 ## Verifying in CI
 
 ```bash
-dotnet build <project> -c Release
-dotnet run --project <project> --no-build -c Release -- --spark-verify-model
+dotnet build <project> -c Debug
+dotnet run --project <project> --no-build -c Debug -- --spark-verify-model
 ```
+
+Debug, not Release: attribute descriptions seeded from `///` summaries live in `[Conditional("DEBUG")]`
+metadata (see [Attribute descriptions](guide-attribute-descriptions.md)), so only a Debug build can
+tell whether the English text on disk is stale. The structural hash is identical in both configurations;
+this is what the repository's own workflow runs.
 
 Writes nothing; exits `3` if the model has drifted and names the entities and files that moved. This
 is the merge-queue gate: it catches a change that touched the entity classes without regenerating the

@@ -55,6 +55,8 @@ public sealed class QueryColumn
     public bool IsVisible { get; init; } = true;
 
     public TranslatedString? Label { get; init; }
+    /// <summary>Help text for the column header's [i] tooltip (#348); carried from the attribute.</summary>
+    public TranslatedString? Description { get; init; }
     public string DataType { get; init; } = "string";
     public int Order { get; init; }
     public bool IsArray { get; init; }
