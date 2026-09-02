@@ -37,6 +37,13 @@ public class FileCoverage
     /// </summary>
     public string? BlobOid { get; set; }
 
+    /// <summary>
+    /// Set only on assembled copies ({commitId}/assembly/files/…): whether this
+    /// commit measured the file or carried it from the base, and from where.
+    /// Null on the per-build documents, which are always measured by definition.
+    /// </summary>
+    public FileOrigin? Origin { get; set; }
+
     public List<LineCoverage> Lines { get; set; } = [];
 
     public List<BranchCoverage> Branches { get; set; } = [];

@@ -68,11 +68,16 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
 
         await session.SaveChangesAsync(cancellationToken);
 
-        // After the save: a feedback message racing an unsaved finalize would
-        // load a still-open build and skip.
+        // After the save: an assemble/feedback message racing an unsaved
+        // finalize would load a still-open build and skip. The assembler
+        // publishes feedback once the commit's headline is rebuilt.
         foreach (var build in openBuilds)
         {
-            if (build.Id is not null)
+            if (build.Id is null)
+                continue;
+            if (build.Commit is not null)
+                await messageBus.BroadcastAsync(new AssembleCommitMessage { CommitId = build.Commit, BuildId = build.Id }, cancellationToken);
+            else
                 await messageBus.BroadcastAsync(new Feedback.PublishFeedbackMessage { BuildId = build.Id }, cancellationToken);
         }
     }

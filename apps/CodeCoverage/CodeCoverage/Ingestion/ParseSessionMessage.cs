@@ -24,3 +24,18 @@ public record FinalizeBuildMessage
 {
     public required string BuildId { get; init; }
 }
+
+/// <summary>
+/// Rebuild the commit's assembly after one of its builds finalized. Same
+/// strict-FIFO queue again: assemblies of one commit never run concurrently
+/// (so no lock is needed) and every parse enqueued before the finalize has
+/// already landed.
+/// </summary>
+[MessageQueue("coverage-parse-session")]
+public record AssembleCommitMessage
+{
+    public required string CommitId { get; init; }
+
+    /// <summary>The build whose finalize triggered this; feedback is published for it once the assembly exists.</summary>
+    public string? BuildId { get; init; }
+}

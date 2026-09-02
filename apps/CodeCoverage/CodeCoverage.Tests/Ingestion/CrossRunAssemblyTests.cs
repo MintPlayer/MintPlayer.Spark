@@ -19,14 +19,12 @@ namespace CodeCoverage.Tests.Ingestion;
 /// wholesale — whichever build finalizes last wins.
 ///
 /// The commit's coverage should be the union of every build for that sha,
-/// independent of finalize order. These tests assert that union; today they
-/// are red because the commit carries only the last-finalized build's totals.
-/// M2 (CommitAssembly) makes them green by removing the Skip.
+/// independent of finalize order. These tests assert that union; before the
+/// assembler existed they were red because the commit carried only the
+/// last-finalized build's totals.
 /// </summary>
 public class CrossRunAssemblyTests : CoverageRavenTest
 {
-    private const string SkipReason = "Red until M2 (CommitAssembly) — see docs/coverage_carryforward_plan.md";
-
     private const long RepoId = 7;
     private const string Sha = "abc";
     private static readonly string CommitId = Commit.DocumentId(RepoId, Sha);
@@ -83,12 +81,22 @@ public class CrossRunAssemblyTests : CoverageRavenTest
         await recipient.HandleAsync(new ParseSessionMessage { BuildId = buildId, SessionId = sessionId });
     }
 
+    /// <summary>Finalize + assemble, as the queue does it: finalize saves, then the assembler runs in its own session.</summary>
     private static async Task Finalize(IDocumentStore store, string buildId)
     {
-        using var session = store.OpenAsyncSession();
-        var build = await session.LoadAsync<Build>(buildId);
-        await BuildFinalizer.Finalize(session, new ScriptedDiffService(), build, "Explicit", CancellationToken.None);
-        await session.SaveChangesAsync();
+        using (var session = store.OpenAsyncSession())
+        {
+            var build = await session.LoadAsync<Build>(buildId);
+            await BuildFinalizer.Finalize(session, new ScriptedDiffService(), build, "Explicit", CancellationToken.None);
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = store.OpenAsyncSession())
+        {
+            var assembler = CommitAssemblerTests.CreateAssembler(store, session, new ScriptedDiffService());
+            await assembler.AssembleAsync(CommitId);
+            await session.SaveChangesAsync();
+        }
     }
 
     private static async Task<Commit> LoadCommit(IDocumentStore store)
@@ -106,7 +114,7 @@ public class CrossRunAssemblyTests : CoverageRavenTest
         commit.Coverage.FilesCount.Should().Be(2);
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task Finalizing_run_1_then_run_2_yields_the_union_on_the_commit()
     {
         using var store = GetDocumentStore();
@@ -117,11 +125,11 @@ public class CrossRunAssemblyTests : CoverageRavenTest
         await Finalize(store, Build1);
         await Finalize(store, Build2);
 
-        // Today: equals B alone (FilesCount 1, LinesCoverable 2, LinesCovered 1).
+        // Without the assembler: B alone (FilesCount 1, LinesCoverable 2, LinesCovered 1).
         ShouldBeUnionOfBothRuns(await LoadCommit(store));
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task Finalizing_run_2_then_run_1_yields_the_union_on_the_commit()
     {
         using var store = GetDocumentStore();
@@ -132,7 +140,7 @@ public class CrossRunAssemblyTests : CoverageRavenTest
         await Finalize(store, Build2);
         await Finalize(store, Build1);
 
-        // Today: equals A alone (FilesCount 1, LinesCoverable 3, LinesCovered 2).
+        // Without the assembler: A alone (FilesCount 1, LinesCoverable 3, LinesCovered 2).
         ShouldBeUnionOfBothRuns(await LoadCommit(store));
     }
 }

@@ -24,7 +24,12 @@ public partial class FinalizeBuildRecipient : IRecipient<FinalizeBuildMessage>
 
         await BuildFinalizer.Finalize(session, diffService, build, "Explicit", cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
-        await messageBus.BroadcastAsync(new Feedback.PublishFeedbackMessage { BuildId = message.BuildId }, cancellationToken);
+        // Feedback is published by the assembler once the commit's headline is
+        // rebuilt; publishing here would report this build alone.
+        if (build.Commit is not null)
+            await messageBus.BroadcastAsync(new AssembleCommitMessage { CommitId = build.Commit, BuildId = message.BuildId }, cancellationToken);
+        else
+            await messageBus.BroadcastAsync(new Feedback.PublishFeedbackMessage { BuildId = message.BuildId }, cancellationToken);
         logger.LogInformation("Finalized build {BuildId} (Explicit)", message.BuildId);
     }
 }

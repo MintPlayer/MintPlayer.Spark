@@ -19,6 +19,9 @@ public class Commits_ByRepository : AbstractIndexCreationTask<Commit>
         public DateTimeOffset? AuthoredAt { get; set; }
         public bool HasCoverage { get; set; }
         public int? PullRequestNumber { get; set; }
+        public string? ParentSha { get; set; }
+        /// <summary>Coverage present and the assembly complete (or predating assemblies, i.e. a full upload).</summary>
+        public bool CompleteCoverage { get; set; }
     }
 
     public Commits_ByRepository()
@@ -31,6 +34,9 @@ public class Commits_ByRepository : AbstractIndexCreationTask<Commit>
                              AuthoredAt = commit.AuthoredAt ?? commit.FirstSeenAtUtc,
                              HasCoverage = commit.Coverage != null,
                              PullRequestNumber = commit.PullRequestNumber,
+                             ParentSha = commit.ParentSha,
+                             CompleteCoverage = commit.Coverage != null
+                                 && (commit.AssemblyCompleteness == null || commit.AssemblyCompleteness == "Complete"),
                          };
     }
 }

@@ -12,6 +12,12 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null) : I
 {
     public List<(string BaseRef, string HeadSha)> Calls { get; } = [];
 
+    /// <summary>Scripted git parents by sha; anything unlisted answers null (no API path).</summary>
+    public Dictionary<string, string> Parents { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public Task<string?> GetFirstParentAsync(Repository repository, long? installationId, string sha, CancellationToken cancellationToken = default)
+        => Task.FromResult(Parents.TryGetValue(sha, out var parent) ? parent : null);
+
     public Task<CommitComparison?> CompareAsync(Repository repository, long? installationId, string baseRef, string headSha, CancellationToken cancellationToken = default)
     {
         Calls.Add((baseRef, headSha));

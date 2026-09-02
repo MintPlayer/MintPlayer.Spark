@@ -63,6 +63,29 @@ public class Commit
     [JsonIgnore]
     public double? CoverageDelta { get; set; }
 
+    /// <summary>
+    /// Percentage-point change versus the git first parent (<see cref="ParentSha"/>),
+    /// stamped by the assembler. Null when the parent has no coverage — rendered
+    /// as "—", never as a fake zero.
+    /// </summary>
+    public double? CoverageDeltaVsParent { get; set; }
+
+    /// <summary>
+    /// Percentage-point change versus the default branch's newest complete
+    /// coverage at or before this commit's date — "what would merging this do to
+    /// the headline". Equals <see cref="CoverageDeltaVsParent"/> on the default
+    /// branch itself. Null when there is no such reference.
+    /// </summary>
+    public double? CoverageDeltaVsDefaultBranch { get; set; }
+
+    /// <summary>
+    /// <see cref="CommitAssembly.Complete"/> / <see cref="CommitAssembly.Partial"/>
+    /// copied from the assembly so lists and indexes can filter without loading
+    /// it. Null for commits whose coverage predates assemblies (full uploads,
+    /// treated as complete).
+    /// </summary>
+    public string? AssemblyCompleteness { get; set; }
+
     /// <summary>The build whose coverage is shown for this commit (file tree reads its FileCoverage docs).</summary>
     public string? LatestBuildId { get; set; }
 

@@ -33,4 +33,10 @@ public class TreeFileSummary
     public int LinesCovered { get; set; }
 
     public int LinesCoverable { get; set; }
+
+    /// <summary>On assembled trees: <see cref="FileOrigin.Measured"/> or <see cref="FileOrigin.Carried"/>. Null on per-build trees.</summary>
+    public string? Origin { get; set; }
+
+    /// <summary>On assembled trees, for carried files: the commit the file was carried from.</summary>
+    public string? CarriedFromSha { get; set; }
 }

@@ -35,30 +35,12 @@ public static class BuildFinalizer
                 // verdict is earned, never guessed, and never blocks a finalize.
                 build.Patch = await PatchCoverageCalculator.ComputeAsync(session, diffService, build, commit, cancellationToken);
 
-                commit.Coverage = build.Coverage;
+                // The commit's headline is no longer this build's total: the
+                // assembler (queued by the caller after SaveChanges) unions every
+                // finalized build of the commit and carries the rest forward.
+                // LatestBuildId still points at the newest finalized build for
+                // readers that predate the assembly.
                 commit.LatestBuildId = build.Id;
-
-                if (commit.Repository is not null)
-                {
-                    var repository = await session.LoadAsync<Repository>(commit.Repository, cancellationToken);
-                    // Repo-level coverage tracks the default branch; a repo that
-                    // never had data accepts any branch rather than showing nothing.
-                    //
-                    // Never a partial build (issue #11 D4): its total is a
-                    // subset's, and OIDC-provisioned repos have no DefaultBranch,
-                    // so without the Partial guard a PR-branch nx-affected run
-                    // would overwrite the headline the badge serves.
-                    if (repository is not null
-                        && !build.Partial
-                        && (repository.LatestCoverage is null
-                            || repository.DefaultBranch is null
-                            || string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal)))
-                    {
-                        repository.LatestCoverage = build.Coverage;
-                        repository.LatestCoverageSha = commit.Sha;
-                        repository.LatestCoverageAtUtc = DateTime.UtcNow;
-                    }
-                }
             }
         }
     }
