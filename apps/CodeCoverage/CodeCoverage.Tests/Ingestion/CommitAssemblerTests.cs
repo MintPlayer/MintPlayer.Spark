@@ -119,11 +119,11 @@ public class CommitAssemblerTests : CoverageRavenTest
         return buildId;
     }
 
-    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha)
+    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha, IGitHubDiffService? diffService = null)
     {
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
-        var assembly = await CreateAssembler(store, session, new ScriptedDiffService()).AssembleAsync(Commit.DocumentId(RepoId, sha));
+        var assembly = await CreateAssembler(store, session, diffService ?? new ScriptedDiffService()).AssembleAsync(Commit.DocumentId(RepoId, sha));
         await session.SaveChangesAsync();
         WaitForIndexing(store);
         return assembly;
@@ -300,6 +300,57 @@ public class CommitAssemblerTests : CoverageRavenTest
 
         await Upload(store, "p5", runId: 2, LcovAHead, "src/a.cs\nsrc/b.cs", partial: true, baseSha: "m1");
         var assembly = await Assemble(store, "p5");
+
+        assembly!.CarriedFiles.Should().Be(0);
+        assembly.Completeness.Should().Be(CommitAssembly.Partial);
+        assembly.IncompleteReasons.Should().Contain(CommitAssembly.ReasonNoBlobIds);
+    }
+
+    [Fact]
+    public async Task Without_oids_the_compare_api_decides_what_is_unchanged()
+    {
+        using var store = GetDocumentStore();
+        await SeedAssembledBase(store, T0);
+        await SeedCommit(store, "p7", "feature", T0.AddHours(1));
+
+        // v1 list; GitHub says only a.cs changed → b.cs carried, a.cs measured.
+        await Upload(store, "p7", runId: 2, LcovAHead, "src/a.cs\nsrc/b.cs", partial: true, baseSha: "m1");
+        var github = new ScriptedDiffService(new CommitComparison("m1", [new DiffFile("src/a.cs", "modified", null, [2])], Truncated: false));
+        var assembly = await Assemble(store, "p7", github);
+
+        assembly!.CarriedFiles.Should().Be(1);
+        assembly.UnmeasuredFiles.Should().Be(0);
+        assembly.Completeness.Should().Be(CommitAssembly.Complete);
+        assembly.Coverage.LinesCovered.Should().Be(5);
+        github.Calls.Should().Contain(("m1", "p7"));
+    }
+
+    [Fact]
+    public async Task Without_oids_a_changed_unmeasured_file_is_reported_via_the_compare_api()
+    {
+        using var store = GetDocumentStore();
+        await SeedAssembledBase(store, T0);
+        await SeedCommit(store, "p8", "feature", T0.AddHours(1));
+
+        await Upload(store, "p8", runId: 2, LcovAHead, "src/a.cs\nsrc/b.cs", partial: true, baseSha: "m1");
+        var github = new ScriptedDiffService(new CommitComparison("m1", [new DiffFile("src/b.cs", "modified", null, [1])], Truncated: false));
+        var assembly = await Assemble(store, "p8", github);
+
+        assembly!.CarriedFiles.Should().Be(0);
+        assembly.UnmeasuredFiles.Should().Be(1);
+        assembly.Completeness.Should().Be(CommitAssembly.Partial);
+    }
+
+    [Fact]
+    public async Task A_truncated_comparison_means_unknown_and_carries_nothing()
+    {
+        using var store = GetDocumentStore();
+        await SeedAssembledBase(store, T0);
+        await SeedCommit(store, "p9", "feature", T0.AddHours(1));
+
+        await Upload(store, "p9", runId: 2, LcovAHead, "src/a.cs\nsrc/b.cs", partial: true, baseSha: "m1");
+        var github = new ScriptedDiffService(new CommitComparison("m1", [], Truncated: true));
+        var assembly = await Assemble(store, "p9", github);
 
         assembly!.CarriedFiles.Should().Be(0);
         assembly.Completeness.Should().Be(CommitAssembly.Partial);

@@ -184,12 +184,6 @@ public partial class CommitAssembler : ICommitAssembler
             reasons.Add(CommitAssembly.ReasonNoFileList);
             return;
         }
-        if (!head.HasOids)
-        {
-            reasons.Add(CommitAssembly.ReasonNoBlobIds);
-            return;
-        }
-
         var baseCommitId = Entities.Commit.DocumentId(repository.GitHubId, resolved.ResolvedSha);
         var baseHasAssembly = await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(baseCommitId), cancellationToken);
         if (!baseHasAssembly && resolved.BaseBuildId is null)
@@ -198,10 +192,25 @@ public partial class CommitAssembler : ICommitAssembler
             return;
         }
 
+        // C′: an old action build sent bare paths. GitHub's compare API can
+        // still tell which files changed between base and head — unless it
+        // truncated the list at 300 files, in which case the changed set is
+        // unknown and nothing is carried.
+        HashSet<string>? changedSinceBase = null;
+        if (!head.HasOids)
+        {
+            changedSinceBase = await ChangedFilesViaCompare(repository, resolved.ResolvedSha, commit.Sha, cancellationToken);
+            if (changedSinceBase is null)
+            {
+                reasons.Add(CommitAssembly.ReasonNoBlobIds);
+                return;
+            }
+        }
+
         var candidates = head.Paths
             .Where(p => !files.ContainsKey(p))
             .Select(p => (Path: p, Oid: head.OidFor(p)))
-            .Where(c => c.Oid is not null)
+            .Where(c => c.Oid is not null || changedSinceBase is not null)
             .ToList();
 
         var carried = 0;
@@ -218,7 +227,10 @@ public partial class CommitAssembler : ICommitAssembler
                 if (!loaded.TryGetValue(ids[i], out var baseFile) || baseFile is null)
                     continue; // the base never knew this file: nothing to carry, nothing missing
 
-                if (baseFile.BlobOid is null || !string.Equals(baseFile.BlobOid, chunk[i].Oid, StringComparison.OrdinalIgnoreCase))
+                var unchanged = changedSinceBase is not null
+                    ? !changedSinceBase.Contains(chunk[i].Path)
+                    : baseFile.BlobOid is not null && string.Equals(baseFile.BlobOid, chunk[i].Oid, StringComparison.OrdinalIgnoreCase);
+                if (!unchanged)
                 {
                     unmeasured++; // changed since the base and not re-measured here
                     continue;
@@ -226,6 +238,7 @@ public partial class CommitAssembler : ICommitAssembler
 
                 var copy = CoverageMerger.Clone(baseFile);
                 copy.Matched = true;
+                copy.BlobOid = chunk[i].Oid ?? baseFile.BlobOid;
                 copy.Origin = new FileOrigin
                 {
                     Kind = FileOrigin.Carried,
@@ -241,6 +254,29 @@ public partial class CommitAssembler : ICommitAssembler
 
         assembly.CarriedFiles = carried;
         assembly.UnmeasuredFiles = unmeasured;
+    }
+
+    /// <summary>
+    /// The set of repo paths GitHub reports as changed between base and head
+    /// (new and previous names of renames both count), or null when the API
+    /// is unreachable or truncated the list — "unknown", never "nothing".
+    /// </summary>
+    private async Task<HashSet<string>?> ChangedFilesViaCompare(Repository repository, string baseSha, string headSha, CancellationToken cancellationToken)
+    {
+        long? installationId = repository.Account is null ? null
+            : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
+        var comparison = await diffService.CompareAsync(repository, installationId, baseSha, headSha, cancellationToken);
+        if (comparison is null || comparison.Truncated)
+            return null;
+
+        var changed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in comparison.Files)
+        {
+            changed.Add(HeadFileList.Unify(file.Path));
+            if (file.PreviousPath is not null)
+                changed.Add(HeadFileList.Unify(file.PreviousPath));
+        }
+        return changed;
     }
 
     /// <summary>Overwrites the assembled file documents and deletes the ones a previous assembly wrote that no longer exist.</summary>
