@@ -119,7 +119,7 @@ jobs:
     # workspace upload (no `partial`) — it becomes the baseline the Coverage
     # server compares partial PR uploads against.
     - name: Upload coverage
-      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml') != ''
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml', 'apps/*/*/ClientApp/coverage/cobertura-coverage.xml') != ''
       # The working copy — the action's source lives in this repository now.
       uses: ./apps/CodeCoverage/action
       with:
