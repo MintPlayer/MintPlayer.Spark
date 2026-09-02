@@ -49,6 +49,7 @@ internal static class QueryResultProjector
                 Name = a.Name,
                 IsVisible = a.IsVisible,
                 Label = a.Label,
+                Description = a.Description,
                 DataType = a.DataType,
                 Order = a.Order,
                 IsArray = a.IsArray,
