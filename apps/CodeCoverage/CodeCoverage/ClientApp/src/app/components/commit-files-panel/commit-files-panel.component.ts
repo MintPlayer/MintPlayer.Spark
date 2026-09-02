@@ -9,7 +9,7 @@ import { BsBreadcrumbComponent, BsBreadcrumbItemComponent } from '@mintplayer/ng
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsHierarchyChartComponent, type HierarchyNodeEventDetail } from '@mintplayer/ng-bootstrap/charts/hierarchy';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { BrowseService, CoverageHierarchyNode, CoverageSummary, TreeResponse } from '../../services/browse.service';
+import { BrowseService, CommitAssemblyInfo, CoverageHierarchyNode, CoverageSummary, TreeResponse } from '../../services/browse.service';
 import { CoverageBarComponent } from '../coverage-bar/coverage-bar.component';
 
 /**
@@ -44,6 +44,9 @@ export class CommitFilesPanelComponent {
   // Per-flag totals of the shown build; a selected flag narrows the folder
   // list to that flag's own merged tree (the chart stays whole-build).
   readonly flagTotals = signal<Record<string, CoverageSummary> | null>(null);
+  // The commit-level record behind the headline; null before the first
+  // finalize and for commits that predate assemblies.
+  readonly assembly = signal<CommitAssemblyInfo | null>(null);
   readonly selectedFlag = signal<string | null>(null);
 
   readonly flagEntries = computed(() => {
@@ -112,6 +115,7 @@ export class CommitFilesPanelComponent {
     this.chartRootId.set('/');
     this.selectedFlag.set(this.route.snapshot.queryParamMap.get('flag'));
     this.flagTotals.set(null);
+    this.assembly.set(null);
     this.initialized = true;
     void this.openFolder('');
     void this.loadCommitMeta(owner, name, sha);
@@ -128,13 +132,20 @@ export class CommitFilesPanelComponent {
       this.hierarchy.set(null);
     }
     try {
-      const flagTotals = (await this.browse.getCommit(owner, name, sha)).flagTotals ?? null;
+      const commit = await this.browse.getCommit(owner, name, sha);
       if (token !== this.metaToken) return;
-      this.flagTotals.set(flagTotals);
+      this.flagTotals.set(commit.flagTotals ?? null);
+      this.assembly.set(commit.assembly ?? null);
     } catch {
       if (token !== this.metaToken) return;
       this.flagTotals.set(null);
+      this.assembly.set(null);
     }
+  }
+
+  /** The base (or origin) commit a carried file came from, on the same repository. */
+  openCommit(sha: string): void {
+    void this.router.navigate(['/r', this.owner(), this.name(), 'c', sha]);
   }
 
   async openFolder(path: string): Promise<void> {

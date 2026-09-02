@@ -1,5 +1,4 @@
 using MintPlayer.Spark.Abstractions;
-using Newtonsoft.Json;
 
 namespace CodeCoverage.Entities;
 
@@ -58,25 +57,12 @@ public class Commit
     /// </summary>
     public DateTimeOffset? Date => AuthoredAt ?? FirstSeenAtUtc;
 
-    /// <summary>Merged coverage of the latest finalized build, denormalized for lists/badges.</summary>
-    public CoverageSummary? Coverage { get; set; }
-
     /// <summary>
-    /// Line-coverage change in percentage points versus the chronologically
-    /// previous commit that has coverage. Computed per request by the commits
-    /// query over the whole ordered sequence and never persisted — a
-    /// list-relative number is meaningless outside the list that produced it.
-    /// (A commit-graph delta would need an explicit base sha: ParentSha means
-    /// two different things depending on which writer set it — see
-    /// docs/roadmap-2026-08.md §7, T2.1.)
-    /// <para>
-    /// [JsonIgnore] keeps it out of the stored document — RavenDB serializes
-    /// through Newtonsoft, so this is the mechanism, not a Spark concern. It
-    /// stays a normal model attribute: the grid's Δ column reads it.
-    /// </para>
+    /// The commit's headline: the assembled coverage (every finalized build of
+    /// the commit unioned, plus files carried unchanged from the base), stamped
+    /// by the assembler and denormalized for lists and badges.
     /// </summary>
-    [JsonIgnore]
-    public double? CoverageDelta { get; set; }
+    public CoverageSummary? Coverage { get; set; }
 
     /// <summary>
     /// Percentage-point change versus the git first parent (<see cref="ParentSha"/>),

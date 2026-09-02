@@ -55,10 +55,27 @@ export interface BuildInfo {
   sessions: SessionInfo[];
 }
 
+/** The commit-level record the headline comes from; null for commits that predate assemblies. */
+export interface CommitAssemblyInfo {
+  completeness: 'Complete' | 'Partial' | string;
+  incompleteReasons: string[];
+  measuredFiles: number;
+  carriedFiles: number;
+  unmeasuredFiles: number;
+  baseSha?: string | null;
+  baseResolution?: string | null;
+  oldestOriginSha?: string | null;
+  assembledAtUtc: string;
+  builds: string[];
+}
+
 export interface CommitDetail extends CommitInfo {
   /** Commit document id — parentId for the generic Spark sub-queries. */
   id: string;
   latestBuildId?: string;
+  coverageDeltaVsParent?: number | null;
+  coverageDeltaVsDefaultBranch?: number | null;
+  assembly?: CommitAssemblyInfo | null;
   /** Per-flag totals of the latest build; keys are sanitized flag names, the same values getTree's flag filter accepts. */
   flagTotals?: Record<string, CoverageSummary> | null;
   builds: BuildInfo[];
@@ -76,6 +93,9 @@ export interface TreeEntry {
   isFile: boolean;
   linesCovered: number;
   linesCoverable: number;
+  /** Files only, assembled commits only: 'Measured' on this commit or 'Carried' from carriedFromSha. */
+  origin?: 'Measured' | 'Carried' | string | null;
+  carriedFromSha?: string | null;
 }
 
 export interface TreeResponse {

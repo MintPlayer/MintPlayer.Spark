@@ -10,6 +10,21 @@
     "groups": [],
     "attributes": [
       {
+        "id": "f570d977-763a-4df2-b44f-2720507efc91",
+        "name": "CarryForward",
+        "label": {
+          "en": "Carry Forward"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "b35409ca-47af-4d73-89be-088af06fa44f",
         "name": "CiRunAttempt",
         "label": {
