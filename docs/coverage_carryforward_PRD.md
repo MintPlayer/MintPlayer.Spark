@@ -278,7 +278,9 @@ and the base resolved `exact`.
 - `Commit.Coverage` keeps meaning "the headline" but now equals the assembled totals.
 - New `CommitAssembly` document `{commitId}/assembly` with: `Builds[]` (the build ids that
   contributed and which attempt), `BaseSha`, `BaseResolution`, `Measured`/`Carried` counts,
-  `Completeness` + `IncompleteReasons[]`, `OldestOriginSha` + age in commits/days, `AssembledAtUtc`.
+  `Completeness` + `IncompleteReasons[]` (`noBase | baseWalked | baseMismatch | noFileList | noBlobIds |
+  testsFailed | unmeasuredChanges`), `OldestOriginSha`, `AssembledAtUtc`. *(As built: the origin's age
+  in commits/days is not stored — the sha is, and the UI links it.)*
 - Assembled files live at `{commitId}/assembly/files/{hash}` (same `FileCoverage` shape plus
   `Origin { Kind: Measured|Carried, FromSha, FromBuildId, OriginSha }` and `BlobOid`), and an
   assembled tree summary at `{commitId}/assembly/tree`. Build-level `FileCoverage`/tree documents stay
@@ -336,8 +338,11 @@ re-opened and re-finalized). It replaces the `commit.Coverage = build.Coverage` 
   the test step's outcome (`${{ steps.test.outcome == 'success' }}`). When `false` the server stores
   the measured files as usual but carries nothing into that commit's assembly and records the
   `testsFailed` reason — a crashed suite must never be papered over with the base's numbers (S1).
-- Outputs gain `assembly-completeness`, `assembly-measured-files`, `assembly-carried-files`,
-  `assembly-oldest-origin-sha`.
+- Outputs gain `assembly-line-rate`, `assembly-lines-covered`, `assembly-lines-coverable`,
+  `assembly-completeness`, `assembly-incomplete-reasons`, `assembly-measured-files`,
+  `assembly-carried-files`, `assembly-unmeasured-files`, `assembly-base-sha`,
+  `assembly-oldest-origin-sha` — all empty until the commit's first build finalized and on servers
+  without `carry-forward`.
 
 ### 5.6 What the UI shows
 
@@ -378,6 +383,14 @@ parent, `git rev-parse <commitSha>^1` (the workflows already check out with full
 public repos, App token otherwise) when the field is absent, and stores it in `Commit.ParentSha` with
 that single meaning. The old PR-base value is no longer sent; the resolver never used it.
 
+*As built:* `Commit.ParentShaSource` records who set the value (`upload` | `api`) and
+`ParentLookupAttemptedAtUtc` when GitHub was last asked. A Δ-vs-parent is computed only when the
+parent is trusted: confirmed by the API, or sent by the action for a **push** (the old action only
+ever sent its wrong PR-base value on `pull_request` events, so an upload-sourced parent on a PR commit
+is not trusted until the API confirms it). `BackfillCommitDeltasCronJob` walks commits with coverage
+and no lookup yet, 4 every 5 minutes (under GitHub's anonymous 60/h), verifies the parent and stamps
+both Δ columns, marking each commit attempted so the job drains and goes quiet.
+
 Rules: both deltas are `null` (rendered as `—`) when the reference commit has no complete assembly,
 never `0.0`; both are stored on the `Commit` document by the assembler, so the list query does no
 per-row work and the grid can sort on them; when a commit is (re-)assembled, the commits whose
@@ -394,14 +407,14 @@ previous default-branch assembly, are re-stamped. The in-memory stamping in `Com
 | `nx-set-shas` picked a base whose CI run was green but whose upload silently failed | Resolver falls through to `mergeBase`/`walked`; carry-forward still content-verified per file, but `baseWalked` keeps the verdict at `Partial`. |
 | Force-push / rewritten history | Same as above; nothing is carried without an OID match. |
 | A file deleted or renamed on the head | Absent from the head file list ⇒ never carried (renamed path is measured if its project was affected, which a rename guarantees). |
-| Carried data very old (a project never affected for months) | `OldestOriginSha` and age are stored and displayed; a repo-level `coverage.yml` knob `carryforward.maxAgeCommits` can downgrade the verdict. Content is still identical, so the number is still true. |
+| Carried data very old (a project never affected for months) | `OldestOriginSha` is stored and shown on the commit page and in the status response. Content is byte-identical, so the number is still true; a `coverage.yml` max-age knob that downgrades the verdict was considered and **not built** (§8). |
 | Measured and carried both exist for a path | Measured wins outright; no max-merge across the boundary (a carried higher hit count must never mask a regression). |
 | Two workflows disagree on `base-sha` | `baseMismatch` reason; first finalized base wins for that assembly. |
 | Old action build (no OIDs) | C′ via compare API when the App is installed; else no carry and `noBlobIds`. Never wrong, only less complete. |
 | Assembly storage per commit | Sized in S2; PR assemblies deleted at merge with their builds; default-branch assemblies kept. |
 | A test suite crashes and emits no report while the upload step still runs (`if: always()`) | The server cannot distinguish "affected but crashed" from "unaffected", so the action carries an explicit `carry-forward` input that workflows wire to the test step's outcome. When false, measured files are stored but nothing is carried and the assembly records `testsFailed`. (Found in S1: the ng-spark-auth suite at `7ad2e306` produced no report at all.) |
 | Sources imported by no spec are absent from vitest reports (`coverage.all` unset) | Not a carry-forward defect — the OID gate never carries a changed file — but it under-reports the denominator. Fixed alongside the dogfood: `all: true` on both vitest configs. |
-| Assembly races (two builds finalize within the same second) | Assembly runs in the single-consumer finalize recipient; a compare-exchange on `{commitId}/assembly` guards concurrent finalizers, and the loser re-queues. |
+| Assembly races (two builds finalize within the same second) | `AssembleCommitMessage` rides the same strict-FIFO queue as parsing and finalizing (`coverage-parse-session`, one message at a time), so two assemblies of one commit never overlap and the later one sees both builds. No lock is needed; the compare-exchange the draft proposed was dropped. |
 
 ---
 

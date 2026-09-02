@@ -194,9 +194,11 @@ Files: new `Entities/CommitAssembly.cs`, new `Ingestion/CommitAssembler.cs`,
 3. `BaseResolver.UsableBuildIdAsync` also accepts a commit with an assembly (the assembly is the
    preferred base; a bare finalized build remains acceptable for commits predating this work).
 4. `BuildFinalizer.Finalize` stops writing `commit.Coverage` and instead enqueues
-   `AssembleCommitMessage(commitId)`; a new `AssembleCommitRecipient` runs the assembler under a
-   compare-exchange lock on `{commitId}/assembly` and re-queues on contention. Promotion to
-   `Repository.LatestCoverage` moves to M4.
+   `AssembleCommitMessage(commitId, buildId)` on the same strict-FIFO queue; a new
+   `AssembleCommitRecipient` runs the assembler, saves, then publishes feedback for the triggering
+   build. *(As built: no compare-exchange lock — the queue already serializes; and promotion to
+   `Repository.LatestCoverage` moved into the assembler here rather than in M4, gated on
+   `Completeness == Complete`.)*
 5. Delete-at-merge (`DeletePullRequestBuildsRecipient`) also deletes the PR commit's assembly documents.
 5b. `Build.CarryForward` (bool, default true; set in M1 from the `carryForward` form field). If any
    build of the commit has it false, the assembler skips the carry step entirely and adds
@@ -208,9 +210,10 @@ Files: new `Entities/CommitAssembly.cs`, new `Ingestion/CommitAssembler.cs`,
    assembly authored at or before this commit (index `Commits_ByRepository` gains `ParentSha` and an
    `AssemblyComplete` flag). Both null when no reference. Then re-stamp dependants: commits whose
    `ParentSha` equals this sha, and for a default-branch commit the commits that were stamped against
-   the previous default-branch assembly. `UploadsController` stops treating `parentSha` as "PR base"
-   (it stores whatever the action sends as the git parent; old action builds sending the PR base are
-   detected because the value is not the commit's parent per the API, and ignored). Tests: first
+   the previous default-branch assembly. `UploadsController` stores whatever the action sends as `ParentSha` with
+   `ParentShaSource = "upload"`; the assembler overwrites it with the API's answer
+   (`ParentShaSource = "api"`) and trusts an upload-sourced value only on non-PR commits, because the
+   old action sent its PR-base value on `pull_request` events only (PRD §5.7 *as built*). Tests: first
    default-branch commit ⇒ both null; second PR commit ⇒ vs-parent uses the first PR commit, vs-default
    uses master; the S3 scenario stamps once per finalize without drift.
 6. Tests: S3's two tests flipped to the union; carry with matching OID; no carry on OID mismatch; no
@@ -266,7 +269,9 @@ Files: `apps/CodeCoverage/action/src/main.ts:41-51,240-248`, `src/capabilities.t
 5b. `context.ts:36`: `parentSha` becomes the git first parent of the uploaded commit
    (`git rev-parse <commitSha>^1`, omitted when the history is shallow and the command fails) on every
    event, instead of the PR base sha on `pull_request` only. PRD §5.7.
-6. `dist/` rebuilt through the existing `compile-ts-action` publish path; no hand edits to `dist/`.
+6. `dist/index.js` rebuilt from `src/` with `npm run build` (ncc) and committed — the PR workflow's
+   `coverage-action` job refuses a `dist/` that does not match `src/`, and the publish workflow
+   rebuilds it again through `compile-ts-action` when the tag moves. Never edit `dist/` by hand.
 
 ## M6 — UI: provenance and completeness
 
@@ -369,5 +374,14 @@ previously hidden file from S1).
 - **Assembly is per commit, builds stay per run** — a build remains "what one run uploaded", which is
   what retries, attempts and debugging need; the commit is the unit that has a coverage number.
 - **Measured always beats carried; never max-merge across the boundary** — PRD §6.
-- **Copy vs reference for assembled files** — pending S2.
+- **Copy vs reference for assembled files** — **copy** (S2: ≈ 1.6 MB per full Spark assembly, same
+  order as the per-build documents already stored).
 - **Contract stays at 1** — everything is additive and sniffable.
+- **No compare-exchange lock** — `AssembleCommitMessage` is on the strict-FIFO parse queue, which
+  already serializes parse → finalize → assemble; the lock in the draft of M2 step 4 was unnecessary.
+- **Δ columns reference the git parent and the default branch, never the Nx `base-sha`** — PRD §5.7.
+- **Backfill uses REST, not GraphQL** — Octokit.GraphQL's typed DSL cannot alias N `object(oid:)`
+  lookups in one query, the total volume is a few hundred calls once, and REST also has an anonymous
+  path for repositories without the App.
+- **Zero-report partial uploads are legitimate** — the file list alone lets the server carry the whole
+  commit forward; the PR workflow therefore has no `hashFiles` gate.

@@ -308,6 +308,14 @@ repository, *"no build for this run/attempt"* is a distinguishable answer and ge
 `runId`, or a poll for an upload that never happened — and not a secret. This is exactly the
 distinction §1a asks for and browse structurally cannot give.
 
+**Addendum 2026-09-02 — `assembly`.** The response gained a commit-level object beside the build's
+own numbers: the union of every finalized build of the commit plus files carried unchanged (same git
+blob OID) from the base, with `completeness`, `incompleteReasons`, measured/carried/unmeasured counts,
+the base and the contributing `builds[]`. Nothing above changed: `state` keeps its three values,
+`coverage` still means this build, and `assembly` is `null` until the first finalize and on servers
+that predate it. Full description in `upload-api.md` § *`assembly`*; design in
+`../coverage_carryforward_PRD.md`.
+
 ### 3.3 Action inputs and outputs
 
 New inputs (all optional; the default stays fire-and-forget, as the consumer asked):

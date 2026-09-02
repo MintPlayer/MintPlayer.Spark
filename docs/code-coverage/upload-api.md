@@ -258,7 +258,7 @@ What this deployment can do. Same authentication as the other three; the `upload
 applies, not the tighter `uploads` one.
 
 ```json
-{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth"] }
+{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward"] }
 ```
 
 **A client MUST treat 404 as `contract: 0`.** That is exactly what every image deployed before this

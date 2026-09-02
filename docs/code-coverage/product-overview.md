@@ -23,6 +23,8 @@ A self-hosted code-coverage analyzer for GitHub (in the spirit of codecov.io / c
 - Non-GitHub forges (GitLab, Bitbucket).
 - Codecov-style YAML config files in the repo, path fixes, ignore rules.
 - Carryforward flags (design for it — per-session storage makes it retrofittable — but don't build it).
+  *Revised 2026-09: carry-forward was built, but per **file** verified by git blob OID rather than per
+  flag — see `../coverage_carryforward_PRD.md`.*
 - PR diff ("patch") coverage — stretch goal after MVP.
 
 ---
@@ -103,7 +105,11 @@ ApiToken           id: ApiTokens/{sha256hex}          // uniqueness by construct
 
 Commit             id: Commits/{repoGitHubId}/{sha}
   Repository (ref), Sha, Branch?, PullRequestNumber?, ParentSha?, Message?, AuthoredAt?
-  FirstSeenAtUtc?, Coverage? (promoted at finalize), LatestBuildId?
+  FirstSeenAtUtc?, Coverage? (the assembled headline, stamped after each finalize), LatestBuildId?,
+  CoverageDeltaVsParent?, CoverageDeltaVsDefaultBranch?, AssemblyCompleteness?
+CommitAssembly  {commitId}/assembly (+ /assembly/files/{hash}, /assembly/tree)
+  union of the commit's finalized builds + files carried from the base by identical blob OID;
+  Completeness, IncompleteReasons, Measured/Carried/Unmeasured counts, OldestOriginSha
   // AuthoredAt only arrives via webhooks; lists sort AuthoredAt ?? FirstSeenAtUtc (M9.1)
 
 Build              id: Commits/{repoGitHubId}/{sha}/builds/{runId}-{runAttempt}
@@ -135,7 +141,7 @@ Non-coverable lines are simply absent from the data (no `NotCoverable` member). 
 
 **Raw uploads are retained** (the uploaded report files, gzipped) so the merged view *can* be lazily recomputed — late uploads and re-runs work today; a reprocess-after-parser-fix endpoint is backlog, the raw data for it is already there. Storage medium: RavenDB attachments on the Build document to start (they replicate/backup with the database); revisit if size becomes a problem.
 
-**Folder-tree aggregation** reads a `BuildTreeSummary` document (`{buildId}/tree`, per-file line totals) materialized at finalize — one point-load per request for both the `/tree` folder-level endpoint and the `/hierarchy` sunburst endpoint. Builds finalized before the summary existed fall back to streaming their `FileCoverage` docs. Note: a late upload re-opens a finalized build, and the summary only refreshes at the next finalize — the tree can serve pre-late-upload numbers in that window.
+**Folder-tree aggregation** reads the commit's assembled tree (`{commitId}/assembly/tree`, per-file line totals with Measured/Carried origin) when the commit has an assembly, else the build's `BuildTreeSummary` (`{buildId}/tree`) materialized at finalize — one point-load per request for both the `/tree` folder-level endpoint and the `/hierarchy` sunburst endpoint. Builds finalized before the summary existed fall back to streaming their `FileCoverage` docs. Note: a late upload re-opens a finalized build, and the summary only refreshes at the next finalize — the tree can serve pre-late-upload numbers in that window.
 
 ---
 
@@ -181,7 +187,9 @@ POST /api/uploads   (Bearer: OIDC JWT or covt_ token)
       │
       ▼
   Finalize: explicit POST /api/uploads/finish  OR  debounce (~2 min no new uploads)
-            OR timeout (~30 min) → Build.Status = Finalized → recompute Commit.CoverageSummary
+            OR timeout (~30 min) → Build.Status = Finalized → AssembleCommitMessage (same FIFO queue)
+            → CommitAssembly rebuilt from every finalized build of the commit (+ carry-forward)
+            → Commit.Coverage, Δ columns, repository promotion (Complete only) → check-runs
             → (later) notify checks/PR comment
 ```
 
@@ -206,7 +214,7 @@ Every parser output goes through one normalizer: strip `rootDir` (= `GITHUB_WORK
 
 Lives at `action/` in MintPlayer/CodeCoverage, consumed as `MintPlayer/CodeCoverage/action@<ref>` (extract to its own repo only if a Marketplace listing is ever wanted — `action.yml` must sit at a repo root for that). **node20 JavaScript action, TypeScript, bundled with `@vercel/ncc`** (dist/ committed + CI check for staleness). Composite/bash is what Codecov uses only because they ship a compiled CLI; we have no CLI because parsing is server-side. Node gives `@actions/glob` (discovery), hand-rolled fetch retries, `core.getIDToken(audience)` (OIDC) portably on all three OSes.
 
-- **Inputs**: `url` (server base), `token` (optional), `use-oidc` (default false; auto-chosen only when NO token is supplied and `id-token: write` is available), `files`/`directory` (globs; else auto-detect using Codecov's proven glob + ignore lists), `flags`, `name`, `fail-ci-if-error` (default false), `finish` (boolean → calls the finalize endpoint, for users who want deterministic completion), `disable-search`.
+- **Inputs**: `url` (server base), `token` (optional), `use-oidc` (default false; auto-chosen only when NO token is supplied and `id-token: write` is available), `files`/`directory` (globs; else auto-detect using Codecov's proven glob + ignore lists), `flags`, `name`, `fail-ci-if-error` (default false), `finish` (boolean → calls the finalize endpoint, for users who want deterministic completion), `disable-search`, `partial` + `base-sha` (nx-affected uploads), `carry-forward` (wire to the test step's outcome), `wait-for-finalize`.
 - **Sends**: gzipped report files + flat form fields: `repository`, `commitSha` (= `pull_request.head.sha` on PR events — **never** the merge `GITHUB_SHA`), `parentSha` (the PR base SHA on PR events), `branch` (`GITHUB_HEAD_REF` on PRs else `GITHUB_REF_NAME`), `pullRequestNumber`, `eventName`, `runId`, `runAttempt`, `jobName`, `workflow`, `flags` (comma-joined, split server-side), `rootDir` (`GITHUB_WORKSPACE`), `fileList` (`git ls-files`). The repository *id* travels only as an OIDC claim, never as a body field.
 - **Multiple invocations per run** are the *designed* case: each call = one session appended to the same Build (`runId`+`runAttempt` key).
 - **Versioning**: two tags, and only one of them moves. `coverage-upload-v<major>` follows the
