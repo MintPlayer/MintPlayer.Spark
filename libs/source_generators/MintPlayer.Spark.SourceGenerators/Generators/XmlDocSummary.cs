@@ -115,7 +115,10 @@ internal static class XmlDocSummary
             switch (node)
             {
                 case XText text:
-                    builder.Append(text.Value);
+                    // Source-line wrapping inside a text node is not a line break the reader
+                    // should see; only <para> and <br/> are. Collapse it to a space here so the
+                    // per-line normalization below never sees it.
+                    builder.Append(Regex.Replace(text.Value, @"\s+", " "));
                     break;
 
                 case XElement child:

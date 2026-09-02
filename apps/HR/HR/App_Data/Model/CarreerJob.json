@@ -58,9 +58,9 @@
         "referenceType": "HR.Entities.Profession",
         "isArray": false,
         "referenceDisplayType": "Modal",
+        "triggersRefresh": true,
         "showedOn": "Query, PersistentObject",
-        "rules": [],
-        "triggersRefresh": true
+        "rules": []
       }
     ],
     "queries": []
