@@ -15,8 +15,8 @@ namespace CodeCoverage.Ingestion;
 /// real first parent, and re-stamps both Δ columns from the stored headlines.
 /// Every processed commit is marked as attempted (answered or not), so the
 /// query drains and the job goes quiet; new commits are stamped by the
-/// assembler and never reach it. Sized to stay far inside GitHub's rate limit
-/// even for a repository without an App installation (anonymous REST).
+/// assembler and never reach it. Paced to stay inside GitHub's anonymous rate
+/// limit, so a repository without an App installation is served the same way.
 /// </summary>
 public partial class BackfillCommitDeltasCronJob : ISparkCronJob
 {
@@ -24,9 +24,12 @@ public partial class BackfillCommitDeltasCronJob : ISparkCronJob
     [Inject] private readonly ICommitAssembler assembler;
     [Inject] private readonly ILogger<BackfillCommitDeltasCronJob> logger;
 
-    public static string CronSchedule => "*/2 * * * *";
+    public static string CronSchedule => "*/5 * * * *";
 
-    private const int SliceSize = 25;
+    // 4 lookups per 5 minutes = 48/h, under GitHub's 60/h anonymous limit, so
+    // one uniform pace is safe for every repository whether or not the App is
+    // installed. A few hundred historical commits drain in a few hours.
+    private const int SliceSize = 4;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {

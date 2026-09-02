@@ -336,7 +336,7 @@ Files: `apps/CodeCoverage/CodeCoverage/ClientApp/src/app/**` (commit page, file 
 | M3 | `49f4b103` | compare-API fallback; `Truncated` ⇒ `noBlobIds` |
 | M4 | `707bddd9` | status `assembly{}`, browse reads `{commitId}/assembly/*`, gate judges the assembly, `withCoverageOnly` default false, upload-api.md |
 | M5 | `de05c991` | action: `git ls-files -s`, git first parent, `carry-forward`, zero-report partial upload, `assembly-*` outputs; server accepts zero-report partial uploads and advertises `carry-forward` |
-| Backfill (owner request) | `7eeaa756` | `BackfillCommitDeltasCronJob`: verifies parents via the GitHub commits API and stamps Δ for pre-existing commits, 25 per 2 min, drains and goes quiet. REST rather than GraphQL: Octokit.GraphQL's typed DSL cannot alias N `object(oid:)` lookups in one query, and the total volume is a few hundred calls once |
+| Backfill (owner request) | `7eeaa756` | `BackfillCommitDeltasCronJob`: verifies parents via the GitHub commits API and stamps Δ for pre-existing commits, 4 per 5 min (48/h, under the anonymous GitHub limit, one pace for every repository), drains and goes quiet. REST rather than GraphQL: Octokit.GraphQL's typed DSL cannot alias N `object(oid:)` lookups in one query, and the total volume is a few hundred calls once |
 | M6 | `bf8b2d9f` | provenance in the Files card, `Δ parent` + `Δ base branch` columns, `—` for no reference, model re-synchronized |
 | M7 | `8def5e3b` | PR workflow: no hashFiles gate, `carry-forward` from the test step, `wait-for-finalize`; master guard aligned; vitest `all: true`; `coverage-second-half.yml` manual probe |
 | M8 | this commit | docs, README index, roadmap T1.3, memory; `dist/index.js` rebuilt |
@@ -357,9 +357,9 @@ previously hidden file from S1).
 4. Exit criterion 3: a README-only PR; expect 100% carried, `Complete`.
 5. Exit criterion 5: compare the six repos' badges before and after — unchanged.
 6. Exit criterion 7: the CodeCoverage repository page; `7fc84af` shows `—` in both Δ columns once the
-   backfill has run (about two minutes per 25 commits).
+   backfill has run (4 commits every 5 minutes).
 7. Watch the backfill log line drain to nothing; then it can be deleted in a later change or left —
-   it costs one index query every two minutes.
+   it costs one index query every five minutes.
 
 ## Decisions
 
