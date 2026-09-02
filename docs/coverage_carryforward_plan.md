@@ -297,10 +297,11 @@ Files: `apps/CodeCoverage/CodeCoverage/ClientApp/src/app/**` (commit page, file 
 2. Open the implementation PR touching only an Angular lib file first (a comment) and verify exit
    criterion 1 against the live server *after* the server has deployed from master — sequence: land
    the server on master, deploy, then push the dogfood commit to the PR branch.
-3. Cross-run test (exit criterion 2): a `workflow_dispatch`-only workflow `coverage-second-half.yml`
-   that uploads a single Angular lib's report for `github.sha` with `partial: true` and the same
-   `base-sha` logic; dispatch it against a PR head after the PR run finished; confirm the union.
-   Remove the workflow before merge or keep it documented as a manual probe — decide in review.
+3. Cross-run test (exit criterion 2): after a PR run finished, upload a single Angular lib's report
+   for the same head sha as a *second* build, by hand, straight through the upload API
+   (`docs/code-coverage/upload-api.md`: create session with `partial=true` and the same `baseSha`,
+   post one report, finish). Confirm the union. Decided in review: no probe workflow is committed
+   for this — verification tooling does not live in the production repository.
 4. Nothing-affected run (exit criterion 3): push an empty-ish commit (README typo) and check the
    assembly is 100% carried and `Complete`.
 5. Wire `carry-forward: ${{ steps.test.outcome == 'success' }}` on the PR upload (give the test step
@@ -343,7 +344,7 @@ Files: `apps/CodeCoverage/CodeCoverage/ClientApp/src/app/**` (commit page, file 
 | M5 | `de05c991` | action: `git ls-files -s`, git first parent, `carry-forward`, zero-report partial upload, `assembly-*` outputs; server accepts zero-report partial uploads and advertises `carry-forward` |
 | Backfill (owner request) | `7eeaa756` | `BackfillCommitDeltasCronJob`: verifies parents via the GitHub commits API and stamps Δ for pre-existing commits, 4 per 5 min (48/h, under the anonymous GitHub limit, one pace for every repository), drains and goes quiet. REST rather than GraphQL: Octokit.GraphQL's typed DSL cannot alias N `object(oid:)` lookups in one query, and the total volume is a few hundred calls once |
 | M6 | `bf8b2d9f` | provenance in the Files card, `Δ parent` + `Δ base branch` columns, `—` for no reference, model re-synchronized |
-| M7 | `8def5e3b` | PR workflow: no hashFiles gate, `carry-forward` from the test step, `wait-for-finalize`; master guard aligned; vitest `all: true`; `coverage-second-half.yml` manual probe |
+| M7 | `8def5e3b` | PR workflow: no hashFiles gate, `carry-forward` from the test step, `wait-for-finalize`; master guard aligned; vitest `all: true` |
 | M8 | this commit | docs, README index, roadmap T1.3, memory; `dist/index.js` rebuilt |
 
 **Verified locally:** `CodeCoverage.Tests` full suite, the action's vitest + bundle suites, the SPA's
@@ -357,8 +358,9 @@ previously hidden file from S1).
    `coverage-upload-v1` (M8 step 5 — the action is backward compatible with the old server).
 2. Exit criterion 1: push a comment-only change under `libs/node_packages/ng-spark-auth` on a PR;
    expect `assembly-completeness: Complete`, measured = that lib, everything else carried.
-3. Exit criterion 2: dispatch `coverage-second-half.yml` against that PR head; expect
-   `assembly.builds` to list both runs and the union.
+3. Exit criterion 2: upload one Angular lib's report for that PR head by hand through the upload
+   API as a second build (see dogfood step 3 above); expect `assembly.builds` to list both and
+   the headline to be the union.
 4. Exit criterion 3: a README-only PR; expect 100% carried, `Complete`.
 5. Exit criterion 5: compare the six repos' badges before and after — unchanged.
 6. Exit criterion 7: the CodeCoverage repository page; `7fc84af` shows `—` in both Δ columns once the
