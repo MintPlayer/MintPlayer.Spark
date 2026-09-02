@@ -26,6 +26,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly IIndexCatalog indexCatalog;
 
+    /// <summary>C#-side description seeds (#348); one instance per synchronize run so each assembly is read once.</summary>
+    private readonly AttributeDescriptionCatalog descriptions = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -334,6 +337,108 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// Computes the hash file for a context type. Shared with the startup check so the value written
     /// and the value verified can never be produced by two different pieces of code.
     /// </summary>
+    /// <summary>
+    /// Rule for who owns an attribute's <c>description</c> (#348): C# owns <c>en</c> whenever it has
+    /// text for the property; JSON owns every other language, and owns <c>en</c> too when C# is
+    /// silent. Applied on update as well as on create — seeding only new attributes would leave
+    /// every attribute that already exists in a model file without a description forever.
+    /// </summary>
+    /// <remarks>
+    /// Writes <c>en</c> first when it has to add the key, and in place when the key exists, so a
+    /// second synchronize produces byte-identical JSON (the converter serializes insertion order).
+    /// </remarks>
+    internal static void ApplyDescriptionSeed(EntityAttributeDefinition attribute, string? seed)
+    {
+        if (seed is null)
+            return;
+
+        if (attribute.Description is null)
+        {
+            attribute.Description = TranslatedString.Create(seed);
+            return;
+        }
+
+        var translations = attribute.Description.Translations;
+        if (translations.ContainsKey("en"))
+        {
+            translations["en"] = seed;
+            return;
+        }
+
+        var reordered = new Dictionary<string, string> { ["en"] = seed };
+        foreach (var kvp in translations)
+            reordered[kvp.Key] = kvp.Value;
+        attribute.Description.Translations = reordered;
+    }
+
+    /// <summary>
+    /// For <c>--spark-verify-model</c>: every attribute whose on-disk <c>description.en</c> differs
+    /// from what C# would seed (#348). The structural hash ignores descriptions by design, so this
+    /// is the only place a stale English description is caught.
+    /// </summary>
+    internal static IReadOnlyList<string> DescribeDescriptionDrift(Type contextType, string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return [];
+
+        var entityTypes = contextType.GetCachedProperties()
+            .Where(p => IsRavenQueryable(p.PropertyType))
+            .Select(p => GetQueryableEntityType(p.PropertyType))
+            .Where(t => t is not null)
+            .Cast<Type>()
+            .ToList();
+
+        // Embedded (AsDetail) types have model files too; they live in the same assemblies.
+        var assemblies = entityTypes.Select(t => t.Assembly).Append(contextType.Assembly).Distinct().ToList();
+        var catalog = new AttributeDescriptionCatalog(_ => { });
+        var drift = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json").OrderBy(f => f, StringComparer.Ordinal))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition?.ClrType is null)
+                continue;
+
+            var clrType = assemblies.Select(a => a.GetType(definition.ClrType)).FirstOrDefault(t => t is not null);
+            if (clrType is null)
+                continue;
+
+            var properties = clrType.GetSparkModelProperties().ToDictionary(p => p.Name, p => p);
+            foreach (var attribute in definition.Attributes)
+            {
+                if (!properties.TryGetValue(attribute.Name, out var property))
+                    continue;
+
+                var seed = catalog.Seed(property);
+                if (seed is null)
+                    continue;
+
+                string? onDisk = null;
+                attribute.Description?.Translations.TryGetValue("en", out onDisk);
+                if (!string.Equals(onDisk, seed, StringComparison.Ordinal))
+                {
+                    drift.Add($"{definition.Name}.{attribute.Name}: description.en is " +
+                              $"{(onDisk is null ? "absent" : $"\"{onDisk}\"")} on disk, C# says \"{seed}\"");
+                }
+            }
+        }
+
+        return drift;
+    }
+
     internal static ModelHashFile BuildModelHashes(Type contextType, IIndexCatalog indexCatalog, string contentRootPath)
     {
         var shapes = ModelShapeDiscovery.Discover(contextType, indexCatalog);
@@ -575,6 +680,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var referenceAttr = property.GetCachedCustomAttribute<ReferenceAttribute>();
             var lookupRefAttr = property.GetCachedCustomAttribute<LookupReferenceAttribute>();
             var sortableAttr = property.GetCachedCustomAttribute<SortableAttribute>();
+            // The collection property's text wins over the projection's; either may be undocumented.
+            var descriptionSeed = (collectionProp is null ? null : descriptions.Seed(collectionProp))
+                ?? (projectionProp is null ? null : descriptions.Seed(projectionProp));
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var dataType = referenceAttr != null ? "Reference" : GetDataType(property.PropertyType);
             string? referenceType = referenceAttr?.TargetType.FullName ?? referenceAttr?.TargetType.Name;
@@ -705,6 +813,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.InQueryType = null;
                 }
 
+                ApplyDescriptionSeed(existingAttr, descriptionSeed);
                 newAttributes.Add(existingAttr);
             }
             else
@@ -715,6 +824,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Id = Guid.NewGuid(),
                     Name = propertyName,
                     Label = TranslatedString.Create(AddSpacesToCamelCase(propertyName)),
+                    Description = descriptionSeed is null ? null : TranslatedString.Create(descriptionSeed),
                     DataType = dataType,
                     // A get-only property cannot be required: nothing can supply a value for it.
                     IsRequired = property.CanWrite
@@ -996,14 +1106,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return false;
     }
 
-    private bool IsRavenQueryable(Type type)
+    private static bool IsRavenQueryable(Type type)
     {
         if (!type.IsGenericType) return false;
         var genericDef = type.GetGenericTypeDefinition();
         return genericDef == typeof(IRavenQueryable<>);
     }
 
-    private Type? GetQueryableEntityType(Type queryableType)
+    private static Type? GetQueryableEntityType(Type queryableType)
     {
         if (!queryableType.IsGenericType) return null;
         return queryableType.GetGenericArguments().FirstOrDefault();
