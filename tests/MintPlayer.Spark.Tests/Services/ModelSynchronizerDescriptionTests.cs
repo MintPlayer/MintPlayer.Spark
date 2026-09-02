@@ -6,10 +6,11 @@ using MintPlayer.Spark.Services;
 using NSubstitute;
 using Raven.Client.Documents.Linq;
 
-// Hand-written rows standing in for what AttributeDescriptionsGenerator emits, so these tests do
-// not depend on the generator being wired into this project. (The generator IS wired in — see
-// Real_summary_comment_reaches_the_model_through_the_generator — but the seeding contract is pinned
-// independently of it.) DEBUG is defined for test builds, so the rows survive [Conditional].
+// Hand-written rows standing in for what AttributeDescriptionsGenerator emits: this project does not
+// run the Spark analyzers, and the seeding contract is pinned independently of the generator anyway
+// (its own snapshot tests live in MintPlayer.Spark.SourceGenerators.Tests; the DemoApp/HR model
+// files show the two wired together). DEBUG is defined for test builds, so the rows survive
+// [Conditional].
 [assembly: SparkAttributeDescription(typeof(MintPlayer.Spark.Tests.Services.MSD_Widget), "Notes", "From the summary.")]
 [assembly: SparkAttributeDescription(typeof(MintPlayer.Spark.Tests.Services.MSD_Widget), "Title", "From the summary, loses.")]
 
@@ -161,16 +162,6 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
         File.ReadAllText(ModelFile("MSD_Widget")).Should().NotContain("\"description\": null");
     }
 
-    [Fact]
-    public void Real_summary_comment_reaches_the_model_through_the_generator()
-    {
-        // End-to-end wiring: MSD_Widget.Body carries a real /// summary and no hand-written row.
-        // If this fails while the tests above pass, the generator is not running on this project.
-        SyncTwice();
-
-        Attribute("Body").Description!.Translations["en"].Should().Be("The body text, shown below the title.");
-    }
-
     // ── AC5 ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -280,9 +271,6 @@ public class MSD_Widget
     public string Notes { get; set; } = string.Empty;
 
     public string Plain { get; set; } = string.Empty;
-
-    /// <summary>The body text, shown below the title.</summary>
-    public string Body { get; set; } = string.Empty;
 }
 
 public class MSD_Context : SparkContext

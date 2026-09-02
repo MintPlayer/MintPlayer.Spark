@@ -19,7 +19,7 @@ public class BreadcrumbCompanionTests
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
     private const string PersonWithMarkedAddress = """
@@ -297,12 +297,12 @@ public class BreadcrumbCompanionTests
         var library = GeneratorHarness.CompileToMetadataReference(
             "Fleet.Library",
             [PersonWithMarkedAddress],
-            referenceTypes: [typeof(GenerateIndexAttribute)]);
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)]);
 
         var result = GeneratorHarness.Run(
             GeneratorName,
             ["namespace TestApp; public class Program { }"],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp",
             additionalReferences: [library]);
 

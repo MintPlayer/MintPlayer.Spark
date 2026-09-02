@@ -40,7 +40,7 @@ public class SparkContextRootsTests
         => GeneratorHarness.Run(
             GeneratorName,
             [entity, contextSource, SparkContextStub],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
     private static string RootsFile(GeneratorRunResult result)
@@ -155,7 +155,7 @@ public class SparkContextRootsTests
 
             public partial class AppContext : SparkContext { }
             """, SparkContextStub],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
         result.GeneratedSources.Should().BeEmpty();

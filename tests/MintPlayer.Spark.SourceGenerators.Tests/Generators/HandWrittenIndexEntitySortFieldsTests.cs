@@ -15,7 +15,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
     /// <summary>
@@ -26,7 +26,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         => GeneratorHarness.Run(
             GeneratorName,
             sources,
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp");
 
     /// <summary>

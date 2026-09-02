@@ -46,7 +46,7 @@ public class TranslatedStringFanOutTests
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp",
             additionalTexts: cultureJson is null
                 ? null
