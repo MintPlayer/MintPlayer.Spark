@@ -84,8 +84,14 @@ public partial class BaseResolver : IBaseResolver
     /// </summary>
     private async Task<string?> UsableBuildIdAsync(Commit? commit, CancellationToken cancellationToken)
     {
-        if (commit?.Coverage is null || commit.LatestBuildId is null)
+        if (commit?.Coverage is null || commit.LatestBuildId is null || commit.Id is null)
             return null;
+
+        // An assembled commit is usable by definition (the assembly is the
+        // preferred base); a bare finalized build remains acceptable for commits
+        // that predate assemblies.
+        if (await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(commit.Id), cancellationToken))
+            return commit.LatestBuildId;
 
         return await session.Advanced.ExistsAsync(BuildTreeSummary.DocumentId(commit.LatestBuildId), cancellationToken)
             ? commit.LatestBuildId

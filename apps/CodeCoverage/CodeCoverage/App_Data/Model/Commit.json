@@ -8,6 +8,21 @@
     "groups": [],
     "attributes": [
       {
+        "id": "dff2e520-5b02-4e18-aed3-1d0b6d9ccd0d",
+        "name": "AssemblyCompleteness",
+        "label": {
+          "en": "Assembly Completeness"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "77203692-9b28-495d-913f-c8b34f038564",
         "name": "AuthoredAt",
         "label": {
@@ -17,7 +32,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 7,
+        "order": 8,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -55,10 +70,26 @@
         "renderer": "coverage-bar"
       },
       {
-        "id": "b8d4f2a1-7c39-4e60-9d18-2f5a6b0c3e77",
-        "name": "CoverageDelta",
+        "id": "6a1f3c2e-8b4d-4e5f-9a70-1c2d3e4f5a6b",
+        "name": "CoverageDeltaVsDefaultBranch",
         "label": {
-          "en": "Δ"
+          "en": "Δ base branch"
+        },
+        "dataType": "decimal",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": [],
+        "renderer": "coverage-delta"
+      },
+      {
+        "id": "b8d4f2a1-7c39-4e60-9d18-2f5a6b0c3e77",
+        "name": "CoverageDeltaVsParent",
+        "label": {
+          "en": "Δ parent"
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -80,7 +111,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 6,
+        "order": 7,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
@@ -96,7 +127,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 11,
+        "order": 12,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -111,7 +142,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 12,
+        "order": 13,
         "query": "GetBuilds",
         "isArray": false,
         "showedOn": "PersistentObject",
@@ -127,7 +158,22 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 10,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c4fbe030-4e29-420f-903b-a72b0be54505",
+        "name": "ParentLookupAttemptedAtUtc",
+        "label": {
+          "en": "Parent Lookup Attempted At Utc"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 15,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -142,7 +188,22 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 9,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "11af8c16-15e9-42bd-b147-778cc8cf84db",
+        "name": "ParentShaSource",
+        "label": {
+          "en": "Parent Sha Source"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 14,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -157,7 +218,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 8,
+        "order": 9,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []

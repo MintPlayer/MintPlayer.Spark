@@ -13,6 +13,15 @@ namespace CodeCoverage.Services;
 public interface IGitHubDiffService
 {
     Task<CommitComparison?> CompareAsync(Repository repository, long? installationId, string baseRef, string headSha, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The git first parent of <paramref name="sha"/> per GitHub's commits API,
+    /// or null when no API path exists or the call fails. The authoritative
+    /// source for <see cref="Commit.ParentSha"/>: older action builds sent the
+    /// PR base under that name, so the stored hint is verified before a Δ is
+    /// computed against it.
+    /// </summary>
+    Task<string?> GetFirstParentAsync(Repository repository, long? installationId, string sha, CancellationToken cancellationToken = default);
 }
 
 /// <param name="MergeBaseSha">The common ancestor GitHub computed for base...head.</param>

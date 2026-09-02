@@ -28,6 +28,22 @@ public class FileCoverage
     /// </summary>
     public string? BranchFormat { get; set; }
 
+    /// <summary>
+    /// Git blob OID of <see cref="Path"/> at the measured commit, taken from the
+    /// uploader's file list when it carried OIDs and the path matched. Null for
+    /// unmatched paths and for uploads from action builds that sent bare paths.
+    /// Carry-forward copies a file into a later commit's assembly only when
+    /// this equals the later commit's OID for the same path.
+    /// </summary>
+    public string? BlobOid { get; set; }
+
+    /// <summary>
+    /// Set only on assembled copies ({commitId}/assembly/files/…): whether this
+    /// commit measured the file or carried it from the base, and from where.
+    /// Null on the per-build documents, which are always measured by definition.
+    /// </summary>
+    public FileOrigin? Origin { get; set; }
+
     public List<LineCoverage> Lines { get; set; } = [];
 
     public List<BranchCoverage> Branches { get; set; } = [];

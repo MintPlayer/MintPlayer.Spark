@@ -19,10 +19,14 @@ public sealed record CheckVerdict(string Conclusion, bool? Passed, string Title,
 /// </summary>
 public static class GateEvaluator
 {
-    public static CheckVerdict Project(GateSettings gate, Build build, BuildComparer.Result comparison)
+    public static CheckVerdict Project(GateSettings gate, Build build, BuildComparer.Result comparison, CommitAssembly? assembly = null)
     {
         var basis = build.Partial ? gate.ProjectBasis : "whole";
-        var headRate = basis == "projection" ? Rate(comparison.Partial?.Projection) : Rate(build.Coverage);
+        // The assembled headline (union of the commit's builds + OID-verified
+        // carry-forward) supersedes the on-the-fly projection whenever it exists.
+        var headRate = basis == "projection"
+            ? (assembly is not null ? Rate(assembly.Coverage) : Rate(comparison.Partial?.Projection))
+            : Rate(build.Coverage);
         if (headRate is null)
             return new CheckVerdict("neutral", null, "No coverage data", "The build measured no coverable lines, so there is nothing to judge.");
 
@@ -30,7 +34,7 @@ public static class GateEvaluator
             ? (gate.ProjectTarget, "target")
             : (build.Partial && basis == "scoped" ? Rate(comparison.Partial?.ScopedBaseline) : Rate(comparison.Base.Coverage), "base");
 
-        var summary = Describe(gate, build, comparison, basis, headRate.Value, baseRate);
+        var summary = Describe(gate, build, comparison, basis, headRate.Value, baseRate, assembly);
 
         if (baseRate is null)
         {
@@ -69,7 +73,7 @@ public static class GateEvaluator
     private static string Conclude(GateSettings gate, bool passed)
         => !gate.Blocking ? "neutral" : passed ? "success" : "failure";
 
-    private static string Describe(GateSettings gate, Build build, BuildComparer.Result comparison, string basis, double headRate, double? baseRate)
+    private static string Describe(GateSettings gate, Build build, BuildComparer.Result comparison, string basis, double headRate, double? baseRate, CommitAssembly? assembly = null)
     {
         var lines = new List<string>();
 
@@ -83,7 +87,14 @@ public static class GateEvaluator
                     ? $"Base: `{resolved.ResolvedSha}` (as declared)."
                     : $"Base: `{resolved.ResolvedSha}` via **{resolved.Mode}** — the declared base `{resolved.RequestedSha ?? "(none)"}` had no usable coverage.");
             }
-            if (basis == "projection" && comparison.IncompleteReasons.Length > 0)
+            if (basis == "projection" && assembly is not null)
+            {
+                lines.Add($"Assembled from {assembly.Builds.Count} build(s): {assembly.MeasuredFiles} file(s) measured on this commit, "
+                    + (assembly.BaseSha is null ? "nothing carried forward." : $"{assembly.CarriedFiles} carried unchanged from `{assembly.BaseSha}`."));
+                if (assembly.Completeness != CommitAssembly.Complete)
+                    lines.Add($"⚠ The assembly is incomplete ({string.Join(", ", assembly.IncompleteReasons)}); {assembly.UnmeasuredFiles} changed file(s) were not re-measured.");
+            }
+            else if (basis == "projection" && comparison.IncompleteReasons.Length > 0)
                 lines.Add($"⚠ The projection is best-effort ({string.Join(", ", comparison.IncompleteReasons)}); treat the number as incomplete.");
         }
 

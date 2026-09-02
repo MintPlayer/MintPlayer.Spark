@@ -160,6 +160,7 @@ jobs:
         done
 
     - name: Run affected tests (.NET + Angular via Nx)
+      id: test
       # Step-level so the known hang (E2E suite wedging with no output) fails
       # here and the `if: always()` coverage upload below still runs with
       # whatever the completed suites produced.
@@ -176,11 +177,16 @@ jobs:
     # self-hosted Coverage server. `partial: true` + the nx base SHA declare
     # that this run measured only the affected subset, so the server compares
     # like-for-like against the base instead of reading the totals as a
-    # whole-workspace collapse — this replaces the per-flag carryforward
-    # workaround the codecov setup needed. `disable-search` because a glob
-    # that matches nothing must be a no-op, not an auto-detected upload of
-    # stray unparsable reports; the hashFiles gate skips the step entirely
-    # when nx affected ran no test project at all.
+    # whole-workspace collapse, and carries every file nx skipped forward from
+    # the base when its git blob is unchanged (docs/coverage_carryforward_PRD.md).
+    # `disable-search` because a glob that matches nothing must be a no-op, not
+    # an auto-detected upload of stray unparsable reports. No hashFiles gate:
+    # a run where nx affected tested nothing is exactly the run that must still
+    # upload (its file list is what lets the server carry the whole commit
+    # forward), and the action treats zero reports + partial as legitimate.
+    # `carry-forward` is the test step's outcome: a crashed suite produces no
+    # report, and without this the server would paint over the hole with the
+    # base's numbers.
     # The Angular reports are new here. Both workflows used to glob only
     # tests/*/coverage/**, and `disable-search: true` means nothing else is picked
     # up, so vitest has been writing libs/node_packages/*/coverage/cobertura-coverage.xml
@@ -188,7 +194,7 @@ jobs:
     # and the badge has been .NET-only. apps/*/*/coverage/** is new too: it is where
     # CodeCoverage.Tests lands.
     - name: Upload coverage
-      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml') != ''
+      if: always()
       # The working copy, not a published ref: the action's source lives in this
       # repository, so a PR that changes the upload API and the action together is
       # tested with the action it just changed. `coverage-action` below guarantees
@@ -205,7 +211,9 @@ jobs:
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}
+        carry-forward: ${{ steps.test.outcome == 'success' }}
         finish: true
+        wait-for-finalize: true
         fail-ci-if-error: false
 
   # The upload action's source lives in this repository (docs/coverage_action_home_PRD.md).

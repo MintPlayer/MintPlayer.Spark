@@ -204,7 +204,7 @@ file list.
 
 A session where some reports failed is not `Parsed`. Introduce the partial state and surface it.
 
-### T1.3 — Make failed and in-flight builds reachable 🟦 · cost S–M
+### T1.3 — Make failed and in-flight builds reachable 🟦 · cost S–M (✅ BUILT 2026-09-02 — `withCoverageOnly` defaults to false; the commit page shows assembly state. Shipped with the carry-forward work, `../coverage_carryforward_PRD.md`.)
 
 The repo commit list is the only navigation into a commit, and it filters on coverage:
 `BrowseController.GetCommits` defaults `withCoverageOnly = true` **[verified]** and the SPA never

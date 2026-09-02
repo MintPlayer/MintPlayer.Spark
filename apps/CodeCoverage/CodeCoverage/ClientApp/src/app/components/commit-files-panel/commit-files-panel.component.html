@@ -1,6 +1,34 @@
 <bs-card class="mt-3 d-block">
   <bs-card-header>Files</bs-card-header>
 
+  @if (assembly(); as a) {
+    <!-- Where the commit's number came from. A partial (nx affected) upload
+         measures a subset; the rest is carried from the base when the file's
+         git blob is unchanged, so the headline is still whole-workspace. -->
+    <div class="px-3 pt-3 small" data-testid="assembly-summary">
+      <span class="badge me-2" [class.text-bg-success]="a.completeness === 'Complete'" [class.text-bg-warning]="a.completeness !== 'Complete'">{{ a.completeness }}</span>
+      <span>
+        {{ a.measuredFiles }} file(s) measured on this commit
+        @if (a.carriedFiles > 0) {
+          · {{ a.carriedFiles }} carried unchanged from
+          <a href="javascript:void(0)" (click)="openCommit(a.baseSha!)"><code>{{ a.baseSha | slice:0:7 }}</code></a>
+          @if (a.oldestOriginSha && a.oldestOriginSha !== a.baseSha) {
+            (oldest measured at <code>{{ a.oldestOriginSha | slice:0:7 }}</code>)
+          }
+        }
+        @if (a.unmeasuredFiles > 0) {
+          · <span class="text-danger">{{ a.unmeasuredFiles }} changed file(s) measured by nobody</span>
+        }
+        @if (a.builds.length > 1) {
+          · {{ a.builds.length }} builds
+        }
+      </span>
+      @if (a.incompleteReasons.length > 0) {
+        <span class="text-muted ms-2">({{ a.incompleteReasons.join(', ') }})</span>
+      }
+    </div>
+  }
+
   @if (flagEntries().length > 0) {
     <div class="d-flex flex-wrap gap-2 align-items-center px-3 pt-3" role="group" aria-label="Filter by flag">
       <span class="small text-muted" aria-hidden="true">Flags:</span>
@@ -74,7 +102,7 @@
            default; without it a wide file table overflows its card on a phone. -->
       <bs-table [isResponsive]="true">
         <thead>
-          <tr><th>Name</th><th>Coverage</th><th class="text-end">Lines</th></tr>
+          <tr><th>Name</th><th>Coverage</th><th class="text-end">Lines</th><th class="text-end">Origin</th></tr>
         </thead>
         <tbody>
           @for (entry of t.entries; track entry.path) {
@@ -92,6 +120,18 @@
                 <app-coverage-bar [summary]="{ linesCovered: entry.linesCovered, linesCoverable: entry.linesCoverable, branchesCovered: 0, branchesTotal: 0, filesCount: 0 }" />
               </td>
               <td class="text-end small text-muted">{{ entry.linesCovered }}/{{ entry.linesCoverable }}</td>
+              <td class="text-end small">
+                @if (entry.origin === 'Carried') {
+                  <span class="text-muted" title="Not measured on this commit; identical file, coverage carried from {{ entry.carriedFromSha }}">
+                    <i class="bi bi-arrow-return-right"></i> carried
+                    @if (entry.carriedFromSha) {
+                      from <code>{{ entry.carriedFromSha | slice:0:7 }}</code>
+                    }
+                  </span>
+                } @else if (entry.origin === 'Measured') {
+                  <span class="text-success" title="Measured on this commit"><i class="bi bi-check2"></i> measured</span>
+                }
+              </td>
             </tr>
           }
         </tbody>

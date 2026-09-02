@@ -63,6 +63,68 @@ public partial class GitHubDiffService : IGitHubDiffService
         return comparison;
     }
 
+    public async Task<string?> GetFirstParentAsync(Repository repository, long? installationId, string sha, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"{repository.GitHubId}/parent/{sha}";
+        if (Cache.TryGetValue(cacheKey, out string? cachedParent))
+            return cachedParent;
+
+        string? parent = null;
+
+        if (installationId is not null)
+        {
+            try
+            {
+                var client = await installationService.CreateInstallationClientAsync(installationId.Value);
+                var commit = await client.Repository.Commit.Get(repository.OwnerLogin, repository.Name, sha);
+                parent = commit.Parents.FirstOrDefault()?.Sha;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Installation commit lookup failed for {Repo}@{Sha}", repository.FullName, sha);
+            }
+        }
+
+        if (parent is null && !repository.IsPrivate)
+        {
+            try
+            {
+                var http = httpClientFactory.CreateClient();
+                using var request = new HttpRequestMessage(HttpMethod.Get,
+                    $"https://api.github.com/repos/{repository.FullName}/commits/{Uri.EscapeDataString(sha)}");
+                request.Headers.Accept.ParseAdd("application/vnd.github+json");
+                request.Headers.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("Coverage", "1.0"));
+
+                var response = await http.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+                    if (json.RootElement.TryGetProperty("parents", out var parents) && parents.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var p in parents.EnumerateArray())
+                        {
+                            parent = p.TryGetProperty("sha", out var parentSha) ? parentSha.GetString() : null;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    logger.LogWarning("Anonymous commit lookup for {Repo}@{Sha} returned {Status}", repository.FullName, sha, (int)response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Anonymous commit lookup failed for {Repo}@{Sha}", repository.FullName, sha);
+            }
+        }
+
+        if (parent is not null)
+            Cache.Set(cacheKey, parent, new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6) });
+
+        return parent;
+    }
+
     private async Task<CommitComparison?> CompareAnonymouslyAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken)
     {
         try

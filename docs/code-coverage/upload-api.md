@@ -206,6 +206,27 @@ always *abstain*.
 the server does not know its default branch, and the baseline is taken from the polled commit's own
 branch instead.)*
 
+### `assembly` — the commit-level number
+
+Everything above describes **this build**: one workflow run's uploads. The commit can have more than
+one build (a .NET workflow and an Angular workflow, a re-run, a second half dispatched later), and a
+partial build measures only part of the workspace. `assembly` is the commit's own record, rebuilt
+every time any build of the commit finalizes:
+
+| Field | Meaning |
+|---|---|
+| `coverage` | The commit's headline — the union of every finalized build (highest attempt per run), plus carried files. This is what the commit page, the badge and the Δ columns show. |
+| `completeness` | `Complete` or `Partial`. A full upload is always complete. A partial upload is complete when every file that changed since the base was re-measured by some build of the commit. |
+| `incompleteReasons` | `noBase`, `baseWalked`, `baseMismatch`, `noFileList`, `noBlobIds`, `testsFailed`, `unmeasuredChanges`. |
+| `measuredFiles` / `carriedFiles` / `unmeasuredFiles` | Measured on this commit; copied from the base because the git blob is identical; changed since the base and measured by nobody. |
+| `baseSha`, `baseResolution` | The commit files were carried from, and how it was found (`exact`, `mergeBase`, `walked`). |
+| `oldestOriginSha` | Of every carried file, the commit at which the oldest one was actually measured. |
+| `builds[]` | The build ids that contributed. Two workflows for one commit both appear here once both finalized — a poller that needs the other half can watch this list. |
+
+`assembly` is `null` until the commit's first build finalized (assembly follows finalize on the same
+queue, so a poller may briefly see `state: Complete` with `assembly: null`) and for commits that
+predate it. The top-level `coverage` stays what this build alone measured.
+
 ### Percentages
 
 **None are stored or returned.** Coverage is counts — `linesCovered` / `linesCoverable` — and you
@@ -237,7 +258,7 @@ What this deployment can do. Same authentication as the other three; the `upload
 applies, not the tighter `uploads` one.
 
 ```json
-{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth"] }
+{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward"] }
 ```
 
 **A client MUST treat 404 as `contract: 0`.** That is exactly what every image deployed before this
@@ -356,20 +377,30 @@ For a partial build, `GET /api/uploads/status` changes meaning in one place and 
 - **`baseline` becomes scoped**: the base commit's coverage restricted to the paths this build
   measured — a like-for-like ratchet. `coverage` (only the measured files) compares against it
   directly.
-- **`projection`** is the patched whole-workspace total: the base build's per-file tree with your
-  measured files overwritten and PR-deleted files pruned (via the uploaded `fileList`), summed at
-  read time. It *asserts* unmeasured files unchanged — which is exactly what `nx affected` earns —
-  and carries its own verdict: `complete` plus `incompleteReasons`
-  (`baseWalked | noFileList | unmatchedPaths | parseErrors`). An incomplete projection is best
-  effort; the UI shows a danger badge for it, and a strict gate should abstain on it
-  (`projection-complete` action output).
+- **`assembly`** (see above) is the number to read: the commit's builds unioned, and every file
+  `nx affected` skipped **carried from the base commit when its git blob OID is unchanged**. The
+  action sends `git ls-files -s` as the `fileList`, so the server verifies each carried file rather
+  than assuming it; a file that changed and was measured by nobody is counted in `unmeasuredFiles`
+  and makes the assembly `Partial`. Old action builds that send bare paths get the same treatment
+  via GitHub's compare API, except when the diff exceeds GitHub's 300-file cap (`noBlobIds`).
+- **`projection`** is the older, unverified estimate of the same thing: the base build's per-file
+  tree with your measured files overwritten and PR-deleted files pruned, summed at read time. It
+  *asserts* unmeasured files unchanged and carries its own verdict (`complete` plus
+  `incompleteReasons`: `baseWalked | noFileList | unmatchedPaths | parseErrors`). Prefer
+  `assembly`; `projection` remains for clients built against it.
 - **`baselineScope`** states the denominator: `requestedBaseSha` vs `resolvedBaseSha` and
   `baseResolution` (`exact | mergeBase | walked | none`). The server uses your declared base when it
   has usable data for it; otherwise it resolves the PR merge-base via GitHub's compare API; otherwise
   it walks to the newest covered default-branch commit — and always tells you which it did. `none`
   means abstain, never error.
 
-Partial builds never become the repository's headline number or badge. Patch coverage (`patch` in
+A partial build never becomes the repository's headline number or badge on its own; a **complete
+assembly** does, under the same default-branch rule as a full upload. If your test step failed, pass
+`carryForward=false` (action input `carry-forward`, typically `${{ steps.test.outcome == 'success' }}`):
+a crashed suite emits no report, and without that signal the server would fill the hole from the base.
+Uploads from several workflow runs for one commit (say .NET in one, Angular in another) are unioned by
+the assembly regardless of which finalizes last; `finish` means "last uploader of *this run*", never of
+the commit. Patch coverage (`patch` in
 the response) is computed from your own build's line data plus the diff, so it works even when the
 base has no coverage at all; added lines in projects the run didn't measure are **skipped, not
 counted as misses**.

@@ -71,6 +71,7 @@ public partial class UploadsController : ControllerBase
         "flag-coverage",     // per-flag totals
         "gzip-reports",      // gzipped report parts, detected by magic bytes
         "oidc-auth",         // GitHubOidc scheme, audience = Coverage:BaseUrl
+        "carry-forward",     // commit assembly: fileList with blob OIDs, carryForward, zero-report partial uploads, assembly{} on status
     ];
 
     public sealed record UploadResponse(string BuildId, string SessionId);
@@ -88,7 +89,10 @@ public partial class UploadsController : ControllerBase
     [RequestSizeLimit(MaxReportBytes)]
     public async Task<ActionResult<UploadResponse>> Upload([FromForm] UploadForm form, CancellationToken cancellationToken)
     {
-        if (form.Files.Count == 0)
+        // A partial upload with nothing to report is legitimate (every project
+        // cached or unaffected): it still carries the file list the assembler
+        // needs to fill the commit in from the base.
+        if (form.Files.Count == 0 && !(form.Partial && !string.IsNullOrWhiteSpace(form.FileList)))
             return BadRequest(new { error = "No coverage report files in the upload." });
         if (string.IsNullOrWhiteSpace(form.Repository) || !form.Repository.Contains('/'))
             return BadRequest(new { error = "repository must be owner/name." });
@@ -117,7 +121,11 @@ public partial class UploadsController : ControllerBase
         }
         commit.Branch ??= form.Branch;
         commit.PullRequestNumber ??= form.PullRequestNumber;
-        commit.ParentSha ??= form.ParentSha;
+        if (commit.ParentSha is null && !string.IsNullOrWhiteSpace(form.ParentSha))
+        {
+            commit.ParentSha = form.ParentSha;
+            commit.ParentShaSource = "upload";
+        }
 
         var buildId = Build.DocumentId(repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
@@ -150,6 +158,8 @@ public partial class UploadsController : ControllerBase
         // the same inputs; ??= just makes a disagreeing straggler harmless).
         build.Partial |= form.Partial;
         build.DeclaredBaseSha ??= form.BaseSha;
+        // One job whose tests failed disables carry-forward for the whole build.
+        build.CarryForward &= form.CarryForward ?? true;
 
         var sessionId = Guid.NewGuid().ToString("N")[..12];
         var buildSession = new BuildSession
@@ -282,6 +292,7 @@ public partial class UploadsController : ControllerBase
         }
 
         var commit = build.Commit is null ? null : await session.LoadAsync<Commit>(build.Commit, cancellationToken);
+        var assembly = build.Commit is null ? null : await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(build.Commit), cancellationToken);
         var baseUrl = configuration["Coverage:BaseUrl"]?.TrimEnd('/');
 
         // A partial build's numbers are honest only against a like-for-like
@@ -307,7 +318,19 @@ public partial class UploadsController : ControllerBase
             projection,
             build.Patch,
             build.FlagCoverage,
-            build.FeedbackState));
+            build.FeedbackState,
+            assembly is null ? null : new UploadStatusAssembly(
+                assembly.Coverage,
+                assembly.Completeness,
+                [.. assembly.IncompleteReasons],
+                assembly.MeasuredFiles,
+                assembly.CarriedFiles,
+                assembly.UnmeasuredFiles,
+                assembly.BaseSha,
+                assembly.BaseResolution,
+                assembly.OldestOriginSha,
+                [.. assembly.Builds.Select(b => b.BuildId)],
+                assembly.AssembledAtUtc)));
     }
 
     /// <summary>
@@ -391,7 +414,22 @@ public partial class UploadsController : ControllerBase
         UploadStatusProjection? Projection = null,
         PatchCoverage? Patch = null,
         IReadOnlyDictionary<string, CoverageSummary>? Flags = null,
-        string? FeedbackState = null);
+        string? FeedbackState = null,
+        UploadStatusAssembly? Assembly = null);
+
+    /// <summary>
+    /// The commit-level record: the union of every finalized build of the
+    /// commit plus files carried from the base where the git blob is unchanged.
+    /// <c>Coverage</c> here is the commit's headline; the response's top-level
+    /// <c>coverage</c> stays what this build alone measured. Null until the
+    /// first build of the commit finalized (assembly follows finalize on the
+    /// same queue) and for commits that predate assemblies.
+    /// </summary>
+    public sealed record UploadStatusAssembly(
+        CoverageSummary Coverage, string Completeness, string[] IncompleteReasons,
+        int MeasuredFiles, int CarriedFiles, int UnmeasuredFiles,
+        string? BaseSha, string? BaseResolution, string? OldestOriginSha,
+        string[] Builds, DateTime AssembledAtUtc);
 
     public sealed record UploadStatusBaseline(string Sha, string? Branch, CoverageSummary? Coverage);
 
@@ -433,6 +471,8 @@ public partial class UploadsController : ControllerBase
         public string? FileList { get; set; }
         public bool Partial { get; set; }
         public string? BaseSha { get; set; }
+        /// <summary>Absent means true: only an explicit <c>false</c> (tests failed) disables carry-forward.</summary>
+        public bool? CarryForward { get; set; }
         public IFormFileCollection Files { get; set; } = new FormFileCollection();
     }
 

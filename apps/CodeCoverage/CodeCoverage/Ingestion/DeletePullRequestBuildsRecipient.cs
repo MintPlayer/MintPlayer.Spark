@@ -46,9 +46,9 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
                 && string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal))
                 continue;
 
-            await using (var stream = await session.Advanced.StreamAsync<object>(
-                startsWith: $"{commit.Id}/builds", token: cancellationToken))
+            foreach (var prefix in new[] { $"{commit.Id}/builds", $"{commit.Id}/assembly" })
             {
+                await using var stream = await session.Advanced.StreamAsync<object>(startsWith: prefix, token: cancellationToken);
                 while (await stream.MoveNextAsync())
                 {
                     session.Delete(stream.Current.Id);

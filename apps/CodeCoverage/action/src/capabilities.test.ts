@@ -114,9 +114,15 @@ describe('warnAboutUnsupportedInputs', () => {
   });
 
   it('stays quiet when the server supports what was asked for', () => {
-    warnAboutUnsupportedInputs({ contract: 1, features: ['partial-uploads'] }, { partial: true });
+    warnAboutUnsupportedInputs({ contract: 1, features: ['partial-uploads', 'carry-forward'] }, { partial: true });
 
     expect(mockWarning).not.toHaveBeenCalled();
+  });
+
+  it('warns when partial was requested and the server cannot carry forward', () => {
+    warnAboutUnsupportedInputs({ contract: 1, features: ['partial-uploads'] }, { partial: true });
+    expect(mockWarning).toHaveBeenCalledTimes(1);
+    expect(mockWarning.mock.calls[0][0]).toMatch(/carry/i);
   });
 
   it('does not warn about partial when partial was not requested', () => {
@@ -136,7 +142,7 @@ describe('warnAboutUnsupportedInputs', () => {
   });
 
   it('says nothing when the server is level with the action', () => {
-    warnAboutUnsupportedInputs({ contract: CLIENT_CONTRACT, features: ['partial-uploads'] }, { partial: true });
+    warnAboutUnsupportedInputs({ contract: CLIENT_CONTRACT, features: ['partial-uploads', 'carry-forward'] }, { partial: true });
 
     expect(mockWarning).not.toHaveBeenCalled();
     expect(mockInfo).not.toHaveBeenCalled();
@@ -148,7 +154,7 @@ describe('warnAboutUnsupportedInputs', () => {
   // unreachable while CLIENT_CONTRACT is 1, because contract 0 is the
   // pre-capabilities path tested above; it becomes reachable at contract 2.
   it('says nothing when the server is ahead of the action', () => {
-    warnAboutUnsupportedInputs({ contract: CLIENT_CONTRACT + 1, features: ['partial-uploads'] }, { partial: true });
+    warnAboutUnsupportedInputs({ contract: CLIENT_CONTRACT + 1, features: ['partial-uploads', 'carry-forward'] }, { partial: true });
 
     expect(mockWarning).not.toHaveBeenCalled();
     expect(mockInfo).not.toHaveBeenCalled();

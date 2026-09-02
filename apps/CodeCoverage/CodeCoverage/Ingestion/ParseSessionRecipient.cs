@@ -39,9 +39,8 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
 
         try
         {
-            var fileList = await ReadAttachmentText(build, UploadAttachments.FileListName(message.SessionId), cancellationToken) is { } fl
-                ? fl.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                : [];
+            var headFileList = HeadFileList.Parse(
+                await ReadAttachmentText(build, UploadAttachments.FileListName(message.SessionId), cancellationToken));
 
             var touched = new Dictionary<string, FileCoverage>(StringComparer.Ordinal);
             var parsedAnything = false;
@@ -63,7 +62,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                 }
 
                 var result = parser.Parse(content);
-                var normalizer = new PathNormalizer(buildSession.RootDir, result.SourceRoots, fileList);
+                var normalizer = new PathNormalizer(buildSession.RootDir, result.SourceRoots, headFileList.Paths);
 
                 // Each parsed file merges into the build-level document AND
                 // one per-flag document per session flag — the only point
@@ -112,6 +111,8 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                         }
 
                         fileCoverage.Matched |= matched;
+                        if (matched)
+                            fileCoverage.BlobOid ??= headFileList.OidFor(path);
                         CoverageMerger.MergeInto(fileCoverage, parsedFile, parser.FormatName);
                     }
                 }
@@ -121,8 +122,11 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                     attachmentName, parser.FormatName, result.Files.Count, message.BuildId);
             }
 
-            buildSession.ParseStatus = parsedAnything ? "Parsed" : "Failed";
-            buildSession.Error = parsedAnything ? null : "No parsable coverage report found in the upload";
+            // A session that deliberately carried no report (zero-report partial
+            // upload) has nothing to fail at; the assembler fills the commit in.
+            var nothingToParse = buildSession.RawFileNames.Length == 0;
+            buildSession.ParseStatus = parsedAnything || nothingToParse ? "Parsed" : "Failed";
+            buildSession.Error = parsedAnything || nothingToParse ? null : "No parsable coverage report found in the upload";
             // Build-level documents only — the per-flag copies are the same
             // files again, not more files.
             buildSession.FilesCount = touched.Keys.Count(id => !id.Contains("/flags/", StringComparison.Ordinal));

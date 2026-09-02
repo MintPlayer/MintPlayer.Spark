@@ -49,35 +49,13 @@ public partial class CommitActions : DefaultPersistentObjectActions<Commit>
             .OfType<Commit>()
             .ToListAsync();
 
-        StampCoverageDeltas(commits);
         // In-memory from here: the framework materializes every custom query in
         // full before paging anyway, so this costs nothing extra — but it means
         // the query's sortColumns may name computed properties (Date). If this
         // ever returns a Raven queryable again, the sort must move back to an
-        // indexed field.
+        // indexed field. The Δ columns are persisted on the documents (stamped
+        // by the assembler against the git parent and the default branch), so
+        // nothing here depends on neighbouring rows any more.
         return commits.AsQueryable();
     }
-
-    /// <summary>
-    /// Fills in each commit's coverage change versus the chronologically next
-    /// one in the sequence — the "Δ" column. Anchored to the order computed
-    /// here, so re-sorting or paging the grid can't change what a row's number
-    /// means. Commits without coverage on either side get no delta rather than
-    /// a fake zero.
-    /// </summary>
-    private static void StampCoverageDeltas(IReadOnlyList<Commit> newestFirst)
-    {
-        for (var i = 0; i < newestFirst.Count - 1; i++)
-        {
-            var current = Percent(newestFirst[i].Coverage);
-            var previous = Percent(newestFirst[i + 1].Coverage);
-            if (current is not null && previous is not null)
-                newestFirst[i].CoverageDelta = current - previous;
-        }
-    }
-
-    private static double? Percent(CoverageSummary? summary)
-        => summary is { LinesCoverable: > 0 }
-            ? summary.LinesCovered * 100d / summary.LinesCoverable
-            : null;
 }

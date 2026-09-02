@@ -77,6 +77,37 @@ public static class CoverageMerger
         target.Branches = [.. branches.Values.OrderBy(b => b.Line).ThenBy(b => b.BlockId).ThenBy(b => b.BranchId)];
     }
 
+    /// <summary>
+    /// Max-merges one stored file document into another — two builds of the
+    /// same commit measuring the same file are the same situation as two
+    /// sessions of one build, so the assembler reuses the session rules above.
+    /// </summary>
+    public static void MergeInto(FileCoverage target, FileCoverage source)
+    {
+        var parsed = new ParsedFile { RawPath = source.Path };
+        foreach (var line in source.Lines)
+            parsed.Lines[line.Number] = new ParsedLine(line.Hits, line.Status);
+        foreach (var branch in source.Branches)
+            parsed.Branches[(branch.Line, branch.BlockId, branch.BranchId)] = branch.Taken;
+
+        MergeInto(target, parsed, source.BranchFormat ?? target.BranchFormat ?? "unknown");
+        target.Matched |= source.Matched;
+        target.BlobOid ??= source.BlobOid;
+    }
+
+    /// <summary>A deep copy with the same lines and branches — the assembler never shares list instances between documents.</summary>
+    public static FileCoverage Clone(FileCoverage source)
+        => new()
+        {
+            BuildId = source.BuildId,
+            Path = source.Path,
+            Matched = source.Matched,
+            BranchFormat = source.BranchFormat,
+            BlobOid = source.BlobOid,
+            Lines = [.. source.Lines.Select(l => new LineCoverage { Number = l.Number, Hits = l.Hits, Status = l.Status })],
+            Branches = [.. source.Branches.Select(b => new BranchCoverage { Line = b.Line, BlockId = b.BlockId, BranchId = b.BranchId, Taken = b.Taken })],
+        };
+
     public static CoverageSummary Summarize(IEnumerable<FileCoverage> files)
     {
         var summary = new CoverageSummary();

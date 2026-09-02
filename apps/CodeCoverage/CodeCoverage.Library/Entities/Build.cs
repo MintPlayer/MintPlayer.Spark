@@ -59,6 +59,16 @@ public class Build
     /// </summary>
     public string? DeclaredBaseSha { get; set; }
 
+    /// <summary>
+    /// Declared by the uploader: the test step that produced this run's reports
+    /// succeeded, so files it did not measure may be filled in from the base.
+    /// False when any job of the run said its tests failed — a crashed suite
+    /// emits no report, and the server cannot tell "affected but crashed" from
+    /// "unaffected", so the assembler carries nothing for the commit instead of
+    /// papering over the crash with the base's numbers.
+    /// </summary>
+    public bool CarryForward { get; set; } = true;
+
     public DateTime CreatedAtUtc { get; set; }
 
     public DateTime? LastUploadAtUtc { get; set; }

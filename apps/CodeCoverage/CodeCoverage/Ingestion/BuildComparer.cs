@@ -31,7 +31,12 @@ public static class BuildComparer
         if (headTree is null)
             return new Result(resolved, null, []);
 
-        var baseTree = await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(resolved.BaseBuildId), cancellationToken);
+        // The base's assembled tree when it has one (complete even if the base
+        // itself was a partial upload), else its build tree.
+        var baseCommitId = resolved.ResolvedSha is null ? null : Commit.DocumentId(repository.GitHubId, resolved.ResolvedSha);
+        var baseTree = baseCommitId is null ? null
+            : await session.LoadAsync<BuildTreeSummary>(CommitAssembly.TreeDocumentId(baseCommitId), cancellationToken);
+        baseTree ??= await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(resolved.BaseBuildId), cancellationToken);
         if (baseTree is null)
         {
             // Deleted between the resolver's existence check and this load —

@@ -1,5 +1,4 @@
 using MintPlayer.Spark.Abstractions;
-using Newtonsoft.Json;
 
 namespace CodeCoverage.Entities;
 
@@ -22,6 +21,21 @@ public class Commit
 
     public string? ParentSha { get; set; }
 
+    /// <summary>
+    /// Who set <see cref="ParentSha"/>: <c>upload</c> (the action's claim) or
+    /// <c>api</c> (verified against GitHub's commits API). Only <c>api</c> is
+    /// trusted for the Δ-vs-parent; older action builds sent the PR base sha
+    /// under the same name.
+    /// </summary>
+    public string? ParentShaSource { get; set; }
+
+    /// <summary>
+    /// When the server last asked GitHub for the parent (whether or not it
+    /// answered). The backfill job walks commits where this is null, so a
+    /// repository without any API path is asked once, not forever.
+    /// </summary>
+    public DateTime? ParentLookupAttemptedAtUtc { get; set; }
+
     public string? Message { get; set; }
 
     public DateTimeOffset? AuthoredAt { get; set; }
@@ -43,25 +57,35 @@ public class Commit
     /// </summary>
     public DateTimeOffset? Date => AuthoredAt ?? FirstSeenAtUtc;
 
-    /// <summary>Merged coverage of the latest finalized build, denormalized for lists/badges.</summary>
+    /// <summary>
+    /// The commit's headline: the assembled coverage (every finalized build of
+    /// the commit unioned, plus files carried unchanged from the base), stamped
+    /// by the assembler and denormalized for lists and badges.
+    /// </summary>
     public CoverageSummary? Coverage { get; set; }
 
     /// <summary>
-    /// Line-coverage change in percentage points versus the chronologically
-    /// previous commit that has coverage. Computed per request by the commits
-    /// query over the whole ordered sequence and never persisted — a
-    /// list-relative number is meaningless outside the list that produced it.
-    /// (A commit-graph delta would need an explicit base sha: ParentSha means
-    /// two different things depending on which writer set it — see
-    /// docs/roadmap-2026-08.md §7, T2.1.)
-    /// <para>
-    /// [JsonIgnore] keeps it out of the stored document — RavenDB serializes
-    /// through Newtonsoft, so this is the mechanism, not a Spark concern. It
-    /// stays a normal model attribute: the grid's Δ column reads it.
-    /// </para>
+    /// Percentage-point change versus the git first parent (<see cref="ParentSha"/>),
+    /// stamped by the assembler. Null when the parent has no coverage — rendered
+    /// as "—", never as a fake zero.
     /// </summary>
-    [JsonIgnore]
-    public double? CoverageDelta { get; set; }
+    public double? CoverageDeltaVsParent { get; set; }
+
+    /// <summary>
+    /// Percentage-point change versus the default branch's newest complete
+    /// coverage at or before this commit's date — "what would merging this do to
+    /// the headline". Equals <see cref="CoverageDeltaVsParent"/> on the default
+    /// branch itself. Null when there is no such reference.
+    /// </summary>
+    public double? CoverageDeltaVsDefaultBranch { get; set; }
+
+    /// <summary>
+    /// <see cref="CommitAssembly.Complete"/> / <see cref="CommitAssembly.Partial"/>
+    /// copied from the assembly so lists and indexes can filter without loading
+    /// it. Null for commits whose coverage predates assemblies (full uploads,
+    /// treated as complete).
+    /// </summary>
+    public string? AssemblyCompleteness { get; set; }
 
     /// <summary>The build whose coverage is shown for this commit (file tree reads its FileCoverage docs).</summary>
     public string? LatestBuildId { get; set; }

@@ -7,6 +7,7 @@ import { fetchCapabilities, warnAboutUnsupportedInputs } from './capabilities';
 import { collectContext } from './context';
 import { Credential, oidcCredential, staticCredential } from './credential';
 import { findCoverageFiles } from './files';
+import { formatFileList } from './filelist';
 import { UploadStatus, rate, waitForFinalize } from './status';
 
 const MAX_RETRIES = 3;
@@ -29,7 +30,9 @@ export async function run(): Promise<void> {
     // reported next to the upload it affects rather than after it.
     const capabilities = await fetchCapabilities(url, credential);
     core.setOutput('server-contract', capabilities.contract);
-    warnAboutUnsupportedInputs(capabilities, { partial: getBool('partial') });
+    const partial = getBool('partial');
+    const carryForward = core.getInput('carry-forward').trim().toLowerCase() !== 'false';
+    warnAboutUnsupportedInputs(capabilities, { partial, carryForward });
 
     const files = await findCoverageFiles(
       core.getInput('files') || undefined,
@@ -38,24 +41,37 @@ export async function run(): Promise<void> {
       getBool('disable-search'),
     );
 
-    if (files.length === 0) {
+    if (files.length === 0 && !partial) {
       throw new Error(
         'No coverage report files found. Pass `files:` explicitly or check that your test step writes lcov/cobertura output.',
       );
     }
-    core.info(`Uploading ${files.length} coverage file(s) for ${ctx.repository}@${ctx.commitSha}:`);
-    for (const file of files) {
-      core.info(`  ${path.relative(ctx.rootDir, file)}`);
+    if (files.length === 0) {
+      // Legitimate for `nx affected`: every project was cached or unaffected.
+      // The server assembles this commit entirely from the base, so the upload
+      // still has to happen — it carries the file list the assembler needs.
+      core.info(
+        `No coverage report files found; uploading the file list only so the server can carry coverage forward for ${ctx.repository}@${ctx.commitSha}.`,
+      );
+    } else {
+      core.info(`Uploading ${files.length} coverage file(s) for ${ctx.repository}@${ctx.commitSha}:`);
+      for (const file of files) {
+        core.info(`  ${path.relative(ctx.rootDir, file)}`);
+      }
     }
 
     const fileList = await gitLsFiles(ctx.rootDir);
+    if (files.length === 0 && !fileList) {
+      throw new Error('No coverage report files found and `git ls-files` failed, so there is nothing the server could carry forward.');
+    }
+    const parentSha = await gitFirstParent(ctx.rootDir, ctx.commitSha);
 
     const form = new FormData();
     form.set('repository', ctx.repository);
     form.set('commitSha', ctx.commitSha);
     if (ctx.branch) form.set('branch', ctx.branch);
     if (ctx.pullRequestNumber) form.set('pullRequestNumber', String(ctx.pullRequestNumber));
-    if (ctx.parentSha) form.set('parentSha', ctx.parentSha);
+    if (parentSha) form.set('parentSha', parentSha);
     form.set('runId', String(ctx.runId));
     form.set('runAttempt', String(ctx.runAttempt));
     form.set('jobName', core.getInput('name') || ctx.jobName);
@@ -63,7 +79,9 @@ export async function run(): Promise<void> {
     form.set('eventName', ctx.eventName);
     const flags = core.getInput('flags');
     if (flags) form.set('flags', flags);
-    if (getBool('partial')) form.set('partial', 'true');
+    if (partial) form.set('partial', 'true');
+    // Only the explicit false travels: absent means true on the server too.
+    if (!carryForward) form.set('carryForward', 'false');
     const baseSha = core.getInput('base-sha');
     if (baseSha) form.set('baseSha', baseSha);
     form.set('rootDir', ctx.rootDir);
@@ -78,6 +96,7 @@ export async function run(): Promise<void> {
     const response = await postWithRetry(`${url}/api/uploads`, credential, form);
     const body = (await response.json()) as { buildId: string; sessionId: string };
     core.info(`Upload accepted: build ${body.buildId}, session ${body.sessionId}`);
+    if (!carryForward) core.info('carry-forward is off for this upload: unmeasured files will not be filled in from the base.');
     core.setOutput('build-id', body.buildId);
     core.setOutput('session-id', body.sessionId);
 
@@ -225,6 +244,21 @@ function setResultOutputs(status: UploadStatus): void {
   core.setOutput('patch-lines-coverable', patch?.linesCoverable ?? '');
   core.setOutput('patch-rate', rate(patch?.linesCovered, patch?.linesCoverable));
   core.setOutput('patch-diff-truncated', patch ? String(patch.diffTruncated) : '');
+
+  // The commit-level assembly: the union of every build of the commit plus
+  // OID-verified carry-forward. Empty until the first build finalized and on
+  // servers that predate it.
+  const assembly = status.assembly;
+  core.setOutput('assembly-line-rate', rate(assembly?.coverage?.linesCovered, assembly?.coverage?.linesCoverable));
+  core.setOutput('assembly-lines-covered', assembly?.coverage?.linesCovered ?? '');
+  core.setOutput('assembly-lines-coverable', assembly?.coverage?.linesCoverable ?? '');
+  core.setOutput('assembly-completeness', assembly?.completeness ?? '');
+  core.setOutput('assembly-incomplete-reasons', assembly?.incompleteReasons?.join(',') ?? '');
+  core.setOutput('assembly-measured-files', assembly?.measuredFiles ?? '');
+  core.setOutput('assembly-carried-files', assembly?.carriedFiles ?? '');
+  core.setOutput('assembly-unmeasured-files', assembly?.unmeasuredFiles ?? '');
+  core.setOutput('assembly-base-sha', assembly?.baseSha ?? '');
+  core.setOutput('assembly-oldest-origin-sha', assembly?.oldestOriginSha ?? '');
 }
 
 function numberInput(name: string, fallback: number): number {
@@ -237,12 +271,36 @@ function numberInput(name: string, fallback: number): number {
   return value;
 }
 
+/**
+ * The tracked tree with blob OIDs (`git ls-files -s`), reduced to `<oid> <path>`
+ * per line. The OID is what lets the server carry a file's coverage forward
+ * from the base commit only when the file is byte-identical there.
+ */
 async function gitLsFiles(cwd: string): Promise<string | null> {
   try {
-    const output = await exec.getExecOutput('git', ['ls-files'], { cwd, silent: true });
-    return output.exitCode === 0 ? output.stdout : null;
+    const output = await exec.getExecOutput('git', ['ls-files', '-s'], { cwd, silent: true });
+    return output.exitCode === 0 ? formatFileList(output.stdout) : null;
   } catch {
     core.warning('git ls-files failed — path matching on the server will be best-effort.');
+    return null;
+  }
+}
+
+/**
+ * The git first parent of the uploaded commit, for the server's Δ-vs-parent.
+ * Null on a shallow checkout (the parent object is not present); the server
+ * then asks GitHub instead.
+ */
+async function gitFirstParent(cwd: string, sha: string): Promise<string | null> {
+  try {
+    const output = await exec.getExecOutput('git', ['rev-parse', '--verify', '--quiet', `${sha}^1`], {
+      cwd,
+      silent: true,
+      ignoreReturnCode: true,
+    });
+    const parent = output.stdout.trim();
+    return output.exitCode === 0 && /^[0-9a-f]{40,64}$/.test(parent) ? parent : null;
+  } catch {
     return null;
   }
 }

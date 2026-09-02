@@ -32,6 +32,23 @@ export interface UploadStatus {
   } | null;
   /** Patched whole-workspace projection with its completeness verdict. */
   projection?: { coverage: CoverageSummary; complete: boolean; incompleteReasons: string[] } | null;
+  /**
+   * The commit-level assembly: every finalized build of the commit unioned,
+   * plus files carried from the base where the git blob is unchanged. Null
+   * until the commit's first build finalized; absent on older servers.
+   */
+  assembly?: {
+    coverage: CoverageSummary;
+    completeness: string;
+    incompleteReasons: string[];
+    measuredFiles: number;
+    carriedFiles: number;
+    unmeasuredFiles: number;
+    baseSha?: string | null;
+    baseResolution?: string | null;
+    oldestOriginSha?: string | null;
+    builds: string[];
+  } | null;
   /** Added-lines coverage vs the diff base. */
   patch?: {
     diffBaseRef?: string | null;
