@@ -77,6 +77,8 @@ public class CommitAssemblerTests : CoverageRavenTest
         await seed.StoreAsync(new Commit
         {
             Repository = RepositoryId, Sha = sha, Branch = branch, AuthoredAt = date, ParentSha = parentSha,
+            // As the new action sends it on a push: trusted without an API round-trip.
+            ParentShaSource = parentSha is null ? null : "upload",
         }, Commit.DocumentId(RepoId, sha));
         await seed.SaveChangesAsync();
     }
@@ -387,6 +389,63 @@ public class CommitAssemblerTests : CoverageRavenTest
         var p6 = await Load<Commit>(store, Commit.DocumentId(RepoId, "p6"));
         Math.Abs(p6!.CoverageDeltaVsParent!.Value + expected).Should().BeLessThan(0.0001);
         Math.Abs(p6.CoverageDeltaVsDefaultBranch!.Value + expected).Should().BeLessThan(0.0001);
+    }
+
+    [Fact]
+    public async Task The_backfill_job_verifies_parents_and_stamps_deltas_for_legacy_commits_then_goes_quiet()
+    {
+        using var store = GetDocumentStore();
+        await SeedAssembledBase(store, T0); // m1: 4/6, assembled, parent looked up (scripted: none)
+
+        // m2: a legacy commit — coverage copied from a build, no assembly, no parent.
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Commit
+            {
+                Repository = RepositoryId, Sha = "m2", Branch = "master", AuthoredAt = T0.AddHours(1),
+                Coverage = new CoverageSummary { LinesCovered = 5, LinesCoverable = 6, FilesCount = 2 },
+            }, Commit.DocumentId(RepoId, "m2"));
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+
+        var github = new ScriptedDiffService();
+        github.Parents["m2"] = "m1";
+
+        async Task<int> RunJob()
+        {
+            using var session = store.OpenAsyncSession();
+            var services = new ServiceCollection()
+                .AddSingleton(store)
+                .AddSingleton(session)
+                .AddSingleton<IGitHubDiffService>(github)
+                .AddSingleton<IBaseResolver, BaseResolver>()
+                .AddSingleton<ICommitAssembler, CommitAssembler>()
+                .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
+                .BuildServiceProvider();
+            var job = ActivatorUtilities.CreateInstance<BackfillCommitDeltasCronJob>(services);
+            await job.RunAsync(CancellationToken.None);
+            WaitForIndexing(store);
+            using var count = store.OpenAsyncSession();
+            return await count.Query<CodeCoverage.Indexes.Commits_ByRepository.Result, CodeCoverage.Indexes.Commits_ByRepository>()
+                .Where(r => r.HasCoverage && !r.ParentLookupDone)
+                .CountAsync();
+        }
+
+        (await RunJob()).Should().Be(0);
+
+        var m2 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m2"));
+        m2!.ParentSha.Should().Be("m1");
+        m2.ParentShaSource.Should().Be("api");
+        Assert.NotNull(m2.ParentLookupAttemptedAtUtc);
+        var expected = 5 * 100d / 6 - 4 * 100d / 6;
+        Assert.NotNull(m2.CoverageDeltaVsParent);
+        Math.Abs(m2.CoverageDeltaVsParent!.Value - expected).Should().BeLessThan(0.0001);
+        Assert.NotNull(m2.CoverageDeltaVsDefaultBranch);
+
+        // m1 had no parent to find, but was still marked as attempted by its assembly.
+        var m1 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m1"));
+        Assert.NotNull(m1!.ParentLookupAttemptedAtUtc);
     }
 
     [Fact]

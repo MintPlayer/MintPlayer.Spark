@@ -22,6 +22,21 @@ public class Commit
 
     public string? ParentSha { get; set; }
 
+    /// <summary>
+    /// Who set <see cref="ParentSha"/>: <c>upload</c> (the action's claim) or
+    /// <c>api</c> (verified against GitHub's commits API). Only <c>api</c> is
+    /// trusted for the Δ-vs-parent; older action builds sent the PR base sha
+    /// under the same name.
+    /// </summary>
+    public string? ParentShaSource { get; set; }
+
+    /// <summary>
+    /// When the server last asked GitHub for the parent (whether or not it
+    /// answered). The backfill job walks commits where this is null, so a
+    /// repository without any API path is asked once, not forever.
+    /// </summary>
+    public DateTime? ParentLookupAttemptedAtUtc { get; set; }
+
     public string? Message { get; set; }
 
     public DateTimeOffset? AuthoredAt { get; set; }

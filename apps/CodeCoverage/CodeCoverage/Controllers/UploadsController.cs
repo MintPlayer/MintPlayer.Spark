@@ -121,7 +121,11 @@ public partial class UploadsController : ControllerBase
         }
         commit.Branch ??= form.Branch;
         commit.PullRequestNumber ??= form.PullRequestNumber;
-        commit.ParentSha ??= form.ParentSha;
+        if (commit.ParentSha is null && !string.IsNullOrWhiteSpace(form.ParentSha))
+        {
+            commit.ParentSha = form.ParentSha;
+            commit.ParentShaSource = "upload";
+        }
 
         var buildId = Build.DocumentId(repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);

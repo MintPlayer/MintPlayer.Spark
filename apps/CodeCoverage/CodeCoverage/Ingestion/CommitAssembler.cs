@@ -112,6 +112,17 @@ public partial class CommitAssembler : ICommitAssembler
         return assembly;
     }
 
+    public async Task RestampDeltasAsync(string commitId, CancellationToken cancellationToken = default)
+    {
+        using var requestScope = session.IgnoreMaxRequests(logger: logger);
+
+        var commit = await session.LoadAsync<Commit>(commitId, cancellationToken);
+        if (commit is null)
+            return;
+        var repository = commit.Repository is null ? null : await session.LoadAsync<Repository>(commit.Repository, cancellationToken);
+        await StampDeltas(commit, repository, cancellationToken);
+    }
+
     /// <summary>Finalized builds of the commit, highest attempt per run, oldest finalize first.</summary>
     private async Task<List<Build>> LoadContributingBuilds(string commitId, CancellationToken cancellationToken)
     {
@@ -364,13 +375,24 @@ public partial class CommitAssembler : ICommitAssembler
         long? installationId = repository.Account is null ? null
             : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
         var apiParent = await diffService.GetFirstParentAsync(repository, installationId, commit.Sha, cancellationToken);
+        commit.ParentLookupAttemptedAtUtc = DateTime.UtcNow;
         if (apiParent is not null)
+        {
             commit.ParentSha = apiParent;
+            commit.ParentShaSource = "api";
+        }
 
         var percent = Percent(commit.Coverage);
 
+        // Trust the parent when GitHub confirmed it, or when the action sent it
+        // for a push: the old action only ever sent a (wrong, PR-base) parent on
+        // pull_request events, so an upload-sourced parent on a PR commit may
+        // still be that legacy value.
+        var parentTrusted = commit.ParentShaSource == "api"
+            || (commit.ParentShaSource == "upload" && commit.PullRequestNumber is null);
+
         commit.CoverageDeltaVsParent = null;
-        if (commit.ParentSha is not null && percent is not null)
+        if (commit.ParentSha is not null && parentTrusted && percent is not null)
         {
             var parent = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, commit.ParentSha), cancellationToken);
             commit.CoverageDeltaVsParent = Delta(percent, Percent(parent?.Coverage));

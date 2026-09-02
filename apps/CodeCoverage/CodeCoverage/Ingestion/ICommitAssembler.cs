@@ -11,4 +11,12 @@ public interface ICommitAssembler
     /// Caller owns SaveChanges.
     /// </summary>
     Task<CommitAssembly?> AssembleAsync(string commitId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies the commit's parent against GitHub and recomputes both Δ columns
+    /// (and its dependants') from the stored headlines, without touching the
+    /// assembly. Used by the backfill for commits that predate the deltas.
+    /// Caller owns SaveChanges.
+    /// </summary>
+    Task RestampDeltasAsync(string commitId, CancellationToken cancellationToken = default);
 }
