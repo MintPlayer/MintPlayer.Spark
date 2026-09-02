@@ -82,6 +82,20 @@ Each entity type can have a `description` field used as a human-readable label f
 }
 ```
 
+### Attribute Descriptions
+
+An attribute can also carry a `description` — help text shown as an [i] tooltip beside its label.
+Its `en` is seeded on synchronize from a `[Description]` attribute or the property's `///` summary;
+the other languages are yours to write. See [Attribute descriptions](guide-attribute-descriptions.md).
+
+```json
+{
+  "name": "Company",
+  "label": {"en": "Company", "fr": "Entreprise", "nl": "Bedrijf"},
+  "description": {"en": "The Company this person works for.", "fr": "L'entreprise …", "nl": "Het bedrijf …"}
+}
+```
+
 ### Attribute Labels
 
 Every attribute's `label` field is a `TranslatedString`:

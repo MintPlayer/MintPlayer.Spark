@@ -160,6 +160,7 @@ MintPlayer.Spark/
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), JSON-only composed virtual PO pages, and the shipped `spark-shell` with its slots |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
+| [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
 | [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions, wildcards, the four precedence tiers, and what `Query` without `Read` does to a grid |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |

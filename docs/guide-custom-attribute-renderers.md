@@ -226,6 +226,11 @@ The `name` must match the `renderer` value in your model JSON exactly.
 
 ## Inputs Provided to Renderers
 
+A renderer replaces the **value cell** only. The host keeps rendering the label, and with it the
+[i] for the attribute's `description` (see [Attribute descriptions](guide-attribute-descriptions.md)),
+so a renderer never has to draw help text itself. A renderer that declares `attribute` or `column`
+receives the `description` on that object all the same.
+
 Every input is **passed only when the component declares it** — declare exactly the subset
 you need.
 

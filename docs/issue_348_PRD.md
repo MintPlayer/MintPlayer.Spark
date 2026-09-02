@@ -1,6 +1,6 @@
 # PRD — Attribute descriptions: model-JSON help text rendered as an [i] tooltip beside the attribute label
 
-**Status:** Draft
+**Status:** Implemented (M0–M9; spike verdicts in the plan). Two amendments from implementation: the entity project must reference the Spark analyzer for `///` harvesting (D2, see the guide), and `GenerateIndexGenerator` gained a Raven gate so that reference is safe.
 **Issue:** [#348](https://github.com/MintPlayer/MintPlayer.Spark/issues/348)
 **Branch:** `feat/issue-348-attribute-descriptions`
 **Plan:** `docs/issue_348_plan.md`
@@ -162,6 +162,14 @@ New `AttributeDescriptionsGenerator` in `MintPlayer.Spark.SourceGenerators`: for
 1. `symbol.GetDocumentationCommentXml()` → `<summary>` when non-empty (flag on);
 2. else the leading `///` trivia parsed with the same sanitizer rules (flag off);
 3. else nothing — no attribute emitted.
+
+> **Amended during implementation.** The generator must run in the project that holds the `///`
+> comments. Entity libraries in this repository reference only Abstractions, so they never ran a Spark
+> generator; `DemoApp.Library` and `HR.Library` now take the analyzer `ProjectReference` (NuGet
+> consumers: `PackageReference MintPlayer.Spark.SourceGenerators` with `PrivateAssets="all"`). That
+> exposed `GenerateIndexGenerator` emitting `AbstractIndexCreationTask` subclasses into a compilation
+> without RavenDB.Client (CS0400); it is now gated on Raven being referenced. The other generators
+> already emit nothing in a library (no actions, no context, no additional texts).
 
 Rendering to plain text (both paths): `<para>` → newline, `<c>`/`<code>` → verbatim, `<see cref="X:A.B.C"/>` → `C` (last identifier segment; for raw trivia, the text inside the quotes reduced the same way), `<see langword="x"/>` → `x`, `<paramref>`/`<typeparamref>` → the name, remaining tags stripped, entities decoded, whitespace collapsed per line. `<inheritdoc/>` yields nothing. Emits one file `SparkAttributeDescriptions.g.cs` of `[assembly: …]` lines, sorted by type then property for stable snapshots. Incremental over property declarations; no dependency on `AdditionalTexts`.
 
