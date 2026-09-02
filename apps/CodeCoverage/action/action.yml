@@ -32,6 +32,10 @@ inputs:
   base-sha:
     description: 'The base commit the affected-computation ran against (the sha passed to `nx affected --base`). Strongly recommended with `partial: true`; without it the server falls back to the newest covered default-branch commit and says so.'
     required: false
+  carry-forward:
+    description: 'Whether the server may fill in files this upload did not measure from the base commit (only files whose git blob is unchanged are ever carried). Wire it to the test step''s outcome — `${{ steps.test.outcome == ''success'' }}` — so a crashed suite is not painted over with the base''s numbers. Default: true.'
+    required: false
+    default: 'true'
   name:
     description: 'Session name; defaults to the job name.'
     required: false
@@ -103,6 +107,26 @@ outputs:
     description: 'Patch coverage as a percentage to one decimal. Empty when there are no coverable added lines.'
   patch-diff-truncated:
     description: 'true when GitHub capped the comparison at 300 files, so patch coverage under-reports.'
+  assembly-line-rate:
+    description: 'The commit''s assembled line coverage as a percentage to one decimal: every build of the commit unioned, plus files carried unchanged from the base. This is the whole-workspace number for a partial (nx affected) upload. Empty until the first build finalized or on servers without carry-forward.'
+  assembly-lines-covered:
+    description: 'Covered lines in the commit assembly.'
+  assembly-lines-coverable:
+    description: 'Coverable lines in the commit assembly.'
+  assembly-completeness:
+    description: 'Complete | Partial. Partial means some file that changed since the base was measured by nobody, or the base could not be trusted (see assembly-incomplete-reasons).'
+  assembly-incomplete-reasons:
+    description: 'Comma-separated: noBase, baseWalked, baseMismatch, noFileList, noBlobIds, testsFailed, unmeasuredChanges.'
+  assembly-measured-files:
+    description: 'Files measured by the builds of this commit.'
+  assembly-carried-files:
+    description: 'Files carried from the base because their git blob is unchanged.'
+  assembly-unmeasured-files:
+    description: 'Files that changed since the base and were measured by nobody.'
+  assembly-base-sha:
+    description: 'The commit files were carried from.'
+  assembly-oldest-origin-sha:
+    description: 'Of every carried file, the commit at which the oldest one was actually measured.'
   commit-url:
     description: 'Link to this commit on the Coverage server.'
   baseline-sha:

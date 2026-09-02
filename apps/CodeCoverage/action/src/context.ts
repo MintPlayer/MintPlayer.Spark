@@ -5,7 +5,6 @@ export interface UploadContext {
   commitSha: string;
   branch: string;
   pullRequestNumber?: number;
-  parentSha?: string;
   runId: number;
   runAttempt: number;
   jobName: string;
@@ -33,7 +32,6 @@ export function collectContext(): UploadContext {
     commitSha,
     branch,
     pullRequestNumber: isPullRequest && pr?.number ? (pr.number as number) : undefined,
-    parentSha: isPullRequest && pr?.base?.sha ? (pr.base.sha as string) : undefined,
     runId: context.runId,
     runAttempt: parseInt(process.env['GITHUB_RUN_ATTEMPT'] || '1', 10),
     jobName: process.env['GITHUB_JOB'] || '',

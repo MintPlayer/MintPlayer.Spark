@@ -121,6 +121,35 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         fileCoverages.Should().OnlyContain(f => f.Matched && f.BlobOid == null);
     }
 
+    [Fact]
+    public async Task A_session_with_no_report_is_parsed_not_failed()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            var build = new Build
+            {
+                Commit = "Commits/1/abc", CiRunId = 1, CiRunAttempt = 1, CreatedAtUtc = DateTime.UtcNow, Partial = true,
+                Sessions = [new BuildSession { SessionId = SessionId, RootDir = "/w", RawFileNames = [] }],
+            };
+            await seed.StoreAsync(build, BuildId);
+            seed.Advanced.Attachments.Store(build, UploadAttachments.FileListName(SessionId),
+                new MemoryStream(Encoding.UTF8.GetBytes($"{OidFor("src/a.cs")} src/a.cs")));
+            await seed.SaveChangesAsync();
+        }
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(store, session).HandleAsync(new ParseSessionMessage { BuildId = BuildId, SessionId = SessionId });
+        }
+
+        using var assertSession = store.OpenAsyncSession();
+        var buildSession = (await assertSession.LoadAsync<Build>(BuildId)).Sessions.Single();
+        buildSession.ParseStatus.Should().Be("Parsed");
+        buildSession.Error.Should().BeNull();
+        buildSession.FilesCount.Should().Be(0);
+    }
+
     /// <summary>Deterministic fake OID per path: 40 hex chars derived from the path's hash.</summary>
     private static string OidFor(string path)
         => Convert.ToHexStringLower(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(path)));

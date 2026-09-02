@@ -85,7 +85,10 @@ export async function fetchCapabilities(url: string, credential: Credential): Pr
  * against a whole-workspace baseline as though it had measured everything. The
  * number that comes back is wrong in the direction that looks fine.
  */
-export function warnAboutUnsupportedInputs(capabilities: ServerCapabilities, requested: { partial: boolean }): void {
+export function warnAboutUnsupportedInputs(
+  capabilities: ServerCapabilities,
+  requested: { partial: boolean; carryForward?: boolean },
+): void {
   if (capabilities.contract === 0) {
     // Nothing is known about this server, so nothing specific can be claimed.
     // Saying so once beats a warning per input.
@@ -97,6 +100,17 @@ export function warnAboutUnsupportedInputs(capabilities: ServerCapabilities, req
     core.warning(
       'This server does not support partial uploads, so `partial: true` and `base-sha:` will be ignored and ' +
         'the result will be compared against a whole-workspace baseline. Treat the reported number with care.',
+    );
+  }
+
+  if (
+    requested.partial &&
+    capabilities.features.includes('partial-uploads') &&
+    !capabilities.features.includes('carry-forward')
+  ) {
+    core.warning(
+      'This server does not carry coverage forward for partial uploads: files `nx affected` skipped will be missing from ' +
+        'the commit total rather than filled in from the base. Upgrade the server to get whole-workspace numbers from affected runs.',
     );
   }
 

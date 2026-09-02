@@ -71,6 +71,7 @@ public partial class UploadsController : ControllerBase
         "flag-coverage",     // per-flag totals
         "gzip-reports",      // gzipped report parts, detected by magic bytes
         "oidc-auth",         // GitHubOidc scheme, audience = Coverage:BaseUrl
+        "carry-forward",     // commit assembly: fileList with blob OIDs, carryForward, zero-report partial uploads, assembly{} on status
     ];
 
     public sealed record UploadResponse(string BuildId, string SessionId);
@@ -88,7 +89,10 @@ public partial class UploadsController : ControllerBase
     [RequestSizeLimit(MaxReportBytes)]
     public async Task<ActionResult<UploadResponse>> Upload([FromForm] UploadForm form, CancellationToken cancellationToken)
     {
-        if (form.Files.Count == 0)
+        // A partial upload with nothing to report is legitimate (every project
+        // cached or unaffected): it still carries the file list the assembler
+        // needs to fill the commit in from the base.
+        if (form.Files.Count == 0 && !(form.Partial && !string.IsNullOrWhiteSpace(form.FileList)))
             return BadRequest(new { error = "No coverage report files in the upload." });
         if (string.IsNullOrWhiteSpace(form.Repository) || !form.Repository.Contains('/'))
             return BadRequest(new { error = "repository must be owner/name." });

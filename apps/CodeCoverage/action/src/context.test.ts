@@ -67,7 +67,6 @@ describe('collectContext', () => {
     expect(ctx.commitSha).toBe('merge-commit-sha');
     expect(ctx.branch).toBe('master');
     expect(ctx.pullRequestNumber).toBeUndefined();
-    expect(ctx.parentSha).toBeUndefined();
     expect(ctx.jobName).toBe('test');
   });
 
@@ -86,7 +85,6 @@ describe('collectContext', () => {
     expect(ctx.commitSha).toBe('head-sha');
     expect(ctx.branch).toBe('feature/coverage');
     expect(ctx.pullRequestNumber).toBe(7);
-    expect(ctx.parentSha).toBe('base-sha');
   });
 
   it('handles pull_request_target the same way', () => {
