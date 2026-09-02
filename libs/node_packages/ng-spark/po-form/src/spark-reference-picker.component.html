@@ -65,6 +65,7 @@
           @for (attr of visibleAttributes(); track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">
               {{ attr.label | resolveTranslation:attr.name }}
+              <spark-attribute-description [description]="attr.description" />
             </div>
           }
 

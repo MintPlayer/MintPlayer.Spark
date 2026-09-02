@@ -190,6 +190,31 @@ describe('SparkPoDetailComponent', () => {
     expect(names).toEqual(['FirstName']);
   });
 
+  it('renders the [i] beside a described attribute label and not beside an undescribed one (#348)', async () => {
+    const describedType: EntityType = {
+      ...personType,
+      attributes: [
+        { ...personType.attributes[0], description: { en: 'Given name.' } },
+        {
+          id: 'a-last', name: 'LastName', dataType: 'string',
+          isRequired: false, isVisible: true, isReadOnly: false,
+          order: 2, showedOn: ShowedOn.PersistentObject,
+        } as any,
+      ],
+    };
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([describedType]) });
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const terms: HTMLElement[] = Array.from(harness.routeNativeElement!.querySelectorAll('dt'));
+    const first = terms.find(t => t.textContent?.includes('FirstName'))!;
+    const last = terms.find(t => t.textContent?.includes('LastName'))!;
+
+    expect(first.querySelector('spark-attribute-description button')?.getAttribute('aria-label')).toBe('Given name.');
+    expect(last.querySelector('spark-attribute-description button')).toBeNull();
+  });
+
   it('onEdit emits edited and navigates to the edit route', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);

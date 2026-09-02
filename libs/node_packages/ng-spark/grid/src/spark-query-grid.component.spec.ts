@@ -564,4 +564,23 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+  describe('attribute descriptions (#348)', () => {
+    it('renders the [i] in the header of a column that carries a description, and nowhere else', async () => {
+      const page = {
+        ...samplePage,
+        columns: [
+          { name: 'FirstName', dataType: 'string', order: 1, description: { en: 'Given name.' } } as any,
+          { name: 'LastName', dataType: 'string', order: 2 } as any,
+        ],
+      };
+      const { fixture, c } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) });
+
+      expect(c.visibleColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
+
+      const buttons: HTMLButtonElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('spark-attribute-description button'));
+      expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual(['Given name.']);
+    });
+  });
+
 });

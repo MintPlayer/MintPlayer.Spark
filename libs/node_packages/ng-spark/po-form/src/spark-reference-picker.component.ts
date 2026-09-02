@@ -12,6 +12,7 @@ import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { EntityType, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe } from '@mintplayer/ng-spark/pipes';
+import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
 /**
@@ -26,7 +27,7 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
  */
 @Component({
   selector: 'spark-reference-picker',
-  imports: [FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe],
+  imports: [FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-reference-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

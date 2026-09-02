@@ -83,7 +83,7 @@
       </ng-template>
 
           <ng-template #detailAttrField let-attr let-currentItem="item">
-              <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}</dt>
+              <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}<spark-attribute-description [description]="attr.description" /></dt>
               <dd [sm]="9">
               @if (getDetailRendererComponent(attr); as rendererType) {
                 <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
@@ -92,7 +92,7 @@
                   <thead>
                     <tr>
                       @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                        <th>{{ (col.label | resolveTranslation) || col.name }}</th>
+                        <th>{{ (col.label | resolveTranslation) || col.name }}<spark-attribute-description [description]="col.description" /></th>
                       }
                     </tr>
                   </thead>

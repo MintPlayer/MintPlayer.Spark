@@ -559,4 +559,30 @@ describe('SparkPoFormComponent', () => {
       expect(cancelled).toHaveBeenCalled();
     });
   });
+
+  describe('attribute descriptions (#348)', () => {
+    const describedType: EntityType = {
+      ...personType,
+      attributes: [
+        attr({ id: 'a-first', name: 'FirstName', order: 1, description: { en: 'Given name.', nl: 'Voornaam.' } }),
+        attr({ id: 'a-last', name: 'LastName', order: 2 }),
+      ],
+      tabs: [],
+      groups: [],
+    };
+
+    it('renders the [i] only beside attributes that declare a description', async () => {
+      const { fixture } = createComponent();
+      await setEntityType(fixture, describedType);
+      fixture.detectChanges();
+
+      const labels: HTMLLabelElement[] = Array.from(fixture.nativeElement.querySelectorAll('label'));
+      const first = labels.find(l => l.getAttribute('for') === 'FirstName')!;
+      const last = labels.find(l => l.getAttribute('for') === 'LastName')!;
+
+      expect(first.querySelector('spark-attribute-description button')).not.toBeNull();
+      expect(first.querySelector('spark-attribute-description button')!.getAttribute('aria-label')).toBe('Given name.');
+      expect(last.querySelector('spark-attribute-description button')).toBeNull();
+    });
+  });
 });
