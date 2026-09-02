@@ -1,7 +1,7 @@
 # Plan — carry-forward + multi-step uploads for the coverage server
 
 **Implements:** [`coverage_carryforward_PRD.md`](coverage_carryforward_PRD.md) Option C (+ C′) ·
-**Status:** Draft — no milestone started
+**Status:** M1–M8 implemented on branch `coverage-carry-forward`, one commit per milestone (see *Implementation status* at the end); the dogfood checks that need the deployed server are listed there as post-merge steps
 
 All code lands as **one pull request** in `MintPlayer.Spark` (server, action, workflows, docs, tests), per
 `CLAUDE.md`. The five external consumers need no change: they pick the new action up through the
@@ -325,6 +325,41 @@ Files: `apps/CodeCoverage/CodeCoverage/ClientApp/src/app/**` (commit page, file 
 - Exit criteria 1–6 from the PRD, each with the commit sha and status-endpoint JSON pasted here.
 - Badges of all six consumer repos before and after deploy — unchanged for the four full-upload
   repos; Spark and ng-bootstrap master unchanged (they upload in full).
+
+## Implementation status (2026-09-02)
+
+| Milestone | Commit | Notes |
+|---|---|---|
+| Spikes + docs | `7ea6bd32` | S1–S4 results above; S3's two tests committed skipped |
+| M1 | `ad7a1e59` | `HeadFileList` v1/v2, `FileCoverage.BlobOid`, `Build.CarryForward` |
+| M2 | `b04cb8b8` | `CommitAssembly` + `CommitAssembler` + `AssembleCommitRecipient` on the parse queue (FIFO ⇒ no compare-exchange lock needed, a simplification of step 4); promotion moved into the assembler; S3 tests green; Δ stamping (5c) |
+| M3 | `49f4b103` | compare-API fallback; `Truncated` ⇒ `noBlobIds` |
+| M4 | `707bddd9` | status `assembly{}`, browse reads `{commitId}/assembly/*`, gate judges the assembly, `withCoverageOnly` default false, upload-api.md |
+| M5 | `de05c991` | action: `git ls-files -s`, git first parent, `carry-forward`, zero-report partial upload, `assembly-*` outputs; server accepts zero-report partial uploads and advertises `carry-forward` |
+| Backfill (owner request) | `7eeaa756` | `BackfillCommitDeltasCronJob`: verifies parents via the GitHub commits API and stamps Δ for pre-existing commits, 25 per 2 min, drains and goes quiet. REST rather than GraphQL: Octokit.GraphQL's typed DSL cannot alias N `object(oid:)` lookups in one query, and the total volume is a few hundred calls once |
+| M6 | `bf8b2d9f` | provenance in the Files card, `Δ parent` + `Δ base branch` columns, `—` for no reference, model re-synchronized |
+| M7 | `8def5e3b` | PR workflow: no hashFiles gate, `carry-forward` from the test step, `wait-for-finalize`; master guard aligned; vitest `all: true`; `coverage-second-half.yml` manual probe |
+| M8 | this commit | docs, README index, roadmap T1.3, memory; `dist/index.js` rebuilt |
+
+**Verified locally:** `CodeCoverage.Tests` full suite, the action's vitest + bundle suites, the SPA's
+unit tests and a development build, `--spark-verify-model` in sync, ng-spark/ng-spark-auth vitest with
+`all: true` (ng-spark drops to 82.8% lines; `routes/src/spark-routes.ts` now shows at 0%, the
+previously hidden file from S1).
+
+**Post-merge (needs the deployed server), in order:**
+
+1. Merge; let `code-coverage-deploy` ship the server; let `coverage-action-publish` move
+   `coverage-upload-v1` (M8 step 5 — the action is backward compatible with the old server).
+2. Exit criterion 1: push a comment-only change under `libs/node_packages/ng-spark-auth` on a PR;
+   expect `assembly-completeness: Complete`, measured = that lib, everything else carried.
+3. Exit criterion 2: dispatch `coverage-second-half.yml` against that PR head; expect
+   `assembly.builds` to list both runs and the union.
+4. Exit criterion 3: a README-only PR; expect 100% carried, `Complete`.
+5. Exit criterion 5: compare the six repos' badges before and after — unchanged.
+6. Exit criterion 7: the CodeCoverage repository page; `7fc84af` shows `—` in both Δ columns once the
+   backfill has run (about two minutes per 25 commits).
+7. Watch the backfill log line drain to nothing; then it can be deleted in a later change or left —
+   it costs one index query every two minutes.
 
 ## Decisions
 

@@ -1,6 +1,6 @@
 # PRD — Complete coverage from incomplete uploads (carry-forward + multi-step uploads)
 
-**Status:** Draft for review · **Date:** 2026-09-02 · **Plan:** [coverage_carryforward_plan.md](coverage_carryforward_plan.md)
+**Status:** Implemented on branch `coverage-carry-forward` (2026-09-02); the live-server checks of exit criteria 1–5 and 7 run after deploy — see the plan's implementation status · **Date:** 2026-09-02 · **Plan:** [coverage_carryforward_plan.md](coverage_carryforward_plan.md)
 **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) + `apps/CodeCoverage/action`
 **Origin:** investigation by four parallel research agents on 2026-09-02 (server ingestion model, upload
 action + this repo's workflows, the six consumer workflows, Nx/Codecov/Coveralls semantics). Findings

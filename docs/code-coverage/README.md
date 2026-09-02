@@ -28,6 +28,7 @@ failure on Spark PR #123.
 | [`build-log-m0-m10.md`](build-log-m0-m10.md) | How M0–M10 were sequenced and built. Renamed from `PLAN.md`. |
 | [`upload-result-contract.md`](upload-result-contract.md) | Issue #9 — the upload result contract, as specified. Now described by `upload-api.md`. |
 | [`coverage-analyzer-suite.md`](coverage-analyzer-suite.md) | Partial uploads, patch coverage, check-runs, thresholds, flags. |
+| [`../coverage_carryforward_PRD.md`](../coverage_carryforward_PRD.md) · [`../coverage_carryforward_plan.md`](../coverage_carryforward_plan.md) | Commit assembly: multi-run uploads unioned, `nx affected` gaps carried from the base by git blob OID, the two Δ columns. |
 | [`adoption-findings.md`](adoption-findings.md) | Consumer-side findings, including the `showedOn` wipe that became Spark #274. |
 | [`adopt-generated-indexes.md`](adopt-generated-indexes.md) | Adopting `[GenerateIndex]` — which entities, and the `Build.ComposeRun` backfill. |
 | [`adopt-spark-generic-ui.md`](adopt-spark-generic-ui.md) | ng-spark generic UI adoption; explains today's `/po/...` grid links. |

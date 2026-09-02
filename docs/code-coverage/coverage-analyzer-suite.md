@@ -259,7 +259,11 @@ else composes without it).
 
 ## 5. Out of scope
 
-Carryforward in any form (#11 §3 stands — the projection is computed, never stored).
+~~Carryforward in any form (#11 §3 stands — the projection is computed, never stored).~~
+**Superseded 2026-09-02:** the server now assembles every commit from all its builds and carries
+a file forward from the declared base only when its git blob OID is identical at both ends — a
+verified copy, not an assertion. The projection remains as the unverified estimate for old
+clients. See [`../coverage_carryforward_PRD.md`](../coverage_carryforward_PRD.md).
 Historical reprocessing of raw attachments (roadmap T1.4). Components/path-glob grouping
 (superseded by D5 flags). Coveralls-style "indirect changes" detection. Badge/UI
 theming for flags beyond the totals panel.
