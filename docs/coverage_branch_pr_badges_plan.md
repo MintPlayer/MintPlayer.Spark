@@ -80,16 +80,31 @@ If `pull_requests` is not `write`: M6's dogfood is blocked on re-consent, and th
 (403 → `Unavailable`, never `Retry`) becomes the behaviour users actually see until consent lands. It
 does not block M4 or M5.
 
-### S2 — does camo re-render an updated badge inside a comment?
+### S2 — does camo re-render an updated badge inside a comment? — **ANSWERED: yes, the image is safe**
 
-The sticky comment carries an `<img>` for public repositories. GitHub proxies it through camo. Post a
-`?pr=` badge into a scratch PR, change the underlying coverage (a second upload against that head sha),
-and watch whether the rendered image changes within the 300 s `max-age`.
+Measured 2026-09-03 by posting a badge comment on PR #361 and fetching the resulting camo URL.
 
-If it does not — if camo freezes the first fetch for materially longer — then an image in a sticky
-comment is a stale number, which is worse than no image. In that case the comment carries text numbers
-for **all** repositories, H1's answer becomes universal, and the badge image stays a README/panel
-feature only. Record the observed behaviour and the decision.
+Camo **passes our own freshness header through verbatim** and imposes nothing longer:
+
+```
+origin: Cache-Control: public, max-age=300     (no ETag)
+camo:   Cache-Control: public, max-age=300     Age: 0   X-Cache: MISS
+        Content-Type: image/svg+xml; charset=utf-8      → rendered 48.7%, correct
+```
+
+So a badge inside a sticky comment is stale for at most 300 s — the same bound as a README badge.
+**The image stays in the comment for public repositories, and D4 Option 3 stays viable for private
+ones.** The text-only fallback is retained only for the no-signing-key case, not as a camo workaround.
+
+Two incidental findings worth carrying into the milestones:
+
+- **The origin sends no ETag at all**, confirming §3.1. M1 step 6 is therefore a real addition, and
+  with camo revalidating every 300 s per distinct URL it is the thing that keeps H9 cheap.
+- **A camo URL is the hex-encoded origin URL under a digest**, so every distinct query string gets its
+  own camo URL — per-PR signed URLs proxy correctly and independently. It also means the `sig` is
+  recoverable from the camo URL by anyone who obtains that URL, and camo URLs are not themselves
+  access-controlled. That is no worse than the comment's own audience, and it is precisely why the
+  credential in there must be PR-scoped rather than `BadgeToken` (D4).
 
 ### S3 — how often is PR identity actually present? — **ANSWERED, by a different route**
 
@@ -129,7 +144,29 @@ not receive repository secrets**. No credential, no upload, ever. A publish-on-o
 therefore sit at "waiting for coverage for `abc1234`" on every dependabot PR permanently. Recorded as
 PRD H12; M6 gains a step.
 
-### S4 — comment adoption and notification behaviour
+### S4 — comment adoption and notification behaviour — **ANSWERED: mechanism works, edits are silent**
+
+Measured 2026-09-03 on PR #361 (probe comment `5529807094`, since deleted).
+
+1. **Adoption by marker works.** `GET issues/{n}/comments` filtered on a body containing
+   `coverage-bot:pr-summary` returned exactly one match, carrying `user.login` and **`user.type`** — so
+   the "marker **and** App author" filter of M5 step 2 is implementable as specified (`user.type` reads
+   `Bot` for a GitHub App; the probe read `User`, having been posted as a human).
+2. **An edit produces no new timeline event.** `commented` events before the `PATCH`: 1. After: 1.
+   `created_at` unchanged, `updated_at` moved, id and `html_url` stable across the edit.
+
+   Therefore **no-op-edit suppression is not required for notification hygiene** —
+   `LastPublishedBodyHash` is not needed to keep subscribers quiet. Keep the field as a cheap way to
+   skip a pointless API call when a re-finalize changes nothing, but M5 step 6 drops from required to
+   optional.
+3. **Deletion is clean.** After `DELETE`, the marker query returns 0, so the adoption path correctly
+   falls through to create — which is exit criterion 9's mechanism.
+
+**What this did not prove:** the probe ran as a user token, not as the App installation, so the
+*author* half of the filter is asserted from the payload shape rather than exercised. M5's tests cover
+it with a fake; M8's dogfood exercises it for real.
+
+<details><summary>Original spike definition</summary>
 
 On a scratch PR, with the App credential: create a comment containing
 `<!-- coverage-bot:pr-summary -->`, then (a) clear the stored id and confirm
@@ -140,6 +177,8 @@ exactly one replacement.
 This is the mechanism behind G6 and exit criteria 7–8. If an edit *does* notify, the publisher must
 suppress no-op edits (compare the rendered body against the last published body before writing) —
 record that as a required addition to M5.
+
+</details>
 
 ---
 
@@ -304,8 +343,8 @@ new `apps/CodeCoverage/CodeCoverage.Tests/Feedback/PullRequestCommentPublishTest
 5. Extend `PublishFeedbackCronJob`'s sweep to also pick up `PullRequestFeedback` rows in `Retry` whose
    `NextAttemptAtUtc` has passed, keeping the existing `Take(32)` bound. A queryable mirror on the
    document is enough; do not add an index unless the sweep's RQL demands one.
-6. If S4 found that edits notify, compare the rendered body against `LastPublishedBodyHash` and skip
-   the write when unchanged.
+6. *(Optional — S4 showed edits do not notify.)* Compare the rendered body against
+   `LastPublishedBodyHash` and skip the write when unchanged, purely to save an API call.
 7. Tests: PR-less commit publishes nothing; first finalize creates one comment and stores the id;
    second finalize on a new head sha updates the same id and moves `LastPublishedSha`; a cleared id
    re-adopts by marker rather than creating; no installation yields `Unavailable`; a 403 yields
