@@ -108,15 +108,20 @@ Two incidental findings worth carrying into the milestones:
 
 ### S3 — how often is PR identity actually present? — **ANSWERED, by a different route**
 
-The intended route is closed: `/api/browse/*` now returns **401 anonymously** (verified 2026-09-03 for
-`/repos/{o}/{n}`, `/commits`, `/branches`) — `[SparkAuthorize("Browse", "Coverage")]` at
-`BrowseController.cs:32` plus the authz migration that moved those grants off the `anonymous` group.
-So `PullRequestNumber` cannot be counted from outside, and **the badge is the only anonymous surface
-this app has**. Two consequences:
+The intended route is closed: `/api/browse/*` returns **401 anonymously** (verified 2026-09-03 for
+`/repos/{o}/{n}`, `/commits`, `/branches`), so `PullRequestNumber` cannot be counted from outside.
 
-- M7 step 1 is load-bearing, not cosmetic: `Badge/Coverage` really is an undeclared anonymous surface,
-  and it is the *only* one.
-- M2's branch picker is unaffected — the SPA caller is authenticated.
+*(Corrected while building M7. The cause is not the authz migration: `App_Data/security.json` is
+tracked, is not mounted over in `docker-compose.yml`, and **does** grant `Browse/Coverage` to the
+anonymous group (`…021`). The 401 carries `Www-Authenticate: Bearer` — an authentication
+**challenge**. `SparkAuthorizeAttribute` derives from `AuthorizeAttribute`
+(`libs/spark/MintPlayer.Spark/Services/SparkAuthorizeAttribute.cs`), so an endpoint carrying it
+demands a principal before any right is consulted; an anonymous grant only decides what an
+authenticated caller may do. The badge is anonymous because `BadgeController` carries
+`[AllowAnonymous]` and no `[SparkAuthorize]` — not because of anything in security.json. This
+reverses M7 step 1; see there.)*
+
+M2's branch picker is unaffected either way — the SPA caller is authenticated.
 
 Measured instead through the badge itself, which is the surface users actually hit: for 71 non-fork PR
 head branches across the 7 MintPlayer repositories whose headline badge resolves,
@@ -390,11 +395,16 @@ Files: `apps/CodeCoverage/CodeCoverage/App_Data/security.json`,
 `docs/code-coverage/upload-api.md`,
 `docs/code-coverage/README.md`, `docs/code-coverage/roadmap-2026-08.md`.
 
-1. Add a `Badge/Coverage` right granted to both well-known groups (`anonymous` `0…000` and
-   `authenticated` `0…001`, matching the file's existing shape) and apply
-   `[SparkAuthorize("Badge", "Coverage")]` to `BadgeController` beside its `[AllowAnonymous]`. This
-   declares what is already true so the surface stops being invisible to the posture report (H11) —
-   assert unchanged anonymous behaviour in the M1 controller tests.
+1. ~~Add a `Badge/Coverage` right and apply `[SparkAuthorize("Badge", "Coverage")]` to
+   `BadgeController`.~~ **Reversed — do not do this.** `SparkAuthorizeAttribute` derives from
+   `AuthorizeAttribute` and its own documentation states that `[AllowAnonymous]` still wins, so on
+   this controller the attribute would never be evaluated. It would appear in the security posture
+   report as a gate on the badge while `[AllowAnonymous]` bypasses it — a report that overstates
+   enforcement is worse than one with a known blank, because the blank prompts a question and the
+   false entry answers it wrongly. H11 is therefore addressed by documentation (step 2) rather than
+   by an inert attribute, and the honest statement is: *the badge is deliberately unauthenticated,
+   gated per-repository by the badge token and per-pull-request by the signature, and that is the
+   whole of its access control.*
 2. App README: document all three badge variants with copy-pasteable examples, the never-404 and
    `unknown` semantics, the `coverage (partial)` label, and that a merged PR's badge goes `unknown` once
    `DeletePullRequestBuildsRecipient` runs (`:34-46`).

@@ -20,6 +20,47 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
 
+## Badges
+
+`GET /badge/{owner}/{name}.svg` — deliberately unauthenticated, rate-limited per IP, cached for
+300 s, and never a 404 (see below). Three variants:
+
+| URL | Shows |
+|---|---|
+| `…/badge/{owner}/{name}.svg` | The repository headline — the newest **complete** assembly on the default branch. |
+| `…?branch={ref}` | The newest covered commit of that branch. |
+| `…?pr={number}` | The newest covered commit of that pull request. |
+
+```markdown
+[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg?branch=feature/x)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+```
+
+The repository page's badge panel has a branch picker that writes these snippets for you.
+
+Things worth knowing before you rely on one:
+
+- **It never 404s.** An unknown repository, an unknown branch, an unknown PR, a wrong token — all
+  render the grey `unknown` badge at HTTP 200. A 404 would confirm that a private repository exists.
+- **`coverage (partial)`** means the number came from a commit whose assembly is incomplete — a
+  subset's total, not the repository's. The headline badge is only ever promoted from a complete
+  assembly, so the label is how the two stay honest about each other.
+- **`unknown` is not 0%.** It means nothing was measured (or nothing is visible to you).
+- **A merged PR's badge goes `unknown`** once retention deletes that PR's builds.
+- **Private repositories** need `?token={badge token}`, created and rotated on the repository page.
+  The badge posted by the bot into a pull request uses a **per-PR signature** instead, so a comment
+  never carries the repo-wide token.
+- **Access control is exactly this**: public repositories are open; a private repository's badge
+  needs its badge token; a private repository's PR badge needs the signature. The endpoint carries
+  `[AllowAnonymous]` and no `[SparkAuthorize]`, so no `security.json` right governs it — deliberately,
+  since `[AllowAnonymous]` wins over `SparkAuthorizeAttribute` and a declared-but-bypassed right
+  would misrepresent the badge as gated.
+- **On a repository with no App installation**, the branch and PR labels are asserted by whoever
+  uploaded (`Commit.Branch` is first-writer-wins), so a branch badge there is only as trustworthy as
+  that CI. With the App installed, the `pull_request` webhook is the authoritative writer. Measured
+  across 71 pull-request head branches on the tracked MintPlayer repositories: no mislabelling
+  observed; non-resolution was PRs predating coverage in their repository, plus dependabot PRs,
+  which receive no repository secrets and so can never upload.
+
 ## How this repo measures itself
 
 The badge above is this application reporting on its own source, through the same
@@ -86,13 +127,21 @@ from `GET /user/installations` with the **user's OAuth token**, which lists
 whatever installations that user can access on their own authority.
 
 Check-run feedback (`coverage/project` / `coverage/patch`, shipped with the
-coverage-analyzer suite) additionally needs **Checks: Read & write** and
-**Pull requests: Read & write**. Granting is a two-step: raise the permissions
-on the App, then **each installation must accept the change** before any
-check-run appears (the `new_permissions_accepted` webhook restores service
-automatically). Until an installation accepts, its builds record
-`FeedbackState: Unavailable`-style silence rather than errors. Plain commit
-statuses are deliberately not used.
+coverage-analyzer suite) and the **sticky pull-request comment** additionally
+need **Checks: Read & write** and **Pull requests: Read & write**. Granting is a
+two-step: raise the permissions on the App, then **each installation must accept
+the change** before any check-run or comment appears (the
+`new_permissions_accepted` webhook restores service automatically). Until an
+installation accepts, its builds record `FeedbackState: Unavailable`-style
+silence rather than errors, and a `403` on the comment is classified
+`Unavailable` rather than retried — an unaccepted permission cannot be fixed by
+trying again. Plain commit statuses are deliberately not used.
+
+Verified 2026-09-03 for the `MintPlayer` org installation of the
+`coverageproduction` App: `pull_requests: write` and `checks: write` are
+**granted**, `repository_selection: all`, not suspended. (`emails: read` is
+declared on the App but absent from that installation's grant — a live example
+of the accepted-vs-declared gap this section warns about.)
 
 **Webhook events to subscribe**: `Repository`, `Push`, `Pull request`
 (`installation` / `installation_repositories` are always delivered to Apps, no
