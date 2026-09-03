@@ -138,3 +138,17 @@ fallback.
 
 `EntityAttributeDefinition.description` and `QueryColumn.description` carry it; the per-object
 `PersistentObjectAttribute` does not, because every label site reads the schema.
+
+### Requires ng-bootstrap ≥ 22.18.0 in a grid header
+
+The [i] draws on three stylesheets that all live in `document.head`: global Bootstrap
+(`btn btn-link p-0 ms-1`), `spark-icon`'s SVG sizing, and its own component styles. Before
+ng-bootstrap 22.18.0 the datatable rendered its header template inside `mp-datatable`'s **shadow
+root**, which document CSS cannot cross — so in a query grid all three were inert at once and the
+[i] rendered as bare unstyled chrome, while the same component in a card or form looked correct.
+
+The tooltip *popup* was never affected: `BsTooltipDirective` attaches through the CDK overlay to
+`document.body`, so it always escaped the boundary. Only the trigger misrendered.
+
+22.18.0 moved the datatable to the light DOM and the [i] now renders identically everywhere. `ng-spark`
+declares that floor as a peer dependency; on an older ng-bootstrap the grid-header [i] regresses.

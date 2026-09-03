@@ -104,14 +104,15 @@ describe('SparkGridCellComponent', () => {
       expect(html(f).textContent?.trim()).toBe('');
     });
 
-    it('sizes itself inline, because the grid cell lives in a shadow root', () => {
-      // In a query grid this renders inside <mp-datatable>'s shadow root, which sees neither this
-      // component's scoped rules nor Bootstrap's. A class-based height would silently do nothing
-      // and a full-size image would blow the row height out.
+    it('is size-constrained, so a full-size image cannot blow the row height out', () => {
+      // Asserts the contract, not the mechanism. This used to be an inline style because the grid
+      // rendered inside <mp-datatable>'s shadow root, where a class reached nothing; ng-bootstrap
+      // 22.18.0 moved the datatable to the light DOM, so `.spark-grid-image` (max-height 2.5em)
+      // now applies. What must stay true either way is that the image is constrained.
       const f = setup({ column: col({ dataType: 'image' }), display: 'https://cdn.example.com/a.png' });
 
       const img = html(f).querySelector('img') as HTMLImageElement;
-      expect(img.getAttribute('style')).toContain('max-height');
+      expect(img.classList).toContain('spark-grid-image');
     });
 
     it('renders nothing when the value is empty', () => {

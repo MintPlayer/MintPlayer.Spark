@@ -570,6 +570,13 @@ describe('SparkQueryGridComponent', () => {
       // upgrade under jsdom, so the [i] itself is not observable here — the form, detail and
       // component specs pin the rendering; this pins that the grid hands the datatable the
       // description on the column it reads in its header template.
+      //
+      // This gap is why a real bug shipped: until ng-bootstrap 22.18.0 the datatable mounted this
+      // header template inside its shadow root, where the [i]'s three stylesheets (global
+      // Bootstrap, spark-icon's SVG sizing, its own component styles) all live in document.head
+      // and none arrived — so the [i] rendered unstyled in every grid while every spec passed.
+      // Nothing under jsdom can catch that; it needs a real browser. See
+      // docs/ngbootstrap_lightdom_upgrade_PRD.md.
       const page = {
         ...samplePage,
         columns: [

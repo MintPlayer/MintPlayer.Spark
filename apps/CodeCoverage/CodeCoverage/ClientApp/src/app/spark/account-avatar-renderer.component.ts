@@ -11,14 +11,15 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
  * showed `bi-person`/`bi-people` there. The fallback needs `Type`, which the model declares
  * `showedOn: "Query", isVisible: false` for exactly this reason.
  *
- * Sized inline rather than by class: the cell draws inside `mp-datatable`'s shadow root, where a
- * Bootstrap class does not reach.
+ * The corner radius used to be an inline style, because the cell drew inside `mp-datatable`'s
+ * shadow root where a Bootstrap class did not reach. ng-bootstrap 22.18.0 moved the datatable to
+ * the light DOM, so `rounded-1` (`--bs-border-radius-sm`, 0.25rem — the same value) applies.
  */
 @Component({
   selector: 'app-account-avatar-renderer',
   template: `
     @if (src(); as url) {
-      <img [src]="url" [alt]="alt()" width="24" height="24" style="border-radius: .25rem;">
+      <img [src]="url" [alt]="alt()" width="24" height="24" class="rounded-1">
     } @else {
       <i class="bi" [class.bi-person]="isUser()" [class.bi-people]="!isUser()"></i>
     }

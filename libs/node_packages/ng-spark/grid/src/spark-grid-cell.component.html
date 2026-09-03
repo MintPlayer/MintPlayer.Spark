@@ -11,22 +11,18 @@
     onclick="return false;">
 } @else if (column().dataType === 'color') {
   @if (display(); as colorVal) {
-    <!-- Inline on purpose, and it is not a style-guide slip. In a query grid this cell is
-         rendered INSIDE <mp-datatable>'s shadow root, which does not see document
-         stylesheets: neither this component's scoped rules nor Bootstrap utilities apply
-         there. Inline styles do. Measured 2026-08-23 -- see the comment in the .scss. -->
-    <span class="d-inline-block align-middle border rounded"
-          [style.background-color]="colorVal"
-          style="width: 1.5em; height: 1.5em;"></span>
+    <!-- Shares `.spark-color-swatch` with the detail page, which is where the sizing already
+         lived. It used to be inline here because the grid rendered inside <mp-datatable>'s
+         shadow root, where neither this component's scoped rules nor Bootstrap's arrived;
+         ng-bootstrap 22.18.0 moved the datatable to the light DOM, so the class reaches it. -->
+    <span class="spark-color-swatch d-inline-block align-middle border rounded"
+          [style.background-color]="colorVal"></span>
   }
 } @else if (column().dataType === 'image') {
   @if (display(); as src) {
-    <!-- Inline sizing for the same reason the colour swatch above uses it: in a query grid this
-         renders inside <mp-datatable>'s shadow root, which sees neither this component's scoped
-         rules nor Bootstrap's. `alt` is empty on purpose — the cell is decorative next to the
-         row's own labelled columns, and a filename read aloud is worse than nothing. -->
-    <img [src]="src" alt="" loading="lazy" class="align-middle rounded"
-         style="max-height: 2.5em; max-width: 100%; object-fit: contain;">
+    <!-- `alt` is empty on purpose — the cell is decorative next to the row's own labelled
+         columns, and a filename read aloud is worse than nothing. -->
+    <img [src]="src" alt="" loading="lazy" class="spark-grid-image align-middle rounded">
   }
 } @else if (column().dataType === 'url') {
   @if (display(); as href) {
