@@ -1,7 +1,8 @@
 # Release notes — `@mintplayer/ng-spark` `22.10.0`
 
-Client-only. **No NuGet change** — nothing in `MintPlayer.Spark*` moves, so apps stay on
-`10.0.0-preview.70`.
+Ships alongside **`10.0.0-preview.71`**, which carries one server-side fix of its own — see
+[`release-notes-preview-71.md`](release-notes-preview-71.md). The two client fixes below need no
+NuGet change; take `preview.71` for the reference-label fix.
 
 Two fixes:
 
