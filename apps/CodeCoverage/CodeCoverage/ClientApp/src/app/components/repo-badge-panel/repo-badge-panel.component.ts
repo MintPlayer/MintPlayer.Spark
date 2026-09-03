@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal, computed } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { BrowseService, RepoInfo } from '../../services/browse.service';
 
 /**
@@ -10,14 +12,23 @@ import { BrowseService, RepoInfo } from '../../services/browse.service';
  */
 @Component({
   selector: 'app-repo-badge-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent],
+  imports: [FormsModule, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsSelectComponent, BsSelectOption],
   template: `
     @if (repo(); as r) {
       <bs-card class="mt-3 d-block">
         <bs-card-header><i class="bi bi-patch-check"></i> Coverage badge</bs-card-header>
         <bs-card-body>
-          <div class="d-flex align-items-center gap-3">
-            <span class="text-muted">Default branch ({{ r.defaultBranch ?? 'unknown' }}):</span>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            @if (branches().length > 1) {
+              <bs-select id="badge-branch" [size]="'sm'"
+                         [ngModel]="selectedBranch()" (ngModelChange)="selectBranch($event)">
+                @for (b of branches(); track b) {
+                  <option [ngValue]="b">{{ b }}{{ b === r.defaultBranch ? ' (default)' : '' }}</option>
+                }
+              </bs-select>
+            } @else {
+              <span class="text-muted">Default branch ({{ r.defaultBranch ?? 'unknown' }}):</span>
+            }
             <img [src]="badgeUrl()" alt="coverage badge" height="20">
           </div>
 
@@ -38,6 +49,11 @@ import { BrowseService, RepoInfo } from '../../services/browse.service';
               @if (r.isPrivate && !r.badgeToken) {
                 <div class="small text-muted mt-1">Private repository — create a badge token to make the badge work in your README.</div>
               }
+              <div class="small text-muted mt-1">
+                Any branch works: add <code>?branch=</code>. For a pull request, add
+                <code>?pr={{ '{' }}number{{ '}' }}</code> — it tracks that PR's newest covered commit.
+                A branch or PR with no coverage renders an "unknown" badge rather than an error.
+              </div>
             </div>
           }
         </bs-card-body>
@@ -54,19 +70,39 @@ export class RepoBadgePanelComponent {
 
   readonly repo = signal<RepoInfo | null>(null);
 
+  /** Branches that actually have coverage; the default branch sorts first. */
+  readonly branches = signal<string[]>([]);
+
+  /** Null means "the default branch", which is the parameterless URL. */
+  private readonly branchOverride = signal<string | null>(null);
+
+  readonly selectedBranch = computed(() => this.branchOverride() ?? this.repo()?.defaultBranch ?? '');
+
+  /**
+   * The parameterless URL when the selection is the default branch, so the
+   * snippet every existing README already uses keeps its exact shape; ?branch=
+   * only when the user picked something else.
+   */
+  private badgeQuery(r: RepoInfo): string {
+    const params: string[] = [];
+    const branch = this.selectedBranch();
+    if (branch && branch !== r.defaultBranch) params.push(`branch=${encodeURIComponent(branch)}`);
+    // Token last: a copied URL reads more legibly with the selector first.
+    if (r.isPrivate && r.badgeToken) params.push(`token=${encodeURIComponent(r.badgeToken)}`);
+    return params.length ? `?${params.join('&')}` : '';
+  }
+
   readonly badgeUrl = computed(() => {
     const r = this.repo();
     if (!r) return '';
-    const base = `/badge/${r.owner}/${r.name}.svg`;
-    return r.isPrivate && r.badgeToken ? `${base}?token=${r.badgeToken}` : base;
+    return `/badge/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
   });
 
   readonly badgeMarkdown = computed(() => {
     const r = this.repo();
     if (!r) return '';
     const origin = r.baseUrl || location.origin;
-    const base = `${origin}/badge/${r.owner}/${r.name}.svg`;
-    const url = r.isPrivate && r.badgeToken ? `${base}?token=${r.badgeToken}` : base;
+    const url = `${origin}/badge/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
     return `[![Coverage](${url})](${origin}/r/${r.owner}/${r.name})`;
   });
 
@@ -79,7 +115,19 @@ export class RepoBadgePanelComponent {
       } catch {
         this.repo.set(null);
       }
+
+      // Independent of the repo fetch: a failure here costs the picker, not
+      // the badge, so it must not null out the panel.
+      try {
+        this.branches.set(await this.browse.getBranches(owner, name));
+      } catch {
+        this.branches.set([]);
+      }
     });
+  }
+
+  selectBranch(branch: string): void {
+    this.branchOverride.set(branch);
   }
 
   async copyBadge(): Promise<void> {
