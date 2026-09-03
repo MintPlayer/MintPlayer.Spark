@@ -445,35 +445,75 @@ measured), so it exercises the comment against an installation that is not this 
 5. `curl -sI` all three badge variants against a public and a private repository and diff the headers.
 6. Paste the evidence for exit criteria 1–11 into the verification sweep below.
 
-## Verification sweep (run once, at the end)
+## Verification sweep — run 2026-09-03
 
-Batched deliberately — no test suite runs before this point; intermediate milestones are verified by
-reading and type-checking.
+- **`dotnet test apps/CodeCoverage/CodeCoverage.Tests`** — **247 passed, 0 failed.** Includes
+  `UploadActionDogfoodTests`, which boots a real server, so the `modelHashes.json` gate is satisfied.
+  Run without `RAVENDB_LICENSE`, i.e. restricted mode — the fork-PR path — which is the stricter case.
+  84 of those tests are new here.
+- **`npx vitest run`** in `apps/CodeCoverage/action` — **56 passed** across 6 files, including the
+  extended `context.test.ts` (8 cases).
+- **`npm run test:bundle`** — **10 passed**; `dist/index.js` rebuilt in M3's commit, so
+  `compile-ts-action --mode verify` has no drift to find.
+- **`npx nx build @spark-apps/code-coverage`** — succeeded. Remaining warnings are pre-existing sass
+  deprecations and the bundle-budget notice, both present before this branch.
+- **`dotnet build`** on the server project — succeeded, no new analyzer diagnostics. (`SPARK_INDEX_010`
+  on `LatestCoverage`/`GateSnapshot` predates this work.)
+- **One model regeneration was required** and is committed: adding two `Commit` properties moved the
+  entity hash, and `SparkModelOutOfSyncException` failed the dogfood test until
+  `dotnet run -- --spark-synchronize-model` was run. Only `Commit.json` and `modelHashes.json`
+  changed — `PullRequestFeedback` correctly gets no model file, being an internal outbox document
+  rather than a UI entity. Its generated index is still created, because
+  `SparkMiddleware` calls `IndexCreation.CreateIndexes` per **assembly**, independently of Spark
+  registration; `PublishFeedbackCronJobTests` asserts the sweep resolves it rather than trusting that.
+- **Secret check** — `git log -p` over the branch greps clean for `covt_`, `.pem` content, and any
+  literal signing-key value; `docker-compose.yml` references
+  `${COVERAGE_BADGE_SIGNING_KEY:-}` and never an inline value. `PullRequestCommentRendererTests`
+  asserts `BadgeToken` cannot reach a comment body.
 
-- `dotnet test apps/CodeCoverage/CodeCoverage.Tests` — green. Note whether `RAVENDB_LICENSE` was
-  present; absent means restricted mode, which is the fork-PR path and must also pass.
-- `npm test` in `apps/CodeCoverage/action` (vitest) — green, including the extended `context.test.ts`.
-- `npm run test:bundle` and `compile-ts-action` in `mode: verify` — no bundle drift.
-- `dotnet build` across the solution — no new analyzer warnings, in particular none from the Spark
-  source generators referenced as an `Analyzer` by the test project.
-- Exit criteria 1–11 from the PRD, each with the observed evidence pasted here.
-- Confirm no secret reached a committed file: grep the diff for `covt_`, `BadgeToken` interpolation
-  into markdown, a literal `Coverage__BadgeSigningKey` value (the compose entry must reference
-  `${COVERAGE_BADGE_SIGNING_KEY}`, never inline it), and any `.pem` content.
+### Exit criteria
+
+| # | Status |
+|---|---|
+| 1 | ✅ `Branch_selector_agrees_with_the_headline_on_the_default_branch`, both from a Complete assembly. |
+| 2 | ✅ `Pull_request_selector_resolves_by_pull_request_number`; `?pr=999999` → grey `unknown` at 200 (`Unknown_branch_and_unknown_pull_request_render_unknown_not_the_headline`). |
+| 3 | ✅ `CacheControl_depends_only_on_whether_a_capability_was_presented`, asserted across a public and a private store for all three request shapes. |
+| 4 | ✅ `Valid_signature_admits_a_private_repositorys_pull_request_badge`, `Signature_for_another_pull_request_renders_unknown`, and the renderer tests proving no `BadgeToken` in a body. |
+| 5 | ✅ `A_partial_only_branch_renders_the_number_under_the_partial_label`. |
+| 6 | ⏳ Needs the deployed branch — M8. |
+| 7–10 | ✅ *at unit level* (`PullRequestCommentPublisherTests`, `OpenPullRequestCommentRecipientTests`), ⏳ end to end — M8. |
+| 11 | ✅ 247 green; badge tests exist where there were none. |
+| 12 | ✅ `upload-api.md`, the app README's new **Badges** section, `docs/code-coverage/README.md` index row, roadmap T2.1 M11.5 marked delivered. |
+
+### What M8 still needs
+
+M8 is a live dogfood and cannot run from a working copy: the comment is posted by the **deployed**
+server through its App installation, and this branch is not deployed (`code-coverage-deploy.yml`
+runs on `master`). So exit criteria 6–10 stay open until this merges, at which point the checks are:
+open a PR, expect one pending comment within a minute, expect the same comment id to carry real
+numbers after CI finalizes, push twice more and expect the count to stay at one, delete it and
+expect exactly one to return. `MintPlayer/MintPlayer.AspNetCore.SpaServices` is the second witness —
+it already posts both check-runs and serves a working `?branch=` badge.
+
+`COVERAGE_BADGE_SIGNING_KEY` must be set in the production `.env` before private-repo comments carry
+a badge image; without it they degrade to text, which is a supported state and not a failure.
 
 ## Implementation status (2026-09-03)
 
 | Milestone | Commit | Notes |
 |---|---|---|
-| S1–S4 | | |
-| M1 | | |
-| M2 | | |
-| M3 | | |
-| M4 | | |
-| M5 | | |
-| M6 | | |
-| M7 | | |
-| M8 | | |
+| Docs | `c4ab26f2` | PRD + plan. |
+| S1, S3 | `938e3a36` | S1 answered: `pull_requests: write` **granted** to the org installation, M6 unblocked. S3 answered through the badge instead of `/api/browse` (401 anonymously); no mislabelling in 71 probes; new hazard H12 (dependabot PRs can never upload). |
+| S2, S4 | `f744dc3a` | S2: camo passes our `max-age=300` through verbatim, so the image is safe. S4: marker adoption works and an edit adds no timeline event — M5's no-op suppression drops to optional. |
+| M1 | `27755929` | `?pr=`, Complete-preferred resolution with a `coverage (partial)` label, `BadgePrSignature`, ETag. 37 tests on a surface that had none. |
+| M2 | `2c7e790e` | Branch picker + per-branch snippet; `<bs-select>` because `.form-select` has no global definition in this workspace. |
+| M3 | `3734803f` | `baseRef`/`prBaseSha` end to end, `pr-base-ref` capability, bundle rebuilt. |
+| M4 | `181dcf62` | `PullRequestFeedback` + renderer, 11 tests. |
+| M5 | `01128360` | Inline publish on finalize; retries over `PublishPullRequestCommentMessage` + `IRecipient<>`. Closed the stranded-retry gap the first draft had. |
+| M6 | `2709ce86` | Pending comment on open, over the bus, with three gates. |
+| M7 | `67742ae7` | Docs. **Step 1 reversed** — see the milestone; `[SparkAuthorize]` on the badge would be inert and misleading. |
+| Sweep | *this commit* | Model regenerated (`Commit.json`, `modelHashes.json`) and the cron-sweep tests added. |
+| M8 | not run | Live dogfood needs the branch deployed; see below. |
 
 ## Decisions
 
