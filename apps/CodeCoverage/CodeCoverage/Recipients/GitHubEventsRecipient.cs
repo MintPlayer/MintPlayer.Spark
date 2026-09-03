@@ -180,6 +180,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         commit.Branch = pr.Head.Ref;
         commit.PullRequestNumber = (int)evt.Number;
         commit.Message ??= pr.Title;
+        // The authoritative writer of the PR's target, for the same reason as
+        // ParentSha below: `synchronize` re-sends a moved base, and a retarget
+        // changes the ref outright, so a frozen first-seen value goes stale.
+        commit.PullRequestBaseRef = pr.Base.Ref;
+        commit.PullRequestBaseSha = pr.Base.Sha;
         // The sole writer of ParentSha, and the only one that ever meant
         // anything: the PR's base tip. Plain `=` rather than `??=` because
         // GitHub re-sends `synchronize` with an updated base when the base

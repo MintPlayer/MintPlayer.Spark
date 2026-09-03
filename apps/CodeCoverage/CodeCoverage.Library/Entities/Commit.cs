@@ -24,6 +24,31 @@ public class Commit
     /// <summary>Number of the pull request this commit was seen on; null for plain pushes.</summary>
     public int? PullRequestNumber { get; set; }
 
+    /// <summary>
+    /// The branch the pull request TARGETS — <c>main</c>, not the head branch in
+    /// <see cref="Branch"/>. Null for pushes, and for PR commits recorded before
+    /// this field existed.
+    /// <para>
+    /// Written authoritatively by the pull_request webhook and best-effort
+    /// (<c>??=</c>) by the upload, matching how Branch and PullRequestNumber are
+    /// handled. A PR's target can be retargeted, in which case the webhook's
+    /// later write wins.
+    /// </para>
+    /// </summary>
+    public string? PullRequestBaseRef { get; set; }
+
+    /// <summary>
+    /// Tip of <see cref="PullRequestBaseRef"/> as of the PR's last synchronise.
+    /// <para>
+    /// NOT the same thing as <c>Build.DeclaredBaseSha</c>: that is the caller's
+    /// declared affected-computation base (this repo passes nx's NX_BASE) and is
+    /// not guaranteed to be the merge-base. Patch coverage deliberately still
+    /// diffs against DeclaredBaseSha ?? ParentSha — repointing a shipped number
+    /// belongs to the honest-numbers work, not here.
+    /// </para>
+    /// </summary>
+    public string? PullRequestBaseSha { get; set; }
+
     /// <summary>Sha of the git first parent, used as the reference for the delta-vs-parent; see the source field for how much to trust it.</summary>
     public string? ParentSha { get; set; }
 

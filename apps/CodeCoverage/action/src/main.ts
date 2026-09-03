@@ -71,6 +71,10 @@ export async function run(): Promise<void> {
     form.set('commitSha', ctx.commitSha);
     if (ctx.branch) form.set('branch', ctx.branch);
     if (ctx.pullRequestNumber) form.set('pullRequestNumber', String(ctx.pullRequestNumber));
+    // The PR's target branch and its tip. An older server ignores both by
+    // model binding, so these are safe to send unconditionally.
+    if (ctx.baseRef) form.set('baseRef', ctx.baseRef);
+    if (ctx.prBaseSha) form.set('prBaseSha', ctx.prBaseSha);
     if (parentSha) form.set('parentSha', parentSha);
     form.set('runId', String(ctx.runId));
     form.set('runAttempt', String(ctx.runAttempt));
