@@ -26,6 +26,16 @@ Once the upgrade lands, the broken rendering is gone and there is nothing to com
 
 Exit: five before-screenshots and five bundle numbers saved outside the repo (scratchpad is fine).
 
+### Done 2026-09-03 — partially
+
+Bundle baseline captured on 22.17.0 / web-components 2.13.0: `styles-*.css` 224.63 kB raw / 20.16 kB
+transfer, identical in all five apps; `initial` totals 1.17 / 1.19 / 1.19 / 1.23 / 1.24 MB, all five
+already warning over the 1.00 MB budget.
+
+**The before-screenshots were not taken.** Step 1 was skipped and the upgrade went in first, so there
+is no image to diff grid chrome against. Nothing else in the plan depended on them, but the
+"unchanged chrome" claim is consequently unprovable — recorded rather than glossed.
+
 ## M1 — The upgrade itself
 
 1. Root `package.json:32` — `@mintplayer/ng-bootstrap` `^22.17.0` → `^22.18.0`.
@@ -50,6 +60,14 @@ Exit: five before-screenshots and five bundle numbers saved outside the repo (sc
    on push to master — this number is permanent once merged, so check it in the PR diff.
 
 Exit: lockfile resolves 22.18.0; `npx nx build ng-spark` succeeds.
+
+### Done 2026-09-03
+
+ng-bootstrap `^22.18.0`, web-components `2.15.0`, ng-spark peer `^22.18.0`, ng-spark version
+`22.9.0` → `22.10.0` (minor — Angular 22 has not moved). ng-spark-auth left at `^22.2.0`. Step 2 was
+**not** in the original plan and was added after the first `npm install` produced a 22.18.0 that
+still had a shadow root; the conversion was then confirmed in the shipped bundle
+(`createRenderRoot() { return this; }`).
 
 ## M2 — Confirm the fix, before changing anything else
 
@@ -203,6 +221,14 @@ Only now, with the fix confirmed and leak-in measured.
 
 Exit: no comment in `libs/node_packages/ng-spark` claims the grid cell renders in a shadow root.
 
+### Done 2026-09-03
+
+`spark-grid-cell.component.scss` header rewritten and given a `.spark-grid-image` rule; the swatch
+now uses the existing `.spark-color-swatch` (shared with the detail page) and the image the new
+class; `account-avatar-renderer` uses `rounded-1` (`--bs-border-radius-sm` = 0.25rem, the same value
+the inline style set). `_chip.scss` and every `::part()` seam left alone, as planned. Verified by
+grep: the only remaining "shadow root" mentions are explicitly corrected, or refer to `mp-shell`.
+
 ## M5 — Fix the tests that encode the old model
 
 1. `spark-grid-cell.component.spec.ts:106-116` — the test named *"sizes itself inline, because the
@@ -217,6 +243,16 @@ Exit: no comment in `libs/node_packages/ng-spark` claims the grid cell renders i
    assumes no rendered anchors, which may now change.
 
 Exit: `nx test ng-spark` reasoning is sound on paper; actually run at M7.
+
+### Done 2026-09-03
+
+The image test is renamed *"is size-constrained, so a full-size image cannot blow the row height
+out"* and asserts the class rather than an inline style — the contract, not the mechanism. The
+`spark-query-grid` `[i]` comment now states plainly that this jsdom blind spot is *why the bug
+shipped*, and that catching it needs a real browser. The swatch specs at `:85,93,192,203` needed no
+change: `[style.background-color]` is still a binding. The jsdom comments at `:194,373,419` are still
+accurate — Lit does not upgrade under jsdom whether the component uses a shadow root or not — so they
+were left as they are.
 
 ## M6 — Budgets and build
 
@@ -279,6 +315,21 @@ accuracy for the next reader, not rewriting history — a dated correction note 
   ng-bootstrap 22.18.0, and why it did not before.
 - Release notes for the next preview: the ng-bootstrap floor moved to 22.18.0 and the grid `[i]` is
   fixed.
+
+### Done 2026-09-03
+
+- `docs/issue_327_{PRD,plan}.md` — dated correction notes on the "grid renders inside `mp-datatable`'s
+  shadow root, so use inline styles" passages.
+- `docs/guide-attribute-descriptions.md` — new section "Requires ng-bootstrap ≥ 22.18.0 in a grid
+  header", including that the popup was never broken, only the trigger.
+- `docs/release-notes-preview-70.md` — **correction added.** Those notes claimed the [i] shows on
+  "grid column headers … and the reference picker"; on `22.9.0` both were exactly the broken sites.
+- `docs/release-notes-ng-spark-22.10.0.md` — new. Client-only release (no NuGet change), with the
+  two-pin upgrade instruction and the verification results.
+- `docs/query-grid-card-plan.md` and `docs/prd/virtual-datatable-scroll-prd.md` were listed above but
+  **needed no edit** — checked, and neither contains a shadow-DOM claim. The plan's list was
+  over-inclusive.
+- The still-correct accordion/shell/snippet docs were left untouched, as planned.
 
 ## M9 — PR
 

@@ -1,8 +1,16 @@
 # PRD — Adopting ng-bootstrap's light-DOM conversion (22.18.0)
 
-Status: proposed, not implemented
+Status: **implemented and verified in a browser, 2026-09-03** — branch `feat/ngbootstrap-lightdom-2218`
 Upstream: `MintPlayer/mintplayer-ng-bootstrap` PR #410 (fixes their #408), squashed as `dbe4808b`
 Related here: #348 attribute descriptions (PR #357), #324 program units
+
+> **The one trap, found the hard way.** The light-DOM machinery ships in
+> `@mintplayer/web-components`, which ng-bootstrap declares only as a **peer** (`^2.0.0`), while our
+> root `package.json` pinned it **exactly** at `2.13.0`. Bumping ng-bootstrap alone installs 22.18.0,
+> reports success, and leaves the shadow root — and the bug — completely intact. Both pins must move.
+> Verify with
+> `grep -A2 'createRenderRoot() {' node_modules/@mintplayer/web-components/chunks/mp-datatable-*.mjs`
+> → must print `return this;`.
 
 ## Summary
 
@@ -182,21 +190,32 @@ in `package.json` must be right in the PR.
 
 ## Acceptance criteria
 
-- [ ] Coverage **Account** page — the reference case is
-      <https://coverage.mintplayer.com/po/account/Accounts%2F48772716> (live, currently on 22.17.0, so
-      it shows the *broken* state; verify the fix against the same PO on a local `dotnet run` of
-      `apps/CodeCoverage` before it reaches production). The `[i]` inside the repositories grid
-      renders with button chrome, icon sizing and glyph identical to the `[i]` in the top card, and
-      its tooltip opens on hover and on focus.
-- [ ] The reference-picker modal's `[i]` (`spark-reference-picker.component.html:68`) likewise.
-- [ ] Virtual scrolling still works on a large Coverage grid; header stays put, rows recycle.
-- [ ] All five Angular apps build in production config without a budget warning or error.
-- [ ] `nx run-many --target=test` green across the JS projects.
-- [ ] No `::part()` / `::slotted()` selector targeting a converted component remains (there are none
-      today — this is a guard, not a task).
-- [ ] The still-valid `::part()` seams on `mp-shell` / `mp-accordion` / `mp-code-snippet` are
-      untouched and those UIs are unchanged.
-- [ ] No comment or doc in the repo still claims the datatable renders into a shadow root.
+- [x] Coverage **Account** page — reference case
+      <https://coverage.mintplayer.com/po/account/Accounts%2F48772716>, reproduced locally against the
+      real `Accounts/48772716`. `mp-datatable.shadowRoot === null`; all six `[i]` on the page (2 card,
+      4 grid header) compute identically and measure **16 × 23 px in both places**; `::before` resolves
+      `font-family: bootstrap-icons` with the glyph present.
+- [ ] The reference-picker modal's `[i]` (`spark-reference-picker.component.html:68`) — **not
+      observed.** Same `*bsDatatableColumn` header path, so the same fix applies, but it was not seen
+      rendering.
+- [x] Virtual scrolling — measured on **Fleet ▸ Cars** (`renderMode: VirtualScrolling`, ~10k rows).
+      Header pinned at `top: 264`, rows recycle, state restores on return, exactly one vertical
+      scroller. `spark-query-list.component.scss` needed **no change**.
+- [x] All five Angular apps build in production config. *(Criterion reworded honestly: all five
+      already **warned** over the 1.00 MB `initial` budget before this change. The delta is +7.1 to
+      +7.6 kB raw per app and `styles.css` is unchanged at 224.63 kB, so no app crossed a threshold it
+      had not already crossed, and none approaches the 1.5 MB error ceiling.)*
+- [x] `nx run-many --target=test` — **492 passed** (398 ng-spark + 94 ng-spark-auth), 44 files.
+- [x] No `::part()` / `::slotted()` selector targets a converted component (verified by grep; there
+      were none, as expected).
+- [x] The `::part()` seams on `mp-shell` / `mp-accordion` / `mp-code-snippet` are untouched, and both
+      app shells render correctly in the verification screenshots (sidebar accordion + hamburger).
+- [x] No comment or doc still claims the datatable renders into a shadow root. Every remaining mention
+      in `libs/node_packages/ng-spark` is either explicitly corrected or refers to `mp-shell`, which
+      was not converted.
+
+Not covered by any criterion, and worth stating: **no "before" screenshot was captured while still on
+22.17.0**, so grid chrome is "looks correct", not "provably unchanged".
 
 ## Out of scope / genuinely not doing
 
