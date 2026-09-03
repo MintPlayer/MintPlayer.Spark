@@ -92,6 +92,15 @@ setting up a repository that looks like this one:
   and a second, .NET-only upload for the same commit would leave the badge showing
   whichever run finalized last. It is also filtered to ignore `apps/CodeCoverage/action/**`, so
   republishing the action's bundle never deploys the server.
+- **A big negative `coverage/project` on a PR here is usually not a regression.** PR runs upload
+  `partial: true` with an `nx affected` base, so the check is judged on the **scoped** basis — only
+  the affected projects — while the benchmark is a whole-workspace master run. A PR touching one app
+  can therefore read something like *"16.4% (−58.3% vs base 74.7%)"* while changing nothing about the
+  rest of the repository. The check's own summary says which basis it used (*"Partial upload
+  (nx affected) judged on the scoped basis"*), and the gate is informational here (`Blocking` off),
+  so it never fails a merge. **Read `coverage/patch` instead** for whether a PR's own new lines are
+  covered. This is also what the `coverage (partial)` badge label exists to make visible, and why the
+  parameterised badges prefer a complete assembly over a newer partial one.
 
 ## Local development
 

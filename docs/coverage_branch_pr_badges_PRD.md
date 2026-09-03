@@ -494,6 +494,13 @@ with a server-side key, truncated to 128 bits and hex-encoded. `MayView` accepts
 - Independent of `BadgeToken`, so rotation does not break comments and comments do not devalue the
   token.
 - Deterministic, so re-rendering the sticky comment produces a stable URL and camo keeps its cache.
+- **What it does not hide** (measured in S2): GitHub rewrites the image to a
+  `camo.githubusercontent.com` URL whose path is the **hex-encoded origin URL** under a digest, so the
+  `sig` is recoverable from it, and camo URLs are not themselves access-controlled. That is no worse
+  than the comment's own audience — but it is the reason the credential in a comment must be worth as
+  little as possible. A leaked `sig` reveals one pull request's coverage percentage to someone who
+  already had the comment; a leaked `BadgeToken` reveals every branch of the repository, forever, to
+  anyone.
 - The key is one new secret. It reuses the existing production secret channel — the App key is already
   mounted at `/run/secrets/github-app.pem` (`docker-compose.yml:54,58`), so a `Coverage__BadgeSigningKey`
   environment entry follows the established pattern. Absent key → fall back to Option 1's text body
@@ -563,6 +570,12 @@ than one branch to choose from — otherwise the original caption stands.)*
 - Inline line-level PR annotations (the other half of T2.1 M11.5).
 - Fixing `Commit.Branch`'s first-writer-wins model (F3) — a branch-history model is a much larger
   change; this PRD documents the limitation and measures it (S3).
+- **Fixing F2** — the bootstrap hole in `CommitAssembler.Promote` (`:355-365`), where any branch or PR
+  head can claim the repository headline while `LatestCoverage` or `DefaultBranch` is still null.
+  Stated explicitly because M1 fixed F1, F4 and F5 and a reader would reasonably assume all five went
+  with them. It is untouched: closing it means deciding what a repository with no known default
+  branch *should* show, which is a product question about the OIDC-only population rather than a
+  badge bug, and it would change a number that is live today for those repositories.
 - Badges for tags, arbitrary shas, or fully-qualified refs; fork-vs-base branch disambiguation.
 - Per-branch or per-PR badge capabilities (a token narrower than the repository).
 - Any change to the colour scale, the `unknown` semantics, or the check-run names `coverage/project`
