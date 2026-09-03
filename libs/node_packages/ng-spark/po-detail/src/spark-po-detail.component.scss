@@ -2,6 +2,16 @@
 @use '../../styles/chip';
 @use '../../styles/swatch';
 
+// Bootstrap's `.container` sets the content width here — its own gutter, and a max-width that
+// changes per breakpoint. So the action bar aligns to the container rather than bleeding to the
+// scrollport: everything it could overlap is inside the same container, so there is no gutter for
+// content to scroll through, and chasing a breakpoint-dependent max-width with a negative margin
+// would be guesswork. Only the inline axis is released — the bar still cancels main's padding-top
+// so it meets the app's top bar when stuck.
+.container {
+  --spark-content-inset-inline: 0px;
+}
+
 // A multiline text attribute keeps the line breaks it was saved with. Bootstrap's text
 // utilities only offer wrap/nowrap, neither of which preserves them.
 .spark-multiline-value {

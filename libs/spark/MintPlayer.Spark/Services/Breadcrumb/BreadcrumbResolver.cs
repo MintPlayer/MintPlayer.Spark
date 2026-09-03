@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Configuration;
 using Raven.Client.Documents.Session;
 using System.Collections;
+using System.Reflection;
 using System.Text;
 
 namespace MintPlayer.Spark.Services.Breadcrumb;
@@ -29,9 +30,10 @@ public sealed class BreadcrumbResult
 
 /// <summary>
 /// Resolves breadcrumbs recursively across references, identically for every read path.
-/// Loads the referenced documents a whole page needs breadth-first — one batched
-/// <c>LoadAsync&lt;object&gt;(ids)</c> per reference level — then renders each breadcrumb purely
-/// in memory. Request cost is O(breadcrumb depth) per page, independent of row count and fan-out.
+/// Loads the referenced documents a whole page needs breadth-first — one batched load per
+/// distinct declared reference target type per level — then renders each breadcrumb purely in
+/// memory. Request cost is O(breadcrumb depth × types per level) per page, independent of row
+/// count and fan-out.
 /// </summary>
 internal interface IBreadcrumbResolver
 {
@@ -71,10 +73,12 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         }
 
         // Level-0 fallback: a root projection that can't render its breadcrumb (a placeholder
-        // field isn't on the projection) needs its collection document — one batched load.
+        // field isn't on the projection) needs its collection document — one batched load,
+        // under the root's DECLARED type (see LoadManyAsync).
         if (rootDef is { BreadcrumbProjectionSatisfiable: false } && rootIds.Count > 0)
         {
-            var collectionRoots = await session.LoadAsync<object>(rootIds, ct);
+            var collectionRoots = await LoadManyAsync(
+                session, SparkTypeResolver.ResolveClrType(rootDef.ClrType), rootIds, ct);
             foreach (var id in rootIds)
                 if (collectionRoots.TryGetValue(id, out var doc) && doc is not null)
                     renderEntity[id] = doc;
@@ -85,7 +89,11 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         var depth = 1;
         while (frontier.Count > 0 && depth < options.Breadcrumb.MaxDepth)
         {
-            var needed = new List<string>();
+            // Referenced ids, grouped by the target type the MODEL declares for the edge that
+            // reached them. Batched per declared type rather than in one untyped load — see
+            // LoadManyAsync for why the type argument is load-bearing.
+            var neededByType = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            var declaredTypeById = new Dictionary<string, string>(StringComparer.Ordinal);
             var neededSet = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var id in frontier)
@@ -99,33 +107,58 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                 // cells are materialized on the PO too and need the same label. Deeper levels follow
                 // only the breadcrumb-template references, since a referenced entity is represented
                 // solely by its breadcrumb string.
-                var collected = new List<string>();
+                var collected = new List<(string Id, string TargetClrType)>();
                 if (depth == 1)
                     CollectRootReferenceIds(entity, def, collected);
                 else
                     foreach (var reference in closure.GetReferences(def))
-                        collected.AddRange(ExtractIds(entity, reference.AttributeName));
+                        foreach (var refId in ExtractIds(entity, reference.AttributeName))
+                            collected.Add((refId, reference.TargetClrType));
 
-                foreach (var refId in collected)
-                    if (!renderEntity.ContainsKey(refId) && !denied.Contains(refId) && neededSet.Add(refId))
-                        needed.Add(refId);
+                foreach (var (refId, targetClrType) in collected)
+                {
+                    if (renderEntity.ContainsKey(refId) || denied.Contains(refId) || !neededSet.Add(refId))
+                        continue;
+                    declaredTypeById[refId] = targetClrType;
+                    if (!neededByType.TryGetValue(targetClrType, out var bucket))
+                        neededByType[targetClrType] = bucket = [];
+                    bucket.Add(refId);
+                }
             }
 
-            if (needed.Count == 0) break;
+            if (neededByType.Count == 0) break;
 
-            var loaded = await session.LoadAsync<object>(needed, ct); // one request for the whole level
+            var loaded = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (targetClrType, ids) in neededByType) // one request per declared type
+            {
+                var typed = await LoadManyAsync(session, SparkTypeResolver.ResolveClrType(targetClrType), ids, ct);
+                foreach (var (id, doc) in typed)
+                    loaded[id] = doc;
+            }
+
             var next = new List<string>();
-            foreach (var refId in needed)
+            foreach (var refId in neededSet)
             {
                 if (!loaded.TryGetValue(refId, out var doc) || doc is null) continue;
+
+                // The document's own type when the model knows it, else the type the reference
+                // declares. A subtype stored behind a base-typed reference keeps its own
+                // breadcrumb; a document whose @Raven-Clr-Type is stale still gets the right one.
                 var docType = doc.GetType();
-                if (!await rowSecurity.IsAllowedAsync(docType, "Read", doc))
+                var runtimeDef = modelLoader.GetEntityTypeByClrType(docType.FullName ?? docType.Name);
+                var declaredClrType = declaredTypeById.GetValueOrDefault(refId);
+                var securityType = runtimeDef is not null
+                    ? docType
+                    : SparkTypeResolver.ResolveClrType(declaredClrType) ?? docType;
+
+                if (!await rowSecurity.IsAllowedAsync(securityType, "Read", doc))
                 {
                     denied.Add(refId); // surfaced as the redacted placeholder where it appears
                     continue;
                 }
                 renderEntity[refId] = doc;
-                defById[refId] = modelLoader.GetEntityTypeByClrType(docType.FullName ?? docType.Name);
+                defById[refId] = runtimeDef
+                    ?? (declaredClrType is null ? null : modelLoader.GetEntityTypeByClrType(declaredClrType));
                 next.Add(refId);
             }
             frontier = next;
@@ -157,7 +190,11 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
 
         var def = defById.GetValueOrDefault(id);
         if (def is null || string.IsNullOrEmpty(def.Breadcrumb))
-            return def?.Name ?? entity.GetType().Name;
+            // No definition means we know nothing about the document but its id — which is at
+            // least a true, stable label. Never the CLR type name: that rendered referenced
+            // documents as "JObject" whenever an untyped load could not recover their type,
+            // putting an internal implementation detail in front of the user.
+            return def?.Name ?? id;
 
         // Re-entering an id already on the render path is a cycle: render this node's scalars
         // but suppress its reference expansion so we terminate.
@@ -305,10 +342,12 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     /// breadcrumb exactly like a top-level reference column. AsDetail children are embedded objects
     /// (a finite document tree, never cyclic), so the recursion is bounded by the document shape.
     /// </summary>
-    private void CollectRootReferenceIds(object entity, EntityTypeDefinition def, List<string> into)
+    private void CollectRootReferenceIds(
+        object entity, EntityTypeDefinition def, List<(string Id, string TargetClrType)> into)
     {
         foreach (var reference in GetAllReferences(def))
-            into.AddRange(ExtractIds(entity, reference.AttributeName));
+            foreach (var refId in ExtractIds(entity, reference.AttributeName))
+                into.Add((refId, reference.TargetClrType));
 
         foreach (var attr in def.Attributes)
         {
@@ -339,6 +378,68 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                 yield return value;
                 yield break;
         }
+    }
+
+    /// <summary>
+    /// Batch-loads documents as <paramref name="entityType"/>, falling back to an untyped load
+    /// when the model names no resolvable CLR type (a JSON-only virtual type).
+    /// <para>
+    /// The type argument is load-bearing, for the same reason it is in <c>RowSecurity</c> (#281).
+    /// RavenDB recovers a document's CLR type from <c>@Raven-Clr-Type</c> when it can and falls
+    /// back to a <c>JObject</c> when that metadata is absent or names a type this process cannot
+    /// resolve — a raw put, a bulk insert, an import, or an entity since moved between assemblies
+    /// or renamed. Asking for <c>object</c> made two user-visible outcomes depend on stored
+    /// metadata rather than on the model:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>the breadcrumb, because no definition matched <c>JObject</c>, so every referenced
+    /// document rendered as the literal text "JObject" instead of its label; and</item>
+    /// <item>row security, because <c>IsAllowedAsync(typeof(JObject), …)</c> finds no rule for
+    /// that type and "no rule" means unrestricted — so a referenced document skipped the row rule
+    /// its own type declares.</item>
+    /// </list>
+    /// <para>
+    /// The reference edge already carries the target type the model declares, so nothing needs to
+    /// be inferred from the document. Cost is one request per distinct declared type per level
+    /// rather than one per level; a page's references span a handful of types, and the alternative
+    /// is a result that is wrong whenever the metadata is.
+    /// </para>
+    /// </summary>
+    private static async Task<Dictionary<string, object>> LoadManyAsync(
+        IAsyncDocumentSession session, Type? entityType, IReadOnlyCollection<string> ids, CancellationToken ct)
+    {
+        // Document ids are case-insensitive, and an index-projected Id can differ in case from the
+        // stored one — the same comparer RavenDB builds its own result with.
+        var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        if (ids.Count == 0)
+            return result;
+
+        if (entityType is null)
+        {
+            foreach (var (id, doc) in await session.LoadAsync<object>(ids, ct))
+                if (doc is not null) result[id] = doc;
+            return result;
+        }
+
+        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
+            ("BreadcrumbResolver.SessionLoadManyAsync", entityType),
+            static k => typeof(IAsyncDocumentSession)
+                .GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(IEnumerable<string>), typeof(CancellationToken)])
+                ?.MakeGenericMethod(k.Entity));
+
+        // Reflection applies no default arguments, so the token is passed explicitly.
+        if (loadMethod?.Invoke(session, [ids, ct]) is not Task task)
+            return result;
+
+        await task;
+
+        // Task<Dictionary<string, TEntity>>, copied into the object-valued shape callers hold.
+        if (task.GetCompletedTaskResult() is IDictionary loaded)
+            foreach (DictionaryEntry entry in loaded)
+                if (entry.Value is not null)
+                    result[(string)entry.Key] = entry.Value;
+
+        return result;
     }
 
     private static string GetId(object entity)

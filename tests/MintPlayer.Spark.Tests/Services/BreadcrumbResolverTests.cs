@@ -3,6 +3,7 @@ using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Testing;
+using Raven.Client;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Services;
@@ -250,6 +251,101 @@ public class BreadcrumbResolverTests : SparkTestDriver
 
         result.Get("cars/1").Should().Be("CAR-1 (—)", "the denied driver is redacted, the rest renders");
         result.Get("people/1").Should().Be("—");
+    }
+
+    // --- stale @Raven-Clr-Type: the document's stored type no longer resolves ---
+
+    /// <summary>
+    /// Rewrites a stored document's <c>@Raven-Clr-Type</c> to a type this process cannot resolve,
+    /// reproducing what an assembly rename, a raw put, a bulk insert or an import leaves behind.
+    /// An untyped load of such a document materializes it as a <c>JObject</c>.
+    /// </summary>
+    private async Task StoreWithUnresolvableClrType(object entity, string id)
+    {
+        using var seed = Store.OpenAsyncSession();
+        await seed.StoreAsync(entity, id);
+        seed.Advanced.GetMetadataFor(entity)[Constants.Documents.Metadata.RavenClrType]
+            = "Gone.Namespace.Renamed, Gone.Assembly";
+        await seed.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Reference_whose_stored_clr_type_no_longer_resolves_still_renders_its_breadcrumb()
+    {
+        await StoreWithUnresolvableClrType(new BR_Person { FirstName = "Ada", LastName = "Lovelace" }, "people/1");
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        // Loading as `object` returned a JObject, which matched no entity-type definition, so the
+        // resolver fell through to the CLR type name and rendered the literal text "JObject" —
+        // in production, as the value of every reference attribute on the page. The reference
+        // edge declares its target type, so nothing here needs the stored metadata.
+        result.Get("people/1").Should().Be("Ada Lovelace");
+        result.Get("cars/1").Should().Be("CAR-1 (Ada Lovelace)");
+    }
+
+    [Fact]
+    public async Task Reference_whose_stored_clr_type_no_longer_resolves_is_still_row_gated()
+    {
+        await StoreWithUnresolvableClrType(new BR_Person { FirstName = "Secret", LastName = "Agent" }, "people/1");
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, rowSecurity) = Build(person, car);
+        rowSecurity.IsAllowedAsync(typeof(BR_Person), "Read", Arg.Any<object>()).Returns(false);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        // The rule is declared over BR_Person. Judged as a JObject it did not apply at all — and
+        // "no rule" means unrestricted, so a document whose metadata had gone stale silently
+        // escaped its own row-level security and its breadcrumb was rendered anyway.
+        result.Get("people/1").Should().Be("—");
+        result.Get("cars/1").Should().Be("CAR-1 (—)");
+    }
+
+    [Fact]
+    public async Task Reference_with_no_entity_type_definition_renders_its_id_never_a_clr_type_name()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "Ada", LastName = "Lovelace" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        // Only the car is modelled: the reference target has no definition at all.
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        // The id is a true, stable label; a type name is an internal detail that means nothing
+        // to the person reading the page.
+        result.Get("people/1").Should().Be("people/1");
+        result.Get("cars/1").Should().Be("CAR-1 (people/1)");
     }
 
     [Fact]

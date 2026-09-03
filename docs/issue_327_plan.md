@@ -272,6 +272,8 @@ Independently shippable, and in this PR because the repo's rule is one PR.
 
 - **§9.1** `"image"` and `"url"` data types — `GetDataType`, `spark-grid-cell.component.html` (inline
   styles: the grid is inside `mp-datatable`'s shadow root), the po-detail chain, `input-type.pipe.ts`.
+  *(The shadow-root premise stopped holding at ng-bootstrap 22.18.0; those inline styles are now
+  classes — see `docs/ngbootstrap_lightdom_upgrade_PRD.md`.)*
 - **§9.2** `rowRoute` — an optional `(row) => unknown[] | null` replacing the anchor's target, `canRead()`
   gate untouched.
 - **§9.4** `[SparkAuthorize(Group = …)]` bypasses the `wellKnown` reservation — resolve through

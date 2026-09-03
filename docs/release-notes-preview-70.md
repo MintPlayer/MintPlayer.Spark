@@ -14,6 +14,14 @@ Attributes in `App_Data/Model/*.json` can carry a `description` — a `Translate
 column headers, AsDetail headers and the reference picker, with the text in a tooltip that opens
 on hover and on focus. Custom renderers need no change.
 
+> **Correction (2026-09-03).** Two of those sites did not actually work on `22.9.0`: **grid column
+> headers and the reference picker**. Both render the [i] inside `<mp-datatable>`, which on
+> ng-bootstrap ≤ 22.17.0 was a shadow root — and the [i]'s styling (global Bootstrap, the icon font,
+> its own component CSS) all lives in `document.head`, which shadow DOM does not admit. The markup
+> was correct; the [i] simply rendered unstyled there. Fixed in `@mintplayer/ng-spark` `22.10.0` by
+> moving to ng-bootstrap `22.18.0`, whose datatable renders in the light DOM. The tooltip *popup*
+> was never affected — it attaches through the CDK overlay to `document.body`.
+
 On `--spark-synchronize-model`, the English text is seeded from C#:
 
 1. `[System.ComponentModel.Description]` on the property, else

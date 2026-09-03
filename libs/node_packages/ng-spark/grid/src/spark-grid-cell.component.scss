@@ -1,14 +1,23 @@
-// Reaches this component ONLY where it renders in the light DOM -- the AsDetail table on a PO
-// detail page. In a query grid the same component renders inside <mp-datatable>'s shadow root
-// (measured: the cell is in `shadowRoot`, with `assignedSlot === false`, so it is not slotted
-// light DOM), and a shadow root does not see document stylesheets. Angular's emulated
-// encapsulation puts these rules in a document <style>, so they simply do not arrive there.
+// Reaches this component on every path it renders on.
 //
-// Measured 2026-08-23: an element carrying `.spark-chip` plus this component's `_ngcontent`
-// attribute computes the full pill in the light DOM (radius 800px, padding 4.55/11.7, weight
-// 600) and nothing at all inside the datatable's shadow root.
+// This was not always true. Until ng-bootstrap 22.18.0 the query grid rendered this cell inside
+// <mp-datatable>'s shadow root (measured 2026-08-23: the cell was in `shadowRoot` with
+// `assignedSlot === false`, so it was not slotted light DOM), and a shadow root does not see
+// document stylesheets — Angular's emulated encapsulation puts these rules in a document <style>,
+// so they never arrived. Anything that had to render inside the grid used an inline style instead.
 //
-// Kept because the light-DOM path is real, and because the fix for the other path is upstream
-// rather than here. Anything that MUST render inside the grid uses an inline style instead.
+// 22.18.0 dropped the shadow root on mp-datatable in favour of build-time attribute rescoping, so
+// the cell is now in the document tree on both paths and these rules apply to both. The inline
+// styles that compensated have been folded back into `.spark-color-swatch` and `.spark-grid-image`.
+// See docs/ngbootstrap_lightdom_upgrade_PRD.md.
 @use '../../styles/chip';
 @use '../../styles/swatch';
+
+// Sized in em so it tracks the row's font-size; `max-width` keeps a wide image inside its column
+// and `object-fit` stops the constraint from distorting it. A full-size image would otherwise blow
+// the row height out.
+.spark-grid-image {
+  max-height: 2.5em;
+  max-width: 100%;
+  object-fit: contain;
+}

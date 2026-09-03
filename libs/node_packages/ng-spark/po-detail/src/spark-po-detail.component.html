@@ -6,7 +6,7 @@
     </bs-alert>
   } @else if (item(); as currentItem) {
     @if (entityType(); as et) {
-    <div class="spark-actionbar px-3 py-2">
+    <div class="spark-actionbar py-2">
       <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
         <button *bsPriorityNavItem="1" class="btn btn-outline-secondary" (click)="onBack()">
           <spark-icon name="arrow-left" /> {{ 'common.back' | t }}

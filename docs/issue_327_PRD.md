@@ -561,6 +561,10 @@ the breadcrumb the server already resolved.
 `spark-grid-cell.component.html` **before** the chips/link/text fallthrough, styled with inline
 `[style.*]` — the grid renders inside `mp-datatable`'s shadow root, where neither component-scoped SCSS
 nor Bootstrap utilities arrive (measured, and documented verbatim in `spark-grid-cell.component.scss:1-13`).
+
+> **No longer true as of ng-bootstrap 22.18.0 (2026-09-03).** `mp-datatable` renders in the light DOM,
+> so component-scoped SCSS and Bootstrap utilities reach grid cells normally and the inline styles
+> described here have been replaced by classes. See `docs/ngbootstrap_lightdom_upgrade_PRD.md`.
 The detail page has its own `dataType` chain and needs the same branches or the new types render as raw
 text there.
 
