@@ -141,17 +141,43 @@ the same element reports `100%`, and a bare `<img>` in the same cell reports `no
 are 401s from being unauthenticated locally, plus a pre-existing `loginUrl: "/login"` route
 misconfiguration the app already warns about itself).
 
-### Not verified
+### Virtual scroll (item 1) — measured 2026-09-03 on Fleet ▸ Cars — PASS
 
-- **Virtual scroll (item 1) — the highest-risk item is still unmeasured.** The Account page's grid is
-  a small sub-query card (4 rows) and never enters the `.virtual-scrolling` path, and every
-  data-heavy query list 401s without an authenticated session. The `::ng-deep bs-datatable` block in
-  `spark-query-list.component.scss` was left untouched, as planned. **This must be checked on a
-  signed-in Coverage grid with 1000+ rows before merge.**
+`apps/Fleet` `/query/cars` (`Car.json` declares `"renderMode": "VirtualScrolling"`), signed in,
+~10 000 rows (`scrollHeight` 400 510 px).
+
+The `::ng-deep bs-datatable` block in `spark-query-list.component.scss` **still works exactly as
+written, unchanged** — measured, not assumed:
+
+- `spark-query-list` carries `.virtual-scrolling`; `display: flex`.
+- `--mp-datatable-virtual-max-height` computes to **`100%`** on `bs-datatable`, and the scroll
+  viewport's `max-height` computes to `100%`. The custom-property hand-off survives the boundary
+  change — it now simply inherits through the light DOM.
+- `bs-datatable` → `display: flex`, `flex-direction: column`; the nested `mp-datatable` selector
+  still matches and applies `flex: 1 1 auto`, `min-height: 0`.
+- Height chain intact: list 596 → bs 409 → mp 409 → viewport 394. Nothing collapsed.
+- **Exactly one vertical scroller on the page**: `div.datatable-scroll[data-mps="datatable"]`, the
+  datatable's own viewport. No double scrollbar, and `main` does not scroll.
+
+Behaviour: scrolling to 20 000 px recycles rows (first row changes), the header stays pinned at
+`top: 264` throughout, and returning to 0 restores the original first row. At depth, 30 of 32
+rendered rows carry real data (the 2 empties are the leading/trailing virtual spacers) — so rows
+render, they are not blank placeholders.
+
+The `[i]` in this grid's header also computes correctly (`opacity 0.6`, `14px`, 16 × 23 px) — the fix
+confirmed independently in a second application.
+
+### Not verified
 - **Grid chrome vs a before-image (item 2).** No M0 screenshot was taken while still on 22.17.0, so
   there is nothing to diff against; the current chrome looks correct but "unchanged" is not
   established.
-- **The 12 CodeCoverage cell renderers (item 4)** render only for authenticated data.
+- **The 12 CodeCoverage cell renderers (item 4)** were not observed rendering; the Fleet grid
+  exercises the equivalent path (330 `spark-grid-cell`s, custom colour renderer) without fault.
+- **`spark-grid-cell`'s built-in `color` / `image` branches are not rendered by any current demo.**
+  Fleet's Colour column uses a custom `color-column-renderer`, and CodeCoverage's avatar uses
+  `account-avatar-renderer`, so `.spark-color-swatch` and `.spark-grid-image` have no live call site
+  today. They were verified instead by a decoy probe inside a real `mp-datatable` (above), which is
+  what establishes the M4 change is correct.
 - A Lit dev warning — `mp-datatable scheduled an update after an update completed` — appears in the
   console. Whether it predates 22.18.0 is unknown; it is a perf advisory, not an error.
 
