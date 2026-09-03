@@ -12,10 +12,14 @@ namespace CodeCoverage.Entities;
 /// one comment and (measured) one subscriber notification.
 /// </para>
 /// <para>
-/// State vocabulary deliberately mirrors <see cref="BuildFeedback"/> so the
-/// existing sweep in PublishFeedbackCronJob applies unchanged.
+/// State vocabulary deliberately mirrors <see cref="BuildFeedback"/>, but the
+/// sweep queries this document directly: unlike BuildFeedback — an embedded,
+/// unindexed object that needed queryable mirrors on Build — this is its own
+/// indexed document, so <see cref="State"/> and <see cref="NextAttemptAtUtc"/>
+/// are filterable as they stand.
 /// </para>
 /// </summary>
+[GenerateIndex]
 public class PullRequestFeedback
 {
     public string? Id { get; set; }
@@ -58,6 +62,26 @@ public class PullRequestFeedback
 
     /// <summary>Message of the last failed attempt; null when the last one succeeded.</summary>
     public string? Error { get; set; }
+
+    /// <summary>
+    /// Installation to publish through, so a retry needs no repository walk.
+    /// </summary>
+    public long? InstallationId { get; set; }
+
+    /// <summary>
+    /// The body a failed publish still owes GitHub, kept verbatim so the retry
+    /// re-sends exactly what was computed.
+    /// <para>
+    /// Storing it is what keeps the retry off the network: re-deriving the body
+    /// would mean re-resolving the base and re-fetching coverage.yml through the
+    /// GitHub API, and any drift in those between attempts would let the comment
+    /// disagree with the check-runs it was rendered beside. Cleared on success.
+    /// </para>
+    /// </summary>
+    public string? PendingBody { get; set; }
+
+    /// <summary>Head sha <see cref="PendingBody"/> describes.</summary>
+    public string? PendingSha { get; set; }
 
     public static string DocumentId(long repoGitHubId, int pullRequestNumber)
         => $"PullRequestFeedbacks/{repoGitHubId}/{pullRequestNumber}";
