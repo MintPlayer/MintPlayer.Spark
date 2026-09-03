@@ -29,6 +29,7 @@ failure on Spark PR #123.
 | [`upload-result-contract.md`](upload-result-contract.md) | Issue #9 — the upload result contract, as specified. Now described by `upload-api.md`. |
 | [`coverage-analyzer-suite.md`](coverage-analyzer-suite.md) | Partial uploads, patch coverage, check-runs, thresholds, flags. |
 | [`../coverage_carryforward_PRD.md`](../coverage_carryforward_PRD.md) · [`../coverage_carryforward_plan.md`](../coverage_carryforward_plan.md) | Commit assembly: multi-run uploads unioned, `nx affected` gaps carried from the base by git blob OID, the two Δ columns. |
+| [`../coverage_branch_pr_badges_PRD.md`](../coverage_branch_pr_badges_PRD.md) · [`../coverage_branch_pr_badges_plan.md`](../coverage_branch_pr_badges_plan.md) | Branch and pull-request badges, and the sticky PR comment (roadmap T2.1 M11.5). Records that `?branch=` shipped long before it was documented, the four defects behind it, and why the private-repo comment carries a per-PR signature rather than the badge token. |
 | [`adoption-findings.md`](adoption-findings.md) | Consumer-side findings, including the `showedOn` wipe that became Spark #274. |
 | [`adopt-generated-indexes.md`](adopt-generated-indexes.md) | Adopting `[GenerateIndex]` — which entities, and the `Build.ComposeRun` backfill. |
 | [`adopt-spark-generic-ui.md`](adopt-spark-generic-ui.md) | ng-spark generic UI adoption; explains today's `/po/...` grid links. |

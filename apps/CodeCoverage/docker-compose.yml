@@ -41,6 +41,11 @@ services:
       - Spark__RavenDb__EnsureDatabaseCreated=true
       # OIDC audience: workflows must request an id-token with this audience
       - Coverage__BaseUrl=https://coverage.mintplayer.com
+      # Signs the per-pull-request badge URL the bot puts in a PR comment, so a
+      # private repository's comment never carries the repo-wide badge token.
+      # Unset degrades those comments to text-only numbers; rotating it only
+      # invalidates the badge images inside comments already posted.
+      - Coverage__BadgeSigningKey=${COVERAGE_BADGE_SIGNING_KEY:-}
       - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
       - GitHub__Production__AppId=${GITHUB_APP_ID}
       # Optional: the App's public slug (github.com/apps/<slug>) for "install

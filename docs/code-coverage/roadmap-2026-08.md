@@ -472,7 +472,12 @@ is the differentiator here** — treat a slow check as a bug and instrument it f
 - **M11.3** (M) — check-run publisher + outbox + retry cron + targets from the snapshot. First
   milestone that can gate a merge; ships non-blocking by default.
 - **M11.4** (M) — `pull_request` backfill, rerun and late-upload republish semantics.
-- **M11.5** (M) — sticky comment + inline annotations.
+- **M11.5** (M) — sticky comment ✅ **delivered** (see
+  [`../coverage_branch_pr_badges_PRD.md`](../coverage_branch_pr_badges_PRD.md) ·
+  [`plan`](../coverage_branch_pr_badges_plan.md)): one comment per PR, keyed on a
+  `PullRequestFeedback` document, posted pending on `opened` and edited with the real numbers at
+  finalize, re-adopted by marker if deleted. Inline annotations remain **open** — they are a
+  separate diff against the file-coverage model.
 - **M11.6** (L) — fork PRs, after the quarantine policy exists.
 
 ### T2.2 — Offboarding, deletion and export 🟦 · cost M

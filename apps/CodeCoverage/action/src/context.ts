@@ -5,6 +5,18 @@ export interface UploadContext {
   commitSha: string;
   branch: string;
   pullRequestNumber?: number;
+  /**
+   * The branch the pull request TARGETS (`main`), not its head. Absent on
+   * non-PR events. Distinct from `branch`, which is the head — the server had
+   * no way to know a PR's target before this.
+   */
+  baseRef?: string;
+  /**
+   * Tip of the target branch when the PR was last synchronised. Not the same
+   * thing as the `base-sha` input, which is nx's affected-computation base and
+   * is not guaranteed to be the merge-base.
+   */
+  prBaseSha?: string;
   runId: number;
   runAttempt: number;
   jobName: string;
@@ -27,11 +39,19 @@ export function collectContext(): UploadContext {
     ? process.env['GITHUB_HEAD_REF'] || ''
     : process.env['GITHUB_REF_NAME'] || '';
 
+  // GITHUB_BASE_REF first (set for every PR event), payload second so a
+  // hand-built event file without the env var still works.
+  const baseRef = isPullRequest
+    ? process.env['GITHUB_BASE_REF'] || (pr?.base?.ref as string | undefined) || undefined
+    : undefined;
+
   return {
     repository: `${context.repo.owner}/${context.repo.repo}`,
     commitSha,
     branch,
     pullRequestNumber: isPullRequest && pr?.number ? (pr.number as number) : undefined,
+    baseRef,
+    prBaseSha: isPullRequest ? ((pr?.base?.sha as string | undefined) || undefined) : undefined,
     runId: context.runId,
     runAttempt: parseInt(process.env['GITHUB_RUN_ATTEMPT'] || '1', 10),
     jobName: process.env['GITHUB_JOB'] || '',

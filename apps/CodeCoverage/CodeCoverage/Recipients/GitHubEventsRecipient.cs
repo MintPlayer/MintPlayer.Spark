@@ -180,6 +180,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         commit.Branch = pr.Head.Ref;
         commit.PullRequestNumber = (int)evt.Number;
         commit.Message ??= pr.Title;
+        // The authoritative writer of the PR's target, for the same reason as
+        // ParentSha below: `synchronize` re-sends a moved base, and a retarget
+        // changes the ref outright, so a frozen first-seen value goes stale.
+        commit.PullRequestBaseRef = pr.Base.Ref;
+        commit.PullRequestBaseSha = pr.Base.Sha;
         // The sole writer of ParentSha, and the only one that ever meant
         // anything: the PR's base tip. Plain `=` rather than `??=` because
         // GitHub re-sends `synchronize` with an updated base when the base
@@ -188,6 +193,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // earlier commit. Still only a hint for finding the PR — patch coverage
         // resolves its own merge base at compute time.
         commit.ParentSha = pr.Base.Sha;
+
+        // Only on open/reopen: `synchronize` is already served by the finalize
+        // path, which edits the same comment with the real numbers. Broadcast
+        // rather than post from here, so an outage on GitHub's side cannot fail
+        // the webhook delivery and cost us the event.
+        if (evt.Action is "opened" or "reopened")
+        {
+            await messageBus.BroadcastAsync(new Feedback.OpenPullRequestCommentMessage
+            {
+                RepositoryGitHubId = evt.Repository.Id,
+                PullRequestNumber = (int)evt.Number,
+                HeadSha = pr.Head.Sha,
+                AuthorIsBot = pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
+            }, ct);
+        }
     }
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)

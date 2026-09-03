@@ -76,6 +76,20 @@ Maximum 50 MB per request.
 Uploads sharing `(repository, commitSha, runId, runAttempt)` land on **one build** as separate
 *sessions*, and are merged with max semantics — a line covered by any session is covered.
 
+**Ref identity** (all optional; send what the event gives you):
+
+| Field | Meaning |
+|---|---|
+| `branch` | The head branch — `GITHUB_HEAD_REF` on a PR event, `GITHUB_REF_NAME` otherwise. Unqualified, so `refs/heads/x` and `refs/tags/x` are indistinguishable. |
+| `pullRequestNumber` | The PR this commit was seen on. |
+| `baseRef` | The branch the PR **targets** (`GITHUB_BASE_REF`). Requires the `pr-base-ref` feature. |
+| `prBaseSha` | Tip of that target branch. **Not** the same thing as `baseSha`, which is your declared affected-computation base and carries no merge-base guarantee. Requires `pr-base-ref`. |
+
+On a repository with the GitHub App installed, the `pull_request` webhook is the authoritative
+writer of all four and overwrites what an upload asserted. Without an installation these are
+first-writer-wins, so the first upload to claim a sha owns its labels — which is what the per-branch
+and per-PR badges resolve against.
+
 ## `POST /api/uploads/finish`
 
 `application/json`: `{"repository", "commitSha", "runId", "runAttempt"}`. Returns `202`.
@@ -258,7 +272,7 @@ What this deployment can do. Same authentication as the other three; the `upload
 applies, not the tighter `uploads` one.
 
 ```json
-{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward"] }
+{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward", "pr-base-ref"] }
 ```
 
 **A client MUST treat 404 as `contract: 0`.** That is exactly what every image deployed before this

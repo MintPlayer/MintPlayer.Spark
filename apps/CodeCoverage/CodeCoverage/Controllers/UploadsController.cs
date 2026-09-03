@@ -72,6 +72,7 @@ public partial class UploadsController : ControllerBase
         "gzip-reports",      // gzipped report parts, detected by magic bytes
         "oidc-auth",         // GitHubOidc scheme, audience = Coverage:BaseUrl
         "carry-forward",     // commit assembly: fileList with blob OIDs, carryForward, zero-report partial uploads, assembly{} on status
+        "pr-base-ref",       // baseRef + prBaseSha: the branch a PR targets and its tip
     ];
 
     public sealed record UploadResponse(string BuildId, string SessionId);
@@ -121,6 +122,10 @@ public partial class UploadsController : ControllerBase
         }
         commit.Branch ??= form.Branch;
         commit.PullRequestNumber ??= form.PullRequestNumber;
+        // Best-effort, like the two above: the pull_request webhook is the
+        // authoritative writer and uses plain assignment.
+        commit.PullRequestBaseRef ??= form.BaseRef;
+        commit.PullRequestBaseSha ??= form.PrBaseSha;
         if (commit.ParentSha is null && !string.IsNullOrWhiteSpace(form.ParentSha))
         {
             commit.ParentSha = form.ParentSha;
@@ -460,6 +465,13 @@ public partial class UploadsController : ControllerBase
         public required string CommitSha { get; set; }
         public string? Branch { get; set; }
         public int? PullRequestNumber { get; set; }
+        /// <summary>The branch the PR targets, from GITHUB_BASE_REF. Absent on pushes.</summary>
+        public string? BaseRef { get; set; }
+        /// <summary>
+        /// Tip of the target branch, from <c>pull_request.base.sha</c>. Distinct from
+        /// <see cref="BaseSha"/>, which is the caller's declared affected-computation base.
+        /// </summary>
+        public string? PrBaseSha { get; set; }
         public string? ParentSha { get; set; }
         public long RunId { get; set; }
         public int RunAttempt { get; set; } = 1;

@@ -45,7 +45,7 @@ beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-context-'));
   // GITHUB_EVENT_PATH leaks in from the real runner when these tests run in CI.
   vi.stubEnv('GITHUB_EVENT_PATH', '');
-  for (const key of ['GITHUB_HEAD_REF', 'GITHUB_REF_NAME', 'GITHUB_JOB', 'GITHUB_RUN_ATTEMPT']) {
+  for (const key of ['GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'GITHUB_REF_NAME', 'GITHUB_JOB', 'GITHUB_RUN_ATTEMPT']) {
     vi.stubEnv(key, '');
   }
 });
@@ -68,6 +68,10 @@ describe('collectContext', () => {
     expect(ctx.branch).toBe('master');
     expect(ctx.pullRequestNumber).toBeUndefined();
     expect(ctx.jobName).toBe('test');
+    // A push has no target branch. Sending one would let the server believe a
+    // push was a pull request.
+    expect(ctx.baseRef).toBeUndefined();
+    expect(ctx.prBaseSha).toBeUndefined();
   });
 
   // The trap this function exists to avoid: on pull_request, GITHUB_SHA is an
@@ -78,6 +82,7 @@ describe('collectContext', () => {
       {
         GITHUB_EVENT_NAME: 'pull_request',
         GITHUB_HEAD_REF: 'feature/coverage',
+        GITHUB_BASE_REF: 'master',
       },
       { pull_request: { number: 7, head: { sha: 'head-sha' }, base: { sha: 'base-sha' } } },
     );
@@ -85,6 +90,21 @@ describe('collectContext', () => {
     expect(ctx.commitSha).toBe('head-sha');
     expect(ctx.branch).toBe('feature/coverage');
     expect(ctx.pullRequestNumber).toBe(7);
+    // The target branch and its tip. base.sha sat in this very fixture unused
+    // until now — the server had no way to know what a PR was merging into.
+    expect(ctx.baseRef).toBe('master');
+    expect(ctx.prBaseSha).toBe('base-sha');
+  });
+
+  // GITHUB_BASE_REF is set by the real runner; a hand-built event file may only
+  // have the payload, so the payload is the fallback rather than the primary.
+  it('falls back to the payload base ref when GITHUB_BASE_REF is absent', () => {
+    const ctx = collectWith(
+      { GITHUB_EVENT_NAME: 'pull_request', GITHUB_HEAD_REF: 'feature/x' },
+      { pull_request: { number: 3, head: { sha: 'head-sha' }, base: { ref: 'develop', sha: 'base-sha' } } },
+    );
+
+    expect(ctx.baseRef).toBe('develop');
   });
 
   it('handles pull_request_target the same way', () => {
@@ -104,6 +124,9 @@ describe('collectContext', () => {
 
     expect(ctx.commitSha).toBe('merge-commit-sha');
     expect(ctx.pullRequestNumber).toBeUndefined();
+    // No payload and no env var: the base is simply unknown, not guessed.
+    expect(ctx.baseRef).toBeUndefined();
+    expect(ctx.prBaseSha).toBeUndefined();
   });
 
   it('defaults the run attempt to the first', () => {

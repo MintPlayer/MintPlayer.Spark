@@ -245,6 +245,42 @@
         "rules": []
       },
       {
+        "id": "fd21d714-4337-4ca2-a4b5-4d09b5dacd9d",
+        "name": "PullRequestBaseRef",
+        "label": {
+          "en": "Pull Request Base Ref"
+        },
+        "description": {
+          "en": "The branch the pull request TARGETS — main, not the head branch in Branch. Null for pushes, and for PR commits recorded before this field existed.\nWritten authoritatively by the pull_request webhook and best-effort (??=) by the upload, matching how Branch and PullRequestNumber are handled. A PR's target can be retargeted, in which case the webhook's later write wins."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4dac107e-4ff4-4022-b9fe-e1806b0d2bfe",
+        "name": "PullRequestBaseSha",
+        "label": {
+          "en": "Pull Request Base Sha"
+        },
+        "description": {
+          "en": "Tip of PullRequestBaseRef as of the PR's last synchronise.\nNOT the same thing as Build.DeclaredBaseSha: that is the caller's declared affected-computation base (this repo passes nx's NX_BASE) and is not guaranteed to be the merge-base. Patch coverage deliberately still diffs against DeclaredBaseSha ?? ParentSha — repointing a shipped number belongs to the honest-numbers work, not here."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "de160dcb-97ee-4254-aab4-4d70cc2aa5db",
         "name": "PullRequestNumber",
         "label": {

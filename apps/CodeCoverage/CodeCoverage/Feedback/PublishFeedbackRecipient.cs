@@ -1,3 +1,4 @@
+using CodeCoverage.Badges;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
@@ -24,6 +25,8 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
     [Inject] private readonly IBaseResolver baseResolver;
     [Inject] private readonly IGitHubInstallationService installationService;
     [Inject] private readonly IGitHubContentService contentService;
+    [Inject] private readonly IPullRequestCommentPublisher commentPublisher;
+    [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<PublishFeedbackRecipient> logger;
 
     private const int MaxAttempts = 5;
@@ -77,6 +80,15 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
             feedback.NextAttemptAtUtc = null;
             logger.LogInformation("Posted check-runs for {BuildId}: project={Project}, patch={Patch}", build.Id, project.Conclusion, patch.Conclusion);
         }
+        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            // Same reasoning as the comment publisher: an installation that has
+            // not accepted the raised permissions cannot be helped by retrying.
+            feedback.State = "Unavailable";
+            feedback.Error = ex.Message;
+            feedback.NextAttemptAtUtc = null;
+            logger.LogInformation("Check-runs unavailable for {BuildId}: {Message}", build.Id, ex.Message);
+        }
         catch (Exception ex)
         {
             feedback.Attempts++;
@@ -96,6 +108,21 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         }
 
         await SyncAndSave(build, feedback, cancellationToken);
+
+        // After the check-runs and their save, so a comment failure can never
+        // lose the record of a successful check-run publish. The publisher does
+        // not throw; it records its own outbox state.
+        if (commit.PullRequestNumber is { } pullRequestNumber)
+        {
+            var body = PullRequestCommentRenderer.Render(
+                repository, commit, project, patch, assembly,
+                configuration["Coverage:BaseUrl"],
+                repository.IsPrivate
+                    ? BadgePrSignature.Compute(configuration, repository.GitHubId, pullRequestNumber)
+                    : null);
+
+            await commentPublisher.PublishAsync(repository, installationId.Value, pullRequestNumber, commit.Sha, body, cancellationToken);
+        }
     }
 
     private async Task SyncAndSave(Build build, BuildFeedback feedback, CancellationToken cancellationToken)
