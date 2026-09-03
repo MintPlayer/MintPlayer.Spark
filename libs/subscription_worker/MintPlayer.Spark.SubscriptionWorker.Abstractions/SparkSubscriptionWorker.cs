@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
+using Raven.Client.Exceptions.Commercial;
 using Raven.Client.Exceptions.Database;
 using Raven.Client.Exceptions.Documents.Subscriptions;
 using Raven.Client.Exceptions.Security;
@@ -103,10 +104,31 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
         {
             await DocumentStore.Subscriptions.CreateAsync(options, Database, cancellationToken);
             Logger.LogInformation("Created subscription '{Name}'", SubscriptionName);
+            return;
         }
-        catch (Exception)
+        catch (LicenseLimitException ex)
         {
-            // Subscription already exists — update it
+            // Not "already exists": the server refused outright, and no retry or
+            // update can help. Fatal on purpose. This used to be swallowed by the
+            // catch below and reported as a benign "already exists, will try to
+            // use existing", after which the worker started against a
+            // subscription that was never created and died as "non-recoverable".
+            // The application stayed up, healthy, and silently never processed
+            // that queue again — which is how a RavenDB subscription cap went
+            // unnoticed in production long enough for a feature to look broken.
+            throw new InvalidOperationException(
+                $"Subscription '{SubscriptionName}' cannot be created: the RavenDB licence refused it " +
+                $"({ex.Message}). Every distinct queue costs one data subscription, so either reduce the " +
+                $"number of queues or raise the licence limit. Failing startup deliberately: a running " +
+                $"application whose queue is silently dead is worse than one that will not start.", ex);
+        }
+        catch (Exception createException)
+        {
+            // Most likely "already exists" — the common path on every restart —
+            // but it is NOT the only possibility, so keep the reason rather than
+            // discarding it. Debug, because the benign case is the usual one.
+            Logger.LogDebug(createException, "Could not create subscription '{Name}'; attempting update", SubscriptionName);
+
             try
             {
                 await DocumentStore.Subscriptions.UpdateAsync(new SubscriptionUpdateOptions
@@ -117,9 +139,17 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
                 }, Database, cancellationToken);
                 Logger.LogDebug("Subscription '{Name}' already exists, updated", SubscriptionName);
             }
-            catch (Exception ex)
+            catch (Exception updateException)
             {
-                Logger.LogWarning(ex, "Failed to update subscription '{Name}', will try to use existing", SubscriptionName);
+                // Both create and update failed, so there is no reason to believe
+                // a usable subscription exists. Surface both causes at Error —
+                // the old Warning said "will try to use existing" and then let the
+                // worker fail somewhere else entirely, far from the real reason.
+                Logger.LogError(
+                    new AggregateException(createException, updateException),
+                    "Neither create nor update succeeded for subscription '{Name}'. Queue '{Queue}' will not be " +
+                    "processed until this is resolved and the application restarts.",
+                    SubscriptionName, options.Name);
             }
         }
     }

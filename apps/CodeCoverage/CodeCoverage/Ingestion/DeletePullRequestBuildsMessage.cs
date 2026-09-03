@@ -9,7 +9,7 @@ namespace CodeCoverage.Ingestion;
 /// on a timer — repos without the App get no webhook and keep theirs, an
 /// accepted, documented gap.
 /// </summary>
-[MessageQueue("coverage-delete-pr-builds")]
+[MessageQueue(Feedback.CoverageQueues.Publishing)]
 public record DeletePullRequestBuildsMessage
 {
     public required long RepositoryGitHubId { get; init; }
