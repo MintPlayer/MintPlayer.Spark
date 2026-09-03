@@ -499,7 +499,8 @@ README. The private-repo token continues to be appended only for managers, uncha
 | H8 | `Branch`/`PullRequestNumber` are first-writer-wins (F3), so a badge can be served under the wrong branch. | Out of scope to fix the model; in scope to **stop the silent wrong answer**: the webhook path stays authoritative, and the docs state that on OIDC-only repos the branch is client-asserted. Recorded as a known limitation, with S3 measuring how often it actually bites. |
 | H9 | Badge variants multiply cache keys through camo against 600 req/min/IP. | Weak ETag + unchanged 300 s `max-age`; variants are bounded (one per branch with coverage, one per open PR). |
 | H10 | A pending comment on every opened PR of a repo that never uploads coverage. | Publish-on-open is gated on the repository having coverage history. |
-| H11 | The badge surface is invisible to the security posture report. | `Badge/Coverage` right declared for both well-known groups. |
+| H11 | The badge surface is invisible to the security posture report. | `Badge/Coverage` right declared for both well-known groups. Measured 2026-09-03: `/api/browse/*` is now 401 anonymously, so the badge is the app's **only** anonymous surface — this is the one place the declaration matters. |
+| H12 | **A pending comment that never resolves.** Dependabot-triggered runs receive no repository secrets, and `pull-request.yml` grants no `id-token: write` (`:18-21`), so a dependabot PR can never upload coverage — measured: all four sampled dependabot PRs render `unknown`. Publish-on-open would strand "waiting for coverage" on every one of them, forever. | M6 does not post on open for a PR whose author is a bot (`pull_request.user.type == "Bot"`); such PRs get a comment only if coverage actually arrives, via the finalize path. |
 
 ## 7. Spikes (time-boxed, results recorded in the plan)
 

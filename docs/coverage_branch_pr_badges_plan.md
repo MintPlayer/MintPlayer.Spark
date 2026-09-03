@@ -41,7 +41,33 @@ moves behind the consent, which is a GitHub-side action, not code.
 
 ## Spikes
 
-### S1 — the production installation's `Pull requests` permission
+### S1 — the production installation's `Pull requests` permission — **ANSWERED: already granted**
+
+App slug `coverageproduction` (id 4574022), read from the check-runs on
+`MintPlayer/MintPlayer.AspNetCore.SpaServices#79`.
+
+Declared on the App (`GET /apps/coverageproduction`):
+
+```
+checks: write   contents: read   emails: read
+members: read   metadata: read   pull_requests: write
+```
+
+**Granted to the org installation** (`GET /orgs/MintPlayer/installations`), 2026-09-03:
+
+```
+checks: write   contents: read   members: read
+metadata: read  pull_requests: write
+repository_selection: all   suspended_at: null   updated_at: 2026-08-20
+```
+
+`pull_requests: write` is **accepted, not merely requested** — M6 is unblocked and needs no consent
+dance. `repository_selection: all` means every org repository is covered.
+
+Worth noting for M7's docs: `emails: read` is declared on the App but **absent from the installation
+grant**, so there is a real pending un-accepted raise right now. It does not affect this work, but it
+proves the accepted-vs-declared distinction is live in this installation and is exactly why H7's
+"403 → `Unavailable`, never `Retry`" classification has to exist.
 
 `apps/CodeCoverage/README.md:88-95` declares `Pull requests: Read & write` as required for check-run
 feedback, and check-runs are live — but "declared in the manifest" and "accepted by the installation"
@@ -65,16 +91,43 @@ comment is a stale number, which is worse than no image. In that case the commen
 for **all** repositories, H1's answer becomes universal, and the badge image stays a README/panel
 feature only. Record the observed behaviour and the decision.
 
-### S3 — how often is PR identity actually present?
+### S3 — how often is PR identity actually present? — **ANSWERED, by a different route**
 
-`context.ts:34` loses the PR number when the event payload is unreadable, silently
-(`context.test.ts:100-107`), and `UploadsController.cs:123` freezes whatever arrived first. Against
-production data, count commits with `PullRequestNumber != null` versus builds whose `EventName` is a
-`pull_request*` event, over the last 60 days.
+The intended route is closed: `/api/browse/*` now returns **401 anonymously** (verified 2026-09-03 for
+`/repos/{o}/{n}`, `/commits`, `/branches`) — `[SparkAuthorize("Browse", "Coverage")]` at
+`BrowseController.cs:32` plus the authz migration that moved those grants off the `anonymous` group.
+So `PullRequestNumber` cannot be counted from outside, and **the badge is the only anonymous surface
+this app has**. Two consequences:
 
-A low presence rate means `?pr=` is unreliable in practice, the comment's own PR number should come
-from the webhook only (it already does — `GitHubEventsRecipient.cs:181`), and the docs should steer
-users to `?branch=`. Record the two counts.
+- M7 step 1 is load-bearing, not cosmetic: `Badge/Coverage` really is an undeclared anonymous surface,
+  and it is the *only* one.
+- M2's branch picker is unaffected — the SPA caller is authenticated.
+
+Measured instead through the badge itself, which is the surface users actually hit: for 71 non-fork PR
+head branches across the 7 MintPlayer repositories whose headline badge resolves,
+`?branch={headRefName}` returned a number for **18** and `unknown` for 53.
+
+The ratio is not the finding; the *shape* is. Non-resolution is almost entirely **PRs that predate
+coverage onboarding in their repository** — in every repo the resolving PRs are the newest ones, and
+the boundary sits at the PR that introduced coverage (`feature/code-coverage` in
+`MintPlayer.AspNetCore.SpaServices`, `feature/test-coverage` in `MintPlayer.AspNetCore.Tools`, and so
+on). That is correct behaviour: no data, rendered `unknown`.
+
+**No mislabelling was observed.** F3's failure mode — a branch serving the wrong branch's number —
+did not appear once in 71 probes. The observed failure is absence, which the never-404 contract already
+handles correctly. So F3 stays documented-not-fixed with evidence behind that choice, and `?pr=`'s
+reliability is not in doubt for webhook-covered repositories (which, per S1's
+`repository_selection: all`, is every org repository — the authoritative writer at
+`GitHubEventsRecipient.cs:181` runs for all of them, so the action's best-effort PR number is a
+fallback that rarely matters here).
+
+**New finding — dependabot PRs can never resolve, and this changes M6.** `MintPlayer.Spark` uploads
+coverage on every PR, yet all four sampled dependabot PRs (#344–#347) return `unknown`. Cause:
+`.github/workflows/pull-request.yml` authenticates the upload with `secrets.COVERAGE_TOKEN` (`:205`)
+and grants no `id-token: write` (`:18-21`), so OIDC is unavailable — and **dependabot-triggered runs do
+not receive repository secrets**. No credential, no upload, ever. A publish-on-open comment would
+therefore sit at "waiting for coverage for `abc1234`" on every dependabot PR permanently. Recorded as
+PRD H12; M6 gains a step.
 
 ### S4 — comment adoption and notification behaviour
 
@@ -277,11 +330,15 @@ Octokit writes),
    the webhook delivery.
 2. The publisher gates on the repository having coverage history — `LatestCoverage is not null` or any
    commit with `HasCoverage` for that repository (H10). No history → do nothing, record nothing.
-3. Publish `RenderPending(...)` through the exact same upsert as M5, against the same
+3. **Do not post on open when the PR author is a bot** (`pull_request.user.type == "Bot"`, which covers
+   dependabot and renovate). S3 measured that dependabot runs get no secrets and no `id-token: write`,
+   so they can never upload and the pending comment would strand permanently (H12). Such PRs still get
+   a comment if coverage somehow arrives, because M5's finalize path is not gated on this.
+4. Publish `RenderPending(...)` through the exact same upsert as M5, against the same
    `PullRequestFeedback` document, so the finalize path later edits this very comment (G6).
-4. Tests: opened on a repo with history creates one pending comment; opened on a repo with no history
-   creates none; opened-then-finalized leaves exactly one comment with the same id; reopened after a
-   comment exists adopts rather than duplicates.
+5. Tests: opened on a repo with history creates one pending comment; opened on a repo with no history
+   creates none; **opened by a bot author creates none**; opened-then-finalized leaves exactly one
+   comment with the same id; reopened after a comment exists adopts rather than duplicates.
 
 **Deploy-safe:** yes, and it is the milestone S1 gates. If the installation lacks
 `Pull requests: write`, this records `Unavailable` and nothing else happens.
