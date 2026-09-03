@@ -3,9 +3,13 @@
 Client-only. **No NuGet change** — nothing in `MintPlayer.Spark*` moves, so apps stay on
 `10.0.0-preview.70`.
 
-One fix: **the [i] attribute-description tooltip now renders correctly in grid column headers and in
-the reference picker** (#348, shipped incomplete in `22.9.0` — see the correction note in
-[`release-notes-preview-70.md`](release-notes-preview-70.md)).
+Two fixes:
+
+1. **The [i] attribute-description tooltip now renders correctly in grid column headers and in the
+   reference picker** (#348, shipped incomplete in `22.9.0` — see the correction note in
+   [`release-notes-preview-70.md`](release-notes-preview-70.md)).
+2. **The sticky action bar now meets the app's top bar** instead of floating 1.5rem below it with page
+   content scrolling through the gap.
 
 ---
 
@@ -69,6 +73,45 @@ If you host one of the four converted components inside **your own** shadow root
 tier into it with `adoptLightStyles` from `@mintplayer/web-components/light-dom`, or it renders
 unstyled. Nothing in this repository needs that.
 
+## The sticky action bar
+
+`<main>` is both the scrollport and the element carrying the page padding, which broke
+`position: sticky; top: 0` on `.spark-actionbar` on two independent axes:
+
+- **Block** — a sticky offset resolves against the scrollport's *padding* box, so `top: 0` parked the
+  bar 1.5rem below the top bar and content scrolled visibly through the gap.
+- **Inline** — a sticky child is sized by its containing block (main's *content* box) while the
+  scrollport spans wider, so content scrolled past in the side gutters.
+
+`<main>` now publishes both insets, and the bar cancels them:
+
+```scss
+main {
+  --spark-main-padding: 1.5rem;
+  --spark-content-inset-block:  var(--spark-main-padding);
+  --spark-content-inset-inline: var(--spark-main-padding);
+}
+```
+
+A container that has already escaped the padding resets the axis it escaped, so the inset is never
+cancelled twice — a virtual-scrolling query list bleeds sideways but not upward, and resets only
+`--spark-content-inset-inline`.
+
+### If you have customised the shell
+
+Three changes can reach an app that styled around the old markup:
+
+- **`<main>` no longer carries the `p-4` class.** The padding is now `--spark-main-padding` in the
+  stylesheet, so the bar can read it. A selector like `main.p-4` no longer matches; override
+  `spark-shell { --spark-main-padding: … }` instead of restyling the utility.
+- **The action bar no longer carries `px-3` / `px-4`.** Its inner gutter is
+  `--spark-actionbar-gutter` (default `1rem`; the `.spark-actionbar-wide` modifier sets `1.5rem`).
+  This had to move off the utilities because Bootstrap emits them as `!important`, which beat the
+  computed `padding-inline`.
+- **A custom container that bleeds out of the page padding** and hosts an action bar should set
+  `--spark-content-inset-inline: 0px` (or `-block`) on itself, or the bar will cancel the same inset
+  twice and overhang the scrollport.
+
 ## Verified
 
 Measured in a browser, not inferred:
@@ -82,3 +125,6 @@ Measured in a browser, not inferred:
   scroller. No ng-spark CSS change was needed for virtual scroll.
 - Bundles: `styles.css` unchanged; **+7.1 to +7.6 kB** raw per app, in JS, where the runtime-installed
   rescoped sheets belong.
+- Action bar, Fleet: detail page with `main` scrolled — stuck flush, gap above it 24px → **0**. Cars
+  list — bar spans the scrollport exactly (932 = 932, side leak 0), **one** horizontal and **one**
+  vertical scroller, both the datatable's own, virtualization intact.
