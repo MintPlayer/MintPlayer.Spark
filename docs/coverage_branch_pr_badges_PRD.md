@@ -1,6 +1,7 @@
 # PRD — a coverage badge for any branch or pull request, and a bot that posts it when a PR opens
 
-**Status:** Not started · **Date:** 2026-09-03 · **Plan:** [coverage_branch_pr_badges_plan.md](coverage_branch_pr_badges_plan.md)
+**Status:** Built (M1–M7) in [#361](https://github.com/MintPlayer/MintPlayer.Spark/pull/361); M8 awaits deployment ·
+**Date:** 2026-09-03 · **Plan:** [coverage_branch_pr_badges_plan.md](coverage_branch_pr_badges_plan.md)
 **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com)
 **Origin:** Four-agent investigation of the badge endpoint, the upload pipeline, the GitHub App path
 and the docs corpus, 2026-09-03. Every claim in §3 carries a `file:line` pointer; the ones marked
@@ -357,6 +358,13 @@ Three additive changes. No migration; absent fields read as null and behave as "
   `State` (Pending|Posted|Retry|Unavailable|Failed), `Attempts`, `NextAttemptAtUtc`, `Error`.
   Keyed on the **PR**, not the build or the sha — that is what makes G6 true across pushes. The state
   fields mirror `BuildFeedback` so the existing cron sweep shape applies unchanged.
+
+  *(As built: three more fields, all for the retry path — `InstallationId`, `PendingBody` and
+  `PendingSha`. The retry re-sends the stored body verbatim instead of re-deriving it, because
+  re-deriving means re-resolving the base and re-fetching `coverage.yml` over the GitHub API, and
+  drift between attempts would let the comment contradict the check-runs it was rendered beside. The
+  entity also carries `[GenerateIndex]`: unlike `BuildFeedback` it is a document, so the sweep queries
+  its own `State`/`NextAttemptAtUtc` and needs no queryable mirrors.)*
 - **`Commit.PullRequestBaseRef`** (`string?`) and **`Commit.PullRequestBaseSha`** (`string?`) — the PR's
   target branch and base tip. Written with plain `=` by the webhook (authoritative) and `??=` by the
   upload (best-effort), matching the existing convention.
@@ -428,12 +436,25 @@ signature. That is documented rather than declared.
 2. **Build finalized** — the existing `PublishFeedbackRecipient` path, immediately after the two
    check-runs, edits the same comment with the real numbers.
 
+*(As built: trigger 1 goes over the message bus rather than posting from the webhook —
+`OpenPullRequestCommentMessage` on `coverage-open-pr-comment`, handled by an `IRecipient<>`, so the
+webhook stays a pure persister and a GitHub outage cannot fail the delivery and cost us the event.
+It also gained a third gate: **bot-authored PRs get nothing** (H12). Trigger 2 stays inline in
+`PublishFeedbackRecipient`, where the verdicts already exist, which is what keeps H6 true. A **third**
+path exists that this section missed: retries, on `coverage-publish-pr-comment`. Without it a comment
+that failed after the check-runs had succeeded — the common case, since checks post first — was
+stranded at `Retry` forever, because the sweep only ever queried `Build.FeedbackState`.)*
+
 **Stickiness (G6).** `PullRequestFeedback.CommentId` is the primary key to edit. If it is null, or the
 stored id 404s (comment deleted by a human), the publisher lists the PR's comments once and adopts any
 whose body contains the marker and whose author is the App; only if none matches does it create.
 Editing a comment does not re-notify subscribers, which is the whole point of stickiness — forty
 pushes produce one notification, not forty. This also keeps the 500/hr content budget irrelevant in
 practice: creates are once per PR, edits are not creates.
+
+*(Confirmed by S4, and the author half of the match earned its keep: a human quoting the bot's body
+carries the marker too, so marker-alone would have let the publisher edit somebody else's comment.
+`A_humans_comment_carrying_the_marker_is_never_adopted` covers it.)*
 
 **Degradation (G8).** No installation → `State = "Unavailable"`, quietly, no CI-visible error, exactly
 as `PublishFeedbackRecipient.cs:49-53` does today. Missing `Pull requests: write` → the Octokit 403 is
@@ -493,6 +514,13 @@ or when S2 shows camo freezes the image.
 `?branch=`; the default-branch selection produces the parameterless URL it produces today, so the
 snippet users already have keeps working. A short note documents `?pr={n}` in the panel and in the app
 README. The private-repo token continues to be appended only for managers, unchanged.
+
+*(As built: `<bs-select>`, not a native `<select>` with `.form-select`. ng-bootstrap's
+`_bootstrap.scss:39` has the bootstrap forms partial commented out, so `.form-select` and
+`.form-control` have no global definition in this workspace and those classes would have been inert;
+`BsFormControlDirective`'s selector covers only `bs-form input` and `textarea`, never `select`, so
+wrapping in `<bs-form>` would not have helped either. The picker also only appears when there is more
+than one branch to choose from — otherwise the original caption stands.)*
 
 ## 6. Hazards and how the design answers them
 

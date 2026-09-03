@@ -1,7 +1,8 @@
 # Plan — branch and pull-request coverage badges, and the sticky PR comment
 
 **Implements:** [`coverage_branch_pr_badges_PRD.md`](coverage_branch_pr_badges_PRD.md) Option B ·
-**Issue:** none yet — file one first; design authority is `docs/code-coverage/roadmap-2026-08.md` T2.1 M11.5 ·
+**Issue:** none filed — the work went straight to a PR at the owner's direction; design authority is
+`docs/code-coverage/roadmap-2026-08.md` T2.1 M11.5, which #361 marks delivered for the sticky comment ·
 **Branch:** `feat/coverage-branch-pr-badges` · **Base:** `master` @ `c1c12b9b` ·
 **Release:** server deploy, plus the action at **1.3.0** (two new optional form fields). No npm or
 NuGet version bump — nothing under `libs/` is touched, so no published package moves. ·
@@ -338,6 +339,15 @@ Files: `apps/CodeCoverage/CodeCoverage/Feedback/PublishFeedbackRecipient.cs:33-1
 `apps/CodeCoverage/CodeCoverage/Feedback/PublishFeedbackCronJob.cs`,
 new `apps/CodeCoverage/CodeCoverage.Tests/Feedback/PullRequestCommentPublishTests.cs`.
 
+*(As built, the publish logic moved out of the recipient into two collaborators, because M6 needs the
+same upsert and a retry needs it a third time: `IPullRequestCommentGateway` — three methods wide so it
+can be faked by hand, per this app's convention — and `IPullRequestCommentPublisher`, which owns the
+outbox document, the adoption fallback and the retry classification, and never throws. Files:
+`Feedback/PullRequestCommentGateway.cs`, `Feedback/PullRequestCommentPublisher.cs`,
+`Feedback/PublishPullRequestCommentMessage.cs`, `Feedback/PublishPullRequestCommentRecipient.cs`; tests
+in `PullRequestCommentPublisherTests.cs`, `PublishPullRequestCommentRecipientTests.cs` and
+`PublishFeedbackCronJobTests.cs` rather than the single file named above.)*
+
 1. In `PublishFeedbackRecipient`, after the two check-runs are posted (`:108-136`) and inside the same
    invocation — so the comment and the checks cannot disagree (H6) — load or create the
    `PullRequestFeedback` for `commit.PullRequestNumber`, skipping entirely when it is null.
@@ -354,6 +364,16 @@ new `apps/CodeCoverage/CodeCoverage.Tests/Feedback/PullRequestCommentPublishTest
 5. Extend `PublishFeedbackCronJob`'s sweep to also pick up `PullRequestFeedback` rows in `Retry` whose
    `NextAttemptAtUtc` has passed, keeping the existing `Take(32)` bound. A queryable mirror on the
    document is enough; do not add an index unless the sweep's RQL demands one.
+
+   *(As built: **no mirrors** — this step misread the precedent. `Build.FeedbackState` exists only
+   because `BuildFeedback` is an embedded, unindexed object; `PullRequestFeedback` is its own
+   document, so `State` and `NextAttemptAtUtc` are filterable as they stand. It carries
+   `[GenerateIndex]` and the sweep names `Indexes.PullRequestFeedbacks_Overview` explicitly. That
+   index is created even though the entity is not registered in `SparkContext`, because
+   `SparkMiddleware` calls `IndexCreation.CreateIndexes` per **assembly** — asserted by
+   `PublishFeedbackCronJobTests` rather than assumed, since a missing index throws rather than
+   returning empty. The sweep also broadcasts `PublishPullRequestCommentMessage`, not the build's
+   message: re-broadcasting the build would re-post the check-runs too.)*
 6. *(Optional — S4 showed edits do not notify.)* Compare the rendered body against
    `LastPublishedBodyHash` and skip the write when unchanged, purely to save an API call.
 7. Tests: PR-less commit publishes nothing; first finalize creates one comment and stores the id;
@@ -523,6 +543,28 @@ a badge image; without it they degrade to text, which is a supported state and n
 
 ## Decisions
 
+Decisions taken **during** the build, ahead of the ones carried from the PRD:
+
+- **The finalize publish is inline; retries and PR-open go over the bus** — the comment must be
+  rendered where the `GateEvaluator` verdicts, assembly and gate snapshot already exist, or it can
+  disagree with the check-runs beside it (H6) and pays a second `coverage.yml` fetch. Retries cannot
+  be inline, so they get `PublishPullRequestCommentMessage` + `IRecipient<>` on their own queue, and
+  the PR-open trigger uses the same shape so the webhook stays a pure persister. Plan M5, M6.
+- **A failed publish stores the body it owes** — `PendingBody`, written *before* the attempt so a
+  process death mid-call loses nothing, and cleared by every terminal state so the sweep cannot carry
+  work forever. The alternative, re-deriving on retry, is both a network round-trip and a divergence
+  risk. Plan M5.
+- **403 is matched on `ex.StatusCode`, not `ForbiddenException`** — Octokit raises a bare
+  `ApiException` on some paths, and the response status is what actually decides it. It also makes the
+  case constructible in a test, since `Octokit.Internal.Response` is internal. Plan M5.
+- **No `[SparkAuthorize]` on the badge** — it derives from `AuthorizeAttribute` and `[AllowAnonymous]`
+  wins over it, so it would never be evaluated while appearing in the security posture report as a
+  gate. A report that overstates enforcement is worse than one with a known blank. Reverses M7 step 1;
+  PRD §5.3, H11.
+- **The action gets a minor bump to 1.3.0** — `coverage-action-publish.yml` derives both tag names
+  from `package.json`, so without it the immutable `coverage-upload-v1.2.0` would stay on its old
+  commit and this bundle would have no pinnable tag, which is the one thing the full tag exists for.
+  The platform-lockstep rule in `CLAUDE.md` governs the npm and NuGet packages, not this tag.
 - **The server posts the comment, not the action** — fork pull requests get a read-only
   `GITHUB_TOKEN`, so an action-side comment cannot serve the population a public coverage server exists
   for; the server's App credential is unaffected by fork status and already posts check-runs on fork
