@@ -1,5 +1,5 @@
 <div class="d-flex flex-column h-100">
-  <div class="spark-actionbar py-2 flex-shrink-0" [class.px-4]="isVirtualScrolling()" [class.px-3]="!isVirtualScrolling()">
+  <div class="spark-actionbar py-2 flex-shrink-0" [class.spark-actionbar-wide]="isVirtualScrolling()">
     <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
       @if (canCreate()) {
         <button *bsPriorityNavItem="1" class="btn btn-primary" (click)="onCreate()">

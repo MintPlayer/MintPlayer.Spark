@@ -1,12 +1,47 @@
+// The sticky bar of page actions, at the top of a query list and a PO detail page.
+//
+// It sticks inside `<main>`, which is BOTH the scrollport and the element carrying the page padding.
+// That combination breaks a naive `position: sticky; top: 0` in two independent ways, so the inset is
+// cancelled per axis:
+//
+//   Block axis — a sticky offset resolves against the scrollport's PADDING box, so `top: 0` parks the
+//   bar `--spark-main-padding` below the app's top bar and page content scrolls through the gap. A
+//   negative offset of exactly that inset makes it come to rest flush against the top bar instead.
+//
+//   Inline axis — a sticky child is sized by its containing block (main's CONTENT box) while the
+//   scrollport spans wider, so content scrolls past in the left and right gutters.
+//
+// Both insets are INHERITED rather than written as literals, so restyling main's padding cannot
+// desync them. A container that has already escaped the padding — a virtual-scrolling query list —
+// or one that legitimately defines its own content width — the detail page's `.container` — sets
+// `--spark-content-inset-inline: 0px`, so the bar never cancels the same inset twice.
+//
+// `0px`, not `0`: these are consumed inside `calc()`, and a unitless zero is invalid there.
 .spark-actionbar {
+  --_bleed-block: var(--spark-content-inset-block, 0px);
+  --_bleed-inline: var(--spark-content-inset-inline, 0px);
+  --_gutter: var(--spark-actionbar-gutter, 1rem);
+
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--_bleed-block));
   z-index: 400;
   background-color: var(--bs-tertiary-bg);
   border-bottom: 1px solid var(--bs-border-color);
   margin-bottom: 1rem;
 
+  // Widen to the scrollport, then restore the bar's own inner gutter on top of the bleed.
+  // Deliberately NOT `px-3`/`px-4`: Bootstrap's spacing utilities emit `!important`
+  // (`bootstrap.css`: `.px-3 { padding-left: 1rem !important }`), which would beat this.
+  margin-inline: calc(-1 * var(--_bleed-inline));
+  padding-inline: calc(var(--_bleed-inline) + var(--_gutter));
+
   .btn {
     border-radius: 0;
   }
+}
+
+// Virtual-scrolling lists sit flush against the scrollport, so their bar wants the wider inner
+// gutter that used to be spelled `px-4`.
+.spark-actionbar-wide {
+  --spark-actionbar-gutter: 1.5rem;
 }

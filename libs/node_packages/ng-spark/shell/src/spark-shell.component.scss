@@ -29,7 +29,26 @@ bs-navbar-toggler {
 }
 
 main {
+  // `main` is both the scrollport and the thing carrying the page padding. Anything sticky inside
+  // it is therefore sized to the CONTENT box while the scrollport is wider, so content scrolls past
+  // in the side gutters. Publishing the inset as a custom property lets `.spark-actionbar` cancel it
+  // (see _actionbar.scss) instead of every call site hardcoding a copy of this number.
+  // An app can restyle it — `spark-shell { --spark-main-padding: 2rem; }` — and the bar follows.
+  --spark-main-padding: 1.5rem;
+
+  // How far the current subtree sits from the scrollport edges, per axis. A sticky child cancels
+  // these to reach the edge (see _actionbar.scss), and a container that has already escaped the
+  // padding resets the axis it escaped to 0 so the inset is never cancelled twice — a double bleed
+  // makes the child overhang the scrollport (measured: the action bar sat 24px into the sidebar,
+  // and gave `main` a second horizontal scrollbar).
+  //
+  // Two axes, not one: a virtual-scrolling list bleeds horizontally but NOT vertically, so a single
+  // variable cannot describe it.
+  --spark-content-inset-block: var(--spark-main-padding);
+  --spark-content-inset-inline: var(--spark-main-padding);
+
   height: 100%;
+  padding: var(--spark-main-padding);
   background-color: var(--spark-shell-main-bg, #f8f9fa);
   display: flex;
   flex-direction: column;

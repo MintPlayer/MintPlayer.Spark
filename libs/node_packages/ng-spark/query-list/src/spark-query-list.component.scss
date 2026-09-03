@@ -7,7 +7,20 @@
   min-height: 0;
 
   &.virtual-scrolling {
-    margin: 0 -1.5rem -1.5rem;
+    // Bleed out of main's padding on both sides and the bottom so the datatable's own viewport is
+    // flush with the scrollport. Reads the same `--spark-main-padding` the action bar cancels, so
+    // there is one source for the inset rather than a literal copied per call site.
+    margin: 0 calc(-1 * var(--spark-main-padding, 1.5rem)) calc(-1 * var(--spark-main-padding, 1.5rem));
+
+    // Horizontally this subtree is now flush with the scrollport, so descendants must NOT cancel the
+    // page padding again. Without this the sticky action bar bleeds a second time and overhangs
+    // `main` by the padding width on each side — which both misaligns it and gives `main` its own
+    // horizontal scrollbar, on top of the datatable's. (Reads a different variable than the margin
+    // above, so it does not affect this element's own bleed.)
+    //
+    // The BLOCK inset is deliberately left alone: this bleeds sideways and downward, not upward, so
+    // the bar still has main's padding-top to cancel before it meets the app's top bar.
+    --spark-content-inset-inline: 0px;
 
     // ng-bootstrap 22.4's <bs-datatable> virtual viewport defaults to a fixed
     // 480px max-height. On a full-height query page that leaves the datatable

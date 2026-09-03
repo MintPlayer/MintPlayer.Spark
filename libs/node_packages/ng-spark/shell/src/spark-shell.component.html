@@ -37,7 +37,9 @@
     }
   </nav>
 
-  <main class="p-4">
+  <!-- The padding lives in the stylesheet as `--spark-main-padding`, not as a `p-4` utility, so the
+       sticky action bar can read it and bleed back out to the scrollport edges. See _actionbar.scss. -->
+  <main>
     @if (mainHeaderTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     }
