@@ -3,7 +3,8 @@
 **Implements:** [`coverage_branch_pr_badges_PRD.md`](coverage_branch_pr_badges_PRD.md) Option B ·
 **Issue:** none yet — file one first; design authority is `docs/code-coverage/roadmap-2026-08.md` T2.1 M11.5 ·
 **Branch:** `feat/coverage-branch-pr-badges` · **Base:** `master` @ `c1c12b9b` ·
-**Release:** server deploy only; no npm or NuGet version bump (the action changes, but `coverage-upload-v1` moves by its own workflow) ·
+**Release:** server deploy, plus the action at **1.3.0** (two new optional form fields). No npm or
+NuGet version bump — nothing under `libs/` is touched, so no published package moves. ·
 **PR:** [#361](https://github.com/MintPlayer/MintPlayer.Spark/pull/361) ·
 **Status:** M1–M7 built, CI green; M8 (live dogfood) awaits deployment
 
