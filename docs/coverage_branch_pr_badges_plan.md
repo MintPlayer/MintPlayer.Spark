@@ -4,7 +4,8 @@
 **Issue:** none yet — file one first; design authority is `docs/code-coverage/roadmap-2026-08.md` T2.1 M11.5 ·
 **Branch:** `feat/coverage-branch-pr-badges` · **Base:** `master` @ `c1c12b9b` ·
 **Release:** server deploy only; no npm or NuGet version bump (the action changes, but `coverage-upload-v1` moves by its own workflow) ·
-**Status:** Not started
+**PR:** [#361](https://github.com/MintPlayer/MintPlayer.Spark/pull/361) ·
+**Status:** M1–M7 built, CI green; M8 (live dogfood) awaits deployment
 
 All code lands as **one pull request** in `MintPlayer.Spark` — server, action, workflows, SPA, docs and
 tests — per `CLAUDE.md`. No follow-up PR, no phase 2.
@@ -69,6 +70,8 @@ grant**, so there is a real pending un-accepted raise right now. It does not aff
 proves the accepted-vs-declared distinction is live in this installation and is exactly why H7's
 "403 → `Unavailable`, never `Retry`" classification has to exist.
 
+<details><summary>Original spike definition</summary>
+
 `apps/CodeCoverage/README.md:88-95` declares `Pull requests: Read & write` as required for check-run
 feedback, and check-runs are live — but "declared in the manifest" and "accepted by the installation"
 are different facts, and `GitHubEventsRecipient.cs:69` exists precisely because they diverge.
@@ -79,6 +82,8 @@ Mint an App JWT the way `Services/GitHubAppReadinessService.cs:88-89` does and r
 If `pull_requests` is not `write`: M6's dogfood is blocked on re-consent, and the PRD's H7 handling
 (403 → `Unavailable`, never `Retry`) becomes the behaviour users actually see until consent lands. It
 does not block M4 or M5.
+
+</details>
 
 ### S2 — does camo re-render an updated badge inside a comment? — **ANSWERED: yes, the image is safe**
 
@@ -447,10 +452,10 @@ measured), so it exercises the comment against an installation that is not this 
 
 ## Verification sweep — run 2026-09-03
 
-- **`dotnet test apps/CodeCoverage/CodeCoverage.Tests`** — **247 passed, 0 failed.** Includes
+- **`dotnet test apps/CodeCoverage/CodeCoverage.Tests`** — **253 passed, 0 failed.** Includes
   `UploadActionDogfoodTests`, which boots a real server, so the `modelHashes.json` gate is satisfied.
   Run without `RAVENDB_LICENSE`, i.e. restricted mode — the fork-PR path — which is the stricter case.
-  84 of those tests are new here.
+  90 of those tests are new here.
 - **`npx vitest run`** in `apps/CodeCoverage/action` — **56 passed** across 6 files, including the
   extended `context.test.ts` (8 cases).
 - **`npm run test:bundle`** — **10 passed**; `dist/index.js` rebuilt in M3's commit, so
