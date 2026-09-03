@@ -193,6 +193,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // earlier commit. Still only a hint for finding the PR — patch coverage
         // resolves its own merge base at compute time.
         commit.ParentSha = pr.Base.Sha;
+
+        // Only on open/reopen: `synchronize` is already served by the finalize
+        // path, which edits the same comment with the real numbers. Broadcast
+        // rather than post from here, so an outage on GitHub's side cannot fail
+        // the webhook delivery and cost us the event.
+        if (evt.Action is "opened" or "reopened")
+        {
+            await messageBus.BroadcastAsync(new Feedback.OpenPullRequestCommentMessage
+            {
+                RepositoryGitHubId = evt.Repository.Id,
+                PullRequestNumber = (int)evt.Number,
+                HeadSha = pr.Head.Sha,
+                AuthorIsBot = pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
+            }, ct);
+        }
     }
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)
