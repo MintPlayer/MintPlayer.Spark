@@ -106,6 +106,9 @@ from the SG test project (only `.Abstractions` is referenced today), and extract
 
 ## Milestones
 
+0. **Lane ownership** (independent of the generator, and shippable before it): default-vs-explicit
+   precedence in `LaneRegistry`; `SparkMessagingOptions.DefaultMaxInFlight`; explicit lanes for
+   `GitHubWebhookMessage` and `EtlScriptDeploymentMessage` in their own packages.
 1. **Delete `SubscriptionWorkerRegistrationGenerator`** and its test. Nothing calls it; see below.
 2. Attributes in `MintPlayer.Spark.Messaging.Abstractions`: `LaneAttribute`, `LaneAttribute<TLane>`,
    `LaneMessageAttribute<TMessage>`, `PartitionedByAttribute`.
@@ -124,6 +127,50 @@ from the SG test project (only `.Abstractions` is referenced today), and extract
 **no branch was ever added to `SparkFullGenerator.Producer.cs`** to call it. A generated method in a
 namespace nobody calls is indistinguishable from a working feature until someone checks. `AddLanes()`
 fails the same way unless M6 lands with the rest.
+
+## Who declares a lane
+
+Decided: **a framework package declares the lane for every message it broadcasts**, and a consumer
+message with no declaration is accepted as-is.
+
+### Consumer messages: lenient, and already are
+
+An undeclared lane already resolves to a plan — Concurrent, `MaxInFlight = 1`
+(`LaneRegistry.cs:91-104`). DemoApp declares nothing and its `CompanyEvents` and `PersonEvents`
+messages run today.
+
+Note what that default is **not**: it is not one shared lane. Every distinct `[MessageQueue]` name
+gets its *own* implicit lane, so two undeclared message types cannot block one another. Stacking
+undeclared messages onto a single default lane was considered and rejected: it reintroduces
+head-of-line blocking between unrelated message types, which is the property #363 exists to remove.
+Leniency means *not having to declare*, not *sharing a queue*.
+
+The one part worth changing is that `MaxInFlight = 1` is hardcoded, so leniency currently also means
+serialized. Surface it as `SparkMessagingOptions.DefaultMaxInFlight`, defaulting to 1.
+
+### Framework messages: explicit, with precedence
+
+Today the framework packages do three different things:
+
+| Package | Message | Lane |
+|---|---|---|
+| replication | `SyncActionMessage` | declares `spark-sync` itself |
+| replication | `EtlScriptDeploymentMessage` | **declares nothing** — silently on the implicit default |
+| webhooks | `GitHubWebhookMessage` | declares nothing; *CodeCoverage* declares `spark-github-all` for it (`Program.cs:195`) |
+
+Every framework message gets an explicit declaration in its own package. That makes the
+`spark-etl-deployment` omission impossible to reproduce: forgetting is currently invisible, because
+the implicit default absorbs it.
+
+This needs a precedence rule, because declaring a lane twice throws (`LaneRegistry.cs:183`) and
+CodeCoverage's `spark-github-all` carries app-specific tuning (`MaxPartitionsInFlight(8)`) that must
+survive webhooks shipping a default:
+
+- a framework package declares a **default** — replaced silently by an application declaration;
+- two **explicit** declarations of one lane still throw, keeping today's single-owner guarantee.
+
+So the throw stays for the case it was written for (two owners disagreeing) and disappears for the
+case it never anticipated (a library shipping a sensible default the app then tunes).
 
 ## Out of scope
 
