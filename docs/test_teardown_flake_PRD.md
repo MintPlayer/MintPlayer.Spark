@@ -1,7 +1,7 @@
 # The test-teardown flake: cause, fix, and what it retires
 
-**Status:** cause established and reproduced on demand; fix applied to `SparkTestDriver` and
-validated against the reproduction. Full-suite-under-load validation in progress at time of writing.
+**Status:** SOLVED. Cause established, reproduced on demand, fixed, and validated against both the
+reproduction and the full suite under the load that used to break it.
 
 ## The failure
 
@@ -87,10 +87,22 @@ caught: it is never raised, because the server is never asked to wait.
 
 ### Measured
 
+On the reproduction:
+
 | Variant | Failures | Slowest teardown |
 |---|---|---|
 | Before | 13 / 48 | 21.8s |
 | After (4 consecutive runs) | **0 / 192** | 16.2 – 19.2s |
+
+On the **full suite**, under the identical eight-spinner load that produced the 191-failure run:
+
+| | Tests | Failures | Teardown timeouts | Duration |
+|---|---|---|---|---|
+| Before | 1922 | **191** | many | 23m 46s |
+| After | 1922 | **0** | **0** | 27m 37s |
+
+The suite completes on a machine with every core saturated. Wall-clock is longer because the run now
+finishes its work instead of failing out of it early.
 
 ## What this retires
 
