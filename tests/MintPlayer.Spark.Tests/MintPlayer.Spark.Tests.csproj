@@ -12,7 +12,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
+    <PackageReference Include="MintPlayer.Assertions" Version="1.1.0" />
     <!-- FakeTimeProvider: drives messaging backoff deterministically so tests never sleep through a
          retry ladder. The repo has no advanceable clock otherwise. -->
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />

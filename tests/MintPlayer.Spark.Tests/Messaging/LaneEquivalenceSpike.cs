@@ -94,7 +94,7 @@ public class LaneEquivalenceSpike
                 .MaxPartitionsInFlight(4);
         }));
 
-        ShouldDiffer(divergent, Snapshot(Registry(HandWritten)));
+        divergent.Should().NotBeEquivalentTo(Snapshot(Registry(HandWritten)));
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class LaneEquivalenceSpike
                 .MaxPartitionsInFlight(4);
         }));
 
-        ShouldDiffer(divergent, Snapshot(Registry(HandWritten)));
+        divergent.Should().NotBeEquivalentTo(Snapshot(Registry(HandWritten)));
     }
 
     [Fact]
@@ -137,27 +137,8 @@ public class LaneEquivalenceSpike
                 .MaxPartitionsInFlight(4);
         }));
 
-        ShouldDiffer(divergent, Snapshot(Registry(HandWritten)));
+        divergent.Should().NotBeEquivalentTo(Snapshot(Registry(HandWritten)));
     }
-
-    /// <summary>
-    /// Asserts two snapshots differ.
-    /// </summary>
-    /// <remarks>
-    /// The cast works around a missing overload, nothing more: MintPlayer.Assertions declares
-    /// <c>NotBeEquivalentTo</c> only on <c>ObjectAssertions</c>, while <c>BeEquivalentTo</c> also has
-    /// a <c>GenericCollectionAssertions</c> one, so the negative form is unreachable from a typed
-    /// collection without going through <c>object</c>. Tracked as MintPlayer.Dotnet.Tools#177;
-    /// delete this helper when that overload ships.
-    /// <para>
-    /// Only the SUBJECT is cast, which keeps <c>TExpectation</c> bound to <c>LaneSnapshot[]</c>.
-    /// Casting both would leave receiver, argument and type argument all statically <c>object</c>,
-    /// which drops the comparison into the reflection fallback and makes <c>Excluding</c>
-    /// unwritable.
-    /// </para>
-    /// </remarks>
-    private static void ShouldDiffer(LaneSnapshot[] actual, LaneSnapshot[] expected)
-        => ((object)actual).Should().NotBeEquivalentTo(expected);
 
     /// <summary>One lane, flattened to values that two registries can be compared on.</summary>
     /// <remarks>
