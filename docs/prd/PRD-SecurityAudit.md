@@ -1392,3 +1392,174 @@ Test coverage added: `AddJob_throws_when_the_schedule_is_unparseable` (Theory), 
 2. **R3-M1 framing** — is cron lock-poisoning in-threat-model given there's no reachable compare-exchange write path today? If treated as pure robustness/observability, the heartbeat + Warning-escalation parts are the high-value pieces and the value-validation is defense-in-depth.
 3. **R3-M2** — fail-fast at registration (recommended) vs. keep runtime-only but escalate to Warning + disable. Fail-fast is consistent with the existing whitespace check.
 4. **R3-L1** — documentation-only, or also ship an opt-in principal/tenant-scoping hook for cron jobs?
+
+## 11. Round 4 — Full-repo re-audit + regression sweep (2026-07-02)
+
+**Status:** Draft — awaiting triage.
+**Scope:** whole repository at branch `security-audit` (from `master` @ `febea26`). Re-verifies that Round-1/2/3 fixes still hold on HEAD, and audits code added since Round 3 (MultiLineString datatype #204, inline Reference/Lookup modal picker #189/#198, AsDetail drag-reorder `[Sortable]` #187/#188, breadcrumb nested-reference resolution #185/#186).
+**Method:** 6 parallel auditor agents by dimension (authz-core, authn/OIDC, CRUD/input-validation, injection/data-access, files/webhooks/transport, frontend/config/supply-chain). Every candidate finding was then handed to an independent adversarial verifier that read the actual code on HEAD and returned one of `CONFIRMED` / `ALREADY_FIXED` / `NOT_EXPLOITABLE` / `DUPLICATE_OF_PRIOR_OPEN` / `FALSE_POSITIVE`. **All findings below were verified against code on HEAD, not against this PRD's prose** (the prose is known to be stale — several R2 items marked without a Resolution block are in fact fixed in the tree; see §9.3/§10.5).
+**Threat model:** unchanged from R2 (internet-facing, multi-tenant, multi-node RavenDB cluster; a low-privilege authenticated user is a first-class attacker).
+
+ID prefix `R4-`. 18 candidates → **8 confirmed** (1 High, 3 Medium, 4 Low), **5 still-open prior findings re-confirmed**, 1 already-fixed, 2 not-exploitable.
+
+### 11.1 Headline
+
+**One High: row-level authorization is silently bypassed on the primary listing surface.** The row-level `IsAllowedAsync` hook (the R2-H2 fix) is enforced by `DatabaseAccess` on `/spark/po/...`, but the **query-execute and query-stream paths do not call it** — and the Angular grid renders every list through `/spark/queries/{id}/execute`, not `/spark/po/`. So the exact access-control a developer writes in their Actions class is enforced on the endpoint the UI doesn't use and skipped on the one it does. This is the finding to fix first.
+
+Everything else is Medium or below. The two replication Mediums are the same class as R2-C1/C2 (only the auth half of that fix landed): the mTLS gate self-disables in `Development` mode (the default posture under `ASPNETCORE_ENVIRONMENT=Development`), and `TargetUrls` is still unvalidated (SSRF from the DB server). **Positive result:** the R2 rate-limiter (L-3) is intact and active in Fleet, and the two config items initially flagged (RavenDB `PublicNetwork`, `AllowedHosts:"*"`) proved **not exploitable** on HEAD (topology isolation holds; no Host-header-reflecting sink exists).
+
+### 11.2 Confirmed findings
+
+#### HIGH
+
+---
+
+##### R4-H1 — Query-execute and query-stream paths bypass the row-level authorization hook (H-2 gate not applied on the surface the UI actually uses)
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** extends H-2 / R2-H2 (row-level hook), not covered by R2-M2 (paging) or R2-M4 (stream re-auth)
+
+**Where:**
+- `libs/spark/MintPlayer.Spark/Services/QueryExecutor.cs:126` (`ExecuteDatabaseQueryAsync`)
+- `libs/spark/MintPlayer.Spark/Services/QueryExecutor.cs:194` (`ExecuteCustomQueryAsync`)
+- `libs/spark/MintPlayer.Spark/Streaming/StreamingQueryExecutor.cs:50`
+- contrast with `libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs:143` (`FilterByRowLevelAuthAsync`, correctly applied on `/spark/po`)
+
+**Attack:** A non-admin who holds an entity-type grant (`QueryRead/Car` or `QueryReadEditNew/Car` in `security.json`) calls `GET /spark/queries/{GetCars-id}/execute`. `ExecuteDatabaseQueryAsync` calls **only** `permissionService.EnsureAuthorizedAsync("Query", "Car")` (the entity-type check) and then materializes and returns **every** `Car` row — it never invokes `CarActions.IsAllowedAsync("Query", car)` (the per-row `CreatedBy == CurrentUserId` restriction). The same data requested via `GET /spark/po/{carTypeId}` is correctly filtered by `DatabaseAccess.FilterByRowLevelAuthAsync`. Because the query-list grid renders through `/spark/queries/{id}/execute`, the developer's row-level rule is bypassed on the real listing surface. `ExecuteCustomQueryAsync` (`Custom.*` sources) and the WebSocket streaming path have the identical gap. `QueryExecutor` does not even inject `IRowSecurity`.
+
+**Expected:** After the entity-type check, both `QueryExecutor` paths (Database + Custom) and `StreamingQueryExecutor` must run the same per-row `IsAllowedAsync("Query", entity)` filter that `DatabaseAccess` uses, so the H-2 gate is enforced consistently across every read surface (`/po`, `/queries/execute`, `/queries/stream`).
+
+**Test asserts:** As a non-admin owning only their own `Car`, `GET /spark/queries/{GetCars}/execute` returns only rows they may see (not the admin's); the WebSocket stream yields the same filtered set.
+
+#### MEDIUM
+
+---
+
+##### R4-M1 — Replication mTLS gate self-disables in `Development` mode (the default posture), reinstating the R2-C1/C2 unauthenticated-CRUD + ETL surface
+
+**Layer:** Deployment / Framework · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** new residual of R2-C1 / R2-C2 (recorded fixed)
+
+**Where:**
+- `libs/replication/MintPlayer.Spark.Replication/Services/ModuleCertificateValidator.cs:45-53` (`ResolveMode`: `Auto` → `Development` when `IHostEnvironment.IsDevelopment()`)
+- `libs/replication/MintPlayer.Spark.Replication/Services/ModuleCertificateValidator.cs:65-78` (Development branch: returns `Ok` for any non-empty `RequestingModule`, never inspects the client cert)
+- `libs/replication/MintPlayer.Spark.Replication/Services/SparkReplicationOptions.cs:91` (`ClientCertificate.Mode` defaults to `Auto`)
+- gates `SyncApply.cs:42-53`, `EtlDeploy.cs:46-65`
+
+**Attack:** `Mode` defaults to `Auto`, which resolves to `Development` whenever `ASPNETCORE_ENVIRONMENT=Development` — the default env var baked into countless container images and staging boxes. In that mode `ValidateAsync` returns `Ok` for **any** request whose body carries a non-empty `RequestingModule` string, with **no client certificate inspected and (verifier-confirmed) not even the SparkModules existence check the code comment claims** — the module lookup only runs in the Production branch. An unauthenticated attacker who can reach the port POSTs `/spark/sync/apply` with `{requestingModule:"x", actions:[{actionType:Delete, collection:"SparkUsers", documentId:"..."}]}` for arbitrary CRUD on any collection, or `/spark/etl/deploy` to register ETL tasks with attacker JS + target URLs. This is exactly the R2-C1/C2 impact, reachable on any dev-mode host on a routable interface.
+
+**Expected:** Don't silently disable the cert check based on host environment. Require explicit opt-in (`Mode=Disabled`) to run without certs, and when disabled, bind the replication endpoints to loopback (or refuse to map them) rather than accepting arbitrary callers. Even in Development, still require the `RequestingModule` to exist in `SparkModules`.
+
+**Test asserts:** With `IHostEnvironment=Development` and default options, unauth `POST /spark/sync/apply` with a made-up `RequestingModule` returns 401/403 (not 200); the SyncActionHandler is never invoked.
+
+---
+
+##### R4-M2 — ETL deploy passes caller-supplied `TargetUrls` unvalidated into the RavenDB connection string (SSRF from the DB server)
+
+**Layer:** Application · **Testable?** Indirect · **Confidence:** Confirmed · **Prior:** unfinished half of R2-C1 (the allow-list was specified but never implemented)
+
+**Where:** `libs/replication/MintPlayer.Spark.Replication/Services/EtlTaskManager.cs:53-60` (`TargetUrls` → `RavenConnectionString.TopologyDiscoveryUrls` → `PutConnectionStringOperation`/`AddEtlOperation`), `EtlDeploy.cs:67`
+
+**Attack:** `request.TargetUrls` flows straight into the ETL topology-discovery URLs with no scheme/host validation. RavenDB then makes outbound HTTP connections to those URLs — an SSRF executed **from the database server**. A caller who reaches this endpoint (unauthenticated in dev per R4-M1, or a compromised peer module in prod) points Raven at `http://169.254.169.254/…` or internal admin endpoints. R2-C1's stated expected behavior explicitly included "validate `TargetUrls` against an operator-configured allow-list"; only the mTLS auth half shipped.
+
+**Expected:** Validate every `TargetUrls` entry against an operator-configured allow-list (require `https`, host ∈ a known-peer set) before building the connection string; reject otherwise.
+
+**Test asserts:** `DeployAsync` with a `TargetUrls` entry outside the allow-list throws/returns an error and never calls `PutConnectionStringOperation`.
+
+---
+
+##### R4-M3 — Combined-action DENY rights in `security.json` are silently ignored, breaking "deny takes precedence"
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** new (M-2 is at the same file but concerns claim-injection, unrelated)
+
+**Where:** `libs/authorization/MintPlayer.Spark.Authorization/Services/AccessControlService.cs:70` (deny check uses exact-string `MatchesResource`), `:85` (combined-action expansion filters to `!IsDenied` only), `:120` (`MatchesResource` = exact case-insensitive equality)
+
+**Attack:** The grant path supports combined-action resources (`EditNewDelete/Car` expands to `Edit`, `New`, `Delete`), so an admin naturally writes a **deny** the same way: `{resource:"EditNewDelete/Car", groupId:<g>, isDenied:true}`. But step-1 denial evaluation only matches via exact-string `MatchesResource`, so a request for `Edit/Car` does not match the `EditNewDelete/Car` deny; and the combined-action expansion (step 3) iterates `relevantRights.Where(r => !r.IsDenied)`, so the combined-form deny is never expanded. If any broad grant (or `DefaultBehavior=AllowAll`) covers `Edit/Car`, the user is **allowed despite the explicit deny** — violating the in-code "denials take precedence" invariant (comment at line 69) for any deny authored in combined form.
+
+**Expected:** Apply `IsCombinedActionMatch` to deny rights as well: before granting, check whether any relevant deny (exact **or** combined form) covers the requested action/target, and if so return false.
+
+**Test asserts:** With a broad `QueryReadEditNewDelete/Car` grant and a combined `EditNewDelete/Car` deny for group G, a member of G is refused `Edit/Car`.
+
+#### LOW
+
+---
+
+##### R4-L1 — LookupReference **read** endpoints are completely unauthenticated (inconsistent with EntityTypes metadata gating and the R2-H4 write gate)
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** new
+
+**Where:** `libs/spark/MintPlayer.Spark/Endpoints/LookupReferences/List.cs:15`, `Get.cs:17` (inject only `ILookupReferenceService`, no `IPermissionService`); contrast `AddValue.cs:19,30` (R2-H4 added `EnsureAuthorizedAsync("Edit","LookupReferences")`) and `EntityTypes/{Get,List}.cs` (gate reads behind `IsAllowedAsync("Query",…)`).
+
+**Attack:** `GET /spark/lookupref/` and `GET /spark/lookupref/{name}` perform zero authorization; the `/spark` group has no blanket `RequireAuthorization` (endpoints self-gate), so an anonymous caller enumerates every lookup-reference dictionary and all values. The mutation side was gated by R2-H4; the read side was left open.
+
+**Expected:** Gate the read endpoints behind a permission check (e.g. `IsAllowedAsync("Read","LookupReferences")`), consistent with the EntityTypes metadata reads.
+
+**Test asserts:** Unauthenticated `GET /spark/lookupref/` and `/spark/lookupref/{name}` return 401.
+
+---
+
+##### R4-L2 — Account enumeration via `/spark/auth/register` (`DuplicateEmail` echoes the submitted address)
+
+**Layer:** Framework (stock `MapIdentityApi` behavior) · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** new
+
+**Where:** `libs/authorization/MintPlayer.Spark.Authorization/Identity/UserStore.cs:60-66` (`CreateAsync` returns `Failed` with code `DuplicateEmail`, description `"Email '{x}' is already taken."`), route mapped by `SparkAuthenticationExtensions.cs:83` (`MapIdentityApi<TUser>()`)
+
+**Attack:** Unauthenticated `POST /spark/auth/register` with a candidate email returns a distinguishable 400 (`DuplicateEmail`, echoing the address) if the email exists, versus a different result if free — enabling account enumeration at scale (rate-limited only by the generous per-IP `/spark` limiter). `/forgotPassword` correctly does **not** leak (returns 200 regardless); `/register` does.
+
+**Expected:** Return a generic, indistinguishable failure for registration on an existing email (or accept and send an out-of-band "you already have an account" email); do not echo the address in the error.
+
+**Test asserts:** `POST /spark/auth/register` for a taken vs. free email yields responses indistinguishable in status and body.
+
+---
+
+##### R4-L3 — Optimistic concurrency is client-opt-in on Update: omitting `Etag` yields unconditional last-write-wins (M-7 incompletely fixed)
+
+**Layer:** Framework · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** M-7 was recorded fixed/INTACT (§9.3) but the fix only fires when the client volunteers an `Etag`
+
+**Where:** `libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs:216` (change-vector compare gated on `!string.IsNullOrEmpty(persistentObject.Etag)`), `Update.cs:70`; the injected session is opened without `Advanced.UseOptimisticConcurrency` (`SparkMiddleware.cs:113-114`), and the etag is read in a separate `checkSession` than the one that saves (TOCTOU, not an atomic conditional write).
+
+**Attack:** A client that omits/empties `Etag` skips the conflict check entirely and the save runs last-write-wins, silently clobbering a concurrent authorized editor. No 409. Integrity-only (caller already holds Edit rights), hence Low — but it makes the M-7 protection trivially bypassable.
+
+**Expected:** Make the concurrency check mandatory for updates of existing records (reject writes lacking an `Etag`, or enable `session.Advanced.UseOptimisticConcurrency` so the save is conditional on the loaded change vector).
+
+**Test asserts:** A PUT to an existing record with no `Etag` is rejected (400/428), or two concurrent etag-less PUTs produce a 409 on the second.
+
+---
+
+##### R4-L4 — WebSocket origin guard compares hostname only, ignoring port — same-host different-port CSWSH (residual of R2-H5)
+
+**Layer:** Application · **Testable?** Yes · **Confidence:** Confirmed · **Prior:** new residual of R2-H5 (recorded fixed)
+
+**Where:** `libs/spark/MintPlayer.Spark/SparkMiddleware.cs:226-233` — compares `originUri.Host` to `Request.Host.Host` (hostname only; `HostString.Host` excludes the port, exposed separately as `.Port`).
+
+**Attack:** The browser same-origin policy treats a different port as a different origin, but this guard passes any Origin whose hostname matches. On a host that also serves attacker-influenced content on another port (multi-service box, some reverse-proxy layouts), a page at `http://victim-host:8080/` can open `wss://victim-host/spark/queries/{id}/stream`; the guard passes, the victim's ambient auth cookie is sent, and the attacker page reads the streamed result set — the CSWSH scenario R2-H5 exists to block. Narrow precondition → Low.
+
+**Expected:** Compare the full origin authority (host **and** port, ideally scheme) against `Request.Host`, or match an explicit allowed-origins list.
+
+**Test asserts:** A WS upgrade with `Origin: https://<same-host>:<other-port>` is rejected (403).
+
+### 11.3 Still-open prior findings, re-confirmed on HEAD
+
+These were reported before, never fixed, and re-verified live this round. They should be swept into the same PR (or explicitly deferred with a rationale).
+
+| ID | Sev | Summary | Where (HEAD) |
+|----|-----|---------|--------------|
+| **H-1b** | Medium | Read path serializes `IsVisible=false` / read-only attribute **values** to any authorized reader — asymmetric with the R2-H8 **write** gate `IsWritableBySchema`, which treats `IsVisible=false` as a security boundary. A field the framework won't let a client write is still fully readable. | `EntityMapper.cs:208,230,361,545` (write gate); `PersistentObject/Get.cs:37`, `List.cs:29` (serialize) |
+| **M-2** | Medium (latent) | Group membership derived verbatim from `group`/`groups`/`role`/`groupsid`/xmlsoap-Group claims with no issuer check; `ResolveGroupIds` maps any value onto a `security.json` group by name. Not reachable in the shipped cookie-Identity config (roles are server-issued); becomes exploitable the moment a second/federated issuer is added. | `ClaimsGroupMembershipProvider.cs:19,37`; `AccessControlService.cs:104` |
+| **R2-M6** | Medium | GitHub webhook processor verifies the HMAC but never checks `X-GitHub-Delivery`/nonce/timestamp — a captured signed delivery can be replayed indefinitely, re-broadcasting onto the durable MessageBus. | `SparkWebhookEventProcessor.cs:35-83` |
+| **M-4** | Low | `Custom.*` query resolution binds to any matching-shape public method via reflection with no `[SparkQuery]` opt-in. Not attacker-controllable end-to-end today (`query.Source` is server-owned model JSON); footgun/defense-in-depth. | `QueryExecutor.cs:315`; `StreamingQueryExecutor.cs:103` |
+| **R2-H19** | Low | `navigate` client-operation wire type exists but no handler is registered, so it's inert today; the dispatcher's documented "validate via `sanitizeReturnUrl`" contract is unenforced for when a navigate/redirect handler ships. | `operations.ts:15`; `dispatcher.service.ts:38` |
+
+### 11.4 Verified this round — not exploitable / already fixed
+
+- **Rate limiting (L-3) — ALREADY FIXED / intact.** The initial "no rate limiter" flag was a misread: Fleet's `options.RateLimiter = _ => {}` (Program.cs:27) is a **non-null** delegate, and `SparkFullGenerator` emits `AddRateLimiter` iff the delegate is non-null; the empty body keeps the default (150 req/10 s per client IP, scoped to `/spark`), so `/spark/auth/*` **is** throttled. Residual (per-IP not per-account) is minor hardening, and 2FA additionally flows through Identity `SignInManager` lockout.
+- **RavenDB `UnsecuredAccessAllowed=PublicNetwork` in webhooks-demo (R2-L1 walk-back) — NOT EXPLOITABLE.** The real R2-L1 control was topology isolation (no published host ports; `spark-raven` on `spark-internal`, not the public `web` network) — intact at HEAD. `PublicNetwork` vs `PrivateNetwork` is near-equivalent on an RFC1918 bridge; the flag was flipped only because the pinned Raven build refuses to start unsecured on a `0.0.0.0` bind under `PrivateNetwork`. Demo infra, not product code.
+- **`AllowedHosts:"*"` across the four demo apps — NOT EXPLOITABLE.** A grep across `Demo/` for `Request.Host`/`GetDisplayUrl`/Host-based URL construction found **zero** reflecting sinks. Template default in demo/dev projects; generic hardening, no reachable vuln.
+- **New code since Round 3 (MultiLineString #204, inline Reference/Lookup picker #189, AsDetail `[Sortable]` #187, breadcrumb nested-ref #185) — no new confirmed vuln.** Reviewed for injection/XSS/authz regressions; the frontend renderers use Angular interpolation (auto-escaped) and the breadcrumb resolver runs through the existing row-auth gate.
+- **R1/R2/R3 fix drift** — all sampled prior fixes (R2-C1/C2 mTLS, C3 webhook `FixedTimeEquals`, C4 returnUrl sanitize, H1 fail-closed PermissionService, H3 antiforgery, H8 write gate, cron round-3 fixes) confirmed present on HEAD. The only regressions are the two R4 **residuals** above (mTLS dev-mode escape hatch, ETL allow-list gap) — partial fixes, not reverts.
+
+### 11.5 Triage questions (for the user)
+
+1. **PR shape.** Recommend one `fix(security)` PR on `security-audit`, tests-first, ordered R4-H1 → R4-M1/M2 → R4-M3 → the Lows, sweeping in the §11.3 re-confirmed items (H-1b, R2-M6 especially). Or split High+replication-Mediums first, rest as follow-up. Your call.
+2. **R4-H1 fix locus.** Push the per-row filter down into a shared `IRowSecurity.Filter` that both `DatabaseAccess` and the query/stream executors call (removes the duplication that caused the gap), vs. bolt `IsAllowedAsync` onto each executor. Recommend the shared filter.
+3. **H-1b / IsVisible semantics.** Is `IsVisible=false` meant to be a **confidentiality** control (then gate it on read too) or a pure UI hint (then stop gating **writes** on it and document that)? The two must be made symmetric either way.
+4. **R4-M1 dev-mode posture.** Is running the replication endpoints under `ASPNETCORE_ENVIRONMENT=Development` on a routable interface in-threat-model? If dev boxes are always loopback-only, this drops to Low; if staging images ship with the default env var, it's the real Medium.
+5. **M-2 timing.** Fix the claim-issuer trust now (defense-in-depth) or defer until the IdentityProvider/OIDC multi-issuer work lands (its natural home)? It is not reachable in the shipped cookie-Identity config today.
