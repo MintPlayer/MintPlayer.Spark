@@ -1,4 +1,5 @@
 using Raven.Client.Documents;
+using Raven.Client.ServerWide.Operations;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -92,6 +93,52 @@ internal static class SparkEmbeddedServer
             return;
 
         Console.WriteLine($"[SparkEmbeddedServer] {string.Join(", ", store.Urls)}");
+    }
+
+    /// <summary>
+    /// Deletes a test database without waiting for the cluster to confirm it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The 15 seconds this removes are not ours to wait.</b> <c>RavenTestDriver</c> deletes the
+    /// database from the store's <c>AfterDispose</c> event, and the server's delete handler blocks on
+    /// <c>WaitForIndexNotification</c> for
+    /// <c>TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)</c>. Under CPU starvation that
+    /// notification does not arrive in time and teardown throws
+    /// <c>TimeoutException: Waited for 00:00:15 … at AdminDatabasesHandler.Delete()</c>, failing a
+    /// test that had already passed. Sending our own delete first, with a zero wait, makes the server
+    /// skip that block: <c>remaining = timeToWaitForConfirmation - elapsed</c> is negative
+    /// immediately, so it submits the raft command and returns.
+    /// </para>
+    /// <para>
+    /// <b>The database is still deleted.</b> Only the confirmation is unawaited — which is all a test
+    /// needs, because nothing may observe this database again: names are unique per fixture and the
+    /// embedded server is in-memory and dies with the process. This is not the discredited fix of
+    /// swallowing the timeout, which hid a real defect; the timeout is not caught here, it is never
+    /// raised.
+    /// </para>
+    /// <para>
+    /// Shared by both drivers deliberately. The per-class driver is the one consumers are steered
+    /// towards for throughput, so leaving it on the blocking path would put the flake exactly where
+    /// it is least expected.
+    /// </para>
+    /// </remarks>
+    internal static void DropDatabaseWithoutWaiting(IDocumentStore store)
+    {
+        try
+        {
+            store.Maintenance.Server.Send(new DeleteDatabasesOperation(new DeleteDatabasesOperation.Parameters
+            {
+                DatabaseNames = [store.Database],
+                HardDelete = true,
+                TimeToWaitForConfirmation = TimeSpan.Zero,
+            }));
+        }
+        catch (Exception)
+        {
+            // Best-effort: the driver's own AfterDispose delete still runs, so nothing is leaked by
+            // this failing. Anything thrown here would replace the real test result.
+        }
     }
 
     private static int reported;

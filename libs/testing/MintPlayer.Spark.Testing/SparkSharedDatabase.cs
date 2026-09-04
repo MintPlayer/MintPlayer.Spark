@@ -125,7 +125,14 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
         // Null-guarded for the same reason SparkTestDriver's is: InitializeAsync can fail before
         // assigning Store, and a NullReferenceException here would replace the real failure in the
         // test output.
-        Store?.Dispose();
+        if (Store is null)
+            return Task.CompletedTask;
+
+        // Same zero-wait delete as the per-case driver. A class-scoped database is deleted far less
+        // often, but the teardown that does run is no less able to time out under load — and this is
+        // the driver consumers are steered towards for throughput.
+        SparkEmbeddedServer.DropDatabaseWithoutWaiting(Store);
+        Store.Dispose();
         return Task.CompletedTask;
     }
 }
