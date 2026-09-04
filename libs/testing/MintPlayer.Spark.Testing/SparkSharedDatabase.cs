@@ -103,6 +103,7 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
             LicenseHelper.EnsureAvailable();
 
         Store = GetDocumentStore();
+        SparkEmbeddedServer.ReportUrls(Store);
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)

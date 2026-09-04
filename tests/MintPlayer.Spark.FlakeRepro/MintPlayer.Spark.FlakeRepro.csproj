@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Minimal reproduction of the RavenDB test-teardown timeout. Deliberately a SEPARATE project so it
+    never runs with the normal suite: it saturates every core on purpose, which would wreck any test
+    running alongside it. Nothing references this project and CI does not build it.
+
+    Run it explicitly:
+      dotnet test tests/MintPlayer.Spark.FlakeRepro/MintPlayer.Spark.FlakeRepro.csproj
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Not part of any solution build; opt in by naming the project. -->
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MintPlayer.Assertions" Version="1.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="MintPlayer.Assertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing\Targets\spark-testing.targets" />
+
+</Project>

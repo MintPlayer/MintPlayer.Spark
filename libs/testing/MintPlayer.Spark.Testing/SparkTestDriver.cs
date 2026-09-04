@@ -109,6 +109,7 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         if (RequireLicense)
             LicenseHelper.EnsureAvailable();
         Store = GetDocumentStore();
+        SparkEmbeddedServer.ReportUrls(Store);
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)

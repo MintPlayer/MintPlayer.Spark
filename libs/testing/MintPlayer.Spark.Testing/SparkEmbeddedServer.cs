@@ -1,3 +1,4 @@
+using Raven.Client.Documents;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -67,4 +68,31 @@ internal static class SparkEmbeddedServer
     internal static void EnsureConfigured()
     {
     }
+
+    /// <summary>
+    /// Prints the embedded server's URL once per process, so a developer can open Studio against the
+    /// server a test run is actually using.
+    /// </summary>
+    /// <remarks>
+    /// The port is chosen per process and appears nowhere else: the server is not the
+    /// <c>Raven.Server.exe</c> Windows service on 8080, it is a <c>dotnet.exe</c> hosting
+    /// <c>RavenDBServer/Raven.Server.dll</c> from the test project's output on an ephemeral port. So
+    /// <c>tasklist | findstr Raven</c> finds the wrong process, and there is otherwise no way to
+    /// attach to the right one while a run is in flight.
+    /// <para>
+    /// Written to standard output, so it appears only under
+    /// <c>--logger "console;verbosity=detailed"</c> and stays out of a normal run.
+    /// </para>
+    /// </remarks>
+    internal static void ReportUrls(IDocumentStore store)
+    {
+        // Interlocked rather than a bool: test classes initialise in parallel, and a check-then-act
+        // here would print several times — the same race the type initialiser above exists to avoid.
+        if (Interlocked.Exchange(ref reported, 1) != 0)
+            return;
+
+        Console.WriteLine($"[SparkEmbeddedServer] {string.Join(", ", store.Urls)}");
+    }
+
+    private static int reported;
 }
