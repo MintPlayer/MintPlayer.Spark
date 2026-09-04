@@ -250,7 +250,8 @@ One-time VPS setup:
    audience) — like the other MintPlayer deployments; interpolating it from the server
    `.env` once produced a non-matching router and Traefik's default self-signed cert.
    Mind the `.env`'s line endings: it must be LF, a CRLF file poisons every value with
-   an invisible `\r`.
+   an invisible `\r`. Optionally add `RAVENDB_LICENSE` here — see
+   [RavenDB licence](#ravendb-licence) below.
 2. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
    readable by the container's `app` user (UID 1654) — e.g. `chmod 644` or `chown 1654`.
    Beware: if the file is missing at first `up`, Docker silently creates a *directory*
@@ -295,3 +296,61 @@ Manual redeploy: the workflow's `workflow_dispatch` button, or on the VPS
 RavenDB data lives in the `raven-data` named volume — it survives `pull`/`down`/`up`
 deploys; only `docker compose down -v` or a volume prune destroys it. There is no
 automated backup yet; back up the volume out-of-band if the data matters.
+
+### RavenDB licence
+
+Licensing is a **server-side** concern only: `Raven.Client`, and therefore the ASP.NET
+Core app, has no notion of a licence and needs no configuration for this. Running without
+one is supported and is what this deployment did for its whole life — the server then
+reports `AGPL - Open Source` and is capped at 3 cores / 6 GB.
+
+**A licence cannot be handed to this image as a setting.** That is the obvious approach
+and it does not work: on `ravendb:7.1.10`, `RAVEN_License` (the JSON inline),
+`RAVEN_License_Path`, `--License.Path` through `RAVEN_ARGS`, `RAVEN_SETTINGS`, and a
+`License` object embedded in `settings.json` were each measured, and every one left the
+server on `AGPL - Open Source`. There is no error, no warning and no log line for any of
+them — a wrong licence, a malformed one and no licence at all are indistinguishable from
+the outside. Do not re-introduce those settings; the compose file says the same.
+
+What works is the activation endpoint, so `docker-compose.yml` carries a one-shot
+`coverage-raven-license` service that POSTs the licence to `coverage-raven` once it is
+healthy, then exits. The licence lands in the system database, inside the `raven-data`
+volume — it survives restarts and `docker compose pull` + recreate, so this has to
+succeed only once, and re-running it changes nothing.
+
+To set it up:
+
+1. Get the licence JSON — the licence mail from RavenDB, or *Studio → Settings → License*
+   on a server that already has it. It looks like `{"Id":"…","Name":"…","Keys":["…"]}`.
+2. Save it as `/var/www/code-coverage/raven-license.json`, next to `.env` and `github-app.pem`
+   and server-managed in exactly the same way: deploys refetch `docker-compose.yml` but
+   never touch this file. Pretty-printed is fine here — unlike a `.env` value, the file
+   is read whole, so line breaks and CRLF are harmless. `apps/*/raven-license.json` is
+   gitignored so a local copy cannot be committed.
+3. `docker compose up -d`. Watch the activation actually happen — this is the step that
+   tells you the licence was accepted, since RavenDB itself stays silent:
+
+   ```bash
+   docker compose logs coverage-raven-license
+   docker compose ps -a coverage-raven-license   # want: Exited (0)
+   ```
+
+4. Confirm the server agrees. Raven publishes no host port, so ask from inside the
+   network:
+
+   ```bash
+   docker compose run --rm --entrypoint sh coverage-raven-license -c \
+     'curl -s http://coverage-raven:8080/license/status'
+   ```
+
+   `"Status":"Commercial"` with the expected `"Type"` means it took. `"Status":"AGPL -
+   Open Source"` means it did not — check `raven-license.json` is a file and not an empty
+   directory (Docker creates one if the path is missing when the container starts).
+
+If `raven-license.json` is absent the POST fails, that one container exits non-zero, and the
+deployment carries on unlicensed — `coverage-app` deliberately does not depend on it, so
+a missing licence degrades the server rather than breaking the deploy.
+
+The endpoint needs no credentials because `coverage-raven` is unsecured and reachable
+only from the internal network. On a secured (HTTPS) RavenDB the same call requires a
+client certificate.

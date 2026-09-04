@@ -13,6 +13,13 @@ services:
       # network below, never on the public 'web' Traefik network.
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
+      # No licence settings here on purpose. Measured against this exact image
+      # (7.1.10): a licence supplied through *configuration* is silently ignored
+      # — RAVEN_License (inline JSON), RAVEN_License_Path, --License.Path via
+      # RAVEN_ARGS, RAVEN_SETTINGS and an embedded License object in
+      # settings.json were each tried, and every one left the server on
+      # "AGPL - Open Source" with nothing in the log. The licence is applied by
+      # the coverage-raven-license service below, which is what actually works.
     volumes:
       - raven-data:/var/lib/ravendb/data
     networks:
@@ -25,6 +32,45 @@ services:
       retries: 12
       start_period: 30s
     restart: unless-stopped
+
+  # One-shot: POSTs ./raven-license.json to Raven's activation endpoint, then exits. The
+  # licence lands in the system database, so it survives restarts and container
+  # recreation (it lives in the raven-data volume) — this only has to succeed
+  # once, and re-running it with the same licence is a no-op (verified).
+  #
+  # Runs on every `up` so a recreated volume re-licenses itself instead of
+  # quietly reverting to AGPL. Without ./raven-license.json the POST fails, this
+  # container exits non-zero and the deployment carries on unlicensed, exactly
+  # as it did before — coverage-app deliberately does not depend on it.
+  #
+  # The endpoint needs no credentials because coverage-raven is unsecured and
+  # reachable only from coverage-internal.
+  coverage-raven-license:
+    image: curlimages/curl:8.11.1
+    depends_on:
+      coverage-raven:
+        condition: service_healthy
+    volumes:
+      - ./raven-license.json:/raven-license.json:ro
+    networks:
+      - coverage-internal
+    # curl IS the entrypoint, so this is an argument list.
+    command:
+      - "-sS"
+      - "-f"
+      - "--retry"
+      - "10"
+      - "--retry-delay"
+      - "3"
+      - "--retry-connrefused"
+      - "-X"
+      - "POST"
+      - "-H"
+      - "Content-Type: application/json"
+      - "--data-binary"
+      - "@/raven-license.json"
+      - "http://coverage-raven:8080/admin/license/activate"
+    restart: "no"
 
   coverage-app:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can

@@ -46,6 +46,23 @@ Get a free community license at [ravendb.net/license/request](https://ravendb.ne
 {"Id":"your-license-id","Name":"your-name","Keys":["key1","key2","..."]}
 ```
 
+### With docker-compose instead of Sliplane
+
+`docker-compose.yml` in this folder does **not** pass the licence as a setting. Measured
+against `ravendb:7.1.10`, a licence supplied through configuration — `RAVEN_License`,
+`RAVEN_License_Path`, `RAVEN_ARGS`, `RAVEN_SETTINGS`, or `settings.json` — is silently
+ignored: the server stays on `AGPL - Open Source` and logs nothing. (The `RAVEN_License`
+row in the Sliplane table above predates that measurement; if the Sliplane deployment is
+meant to be licensed, verify it at `/license/status` rather than trusting the variable.)
+
+Instead, drop the licence JSON next to the compose file as `raven-license.json` (gitignored) and
+the one-shot `spark-raven-license` service POSTs it to `/admin/license/activate`. The
+licence persists in the system database, so it only has to succeed once. Without the file
+that container exits non-zero and the demo runs AGPL/restricted, as it always has.
+
+Nothing changes on the app side either way: licensing is a server concern and
+`Raven.Client` has no licence configuration.
+
 ### Verifying RavenDB
 
 Once the service is running, access the RavenDB Studio through the public URL Sliplane assigns (e.g., `https://ravendb-xxxxx.sliplane.app/`). You should see the Studio dashboard.
@@ -111,5 +128,5 @@ You can find the deploy hook URL in your Sliplane service settings.
 | RavenDB health check fails on `/` | Ensure all environment variables are set, especially `RAVEN_Setup_Mode=None`. Without this, RavenDB shows the setup wizard which may not return 200 on `/`. |
 | `DataProtection-Keys` warning | Add a persistent volume at `/home/app/.aspnet/DataProtection-Keys`, or ignore for non-production use. |
 | RavenDB setup wizard appears | Ensure `RAVEN_Setup_Mode=None` is set on the RavenDB service. |
-| License not accepted | Ensure both `RAVEN_License` and `RAVEN_License_Eula_Accepted=true` are set. |
+| Server reports `AGPL - Open Source` despite a licence | Expected: on 7.1.10 a licence given as a *setting* is silently ignored. Activate it instead — see "With docker-compose instead of Sliplane" above, or POST the JSON to `/admin/license/activate`. |
 | 403 on webhook delivery | Verify the `GitHub__WebhookSecret` env var matches your GitHub App's webhook secret exactly. |

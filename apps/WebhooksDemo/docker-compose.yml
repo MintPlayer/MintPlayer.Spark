@@ -16,6 +16,10 @@ services:
       # below, never on the public 'web' Traefik network.
       - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
       - RAVEN_ServerUrl=http://0.0.0.0:8080
+      # No licence settings here: on ravendb 7.1.10 a licence supplied through
+      # configuration (RAVEN_License, RAVEN_License_Path, RAVEN_ARGS,
+      # RAVEN_SETTINGS, settings.json) is silently ignored. The spark-raven-license
+      # service below applies it through the activation endpoint instead.
     volumes:
       # ravendb:7.1-latest sets RAVEN_DataDir=/var/lib/ravendb/data; mounting the
       # legacy /opt/RavenDB/Server/RavenData path silently lost data on every
@@ -24,6 +28,36 @@ services:
     networks:
       - spark-internal
     restart: unless-stopped
+
+  # One-shot licence activation; see apps/CodeCoverage/README.md "RavenDB licence"
+  # for why this is a POST rather than a setting. Drop the licence JSON next to
+  # this file as raven-license.json (gitignored); without it this container exits
+  # non-zero and the demo runs AGPL/restricted, as it always has.
+  spark-raven-license:
+    image: curlimages/curl:8.11.1
+    depends_on:
+      - spark-raven
+    volumes:
+      - ./raven-license.json:/raven-license.json:ro
+    networks:
+      - spark-internal
+    # spark-raven has no healthcheck to wait on, so retry through its startup.
+    command:
+      - "-sS"
+      - "-f"
+      - "--retry"
+      - "20"
+      - "--retry-delay"
+      - "3"
+      - "--retry-connrefused"
+      - "-X"
+      - "POST"
+      - "-H"
+      - "Content-Type: application/json"
+      - "--data-binary"
+      - "@/raven-license.json"
+      - "http://spark-raven:8080/admin/license/activate"
+    restart: "no"
 
   spark-app:
     image: ghcr.io/mintplayer/mintplayer.spark/webhooks-demo:master
