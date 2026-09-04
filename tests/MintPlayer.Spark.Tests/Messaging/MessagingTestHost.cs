@@ -67,7 +67,7 @@ internal sealed class MessagingTestHost : IAsyncDisposable
     public MessageLanePump StartLane(string laneName)
     {
         var pump = new MessageLanePump(
-            registry.PlanFor(laneName), store, Processor, Clock, NullLogger.Instance);
+            registry.PlanFor(laneName, Options.Value), store, Processor, Clock, NullLogger.Instance);
 
         pumps.Add(pump);
         _ = Task.Run(() => pump.RunAsync(cancellation.Token), CancellationToken.None);

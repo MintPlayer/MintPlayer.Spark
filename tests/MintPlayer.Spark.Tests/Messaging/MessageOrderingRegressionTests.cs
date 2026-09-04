@@ -111,9 +111,16 @@ public class MessageOrderingRegressionTests : SparkTestDriver
             log.IndexOf("exit:slow-1"),
             $"the slow partition must stay ordered — observed [{string.Join(", ", log)}]");
 
-        // Across partitions it does not: the unrelated build ran while the other was parked.
+        // Across partitions it does not: the unrelated build finished before the parked partition's
+        // head was even retried.
+        //
+        // Measured against the RETRY (the last `enter:slow-1`) rather than against `enter:slow-2`,
+        // because "the unrelated partition completed before the blocked one was retried" IS the
+        // isolation property, stated directly. Comparing against slow-2 would also hold, but only
+        // as a consequence — and it depends on when the park elapses, which is one more moving part
+        // than the assertion needs.
         log.IndexOf("exit:fast-1").Should().BeLessThan(
-            log.IndexOf("enter:slow-2"),
+            log.LastIndexOf("enter:slow-1"),
             $"an unrelated partition must not wait for a parked one — observed [{string.Join(", ", log)}]");
     }
 

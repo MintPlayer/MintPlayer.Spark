@@ -110,14 +110,8 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 
     private MessageLanePump PumpFor(string laneName) => pumps.GetOrAdd(laneName, name =>
     {
-        var messagingOptions = options.Value;
         var pump = new MessageLanePump(
-            lanes.PlanFor(
-                name,
-                defaultSchedule: messagingOptions.ResolvedDefaultRetry,
-                overrideSchedule: string.IsNullOrWhiteSpace(messagingOptions.RetryOverride)
-                    ? null
-                    : RetrySchedule.Ladder(messagingOptions.RetryOverride)),
+            lanes.PlanFor(name, options.Value),
             DocumentStore,
             processor,
             timeProvider,

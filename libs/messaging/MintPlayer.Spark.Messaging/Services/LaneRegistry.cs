@@ -39,6 +39,22 @@ internal sealed class LaneRegistry
     /// partition key would serialize everything on one key — the exact failure this design exists to
     /// prevent — so the default has to be the mode that cannot be silently wrong.
     /// </remarks>
+    /// <summary>
+    /// The plan for a lane, with the configured default and global override applied.
+    /// </summary>
+    /// <remarks>
+    /// The single place options turn into a schedule. It lived in the feeder once, which meant any
+    /// other path that built a pump silently ignored <c>RetryOverride</c> — the one switch whose whole
+    /// purpose is that it cannot be missed.
+    /// </remarks>
+    public LanePlan PlanFor(string laneName, SparkMessagingOptions options)
+        => PlanFor(
+            laneName,
+            defaultSchedule: options.ResolvedDefaultRetry,
+            overrideSchedule: string.IsNullOrWhiteSpace(options.RetryOverride)
+                ? null
+                : RetrySchedule.Ladder(options.RetryOverride));
+
     public LanePlan PlanFor(string laneName, IRetrySchedule? defaultSchedule = null, IRetrySchedule? overrideSchedule = null)
     {
         var plan = declarations.TryGetValue(laneName, out var declaration)
