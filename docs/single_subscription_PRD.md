@@ -212,16 +212,69 @@ var window = await session.Query<SparkMessage, SparkMessages_ByQueue>()
     .Customize(x => x.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
     .Where(m => m.QueueName == lane
              && (m.Status == Pending || m.Status == Failed)
-             && (m.NextAttemptAtUtc == null || m.NextAttemptAtUtc <= now)
-             && !excluded.Contains(m.PartitionKey))     // → RQL `not in`
+             && (m.VisibleAtUtc == null || m.VisibleAtUtc <= now)   // delayed broadcast only
+             && !excluded.Contains(m.PartitionKey))                // → RQL `not in`
     .OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id)
     .Take(256).ToListAsync(ct);
 
 var seen = new HashSet<string>(StringComparer.Ordinal);
 foreach (var msg in window)
-    if (seen.Add(msg.PartitionKey) && inFlight.Count < maxPartitionsInFlight)
-        Dispatch(msg);                                   // this is its partition's head
+    if (seen.Add(msg.PartitionKey))                      // this IS the partition's head
+    {
+        if (msg.NextAttemptAtUtc > now) Park(msg);       // not due → the partition is blocked
+        else if (inFlight.Count < maxPartitionsInFlight) Dispatch(msg);
+    }
 ```
+
+**The retry due-check is deliberately client-side.** Putting `NextAttemptAtUtc <= now` in the `WHERE`
+would filter a *parked head* out of the result set, so the next-oldest message of that partition
+would become "the first row for that partition" and be dispatched — reintroducing the §8.1 overtake
+bug. Correctness would then depend on the pump *remembering* the park, contradicting §5.5's cache
+invariant and making "let the drain rediscover it" unsafe. With the check client-side,
+**"first row = head" holds unconditionally** and parked-ness is rediscovered from the document rather
+than remembered.
+
+`VisibleAtUtc` is a different field with the opposite meaning and therefore stays server-side — see
+§5.4.1.
+
+### 5.4.1 Two fields, because the meanings are opposite
+
+A *delayed* message and a *backing-off* message both have a future timestamp, and the design needs
+them treated in opposite ways:
+
+| Field | Meaning | Filtered | Blocks its partition? |
+|---|---|---|---|
+| `NextAttemptAtUtc` | retry backoff | client-side, on the head | **Yes** — that is the §8.1 fix |
+| `VisibleAtUtc` | delayed broadcast | server-side, in the drain | **No** — a delay is scheduling, not dependency |
+
+Blocking on a delay would mean `DelayBroadcastAsync(m, 5m)` silently freezes everything in `m`'s
+partition for five minutes, which no caller could intend. Splitting the field also fixes a latent
+bug: today `DelayBroadcastAsync` writes `NextAttemptAtUtc`, so a delayed-but-never-attempted message
+is treated as though it were already on a retry rung.
+
+**What the docs promise:** within a partition, two messages both broadcast *without* a delay are
+processed in broadcast order, and none is started while an older unfinished non-delayed message of
+that partition exists. **No ordering is promised between a delayed message and messages broadcast
+during its delay window** — for "run X, then Y five minutes later", broadcast Y from X's handler.
+(`LaneOrderMonitor` must exclude not-yet-visible messages, or it reports false violations.)
+
+### 5.4.2 `ParkHorizon` — how long to hold a park in memory
+
+The durable write is unconditional: a failed handler always persists `Status`/`NextAttemptAtUtc`
+*before* anything happens in memory (§2.1.2). So the in-memory timer is only an accelerator and a
+restart costs at most one drain — the delay length has nothing to do with restart survival.
+
+> **`ParkHorizon`, default 60 s** (≈2× the idle drain interval, per-lane overridable).
+> - `delay ≤ ParkHorizon` → **park in memory**: stay in `excluded`, ring the doorbell on a
+>   `TimeProvider` timer at `NextAttemptAtUtc`. Preserves rung fidelity for the whole default ladder.
+> - `delay > ParkHorizon` → **forget the partition entirely**: drop from `parked` and `excluded`, arm
+>   no timer, free the slot. The idle drain rediscovers it and parks or dispatches as due — at worst
+>   one idle interval late (negligible on 1 h / 1 d / 7 d rungs).
+
+A park timer rings the doorbell; it never blocks the pump loop. The payoff is on §5.6: long ladders
+now cost **zero** memory and zero `not in` terms, so a lane on a 7-day ladder cannot exhaust the
+parked set while perfectly healthy, and degraded mode sharpens into what it should mean — *this lane
+is failing fast, right now*.
 
 Pushing `excluded` **into the query** rather than filtering client-side is what prevents window
 starvation — otherwise 256 messages of blocked partitions hide every runnable one. That is why the cap
@@ -290,6 +343,38 @@ partitioning *buys headroom* on the PRD's most fragile assumption. And clock ske
 issue `CreatedAtUtc = max(UtcNow, lastIssued + 1 tick)` under one `Interlocked`, removing intra-process
 inversion and ties, which demotes the hilo-monotonicity assumption to a backstop.
 
+### 5.8 Concurrency defaults, and two invariants CodeCoverage silently relies on
+
+**Framework default for an `Ordered` lane that declares nothing:
+`Math.Clamp(Environment.ProcessorCount / 2, 1, 4)`** — a fixed literal is a guess against an unknown
+machine, and a 1-vCPU VPS must never get 4.
+
+**`coverage-parse-session`: start at `MaxPartitionsInFlight(2)`**, raised only after measurement.
+`ParseSessionRecipient.ReadAttachmentText` holds the gzip `byte[]`, a `MemoryStream` copy, the
+decompressed `byte[]` and a UTF-16 `string` simultaneously — ~4× the report size, all on the LOH — and
+then parses while the string is still alive. Parsing is CPU-bound, so on a small host four concurrent
+parses do not raise throughput; they stretch each parse's wall clock, widening the reaper's lease
+window for no gain. Two prerequisites before raising it: stream the attachment through `GZipStream`
+straight into the parser (that removes the 4× multiplier and buys more than any concurrency setting),
+and give `coverage-app` a `mem_limit`/`cpus` in `docker-compose.yml` — until the container has a
+declared budget, Server GC sizes itself against the whole VPS and every concurrency default is
+unfalsifiable, with RavenDB co-resident on the same host.
+
+Two invariants that must be written down, because the refactor changes *why* they hold:
+
+1. **`ParseSessionRecipient`'s class comment is about to become false.** It says the read-modify-write
+   on `FileCoverage` needs no locking because "sessions of a queue are processed strictly FIFO
+   (MaxDocsPerBatch=1)" — queue-FIFO is exactly what this design removes. What preserves it afterwards
+   is different and must be stated: two `ParseSessionMessage`s for the same build share partition
+   `BuildId`, and `FileCoverage` ids are `{buildId}/…`, so **distinct partitions touch disjoint
+   document-id spaces**.
+2. **A new concurrency that queue-FIFO used to make unrepresentable.** `AssembleCommitMessage` is on
+   the same lane but partitioned by `CommitId`, so it can now run alongside a `ParseSessionMessage`
+   for a *sibling build of the same commit*. It is safe only because
+   `CommitAssembler.LoadContributingBuilds` filters `.Where(b => b.Status == "Finalized")` and a build
+   mid-parse is not finalized. The race is closed by an incidental predicate, not by the partitioning
+   — so it needs a test, or deleting that `.Where` silently reintroduces it.
+
 ## 6. Retry policy (per queue)
 
 **Code owns the policy *name*; ops owns the *numbers*.** Whether email retries slowly is a code fact;
@@ -313,22 +398,106 @@ unreachable — **unrepresentable**. The ladder *is* the schedule.
 with a constant while **keeping each queue's attempt count**, so tests still exercise the real
 dead-letter path.
 
-**The array-append trap is designed out:** config is dictionary-shaped, and a ladder is a **scalar
-string** (`"1m 5m 1h"` — replaced by the binder, where a `TimeSpan[]` would be appended to).
-`BackoffDelays` / `DefaultBackoffDelays` / `ResolvedBackoffDelays` disappear.
+**The array trap is designed out**, and it is worse than previously recorded. Measured against
+`Microsoft.Extensions.Configuration` (JSON + env + binder), a `TimeSpan[]` fails **three** ways:
 
-**One decision point.** The worker computes a delay in its outer catch (`:297`), again in
-`RollupMessageStatus` (`:336`, from the max *handler* attempt), and decides dead-lettering in the
-handler loop — three sites, two counters, already drifted. They collapse into
-`IRetrySchedule.Next(...)` returning `RetryAt | DeadLetter(reason)`. Unifying these is roughly half
-the value of this work. `SparkMessage.MaxAttempts` — a policy snapshot taken at broadcast — is
-deleted, or `RetryOverride` would not reach in-flight messages.
+| Trap | Observed |
+|---|---|
+| Non-empty default survives binding | default `[5s,30s,2m]` + JSON `["1m","5m"]` → **5 elements** |
+| **Two config layers overlay element-wise** | base `[1m,5m,1h]` + override `[7s]` → **`[7s,5m,1h]`** — a ladder nobody wrote |
+| **Re-binding the same object doubles it** | `[1m,5m]` bound twice → **`[1m,5m,1m,5m]`** |
+
+The second is the dangerous one: it needs no non-empty initializer at all, so a shorter
+`appsettings.Production.json` override silently inherits the tail of the base. A **scalar string** is
+immune to all three — replaced by the last source, idempotent under re-bind, no element positions to
+overlay. `BackoffDelays` / `DefaultBackoffDelays` / `ResolvedBackoffDelays` disappear.
+
+Two further measured facts. **"Policies taken whole" is not what the binder does by default**: it
+reuses an existing dictionary entry *object* and merges fields into it, so a partial override of a
+key the code seeded keeps the code's other fields while a newly-introduced key gets nulls. To mean
+what §6 says, bind config into a **fresh** dictionary and resolve `configured[name] ?? codeDefault[name]`
+at read time. And **env keys bind case-insensitively**
+(`…RetryPolicies__email__delays` → `Delays`), so build the policy dictionary with
+`StringComparer.OrdinalIgnoreCase` and document the lowercase form ops will actually type.
+
+**One decision point**, deliberately narrow:
+
+```csharp
+public interface IRetrySchedule
+{
+    /// <param name="attempt">Attempts already made, INCLUDING the one that just failed. 1-based.</param>
+    RetryDecision Next(int attempt);
+}
+public abstract record RetryDecision
+{
+    public sealed record RetryAfter(TimeSpan Delay) : RetryDecision;
+    public sealed record DeadLetter(string Reason)  : RetryDecision;
+}
+```
+
+No clock (returning a *delay* keeps the schedule a pure value — constructible from config, printable
+in the startup table, and testable with no server and no fake clock); no exception (non-retryability
+is already a separate working concern); no queue name (the instance is already resolved per lane).
+
+**The schedule is per message; the attempt counter and the dead-letter decision stay per handler**,
+and the message's `NextAttemptAtUtc` is the **`max`** over retrying handlers. Per-handler *timing* is
+unobservable under `Ordered` — the partition unblocks only when the last handler is terminal, so the
+moment it frees is the `max` either way — and per-handler policy would need a declaration surface
+that contradicts "ops owns the numbers" (ops cannot name a CLR type in appsettings). `max` not `min`:
+handlers can sit on different rungs, and `min` would shorten a ladder and invalidate the
+`MaxPartitionBlock` sum.
+
+This collapses the three drifted sites: `:266`'s `>= MaxAttempts` becomes
+`schedule.Next(++handler.AttemptCount) is DeadLetter`; `:336` becomes `now + max(delay)`; `:297` uses
+the same schedule with the message-level counter. `SparkMessage.MaxAttempts` — a policy snapshot
+taken at broadcast — is deleted, or `RetryOverride` would not reach in-flight messages.
 
 **Ladder exhaustion dead-letters; it does not clamp** (`RepeatingLastRung` is opt-in). **Jitter**
 defaults to 0, only ever shortens, and is rejected on `Ladder`; it earns its place across lanes — five
 lanes backing off against one GitHub 5xx — not within one.
 
 **New default:** `Ladder("5s 30s 2m")`, worst case ≈2m35s, every rung reachable.
+
+### 6.1 One pump, not two
+
+**`Concurrent(n)` is exactly `Ordered` with the partition key set to the message's own id and
+`MaxPartitionsInFlight = n`.** Every message its own partition ⇒ no two share a partition ⇒ no
+ordering constraint ⇒ up to `n` in flight ⇒ the exclusion set is a set of message ids, which is
+precisely "exclude in-flight messages". `Unbounded()` is the same with a large ceiling. That is not a
+coincidence — it is the far end of the cardinality axis §5.0 argues from.
+
+Implementation: unordered lanes write `PartitionKey = ""` and the pump substitutes the document id.
+One `if`, in one place. The builder types stay separate — that is where "illegal states unspellable"
+lives — but both compile down to one `LanePlan` and one pump.
+
+The `Ordered` pump is the *deeper* module: same interface width, strictly more hidden (ordered
+window, first-row scan, park/wake, exclusion, degraded mode, recovery). A separate `Concurrent` pump
+would implement a subset behind an interface of equal width — the textbook signal for
+parameterization over a second class. And with one implementation, every `Concurrent` lane in every
+demo app is extra coverage for the `Ordered` path; with two, the rarer one rots. This repo has
+already paid for that failure mode once.
+
+### 6.2 Requeue semantics
+
+A requeue **re-enters at requeue time**, as a new broadcast of an old payload. Rewinding
+`CreatedAtUtc` would re-order a partition around a document the invariant has already stepped past,
+and produce a state the head-scan is not designed for (a `Pending` row older than `Completed` rows in
+its partition). Entering as the *youngest* message means it can never displace anything, by
+construction. Issue the new `CreatedAtUtc` through the same monotonic counter; keep the original in
+`OriginallyCreatedAtUtc`.
+
+Message: `Status → Pending`; `NextAttemptAtUtc`, `CompletedAtUtc → null`; message-level
+`AttemptCount → 0`; **`@metadata.@expires` removed** — the single easiest field to forget and the only
+one whose omission loses data, since a dead-lettered message was stamped for retention deletion.
+`PayloadJson`, `MessageType`, `QueueName`, `PartitionKey` **untouched** — never re-run the selector,
+or a changed selector moves the message between partitions. Handler list membership untouched — do
+not re-derive from DI.
+
+Per handler, **only where `Failed` or `DeadLettered`**: `Status → Pending`, `AttemptCount → 0`,
+`LastError → null`, and **`Checkpoint` kept** (that is §2.1.5 — a long handler resumes rather than
+restarts; `resetCheckpoints: true` for when the checkpoint is the problem). Handlers already
+`Completed` are untouched in every field — the §2.1 guarantee, enforced here as well as at
+`:162-166`. Refuse a requeue while `Processing`; a requeue of an already-`Pending` message is a no-op.
 
 ## 7. Folding sync actions in — required, not optional
 
