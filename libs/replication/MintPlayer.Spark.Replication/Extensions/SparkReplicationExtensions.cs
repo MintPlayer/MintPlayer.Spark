@@ -1,13 +1,12 @@
+using MintPlayer.Spark.Replication.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Services;
-using MintPlayer.Spark.Replication.Workers;
 using Raven.Client.Documents;
 using System.Reflection;
 
@@ -42,13 +41,12 @@ internal static class SparkReplicationExtensions
         // certificate, which is why PerTargetOverrides was documented but did nothing (F5).
         services.AddSingleton<IReplicationHttpClientProvider, ReplicationHttpClientProvider>();
 
-        // Sync action services
+        // Sync action services. A sync action is a message: it travels on the shared messaging
+        // subscription, and retry, backoff, dead-lettering and retention all come from there. The
+        // dedicated subscription worker and its sweeper are gone, along with the second RavenDB
+        // subscription they cost — which matters because the licence allows three per database.
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
-        services.AddHostedService<SyncActionSubscriptionWorker>();
-
-        // Without this, a retry is scheduled and then never delivered: the subscription only
-        // re-evaluates a document that gets written, and a backoff elapsing writes nothing. See #258.
-        services.AddHostedService<SyncActionRetrySweeper>();
+        services.DeclareSyncActionLane();
 
         return services;
     }
@@ -67,8 +65,6 @@ internal static class SparkReplicationExtensions
         var collector = app.Services.GetRequiredService<EtlScriptCollector>();
         var appStore = app.Services.GetRequiredService<IDocumentStore>();
 
-        // Deploy the SparkSyncActions index
-        new SparkSyncActions_ByStatus().Execute(appStore);
 
         // Run registration and ETL deployment asynchronously to not block startup
         _ = Task.Run(async () =>

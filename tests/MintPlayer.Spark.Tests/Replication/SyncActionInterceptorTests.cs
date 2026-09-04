@@ -5,17 +5,41 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Models;
+using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Replication;
 
-public class SyncActionInterceptorTests : SparkTestDriver
+public class SyncActionInterceptorTests
 {
+    /// <summary>Captures what the interceptor broadcasts, so no server is needed.</summary>
+    private sealed class RecordingBus : IMessageBus
+    {
+        public List<SyncActionMessage> Sent { get; } = [];
+
+        public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        {
+            if (message is SyncActionMessage sync) Sent.Add(sync);
+            return Task.CompletedTask;
+        }
+
+        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
+
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
+
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
+    }
+
+    private readonly RecordingBus bus = new();
+
     private SyncActionInterceptor NewInterceptor(string moduleName = "Fleet") =>
-        new(Store, Options.Create(new SparkReplicationOptions
+        new(bus, Options.Create(new SparkReplicationOptions
         {
             ModuleName = moduleName,
             ModuleUrl = "https://localhost:5001",
@@ -43,10 +67,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         stored.Actions.Should().ContainSingle();
         var action = stored.Actions[0];
         action.ActionType.Should().Be(SyncActionType.Insert);
@@ -69,10 +90,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         var action = stored.Actions[0];
         action.ActionType.Should().Be(SyncActionType.Update);
         action.DocumentId.Should().Be("cars/1");
@@ -86,10 +104,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var interceptor = NewInterceptor();
 
         await interceptor.HandleDeleteAsync(typeof(ReplicatedCarFromFleet), "cars/42");
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         var action = stored.Actions[0];
         action.ActionType.Should().Be(SyncActionType.Delete);
         action.DocumentId.Should().Be("cars/42");
@@ -113,10 +128,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         // Falls back to GetPropertyNames(ReplicatedCarFromFleet) which is [Plate] (Id excluded)
         stored.Actions[0].Properties.Should().Equal("Plate");
     }
@@ -142,10 +154,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
 
         stored.Actions[0].Properties.Should().BeEquivalentTo(["Plate"],
             because: "Display is get-only and InternalToken is [IgnoreProperty]; neither may be written");
@@ -170,23 +179,26 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         var data = stored.Actions[0].Data!;
+
+        // What the normalizer itself produces: plain CLR values, never JsonElement. That is the half
+        // of this test's name that matters here, and it is now observed directly rather than through
+        // a database round-trip.
         data["S"].Should().Be("hi");
-
-        // 42L, not 42. The normalizer hands back an int (TryGetInt32 wins first), but the value is
-        // then stored and re-read through RavenDB, whose Newtonsoft deserialization widens any JSON
-        // integer to long on the way out of an object-typed property. What a consumer of Data
-        // actually receives is a boxed long, so that is what this pins.
-        //
-        // FluentAssertions compared boxed numerics by value and let Be(42) pass, which meant this
-        // test never checked the half of its own name that says "to plain .NET types".
-        data["I"].Should().Be(42L);
-
+        data["I"].Should().Be(42);
         data["B"].Should().Be(true);
+        data.Values.Should().NotContain(v => v is JsonElement, "a JsonElement would not survive transport");
+
+        // What a recipient actually receives is a boxed LONG, because the message is serialized to
+        // the document and deserialized back through Newtonsoft, which widens any JSON integer on the
+        // way out of an object-typed property. Pinned by round-tripping through the same serializer
+        // the bus uses, so the transport's effect stays covered now that the interceptor is tested
+        // without a server.
+        var roundTripped = Newtonsoft.Json.JsonConvert.DeserializeObject<SyncActionMessage>(
+            Newtonsoft.Json.JsonConvert.SerializeObject(stored))!;
+
+        roundTripped.Actions[0].Data!["I"].Should().Be(42L);
     }
 
     [Fact]
@@ -212,13 +224,13 @@ public class SyncActionInterceptorTests : SparkTestDriver
         var interceptor = NewInterceptor(moduleName: "CurrentModule");
 
         await interceptor.HandleDeleteAsync(typeof(ReplicatedCarFromFleet), "cars/1");
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        var stored = bus.Sent.Single();
         stored.OwnerModuleName.Should().Be("Fleet");
         stored.RequestingModule.Should().Be("CurrentModule");
-        stored.Status.Should().Be(ESyncActionStatus.Pending);
+
+        // RequestingModule is checked against the caller's client certificate by the owner, so it is
+        // part of the security contract rather than a label.
+        stored.DocumentId.Should().Be("cars/1", "the document id is the ordering domain for this lane");
     }
 
     [Fact]
@@ -240,10 +252,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];
+                var action = bus.Sent.Single().Actions[0];
 
         action.Properties.Should().Equal("Plate");
         action.Data!.Should().NotContainKey("InternalToken");
@@ -264,10 +273,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         };
 
         await interceptor.HandleSaveAsync(car, "cars/7");
-        await Store.WaitForIndexingAsync();
-
-        using var session = Store.OpenAsyncSession();
-        var action = (await session.Query<SparkSyncAction>().SingleAsync()).Actions[0];
+                var action = bus.Sent.Single().Actions[0];
 
         action.Properties.Should().Equal("Plate");
         action.Data!.Should().ContainKey("Plate");

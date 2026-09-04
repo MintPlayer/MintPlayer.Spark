@@ -1,23 +1,24 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Models;
 using Raven.Client.Documents;
 using System.Text.Json;
 
 namespace MintPlayer.Spark.Replication.Services;
 
 /// <summary>
-/// Intercepts write operations on replicated entities and stores SparkSyncAction
-/// documents directly in RavenDB for processing by the subscription worker.
+/// Intercepts writes to replicated entities and broadcasts each one to the module that owns the
+/// collection, on the <c>spark-sync</c> lane, ordered per document.
 /// </summary>
 internal partial class SyncActionInterceptor : ISyncActionInterceptor
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
     [Inject] private readonly ILogger<SyncActionInterceptor> logger;
 
@@ -142,22 +143,21 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
             collection, documentId, attr.SourceModule);
     }
 
-    private async Task DispatchAsync(string ownerModuleName, string collection, SyncAction action)
-    {
-        var syncActionDoc = new SparkSyncAction
+    private Task DispatchAsync(string ownerModuleName, string collection, SyncAction action)
+        // Was a bespoke SparkSyncAction document drained by its own subscription, its own sweeper and
+        // its own retry engine. It is a message, so it is now sent as one: retry, backoff,
+        // dead-lettering and retention come from messaging, and replication keeps only the part that
+        // was ever its own — where to POST it and which HTTP results deserve another attempt.
+        => messageBus.BroadcastAsync(new SyncActionMessage
         {
             OwnerModuleName = ownerModuleName,
             RequestingModule = Options.ModuleName,
             Collection = collection,
+            // The ordering domain. Writes to one document reach the owner in the order they were
+            // made; writes to different documents never wait for each other.
+            DocumentId = action.DocumentId ?? string.Empty,
             Actions = [action],
-            Status = ESyncActionStatus.Pending,
-            CreatedAtUtc = DateTime.UtcNow,
-        };
-
-        using var session = documentStore.OpenAsyncSession();
-        await session.StoreAsync(syncActionDoc);
-        await session.SaveChangesAsync();
-    }
+        });
 
     /// <summary>
     /// Converts JsonElement values (from Spark's JSON deserialization) to plain .NET types
