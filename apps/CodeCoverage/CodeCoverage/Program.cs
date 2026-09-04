@@ -157,7 +157,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // plus the framework's, against a licence that allows three subscriptions per database — so three
     // were silently never created. That is why the pull-request comment never appeared on `opened`,
     // and why coverage-delete-pr-builds had never run at all.
-    spark.AddMessaging(configure: null, lanes: lanes =>
+    spark.AddMessaging(configure: null, messaging: messaging => messaging.AddLane(lanes =>
     {
         // Ordering here is load-bearing and is scoped to a BUILD, not to the lane: finalize must not
         // overtake the parses of its own build, or it closes on a half-computed number and publishes
@@ -197,7 +197,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             .Ordered()
             .PartitionBy<GitHubWebhookMessage>(m => m.RepositoryFullName)
             .MaxPartitionsInFlight(8);
-    });
+    }));
     spark.AddRecipients();
     spark.AddCronJobs();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are

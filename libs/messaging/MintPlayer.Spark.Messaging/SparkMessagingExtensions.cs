@@ -12,18 +12,17 @@ internal static class SparkMessagingExtensions
     internal static IServiceCollection AddSparkMessaging(
         this IServiceCollection services,
         Action<SparkMessagingOptions>? configure = null,
-        Action<IMessagingLaneBuilder>? lanes = null)
+        Action<ISparkMessagingBuilder>? messaging = null)
     {
         if (configure != null)
         {
             services.Configure(configure);
         }
 
-        var registry = new LaneRegistry();
-        var laneBuilder = new MessagingLaneBuilder(registry);
-        lanes?.Invoke(laneBuilder);
-        services.AddSingleton(registry);
-        services.AddSingleton(laneBuilder);
+        // Lane declarations are ordinary singleton registrations resolved on first use, so a lane can
+        // be configured from anything the container holds and registration order does not matter.
+        services.AddSingleton<ILaneRegistry, LaneRegistry>();
+        messaging?.Invoke(new SparkMessagingBuilder(services));
 
         // Every scheduled delay in messaging goes through TimeProvider so tests can drive backoff
         // with a fake clock instead of sleeping through it. TryAdd: the host may already have one.
@@ -92,12 +91,11 @@ internal static class SparkMessagingExtensions
     /// </remarks>
     private static void ValidateAndReportLanes(IServiceProvider services)
     {
-        var registry = services.GetRequiredService<LaneRegistry>();
-        var laneBuilder = services.GetRequiredService<MessagingLaneBuilder>();
+        var registry = services.GetRequiredService<ILaneRegistry>();
         var discovery = services.GetRequiredService<MessageLaneDiscovery>();
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("MintPlayer.Spark.Messaging");
 
-        registry.Validate(discovery.MessageTypes(), laneBuilder.PartitionBlockBudget);
+        registry.Validate(discovery.MessageTypes());
 
         foreach (var laneName in discovery.DiscoverLaneNames().Concat(registry.DeclaredLanes)
                      .Distinct(StringComparer.OrdinalIgnoreCase).Order())

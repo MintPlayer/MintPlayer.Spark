@@ -1,91 +1,115 @@
+using MintPlayer.SourceGenerators.Attributes;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
-/// <summary>
-/// Collects lane declarations while the application is being configured, then resolves them into
-/// <see cref="LanePlan"/>s and validates the result.
-/// </summary>
-internal sealed class LaneRegistry
+internal interface ILaneRegistry
 {
-    private readonly Dictionary<string, LaneDeclaration> declarations = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The resolved plan for a lane, including defaults for lanes nobody declared.</summary>
+    LanePlan PlanFor(string laneName);
 
-    /// <summary>
-    /// Which lane a message type belongs to, learned from the types named in <c>PartitionBy</c> and
-    /// from recipient discovery. Used to validate that every type on an ordered lane has a selector.
-    /// </summary>
-    private readonly Dictionary<Type, string> laneByMessageType = [];
+    /// <summary>The ordering domain of one message, or <see langword="null"/> on an unordered lane.</summary>
+    string? PartitionKeyFor(string laneName, Type messageType, object message);
 
-    public IQueueBuilder Declare(string laneName)
+    IReadOnlyCollection<string> DeclaredLanes { get; }
+
+    /// <summary>Throws on a configuration that cannot work. Called once at startup.</summary>
+    void Validate(IEnumerable<Type> knownMessageTypes);
+}
+
+/// <summary>
+/// Resolves lane declarations from the container, once, on first use.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Why lazily, rather than during <c>AddMessaging</c>.</b> Declarations used to be built while the
+/// service collection was still being assembled, which meant a lane could not be configured from
+/// anything the application had registered, and a framework package had to reach into
+/// <see cref="IServiceCollection"/> to find an already-constructed registry — making the result
+/// depend on the order the <c>Add…</c> calls ran in, silently. Now every declaration arrives as an
+/// <see cref="ILaneConfigurator"/> registration, so order does not matter and a configurator may
+/// inject whatever it needs.
+/// </para>
+/// <para>
+/// <b>Why singleton, when the configurators are resolved from a provider.</b> What a lane declares is
+/// process-wide: a name, a mode, a concurrency limit, a schedule. Building it late is useful;
+/// keeping it short-lived is not, and caching per-scope objects beyond their scope would be a
+/// captive-dependency bug. Per-request state belongs in <i>handlers</i>, which are scoped and
+/// resolved per message.
+/// </para>
+/// </remarks>
+internal sealed partial class LaneRegistry : ILaneRegistry
+{
+    [Inject] private readonly IServiceProvider services;
+    [Inject] private readonly IOptions<SparkMessagingOptions> options;
+
+    private Lazy<Declarations> declarations = null!;
+
+    /// <summary>Plans are pure functions of the declarations, so they are worth caching.</summary>
+    private readonly ConcurrentDictionary<string, LanePlan> planCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <remarks>
+    /// The <see cref="Lazy{T}"/> cannot be a field initialiser because it closes over an instance
+    /// method, so it is built here — after injection completes — rather than in a hand-written
+    /// constructor.
+    /// <para>
+    /// <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/>: configurators run exactly once
+    /// however many threads arrive together, and they will — the feeder starts lanes while the first
+    /// broadcast is already resolving a partition key.
+    /// </para>
+    /// </remarks>
+    [PostConstruct]
+    private void InitializeDeclarations()
+        => declarations = new Lazy<Declarations>(Build, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private Declarations Build()
     {
-        if (declarations.ContainsKey(laneName))
-            throw new InvalidOperationException(
-                $"Lane '{laneName}' is declared twice. Each lane must be declared exactly once, so that "
-                + "its delivery mode and retry policy have a single owner.");
+        var builder = new LaneBuilder();
 
-        var declaration = new LaneDeclaration(laneName);
-        declarations[laneName] = declaration;
-        return declaration;
+        // Resolved from the root provider: a configurator is a singleton, so it may inject singletons
+        // and options but not scoped services — which is correct, because a lane's declaration is not
+        // request-shaped.
+        foreach (var configurator in services.GetServices<ILaneConfigurator>())
+            configurator.Configure(builder);
+
+        return builder.Build();
     }
 
-    public void BindMessageTypeToLane(Type messageType, string laneName) => laneByMessageType[messageType] = laneName;
+    public IReadOnlyCollection<string> DeclaredLanes => [.. declarations.Value.Lanes.Keys];
 
-    /// <summary>
-    /// Produces the plan for a lane, applying defaults for lanes nobody declared.
-    /// </summary>
-    /// <remarks>
-    /// An undeclared lane is <b>concurrent</b>, never ordered. A silently-ordered lane with no
-    /// partition key would serialize everything on one key — the exact failure this design exists to
-    /// prevent — so the default has to be the mode that cannot be silently wrong.
-    /// </remarks>
-    /// <summary>
-    /// The plan for a lane, with the configured default and global override applied.
-    /// </summary>
-    /// <remarks>
-    /// The single place options turn into a schedule. It lived in the feeder once, which meant any
-    /// other path that built a pump silently ignored <c>RetryOverride</c> — the one switch whose whole
-    /// purpose is that it cannot be missed.
-    /// </remarks>
-    public LanePlan PlanFor(string laneName, SparkMessagingOptions options)
-        => PlanFor(
-            laneName,
-            defaultSchedule: options.ResolvedDefaultRetry,
-            overrideSchedule: string.IsNullOrWhiteSpace(options.RetryOverride)
-                ? null
-                : RetrySchedule.Ladder(options.RetryOverride));
-
-    public LanePlan PlanFor(string laneName, IRetrySchedule? defaultSchedule = null, IRetrySchedule? overrideSchedule = null)
+    public LanePlan PlanFor(string laneName) => planCache.GetOrAdd(laneName, name =>
     {
-        var plan = declarations.TryGetValue(laneName, out var declaration)
-            ? declaration.ToPlan(defaultSchedule ?? RetrySchedule.Default)
+        var messagingOptions = options.Value;
+
+        var overrideSchedule = string.IsNullOrWhiteSpace(messagingOptions.RetryOverride)
+            ? null
+            : RetrySchedule.Ladder(messagingOptions.RetryOverride);
+
+        var plan = declarations.Value.Lanes.TryGetValue(name, out var declaration)
+            ? declaration.ToPlan(messagingOptions.ResolvedDefaultRetry)
+            // An undeclared lane is CONCURRENT, never ordered. A silently-ordered lane with no
+            // partition key would put every message into one partition and serialize the whole lane —
+            // the exact failure partitioning exists to prevent — so the default has to be the mode
+            // that cannot be silently wrong.
             : new LanePlan
             {
-                LaneName = laneName,
+                LaneName = name,
                 Ordered = false,
                 MaxInFlight = 1,
-                Retry = defaultSchedule ?? RetrySchedule.Default,
+                Retry = messagingOptions.ResolvedDefaultRetry,
             };
 
-        // The override is applied last and wins over everything, because its whole purpose is to be
-        // one switch that reaches every lane — a test environment cannot be asked to restate each
-        // lane's schedule.
+        // Applied last, because the override's whole purpose is to be one switch that reaches every
+        // lane: a test environment cannot be asked to restate each lane's schedule.
         return overrideSchedule is null ? plan : plan with { Retry = overrideSchedule };
-    }
+    });
 
-    public IReadOnlyCollection<string> DeclaredLanes => declarations.Keys;
-
-    /// <summary>
-    /// The ordering domain of one message, or <see langword="null"/> on an unordered lane.
-    /// </summary>
-    /// <remarks>
-    /// Runs producer-side, exactly once, and the answer is persisted. A selector must therefore be
-    /// pure over the payload: nothing re-runs it, so one that changed its mind would silently split a
-    /// partition in half.
-    /// </remarks>
     public string? PartitionKeyFor(string laneName, Type messageType, object message)
     {
-        if (!declarations.TryGetValue(laneName, out var declaration) || !declaration.IsOrdered)
+        if (!declarations.Value.Lanes.TryGetValue(laneName, out var declaration) || !declaration.IsOrdered)
             return null;
 
         var key = declaration.PartitionKeyFor(messageType, message);
@@ -99,19 +123,14 @@ internal sealed class LaneRegistry
         return key;
     }
 
-    /// <summary>
-    /// Fails startup when an ordered lane carries a message type with no partition selector.
-    /// </summary>
-    /// <remarks>
-    /// Loud, at startup, naming the type — because the alternative is silent misordering, which is
-    /// only ever noticed as corrupted downstream data.
-    /// </remarks>
-    public void Validate(IEnumerable<Type> knownMessageTypes, TimeSpan maxPartitionBlock)
+    public void Validate(IEnumerable<Type> knownMessageTypes)
     {
+        var resolved = declarations.Value;
+
         foreach (var messageType in knownMessageTypes)
         {
             var laneName = QueueNames.ForMessageType(messageType);
-            if (!declarations.TryGetValue(laneName, out var declaration) || !declaration.IsOrdered)
+            if (!resolved.Lanes.TryGetValue(laneName, out var declaration) || !declaration.IsOrdered)
                 continue;
 
             if (!declaration.HasSelectorFor(messageType))
@@ -121,10 +140,10 @@ internal sealed class LaneRegistry
                     + "lane Concurrent. Without a key the lane cannot know which messages depend on each other.");
         }
 
-        foreach (var declaration in declarations.Values.Where(d => d.IsOrdered))
+        foreach (var declaration in resolved.Lanes.Values.Where(d => d.IsOrdered))
         {
-            var worstCase = declaration.WorstCaseBlock();
-            var budget = declaration.AcceptedBlock ?? maxPartitionBlock;
+            var worstCase = declaration.WorstCaseBlock(options.Value.ResolvedDefaultRetry);
+            var budget = declaration.AcceptedBlock ?? options.Value.MaxPartitionBlock;
 
             if (worstCase > budget)
                 throw new InvalidOperationException(
@@ -132,9 +151,47 @@ internal sealed class LaneRegistry
                     + $"{RetrySchedule.Describe(worstCase)}, beyond the {RetrySchedule.Describe(budget)} ceiling. "
                     + "Under Ordered, a failing head blocks its partition until it succeeds or dead-letters, so the "
                     + "schedule's total IS the partition's downtime. Either shorten the schedule, make the lane "
-                    + $"Concurrent (nothing waits behind a parked message), or call .AcceptPartitionBlock("
+                    + "Concurrent (nothing waits behind a parked message), or call .AcceptPartitionBlock("
                     + $"TimeSpan.FromMinutes({Math.Ceiling(worstCase.TotalMinutes)})) to say the wait is intended.");
         }
+    }
+
+    private sealed record Declarations(IReadOnlyDictionary<string, LaneDeclaration> Lanes);
+
+    /// <summary>Collects declarations while the configurators run.</summary>
+    private sealed class LaneBuilder : ILaneBuilder
+    {
+        private readonly Dictionary<string, LaneDeclaration> lanes = new(StringComparer.OrdinalIgnoreCase);
+
+        public IQueueBuilder Queue<TMessage>() => Declare(QueueNames.ForMessageType(typeof(TMessage)));
+
+        public IQueueBuilder Queue(string laneName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(laneName);
+
+            // The name is no longer interpolated into a subscription query, so RQL injection is not
+            // the risk it was — but a name that reaches configuration keys and metric labels still
+            // has to be a name.
+            if (!QueueNames.IsValid(laneName))
+                throw new ArgumentException(
+                    $"'{laneName}' is not a valid lane name. Lane names must match [A-Za-z0-9._+`-]+.", nameof(laneName));
+
+            return Declare(laneName);
+        }
+
+        private IQueueBuilder Declare(string laneName)
+        {
+            if (lanes.ContainsKey(laneName))
+                throw new InvalidOperationException(
+                    $"Lane '{laneName}' is declared twice. Each lane must be declared exactly once, so that "
+                    + "its delivery mode and retry policy have a single owner.");
+
+            var declaration = new LaneDeclaration(laneName);
+            lanes[laneName] = declaration;
+            return declaration;
+        }
+
+        public Declarations Build() => new(lanes);
     }
 
     private sealed class LaneDeclaration(string laneName) : IQueueBuilder, IOrderedQueueBuilder, IConcurrentQueueBuilder
@@ -210,16 +267,19 @@ internal sealed class LaneRegistry
         public string? PartitionKeyFor(Type messageType, object message)
             => selectors.TryGetValue(messageType, out var selector) ? selector(message) : null;
 
-        /// <summary>The sum of every delay the schedule can impose before it gives up.</summary>
-        public TimeSpan WorstCaseBlock()
+        /// <summary>The sum of every delay this lane's schedule can impose before it gives up.</summary>
+        public TimeSpan WorstCaseBlock(IRetrySchedule defaultSchedule)
         {
+            var schedule = retry ?? defaultSchedule;
             var total = TimeSpan.Zero;
+
             for (var attempt = 1; attempt <= 1000; attempt++)
             {
-                if ((retry ?? RetrySchedule.Default).Next(attempt) is not RetryDecision.RetryAfter retryAfter)
+                if (schedule.Next(attempt) is not RetryDecision.RetryAfter retryAfter)
                     break;
                 total += retryAfter.Delay;
             }
+
             return total;
         }
 

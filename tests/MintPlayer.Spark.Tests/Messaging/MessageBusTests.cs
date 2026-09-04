@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -16,7 +17,20 @@ public class MessageBusTests : SparkTestDriver
     private record OrderShipped(string OrderId);
 
     private IMessageBus NewBus(SparkMessagingOptions? options = null)
-        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()), TimeProvider.System, new MessageSequence(TimeProvider.System), new LaneRegistry());
+    {
+        // No lanes declared: the bus still needs a registry, because it asks for the partition key of
+        // every message it stores. An undeclared lane is unordered, so the answer is null.
+        var resolved = Options.Create(options ?? new SparkMessagingOptions());
+        var services = new ServiceCollection();
+        services.AddSingleton(resolved);
+
+        return new MessageBus(
+            Store,
+            resolved,
+            TimeProvider.System,
+            new MessageSequence(TimeProvider.System),
+            new LaneRegistry(services.BuildServiceProvider(), resolved));
+    }
 
     [Fact]
     public async Task BroadcastAsync_persists_a_SparkMessage_with_inferred_queue_name_and_payload()

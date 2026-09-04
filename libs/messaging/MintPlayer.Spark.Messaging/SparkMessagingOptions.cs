@@ -56,6 +56,18 @@ public class SparkMessagingOptions
     /// <summary>How often to look for messages stranded past <see cref="ProcessingLease"/>.</summary>
     public TimeSpan ReaperInterval { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// The longest an ordered lane's retry schedule may block one partition before startup refuses
+    /// the configuration.
+    /// </summary>
+    /// <remarks>
+    /// A failing head blocks its partition until it succeeds or dead-letters, so a schedule's total
+    /// <i>is</i> that partition's worst-case downtime. A lane that genuinely wants a longer one says
+    /// so explicitly with <c>AcceptPartitionBlock</c>, which is a per-lane decision rather than a
+    /// global one.
+    /// </remarks>
+    public TimeSpan MaxPartitionBlock { get; set; } = TimeSpan.FromMinutes(15);
+
     /// <summary>How long a terminal message is kept before RavenDB expires it.</summary>
     public int RetentionDays { get; set; } = 7;
 }

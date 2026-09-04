@@ -36,7 +36,7 @@ internal sealed class MessagingTestHost : IAsyncDisposable
         IDocumentStore store,
         TimeProvider clock,
         Action<IServiceCollection> registerRecipients,
-        Action<IMessagingLaneBuilder>? lanes = null,
+        Action<ILaneBuilder>? lanes = null,
         SparkMessagingOptions? options = null)
     {
         this.store = store;
@@ -46,12 +46,17 @@ internal sealed class MessagingTestHost : IAsyncDisposable
         registerRecipients(services);
         services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
-        serviceProvider = services.BuildServiceProvider();
 
-        registry = new LaneRegistry();
-        lanes?.Invoke(new MessagingLaneBuilder(registry));
+        // Lanes are declared the way an application declares them — as a registration resolved from
+        // the container — so the host exercises the real path rather than a hand-built registry.
+        if (lanes is not null)
+            services.AddSparkLane(lanes);
 
         Options = Microsoft.Extensions.Options.Options.Create(options ?? new SparkMessagingOptions());
+        services.AddSingleton(Options);
+
+        serviceProvider = services.BuildServiceProvider();
+        registry = new LaneRegistry(serviceProvider, Options);
         Bus = new MessageBus(store, Options, clock, new MessageSequence(clock), registry);
 
         Processor = new MessageProcessor(
@@ -67,7 +72,7 @@ internal sealed class MessagingTestHost : IAsyncDisposable
     public MessageLanePump StartLane(string laneName)
     {
         var pump = new MessageLanePump(
-            registry.PlanFor(laneName, Options.Value), store, Processor, Clock, NullLogger.Instance);
+            registry.PlanFor(laneName), store, Processor, Clock, NullLogger.Instance);
 
         pumps.Add(pump);
         _ = Task.Run(() => pump.RunAsync(cancellation.Token), CancellationToken.None);

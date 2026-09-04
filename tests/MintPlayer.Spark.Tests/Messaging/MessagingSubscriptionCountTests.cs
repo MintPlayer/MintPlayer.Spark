@@ -71,13 +71,16 @@ public class MessagingSubscriptionCountTests : SparkTestDriver
         services.AddSingleton<IRecipient<Derived>>(new Sink<Derived>());
         services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
-        await using var provider = services.BuildServiceProvider();
 
-        var registry = new LaneRegistry();
-        // A fifth lane, declared but with no recipient — the kind a framework package contributes.
-        new MessagingLaneBuilder(registry).Queue("count-framework").Concurrent(1);
+        // A fifth lane, declared but with no recipient — exactly how a framework package contributes
+        // one, and registration order is irrelevant because it is an ordinary service registration.
+        services.AddSparkLane(lanes => lanes.Queue("count-framework").Concurrent(1));
 
         var options = Options.Create(new SparkMessagingOptions());
+        services.AddSingleton(options);
+
+        await using var provider = services.BuildServiceProvider();
+        var registry = new LaneRegistry(provider, options);
         var discovery = new MessageLaneDiscovery(provider.GetRequiredService<IServiceCollectionAccessor>());
 
         discovery.DiscoverLaneNames().Should().HaveCount(4, "four message types, four lanes");

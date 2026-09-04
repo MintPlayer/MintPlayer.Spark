@@ -14,7 +14,7 @@ internal partial class MessageBus : IMessageBus
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly MessageSequence sequence;
-    [Inject] private readonly LaneRegistry lanes;
+    [Inject] private readonly ILaneRegistry lanes;
 
     private SparkMessagingOptions Options => options.Value;
 

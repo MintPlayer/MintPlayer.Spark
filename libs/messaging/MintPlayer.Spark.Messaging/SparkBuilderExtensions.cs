@@ -21,7 +21,7 @@ public static class SparkBuilderMessagingExtensions
     public static ISparkBuilder AddMessaging(
         this ISparkBuilder builder,
         Action<SparkMessagingOptions>? configure = null)
-        => builder.AddMessaging(configure, lanes: null);
+        => builder.AddMessaging(configure, messaging: null);
 
     /// <summary>
     /// Adds messaging and declares how individual lanes behave.
@@ -34,25 +34,27 @@ public static class SparkBuilderMessagingExtensions
     /// </para>
     /// <example>
     /// <code>
-    /// builder.AddMessaging(lanes: lanes =>
-    /// {
-    ///     lanes.Queue&lt;ParseSessionMessage&gt;()
-    ///          .PartitionBy&lt;ParseSessionMessage&gt;(m => m.BuildId)
-    ///          .PartitionBy&lt;FinalizeBuildMessage&gt;(m => m.BuildId)
-    ///          .Ordered()
-    ///          .MaxPartitionsInFlight(2);
-    ///
-    ///     lanes.Queue("spark-email")
-    ///          .Concurrent(maxConcurrency: 8)
-    ///          .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d"));
-    /// });
+    /// builder.AddMessaging(messaging: messaging => messaging
+    ///     .AddLane(lanes => lanes.Queue&lt;ParseSessionMessage&gt;()
+    ///         .Ordered()
+    ///         .PartitionBy&lt;ParseSessionMessage&gt;(m => m.BuildId)
+    ///         .PartitionBy&lt;FinalizeBuildMessage&gt;(m => m.BuildId)
+    ///         .MaxPartitionsInFlight(2))
+    ///     // A lane configured from the container, which the old eager design could not express:
+    ///     .AddLane((lanes, services) =>
+    ///     {
+    ///         var options = services.GetRequiredService&lt;IOptions&lt;MailOptions&gt;&gt;().Value;
+    ///         lanes.Queue("spark-email")
+    ///              .Concurrent(options.Workers)
+    ///              .Retry(RetrySchedule.Ladder(options.RetryLadder));
+    ///     }));
     /// </code>
     /// </example>
     /// </remarks>
     public static ISparkBuilder AddMessaging(
         this ISparkBuilder builder,
         Action<SparkMessagingOptions>? configure,
-        Action<IMessagingLaneBuilder>? lanes)
+        Action<ISparkMessagingBuilder>? messaging)
     {
         var section = builder.Configuration?.GetSection(ConfigurationSection);
 
@@ -60,7 +62,7 @@ public static class SparkBuilderMessagingExtensions
         {
             section?.Bind(options);
             configure?.Invoke(options);
-        }, lanes);
+        }, messaging);
 
         // Register middleware callback to create messaging indexes at startup
         builder.Registry.AddMiddleware(app =>

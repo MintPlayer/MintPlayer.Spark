@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Services;
 
@@ -16,11 +19,22 @@ public class LaneRegistryTests
     private record Ordered(string Key);
     private record Other(string Key);
 
-    private static LaneRegistry Registry(Action<IMessagingLaneBuilder> declare)
+    /// <summary>
+    /// Builds a registry the way the framework does — through the container — so these tests exercise
+    /// the real registration path rather than a hand-assembled object.
+    /// </summary>
+    private static LaneRegistry Registry(Action<ILaneBuilder> declare, SparkMessagingOptions? options = null)
+        => Build(services => services.AddSparkLane(declare), options);
+
+    private static LaneRegistry Build(Action<IServiceCollection> register, SparkMessagingOptions? options = null)
     {
-        var registry = new LaneRegistry();
-        declare(new MessagingLaneBuilder(registry));
-        return registry;
+        var services = new ServiceCollection();
+        register(services);
+
+        var resolved = Options.Create(options ?? new SparkMessagingOptions());
+        services.AddSingleton(resolved);
+
+        return new LaneRegistry(services.BuildServiceProvider(), resolved);
     }
 
     [Fact]
@@ -32,7 +46,7 @@ public class LaneRegistryTests
         // name then comes from the message type itself and cannot drift away from it.
         var registry = Registry(lanes => lanes.Queue<Ordered>().Ordered());
 
-        var act = () => registry.Validate([typeof(Ordered)], TimeSpan.FromMinutes(15));
+        var act = () => registry.Validate([typeof(Ordered)]);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*declares no partition key*");
@@ -43,11 +57,19 @@ public class LaneRegistryTests
     {
         // Two declarations means two owners for one lane's delivery mode and schedule, and whichever
         // ran last would win silently.
-        var act = () => Registry(lanes =>
+        //
+        // Note WHERE this surfaces. Declarations are resolved from the container on first use, not
+        // while services are being registered — that is what lets a lane be configured from anything
+        // the container holds. So the conflict is raised the first time lanes are needed, which in an
+        // application is the startup validation pass, not the AddLane call. Still at startup, still
+        // loud; just not at the line that registered it.
+        var registry = Registry(lanes =>
         {
             lanes.Queue("orders").Concurrent(1);
             lanes.Queue("orders").Concurrent(4);
         });
+
+        var act = () => registry.Validate([]);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*declared twice*");
     }
@@ -64,7 +86,7 @@ public class LaneRegistryTests
             .PartitionBy<Ordered>(m => m.Key)
             .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d")));
 
-        var act = () => registry.Validate([], TimeSpan.FromMinutes(15));
+        var act = () => registry.Validate([]);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*block one partition*");
@@ -79,7 +101,7 @@ public class LaneRegistryTests
             .Retry(RetrySchedule.Ladder("1m 5m 1h"))
             .AcceptPartitionBlock(TimeSpan.FromHours(2)));
 
-        var act = () => registry.Validate([], TimeSpan.FromMinutes(15));
+        var act = () => registry.Validate([]);
 
         act.Should().NotThrow();
     }
@@ -92,7 +114,7 @@ public class LaneRegistryTests
             .Concurrent(8)
             .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d")));
 
-        var act = () => registry.Validate([], TimeSpan.FromMinutes(15));
+        var act = () => registry.Validate([]);
 
         act.Should().NotThrow();
     }
@@ -103,7 +125,7 @@ public class LaneRegistryTests
         // A silently-ordered lane with no partition key would put every message into one partition
         // and serialize the whole lane — the exact failure partitioning exists to prevent. So the
         // default is the mode that cannot be silently wrong.
-        var plan = new LaneRegistry().PlanFor("never-declared");
+        var plan = Build(_ => { }).PlanFor("never-declared");
 
         plan.Ordered.Should().BeFalse();
         plan.MaxInFlight.Should().Be(1);
@@ -112,11 +134,11 @@ public class LaneRegistryTests
     [Fact]
     public void The_global_override_replaces_a_lane_s_own_schedule()
     {
-        var registry = Registry(lanes => lanes.Queue("orders")
-            .Concurrent(1)
-            .Retry(RetrySchedule.Ladder("1h 6h")));
+        var registry = Registry(
+            lanes => lanes.Queue("orders").Concurrent(1).Retry(RetrySchedule.Ladder("1h 6h")),
+            new SparkMessagingOptions { RetryOverride = "5s" });
 
-        var plan = registry.PlanFor("orders", overrideSchedule: RetrySchedule.Ladder("5s"));
+        var plan = registry.PlanFor("orders");
 
         plan.Retry.Next(1).Should().BeOfType<RetryDecision.RetryAfter>()
             .Which.Delay.Should().Be(TimeSpan.FromSeconds(5));

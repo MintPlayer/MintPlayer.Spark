@@ -18,4 +18,10 @@
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<!-- Lane declaration is a service registration (ILaneConfigurator), so the abstractions that
+		     describe it live here alongside it. -->
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+	</ItemGroup>
+
 </Project>

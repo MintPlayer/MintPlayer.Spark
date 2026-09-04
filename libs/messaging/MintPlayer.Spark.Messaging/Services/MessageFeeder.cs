@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Messaging.Services;
 /// </remarks>
 internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 {
-    private readonly LaneRegistry lanes;
+    private readonly ILaneRegistry lanes;
     private readonly MessageProcessor processor;
     private readonly TimeProvider timeProvider;
     private readonly ILoggerFactory loggerFactory;
@@ -54,7 +54,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 
     public MessageFeeder(
         IDocumentStore store,
-        LaneRegistry lanes,
+        ILaneRegistry lanes,
         MessageProcessor processor,
         IMessageLaneDiscovery discovery,
         IOptions<SparkMessagingOptions> options,
@@ -111,7 +111,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     private MessageLanePump PumpFor(string laneName) => pumps.GetOrAdd(laneName, name =>
     {
         var pump = new MessageLanePump(
-            lanes.PlanFor(name, options.Value),
+            lanes.PlanFor(name),
             DocumentStore,
             processor,
             timeProvider,

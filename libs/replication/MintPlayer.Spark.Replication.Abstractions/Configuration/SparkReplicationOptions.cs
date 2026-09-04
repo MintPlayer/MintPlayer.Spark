@@ -76,6 +76,24 @@ public class SparkReplicationOptions
     public System.Reflection.Assembly[] AssembliesToScan { get; set; } = [];
 
     /// <summary>
+    /// How many documents may be replicating at once. Writes to one document are always ordered;
+    /// this is how many <i>different</i> documents may be in flight together.
+    /// </summary>
+    public int SyncMaxDocumentsInFlight { get; set; } = 8;
+
+    /// <summary>
+    /// How long to wait between attempts when an owner module cannot be reached, written in the
+    /// shared duration grammar.
+    /// </summary>
+    /// <remarks>
+    /// Longer than the messaging default because the failure being waited out is another module being
+    /// unreachable, which is measured in minutes. A <b>scalar string</b> rather than an array: two
+    /// configuration layers overlay arrays element-wise, so a shorter production override would
+    /// silently inherit the tail of the base ladder.
+    /// </remarks>
+    public string SyncRetryLadder { get; set; } = "5s 30s 2m 5m";
+
+    /// <summary>
     /// Cross-module mTLS configuration (R2-C1 / R2-C2 / R2-H7). Each module deploys
     /// with its own X.509 client certificate; cross-module requests carry the cert and
     /// inbound endpoints verify the cert thumbprint matches the one pinned for the
