@@ -137,6 +137,31 @@ with degraded mode. `CreatedAtUtc = max(UtcNow, lastIssued + 1 tick)` in `Messag
 Startup validation: every type on an `Ordered` lane has a selector; a lane declared twice is fatal;
 an undeclared lane is `Concurrent(1)`, never `Ordered`.
 
+### ✅ M4e — Graceful shutdown: lanes are waited for, not just cancelled (follow-up)
+
+Neither `MessageFeeder.OnWorkerStoppedAsync` nor the test host waited for the lane pumps. Both
+cancelled a token and returned. The pumps are fire-and-forget loops and `DispatchAsync` starts further
+un-awaited work, so "stopped" meant only "asked to stop": handlers carried on running — opening
+sessions, issuing queries — against a document store the host was already disposing.
+
+**In production** that abandons in-flight work mid-message with no record of why. **In the test suite**
+it showed up as something apparently unrelated: `RavenTestDriver` deletes each test's database on
+store disposal, that delete blocks on cluster confirmation, and the confirmation timed out because
+queries were still arriving at the database being deleted. The failure was then reported against
+whichever test happened to be disposing. Every teardown timeout observed in this work landed on a
+pump-using test, including the first one, before any of the new tests existed.
+
+Fixed in three places: the pump drains work it dispatched (15s bound) after its loop exits; the feeder
+awaits its pump tasks (30s bound); the test host awaits its pumps before the fixture tears the
+database down.
+
+**A wrong turn worth recording.** The first attempt made `SparkTestDriver.DisposeAsync` tolerate the
+deletion timeout, on the theory that a late acknowledgement was harmless housekeeping — the raft
+command having already been committed. That reasoning was not wrong about RavenDB, but it was wrong
+about the cause, and it would have hidden the next occurrence of a real shutdown defect. The
+suppression was removed once the cause was found, and `SparkTestDriver` carries a comment saying so,
+because the failure is the only signal this class of bug produces.
+
 ### ✅ M4d — Lanes as service registrations (follow-up)
 
 The first version of the lane API built declarations **eagerly**, inside `AddMessaging`, while the
@@ -247,6 +272,60 @@ own delivery both participate and a fake clock would only fake half of it.
 Keep the framework hardening (→ M2) and the producer-side webhook test. Drop `CoverageQueues.cs`,
 its consolidation of five queues onto two, `CoverageQueuesTests.cs`, and its 22 version bumps. See
 PRD §10.
+
+## ⚠ Open review comment — `MessageLanePump.DispatchAsync` task tracking
+
+**Raised in review, not yet addressed.** On the in-flight tracking added for graceful shutdown:
+
+> Why don't you just call `await work;` here? What a strange code construct is this? This code seems
+> prone to deadlocks and memory-exceptions.
+
+The construct in question:
+
+```csharp
+Task? work = null;
+work = Task.Run(async () =>
+{
+    try { /* … process … */ }
+    finally { if (work is not null) dispatched.TryRemove(work, out _); }   // closes over its own Task
+});
+
+dispatched[work] = 0;
+if (work.IsCompleted) dispatched.TryRemove(work, out _);   // patches the race above
+```
+
+The criticism is correct. The lambda closes over the very variable holding its own `Task`, which is
+assigned only *after* `Task.Run` returns — so a body that finishes first sees `work == null`, removes
+nothing, and leaves a completed task in `dispatched` forever. The trailing `IsCompleted` check exists
+only to patch that race, which is the tell: a construct needing a second mechanism to fix the first
+is the wrong construct.
+
+**Why `await work` is not the answer**, and this is the part worth keeping: `DispatchAsync` is called
+from the drain loop once per runnable partition. Awaiting there would serialize the partitions and
+defeat `MaxPartitionsInFlight` — one slow handler would again stall its lane's other partitions,
+which is the entire property this design exists to provide. The work genuinely must outlive the loop
+iteration that starts it; only its *tracking* needs fixing.
+
+**Proposed shape** (not yet applied): extract the body into a plain `private async Task
+RunHandlerAsync(...)`, start it, register the returned task, and prune completed entries at the top of
+each dispatch:
+
+```csharp
+var work = RunHandlerAsync(messageId, partition, cancellationToken);
+
+foreach (var finished in dispatched.Keys.Where(t => t.IsCompleted))
+    dispatched.TryRemove(finished, out _);
+
+dispatched[work] = 0;
+```
+
+No self-reference, no race to patch, no continuation, and the set stays bounded by concurrency rather
+than by throughput — which answers the memory concern directly. Also drop the `Task.Run`: the method
+is already async and returns at its first await, so the thread-pool hop buys nothing.
+
+**On deadlocks:** I could not find one — handler bodies take `stateLock` only briefly and
+`DrainInFlightAsync` awaits them without holding it — but the construct is opaque enough that the
+question is fair, and the simplification removes the need to reason about it at all.
 
 ## Still open after this PR
 

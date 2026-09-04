@@ -28,6 +28,7 @@ internal sealed class MessagingTestHost : IAsyncDisposable
 {
     private readonly CancellationTokenSource cancellation = new();
     private readonly List<MessageLanePump> pumps = [];
+    private readonly List<Task> pumpTasks = [];
     private readonly ServiceProvider serviceProvider;
     private readonly LaneRegistry registry;
     private readonly IDocumentStore store;
@@ -75,7 +76,7 @@ internal sealed class MessagingTestHost : IAsyncDisposable
             registry.PlanFor(laneName), store, Processor, Clock, NullLogger.Instance);
 
         pumps.Add(pump);
-        _ = Task.Run(() => pump.RunAsync(cancellation.Token), CancellationToken.None);
+        pumpTasks.Add(Task.Run(() => pump.RunAsync(cancellation.Token), CancellationToken.None));
         pump.Ring();
         return pump;
     }
@@ -90,6 +91,23 @@ internal sealed class MessagingTestHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await cancellation.CancelAsync();
+
+        // Wait for the pumps to actually stop before the fixture tears the database down.
+        // Cancelling only asks them to: a pump can be mid-drain and its handlers mid-message, both
+        // holding sessions against the store. Leaving them running was not merely untidy -- the
+        // fixture then deleted the database underneath live queries, and the deletion timed out
+        // waiting for confirmation, which surfaced as an unrelated-looking test failure.
+        try
+        {
+            await Task.WhenAll(pumpTasks).WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+        {
+            // A pump that will not stop is worth knowing about, but it must not replace the test's
+            // own result with a teardown failure.
+            Console.Error.WriteLine("[MessagingTestHost] A lane pump did not stop within 30s.");
+        }
+
         cancellation.Dispose();
         await serviceProvider.DisposeAsync();
     }

@@ -42,6 +42,13 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     private readonly IOptions<SparkMessagingOptions> options;
 
     private readonly ConcurrentDictionary<string, MessageLanePump> pumps = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The running loops, so a stop can wait for them rather than merely asking them to end.</summary>
+    private readonly ConcurrentDictionary<string, Task> pumpTasks = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Upper bound on how long shutdown waits for the lanes.</summary>
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(30);
+
     private CancellationTokenSource? pumpCancellation;
 
     protected override string SubscriptionName => "SparkMessaging";
@@ -93,10 +100,33 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         return Task.CompletedTask;
     }
 
-    protected override Task OnWorkerStoppedAsync()
+    protected override async Task OnWorkerStoppedAsync()
     {
         pumpCancellation?.Cancel();
-        return Task.CompletedTask;
+
+        // Wait for the lanes to actually stop. Cancelling only ASKS them to; a pump may be mid-drain
+        // and its handlers mid-message, both holding sessions against the document store. Returning
+        // without waiting means the host disposes that store underneath them -- which in a test run
+        // appears as the database being deleted while queries are still arriving, and in production
+        // as work abandoned part-way with no record of why.
+        var running = pumpTasks.Values.ToArray();
+        if (running.Length == 0)
+            return;
+
+        try
+        {
+            await Task.WhenAll(running).WaitAsync(ShutdownTimeout);
+        }
+        catch (TimeoutException)
+        {
+            Logger.LogWarning(
+                "{Count} messaging lane(s) had not stopped after {Timeout}; continuing shutdown",
+                running.Length, ShutdownTimeout);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "A messaging lane faulted while stopping");
+        }
     }
 
     protected override Task ProcessBatchAsync(SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
@@ -117,7 +147,9 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             timeProvider,
             loggerFactory.CreateLogger($"MintPlayer.Spark.Messaging.Lane.{name}"));
 
-        _ = Task.Run(() => pump.RunAsync(pumpCancellation?.Token ?? CancellationToken.None), CancellationToken.None);
+        pumpTasks[name] = Task.Run(
+            () => pump.RunAsync(pumpCancellation?.Token ?? CancellationToken.None), CancellationToken.None);
+
         return pump;
     });
 }

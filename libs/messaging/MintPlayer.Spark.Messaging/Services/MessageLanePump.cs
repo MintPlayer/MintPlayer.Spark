@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
@@ -44,6 +45,9 @@ internal sealed class MessageLanePump(
     /// <summary>How long the lane sleeps when it has nothing scheduled.</summary>
     private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long a stop waits for handlers that were already running.</summary>
+    private static readonly TimeSpan ShutdownDrainTimeout = TimeSpan.FromSeconds(15);
+
     /// <summary>Capacity one: a bell that is already ringing needs no second ring.</summary>
     private readonly Channel<bool> doorbell = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -51,6 +55,17 @@ internal sealed class MessageLanePump(
     private readonly HashSet<string> inFlight = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTime> parked = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim stateLock = new(1, 1);
+
+    /// <summary>
+    /// Handler work that has been started and not yet finished, so shutdown can wait for it.
+    /// </summary>
+    /// <remarks>
+    /// Dispatch deliberately does not block the drain loop — that is what keeps one slow handler from
+    /// stalling its lane's other partitions — so the work outlives the loop iteration that started
+    /// it. Without tracking it, "the pump has stopped" would mean only "the loop exited", while
+    /// handlers carried on running against a store the host is already tearing down.
+    /// </remarks>
+    private readonly ConcurrentDictionary<Task, byte> dispatched = new();
 
     private bool degraded;
 
@@ -83,6 +98,43 @@ internal sealed class MessageLanePump(
             }
 
             await WaitForWorkAsync(cancellationToken);
+        }
+
+        // The loop has exited, but handlers dispatched from it may still be running — they were
+        // started deliberately without being awaited, so that a slow one cannot stall the lane. A
+        // stop that returned here would be lying: the host would carry on disposing the document
+        // store while those handlers were still querying it, which in tests means the database is
+        // deleted underneath them and in production means work is abandoned mid-flight.
+        await DrainInFlightAsync();
+    }
+
+    /// <summary>Waits for handler work already started, so "stopped" means stopped.</summary>
+    private async Task DrainInFlightAsync()
+    {
+        var outstanding = dispatched.Keys.ToArray();
+        if (outstanding.Length == 0)
+            return;
+
+        logger.LogInformation(
+            "Lane '{Lane}' is stopping and waiting for {Count} in-flight message(s)", plan.LaneName, outstanding.Length);
+
+        try
+        {
+            // Bounded: a handler that ignores cancellation must not hold shutdown open forever. The
+            // wait is generous enough for an ordinary handler to notice the token and unwind.
+            await Task.WhenAll(outstanding).WaitAsync(ShutdownDrainTimeout);
+        }
+        catch (TimeoutException)
+        {
+            logger.LogWarning(
+                "Lane '{Lane}' still had in-flight work after {Timeout}; abandoning the wait. A handler is "
+                + "likely ignoring its CancellationToken.", plan.LaneName, ShutdownDrainTimeout);
+        }
+        catch (Exception ex)
+        {
+            // A handler's own failure is already recorded on its message; it must not turn shutdown
+            // into an exception.
+            logger.LogDebug(ex, "Lane '{Lane}' saw a fault while draining in-flight work", plan.LaneName);
         }
     }
 
@@ -214,7 +266,8 @@ internal sealed class MessageLanePump(
             stateLock.Release();
         }
 
-        _ = Task.Run(async () =>
+        Task? work = null;
+        work = Task.Run(async () =>
         {
             try
             {
@@ -242,9 +295,23 @@ internal sealed class MessageLanePump(
                 await stateLock.WaitAsync(CancellationToken.None);
                 try { inFlight.Remove(partition); } finally { stateLock.Release(); }
             }
+            finally
+            {
+                // Deregister before ringing, so a shutdown that observes the doorbell also observes
+                // an empty in-flight set rather than racing this task's own removal.
+                if (work is not null)
+                    dispatched.TryRemove(work, out _);
+            }
 
             Ring();
         }, CancellationToken.None);
+
+        dispatched[work] = 0;
+
+        // The task may already have finished and removed nothing, because it was registered after it
+        // started. Re-check rather than leak a completed task into the shutdown wait.
+        if (work.IsCompleted)
+            dispatched.TryRemove(work, out _);
     }
 
     private async Task ParkAsync(string partition, DateTime dueUtc, DateTime now, CancellationToken cancellationToken)

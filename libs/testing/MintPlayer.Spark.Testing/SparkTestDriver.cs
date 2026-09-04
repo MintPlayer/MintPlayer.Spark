@@ -138,6 +138,12 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         // or GetDocumentStore timing out when the shared embedded server is under load. Without
         // the guard this throws a NullReferenceException that REPLACES the real failure in the
         // test output, which is what made those CI timeouts so hard to read.
+        //
+        // Deliberately NOT tolerant of a slow database deletion. An earlier attempt swallowed that
+        // timeout, on the theory that a late confirmation was harmless housekeeping. It was not: the
+        // deletions were slow because lane pumps were still querying the database, since neither the
+        // test host nor MessageFeeder waited for them to stop. Suppressing the symptom would have
+        // hidden the next occurrence of that bug, which is the one thing this failure is good for.
         Store?.Dispose();
         return Task.CompletedTask;
     }
