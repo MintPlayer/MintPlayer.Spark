@@ -74,24 +74,29 @@ public class MessagePipelineE2ETests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_message_nobody_handles_reaches_a_terminal_status()
+    public async Task A_message_nobody_handles_is_completed_not_dead_lettered()
     {
-        // Terminal is the property that matters, and it is dead-lettered rather than completed: with
-        // no registered IRecipient the type is not in the allow-list, which is checked before
-        // Type.GetType precisely so an attacker who can write into SparkMessages cannot choose what
-        // gets instantiated.
+        // Publishing to zero subscribers is a successful publish, not a failure. Dead-letter is kept
+        // for "we tried and failed" or "we refuse", so that a dead-letter view stays worth reading —
+        // a framework lane such as spark-github-all broadcasts typed messages most applications never
+        // subscribe to, and dead-lettering those would bury real faults.
         //
-        // Reaching a terminal status at all is the fix: only terminal paths stamp @expires, so a
-        // message that stayed Pending would never be cleaned up. Production is still carrying
-        // documents of exactly this shape — typed webhook messages broadcast with no recipient.
+        // Terminal is the property that fixes the leak: only terminal paths stamp @expires, so a
+        // message left Pending would accumulate forever. Production still carries documents of
+        // exactly this shape.
+        //
+        // The type is still never resolved — the allow-list gate runs before Type.GetType, which is
+        // what stops a writer of SparkMessages choosing what gets instantiated. The gate decides
+        // whether we touch the type, not what status we record.
         await using var host = NewHost(_ => { });
 
         var pump = host.StartLane(Lane);
         await host.Bus.BroadcastAsync(new Payload("orphan"), Lane);
         pump.Ring();
 
-        var message = await WaitForAsync(m => m.Status == EMessageStatus.DeadLettered);
+        var message = await WaitForAsync(m => m.Status == EMessageStatus.Completed);
         message.Handlers.Should().BeEmpty();
+        message.CompletedAtUtc.Should().HaveValue("a terminal message must be stamped for retention");
     }
 
     [Fact]

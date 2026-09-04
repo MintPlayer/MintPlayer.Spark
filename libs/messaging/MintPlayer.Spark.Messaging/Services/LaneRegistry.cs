@@ -39,16 +39,23 @@ internal sealed class LaneRegistry
     /// partition key would serialize everything on one key — the exact failure this design exists to
     /// prevent — so the default has to be the mode that cannot be silently wrong.
     /// </remarks>
-    public LanePlan PlanFor(string laneName)
-        => declarations.TryGetValue(laneName, out var declaration)
-            ? declaration.ToPlan()
+    public LanePlan PlanFor(string laneName, IRetrySchedule? defaultSchedule = null, IRetrySchedule? overrideSchedule = null)
+    {
+        var plan = declarations.TryGetValue(laneName, out var declaration)
+            ? declaration.ToPlan(defaultSchedule ?? RetrySchedule.Default)
             : new LanePlan
             {
                 LaneName = laneName,
                 Ordered = false,
                 MaxInFlight = 1,
-                Retry = RetrySchedule.Default,
+                Retry = defaultSchedule ?? RetrySchedule.Default,
             };
+
+        // The override is applied last and wins over everything, because its whole purpose is to be
+        // one switch that reaches every lane — a test environment cannot be asked to restate each
+        // lane's schedule.
+        return overrideSchedule is null ? plan : plan with { Retry = overrideSchedule };
+    }
 
     public IReadOnlyCollection<string> DeclaredLanes => declarations.Keys;
 
@@ -123,7 +130,7 @@ internal sealed class LaneRegistry
         public TimeSpan? AcceptedBlock { get; private set; }
 
         private int maxInFlight = 1;
-        private IRetrySchedule retry = RetrySchedule.Default;
+        private IRetrySchedule? retry;
 
         public IOrderedQueueBuilder Ordered()
         {
@@ -193,19 +200,19 @@ internal sealed class LaneRegistry
             var total = TimeSpan.Zero;
             for (var attempt = 1; attempt <= 1000; attempt++)
             {
-                if (retry.Next(attempt) is not RetryDecision.RetryAfter retryAfter)
+                if ((retry ?? RetrySchedule.Default).Next(attempt) is not RetryDecision.RetryAfter retryAfter)
                     break;
                 total += retryAfter.Delay;
             }
             return total;
         }
 
-        public LanePlan ToPlan() => new()
+        public LanePlan ToPlan(IRetrySchedule defaultSchedule) => new()
         {
             LaneName = LaneName,
             Ordered = IsOrdered,
             MaxInFlight = maxInFlight,
-            Retry = retry,
+            Retry = retry ?? defaultSchedule,
             PartitionSelectors = selectors,
         };
     }

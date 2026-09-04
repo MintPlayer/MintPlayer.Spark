@@ -50,6 +50,11 @@ internal static class SparkMessagingExtensions
         // silently, which is how three of a production app's six queues stayed dead for months.
         services.AddHostedService<MessageFeeder>();
 
+        // Nothing else returns a message stranded in Processing by a crash or a deploy: it is not
+        // Pending or Failed, so no drain selects it, and its partition stays blocked behind work that
+        // will never finish.
+        services.AddHostedService<MessageReaper>();
+
         // No retry sweeper. It existed only to materialize "the backoff has elapsed" as a boolean,
         // because a subscription where-clause cannot evaluate now(). A lane's drain is an ordinary
         // index query and can, so the sweeper, SparkMessage.WakeUp and LastWakeUpUtc are all gone.

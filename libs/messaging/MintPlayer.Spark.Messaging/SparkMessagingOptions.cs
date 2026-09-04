@@ -1,79 +1,61 @@
+using MintPlayer.Spark.Messaging.Abstractions;
+
 namespace MintPlayer.Spark.Messaging;
 
 /// <summary>
-/// Durable-messaging settings, bound from the <c>Spark:Messaging</c> configuration section and then
-/// overridable in code.
+/// Settings that apply to messaging as a whole. Per-lane behaviour — delivery mode, concurrency,
+/// retry schedule — is declared through the lane builder instead.
 /// </summary>
 /// <remarks>
-/// <b>Never give a collection property a non-empty initializer here.</b> The rule is about
-/// <i>collections</i>, not about initializers in general — the binder treats the two kinds
-/// differently:
-/// <list type="bullet">
-/// <item>
-/// <b>Scalars</b> (<c>int</c>, <c>TimeSpan</c>, <c>string</c>) — the binder <b>replaces</b> the value.
-/// Initialize them freely; <c>MaxAttempts = 5</c> below is correct and a configured <c>1</c> wins.
-/// </item>
-/// <item>
-/// <b>Collections</b> (<c>T[]</c>, <c>List&lt;T&gt;</c>) — the binder <b>appends</b> to whatever is
-/// already there. A non-empty initializer therefore survives binding and stays <b>first</b>, which is
-/// the position that usually decides behaviour.
-/// </item>
-/// </list>
-/// Note that <c>= []</c> on a collection is not optional politeness: without it the property is
-/// <see langword="null"/> and the <c>Resolved*</c> member below would throw.
 /// <para>
-/// That is not a theoretical concern. It shipped once already, as <b>F14</b>: a configured
-/// <c>SparkModulesUrls</c> landed behind the hardcoded <c>http://localhost:8080</c>, and since
-/// <c>DocumentStore</c> connects to the first URL, every deployment that configured where its module
-/// registry lived was still talking to localhost — with no error and a config file that said
-/// otherwise. It was found from the far end, days later, by two processes that could not see each
-/// other's data.
+/// <b>Never give a collection property a non-empty default here.</b> .NET's configuration binder does
+/// not replace a collection that already has elements, it <i>appends</i> to it, so a hardcoded
+/// initializer survives binding and stays first — an application configuring a faster schedule would
+/// still wait the built-in delay, silently, with a config file that said otherwise.
 /// </para>
 /// <para>
-/// The pattern to follow instead is <see cref="BackoffDelays"/>: default the property to empty, put
-/// the real default in a separate <c>Default*</c> constant, and expose a <c>Resolved*</c> member that
-/// picks one. Consumers read the resolved member; nothing reads the raw property.
+/// Measured, an array fails three ways and only the first is widely known: a non-empty default is
+/// appended to; <b>two configuration layers overlay element-wise</b>, so a base <c>[1m,5m,1h]</c>
+/// overridden by <c>[7s]</c> becomes <c>[7s,5m,1h]</c> — a ladder nobody wrote, needing no non-empty
+/// default at all; and re-binding the same object doubles it. This is why a retry ladder is written
+/// as a <b>scalar string</b> (<c>"5s 30s 2m"</c>): a scalar is replaced by the last source and is
+/// idempotent under re-binding.
 /// </para>
 /// </remarks>
 public class SparkMessagingOptions
 {
-    public int MaxAttempts { get; set; } = 5;
-
     /// <summary>
-    /// How often <c>MessageRetrySweeper</c> wakes up messages whose retry backoff or
-    /// broadcast delay has elapsed, by setting their <c>WakeUp</c> gate so the queue
-    /// subscriptions re-evaluate and redeliver them. This is the redelivery granularity:
-    /// a due message is picked up at most this long after <c>NextAttemptAtUtc</c>.
-    /// </summary>
-    public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>
-    /// How long to wait before each retry, indexed by attempt. Read it through
-    /// <see cref="ResolvedBackoffDelays"/>, never directly.
+    /// A retry schedule applied to <b>every</b> lane, overriding whatever each declares.
     /// </summary>
     /// <remarks>
-    /// Empty by default <b>on purpose</b>, and the reason is the same one that produced F14 in the
-    /// replication options: .NET's configuration binder does not replace a collection that already has
-    /// elements, it <i>appends</i> to it. A hardcoded initializer here would survive binding and stay
-    /// first, so an app configuring a faster schedule would still wait the default five seconds on its
-    /// first retry — silently, with a config file that said otherwise. Applying the default at the
-    /// point of use is what keeps a configured value from queueing up behind it.
+    /// One switch for test and development environments: <c>"5s"</c> flattens every ladder to a flat
+    /// five seconds. It deliberately does not collapse attempt counts, so a test still exercises the
+    /// real dead-letter path rather than a shortened one.
     /// </remarks>
-    public TimeSpan[] BackoffDelays { get; set; } = [];
+    public string? RetryOverride { get; set; }
 
-    /// <summary>The schedule used when nothing is configured: 5s, 30s, 2m, 10m, 1h.</summary>
-    public static readonly TimeSpan[] DefaultBackoffDelays =
-    [
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromMinutes(2),
-        TimeSpan.FromMinutes(10),
-        TimeSpan.FromHours(1),
-    ];
+    /// <summary>The schedule for lanes that declare none. Written in the same grammar as configuration.</summary>
+    public string DefaultRetry { get; set; } = "5s 30s 2m";
 
-    /// <summary>The delays to actually use: what was configured, or the default when nothing was.</summary>
-    public TimeSpan[] ResolvedBackoffDelays =>
-        BackoffDelays.Length > 0 ? BackoffDelays : DefaultBackoffDelays;
+    /// <summary>
+    /// The resolved default schedule: the global override if one is set, else <see cref="DefaultRetry"/>.
+    /// </summary>
+    public IRetrySchedule ResolvedDefaultRetry => RetrySchedule.Ladder(
+        string.IsNullOrWhiteSpace(RetryOverride) ? DefaultRetry : RetryOverride);
 
+    /// <summary>
+    /// How long a message may sit in <c>Processing</c> before the reaper assumes its host died.
+    /// </summary>
+    /// <remarks>
+    /// Generous on purpose. A handler may legitimately run for minutes, and reaping too eagerly
+    /// double-processes work that is still running — worse than reaping late, because the message is
+    /// blocking only its own partition meanwhile.
+    /// </remarks>
+    public TimeSpan ProcessingLease { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>How often to look for messages stranded past <see cref="ProcessingLease"/>.</summary>
+    public TimeSpan ReaperInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long a terminal message is kept before RavenDB expires it.</summary>
     public int RetentionDays { get; set; } = 7;
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using MintPlayer.Spark.Messaging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.SubscriptionWorker;
@@ -38,6 +39,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     private readonly TimeProvider timeProvider;
     private readonly ILoggerFactory loggerFactory;
     private readonly IReadOnlyCollection<string> knownLaneNames;
+    private readonly IOptions<SparkMessagingOptions> options;
 
     private readonly ConcurrentDictionary<string, MessageLanePump> pumps = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? pumpCancellation;
@@ -55,11 +57,13 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         LaneRegistry lanes,
         MessageProcessor processor,
         IMessageLaneDiscovery discovery,
+        IOptions<SparkMessagingOptions> options,
         TimeProvider timeProvider,
         ILoggerFactory loggerFactory)
         : base(loggerFactory, store)
     {
         this.lanes = lanes;
+        this.options = options;
         this.processor = processor;
         this.timeProvider = timeProvider;
         this.loggerFactory = loggerFactory;
@@ -106,8 +110,14 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 
     private MessageLanePump PumpFor(string laneName) => pumps.GetOrAdd(laneName, name =>
     {
+        var messagingOptions = options.Value;
         var pump = new MessageLanePump(
-            lanes.PlanFor(name),
+            lanes.PlanFor(
+                name,
+                defaultSchedule: messagingOptions.ResolvedDefaultRetry,
+                overrideSchedule: string.IsNullOrWhiteSpace(messagingOptions.RetryOverride)
+                    ? null
+                    : RetrySchedule.Ladder(messagingOptions.RetryOverride)),
             DocumentStore,
             processor,
             timeProvider,

@@ -64,13 +64,27 @@ internal sealed class MessageProcessor(
             // R2-H6: allow-list BEFORE Type.GetType. The allow-list holds only types with a
             // registered IRecipient<>, so someone who can write into SparkMessages cannot route
             // through Type.GetType to instantiate arbitrary types.
+            //
+            // The protection is that the type is never RESOLVED; the status recorded afterwards is a
+            // separate question. Nobody subscribing is not a failure — publishing to zero subscribers
+            // is a successful publish — so this completes rather than dead-letters. That keeps
+            // dead-letter meaning "we tried and failed, a human may need to act", which matters
+            // because a framework lane like spark-github-all broadcasts typed messages most
+            // applications never subscribe to; dead-lettering them would bury real faults in noise.
+            // It is logged as a warning, because it can equally mean a handler was removed while its
+            // messages were still in flight.
             var allowList = serviceProvider.GetRequiredService<IMessageTypeAllowList>();
             if (!allowList.IsAllowedMessageType(message.MessageType))
             {
-                return await DeadLetterMessageAsync(
-                    session, message, now,
-                    $"Message type {message.MessageType} is not in the allow-list (no registered IRecipient<>)",
-                    cancellationToken);
+                logger.LogWarning(
+                    "No recipient is registered for {MessageType}; completing {MessageId} with no handlers",
+                    message.MessageType, message.Id);
+
+                message.Status = EMessageStatus.Completed;
+                message.CompletedAtUtc = now;
+                SetExpiration(session, message, now);
+                await session.SaveChangesAsync(cancellationToken);
+                return new Outcome(Terminal: true, null);
             }
 
             var clrType = Type.GetType(message.MessageType);
