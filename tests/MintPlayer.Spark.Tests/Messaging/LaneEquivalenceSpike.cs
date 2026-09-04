@@ -147,13 +147,13 @@ public class LaneEquivalenceSpike
     /// The cast works around a missing overload, nothing more: MintPlayer.Assertions declares
     /// <c>NotBeEquivalentTo</c> only on <c>ObjectAssertions</c>, while <c>BeEquivalentTo</c> also has
     /// a <c>GenericCollectionAssertions</c> one, so the negative form is unreachable from a typed
-    /// collection without going through <c>object</c>. Tracked as MintPlayer.Dotnet.Tools#177.
+    /// collection without going through <c>object</c>. Tracked as MintPlayer.Dotnet.Tools#177;
+    /// delete this helper when that overload ships.
     /// <para>
-    /// The cast is safe. It was first written up as a hazard — on the theory that
-    /// <c>TExpectation = object</c> would compare against a type with no members and pass for
-    /// anything — and that was measured and found false: <c>ResolveNodeType</c> falls back to the
-    /// runtime type, so the members are compared either way. Recorded because the theory is
-    /// plausible enough to be re-derived by the next person to read this.
+    /// Only the SUBJECT is cast, which keeps <c>TExpectation</c> bound to <c>LaneSnapshot[]</c>.
+    /// Casting both would leave receiver, argument and type argument all statically <c>object</c>,
+    /// which drops the comparison into the reflection fallback and makes <c>Excluding</c>
+    /// unwritable.
     /// </para>
     /// </remarks>
     private static void ShouldDiffer(LaneSnapshot[] actual, LaneSnapshot[] expected)
