@@ -340,6 +340,40 @@ not *not deleting them*. Taking half the design inverts the benefit.
 Recorded so nobody re-proposes it from the same reasoning: teardown drops to 0.0s in the
 reproduction, which looks conclusive and is measuring the wrong thing.
 
+## ❌ Measured dead end: backgrounding the driver's dispose
+
+The residual 19s is the driver's own `AfterDispose` delete. Since we already submit a zero-wait
+delete before it, that wait is for a deletion *already in flight* — so firing it off the critical
+path looks safe:
+
+```csharp
+SparkEmbeddedServer.DropDatabaseWithoutWaiting(store);
+_ = Task.Run(() => { try { store.Dispose(); } catch { } });
+```
+
+**It breaks the suite, on an IDLE machine.** Two consecutive runs:
+
+| Run | Result |
+|---|---|
+| 1 | **147 failed**, 1775 passed |
+| 2 | **89 failed**, 1833 passed |
+
+Different counts, different tests, spread across completely unrelated areas — identity provider,
+breadcrumbs, search pushdown, lookup references, migrations. Reverting restores 1922/1922.
+
+**Why** is not established, and the honest answer is that it was not worth establishing once the
+result was this clear. The varying count across unrelated areas points at resource exhaustion or a
+race on shared driver state rather than a logic error: `RavenTestDriver` tracks its stores in a
+private collection and is itself `IDisposable`, so a backgrounded `store.Dispose()` can run
+concurrently with xUnit disposing the fixture that owns it, and undisposed stores hold connections
+against a server that the next test is already using.
+
+**The lesson worth keeping** is about the reasoning, not the result. The argument for this change —
+"the wait is redundant, so moving it off the critical path is safe" — was sound about the *delete*
+and said nothing about `Dispose()`, which does more than delete. Deferring teardown has now failed
+twice for two different reasons (see also never-deleting, 17% slower), which is enough to treat
+"defer the cleanup" as a shape that needs measuring before it is proposed, not after.
+
 ## ❌ Does not transfer: the foundation
 
 The shared design has **no cleanup whatsoever** — no reset, no truncation, no id scoping enforced by
