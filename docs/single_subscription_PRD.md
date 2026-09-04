@@ -1,6 +1,19 @@
 # PRD — One subscription, partitioned ordering
 
-**Status:** proposed, not implemented
+**Status:** ✅ **implemented** in `10.0.0-preview.72` — PR #363, branch
+`feat/single-subscription-partitioned-ordering`. Deploy notes:
+[single_subscription_migration.md](single_subscription_migration.md).
+
+**Where the implementation differs from this document**, all decided while building and all
+deliberate:
+
+| This document said | What shipped | Why |
+|---|---|---|
+| A `QueueDelivery` enum with `Ordered` / `Serial` / `Concurrent` | Mode-specific **builder types**: `Ordered()`, `Concurrent(n)`, `Unbounded()` | An enum plus a `MaxConcurrency` property lets "strictly ordered, four at a time" be *written* and then rejected by a validator. Separate builder types give it no method to call. `Serial` was dropped: it named today's accidental behaviour (order preserved except across a retry), which is the bug, not a mode worth keeping |
+| `MaxLaneBlock`, enforced at runtime by dead-lettering a head early | `MaxPartitionBlock`, validated at **startup** from the ladder sum | Once blocking is per partition rather than per lane, the budget is knowable before any message flows. Refusing a bad configuration beats silently discarding a message to escape one |
+| `RequeueAsync` a blocking dependency | Not implemented; left out of scope | It was only load-bearing because `MaxLaneBlock` dead-lettered early. Nothing is dead-lettered early any more, so nothing needs replaying to be safe |
+| A message with no handlers is dead-lettered | **Completed** | Publishing to zero subscribers is a successful publish. Dead-letter is kept for "we tried and failed", so a dead-letter view stays worth reading — a framework lane broadcasts typed messages most applications never subscribe to |
+| `DelayBroadcastAsync` unchanged | Gained a `queueName` overload | `BroadcastAsync` had a lane override and the delayed variant did not, so a delayed message could only ever go to its derived lane |
 **Date:** 2026-09-04
 **Packages:** `MintPlayer.Spark.Messaging(.Abstractions)`, `MintPlayer.Spark.SubscriptionWorker(.Abstractions)`, `MintPlayer.Spark.Replication`
 **Breaking:** yes, freely — preview packages, no backward compatibility required

@@ -1,15 +1,47 @@
 # Plan — One subscription for all message queues
 
-Companion to [single_subscription_PRD.md](single_subscription_PRD.md). One pull request, per repo
-convention: every fix below lands together, including the production data cleanup.
+**Status: ✅ complete.** Shipped in `10.0.0-preview.72` as PR #363, branch
+`feat/single-subscription-partitioned-ordering`. Every milestone below is committed.
 
-Target design (PRD §4): **B′ + C** — one feeder subscription ringing per-lane doorbells, per-lane
-pumps draining `SparkMessages_ByQueue` ordered by `CreatedAtUtc, Id`, `QueueDelivery.Ordered` by
-default, sync actions folded in as `spark-sync-{Collection}` lanes.
+Companion to [single_subscription_PRD.md](single_subscription_PRD.md); deploy notes in
+[single_subscription_migration.md](single_subscription_migration.md). One pull request, per repo
+convention.
 
-## Spikes (do these first; they can invalidate milestones)
+Shipped design: one feeder subscription ringing per-lane doorbells, per-lane pumps draining
+`SparkMessages_ByQueue` **ordered by `Sequence`** — not `CreatedAtUtc, Id`, see S7 — with ordering
+scoped to a **partition key**, and sync actions folded into `SparkMessages` on a single `spark-sync`
+lane partitioned by document id.
 
-Run against the local RavenDB at `http://localhost:8080` (dev data, disposable databases).
+## Spikes — all run; what each one changed
+
+Against local RavenDB, and for anything cap-related a throwaway **unlicensed** container: the dev
+server carries a Developer licence with no cap and would have answered every cap question wrongly.
+
+| # | Answer |
+|---|---|
+| S1 | Reproduced: `[enter:m1, fail:m1, enter:m2, exit:m2, enter:m1, exit:m1]`. Kept as `MessageOrderingRegressionTests` |
+| S2 | The changes API consumes **no** slot — it connected at a saturated cap. The no-subscription option stays viable |
+| S3 | `WaitForNonStaleResults` is mandatory: without it the drain missed the just-written message **18 times in 20** |
+| S4 | Replay is bounded and now harmless — orphan messages complete on sight. Covered in the migration doc |
+| **S5** | **Not run at production burst scale.** See "Still open" below |
+| S6 | Delete frees a slot immediately, Disable does not; `LicenseLimitException` is thrown at create; progress is per batch |
+| **S7** | **`.ThenBy(m => m.Id)` is broken** — lexicographic `order by id()` over ids that are not zero-padded. Replaced by a monotonic `Sequence` |
+| S-R1 | The durable write always happens first, so a restart costs one drain; `ParkHorizon` (60s) governs memory only |
+| S-R2 | Schedule per message, counter per handler, `max` over handlers. `IRetrySchedule.Next(int)` |
+| S-R3 | Moot — the partition-block budget is validated at startup from the ladder sum, so nothing is measured at runtime |
+| S-R4 | Confirmed, plus two traps not previously recorded: config layers overlay arrays **element-wise**, and re-binding doubles them |
+| S-R5 | Moot — requeue left the critical path |
+| S8 | Flat from 1 to 8192 exclusion terms. `MaxParkedPartitions` is a signal, not a performance limit |
+| **S9** | Under bursty arrival a 256-row window surfaces few partitions; window size and `MaxPartitionsInFlight` are coupled. **Not tuned** — see "Still open" |
+| S10 | RavenDB already deploys side by side; the real hazard is that queries on a **new field throw** for ~4.5s rather than waiting. The pump retries |
+| **S11** | **Yes** — `MessageRetrySweeper`, `WakeUp` and `LastWakeUpUtc` are deleted |
+| S12 | `MaxPartitionsInFlight(2)` on ingestion rather than 4: a parse holds ~4× the report size on the LOH, with RavenDB co-resident |
+| S13 | Split into `VisibleAtUtc` (server-side, overtakable) and `NextAttemptAtUtc` (client-side, blocking) |
+| S14 | One pump. `Concurrent(n)` **is** `Ordered` with the partition key set to the message's own id |
+
+<details>
+<summary>The spike questions as originally planned</summary>
+
 
 | # | Question | Why it gates | Invalidates if… |
 |---|---|---|---|
@@ -33,6 +65,8 @@ Run against the local RavenDB at `http://localhost:8080` (dev data, disposable d
 | **S13** | Is the `DelayBroadcastAsync` carve-out now partition-scoped? | Restate rather than inherit it | — |
 | **S14** | Do `Concurrent` lanes need their own pump implementation? | One pump or two | — |
 
+</details>
+
 ### Settled by the spike (PRD §4.0) — do not re-investigate
 
 `@all_docs` is rejected on cost (44× catch-up), so sync actions must move into the `SparkMessages`
@@ -51,7 +85,7 @@ worker.
 
 ## Milestones
 
-### M0 — Regression tests that fail today
+### ✅ M0 — Regression tests that fail today
 
 Written before the fix, so the bug is provably real. Full design in §Testing below.
 
@@ -61,7 +95,7 @@ Written before the fix, so the bug is provably real. Full design in §Testing be
 - A `Processing` document stranded by a crash is re-offered — fails today.
 - `Five_lanes_produce_exactly_one_RavenDB_subscription` — fails today (produces N).
 
-### M0b — `TimeProvider`
+### ✅ M0b — `TimeProvider` (commit 4118665b)
 
 Prerequisite for every timing test. Inject into `MessageBus` (`CreatedAtUtc` — **this is the ordering
 key**, so a real producer clock against a fake pump clock makes every ordering test meaningless),
@@ -71,29 +105,29 @@ sleep-until-retry, which must be `timeProvider.Delay`), `MessageRetrySweeper` (*
 `SparkSubscriptionWorker` reconnect delay. Register `TimeProvider.System` in `AddSparkMessaging`; add
 `Microsoft.Extensions.TimeProvider.Testing` to the test project.
 
-### M1 — The reaper
+### ✅ M1 — The reaper (commit 7593e998)
 Written and tested first, because everything else assumes it. Re-offers `Processing` documents older
 than a lease. Decide the lease against `ParseSessionRecipient`, which runs for minutes: a generous
 fixed lease, or `IMessageCheckpoint.SaveAsync` as a liveness heartbeat.
 
-### M2 — Fail loudly on subscription creation
+### ✅ M2 — Fail loudly on subscription creation
 Port the `EnsureSubscriptionExistsAsync` hardening from `fix/coverage-queue-licence-cap` verbatim:
 `LicenseLimitException` fatal with an actionable message; stop discarding `createException`; a
 create+update double failure logs Error naming the dead queue, not Warning.
 
-### M3 — The feeder and the lanes
+### ✅ M3 — The feeder and the lanes (commit 9bd62b6b)
 Delete `MessageSubscriptionManager` and its `IServiceCollectionAccessor` use. `MessageSubscriptionWorker`
 becomes a single hosted service with no queue parameter; `SubscriptionName` becomes the constant
 `SparkMessaging`; the query loses its `QueueName` clause. Per-lane doorbell channels and pumps.
 Fix the `return` → `continue` batch-abandonment bug and the undisposed per-document sessions.
 Move `QueueNames.IsValid` to producer-side validation in `MessageBus`.
 
-### M4 — Ordering
+### ✅ M4 — Ordering (commit 9bd62b6b)
 `QueueDelivery` enum, `Ordered` default, drain ordered by `CreatedAtUtc, Id` with
 `WaitForNonStaleResults`. Under `Ordered`, sleep-until-`NextAttemptAtUtc` and retry in place rather
 than going through `WakeUp`. M0's FIFO test must now pass.
 
-### M4 — Partitioned ordering (PRD §5.3–5.7)
+### ✅ M4 — Partitioned ordering (commit 9bd62b6b)
 `PartitionKey` on `SparkMessage`, resolved **producer-side** by a selector declared once at lane
 registration and persisted (the selector must be pure — nothing re-runs it). The builder API with
 mode-specific types (`IOrderedQueueBuilder` / `IConcurrentQueueBuilder`) so `Ordered` +
@@ -103,7 +137,7 @@ with degraded mode. `CreatedAtUtc = max(UtcNow, lastIssued + 1 tick)` in `Messag
 Startup validation: every type on an `Ordered` lane has a selector; a lane declared twice is fatal;
 an undeclared lane is `Concurrent(1)`, never `Ordered`.
 
-### M4b — Per-queue retry policy (PRD §6)
+### ✅ M4b — Per-queue retry policy (commit 7593e998)
 `RetrySchedule.Ladder/Linear/Exponential/None` with `maxAttempts` derived for ladders,
 dictionary-shaped config with the **scalar** ladder string, the `RetryOverride` single switch, and
 `MaxPartitionBlock` **validated at startup** from the ladder sum (`.AcceptPartitionBlock(...)` to
@@ -111,7 +145,7 @@ override). Collapse the three drifted delay call sites into one `IRetrySchedule`
 `SparkMessage.MaxAttempts`, `BackoffDelays`, `DefaultBackoffDelays`, `ResolvedBackoffDelays`.
 New default `Ladder("5s 30s 2m")`. Print the resolved schedule table at startup.
 
-### M4c — Requeue (no longer blocking)
+### ⛔ M4c — Requeue: NOT implemented, and no longer needed
 `IMessageBus.RequeueAsync(id)` as an operator tool. It left the critical path when `MaxPartitionBlock`
 became a startup validation rather than runtime early dead-lettering. Must not re-run handlers already
 `Completed` (PRD §2.1). Settle S-R5 first.
@@ -121,20 +155,20 @@ builder; the attribute keeps its single argument and all 12 existing declaration
 analyzer `SPARK011` for `Ordered` + `MaxConcurrency` (the state becomes unspellable), and
 `MaxLaneBlock` with runtime `LaneBlockBudgetExceeded` dead-lettering.
 
-### M5 — Fold sync actions in (PRD §6)
+### ✅ M5 — Fold sync actions in (commit 711fa72c)
 Delete `SparkSyncAction`, `SparkSyncActions_ByStatus`, `SyncActionRetrySweeper`,
 `SyncActionSubscriptionWorker`. `SyncActionInterceptor` broadcasts `SyncActionMessage` on
 `spark-sync-{Collection}`; a framework `IRecipient<SyncActionMessage>` holds the POST logic with
 400/404 → `NonRetryableException`. **Preserve verbatim:** mTLS module identity, the `RequestingModule`
 certificate gate in `SyncApply`, terminal-on-400/404. Verify with `apps/HR` and `apps/Fleet`.
 
-### M6 — Consumers and the inert generator
+### ✅ M6 — Consumers (commit 3c449cbd)
 Restore CodeCoverage's five distinct queue names as lane names (they cost nothing now) and choose
 `Delivery` per lane. Decide the `SubscriptionWorkerRegistrationGenerator`'s fate — today it is inert,
 and after this change a consumer-defined worker would spend one of three slots, so it should either
 be deleted or made to fail loudly.
 
-### M7 — Docs
+### ✅ M7 — Docs (commit 6990d355)
 Rewrite, not touch up: `docs/prd/PRD-SubscriptionWorker.md` §8 (its §8.2 title inverts, and §8.1
 needs the recorded answer from PRD §5), `libs/messaging/…/README.md:177-183,242-244`,
 `docs/prd/PRD-Messaging.md:74`, `docs/prd/PRD-cross-module-sync.md:128`,
@@ -142,7 +176,7 @@ needs the recorded answer from PRD §5), `libs/messaging/…/README.md:177-183,2
 Correct `docs/code-coverage/upload-api.md:102` — the guarantee becomes true at M4, and the doc should
 not have promised it before.
 
-### M8 — Migration and deploy
+### ✅ M8 — Version bump and migration notes (commit d1a7b7cc)
 1. Delete old per-queue subscriptions on every database including production `Coverage`.
 2. Apply the S4 decision on the subscription start position.
 3. Run the reaper once at startup for anything stranded by the deploy.
@@ -152,72 +186,62 @@ not have promised it before.
    CodeCoverage does not enable replication, so it is likely empty there).
 6. One lockstep version bump across the 22 packages — major stays `10` (platform-lockstep rule).
 
-### M9 — Verify in production
+### ⏳ M9 — Verify in production: NOT done, awaits deploy
 Confirm exactly one subscription exists on the `Coverage` database, that all six lanes deliver, and
 that the PR comment appears on `opened`. The dogfood PR #362 and the browser (playwright) are the
 verification path.
 
-## Testing
+## Testing — what shipped
 
-**Two determinism rules, applied without exception.** Never assert absence within a time window —
-convert every negative ("M2 did not run yet") into an ordering assertion over a *finished* event log
-plus an eager invariant monitor. And keep the timing dependence only in how reliably a test detects
-*today's* bug, never in whether correct code passes: a correct pump cannot emit an out-of-order log
-at any speed.
+**Two determinism rules, applied without exception.** Never assert the absence of an event within a
+time window: convert every negative ("M2 has not run yet") into an ordering assertion over a
+*finished* log. And keep any timing dependence in how reliably a test detects *today's* bug, never in
+whether correct code passes — a correct pump cannot emit an out-of-order log at any speed, so these
+cannot flake on a slow machine.
 
-Two shared pieces, in the test project (not in `MintPlayer.Spark.Testing` until a second suite needs
-them):
+One draft test broke that rule and is instructive: it asserted that a follower had not started at the
+moment the head failed, and it **passed vacuously** because the follower had not been delivered yet.
+It was deleted rather than kept.
 
-- **`LaneOrderMonitor`** — records `Enter`/`Exit` and checks "a lane may not start a message while an
-  older unfinished message exists in the same lane". A violation is **recorded, never thrown** —
-  throwing inside `HandleAsync` would be swallowed as an ordinary handler failure and would re-drive
-  the retry path, corrupting the thing under test.
-- **`MessagingTestHost`** — replaces the per-test `NewWorker`/`NewSweeper` helpers; owns the
-  `FakeTimeProvider`, feeder, pumps, sweeper and reaper. Gated recipients use paired
-  `TaskCompletionSource`s (`Entered` / `Release`), never `Task.Delay`.
+| File | Covers |
+|---|---|
+| `MessageOrderingRegressionTests` | Ordering across the retry path (**failed on this branch's first commit**), partition isolation, and that a succeeded handler is never re-invoked |
+| `MessagePipelineE2ETests` | The handler contract end to end: happy path, no-recipient → **Completed**, non-retryable → dead-lettered handler, ladder exhaustion, mixed handlers, retry-then-succeed, delayed broadcast |
+| `MessageRetryScheduleE2ETests` | Increasing ladder (`1s 2s 3s` → dead-letter, 4 attempts, gaps that grow), flat ladder (`2s ×5` → 6 attempts), the configured default, **two lanes waiting their own backoff**, and the global override flattening a declared ladder |
+| `MessagingSubscriptionCountTests` | **Five lanes produce exactly one subscription**, and every lane — including an ad-hoc name no recipient declares — is served by it |
+| `LaneRegistryTests` | What startup refuses, each rule present because its alternative is silent |
+| `MessageReaperTests` | A message stranded in `Processing` past its lease is returned; one inside its lease is left alone |
+| `MessageSequenceTests` | The ordering key: monotonic within a tick, under a backwards clock, and under concurrent callers |
+| `SparkMessagingOptionsBindingTests` | The three measured configuration traps, and the global override |
 
-| Test | Asserts | Red today? |
-|---|---|---|
-| `Ordered_lane_does_not_start_M2_while_M1_is_retrying` | Exact log `[M1, M1-fail, M1, M2, M3]` with a 30 s configured backoff | **Yes** — and in ~1 s, without waiting out the backoff |
-| `Ordered_lane_retries_in_place_without_the_sweeper` | Sweeper not started, `LastWakeUpUtc` stays null | Proves §4.4's retry-in-place, which T1 alone would not catch |
-| `Serial_lane_lets_a_parked_message_be_overtaken` | The carve-out is real and stays real | Pins `Serial` as a tested mode |
-| `DelayBroadcastAsync` carve-out | A delayed M0 may legitimately run late | An untested exclusion becomes an accidental requirement |
-| `A_blocked_lane_does_not_delay_another_lane` | Free lane drains while another is wedged mid-handler | Timeouts are *failure* bounds only |
-| `A_head_of_line_blocked_lane_does_not_delay_another_lane` | Same, but wedged on a 10-minute backoff | Makes "isolation makes blocking tolerable" a checked claim |
-| `Poison_message_dead_letters_after_MaxAttempts_and_releases_its_lane` | 3 attempts, `DeadLettered`, `@expires` set, then D2 runs | Covers both halves in one log assertion |
-| `Ladder_entry_beyond_MaxAttempts_is_unreachable` | Observed delays = first `MaxAttempts-1` rungs | Forces the 1h-rung decision to be deliberate |
-| `Five_lanes_produce_exactly_one_RavenDB_subscription` | Subscription name set == `{"SparkMessaging"}` | **Yes**; licence-independent and instant |
-| `QueueRetryPolicyTests` (pure, no server) | Policy resolution + the global flat-5s override + no config-append | Where ~90% of policy coverage belongs |
-| `MessageRetryPolicyE2ETests` | Each lane waits its *own* backoff; the override flattens all | Pins the knob every other test relies on |
+**The cap itself is deliberately not tested.** Two independent reasons: the dev server and CI both
+carry a **Developer** licence with no cap, so the assertion would pass vacuously wherever it runs; and
+even against a capped server the limit is unenforced for roughly the first minute after startup. The
+cap is environmental. What the framework owes is "create one subscription", which
+`MessagingSubscriptionCountTests` checks directly, instantly, and independently of any licence.
 
-**Do not test the cap.** A test asserting RavenDB refuses the 4th subscription is unwritable
-honestly here: `localhost:8080` and CI both run a **Developer licence with no cap**, so it would pass
-vacuously, and even on a capped server the limit is unenforced for ~50–70 s after start. The cap is
-environmental fact; the framework's obligation is "create one subscription", which the T4 test checks
-directly. If a probe is ever wanted, keep it out of the suite behind a `LicenceProbe` trait. The one
-licence-sensitive behaviour worth testing — M2's `LicenseLimitException`-is-fatal — is a **unit** test
-with a substituted store: no server, no licence, no warm-up.
-
-**Fake-clock hazards.** `FakeTimeProvider.Advance` fires timers synchronously, so never assert
-immediately after `Advance` — always `Advance`, then `await AsyncWait.ForAsync(...)`. Seed the clock
-at real `UtcNow`, never the 2000-01-01 default: if a component is missed in the migration, a
-real-epoch seed degrades to slow-but-correct, while a 2000 seed mis-fires silently.
-
-**Cost:** ≈ +9 databases net (~1.7% on a suite already at ~530). None can use `SparkSharedDatabase` —
-they start subscriptions, enumerate subscriptions, or query collection-wide, all of which that
-fixture forbids.
-
-**Existing tests:** delete `MessageSubscriptionManagerLifecycleTests.cs` (tests a class M3 deletes);
-rewrite all 10 facts of `MessageSubscriptionWorkerE2ETests.cs` (the ctor loses `queueName`), splitting
-the two retry facts into `Ordered` and `Serial` variants; amend `MessageBusTests.cs`,
-`SparkMessagingExtensionsTests.cs`, `SparkBuilderMessagingExtensionsTests.cs`,
-`SparkMessagingOptionsBindingTests.cs`; keep `QueueNamesTests.cs`, `MessageCheckpointTests.cs`,
-`MessageTypeAllowListTests.cs`.
+**`FakeTimeProvider` is used in the unit-level tests** (`MessageSequenceTests`, `MessageReaperTests`)
+but not in the E2E ones: those drive real short intervals, because the pump's wait path and RavenDB's
+own delivery both participate and a fake clock would only fake half of it.
 
 ## Disposition of `fix/coverage-queue-licence-cap`
 Keep the framework hardening (→ M2) and the producer-side webhook test. Drop `CoverageQueues.cs`,
 its consolidation of five queues onto two, `CoverageQueuesTests.cs`, and its 22 version bumps. See
 PRD §10.
+
+## Still open after this PR
+
+Recorded rather than quietly dropped.
+
+| Item | State |
+|---|---|
+| **M9 — verify in production** | Not done, and cannot be from a workstation. After deploy: confirm exactly one subscription on the `Coverage` database, then open a pull request against a tracked repository and confirm the coverage comment appears on `opened` — the symptom that started this work |
+| **S5 — feeder throughput under a real ingestion burst** | Not measured. The feeder only rings doorbells, so the risk is low, but "low" is a judgement, not a measurement. If ingestion ever lags, measure this before tuning anything else |
+| **S9 — window size vs `MaxPartitionsInFlight`** | Measured but **not tuned**. Under bursty arrival a 256-row window surfaces few distinct partitions, and the two settings are coupled. Today's values are defensible, not optimised |
+| **Verification against a Community-tier server** | Everything is green against a **Developer** licence, which has no subscription cap. The property that matters — N lanes produce exactly one subscription — is asserted directly and is licence-independent, but the framework has not been exercised against the tier production actually runs |
+| **`SubscriptionWorkerRegistrationGenerator`** | Still emits an `AddSubscriptionWorkers()` that nothing calls. It was inert before this work and remains inert. Now that the framework owns the only subscription, a consumer-defined worker would spend one of three slots — so it should either be deleted or made to fail loudly. Left alone deliberately: it is a separate decision from this change |
+| **`RequeueAsync`** | Not implemented (M4c). It was only load-bearing while the guardrail dead-lettered early; it no longer does. Still a reasonable operator tool one day |
+| **Metrics** | The PRD sketches lane-blocked duration, parked-partition gauges and dead-letter reasons. Only structured logging shipped. A stalled lane is diagnosable from logs, not from a dashboard |
 
 ## Out of scope
 - Multi-node message processing (needs PRD §7).
