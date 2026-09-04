@@ -204,24 +204,69 @@ conflates them, so it asserts a dependency between messages that have none, and 
 stalls unrelated work for the whole retry ladder.
 
 ```csharp
-builder.AddMessaging(lanes: lanes =>
-{
-    lanes.Queue<ParseSessionMessage>()
+builder.AddMessaging(messaging: messaging => messaging
+    .AddLane(lanes => lanes.Queue<ParseSessionMessage>()
         .Ordered()
         .PartitionBy<ParseSessionMessage>(m => m.BuildId)
         .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)   // finalize cannot overtake ITS build's parses
-        .MaxPartitionsInFlight(2);                            // …while other builds run in parallel
+        .MaxPartitionsInFlight(2))                            // …while other builds run in parallel
 
-    lanes.Queue("spark-email")
+    .AddLane(lanes => lanes.Queue("spark-email")
         .Concurrent(maxConcurrency: 8)                        // no ordering; nothing waits
-        .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d"));
-});
+        .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d"))));
 ```
 
 `Ordered()` and `Concurrent()` return different builder types, so "strictly ordered, four at a time"
 has no method to call rather than being rejected by a validator. A lane nobody declares is
 `Concurrent(1)` — never ordered, because a silently-ordered lane with no partition key would serialize
 everything on one key.
+
+### Lanes can be configured from the container
+
+A lane declaration is an ordinary service registration resolved **on first use**, not while services
+are being registered. So a lane can be configured from anything the application has: options, a
+resource probe, a service. Three shapes, all equivalent in when they run:
+
+```csharp
+messaging
+    // A delegate.
+    .AddLane(lanes => lanes.Queue("spark-email").Concurrent(8))
+
+    // A delegate with the resolved container.
+    .AddLane((lanes, services) =>
+    {
+        var options = services.GetRequiredService<IOptions<MailOptions>>().Value;
+        lanes.Queue("spark-email")
+             .Concurrent(options.Workers)
+             .Retry(RetrySchedule.Ladder(options.RetryLadder));
+    })
+
+    // A class the container constructs, so it injects rather than locates.
+    .AddLane<MailLaneConfigurator>();
+```
+
+```csharp
+internal sealed class MailLaneConfigurator(IOptions<MailOptions> options) : ILaneConfigurator
+{
+    public void Configure(ILaneBuilder lanes) => lanes
+        .Queue("spark-email")
+        .Concurrent(options.Value.Workers)
+        .Retry(RetrySchedule.Ladder(options.Value.RetryLadder));
+}
+```
+
+A **framework package** declaring its own lane uses the same path —
+`services.AddSparkLane<MyLaneConfigurator>()` — so registration order does not matter. Replication's
+`spark-sync` lane is registered exactly this way.
+
+Two consequences worth knowing:
+
+- **Configurators are singletons**, so they may inject singletons and options but not scoped
+  services. That is correct rather than a limitation: what a lane declares is process-wide. Anything
+  request-shaped belongs in the *handler*, which is scoped and resolved per message.
+- **A duplicate lane declaration surfaces on first use**, which in an application is the startup
+  validation pass — so it still fails at startup, and still loudly, but not on the line that
+  registered it.
 
 Under `Ordered`, a failing head blocks its partition until it succeeds or dead-letters, so a lane's
 retry schedule **is** that partition's worst-case downtime. Startup refuses an ordered lane whose

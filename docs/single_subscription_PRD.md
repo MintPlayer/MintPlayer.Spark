@@ -14,6 +14,7 @@ deliberate:
 | `RequeueAsync` a blocking dependency | Not implemented; left out of scope | It was only load-bearing because `MaxLaneBlock` dead-lettered early. Nothing is dead-lettered early any more, so nothing needs replaying to be safe |
 | A message with no handlers is dead-lettered | **Completed** | Publishing to zero subscribers is a successful publish. Dead-letter is kept for "we tried and failed", so a dead-letter view stays worth reading — a framework lane broadcasts typed messages most applications never subscribe to |
 | `DelayBroadcastAsync` unchanged | Gained a `queueName` overload | `BroadcastAsync` had a lane override and the delayed variant did not, so a delayed message could only ever go to its derived lane |
+| Lanes declared eagerly inside `AddMessaging` | Lanes are **`ILaneConfigurator` service registrations**, resolved lazily on first use | The eager version ran while the service collection was still being assembled, so a lane could not be configured from options or any other service — every value had to be a literal. It also left a framework package no way to declare its own lane except reaching into `IServiceCollection` for an already-constructed registry, which made the result depend silently on the order the `Add…` calls ran in. Registration order is now irrelevant, and a duplicate lane surfaces at the startup validation pass rather than at the `AddLane` call |
 **Date:** 2026-09-04
 **Packages:** `MintPlayer.Spark.Messaging(.Abstractions)`, `MintPlayer.Spark.SubscriptionWorker(.Abstractions)`, `MintPlayer.Spark.Replication`
 **Breaking:** yes, freely — preview packages, no backward compatibility required
@@ -172,27 +173,35 @@ analyzer needed, because `IOrderedQueueBuilder` has no `MaxConcurrency` and `ICo
 has no `PartitionBy`:
 
 ```csharp
-messaging.Queue<ParseSessionMessage>()                    // "coverage-parse-session"
-    .PartitionBy<ParseSessionMessage>(m => m.BuildId)
-    .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)
-    .PartitionBy<AssembleCommitMessage>(m => m.CommitId)
-    .Ordered()
-    .MaxPartitionsInFlight(4)
-    .Retry(RetrySchedule.Ladder("5s 30s 2m 10m"));        // worst case 12m35s, per BUILD
+messaging
+    .AddLane(lanes => lanes.Queue<ParseSessionMessage>()   // "coverage-parse-session"
+        .Ordered()
+        .PartitionBy<ParseSessionMessage>(m => m.BuildId)
+        .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)
+        .PartitionBy<AssembleCommitMessage>(m => m.CommitId)
+        .MaxPartitionsInFlight(2)
+        .Retry(RetrySchedule.Ladder("5s 30s 2m 10m")))     // worst case 12m35s, per BUILD
 
-messaging.Queue("spark-github-all")
-    .PartitionBy<GitHubWebhookMessage>(m => m.RepositoryFullName)
-    .Ordered().MaxPartitionsInFlight(8)
-    .Retry(RetrySchedule.Linear(step: 15s, cap: 2m, attempts: 8));   // ~13m, per REPO
+    .AddLane(lanes => lanes.Queue("spark-github-all")
+        .Ordered()
+        .PartitionBy<GitHubWebhookMessage>(m => m.RepositoryFullName)
+        .MaxPartitionsInFlight(8)
+        .Retry(RetrySchedule.Linear(step: 15s, cap: 2m, attempts: 8)))   // ~13m, per REPO
 
-messaging.Queue("spark-email")
-    .Concurrent(maxConcurrency: 8)
-    .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d")); // 11 days blocks nobody
+    // Configured from the container, which the first draft of this API could not do.
+    .AddLane((lanes, services) => lanes.Queue("spark-email")
+        .Concurrent(services.GetRequiredService<IOptions<MailOptions>>().Value.Workers)
+        .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d")))             // 11 days blocks nobody
 
-messaging.Queue("coverage-heartbeat")
-    .Unbounded()                                          // overlapping runs intended
-    .Retry(RetrySchedule.None);                           // the schedule IS the retry
+    .AddLane(lanes => lanes.Queue("coverage-heartbeat")
+        .Unbounded()                                       // overlapping runs intended
+        .Retry(RetrySchedule.None));                       // the schedule IS the retry
 ```
+
+Each `AddLane` is a singleton `ILaneConfigurator` registration that the registry resolves **on first
+use**, so lane configuration can read anything the container holds and a framework package can
+declare its own lane without caring whether `AddMessaging` ran first. `AddLane<TConfigurator>()`
+takes a class instead, for constructor injection.
 
 **The payoff that settles the decomposition:** under queue-scoped FIFO, "strictly ordered" and "run
 four at once" genuinely contradict. Under partitions they range over different domains, so

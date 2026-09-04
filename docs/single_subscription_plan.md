@@ -137,6 +137,25 @@ with degraded mode. `CreatedAtUtc = max(UtcNow, lastIssued + 1 tick)` in `Messag
 Startup validation: every type on an `Ordered` lane has a selector; a lane declared twice is fatal;
 an undeclared lane is `Concurrent(1)`, never `Ordered`.
 
+### ✅ M4d — Lanes as service registrations (follow-up)
+
+The first version of the lane API built declarations **eagerly**, inside `AddMessaging`, while the
+service collection was still being assembled. Two problems followed: a lane could not be configured
+from options or any other service — every value had to be a literal — and a framework package had no
+way to declare its own lane except reaching into `IServiceCollection` for an already-constructed
+registry, which worked only if `AddMessaging` had run first and silently did nothing otherwise.
+
+Lanes are now `ILaneConfigurator` singleton registrations (`AddSparkLane`), resolved by
+`LaneRegistry` on first use. Three shapes: a delegate, a delegate taking `IServiceProvider`, or a
+class the container constructs. Replication uses the last, reading its concurrency and retry ladder
+from `SparkReplicationOptions`. Registration order stops mattering.
+
+Lifetimes are deliberate: configurators and the registry are **singletons** and plans are cached,
+because what a lane declares is process-wide data. Resolving scoped objects and caching them past
+their scope would be a captive dependency; request-shaped state belongs in handlers, which are scoped
+and resolved per message. The one behavioural consequence is that a duplicate lane now surfaces at the
+startup validation pass rather than at the `AddLane` call.
+
 ### ✅ M4b — Per-queue retry policy (commit 7593e998)
 `RetrySchedule.Ladder/Linear/Exponential/None` with `maxAttempts` derived for ladders,
 dictionary-shaped config with the **scalar** ladder string, the `RetryOverride` single switch, and

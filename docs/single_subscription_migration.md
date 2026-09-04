@@ -80,6 +80,10 @@ No compatibility shims — these are preview packages.
 Added: `IMessageBus.DelayBroadcastAsync(message, delay, queueName)` — the delayed broadcast had no lane
 override, so a delayed message could only ever go to its derived lane.
 
+`MintPlayer.Spark.Messaging.Abstractions` gains a dependency on
+`Microsoft.Extensions.DependencyInjection.Abstractions`, since lane declaration is a service
+registration and the types that describe it live there.
+
 ## What to do in an application
 
 Nothing, to keep working: an undeclared lane is `Concurrent(1)`, which is close to the old
@@ -88,22 +92,40 @@ one-at-a-time behaviour, and no broadcast site changes.
 Declare lanes where ordering or concurrency matters:
 
 ```csharp
-spark.AddMessaging(configure: null, lanes: lanes =>
-{
-    lanes.Queue<ParseSessionMessage>()
+spark.AddMessaging(messaging: messaging => messaging
+    .AddLane(lanes => lanes.Queue<ParseSessionMessage>()
         .Ordered()
         .PartitionBy<ParseSessionMessage>(m => m.BuildId)
         .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)
-        .MaxPartitionsInFlight(2);
+        .MaxPartitionsInFlight(2))
 
-    lanes.Queue<PublishFeedbackMessage>().Concurrent(maxConcurrency: 4);
-});
+    .AddLane(lanes => lanes.Queue<PublishFeedbackMessage>().Concurrent(maxConcurrency: 4)));
 ```
+
+A lane declaration is an ordinary service registration resolved **on first use**, so it can be
+configured from anything the container holds — which the first draft of this API could not do,
+because it ran while services were still being registered:
+
+```csharp
+messaging.AddLane((lanes, services) =>
+{
+    var options = services.GetRequiredService<IOptions<MailOptions>>().Value;
+    lanes.Queue("spark-email").Concurrent(options.Workers).Retry(RetrySchedule.Ladder(options.RetryLadder));
+});
+
+// Or a class the container constructs, for constructor injection:
+messaging.AddLane<MailLaneConfigurator>();
+```
+
+A framework package declares its own lane the same way — `services.AddSparkLane<TConfigurator>()` —
+so registration order does not matter.
 
 **Startup refuses** an ordered lane with a message type that has no partition selector, a lane declared
 twice, and an ordered lane whose retry ladder can block a partition for longer than
 `MaxPartitionBlock` (15 minutes by default; say `AcceptPartitionBlock(...)` if the wait is intended).
-Each of those exists because its alternative is silent.
+Each of those exists because its alternative is silent. Note these are raised the first time lanes are
+needed — the startup validation pass — rather than at the `AddLane` call, so the failure names the
+lane rather than pointing at the registering line.
 
 ## Verifying after deploy
 
