@@ -273,9 +273,9 @@ Keep the framework hardening (→ M2) and the producer-side webhook test. Drop `
 its consolidation of five queues onto two, `CoverageQueuesTests.cs`, and its 22 version bumps. See
 PRD §10.
 
-## ⚠ Open review comment — `MessageLanePump.DispatchAsync` task tracking
+## Review comment, addressed — `MessageLanePump.DispatchAsync` task tracking
 
-**Raised in review, not yet addressed.** On the in-flight tracking added for graceful shutdown:
+Raised in review, on the in-flight tracking added for graceful shutdown:
 
 > Why don't you just call `await work;` here? What a strange code construct is this? This code seems
 > prone to deadlocks and memory-exceptions.
@@ -304,28 +304,38 @@ is the wrong construct.
 from the drain loop once per runnable partition. Awaiting there would serialize the partitions and
 defeat `MaxPartitionsInFlight` — one slow handler would again stall its lane's other partitions,
 which is the entire property this design exists to provide. The work genuinely must outlive the loop
-iteration that starts it; only its *tracking* needs fixing.
+iteration that starts it; only its *tracking* needed fixing.
 
-**Proposed shape** (not yet applied): extract the body into a plain `private async Task
-RunHandlerAsync(...)`, start it, register the returned task, and prune completed entries at the top of
+**What was applied.** The body moved into a plain `private async Task RunHandlerAsync(...)`, which no
+longer deregisters itself; the caller registers the handle it was handed and prunes finished ones on
 each dispatch:
 
 ```csharp
-var work = RunHandlerAsync(messageId, partition, cancellationToken);
+var work = Task.Run(() => RunHandlerAsync(messageId, partition, cancellationToken), CancellationToken.None);
 
-foreach (var finished in dispatched.Keys.Where(t => t.IsCompleted))
-    dispatched.TryRemove(finished, out _);
+foreach (var finished in dispatched.Keys)
+    if (finished.IsCompleted)
+        dispatched.TryRemove(finished, out _);
 
-dispatched[work] = 0;
+if (!work.IsCompleted)
+    dispatched[work] = 0;
 ```
 
-No self-reference, no race to patch, no continuation, and the set stays bounded by concurrency rather
-than by throughput — which answers the memory concern directly. Also drop the `Task.Run`: the method
-is already async and returns at its first await, so the thread-pool hop buys nothing.
+No self-reference and no race to patch. The set is now bounded by concurrency rather than by
+throughput, which answers the memory concern directly: a lane running *n* partitions holds at most
+*n* handles plus those that finished since the last dispatch, and the set only has to be accurate at
+shutdown.
+
+One deviation from the shape sketched during review: the `Task.Run` stays. Dropping it was proposed on
+the grounds that an async method returns at its first `await` — true of the framework's own code, but
+`ProcessAsync` runs *user* handler code, and a handler doing synchronous work before its first await
+would run that work on the lane's drain loop and stall the lane's other partitions. The thread-pool
+hop is what keeps the loop off it. It is not there for the self-reference, so removing the one did not
+require removing the other.
 
 **On deadlocks:** I could not find one — handler bodies take `stateLock` only briefly and
-`DrainInFlightAsync` awaits them without holding it — but the construct is opaque enough that the
-question is fair, and the simplification removes the need to reason about it at all.
+`DrainInFlightAsync` awaits them without holding it — but the construct was opaque enough that the
+question was fair, and the simplification removes the need to reason about it at all.
 
 ## Still open after this PR
 

@@ -266,52 +266,57 @@ internal sealed class MessageLanePump(
             stateLock.Release();
         }
 
-        Task? work = null;
-        work = Task.Run(async () =>
+        // Deliberately not awaited. A lane exists so that a slow handler on one partition does not
+        // hold up the others; awaiting here would serialise the lane and make MaxPartitionsInFlight
+        // meaningless. Task.Run keeps the drain loop off the handler's synchronous prologue.
+        var work = Task.Run(() => RunHandlerAsync(messageId, partition, cancellationToken), CancellationToken.None);
+
+        // Handles of handlers that have already finished are dropped here rather than by the handlers
+        // themselves: a task cannot deregister a handle its caller has not been handed yet. The set
+        // only has to be accurate when the lane stops, and every dispatch trims it.
+        foreach (var finished in dispatched.Keys)
+            if (finished.IsCompleted)
+                dispatched.TryRemove(finished, out _);
+
+        if (!work.IsCompleted)
+            dispatched[work] = 0;
+    }
+
+    /// <summary>
+    /// Runs one message to its outcome and releases the partition, whatever that outcome is. Never
+    /// throws: a partition left in <see cref="inFlight"/> wedges the lane on a message it is no
+    /// longer running.
+    /// </summary>
+    private async Task RunHandlerAsync(string messageId, string partition, CancellationToken cancellationToken)
+    {
+        try
         {
+            var outcome = await processor.ProcessAsync(messageId, plan.Retry, cancellationToken);
+
+            await stateLock.WaitAsync(CancellationToken.None);
             try
             {
-                var outcome = await processor.ProcessAsync(messageId, plan.Retry, cancellationToken);
+                inFlight.Remove(partition);
 
-                await stateLock.WaitAsync(CancellationToken.None);
-                try
-                {
-                    inFlight.Remove(partition);
-
-                    if (!outcome.Terminal && outcome.NextAttemptAtUtc is { } due)
-                        Park(partition, due, timeProvider.GetUtcNow().UtcDateTime);
-                }
-                finally
-                {
-                    stateLock.Release();
-                }
-            }
-            catch (Exception ex)
-            {
-                // The processor is written not to throw; if it ever does, the partition must still
-                // be released or the lane wedges permanently on a message it is no longer running.
-                logger.LogError(ex, "Lane '{Lane}' failed to process {MessageId}", plan.LaneName, messageId);
-
-                await stateLock.WaitAsync(CancellationToken.None);
-                try { inFlight.Remove(partition); } finally { stateLock.Release(); }
+                if (!outcome.Terminal && outcome.NextAttemptAtUtc is { } due)
+                    Park(partition, due, timeProvider.GetUtcNow().UtcDateTime);
             }
             finally
             {
-                // Deregister before ringing, so a shutdown that observes the doorbell also observes
-                // an empty in-flight set rather than racing this task's own removal.
-                if (work is not null)
-                    dispatched.TryRemove(work, out _);
+                stateLock.Release();
             }
+        }
+        catch (Exception ex)
+        {
+            // The processor is written not to throw; if it ever does, the partition must still be
+            // released or the lane wedges permanently on a message it is no longer running.
+            logger.LogError(ex, "Lane '{Lane}' failed to process {MessageId}", plan.LaneName, messageId);
 
-            Ring();
-        }, CancellationToken.None);
+            await stateLock.WaitAsync(CancellationToken.None);
+            try { inFlight.Remove(partition); } finally { stateLock.Release(); }
+        }
 
-        dispatched[work] = 0;
-
-        // The task may already have finished and removed nothing, because it was registered after it
-        // started. Re-check rather than leak a completed task into the shutdown wait.
-        if (work.IsCompleted)
-            dispatched.TryRemove(work, out _);
+        Ring();
     }
 
     private async Task ParkAsync(string partition, DateTime dueUtc, DateTime now, CancellationToken cancellationToken)

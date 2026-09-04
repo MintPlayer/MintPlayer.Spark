@@ -180,22 +180,41 @@ public class MessagePipelineE2ETests : SparkTestDriver
     [Fact]
     public async Task A_delayed_broadcast_is_not_run_before_it_becomes_visible()
     {
-        var recipient = new Succeeds();
+        var recipient = new RecordsWhenItRan();
         await using var host = NewHost(services => services.AddSingleton<IRecipient<Payload>>(recipient));
 
         var pump = host.StartLane(Lane);
         await host.Bus.DelayBroadcastAsync(new Payload("later"), TimeSpan.FromSeconds(2), Lane);
         pump.Ring();
 
-        // Positive signal: the document exists and carries the visibility stamp.
-        var stored = await WaitForAsync(m => m.VisibleAtUtc != null);
-        stored.Status.Should().Be(EMessageStatus.Pending);
-        recipient.Calls.Should().Be(0, "the delay has not elapsed at the moment the document appears");
-
-        // Then it runs on its own, without anything re-broadcasting it — the drain's own idle pass
+        // It runs on its own, without anything re-broadcasting it — the drain's own idle pass
         // rediscovers it, which is what replaced the retry sweeper.
-        await WaitForAsync(m => m.Status == EMessageStatus.Completed, TimeSpan.FromSeconds(40));
+        var stored = await WaitForAsync(m => m.Status == EMessageStatus.Completed, TimeSpan.FromSeconds(40));
         recipient.Calls.Should().Be(1);
+
+        // The delay is checked against when the handler ACTUALLY ran, not against when a poll happened
+        // to observe the document. An earlier version asserted Calls == 0 at the moment the document
+        // first appeared, which is only meaningful if that observation lands inside the delay window —
+        // a 100ms poll plus index staleness can miss a 2s window, and did, on a loaded machine.
+        stored.VisibleAtUtc.Should().HaveValue();
+        recipient.FirstCallUtc.Should().BeOnOrAfter(
+            stored.VisibleAtUtc!.Value,
+            "a delayed message must not be handled before it becomes visible");
+    }
+
+    /// <summary>Records when it ran, so a delay can be checked against the run rather than against a poll.</summary>
+    private sealed class RecordsWhenItRan : IRecipient<Payload>
+    {
+        public int Calls;
+        public DateTime FirstCallUtc = DateTime.MaxValue;
+
+        public Task HandleAsync(Payload message, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref Calls) == 1)
+                FirstCallUtc = DateTime.UtcNow;
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FailsThenSucceeds : IRecipient<Payload>
