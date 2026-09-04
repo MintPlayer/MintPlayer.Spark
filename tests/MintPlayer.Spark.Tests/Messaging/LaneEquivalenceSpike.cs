@@ -144,23 +144,25 @@ public class LaneEquivalenceSpike
     /// Asserts two snapshots differ.
     /// </summary>
     /// <remarks>
-    /// The cast is load-bearing, and unfortunately so. MintPlayer.Assertions declares
+    /// The cast works around a missing overload, nothing more: MintPlayer.Assertions declares
     /// <c>NotBeEquivalentTo</c> only on <c>ObjectAssertions</c>, while <c>BeEquivalentTo</c> also has
-    /// a <c>GenericCollectionAssertions</c> overload — so the negative form is unreachable from a
-    /// typed collection without going through <c>object</c>. Casting only the SUBJECT keeps
-    /// <c>TExpectation</c> bound to <c>LaneSnapshot[]</c>; casting both would infer
-    /// <c>TExpectation = object</c>, whose zero members yield zero differences, and every one of
-    /// these tests would pass no matter what the generator emitted.
+    /// a <c>GenericCollectionAssertions</c> one, so the negative form is unreachable from a typed
+    /// collection without going through <c>object</c>. Tracked as MintPlayer.Dotnet.Tools#177.
+    /// <para>
+    /// The cast is safe. It was first written up as a hazard — on the theory that
+    /// <c>TExpectation = object</c> would compare against a type with no members and pass for
+    /// anything — and that was measured and found false: <c>ResolveNodeType</c> falls back to the
+    /// runtime type, so the members are compared either way. Recorded because the theory is
+    /// plausible enough to be re-derived by the next person to read this.
+    /// </para>
     /// </remarks>
     private static void ShouldDiffer(LaneSnapshot[] actual, LaneSnapshot[] expected)
         => ((object)actual).Should().NotBeEquivalentTo(expected);
 
     /// <summary>One lane, flattened to values that two registries can be compared on.</summary>
     /// <remarks>
-    /// A named type rather than an anonymous one on purpose: <c>BeEquivalentTo</c> compares against
-    /// the members of <c>TExpectation</c>, so handing it two <c>object</c>s would compare against
-    /// <c>typeof(object)</c> — no members, no differences, and a test that passes for any input at
-    /// all. The negative cases below exist to keep that from going unnoticed.
+    /// A named type rather than an anonymous one, so the failure message names the member that
+    /// differs. The negative cases above are what prove the comparison can fail at all.
     /// </remarks>
     private sealed record LaneSnapshot(
         string Lane,
