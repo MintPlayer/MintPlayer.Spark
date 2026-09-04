@@ -101,16 +101,21 @@ public class MessageRetryScheduleE2ETests : SparkTestDriver
     [Fact]
     public async Task A_flat_ladder_retries_the_same_interval_a_fixed_number_of_times()
     {
-        // 2s × 5 → dead-letter. Six attempts. A flat ladder is the honest way to say "retry a few
-        // times, quickly, then give up" — and it is what an operator sets globally in a test
-        // environment, so it must behave the same as any other ladder rather than being special.
+        // A flat ladder of five rungs → six attempts → dead-letter. A flat ladder is the honest way
+        // to say "retry a few times, quickly, then give up", and it is what an operator sets globally
+        // in a test environment, so it must behave like any other ladder rather than being special.
+        //
+        // One second per rung rather than two: the shape is what is under test — flat, five rungs,
+        // six attempts — and the interval only decides how long this test holds its database. The
+        // suite creates one database per test case and its teardown is the first thing to buckle
+        // under load, so a test that waits longer than it needs to makes every other test flakier.
         var recipient = new AlwaysFails();
 
         await using var host = new MessagingTestHost(
             Store,
             TimeProvider.System,
             services => services.AddSingleton<IRecipient<Doomed>>(recipient),
-            lanes => lanes.Queue("retry-flat").Concurrent(1).Retry(RetrySchedule.Ladder("2s 2s 2s 2s 2s")));
+            lanes => lanes.Queue("retry-flat").Concurrent(1).Retry(RetrySchedule.Ladder("1s 1s 1s 1s 1s")));
 
         var pump = host.StartLane("retry-flat");
         await host.Bus.BroadcastAsync(new Doomed("f"), "retry-flat");
