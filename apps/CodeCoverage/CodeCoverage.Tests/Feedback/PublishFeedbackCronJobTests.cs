@@ -33,6 +33,9 @@ public class PublishFeedbackCronJobTests : CoverageRavenTest
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
             => Record(message);
 
+            public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default)
+                => Record(message);
+
         private Task Record<TMessage>(TMessage message)
         {
             if (message is not null) Broadcast.Add(message);

@@ -14,6 +14,7 @@ internal partial class MessageBus : IMessageBus
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly MessageSequence sequence;
+    [Inject] private readonly LaneRegistry lanes;
 
     private SparkMessagingOptions Options => options.Value;
 
@@ -25,6 +26,9 @@ internal partial class MessageBus : IMessageBus
 
     public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
         => StoreMessageAsync(message, delay, queueNameOverride: null, cancellationToken);
+
+    public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default)
+        => StoreMessageAsync(message, delay, queueNameOverride: queueName, cancellationToken);
 
     private async Task StoreMessageAsync<TMessage>(TMessage message, TimeSpan? delay, string? queueNameOverride, CancellationToken cancellationToken)
     {
@@ -46,9 +50,13 @@ internal partial class MessageBus : IMessageBus
             // an ingestion burst does exactly this — cannot tie, and so an NTP step backwards
             // cannot invert two messages of one partition.
             Sequence = sequence.Next(),
-            NextAttemptAtUtc = delay.HasValue ? now + delay.Value : null,
+            // Resolved once, here, and persisted. The lane's pump never recomputes it: a selector
+            // that changed would move existing messages between partitions.
+            PartitionKey = lanes.PartitionKeyFor(queueName, messageType, message!) ?? string.Empty,
+            // A delay is a scheduling instruction, not a dependency, so it must not block the
+            // partition the way a retry backoff does — hence a separate field.
+            VisibleAtUtc = delay.HasValue ? now + delay.Value : null,
             AttemptCount = 0,
-            MaxAttempts = Options.MaxAttempts,
             Status = EMessageStatus.Pending,
         };
 

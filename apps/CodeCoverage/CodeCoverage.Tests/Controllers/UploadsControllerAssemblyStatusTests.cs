@@ -25,6 +25,8 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
         public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private static UploadsController CreateController(IAsyncDocumentSession session)

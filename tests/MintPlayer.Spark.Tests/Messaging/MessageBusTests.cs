@@ -16,7 +16,7 @@ public class MessageBusTests : SparkTestDriver
     private record OrderShipped(string OrderId);
 
     private IMessageBus NewBus(SparkMessagingOptions? options = null)
-        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()), TimeProvider.System, new MessageSequence(TimeProvider.System));
+        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()), TimeProvider.System, new MessageSequence(TimeProvider.System), new LaneRegistry());
 
     [Fact]
     public async Task BroadcastAsync_persists_a_SparkMessage_with_inferred_queue_name_and_payload()
@@ -35,7 +35,6 @@ public class MessageBusTests : SparkTestDriver
         message.Status.Should().Be(EMessageStatus.Pending);
         message.PayloadJson.Should().Contain("orders/1").And.Contain("99.95");
         message.NextAttemptAtUtc.Should().NotHaveValue();
-        message.MaxAttempts.Should().Be(5);
         message.AttemptCount.Should().Be(0);
     }
 
@@ -66,8 +65,12 @@ public class MessageBusTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task DelayBroadcastAsync_sets_NextAttemptAtUtc_to_roughly_now_plus_delay()
+    public async Task DelayBroadcastAsync_sets_VisibleAtUtc_and_leaves_the_retry_field_alone()
     {
+        // A delay and a retry backoff are different things and now live in different fields. A
+        // backing-off head must block its partition, or a newer message overtakes it; a delayed
+        // message must not, because a delay is a scheduling instruction rather than a dependency —
+        // blocking on one would freeze its whole partition for the length of the delay.
         var bus = NewBus();
 
         await bus.DelayBroadcastAsync(new OrderPlaced("orders/1", 10m), TimeSpan.FromMinutes(5));
@@ -75,8 +78,10 @@ public class MessageBusTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
-        message.NextAttemptAtUtc.Should().HaveValue();
-        message.NextAttemptAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(30));
+        message.VisibleAtUtc.Should().HaveValue();
+        message.VisibleAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(30));
+        message.NextAttemptAtUtc.Should().NotHaveValue(
+            "a delayed message has not been attempted, so it is not on a retry rung");
     }
 
     [Fact]
@@ -92,19 +97,26 @@ public class MessageBusTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
         message.Status.Should().Be(EMessageStatus.Pending);
-        message.WakeUp.Should().BeFalse();
     }
 
     [Fact]
-    public async Task MaxAttempts_from_options_is_written_onto_the_stored_message()
+    public async Task Broadcast_order_is_recorded_as_a_strictly_increasing_sequence()
     {
-        var bus = NewBus(new SparkMessagingOptions { MaxAttempts = 12 });
+        // Retry policy is deliberately NOT snapshotted onto the message any more: it resolves at
+        // scheduling time so that a configuration change — the flat-5s test override in particular —
+        // reaches messages that are already in flight. What the producer does stamp is the ordering
+        // key, because that must never be recomputed.
+        var bus = NewBus();
 
         await bus.BroadcastAsync(new OrderPlaced("orders/1", 10m));
+        await bus.BroadcastAsync(new OrderPlaced("orders/2", 20m));
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
-        var message = await session.Query<SparkMessage>().SingleAsync();
-        message.MaxAttempts.Should().Be(12);
+        var messages = await session.Query<SparkMessage>().OrderBy(m => m.Sequence).ToListAsync();
+
+        messages.Should().HaveCount(2);
+        messages[0].PayloadJson.Should().Contain("orders/1");
+        messages[1].Sequence.Should().BeGreaterThan(messages[0].Sequence);
     }
 }
