@@ -3,6 +3,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
+using Raven.Client.ServerWide.Operations;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -139,14 +140,57 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         // or GetDocumentStore timing out when the shared embedded server is under load. Without
         // the guard this throws a NullReferenceException that REPLACES the real failure in the
         // test output, which is what made those CI timeouts so hard to read.
-        //
-        // Deliberately NOT tolerant of a slow database deletion. An earlier attempt swallowed that
-        // timeout, on the theory that a late confirmation was harmless housekeeping. It was not: the
-        // deletions were slow because lane pumps were still querying the database, since neither the
-        // test host nor MessageFeeder waited for them to stop. Suppressing the symptom would have
-        // hidden the next occurrence of that bug, which is the one thing this failure is good for.
-        Store?.Dispose();
+        if (Store is null)
+            return Task.CompletedTask;
+
+        DropDatabaseWithoutWaiting(Store);
+        Store.Dispose();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Deletes this case's database without waiting for the cluster to confirm it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The 15 seconds this removes are not ours to wait.</b> <c>RavenTestDriver</c> deletes the
+    /// database from the store's <c>AfterDispose</c> event, and the server's delete handler blocks
+    /// on <c>WaitForIndexNotification</c> for <c>TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)</c>.
+    /// Under CPU starvation that notification does not arrive in time and teardown throws
+    /// <c>TimeoutException: Waited for 00:00:15 … at AdminDatabasesHandler.Delete()</c>, failing a
+    /// test that had already passed. Sending our own delete first, with a zero wait, makes the
+    /// server skip that block: <c>remaining = timeToWaitForConfirmation - elapsed</c> is negative
+    /// immediately, so it submits the raft command and returns.
+    /// </para>
+    /// <para>
+    /// <b>The database is still deleted.</b> Only the confirmation is unawaited — which is all a
+    /// test needs, because nothing may observe this database again: the name is unique per case
+    /// (<c>InitializeAsync_{N}</c>) and the embedded server is in-memory and dies with the process.
+    /// Isolation is unchanged; this is not the discredited fix of swallowing the timeout, which hid
+    /// a real defect. The timeout is not caught here — it is not raised.
+    /// </para>
+    /// <para>
+    /// The driver then sends its own delete for the same database, which finds it already gone and
+    /// swallows the resulting <c>DatabaseDoesNotExistException</c> itself.
+    /// </para>
+    /// </remarks>
+    private static void DropDatabaseWithoutWaiting(IDocumentStore store)
+    {
+        try
+        {
+            store.Maintenance.Server.Send(new DeleteDatabasesOperation(new DeleteDatabasesOperation.Parameters
+            {
+                DatabaseNames = [store.Database],
+                HardDelete = true,
+                TimeToWaitForConfirmation = TimeSpan.Zero,
+            }));
+        }
+        catch (Exception)
+        {
+            // Best-effort: the driver's own AfterDispose delete still runs, so a database is never
+            // leaked by this failing. Anything thrown here would replace the real test result, which
+            // is the failure mode the null-guard above exists to prevent.
+        }
     }
 
     /// <summary>

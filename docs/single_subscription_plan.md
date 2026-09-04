@@ -144,12 +144,29 @@ cancelled a token and returned. The pumps are fire-and-forget loops and `Dispatc
 un-awaited work, so "stopped" meant only "asked to stop": handlers carried on running — opening
 sessions, issuing queries — against a document store the host was already disposing.
 
-**In production** that abandons in-flight work mid-message with no record of why. **In the test suite**
-it showed up as something apparently unrelated: `RavenTestDriver` deletes each test's database on
-store disposal, that delete blocks on cluster confirmation, and the confirmation timed out because
-queries were still arriving at the database being deleted. The failure was then reported against
-whichever test happened to be disposing. Every teardown timeout observed in this work landed on a
-pump-using test, including the first one, before any of the new tests existed.
+**In production** that abandons in-flight work mid-message with no record of why: handlers keep
+running against a store the host is disposing. That is the defect, it was real, and the fix stands on
+its own.
+
+> ### ⚠️ Correction — this did NOT cause the teardown timeout
+>
+> This section originally claimed the shutdown defect also explained the
+> `AdminDatabasesHandler.Delete()` timeouts, on the reasoning that deletions were slow *because* lane
+> pumps were still querying the database being deleted. The circumstantial case was strong: every
+> teardown timeout seen during this work landed on a pump-using test, including the first, before any
+> of the new tests existed. Three clean full-suite runs after the fix were then read as confirmation.
+>
+> **That was wrong, and the greens were luck.** The flake recurred, and it has since been reproduced
+> in `tests/MintPlayer.Spark.FlakeRepro/` with **no messaging, no hosted services and no background
+> work at all** — it needs only CPU starvation, concurrent teardowns, and databases that carry an
+> index. The messaging classes were over-represented because they are slower and hold more server
+> work, not because pumps held the database open.
+>
+> Cause, evidence and fix: [test_teardown_flake_PRD.md](test_teardown_flake_PRD.md). The real fix is
+> a zero-wait `DeleteDatabasesOperation` in `SparkTestDriver.DisposeAsync`.
+>
+> The lesson worth keeping: a plausible mechanism plus a correlated population plus three green runs
+> is not proof. The reproduction was.
 
 Fixed in three places: the pump drains work it dispatched (15s bound) after its loop exits; the feeder
 awaits its pump tasks (30s bound); the test host awaits its pumps before the fixture tears the
