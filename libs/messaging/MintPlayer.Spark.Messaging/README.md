@@ -1,8 +1,8 @@
 # MintPlayer.Spark.Messaging
 
-A durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue-isolated processing, and automatic retry. Fully opt-in -- the core Spark library remains unchanged.
+A durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, lane isolation, partitioned ordering and automatic retry. Fully opt-in -- the core Spark library remains unchanged.
 
-Messages are persisted as documents, processed via RavenDB data subscriptions, and retried automatically on failure. Different queues run independently so a failing message in one queue never blocks another.
+Messages are persisted as documents, delivered through **one** RavenDB data subscription however many queues exist, and retried automatically on failure. Lanes run independently, so a failing message in one never blocks another.
 
 ## Overview
 
@@ -11,9 +11,9 @@ The messaging system is split into two packages:
 | Package | Purpose | Used by |
 |---|---|---|
 | `MintPlayer.Spark.Messaging.Abstractions` | Interfaces and attributes (`IMessageBus`, `IRecipient<T>`, `[MessageQueue]`) | Shared library projects that define messages |
-| `MintPlayer.Spark.Messaging` | Implementation (message storage, subscription workers, retry logic) | Web application projects |
+| `MintPlayer.Spark.Messaging` | Implementation (message storage, the shared subscription, lane pumps, retry) | Web application projects |
 
-Messages are plain C# records or classes. Recipients are DI-scoped services that handle messages. The framework connects the two through named queues.
+Messages are plain C# records or classes. Recipients are DI-scoped services that handle messages. The framework connects the two through named lanes.
 
 ## Installation
 
@@ -29,7 +29,7 @@ dotnet add package MintPlayer.Spark.Messaging
 
 ### 1. Define Messages
 
-Create message classes in a shared library project so both the sender and recipients can reference them. Messages are plain C# records or classes. Use `[MessageQueue]` to group related messages into a named queue. Messages within the same queue are processed in FIFO order; different queues run independently.
+Create message classes in a shared library project so both the sender and recipients can reference them. Messages are plain C# records or classes. Use `[MessageQueue]` to group related messages into a named **lane**. Lanes never block each other. Ordering *within* a lane is opt-in and scoped to a partition key (see "Lanes and partitions").
 
 ```csharp
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -41,9 +41,9 @@ public record PersonCreatedMessage(string PersonId, string FullName);
 public record PersonDeletedMessage(string PersonId);
 ```
 
-Both message types above share the `PersonEvents` queue, which means they are processed in FIFO order within that queue.
+Both message types above share the `PersonEvents` lane. Sharing a lane means they share its delivery mode and retry schedule; whether they are ordered depends on whether the lane declares `Ordered()` and a partition key.
 
-Messages without `[MessageQueue]` use their full type name as the queue name (one queue per message type).
+Messages without `[MessageQueue]` use their full type name as the lane name (one lane per message type). This is now harmless; before lanes shared a subscription it silently cost one of the three the licence allows.
 
 ### 2. Create Recipients
 
@@ -110,7 +110,7 @@ The checkpoint is a free-form string -- use an index, offset, cursor, or any ser
 // Program.cs
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
-    spark.AddMessaging();     // MessageBus, MessageProcessor, RecipientRegistry
+    spark.AddMessaging();     // MessageBus, the shared subscription, lane pumps, the reaper
     spark.AddRecipients();    // Source-generated: auto-discovers all IRecipient<T> classes
 });
 ```
@@ -148,7 +148,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>
 }
 ```
 
-Both `BroadcastAsync` and `DelayBroadcastAsync` store a `SparkMessage` document in RavenDB and return immediately (fire-and-forget). The subscription workers pick them up asynchronously.
+Both `BroadcastAsync` and `DelayBroadcastAsync` store a `SparkMessage` document in RavenDB and return immediately (fire-and-forget). The lane pump picks it up asynchronously.
 
 #### Delayed Messages
 
@@ -160,28 +160,73 @@ await messageBus.DelayBroadcastAsync(
     TimeSpan.FromMinutes(30));
 ```
 
-The message is stored immediately but the subscription worker will not pick it up until the delay has elapsed.
+The message is stored immediately and carries `VisibleAtUtc`; the lane pump skips it until then. A delayed message does **not** hold its partition — a delay is a scheduling instruction, not a dependency — so messages broadcast during its delay window may run before it.
 
-#### Queue Name Override
+#### Lane Name Override
 
-For per-collection queue isolation (e.g., in the replication package), you can pass an explicit queue name that overrides the `[MessageQueue]` attribute:
+You can pass an explicit lane name that overrides the `[MessageQueue]` attribute:
 
 ```csharp
-await messageBus.BroadcastAsync(message, "spark-sync-Cars");
+await messageBus.BroadcastAsync(message, "spark-sync");
 ```
+
+This overload was documented before lanes shared a subscription but did **not** work: a lane name with no registered recipient never got a worker, so the message sat `Pending` forever. A pump is now created for whatever lane a message names, so it does what it always claimed to.
 
 ## How It Works
 
 ### Message Processing
 
-Internally, the messaging library uses **RavenDB data subscriptions** (via `MintPlayer.Spark.SubscriptionWorker`) with one subscription per queue:
+Internally the library uses **one** RavenDB data subscription for the whole application, however many
+queues exist. RavenDB allows three data subscriptions per database on the unlicensed and Community
+tiers alike, so one per queue does not scale — and exceeding the limit fails *silently*, which is how
+three of a production app's six queues sat dead for months.
 
-1. At startup, the `MessageSubscriptionManager` discovers all queue names from registered `IRecipient<T>` types
-2. For each queue, it creates a dedicated `MessageSubscriptionWorker` using a RavenDB data subscription with `MaxDocsPerBatch = 1`
-3. Each queue's worker runs as an independent RavenDB subscription
-4. Within a queue, messages are processed **one at a time in FIFO order**
-5. Different queues are processed **concurrently and independently**
-6. Each message is dispatched within a fresh **DI scope**, so recipients get fresh scoped services
+1. `MessageFeeder` holds the single subscription. It does **no handler work**: RavenDB does not fetch
+   the next batch until the callback returns, so a slow handler here would delay every other lane. It
+   rings a lane's doorbell and returns.
+2. Each lane has a **pump**. When rung, it queries its own backlog from `SparkMessages_ByQueue`,
+   ordered by `Sequence`, and treats the first row of each partition as that partition's head.
+3. Order therefore comes from a **sort**, not from delivery order. That matters because a failed
+   message is written back, which bumps its change vector and moves it behind everything broadcast
+   since — the reason the previous per-queue design did not actually preserve order across a retry.
+4. Within a **partition** (see below) messages run one at a time, oldest first, and a failing head
+   blocks only that partition. Different partitions, and different lanes, run concurrently.
+5. Each message is dispatched within a fresh **DI scope**, so recipients get fresh scoped services.
+
+### Lanes and partitions
+
+A `[MessageQueue]` is a **lane**: an isolation unit. Lanes never block one another.
+
+Ordering is scoped to a **partition key** carried on the message, not to the lane, because the two
+have very different natural sizes. A lane is declared once, at compile time; an ordering domain is a
+build, a pull request, a document — unbounded, and known only at runtime. Keying ordering by lane
+conflates them, so it asserts a dependency between messages that have none, and one poisoned message
+stalls unrelated work for the whole retry ladder.
+
+```csharp
+builder.AddMessaging(lanes: lanes =>
+{
+    lanes.Queue<ParseSessionMessage>()
+        .Ordered()
+        .PartitionBy<ParseSessionMessage>(m => m.BuildId)
+        .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)   // finalize cannot overtake ITS build's parses
+        .MaxPartitionsInFlight(2);                            // …while other builds run in parallel
+
+    lanes.Queue("spark-email")
+        .Concurrent(maxConcurrency: 8)                        // no ordering; nothing waits
+        .Retry(RetrySchedule.Ladder("1m 5m 1h 6h 1d 3d 7d"));
+});
+```
+
+`Ordered()` and `Concurrent()` return different builder types, so "strictly ordered, four at a time"
+has no method to call rather than being rejected by a validator. A lane nobody declares is
+`Concurrent(1)` — never ordered, because a silently-ordered lane with no partition key would serialize
+everything on one key.
+
+Under `Ordered`, a failing head blocks its partition until it succeeds or dead-letters, so a lane's
+retry schedule **is** that partition's worst-case downtime. Startup refuses an ordered lane whose
+ladder outlasts `MaxPartitionBlock` (15 minutes by default) unless it says
+`AcceptPartitionBlock(...)`.
 
 ### Per-Handler Retry Isolation
 
@@ -197,7 +242,7 @@ Message M  →  LogCompanyUpdated ✓ (recorded)
 
 This prevents duplicate side effects in handlers that already completed (sending emails twice, creating duplicate records, etc.).
 
-Each handler has its own `AttemptCount`. When a handler exceeds `MaxAttempts`, it is individually **dead-lettered** while other handlers continue their retry cycles. The message is marked completed only when all handlers have reached a terminal state (completed or dead-lettered).
+Each handler has its own `AttemptCount`. When its lane's retry schedule runs out of rungs, that handler is individually **dead-lettered** while other handlers continue their retry cycles. The message is marked completed only when all handlers have reached a terminal state (completed or dead-lettered).
 
 ### Retry with Incremental Backoff
 
@@ -217,9 +262,11 @@ When multiple handlers have different attempt counts, the retry delay is based o
 
 #### How redelivery works
 
-RavenDB subscriptions re-evaluate a document only when it is *written* — time passing does not re-run the subscription query, and the query itself cannot evaluate time (a `NextAttemptAtUtc <= now()` where-clause silently never matches). So a background sweeper does the time evaluation: every `FallbackPollInterval` (default 30s) it finds messages whose `NextAttemptAtUtc` has passed and patches `WakeUp = true` onto them. That write both makes the message match the subscription query again and triggers the re-evaluation that delivers it. The worker clears `WakeUp` on pickup, so a message parked for another backoff round waits for the sweeper again.
+A subscription query cannot evaluate time — `NextAttemptAtUtc <= now()` in a where-clause is evaluated only when a document is written, which is the one moment it cannot be true. That used to require a sweeper patching a `WakeUp` boolean onto due messages so they would match again.
 
-`FallbackPollInterval` is therefore the redelivery granularity: a due message is picked up at most that long after its scheduled retry time (or delayed-broadcast due time).
+A lane's drain is an **ordinary index query**, which can compare times, so the sweeper, `WakeUp` and `LastWakeUpUtc` are all gone. A pump sleeps until the earliest of its parked retries and its delayed messages, and redelivery granularity is its own timer rather than a fixed 30-second sweep. Measured, a write rings the subscription doorbell in about 11ms, and a server-side patch rings it exactly the same way — which is what the sweeper was relying on, so it bought nothing the write did not already provide.
+
+Redelivery granularity is the lane pump's own timer: it sleeps until the earliest of its parked retries and its delayed messages, so a due message is picked up when it is due rather than at a fixed sweep interval.
 
 ### Non-Retryable Errors
 
@@ -239,26 +286,20 @@ public async Task HandleAsync(MyMessage message, CancellationToken cancellationT
 
 Other handlers for the same message are unaffected -- they continue to execute normally.
 
-### Queue Isolation
+### Isolation
 
-Messages in different queues cannot block each other. For example, a failing message in the `ValidateBuild` queue will not prevent messages in the `PersonEvents` queue from being processed.
+Messages in different lanes cannot block each other: a failing message in `ValidateBuild` never delays `PersonEvents`.
+
+Within one `Ordered` lane, isolation is per **partition**. A failing head blocks its own partition — that is what ordering across the retry path costs — and every other partition keeps running. A `Concurrent` lane has no partitions, so nothing waits behind a parked message at all.
 
 ## Configuration
 
 ```csharp
 spark.AddMessaging(options =>
 {
-    options.MaxAttempts = 5;                                  // Default: 5
-    options.FallbackPollInterval = TimeSpan.FromSeconds(30);  // Redelivery sweep granularity. Default: 30s
-    options.RetentionDays = 7;                                // Days before completed/dead-lettered messages expire
-    options.BackoffDelays = new[]                              // Customizable retry delays
-    {
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromMinutes(2),
-        TimeSpan.FromMinutes(10),
-        TimeSpan.FromHours(1),
-    };
+    options.DefaultRetry = "5s 30s 2m";                  // Lanes that declare no schedule of their own
+    options.RetentionDays = 7;                            // Days before terminal messages expire
+    options.ProcessingLease = TimeSpan.FromMinutes(30);   // Before the reaper assumes a host died mid-handler
 });
 ```
 
@@ -275,12 +316,12 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `CreatedAtUtc` | `DateTime` | When the message was broadcast |
 | `NextAttemptAtUtc` | `DateTime?` | Earliest retry time (`null` = immediate) |
 | `AttemptCount` | `int` | Number of times picked up for processing |
-| `MaxAttempts` | `int` | Maximum attempts per handler before dead-lettering |
 | `Status` | `EMessageStatus` | `Pending`, `Processing`, `Completed`, `Failed`, `DeadLettered` |
 | `CompletedAtUtc` | `DateTime?` | When the last handler completed |
 | `Handlers` | `HandlerExecution[]` | Per-handler execution state (see below) |
-| `WakeUp` | `bool` | Redelivery gate: set by the sweeper when the message is due, cleared by the worker on pickup |
-| `LastWakeUpUtc` | `DateTime?` | When the sweeper last woke this message (informational) |
+| `VisibleAtUtc` | `DateTime?` | When a *delayed broadcast* becomes eligible. Unlike `NextAttemptAtUtc` it does **not** block its partition — a delay is a scheduling instruction, not a dependency |
+| `Sequence` | `long` | Broadcast order within a partition. The ordering key — not `CreatedAtUtc`, and emphatically not the document id, which sorts lexicographically |
+| `PartitionKey` | `string` | The ordering domain (empty on unordered lanes). Resolved once, producer-side, and never recomputed |
 
 Each entry in the `Handlers` array tracks an individual recipient:
 

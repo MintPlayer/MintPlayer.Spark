@@ -449,14 +449,38 @@ public class CompanyChangeWorker : SparkSubscriptionWorker<Revision<Company>>
 
 ## 8. Refactoring: Messaging
 
-### 8.1 FIFO Ordering Challenge
+> **⚠ REVERSED. This whole section describes a decision that has since been undone.** Messaging now
+> uses **one subscription for the entire application**, with ordering scoped to a partition key rather
+> than to a queue. See `docs/single_subscription_PRD.md`. §8.1 and §8.2 are kept because the argument
+> they make is worth answering rather than deleting — and because the answer is uncomfortable.
+>
+> **The objection in §8.1 was correct, and per-queue subscriptions did not solve it.** Both of its
+> premises describe mechanisms that were never implemented: the `now()`/`@refresh` retry could not
+> work, and nothing ever NACKs (`ProcessBatchAsync` catches everything and always acknowledges). But
+> the *hazard* survived into the shipped design. When a handler failed, the worker wrote
+> `Status = Failed` and saved — and that save bumped the document's change vector, moving it behind
+> everything broadcast since. A newer message then ran first. Observed, as a handler log:
+> `[enter:m1, fail:m1, enter:m2, exit:m2, enter:m1, exit:m1]`.
+>
+> So §8.2's claim "**FIFO guaranteed**" below was never true. Per-queue subscriptions bought
+> *serialization*, not *ordering*. In production this let `FinalizeBuildMessage` overtake a failed
+> `ParseSessionMessage` and close a build on partial data, publishing a wrong coverage percentage to
+> a pull request, silently.
+>
+> The replacement makes ordering real for the first time: a lane's pump drains its backlog **sorted by
+> a monotonic sequence** rather than trusting delivery order, and the first row of a partition is that
+> partition's head. Ordering scopes to the build, pull request or repository the messages are actually
+> about, so a failing head blocks only its own partition instead of every unrelated one — which is
+> what §8.1's "one message at a time per queue" cost and never delivered.
+
+### 8.1 FIFO Ordering Challenge *(historical — see the note above)*
 
 The Messaging library requires **per-queue FIFO ordering**: messages within a queue must be processed in the order they were broadcast. A single RavenDB subscription across all queues cannot guarantee this because:
 
 - If message M1 (queue A) fails and is retried via `@refresh`, message M2 (queue A, newer) could be delivered and processed before M1 retries — breaking FIFO
 - Throwing from the batch handler to NACK the entire batch would block ALL queues, not just the failing one
 
-### 8.2 Solution: One Subscription Per Queue, BatchSize = 1
+### 8.2 Solution: One Subscription Per Queue, BatchSize = 1 *(historical — reversed)*
 
 The Messaging library creates **one subscription worker per queue** internally:
 

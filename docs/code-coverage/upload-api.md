@@ -99,8 +99,14 @@ Closes the build as soon as everything already uploaded has parsed, instead of w
 finishes in seconds and one that waits two minutes for nothing, and it is the single biggest lever on
 how long `wait-for-finalize` takes.
 
-Finishing is queued behind the parses that preceded it, so it can never close a build on a
-half-computed number.
+Finishing is queued behind the parses of **the same build**, so it cannot close a build on a
+half-computed number. Parses of other builds run in parallel and never delay it.
+
+> This guarantee became true in the release that introduced partitioned message ordering. Before it,
+> a single transient parse failure could let the finish overtake the parse it was supposed to wait
+> for — the failure re-queued the parse behind everything broadcast since — and the build closed on
+> partial data, publishing a coverage percentage that was too low. If you compared historical numbers
+> and found an occasional inexplicable dip on a build whose parse had errored, that is why.
 
 ---
 
