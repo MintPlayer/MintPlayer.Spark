@@ -30,7 +30,7 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.20.0"
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.21.0"
                       ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
