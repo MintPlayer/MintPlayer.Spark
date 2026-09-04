@@ -14,6 +14,10 @@ using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using CodeCoverage.Feedback;
+using CodeCoverage.Ingestion;
+using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Webhooks.GitHub.Messages;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
@@ -149,7 +153,51 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddRateLimiter(rateLimiter =>
         rateLimiter.PathPrefixes = ["/spark", "/connect", "/api/browse"]);
 
-    spark.AddMessaging();
+    // Five lanes, one RavenDB subscription. Before partitioned lanes this app declared five queues
+    // plus the framework's, against a licence that allows three subscriptions per database — so three
+    // were silently never created. That is why the pull-request comment never appeared on `opened`,
+    // and why coverage-delete-pr-builds had never run at all.
+    spark.AddMessaging(configure: null, messaging: messaging => messaging.AddLane(lanes =>
+    {
+        // Ordering here is load-bearing and is scoped to a BUILD, not to the lane: finalize must not
+        // overtake the parses of its own build, or it closes on a half-computed number and publishes
+        // a wrong percentage. Parses of different builds have no relationship, so they run in
+        // parallel — which queue-wide FIFO could not express.
+        //
+        // AssembleCommitMessage keys on the commit instead, because its requirement is mutual
+        // exclusion per commit rather than ordering against parses: it is only ever broadcast after
+        // the finalize it follows has completed.
+        lanes.Queue<ParseSessionMessage>()
+            .Ordered()
+            .PartitionBy<ParseSessionMessage>(m => m.BuildId)
+            .PartitionBy<FinalizeBuildMessage>(m => m.BuildId)
+            .PartitionBy<AssembleCommitMessage>(m => m.CommitId)
+            // Two, not four: a parse holds the raw gzip, a decompressed copy and the UTF-16 string at
+            // once — roughly four times the report size, on the large-object heap — and RavenDB is
+            // co-resident on the same host with no memory limit declared for this container.
+            .MaxPartitionsInFlight(2);
+
+        // Each of these calls GitHub for one build, and one build's failure has nothing to do with
+        // another's, so they are concurrent. Under queue-wide FIFO they needed a separate queue each
+        // to get that; now it is what the lane says.
+        lanes.Queue<PublishFeedbackMessage>().Concurrent(maxConcurrency: 4);
+        lanes.Queue<PublishPullRequestCommentMessage>().Concurrent(maxConcurrency: 4);
+        lanes.Queue<OpenPullRequestCommentMessage>().Concurrent(maxConcurrency: 4);
+
+        // Retention deletion. Ordered per pull request so two events for one PR cannot interleave,
+        // and unrelated PRs are deleted in parallel.
+        lanes.Queue<DeletePullRequestBuildsMessage>()
+            .Ordered()
+            .PartitionBy<DeletePullRequestBuildsMessage>(m => $"{m.RepositoryGitHubId}/{m.PullRequestNumber}")
+            .MaxPartitionsInFlight(4);
+
+        // The framework's webhook lane. Ordered per repository: a push and a pull_request event for
+        // one repository both write shared commit state, while two repositories share nothing.
+        lanes.Queue<GitHubWebhookMessage>()
+            .Ordered()
+            .PartitionBy<GitHubWebhookMessage>(m => m.RepositoryFullName)
+            .MaxPartitionsInFlight(8);
+    }));
     spark.AddRecipients();
     spark.AddCronJobs();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are

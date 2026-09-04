@@ -19,7 +19,8 @@
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:docs.ravendb.net)",
       "WebFetch(domain:ravendb.net)",
-      "WebFetch(domain:searchcode.com)"
+      "WebFetch(domain:searchcode.com)",
+      "Bash(dotnet test *)"
     ]
   },
   "enableAllProjectMcpServers": true,

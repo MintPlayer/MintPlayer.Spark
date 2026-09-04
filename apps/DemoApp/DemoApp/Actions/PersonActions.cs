@@ -1,6 +1,6 @@
 using DemoApp.Indexes;
 using DemoApp.Library.Entities;
-using DemoApp.Library.Messages;
+using DemoApp.Messages;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;

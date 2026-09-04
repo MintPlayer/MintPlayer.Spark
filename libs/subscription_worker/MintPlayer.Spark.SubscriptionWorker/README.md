@@ -94,29 +94,21 @@ protected override string SubscriptionName => "MyCustomSubscription";
 
 ### 2. Register the Worker
 
-#### Option A: Source-Generated Registration (Recommended)
-
-If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and generates an `AddSubscriptionWorkers()` extension on `ISparkBuilder`:
-
-```csharp
-// Program.cs
-builder.Services.AddSparkSubscriptions();
-builder.Services.AddSpark(builder.Configuration, spark =>
-{
-    spark.AddSubscriptionWorkers();   // source-generated
-});
-```
-
-The generated code calls `AddSubscriptionWorker<T>()` for each worker class found, registering each as a hosted service. It is emitted by `SubscriptionWorkerRegistrationGenerator` into your own root namespace, so it is only visible from your assembly.
-
-#### Option B: Manual Registration
-
-Register workers individually:
+Register each worker explicitly:
 
 ```csharp
 builder.Services.AddSparkSubscriptions();
 builder.Services.AddSubscriptionWorker<OrderProcessingWorker>();
 ```
+
+> **A worker costs one of three subscription slots.** RavenDB allows **3 data subscriptions per
+> database** on every tier through Community — this is a hard cap, not a licensing upsell — and the
+> messaging package already owns one for the whole application. Define a worker only when the work
+> genuinely cannot be a message on a lane; two consumer-defined workers exhaust what is left.
+>
+> An earlier `AddSubscriptionWorkers()` source generator registered every `SparkSubscriptionWorker<T>`
+> it found. It was removed: nothing ever called the method it emitted, and auto-registering workers is
+> the wrong default when each one spends a scarce, silently-capped resource.
 
 ## How It Works
 
@@ -359,34 +351,6 @@ This demonstrates a pattern where the subscription query does server-side filter
 | `AddSparkSubscriptions(Action<SparkSubscriptionOptions>?)` | Register subscription infrastructure |
 | `AddSubscriptionWorker<TWorker>()` | Register a single worker as a hosted service |
 
-### Source-Generated
-
-| Method | Description |
-|--------|-------------|
-| `spark.AddSubscriptionWorkers()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project |
-
-### Source Generator Details
-
-The `SubscriptionWorkerRegistrationGenerator` source generator scans your project for all non-abstract classes that inherit from `SparkSubscriptionWorker<T>` (at any depth in the inheritance chain). It generates a static extension method:
-
-```csharp
-// Auto-generated: SparkSubscriptionWorkerRegistrations.g.cs
-namespace YourProject
-{
-    internal static class SparkSubscriptionWorkersBuilderExtensions
-    {
-        internal static ISparkBuilder AddSubscriptionWorkers(this ISparkBuilder builder)
-        {
-            SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(builder.Services);
-            SparkSubscriptionExtensions.AddSubscriptionWorker<CompanyChangeWorker>(builder.Services);
-            return builder;
-        }
-    }
-}
-```
-
-This eliminates the need to manually register each worker in `Program.cs`.
-
 ## Requirements
 
 - .NET 10.0+
@@ -401,7 +365,6 @@ See the following files for working implementations:
 - `RetryNumerator.cs` -- per-document retry tracking
 - `SparkSubscriptionExtensions.cs` -- DI registration helpers
 - `../MintPlayer.Spark.Messaging/Services/MessageSubscriptionWorker.cs` -- real-world usage in the messaging package
-- `../MintPlayer.Spark.SourceGenerators/Generators/SubscriptionWorkerRegistrationGenerator.cs` -- source generator for auto-registration
 
 ## License
 

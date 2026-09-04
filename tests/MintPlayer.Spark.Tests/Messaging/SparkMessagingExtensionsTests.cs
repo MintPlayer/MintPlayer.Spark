@@ -71,11 +71,11 @@ public class SparkMessagingExtensionsTests
     {
         var services = new ServiceCollection();
 
-        services.AddSparkMessaging(o => o.MaxAttempts = 42);
+        services.AddSparkMessaging(o => o.RetentionDays = 42);
 
         var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<SparkMessagingOptions>>().Value;
-        options.MaxAttempts.Should().Be(42);
+        options.RetentionDays.Should().Be(42);
     }
 
     [Fact]

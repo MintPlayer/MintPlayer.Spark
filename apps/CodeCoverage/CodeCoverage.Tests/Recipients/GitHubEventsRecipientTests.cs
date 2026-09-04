@@ -46,6 +46,9 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             return Task.CompletedTask;
         }
 
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default)
+            => DelayBroadcastAsync(message, delay, cancellationToken);
+
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
         {
             Messages.Add(message!);

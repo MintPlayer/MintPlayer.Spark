@@ -71,7 +71,7 @@ public record PersonCreatedMessage(string PersonId, string FullName);
 
 ### Queue
 
-A named channel that provides ordering isolation. Messages within the same queue are processed in FIFO order. Different queues are processed independently and concurrently. A message type's queue is determined by the `[MessageQueue]` attribute. Messages without this attribute use their full type name as the queue name (effectively one queue per message type).
+A named **lane**: an isolation unit. Lanes never block each other. Ordering within a lane is opt-in (`Ordered()`) and scoped to a partition key carried on the message, not to the lane. A message type's queue is determined by the `[MessageQueue]` attribute. Messages without this attribute use their full type name as the queue name (effectively one queue per message type).
 
 ### Recipient
 
@@ -107,7 +107,7 @@ Both methods serialize the message and store it as a `SparkMessage` document in 
 
 ### Message Processor
 
-A `BackgroundService` (registered via `AddHostedService`) that detects and processes pending messages. It uses **RavenDB's Changes API** to react near-instantly when new `SparkMessage` documents are created or updated, with a periodic fallback poll as a safety net. It processes each queue independently and concurrently.
+A `BackgroundService` (registered via `AddHostedService`) that detects and processes pending messages. It uses **RavenDB's Changes API** to react near-instantly when new `SparkMessage` documents are created or updated, with a periodic fallback poll as a safety net. One subscription feeds every lane; each lane has its own pump, so lanes run independently and concurrently.
 
 ---
 

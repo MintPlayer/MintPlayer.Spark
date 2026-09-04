@@ -36,6 +36,9 @@ public class UploadsControllerCapabilitiesTests
 
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+
+            public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, string queueName, CancellationToken cancellationToken = default)
+                => Task.CompletedTask;
     }
 
     /// <summary>

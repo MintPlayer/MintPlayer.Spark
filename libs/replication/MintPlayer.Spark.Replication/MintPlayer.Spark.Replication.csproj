@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Replication</PackageId>
-		<Version>10.0.0-preview.71</Version>
+		<Version>10.0.0-preview.72</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Cross-module ETL replication for MintPlayer.Spark using RavenDB ETL tasks and the durable message bus.</Description>
@@ -31,6 +31,10 @@
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
+		<!-- Replication declares its own lane (spark-sync), and the registry that holds lane
+		     declarations lives in the messaging implementation rather than its abstractions.
+		     No cycle: messaging knows nothing about replication. -->
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
 	</ItemGroup>
 

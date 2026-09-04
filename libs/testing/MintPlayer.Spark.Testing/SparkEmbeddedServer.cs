@@ -1,3 +1,5 @@
+using Raven.Client.Documents;
+using Raven.Client.ServerWide.Operations;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -67,4 +69,77 @@ internal static class SparkEmbeddedServer
     internal static void EnsureConfigured()
     {
     }
+
+    /// <summary>
+    /// Prints the embedded server's URL once per process, so a developer can open Studio against the
+    /// server a test run is actually using.
+    /// </summary>
+    /// <remarks>
+    /// The port is chosen per process and appears nowhere else: the server is not the
+    /// <c>Raven.Server.exe</c> Windows service on 8080, it is a <c>dotnet.exe</c> hosting
+    /// <c>RavenDBServer/Raven.Server.dll</c> from the test project's output on an ephemeral port. So
+    /// <c>tasklist | findstr Raven</c> finds the wrong process, and there is otherwise no way to
+    /// attach to the right one while a run is in flight.
+    /// <para>
+    /// Written to standard output, so it appears only under
+    /// <c>--logger "console;verbosity=detailed"</c> and stays out of a normal run.
+    /// </para>
+    /// </remarks>
+    internal static void ReportUrls(IDocumentStore store)
+    {
+        // Interlocked rather than a bool: test classes initialise in parallel, and a check-then-act
+        // here would print several times — the same race the type initialiser above exists to avoid.
+        if (Interlocked.Exchange(ref reported, 1) != 0)
+            return;
+
+        Console.WriteLine($"[SparkEmbeddedServer] {string.Join(", ", store.Urls)}");
+    }
+
+    /// <summary>
+    /// Deletes a test database without waiting for the cluster to confirm it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The 15 seconds this removes are not ours to wait.</b> <c>RavenTestDriver</c> deletes the
+    /// database from the store's <c>AfterDispose</c> event, and the server's delete handler blocks on
+    /// <c>WaitForIndexNotification</c> for
+    /// <c>TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)</c>. Under CPU starvation that
+    /// notification does not arrive in time and teardown throws
+    /// <c>TimeoutException: Waited for 00:00:15 … at AdminDatabasesHandler.Delete()</c>, failing a
+    /// test that had already passed. Sending our own delete first, with a zero wait, makes the server
+    /// skip that block: <c>remaining = timeToWaitForConfirmation - elapsed</c> is negative
+    /// immediately, so it submits the raft command and returns.
+    /// </para>
+    /// <para>
+    /// <b>The database is still deleted.</b> Only the confirmation is unawaited — which is all a test
+    /// needs, because nothing may observe this database again: names are unique per fixture and the
+    /// embedded server is in-memory and dies with the process. This is not the discredited fix of
+    /// swallowing the timeout, which hid a real defect; the timeout is not caught here, it is never
+    /// raised.
+    /// </para>
+    /// <para>
+    /// Shared by both drivers deliberately. The per-class driver is the one consumers are steered
+    /// towards for throughput, so leaving it on the blocking path would put the flake exactly where
+    /// it is least expected.
+    /// </para>
+    /// </remarks>
+    internal static void DropDatabaseWithoutWaiting(IDocumentStore store)
+    {
+        try
+        {
+            store.Maintenance.Server.Send(new DeleteDatabasesOperation(new DeleteDatabasesOperation.Parameters
+            {
+                DatabaseNames = [store.Database],
+                HardDelete = true,
+                TimeToWaitForConfirmation = TimeSpan.Zero,
+            }));
+        }
+        catch (Exception)
+        {
+            // Best-effort: the driver's own AfterDispose delete still runs, so nothing is leaked by
+            // this failing. Anything thrown here would replace the real test result.
+        }
+    }
+
+    private static int reported;
 }

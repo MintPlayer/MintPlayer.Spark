@@ -1,4 +1,4 @@
-using DemoApp.Library.Messages;
+using DemoApp.Messages;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 

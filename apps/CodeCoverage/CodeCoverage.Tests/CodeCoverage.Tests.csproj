@@ -19,7 +19,7 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
+		<PackageReference Include="MintPlayer.Assertions" Version="1.1.0" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
 		<!-- Embedded RavenDB for tests that must exercise the real client
 		     session (request budget, attachments, streaming). -->

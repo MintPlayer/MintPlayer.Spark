@@ -109,6 +109,7 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         if (RequireLicense)
             LicenseHelper.EnsureAvailable();
         Store = GetDocumentStore();
+        SparkEmbeddedServer.ReportUrls(Store);
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)
@@ -138,9 +139,14 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         // or GetDocumentStore timing out when the shared embedded server is under load. Without
         // the guard this throws a NullReferenceException that REPLACES the real failure in the
         // test output, which is what made those CI timeouts so hard to read.
-        Store?.Dispose();
+        if (Store is null)
+            return Task.CompletedTask;
+
+        SparkEmbeddedServer.DropDatabaseWithoutWaiting(Store);
+        Store.Dispose();
         return Task.CompletedTask;
     }
+
 
     /// <summary>
     /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to

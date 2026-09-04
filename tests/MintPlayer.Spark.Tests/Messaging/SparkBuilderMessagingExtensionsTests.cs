@@ -44,11 +44,11 @@ public class SparkBuilderMessagingExtensionsTests
     {
         var builder = NewBuilder();
 
-        builder.AddMessaging(o => o.MaxAttempts = 7);
+        builder.AddMessaging(o => o.RetentionDays = 7);
 
         var resolved = builder.Services.BuildServiceProvider()
             .GetRequiredService<IOptions<SparkMessagingOptions>>().Value;
-        resolved.MaxAttempts.Should().Be(7);
+        resolved.RetentionDays.Should().Be(7);
     }
 
     [Fact]
