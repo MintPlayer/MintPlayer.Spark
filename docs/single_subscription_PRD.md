@@ -209,12 +209,12 @@ Add one field to `SparkMessages_ByQueue`: `PartitionKey` (never null; `""` on un
 
 ```csharp
 var window = await session.Query<SparkMessage, SparkMessages_ByQueue>()
-    .Customize(x => x.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
+    .Customize(x => x.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))  // MANDATORY — see below
     .Where(m => m.QueueName == lane
              && (m.Status == Pending || m.Status == Failed)
              && (m.VisibleAtUtc == null || m.VisibleAtUtc <= now)   // delayed broadcast only
-             && !excluded.Contains(m.PartitionKey))                // → RQL `not in`
-    .OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id)
+             && !m.PartitionKey.In(excluded))                      // NOT .Contains() — see below
+    .OrderBy(m => m.Sequence)                                       // monotonic long, NOT the id
     .Take(256).ToListAsync(ct);
 
 var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -236,6 +236,27 @@ than remembered.
 
 `VisibleAtUtc` is a different field with the opposite meaning and therefore stays server-side — see
 §5.4.1.
+
+**Three measured constraints on this query — all three were wrong in an earlier draft:**
+
+1. **Order by a monotonic `long`, never by the document id.** `.ThenBy(m => m.Id)` compiles to
+   `order by id()`, a **lexicographic** sort over ids that are not zero-padded, so
+   `SparkMessages/10-A` sorts before `SparkMessages/2-A`. Measured over 5000 messages sharing one
+   `CreatedAtUtc`, server order diverged from insertion order at row 1. This is not a weak tiebreak,
+   it is an anti-guarantee, and every ordering promise resting on it would be void. `SparkMessage`
+   gains **`Sequence`** (a `long`), issued monotonically by `MessageBus` under one `Interlocked`, and
+   the drain orders by it alone. A numeric tiebreak was verified to reproduce insertion order exactly.
+2. **`!m.PartitionKey.In(excluded)`, not `!excluded.Contains(...)`.** The latter does not compile —
+   `NotSupportedException: Expression type not supported: TypedParameterExpression`. The `In` form
+   emits a **parameterized** `not PartitionKey in ($p1)`, so the RQL text is a constant 274 chars at
+   every list size.
+3. **`WaitForNonStaleResults` is load-bearing, not hygiene.** Without it the drain missed the
+   just-written message **18 times out of 20**. With it: zero misses, ~3 ms median.
+
+**The subscription over-delivers, deliberately.** It cannot evaluate time, so it hands the pump a
+document with `NextAttemptAtUtc = +1h` about 12 ms after it is written. That is harmless *because the
+drain decides due-ness, not the delivery* — so never "optimize" by dispatching straight from the
+batch.
 
 ### 5.4.1 Two fields, because the meanings are opposite
 
@@ -280,11 +301,17 @@ Pushing `excluded` **into the query** rather than filtering client-side is what 
 starvation — otherwise 256 messages of blocked partitions hide every runnable one. That is why the cap
 in §5.6 is structural, not hygiene: it bounds the `not in` list.
 
-**The time predicate replaces `WakeUp`.** `WakeUp` exists only because subscription where-clauses
-cannot evaluate `now()`. A drain is an ordinary query and can. So `MessageRetrySweeper` may not need
-to write to documents at all — each pump schedules its own wake at `min(NextAttemptAtUtc)` among its
-parked partitions. **A whole background service, a duplicated field pair, and 30-second redelivery
-granularity, potentially deleted** (spike S11 — the largest simplification available here).
+**The drain replaces `WakeUp` — confirmed, so delete the sweeper.** `WakeUp` exists only because
+subscription where-clauses cannot evaluate `now()`; a drain is an ordinary query and can. Measured
+(S11): a parked message became visible **58 ms** after its due time (the probe's own poll granularity,
+not the server's); a brand-new document rang the doorbell after **11 ms** of pump idleness, so a pump
+sleeping on `min(NextAttemptAtUtc)` cannot miss a broadcast; and a server-side **patch** rings the
+doorbell exactly like an insert — which is precisely the sweeper's own mechanism, so `WakeUp` buys
+nothing the write did not already buy.
+
+**`MessageRetrySweeper`, `SparkMessage.WakeUp` and `SparkMessage.LastWakeUpUtc` are deleted.**
+Redelivery granularity improves from the sweeper's 30 s to whatever the pump's timer chooses, and
+write amplification drops from two patches × 512 messages per sweep to zero.
 
 ### 5.5 In-flight bookkeeping
 
@@ -312,9 +339,33 @@ rejected on those grounds.
 **The block is scoped to that partition only.** An email to X retrying for seven days delays nothing
 addressed to Y; a poison parse of build A does not stall build B.
 
-A per-lane cap is needed for two reasons, one structural: it **bounds the `not in` list**, and it is
-the only lane-level signal that a dependency is down (per-partition retry means a dead SMTP host
-produces N independent ladders, each locally healthy, with nothing saying "this lane is broken").
+A per-lane cap is needed for **one** reason: it is the only lane-level signal that a dependency is
+down (per-partition retry means a dead SMTP host produces N independent ladders, each locally healthy,
+with nothing saying "this lane is broken").
+
+An earlier draft also called the cap *structural*, claiming it bounds the `not in` list. **Measured:
+it does not need to.** Latency is flat from 1 to 8192 exclusion terms — 11.3 ms to 13.5 ms — even in
+the adversarial shape where excluding 8192 contiguous partitions forces the engine to skip 41 000
+leading rows of the sort order. The list is parameterized and costs nothing. Keep 256 as a judgement
+about signal quality, not performance.
+
+**The window has its own starvation property, and it is not the same as parking.** Distinct partitions
+surfaced by one 256-row window over 50 000 messages:
+
+| Partitions | round-robin arrival | contiguous bursts |
+|---|---|---|
+| 10 | 10 | **1** |
+| 1 000 | 256 | **6** |
+| 50 000 | 256 | 256 |
+
+Bursty is the realistic shape — a build emitting 50 parse messages back to back — and at 1000 bursty
+partitions the window surfaces **six**, of which `MaxPartitionsInFlight = 4` consumes most. The
+`excluded` push-down does march the window forward correctly each round, but a partition that is
+runnable and *not yet in flight* stays invisible until the older bursts ahead of it drain. So §5.6's
+"the block is scoped to that partition only" is true of **parked** partitions and **not** of the
+window: a large burst on partition A delays first-touch of partition B. That is FIFO-by-age across
+partitions, which is defensible — but **window size and `MaxPartitionsInFlight` are coupled**, and
+256/4 leaves no headroom under bursts.
 
 `MaxParkedPartitions` (default 256). On overflow the lane enters **degraded** mode: stop drawing new
 partitions, emit `LaneDegraded`, keep servicing parked partitions as they come due. That is
@@ -537,7 +588,16 @@ silently. Making ordering real is a **fix**, not a preservation requirement.
 Once §5.4's drain replaces `WakeUp`, the subscription is only a latency accelerator. A `store.Changes()`
 doorbell plus the poll would free **all three slots** and is the only route to multi-node processing.
 Deferred, but the feeder must remain the sole component that knows how a notification arrives, so the
-swap stays a one-class change. Spike S2 must confirm the changes API consumes no slot.
+swap stays a one-class change.
+
+**S2 answered: `Changes()` consumes no subscription slot.** On an unlicensed server saturated at the
+cap of 3, `Changes().EnsureConnectedNow()` succeeded in 48 ms, delivered collection notifications, did
+not change the server's subscription count, and a second independent connection also worked. The
+option is viable on the licence axis whenever we want it.
+
+**Do not write a test asserting the cap trips at exactly N.** One unreproduced run created **ten**
+subscriptions against a cap of three, on a server up 70+ minutes — outside the known ~60–70 s startup
+grace, and not reproducible across eight subsequent attempts.
 
 ## 10. Bugs this fixes
 
@@ -559,9 +619,14 @@ swap stays a one-class change. Spike S2 must confirm the changes API consumes no
    free a slot).
 2. **Choose the new subscription's start position deliberately** — a fresh subscription starts at
    change vector zero and replays every matching document, including the accumulated orphans (S4).
-3. **Adding `PartitionKey` forces a full reindex** of `SparkMessages`, and with
-   `WaitForNonStaleResults` the first drain blocks until it completes. Deploy a v2 index side-by-side
-   and cut over, or accept a measured stall (S10). This is the largest new production risk.
+3. **Adding `PartitionKey`/`Sequence` needs a startup gate — not a hand-rolled side-by-side index.**
+   Measured (S10): RavenDB *already* builds `ReplacementOf/SparkMessages/ByQueue` and swaps it in, and
+   the old shape keeps serving throughout (302 drains, 0 failures, 6.2 ms median). But for the ~4.5 s
+   swap window (50 000 documents) a query on the **new** field throws
+   `RavenException: The field 'PartitionKey' is not indexed` in 3–21 ms — it does **not** wait and
+   `WaitForNonStaleResults` does **not** block. So a deploy shipping new pump code and the new index
+   together throws on *every* drain for that window, and the pump's error handling decides whether
+   that is a blip or a crash loop. **Gate pump startup on the new field being queryable.**
 4. Reap `Processing` once at startup.
 5. **Throttle the `coverage-delete-pr-builds` backlog** — it has never run.
 6. Convert or drop `SparkSyncAction` documents (likely empty on `Coverage`, which has no replication).
