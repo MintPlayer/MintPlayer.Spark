@@ -16,7 +16,7 @@ public class MessageBusTests : SparkTestDriver
     private record OrderShipped(string OrderId);
 
     private IMessageBus NewBus(SparkMessagingOptions? options = null)
-        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()));
+        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()), TimeProvider.System, new MessageSequence(TimeProvider.System));
 
     [Fact]
     public async Task BroadcastAsync_persists_a_SparkMessage_with_inferred_queue_name_and_payload()

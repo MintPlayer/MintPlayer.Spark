@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Services;
@@ -16,6 +17,12 @@ internal static class SparkMessagingExtensions
         {
             services.Configure(configure);
         }
+
+        // Every scheduled delay in messaging goes through TimeProvider so tests can drive backoff
+        // with a fake clock instead of sleeping through it. TryAdd: the host may already have one.
+        services.TryAddSingleton(TimeProvider.System);
+        // Singleton on purpose — the sequence is only monotonic if one instance issues every value.
+        services.AddSingleton<MessageSequence>();
 
         // IAsyncDocumentSession is now registered by AddSpark() in the core library.
         services.AddScoped<IMessageBus, MessageBus>();

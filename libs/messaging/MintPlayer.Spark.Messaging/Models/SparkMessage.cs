@@ -7,6 +7,19 @@ public class SparkMessage
     public string MessageType { get; set; } = string.Empty;
     public string PayloadJson { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>
+    /// Broadcast order within a partition. Strictly increasing, issued by
+    /// <see cref="Services.MessageSequence"/>.
+    /// </summary>
+    /// <remarks>
+    /// This — not <see cref="CreatedAtUtc"/> and emphatically not <see cref="Id"/> — is the ordering
+    /// key. <c>ThenBy(m =&gt; m.Id)</c> compiles to a lexicographic <c>order by id()</c> over
+    /// non-zero-padded hilo ids, so <c>SparkMessages/10-A</c> sorts before <c>SparkMessages/2-A</c>.
+    /// See <see cref="Services.MessageSequence"/> for the measurement.
+    /// </remarks>
+    public long Sequence { get; set; }
+
     public DateTime? NextAttemptAtUtc { get; set; }
 
     /// <summary>

@@ -92,7 +92,7 @@ public class MessageOrderingRegressionTests : SparkTestDriver
             FallbackPollInterval = TimeSpan.FromSeconds(1),
         };
 
-        var bus = new MessageBus(Store, Options.Create(options));
+        var bus = new MessageBus(Store, Options.Create(options), TimeProvider.System, new MessageSequence(TimeProvider.System));
         await bus.BroadcastAsync(new OrderedMessage("m1"), Queue);
         await bus.BroadcastAsync(new OrderedMessage("m2"), Queue);
         await Store.WaitForIndexingAsync();

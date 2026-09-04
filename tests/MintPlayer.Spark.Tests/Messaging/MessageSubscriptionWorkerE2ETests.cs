@@ -125,7 +125,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
     private async Task<string> SeedAsync<T>(T payload, string? queueNameOverride = null, int maxAttempts = 5)
     {
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
+        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }), TimeProvider.System, new MessageSequence(TimeProvider.System));
         if (queueNameOverride == null)
             await bus.BroadcastAsync(payload);
         else
@@ -445,7 +445,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         var recipient = new SuccessRecipient();
         var sp = ProviderFor<SuccessMessage, SuccessRecipient>(recipient);
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()), TimeProvider.System, new MessageSequence(TimeProvider.System));
         await bus.DelayBroadcastAsync(new SuccessMessage("orders/delayed"), TimeSpan.FromSeconds(1));
         await Store.WaitForIndexingAsync();
         string id;

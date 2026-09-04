@@ -12,6 +12,8 @@ internal partial class MessageBus : IMessageBus
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
+    [Inject] private readonly TimeProvider timeProvider;
+    [Inject] private readonly MessageSequence sequence;
 
     private SparkMessagingOptions Options => options.Value;
 
@@ -32,13 +34,19 @@ internal partial class MessageBus : IMessageBus
 
         var payloadJson = JsonConvert.SerializeObject(message);
 
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+
         var sparkMessage = new SparkMessage
         {
             QueueName = queueName,
             MessageType = messageType.AssemblyQualifiedName!,
             PayloadJson = payloadJson,
-            CreatedAtUtc = DateTime.UtcNow,
-            NextAttemptAtUtc = delay.HasValue ? DateTime.UtcNow + delay.Value : null,
+            CreatedAtUtc = now,
+            // The ordering key. Issued monotonically so that a producer broadcasting in a loop —
+            // an ingestion burst does exactly this — cannot tie, and so an NTP step backwards
+            // cannot invert two messages of one partition.
+            Sequence = sequence.Next(),
+            NextAttemptAtUtc = delay.HasValue ? now + delay.Value : null,
             AttemptCount = 0,
             MaxAttempts = Options.MaxAttempts,
             Status = EMessageStatus.Pending,
