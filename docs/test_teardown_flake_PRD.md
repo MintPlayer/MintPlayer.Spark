@@ -5,6 +5,8 @@ reproduction and the full suite under the load that used to break it.
 
 **Part 1** is the flake: cause, reproduction, fix. **Part 2** is the separate question of what the
 per-test database lifecycle COSTS, and the three restructuring designs considered on 2026-09-04.
+**Part 3** is what a mature shared-database suite elsewhere actually does — one idea worth copying,
+one measured dead end, and a foundation that does not transfer to xUnit.
 
 ## The failure
 
@@ -270,3 +272,100 @@ step independently verifiable and revertible.
   classes cannot join it, and its failure mode is silent false-passes.
 - **Do not** invent a lane scheduler. xUnit collections already are one, and the per-class fixture
   gets most of the benefit with local, reviewable risk.
+
+---
+
+# Part 3 — Prior art: what a shared-database suite actually does
+
+A mature NUnit + RavenDB suite in a sibling codebase runs the shared-everything design this repo
+keeps considering. Examined 2026-09-04 for solutions rather than trade-offs. It has one idea worth
+copying outright, one measured dead end, and a foundation that does not transfer.
+
+## Correction to the premise
+
+It does not have a "driver per small group of tests". It has **two** drivers: one shared across the
+whole test assembly (one server, one database, one host), and one that creates a database per test
+**method** — which is what `SparkTestDriver` already does. There is no lane design in the prior art;
+Design B in Part 2 remains untried anywhere.
+
+## ✅ Worth copying: a symmetric restore scope
+
+Part 2 lists two classes as unmigratable because they call `StopIndexingOperation` database-wide and
+never restart it. The prior art solves exactly this, with an `IDisposable` scope that **captures live
+state and restores what it captured**:
+
+```csharp
+// begin: snapshot the ENABLED subscriptions, stop their workers, disable them, stop indexing
+// end:   start indexing, WAIT for it to settle, then re-enable exactly the captured set
+```
+
+Two details make it more than a `try/finally`:
+
+- it snapshots the *live* enabled set rather than assuming a static list, so it cannot re-enable
+  something that was deliberately off;
+- it puts a **barrier** (wait for indexing) between restoring and releasing, so the next test does
+  not start against a half-settled database.
+
+This converts "these classes can never share a database" into "these classes need a restore scope",
+which is a much weaker objection. It is framework-agnostic and portable as-is.
+
+## ✅ Worth copying: neutralise background writers rather than racing them
+
+Part 2 argues that id-recording cleanup cannot be correct because pumps and schedulers write after
+cancellation. The prior art sidesteps this entirely: the job scheduler is mocked so
+`RegisterOneTimeJob` / `RegisterRepeatingJob` are **no-ops**, migrations and ETL likewise. Nothing
+lands because nothing runs.
+
+Cheaper than the quiesce barrier this repo built for `MessageFeeder`, with a real cost: those code
+paths are then not exercised at all. Sound for tests that merely need the scheduler to exist; wrong
+for the tests that are *about* the scheduler — which this repo has, and which would stay per-case.
+
+## ❌ Measured dead end: never delete the database
+
+The shared driver has no teardown at all — no dispose, no `DeleteDatabasesOperation`; the in-memory
+database dies with the process. Since deletion is ~40% of our 0.23 CPU-s lifecycle, that looked like
+a free win, independent of any restructuring.
+
+**Measured, and it is not.** Same machine state, `--no-build`:
+
+| Variant | Suite duration |
+|---|---|
+| Zero-wait delete (current) | **87s, 88s** |
+| Never delete, never dispose | **103s** — 1922/1922 pass, no OOM |
+
+**~17% slower.** The 676 undeleted databases accumulate in the server and cost more than the deletes
+saved. The prior art gets away with it because it has **one** database: its win is *not creating 676*,
+not *not deleting them*. Taking half the design inverts the benefit.
+
+Recorded so nobody re-proposes it from the same reasoning: teardown drops to 0.0s in the
+reproduction, which looks conclusive and is measuring the wrong thing.
+
+## ❌ Does not transfer: the foundation
+
+The shared design has **no cleanup whatsoever** — no reset, no truncation, no id scoping enforced by
+code. Contamination is accepted and pushed onto test authors through a ~650-line rulebook shipped
+with the package, enforced by nothing but reading it. Its own guidance is explicit that tests are
+"order-sensitive and not isolated", and it forbids parallelism outright.
+
+That rulebook rests on **NUnit's alphabetical ordering** — rules like "no two tests may import the
+same file" are survivable only because run order is stable. xUnit's order is deliberately
+unspecified and varies between runs, so every order dependency that NUnit makes *fragile*, xUnit
+makes *nondeterministic*: the failure mode changes from reproducibly wrong to flaky. This is the
+single strongest argument against porting the architecture, as opposed to the ideas.
+
+Also absent: a per-test escape hatch onto a private database. A test that needs isolation is moved
+to a **separate test project** — a process boundary, not a database boundary. That is available here
+too, and is worth remembering as the fallback for the genuinely unmigratable cases.
+
+## Effect on the Part 2 verdict
+
+Design C (adopt the per-class `SparkSharedDatabase` incrementally) stands, and gets **stronger**: the
+restore-scope pattern removes the "three classes can never migrate" objection, leaving only the
+subscription-enumeration test as a true per-case case.
+
+Design A stays rejected, and Part 3 adds a reason: its closest real-world implementation buys its
+speed from having *one* database per assembly, which cannot be reached here (five assemblies, three
+classes needing database-wide state), and pays for it with a rulebook that xUnit's nondeterministic
+ordering would turn from fragile into flaky.
+
+Never-deleting is now measured and rejected on its own terms, independent of either design.
