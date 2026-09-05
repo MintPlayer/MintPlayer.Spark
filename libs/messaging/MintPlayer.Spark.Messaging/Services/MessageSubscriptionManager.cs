@@ -80,35 +80,21 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         await base.StopAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// A queue is worth a worker exactly when its message type has a recipient, which is the
+    /// question <see cref="MessageRecipientRegistry"/> exists to answer — so the scan over the
+    /// registered <c>IRecipient&lt;T&gt;</c> descriptors lives there rather than being repeated here.
+    /// </summary>
     private static IEnumerable<string> DiscoverQueueNames(IServiceProvider serviceProvider)
     {
-        var queueNames = new HashSet<string>(StringComparer.Ordinal);
+        var registry = serviceProvider.GetService<MessageRecipientRegistry>();
+        if (registry is null)
+            return [];
 
-        // Get all service descriptors from the root service provider
-        // We need to look at the IServiceCollection that was used to build the provider.
-        // However, at runtime we can enumerate IRecipient<> by scanning registered service types.
-        // A pragmatic approach: scan all assemblies for types implementing IRecipient<T>
-        // that are registered in DI.
-
-        // Get the service collection if available (registered by our extension method)
-        var serviceDescriptors = serviceProvider.GetService<IServiceCollectionAccessor>()?.Services;
-        if (serviceDescriptors == null)
-        {
-            return queueNames;
-        }
-
-        foreach (var descriptor in serviceDescriptors)
-        {
-            var serviceType = descriptor.ServiceType;
-            if (!serviceType.IsGenericType || serviceType.GetGenericTypeDefinition() != typeof(IRecipient<>))
-                continue;
-
-            var messageType = serviceType.GetGenericArguments()[0];
-            // Qualified: this type has its own QueueNames property, which would shadow the helper.
-            queueNames.Add(Services.QueueNames.ForMessageType(messageType));
-        }
-
-        return queueNames;
+        // Qualified: this type has its own QueueNames property, which would shadow the helper.
+        return registry.ConsumedMessageTypes
+            .Select(Services.QueueNames.ForMessageType)
+            .ToHashSet(StringComparer.Ordinal);
     }
 }
 

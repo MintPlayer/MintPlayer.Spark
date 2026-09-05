@@ -26,6 +26,10 @@ internal static class SparkMessagingExtensions
         services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
         // R2-H6: type allow-list derived from the same scan
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        // "Does anything consume this message type?" — asked by publishers that would otherwise
+        // broadcast onto a queue with no worker, whose documents are never drained.
+        services.AddSingleton<MessageRecipientRegistry>();
+        services.AddSingleton<IMessageRecipientRegistry>(sp => sp.GetRequiredService<MessageRecipientRegistry>());
         services.AddHostedService<MessageSubscriptionManager>();
         // Issue #233: periodic wake-up for messages parked at Failed (retry backoff) or
         // Pending with a future NextAttemptAtUtc (delayed broadcast) — without it those

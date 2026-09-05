@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.SourceGenerators.Attributes;
@@ -9,11 +10,14 @@ using Octokit.Webhooks.Events;
 using Octokit.Webhooks.Events.CheckRun;
 using Octokit.Webhooks.Events.CheckSuite;
 using Octokit.Webhooks.Events.Installation;
+using Octokit.Webhooks.Events.InstallationRepositories;
+using Octokit.Webhooks.Events.InstallationTarget;
 using Octokit.Webhooks.Events.IssueComment;
 using Octokit.Webhooks.Events.Issues;
 using Octokit.Webhooks.Events.PullRequest;
 using Octokit.Webhooks.Events.PullRequestReview;
 using Octokit.Webhooks.Events.PullRequestReviewComment;
+using Octokit.Webhooks.Events.Organization;
 using Octokit.Webhooks.Events.Repository;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Services;
@@ -22,6 +26,7 @@ namespace MintPlayer.Spark.Webhooks.GitHub.Services;
 internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 {
     [Inject] private readonly IMessageBus _messageBus;
+    [Inject] private readonly IMessageRecipientRegistry _recipients;
     [Options] private readonly IOptions<GitHubWebhooksOptions> _options;
     [Inject] private readonly ISignatureService _signatureService;
     [Inject] private readonly IServiceProvider _serviceProvider;
@@ -79,10 +84,102 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         _rawHeaders = caseInsensitiveHeaders;
         _rawBody = body;
 
+        // The catch-all is broadcast HERE, for every delivery, rather than from the typed
+        // overrides below. Octokit dispatches by overriding one method per event and its base
+        // implementations are no-ops, so an event nobody overrode is silently discarded — which is
+        // exactly how `installation_repositories` came to be dropped for the lifetime of the
+        // library while an app sat waiting for it. There is no list to keep in step here: whatever
+        // GitHub sends, a recipient of the catch-all sees.
+        await BroadcastCatchAllAsync(caseInsensitiveHeaders, body, cancellationToken);
+
         await base.ProcessWebhookAsync(caseInsensitiveHeaders, body, cancellationToken);
     }
 
+    /// <summary>
+    /// Broadcasts the untyped envelope for any event, typed or not. The installation id and
+    /// repository name are read straight out of the payload rather than off a deserialized event,
+    /// because most GitHub events have no Octokit type here and would otherwise arrive with both
+    /// fields blank — and every consumer routes on them.
+    /// </summary>
+    private async ValueTask BroadcastCatchAllAsync(
+        IDictionary<string, StringValues> headers, string body, CancellationToken cancellationToken)
+    {
+        if (!_recipients.HasRecipient<GitHubWebhookMessage>())
+            return;
+
+        var (installationId, repositoryFullName) = ReadRoutingFields(body);
+
+        await _messageBus.BroadcastAsync(new GitHubWebhookMessage
+        {
+            Headers = BuildHeaders(headers),
+            InstallationId = installationId,
+            RepositoryFullName = repositoryFullName,
+            EventType = Header(headers, "X-GitHub-Event") ?? string.Empty,
+            EventJson = body,
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Pulls <c>installation.id</c> and <c>repository.full_name</c> out of the raw payload without
+    /// materialising the event. Every GitHub payload that has them puts them in these two places;
+    /// anything malformed yields the same empty values a missing property would.
+    /// </summary>
+    private static (long InstallationId, string RepositoryFullName) ReadRoutingFields(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+
+            long installationId = 0;
+            if (root.TryGetProperty("installation", out var installation)
+                && installation.ValueKind == JsonValueKind.Object
+                && installation.TryGetProperty("id", out var id)
+                && id.TryGetInt64(out var parsed))
+            {
+                installationId = parsed;
+            }
+
+            var fullName = string.Empty;
+            if (root.TryGetProperty("repository", out var repository)
+                && repository.ValueKind == JsonValueKind.Object
+                && repository.TryGetProperty("full_name", out var name)
+                && name.ValueKind == JsonValueKind.String)
+            {
+                fullName = name.GetString() ?? string.Empty;
+            }
+
+            return (installationId, fullName);
+        }
+        catch (JsonException)
+        {
+            // The signature already proved GitHub sent this, so a body we cannot parse is a shape
+            // we do not know rather than an attack. Route it with empty fields instead of losing it.
+            return (0, string.Empty);
+        }
+    }
+
+    private static WebhookHeaders BuildHeaders(IDictionary<string, StringValues> headers)
+        => new()
+        {
+            Event = Header(headers, "X-GitHub-Event")!,
+            Delivery = Header(headers, "X-GitHub-Delivery")!,
+            HookId = Header(headers, "X-GitHub-Hook-ID")!,
+            HookInstallationTargetId = Header(headers, "X-GitHub-Hook-Installation-Target-ID")!,
+            HookInstallationTargetType = Header(headers, "X-GitHub-Hook-Installation-Target-Type")!,
+            Signature256 = Header(headers, "X-Hub-Signature-256")!,
+            UserAgent = Header(headers, "User-Agent")!,
+        };
+
+    private static string? Header(IDictionary<string, StringValues> headers, string name)
+        => headers.TryGetValue(name, out var value) ? value.ToString() : null;
+
     // --- Event overrides: each delegates to the shared generic helper ---
+    //
+    // These exist only to offer a strongly-typed envelope for the events worth one; the catch-all
+    // above already covers every event, including the ones absent from this list. Adding an
+    // override here is an ergonomic improvement for consumers, never the thing that makes an event
+    // reachable.
 
     protected override ValueTask ProcessPushWebhookAsync(WebhookHeaders headers, PushEvent pushEvent, CancellationToken cancellationToken = default)
         => HandleWebhookAsync(headers, pushEvent, cancellationToken);
@@ -114,35 +211,43 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
     protected override ValueTask ProcessRepositoryWebhookAsync(WebhookHeaders headers, RepositoryEvent repositoryEvent, RepositoryAction action, CancellationToken cancellationToken = default)
         => HandleWebhookAsync(headers, repositoryEvent, cancellationToken);
 
+    protected override ValueTask ProcessInstallationRepositoriesWebhookAsync(WebhookHeaders headers, InstallationRepositoriesEvent installationRepositoriesEvent, InstallationRepositoriesAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, installationRepositoriesEvent, cancellationToken);
+
+    protected override ValueTask ProcessInstallationTargetWebhookAsync(WebhookHeaders headers, InstallationTargetEvent installationTargetEvent, InstallationTargetAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, installationTargetEvent, cancellationToken);
+
+    protected override ValueTask ProcessOrganizationWebhookAsync(WebhookHeaders headers, OrganizationEvent organizationEvent, OrganizationAction action, CancellationToken cancellationToken = default)
+        => HandleWebhookAsync(headers, organizationEvent, cancellationToken);
+
     // --- Shared handler ---
 
+    /// <summary>
+    /// Broadcasts the typed envelope for an event that has one — and only when something consumes
+    /// it. A broadcast to a queue with no worker is not a no-op: it stores a document nothing will
+    /// ever drain, one per delivery, forever. Since both envelopes are offered for every event, an
+    /// app that subscribes only to the catch-all used to pay for a typed document per delivery too.
+    /// </summary>
     private async ValueTask HandleWebhookAsync<TEvent>(WebhookHeaders headers, TEvent evt, CancellationToken cancellationToken = default)
         where TEvent : WebhookEvent
     {
-        var installationId = evt.Installation?.Id ?? 0;
-        var repoFullName = evt.Repository?.FullName ?? string.Empty;
+        if (!_recipients.HasRecipient<GitHubWebhookMessage<TEvent>>())
+        {
+            _logger.LogDebug(
+                "No recipient for GitHubWebhookMessage<{EventType}>; the catch-all envelope carries this delivery.",
+                typeof(TEvent).Name);
+            return;
+        }
 
-        // Broadcast event-specific typed message. No queue-name override: QueueNames derives
-        // the name from the closed generic type, and MessageSubscriptionManager derives it
-        // identically from the IRecipient<> registration, so the two agree by construction.
-        var typedMessage = new GitHubWebhookMessage<TEvent>
+        // No queue-name override: QueueNames derives the name from the closed generic type, and
+        // MessageSubscriptionManager derives it identically from the IRecipient<> registration,
+        // so the two agree by construction.
+        await _messageBus.BroadcastAsync(new GitHubWebhookMessage<TEvent>
         {
             Headers = headers,
-            InstallationId = installationId,
-            RepositoryFullName = repoFullName,
+            InstallationId = evt.Installation?.Id ?? 0,
+            RepositoryFullName = evt.Repository?.FullName ?? string.Empty,
             EventJson = _rawBody ?? string.Empty,
-        };
-        await _messageBus.BroadcastAsync(typedMessage, cancellationToken);
-
-        // Broadcast catch-all message
-        var catchAllMessage = new GitHubWebhookMessage
-        {
-            Headers = headers,
-            InstallationId = installationId,
-            RepositoryFullName = repoFullName,
-            EventType = headers.Event ?? string.Empty,
-            EventJson = _rawBody ?? string.Empty,
-        };
-        await _messageBus.BroadcastAsync(catchAllMessage, cancellationToken);
+        }, cancellationToken);
     }
 }
