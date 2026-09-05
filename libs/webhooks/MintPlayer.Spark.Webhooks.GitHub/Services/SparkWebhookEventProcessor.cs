@@ -92,7 +92,24 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         // GitHub sends, a recipient of the catch-all sees.
         await BroadcastCatchAllAsync(caseInsensitiveHeaders, body, cancellationToken);
 
-        await base.ProcessWebhookAsync(caseInsensitiveHeaders, body, cancellationToken);
+        // Typed dispatch is best-effort, and must not be able to fail the delivery.
+        //
+        // Octokit deserializes into an action-specific type with required properties, so a payload
+        // shape it does not model — a new action, a field GitHub added, an event whose schema moved
+        // — throws. Before the catch-all existed that failure at least meant "nothing was
+        // delivered"; now the catch-all has already gone out, so letting it propagate would return
+        // 500 to GitHub, earn a redelivery, and broadcast the catch-all a second time. The event
+        // would be handled twice for the sake of an envelope nobody could deserialize anyway.
+        try
+        {
+            await base.ProcessWebhookAsync(caseInsensitiveHeaders, body, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not build a typed envelope for GitHub event '{EventType}'; the catch-all envelope was delivered.",
+                Header(caseInsensitiveHeaders, "X-GitHub-Event"));
+        }
     }
 
     /// <summary>

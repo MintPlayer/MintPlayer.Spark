@@ -30,23 +30,20 @@ public interface IGitHubStateReconciler
 public partial class GitHubStateReconciler : IGitHubStateReconciler
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IGitHubInstallationService installations;
+    [Inject] private readonly IInstallationRepositories installationRepositories;
     [Inject] private readonly ILogger<GitHubStateReconciler> logger;
 
     /// <summary>Bound on one account's repository set; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
 
-    /// <summary>GitHub's maximum page size, so a large installation costs as few calls as possible.</summary>
-    private const int PageSize = 100;
-
     public async Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
     {
         if (account.InstallationId is not { } installationId) return;
 
-        IReadOnlyList<Octokit.Repository> live;
+        IReadOnlyList<InstallationRepository> live;
         try
         {
-            live = await ListInstallationRepositoriesAsync(installationId);
+            live = await installationRepositories.ListAsync(installationId, MaxRepositoriesPerAccount, cancellationToken);
         }
         catch (Exception ex) when (IsInstallationGone(ex))
         {
@@ -71,17 +68,17 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
 
         foreach (var ghRepo in live)
         {
-            liveIds.Add(ghRepo.Id);
+            liveIds.Add(ghRepo.GitHubId);
 
-            if (!knownById.TryGetValue(ghRepo.Id, out var repository))
+            if (!knownById.TryGetValue(ghRepo.GitHubId, out var repository))
             {
                 // Not necessarily new to us — it may belong to an account we have not associated it
                 // with yet, which is what a transfer INTO this installation looks like.
-                var id = Repository.DocumentId(ghRepo.Id);
+                var id = Repository.DocumentId(ghRepo.GitHubId);
                 repository = await session.LoadAsync<Repository>(id, cancellationToken);
                 if (repository is null)
                 {
-                    repository = new Repository { GitHubId = ghRepo.Id };
+                    repository = new Repository { GitHubId = ghRepo.GitHubId };
                     await session.StoreAsync(repository, id, cancellationToken);
                 }
             }
@@ -98,8 +95,8 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             repository.Account = account.Id;
             repository.Name = ghRepo.Name;
             repository.FullName = ghRepo.FullName;
-            repository.OwnerLogin = ghRepo.Owner?.Login ?? ghRepo.FullName.Split('/')[0];
-            repository.IsPrivate = ghRepo.Private;
+            repository.OwnerLogin = ghRepo.OwnerLogin;
+            repository.IsPrivate = ghRepo.IsPrivate;
             repository.DefaultBranch = ghRepo.DefaultBranch;
             repository.Archived = ghRepo.Archived;
             Connect(repository);
@@ -117,29 +114,6 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 repository.FullName, installationId);
             Disconnect(repository, DisconnectedReasons.RemovedFromInstallation);
         }
-    }
-
-    private async Task<IReadOnlyList<Octokit.Repository>> ListInstallationRepositoriesAsync(long installationId)
-    {
-        var client = await installations.CreateInstallationClientAsync(installationId);
-
-        // Paged explicitly: a real organization has more repositories than one page, and a
-        // truncated list would read as "the rest were removed" and disconnect them all.
-        var all = new List<Octokit.Repository>();
-        for (var page = 1; ; page++)
-        {
-            var options = new ApiOptions { PageSize = PageSize, PageCount = 1, StartPage = page };
-            var response = await client.GitHubApps.Installation.GetAllRepositoriesForCurrent(options);
-            if (response.Repositories.Count == 0) break;
-
-            all.AddRange(response.Repositories);
-
-            if (response.Repositories.Count < PageSize) break;
-            if (all.Count >= response.TotalCount) break;
-            if (all.Count >= MaxRepositoriesPerAccount) break;
-        }
-
-        return all;
     }
 
     /// <summary>

@@ -81,7 +81,7 @@
         "isReadOnly": false,
         "order": 9,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": []
       },
       {
