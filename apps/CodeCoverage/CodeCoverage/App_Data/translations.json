@@ -90,5 +90,12 @@
       "fr": "Reinterroger GitHub pour vos organisations et installations.",
       "nl": "GitHub opnieuw bevragen voor je organisaties en installaties."
     }
+  },
+  "repository": {
+    "deleteDataConfirmation": {
+      "en": "This permanently deletes every commit, build and coverage report for this repository. It cannot be undone.",
+      "fr": "Ceci supprime définitivement tous les commits, builds et rapports de couverture de ce dépôt. Cette action est irréversible.",
+      "nl": "Dit verwijdert definitief alle commits, builds en dekkingsrapporten van deze repository. Dit kan niet ongedaan worden gemaakt."
+    }
   }
 }

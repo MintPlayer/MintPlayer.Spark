@@ -257,6 +257,26 @@ export class SparkPoDetailComponent {
     this.asDetailTypes.set(newAsDetailTypes);
   }
 
+  /**
+   * The bootstrap classes for a custom action's button. Outline-primary stays the default, so
+   * every existing action looks exactly as it did; a server-declared variant opts one action into
+   * a louder style. Restricted to a known set rather than interpolated, because the value arrives
+   * from a JSON file and must not be able to put arbitrary classes on the button.
+   */
+  protected customActionClass(action: CustomActionDefinition): string {
+    const variant = action.variant?.toLowerCase();
+    switch (variant) {
+      case 'danger':
+      case 'warning':
+      case 'primary':
+      case 'secondary':
+      case 'success':
+        return `btn btn-${variant}`;
+      default:
+        return 'btn btn-outline-primary';
+    }
+  }
+
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
     if (action.confirmationMessageKey) {
       const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';

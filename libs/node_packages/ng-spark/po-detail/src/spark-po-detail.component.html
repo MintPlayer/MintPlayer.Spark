@@ -23,7 +23,7 @@
         }
         @if (showCustomActions()) {
           @for (action of customActions(); track action.name) {
-            <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary" (click)="onCustomAction(action)">
+            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" (click)="onCustomAction(action)">
               {{ action.displayName | resolveTranslation }}
             </button>
           }
