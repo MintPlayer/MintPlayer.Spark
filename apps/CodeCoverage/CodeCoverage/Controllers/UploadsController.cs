@@ -522,8 +522,17 @@ public partial class UploadsController : ControllerBase
         var account = User.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value;
         var repoId = User.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value;
 
+        // Account scope compares numeric owner ids when the token carries one. A login comparison
+        // is wrong in both directions once a repository is transferred: the old owner's token keeps
+        // working for a repository they no longer own, and the new owner's does not work for one
+        // they do. Tokens issued before the id existed fall back to the login, so a deploy
+        // invalidates nothing.
+        var accountId = User.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value;
         var authorized = scope switch
         {
+            "Account" when accountId is not null =>
+                long.TryParse(accountId, out var ownerId)
+                && repository.Account == Entities.Account.DocumentId(ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
             "Repository" => repoId == repository.GitHubId.ToString(),
             _ => false,

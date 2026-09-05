@@ -18,6 +18,8 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
 
     public const string ScopeClaim = "covt:scope";
     public const string AccountClaim = "covt:account";
+    /// <summary>The owner's numeric GitHub id — the stable half of <see cref="AccountClaim"/>.</summary>
+    public const string AccountIdClaim = "covt:accountid";
     public const string RepositoryClaim = "covt:repoid";
     public const string TokenHashClaim = "covt:hash";
 
@@ -62,6 +64,8 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
         };
         if (token.AccountLogin is not null)
             claims.Add(new Claim(AccountClaim, token.AccountLogin));
+        if (token.AccountGitHubId is not null)
+            claims.Add(new Claim(AccountIdClaim, token.AccountGitHubId.Value.ToString()));
         if (token.RepositoryGitHubId is not null)
             claims.Add(new Claim(RepositoryClaim, token.RepositoryGitHubId.Value.ToString()));
 

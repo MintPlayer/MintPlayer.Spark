@@ -65,11 +65,18 @@ public partial class TokensController : ControllerBase
             return BadRequest(new { error = "scope must be Account or Repository." });
         }
 
+        // The numeric owner id is what the upload path authorizes on, because the login it used to
+        // compare is renameable and a repository can be transferred out from under it.
+        var account = await session.Query<Account, Indexes.Accounts_Overview>()
+            .Where(a => a.Login == request.AccountLogin)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var tokenValue = ApiTokenService.GenerateTokenValue();
         var token = new ApiToken
         {
             Scope = repository is null ? "Account" : "Repository",
             AccountLogin = request.AccountLogin,
+            AccountGitHubId = account?.GitHubId,
             RepositoryGitHubId = repository?.GitHubId,
             Description = request.Description,
             CreatedByUserId = user.Id!,
