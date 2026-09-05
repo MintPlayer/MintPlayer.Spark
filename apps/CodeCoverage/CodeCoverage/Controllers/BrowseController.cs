@@ -33,6 +33,7 @@ namespace CodeCoverage.Controllers;
 public partial class BrowseController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IGitHubAccessService gitHubAccess;
     [Inject] private readonly IGitHubContentService gitHubContent;
     [Inject] private readonly IConfiguration configuration;
@@ -510,9 +511,7 @@ public partial class BrowseController : ControllerBase
 
     private async Task<Repository?> ResolveVisibleRepository(string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == $"{owner}/{name}")
-            .FirstOrDefaultAsync(cancellationToken);
+        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
         if (repository is null) return null;
 
         // Same rule as the /spark surface, from the same place — the two must
